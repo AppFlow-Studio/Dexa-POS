@@ -419,6 +419,13 @@ export interface CartItem {
   sync_status?: 'pending' | 'syncing' | 'synced' | 'failed'
   sync_error?: string
   sync_retry_count?: number
+  // Optimistic-payment fingerprint. Stamped by addPaymentToOrder when the
+  // itemAllocations branch updates paidQuantity locally; cleared by the
+  // backend reconciliation path once `data.updated_items` arrives. The FIFO
+  // absorb in _handleOrderBroadcast / upsertOrder prefers stamped candidates
+  // over non-stamped ones so a same-composite-key broadcast clone arriving
+  // mid-race can't be claimed instead of the in-flight optimistic copy.
+  pendingPaymentSeq?: number
   // NEW: Context for price level tracking - which category/menu was this item added from
   addedFromCategoryId?: string | null
   addedFromMenuId?: string | null

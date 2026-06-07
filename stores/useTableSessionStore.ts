@@ -154,6 +154,34 @@ export function wasSessionRecentlyCleared(sessionId: string): boolean {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Recently-transferred session tracker
+//
+// transfer_table_session runs UPDATE-old-junctions then INSERT-new-junctions
+// in one transaction. A realtime broadcast emitted between those steps carries
+// is_active=true with data.tables=[], which would otherwise wipe the freshly
+// loaded post-transfer state. transferSession records the sessionId so
+// _handleSessionChange (in both this store and useFloorPlanStore) can ignore
+// stale broadcasts until loadFloorPlanStatus has settled the correct view.
+// ---------------------------------------------------------------------------
+
+const RECENTLY_TRANSFERRED_TTL_MS = 10_000;
+const recentlyTransferredSessions = new Map<string, number>();
+
+function _recordTransferred(sessionId: string) {
+  recentlyTransferredSessions.set(sessionId, Date.now());
+}
+
+export function wasSessionRecentlyTransferred(sessionId: string): boolean {
+  const t = recentlyTransferredSessions.get(sessionId);
+  if (!t) return false;
+  if (Date.now() - t > RECENTLY_TRANSFERRED_TTL_MS) {
+    recentlyTransferredSessions.delete(sessionId);
+    return false;
+  }
+  return true;
+}
+
 function _maybeRecordCleared(
   prev: TableSession | undefined,
   next: TableSession | undefined,
@@ -766,6 +794,12 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               if (existing && isLocalOnlyStatus(existing.status)) {
                 continue;
               }
+              // Skip CLEAR if the session was transferred locally within TTL —
+              // the snapshot may not yet reflect the new junction row, so
+              // CLEARing here would wipe the post-transfer state.
+              if (existing && wasSessionRecentlyTransferred(existing.id)) {
+                continue;
+              }
               actions.push({ tableId, action: { type: "CLEAR" } });
             }
           }
@@ -881,6 +915,27 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
           const sessionId = data.session.id;
           const tableIds = data.tables?.map((t) => t.table_id) || [];
+
+          // A live session always has ≥1 active junction row. An empty
+          // tableIds list with is_active=true only occurs mid-transfer between
+          // the UPDATE-old and INSERT-new statements in transfer_table_session.
+          // Skipping prevents the CLEAR loop below from wiping the post-transfer
+          // state that loadFloorPlanStatus already restored.
+          if (tableIds.length === 0) {
+            console.warn(
+              "[_handleSessionChange] Skipping intermediate-state broadcast (active session, empty tables)",
+              { sessionId },
+            );
+            return;
+          }
+
+          // Skip stale broadcasts for sessions transferred locally within TTL.
+          // loadFloorPlanStatus (called from transferSession) has already set
+          // the correct table membership; a delayed broadcast from before/during
+          // the transaction would otherwise revert it.
+          if (wasSessionRecentlyTransferred(sessionId)) {
+            return;
+          }
 
           const actions: Array<{ tableId: string; action: SessionAction }> = [];
 
@@ -1468,6 +1523,17 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           );
 
           if (error) throw error;
+
+          // Record before the refresh so any in-flight stale broadcast that
+          // races loadFloorPlanStatus is suppressed by both stores'
+          // _handleSessionChange.
+          _recordTransferred(sessionId);
+          if (__DEV__) {
+            console.log("[transferSession] Guard recorded", {
+              sessionId,
+              newTableIds,
+            });
+          }
 
           // Refresh via floor plan store (which calls _patchSessionsFromTables)
           await useFloorPlanStore.getState().loadFloorPlanStatus();

@@ -5,7 +5,10 @@
  */
 
 import { isLocalOnlyStatus } from "@/lib/tableStateMachine";
-import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import {
+  useTableSessionStore,
+  wasSessionRecentlyTransferred,
+} from "@/stores/useTableSessionStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { FloorPlanService } from "@/services/floorPlanService";
 import { getQueueSnapshot } from "@/services/offlineSyncService";
@@ -175,6 +178,12 @@ async function poll() {
             if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP clear for table ${row.table_name || row.table_id}: session pending sync`);
             continue;
           }
+          // Skip CLEAR if the session was just transferred locally — the
+          // backend snapshot may not yet show the new junction row.
+          if (wasSessionRecentlyTransferred(currentSession.id)) {
+            if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP CLEAR — recently transferred ${currentSession.id}`);
+            continue;
+          }
           if (!shouldClearMissingSession(row.table_id, currentSession.id)) {
             if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP clear for table ${row.table_name || row.table_id}: confirming missing session on next poll`);
             continue;
@@ -255,6 +264,12 @@ async function poll() {
           // Don't clear if this session is pending sync
           if (isSessionPendingSync(tableId, currentSession.id)) {
             if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP clear orphaned session for table ${tableId}: session pending sync`);
+            continue;
+          }
+          // Skip CLEAR if the session was just transferred locally — the
+          // backend snapshot may not yet show the new junction row.
+          if (wasSessionRecentlyTransferred(currentSession.id)) {
+            if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP CLEAR orphaned — recently transferred ${currentSession.id}`);
             continue;
           }
           if (!shouldClearMissingSession(tableId, currentSession.id)) {

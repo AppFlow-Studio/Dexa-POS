@@ -111,12 +111,11 @@ export class LandiDriver implements PrinterDriver {
       return node;
     });
 
-    // Trailing feed before the deferred `cutPaper()`. Sized to clear the
-    // C20Pro cutter-blade offset (~10–15 mm above the print head) so the
-    // blade lands below the printed content with a visible bottom margin.
-    // With less feed the cut lands inside the content and the bottom of
-    // the ticket stays attached to the roll, reading as "didn't cut".
-    calibrated.push({ type: "feed", lines: 10 });
+    // Trailing feed before the deferred `cutPaper()`. C20Pro cutter sits
+    // ~10–15 mm above the print head and each VectorPrinter line is ~3.5 mm
+    // (fontSize 28 @ lineSpace 0). 5 lines (~17.5 mm) clears the blade with
+    // a small bottom margin; less risks cutting into the last text line.
+    calibrated.push({ type: "feed", lines: 5 });
     await printLandiDocument(JSON.stringify({ ...doc, nodes: calibrated }));
   }
 
