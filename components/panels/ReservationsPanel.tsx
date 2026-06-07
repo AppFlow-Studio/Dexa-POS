@@ -207,7 +207,7 @@ const inputStyle = {
   borderRadius: 8,
   borderWidth: 1,
   borderColor: colors.border,
-} as const;
+};
 
 const labelStyle = {
   fontSize: 10,
@@ -337,7 +337,7 @@ const AddReservationModal: React.FC<{
   onSubmit: (data: AddReservationData) => Promise<void>;
   isLoading: boolean;
   defaultDate: Date;
-  availableTables: { id: string; name: string }[];
+  availableTables: { id: string; name: string; occupied?: boolean }[];
   initialData?: Reservation | null;
   title?: string;
   subtitle?: string;
@@ -443,6 +443,7 @@ const AddReservationModal: React.FC<{
     setLinkedCustomer(null);
     setName("");
     setPhone("");
+    setCustomerQuery("");
   };
 
   const setSelectedTime = (time: string) => {
@@ -501,6 +502,15 @@ const AddReservationModal: React.FC<{
       prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id],
     );
   };
+
+  const isLightTheme = colors.card === "#F1F4F9";
+  const formInputSurface = isLightTheme ? colors.card : colors.inset;
+  const formControlSurface = isLightTheme ? colors.card : colors.inset;
+  const formActionSurface = isLightTheme ? colors.card : colors.screen;
+  const themedInputStyle = {
+    ...inputStyle,
+    backgroundColor: formInputSurface,
+  } as const;
 
   const surfaceCard = {
     borderRadius: 12,
@@ -595,7 +605,7 @@ const AddReservationModal: React.FC<{
 
               <View style={{ padding: 14, gap: 10 }}>
                 {/* Customer search — full width at top */}
-                <View style={surfaceCard}>
+                <View style={[surfaceCard, { zIndex: 30 }]}>
                   <Text style={labelStyle}>Customer (Optional)</Text>
                   {linkedCustomer ? (
                     /* Linked customer badge */
@@ -676,7 +686,7 @@ const AddReservationModal: React.FC<{
                           paddingHorizontal: 8,
                           paddingVertical: 5,
                           borderRadius: 6,
-                          backgroundColor: colors.screen,
+                          backgroundColor: formActionSurface,
                           borderWidth: 1,
                           borderColor: colors.border,
                         }}
@@ -694,13 +704,12 @@ const AddReservationModal: React.FC<{
                     </View>
                   ) : (
                     /* Search input + quick results */
-                    <View>
+                    <View style={{ zIndex: 30 }}>
                       <View
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
-                          ...inputStyle,
-                          backgroundColor: colors.inset,
+                          ...themedInputStyle,
                           paddingHorizontal: 10,
                           gap: 8,
                         }}
@@ -729,12 +738,21 @@ const AddReservationModal: React.FC<{
                         customerResults.length > 0 && (
                           <View
                             style={{
-                              marginTop: 6,
+                              position: "absolute",
+                              top: 42,
+                              left: 0,
+                              right: 0,
                               borderRadius: 8,
                               borderWidth: 1,
                               borderColor: colors.border,
                               backgroundColor: colors.card,
                               overflow: "hidden",
+                              zIndex: 40,
+                              elevation: 8,
+                              shadowColor: "#000",
+                              shadowOffset: { width: 0, height: 6 },
+                              shadowOpacity: 0.18,
+                              shadowRadius: 12,
                             }}
                           >
                             {customerResults.map((c, i) => (
@@ -838,7 +856,7 @@ const AddReservationModal: React.FC<{
                           onChangeText={setName}
                           placeholder="Enter name"
                           placeholderTextColor={colors.muted}
-                          style={inputStyle}
+                          style={themedInputStyle}
                           autoCapitalize="words"
                         />
                       </View>
@@ -853,7 +871,7 @@ const AddReservationModal: React.FC<{
                           borderWidth: 1,
                           backgroundColor: isVip
                             ? colors.warning + "20"
-                            : colors.inset,
+                            : formControlSurface,
                           borderColor: isVip
                             ? colors.warning + "50"
                             : colors.border,
@@ -885,7 +903,7 @@ const AddReservationModal: React.FC<{
                           keyboardType="phone-pad"
                           placeholder="Phone number"
                           placeholderTextColor={colors.muted}
-                          style={inputStyle}
+                          style={themedInputStyle}
                         />
                       </View>
                       <View style={{ width: 170 }}>
@@ -927,7 +945,7 @@ const AddReservationModal: React.FC<{
                               flex: 1,
                               alignItems: "center",
                               justifyContent: "center",
-                              backgroundColor: colors.inset,
+                              backgroundColor: formControlSurface,
                             }}
                           >
                             <Text
@@ -983,7 +1001,7 @@ const AddReservationModal: React.FC<{
                             justifyContent: "center",
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.inset,
+                            backgroundColor: formControlSurface,
                           }}
                         >
                           <ChevronLeft size={14} color={colors.label} />
@@ -1002,7 +1020,7 @@ const AddReservationModal: React.FC<{
                             justifyContent: "center",
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.inset,
+                            backgroundColor: formControlSurface,
                           }}
                         >
                           <Text
@@ -1025,7 +1043,7 @@ const AddReservationModal: React.FC<{
                             justifyContent: "center",
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.inset,
+                            backgroundColor: formControlSurface,
                           }}
                         >
                           <ChevronRight size={14} color={colors.label} />
@@ -1040,7 +1058,7 @@ const AddReservationModal: React.FC<{
                           borderRadius: 10,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          backgroundColor: colors.inset,
+                          backgroundColor: formControlSurface,
                           padding: 8,
                           gap: 8,
                         }}
@@ -1063,7 +1081,7 @@ const AddReservationModal: React.FC<{
                               justifyContent: "center",
                               borderWidth: 1,
                               borderColor: colors.border,
-                              backgroundColor: colors.inset,
+                              backgroundColor: formControlSurface,
                               opacity: selectedTimeIndex <= 0 ? 0.4 : 1,
                             }}
                           >
@@ -1104,7 +1122,7 @@ const AddReservationModal: React.FC<{
                               justifyContent: "center",
                               borderWidth: 1,
                               borderColor: colors.border,
-                              backgroundColor: colors.panel,
+                              backgroundColor: formControlSurface,
                               opacity:
                                 selectedTimeIndex >= timeOptions.length - 1
                                   ? 0.4
@@ -1120,7 +1138,7 @@ const AddReservationModal: React.FC<{
                             borderRadius: 8,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.inset,
+                            backgroundColor: formControlSurface,
                             overflow: "hidden",
                             alignSelf: "center",
                           }}
@@ -1190,7 +1208,7 @@ const AddReservationModal: React.FC<{
                             borderRadius: 10,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.inset,
+                            backgroundColor: formControlSurface,
                             padding: 8,
                             gap: 8,
                           }}
@@ -1248,7 +1266,7 @@ const AddReservationModal: React.FC<{
                                       ? colors.teal + "20"
                                       : t.occupied
                                         ? colors.warning + "10"
-                                        : colors.inset,
+                                        : formControlSurface,
                                     borderColor: active
                                       ? colors.teal + "60"
                                       : t.occupied
@@ -1287,7 +1305,7 @@ const AddReservationModal: React.FC<{
                         placeholderTextColor={colors.muted}
                         multiline
                         style={{
-                          ...inputStyle,
+                          ...themedInputStyle,
                           height: 94,
                           textAlignVertical: "top",
                         }}
@@ -1308,7 +1326,7 @@ const AddReservationModal: React.FC<{
                       justifyContent: "center",
                       borderWidth: 1,
                       borderColor: colors.border,
-                      backgroundColor: colors.screen,
+                      backgroundColor: formActionSurface,
                     }}
                   >
                     <Text
@@ -1424,14 +1442,14 @@ const AddReservationModal: React.FC<{
                   }}
                   markedDates={calendarMarkedDates}
                   theme={{
-                    calendarBackground: colors.panel,
+                    calendarBackground: formInputSurface,
                     monthTextColor: colors.heading,
                     dayTextColor: colors.heading,
                     textDisabledColor: colors.muted,
                     selectedDayBackgroundColor: colors.teal,
                     selectedDayTextColor: "#000000",
                     todayTextColor: colors.teal,
-                    backgroundColor: colors.inset,
+                    backgroundColor: formInputSurface,
                     textSectionTitleColor: colors.label,
                   }}
                 />
@@ -1458,7 +1476,7 @@ const AddReservationModal: React.FC<{
                     justifyContent: "center",
                     borderWidth: 1,
                     borderColor: colors.border,
-                    backgroundColor: colors.screen,
+                    backgroundColor: formActionSurface,
                   }}
                 >
                   <Text
