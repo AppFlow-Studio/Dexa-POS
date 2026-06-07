@@ -42,7 +42,6 @@ const orderProcessingSrc = read('app/(main)/order-processing.tsx')
 const billSectionSrc = read('components/bill/BillSection.tsx')
 const orderStoreSrc = read('stores/useOrderStore.ts')
 const ordersQuerySrc = read('hooks/pos/useOrdersQuery.ts')
-const tableSessionRealtimeSyncSrc = read('services/tableSessionRealtimeSync.ts')
 const transformersSrc = read('utils/orderTransformers.ts')
 const typesSrc = read('lib/types.ts')
 const bannerSrc = read('components/order/ReadOnlyBanner.tsx')
@@ -150,17 +149,6 @@ describe('Wave 2.7 — useActiveOrderOwnershipRecheck hook', () => {
 })
 
 describe('Wave 2.7 - table-session poll stability', () => {
-  it('requires two missing lightweight snapshots before clearing a rendered table session', () => {
-    expect(tableSessionRealtimeSyncSrc).toMatch(/missingSessionPolls/)
-    expect(tableSessionRealtimeSyncSrc).toMatch(/return count >= 2/)
-    expect(tableSessionRealtimeSyncSrc).toMatch(
-      /if \(!shouldClearMissingSession\(row\.table_id, currentSession\.id\)\)/
-    )
-    expect(tableSessionRealtimeSyncSrc).toMatch(
-      /if \(!shouldClearMissingSession\(tableId, currentSession\.id\)\)/
-    )
-  })
-
   it('refreshes the dine-in table-to-order index after a broadcast upsert', () => {
     expect(orderStoreSrc).toMatch(
       /state\.dbOrderIdIndex\[dbOrderId\] = dbOrderId;[\s\S]*syncTableOrderIdIndexForOrder\(state, dbOrderId, existing\);/

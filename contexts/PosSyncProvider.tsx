@@ -701,12 +701,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         if (!isKDS) {
           const floorPlanStore = useFloorPlanStore.getState();
 
-          // Reconnect realtime if disconnected or reconnecting
-          if (floorPlanStore.realtimeStatus !== "connected") {
-            floorPlanStore.manualReconnect();
-          }
-
-          // Refresh stale floor plan data
+          // Floor realtime (re)connection on foreground is owned by
+          // useFloorRealtime / useRealtimeChannel (AppState-aware). Here we only
+          // converge state via the authoritative snapshot if it's stale.
           floorPlanStore.loadFloorPlanStatusIfStale();
 
           // Refresh orders when app resumes — only if data is older than staleTime.

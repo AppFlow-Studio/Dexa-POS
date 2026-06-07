@@ -36,7 +36,6 @@ import {
     TableSession,
     TableStatus,
 } from "@/types/db-floor-plan-types";
-import type { TableSessionPayload } from "@/types/real-time";
 import { create } from "zustand";
 import { persist, subscribeWithSelector } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
@@ -149,34 +148,6 @@ export function wasSessionRecentlyCleared(sessionId: string): boolean {
   if (!t) return false;
   if (Date.now() - t > RECENTLY_CLEARED_TTL_MS) {
     recentlyClearedSessions.delete(sessionId);
-    return false;
-  }
-  return true;
-}
-
-// ---------------------------------------------------------------------------
-// Recently-transferred session tracker
-//
-// transfer_table_session runs UPDATE-old-junctions then INSERT-new-junctions
-// in one transaction. A realtime broadcast emitted between those steps carries
-// is_active=true with data.tables=[], which would otherwise wipe the freshly
-// loaded post-transfer state. transferSession records the sessionId so
-// _handleSessionChange (in both this store and useFloorPlanStore) can ignore
-// stale broadcasts until loadFloorPlanStatus has settled the correct view.
-// ---------------------------------------------------------------------------
-
-const RECENTLY_TRANSFERRED_TTL_MS = 10_000;
-const recentlyTransferredSessions = new Map<string, number>();
-
-function _recordTransferred(sessionId: string) {
-  recentlyTransferredSessions.set(sessionId, Date.now());
-}
-
-export function wasSessionRecentlyTransferred(sessionId: string): boolean {
-  const t = recentlyTransferredSessions.get(sessionId);
-  if (!t) return false;
-  if (Date.now() - t > RECENTLY_TRANSFERRED_TTL_MS) {
-    recentlyTransferredSessions.delete(sessionId);
     return false;
   }
   return true;
@@ -394,9 +365,6 @@ interface TableSessionStoreState {
   /** Hydrate sessions from backend via get_location_table_status_v2 */
   hydrateFromBackend: (locationId: string) => Promise<void>;
 
-  /** Handle realtime broadcast for session changes */
-  _handleSessionChange: (payload: TableSessionPayload) => void;
-
   /** Hydrate sessions from FloorPlanObject[] (called after loadFloorPlanStatus) */
   _patchSessionsFromTables: (tables: FloorPlanObject[]) => void;
 
@@ -513,7 +481,17 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             }
           });
 
+          // A session that is SET onto some table within this same batch is being
+          // MOVED (e.g. a table transfer), not ended. Don't record it as
+          // recently-cleared, or the cleared-guard would wrongly strip it from
+          // the destination table on the next authoritative snapshot.
+          const movedSessionIds = new Set<string>();
+          for (const { result } of results) {
+            if (result.session?.id) movedSessionIds.add(result.session.id);
+          }
           for (const { prev, result } of results) {
+            const sid = result.session?.id ?? prev?.id;
+            if (sid && movedSessionIds.has(sid)) continue;
             _maybeRecordCleared(prev, result.session);
           }
 
@@ -794,12 +772,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               if (existing && isLocalOnlyStatus(existing.status)) {
                 continue;
               }
-              // Skip CLEAR if the session was transferred locally within TTL —
-              // the snapshot may not yet reflect the new junction row, so
-              // CLEARing here would wipe the post-transfer state.
-              if (existing && wasSessionRecentlyTransferred(existing.id)) {
-                continue;
-              }
+              // This path is only ever fed by loadFloorPlanStatus's authoritative
+              // snapshot (the single writer of backend-owned state). A table
+              // missing the session here genuinely lost it — clear it. No TTL
+              // guard needed: broadcasts are never applied to state anymore, so
+              // there's no stale-broadcast race to defend against.
               actions.push({ tableId, action: { type: "CLEAR" } });
             }
           }
@@ -881,109 +858,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             tables: newTables,
             tablesById: buildTablesById(newTables),
           });
-        },
-
-        // ------------------------------------------------------------------
-        // _handleSessionChange — realtime broadcast handler
-        // ------------------------------------------------------------------
-
-        _handleSessionChange: (payload: TableSessionPayload) => {
-          const { operation, data } = payload;
-
-          if (operation === "DELETE" || !data?.session) {
-            useFloorPlanStore.getState()._debouncedRefresh();
-            return;
-          }
-
-          // If the session is no longer active, clear all tables associated with it
-          if (data.session.is_active === false) {
-            const sessionId = data.session.id;
-            // O(1) lookup via sessionTableIndex instead of scanning all sessions
-            const tableIds = get().sessionTableIndex[sessionId] || [];
-            console.log("[_handleSessionChange] is_active=false", {
-              sessionId,
-              tableIds,
-            });
-            const actions: Array<{ tableId: string; action: SessionAction }> =
-              [];
-            for (const tId of tableIds) {
-              actions.push({ tableId: tId, action: { type: "CLEAR" } });
-            }
-            if (actions.length > 0) get().batchDispatch(actions);
-            return;
-          }
-
-          const sessionId = data.session.id;
-          const tableIds = data.tables?.map((t) => t.table_id) || [];
-
-          // A live session always has ≥1 active junction row. An empty
-          // tableIds list with is_active=true only occurs mid-transfer between
-          // the UPDATE-old and INSERT-new statements in transfer_table_session.
-          // Skipping prevents the CLEAR loop below from wiping the post-transfer
-          // state that loadFloorPlanStatus already restored.
-          if (tableIds.length === 0) {
-            console.warn(
-              "[_handleSessionChange] Skipping intermediate-state broadcast (active session, empty tables)",
-              { sessionId },
-            );
-            return;
-          }
-
-          // Skip stale broadcasts for sessions transferred locally within TTL.
-          // loadFloorPlanStatus (called from transferSession) has already set
-          // the correct table membership; a delayed broadcast from before/during
-          // the transaction would otherwise revert it.
-          if (wasSessionRecentlyTransferred(sessionId)) {
-            return;
-          }
-
-          const actions: Array<{ tableId: string; action: SessionAction }> = [];
-
-          // The broadcast payload (TableSessionData) doesn't include server_staff_id.
-          // Preserve it from the existing session so the server badge doesn't flicker
-          // until the next full loadFloorPlanStatus restores it from the DB.
-          const existingSessionForBroadcast =
-            tableIds.length > 0 ? get().sessions[tableIds[0]] : undefined;
-          const preservedServerStaffId =
-            existingSessionForBroadcast?.id === sessionId
-              ? existingSessionForBroadcast.server_staff_id
-              : undefined;
-
-          const incomingSession: TableSession = {
-            id: sessionId,
-            status: data.session.status,
-            party_size: data.session.party_size,
-            guest_name: data.session.guest_name,
-            seated_at: data.session.seated_at || new Date().toISOString(),
-            current_course: data.session.current_course,
-            needs_attention: data.session.needs_attention,
-            is_vip: data.session.is_vip,
-            order_id: data.session.order_id,
-            reservation_id: (data.session as any).reservation_id ?? null,
-            session_number: data.session.session_number,
-            merged_tables: tableIds.length > 1 ? tableIds : undefined,
-            server_staff_id: preservedServerStaffId,
-          };
-
-          // SYNC for tables in this session
-          for (const tableId of tableIds) {
-            actions.push({
-              tableId,
-              action: { type: "SYNC", session: incomingSession },
-            });
-          }
-
-          // CLEAR for tables that were previously in this session but aren't anymore
-          const currentSessions = get().sessions;
-          for (const [tId, sess] of Object.entries(currentSessions)) {
-            if (sess.id === sessionId && !tableIds.includes(tId)) {
-              actions.push({ tableId: tId, action: { type: "CLEAR" } });
-            }
-          }
-
-          if (actions.length > 0) {
-            get().batchDispatch(actions);
-          }
         },
 
         // ------------------------------------------------------------------
@@ -1524,19 +1398,55 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
           if (error) throw error;
 
-          // Record before the refresh so any in-flight stale broadcast that
-          // races loadFloorPlanStatus is suppressed by both stores'
-          // _handleSessionChange.
-          _recordTransferred(sessionId);
-          if (__DEV__) {
-            console.log("[transferSession] Guard recorded", {
-              sessionId,
-              newTableIds,
-            });
+          // Optimistic own-action move: clear the source table(s) and stamp the
+          // session onto the new target(s) so the floor reacts instantly. The
+          // authoritative snapshot reconcile below confirms it. (Remote devices
+          // converge via useFloorRealtime's reconcile — they don't apply the
+          // raw broadcast.)
+          const sessions = get().sessions;
+          const moving = Object.values(sessions).find((s) => s?.id === sessionId);
+          if (moving) {
+            const targetSet = new Set(newTableIds);
+            const optimistic: Array<{ tableId: string; action: SessionAction }> =
+              [];
+            // Clear old source tables no longer in the new membership.
+            for (const [tId, sess] of Object.entries(sessions)) {
+              if (sess?.id === sessionId && !targetSet.has(tId)) {
+                optimistic.push({ tableId: tId, action: { type: "CLEAR" } });
+              }
+            }
+            // Stamp the session onto the new target tables.
+            const movedSession: TableSession = {
+              ...moving,
+              merged_tables: newTableIds.length > 1 ? newTableIds : undefined,
+            };
+            for (const tId of newTableIds) {
+              optimistic.push({
+                tableId: tId,
+                action: { type: "SET", session: movedSession },
+              });
+            }
+            if (optimistic.length > 0) get().batchDispatch(optimistic);
+
+            // Re-link the session's order to the new primary table. Without this
+            // the order keeps its old service_location_id, so BillSection and the
+            // order line (both keyed on service_location_id) still point at the
+            // old table and never reflect the transfer.
+            const newPrimaryTableId = newTableIds[0];
+            if (moving.order_id && newPrimaryTableId) {
+              const { useOrderStore } =
+                require("@/stores/useOrderStore") as typeof import("@/stores/useOrderStore");
+              const orderStore = useOrderStore.getState();
+              const localOrderId =
+                orderStore.dbOrderIdIndex[moving.order_id] ?? moving.order_id;
+              orderStore.transferOrderToTable?.(localOrderId, newPrimaryTableId);
+            }
           }
 
-          // Refresh via floor plan store (which calls _patchSessionsFromTables)
-          await useFloorPlanStore.getState().loadFloorPlanStatus();
+          // Authoritative reconcile — single source of truth. force=true so we
+          // don't reuse a snapshot read that began before the transfer RPC
+          // committed (which would revert the move to stale state).
+          await useFloorPlanStore.getState().loadFloorPlanStatus(true);
         },
 
         // ------------------------------------------------------------------

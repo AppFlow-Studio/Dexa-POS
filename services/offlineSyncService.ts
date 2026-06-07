@@ -1549,7 +1549,6 @@ export function getPendingOperations(): OfflineOperation[] {
 
 /**
  * Get a read-only snapshot of the current queue for inspection.
- * Used by tableSessionRealtimeSync to check for pending seat_guests ops.
  */
 export function getQueueSnapshot(): readonly OfflineOperation[] {
   return pendingOperations;
