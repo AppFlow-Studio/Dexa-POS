@@ -159,17 +159,24 @@ export class FloorPlanService {
         sessionsError = result.error;
       }
 
+      // FAIL CLOSED: if the junction or session sub-queries error, we cannot
+      // tell which tables are occupied. Returning the objects anyway would strip
+      // EVERY session (tables fall back to "available" → whole floor turns green)
+      // until the next good fetch. Return an error instead so callers keep the
+      // last known-good state rather than committing a false "all available".
       if (junctionError) {
-        console.warn(
-          "[getAllFloorPlanObjects] Warning: error fetching junctions:",
+        console.error(
+          "[getAllFloorPlanObjects] junction fetch failed — aborting to avoid wiping sessions:",
           junctionError,
         );
+        return { data: null, error: junctionError };
       }
       if (sessionsError) {
-        console.warn(
-          "[getAllFloorPlanObjects] Warning: error fetching sessions:",
+        console.error(
+          "[getAllFloorPlanObjects] session fetch failed — aborting to avoid wiping sessions:",
           sessionsError,
         );
+        return { data: null, error: sessionsError };
       }
 
       // 3. Build efficient lookups

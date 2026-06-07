@@ -283,6 +283,29 @@ const TablesPanel: React.FC = () => {
       return changed ? next : prev;
     });
   }, [activeTables]);
+
+  // Collapse the expanded/"selected" state for any table that is no longer in an
+  // active status (e.g. after Close Table → available/cleaning). Otherwise the
+  // row keeps the teal selected background/border even though it's now closed —
+  // the "row still marked as selected after closing" bug.
+  useEffect(() => {
+    setExpandedTableIds((prev) => {
+      let changed = false;
+      const next: Record<string, boolean> = {};
+      for (const [tableId, expanded] of Object.entries(prev)) {
+        const status = (
+          liveSessions[tableId]?.status ?? ""
+        ).toLowerCase();
+        if (expanded && !ACTIVE_STATUSES.has(status)) {
+          changed = true; // drop it — no longer expandable/selected
+        } else {
+          next[tableId] = expanded;
+        }
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveSessions]);
   const isSeatable = (t: FloorPlanObject) =>
     t.category === "table" || t.category === "booth";
   const getEmployeeByStaffId = useEmployeeStore((s) => s.getEmployeeByStaffId);
@@ -354,7 +377,10 @@ const TablesPanel: React.FC = () => {
       if (sortMode === "status") {
         const sa = STATUS_ORDER[sessionA?.status?.toLowerCase() ?? ""] ?? 99;
         const sb = STATUS_ORDER[sessionB?.status?.toLowerCase() ?? ""] ?? 99;
-        return sa - sb;
+        // Stable tiebreaker by name so tables of equal status keep a fixed
+        // relative order instead of shuffling when a single status flips.
+        if (sa !== sb) return sa - sb;
+        return a.name.localeCompare(b.name);
       }
       if (sortMode === "duration") {
         const ta = sessionA?.seated_at

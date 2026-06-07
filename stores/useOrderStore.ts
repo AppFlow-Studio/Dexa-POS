@@ -13504,8 +13504,9 @@ export const useOrderStore = create<OrderState>()(
                     return false;
                   }
                   // void_order RPC confirmed — session is closed on backend.
-                  // Realtime broadcast (_handleSessionChange with is_active=false) will
-                  // keep local state in sync. No refetch needed here.
+                  // The floor broadcast that follows triggers an authoritative
+                  // loadFloorPlanStatus() reconcile in useFloorRealtime, which
+                  // converges the table/session state. No refetch needed here.
                 })
                 .catch((err) => console.error("Void order sync failed:", err));
             }
