@@ -888,8 +888,57 @@ const BillSectionContent = ({
 
   const linkedTableSession = useMemo(() => {
     if (!linkedTableId) return null;
-    return liveSessions[linkedTableId] ?? null;
-  }, [linkedTableId, liveSessions]);
+    return (
+      liveSessions[linkedTableId] ??
+      Object.values(liveSessions).find((session) =>
+        isSessionLinkedToOrder(session),
+      ) ??
+      useTableSessionStore
+        .getState()
+        .getSessionBySessionId(linkedTableId)?.session ??
+      null
+    );
+  }, [isSessionLinkedToOrder, linkedTableId, liveSessions]);
+
+  const linkedSessionTableId = useMemo(() => {
+    if (!linkedTableSession) return linkedTableId;
+    const sessionEntry = Object.entries(liveSessions).find(
+      ([, session]) => session?.id === linkedTableSession.id,
+    );
+    return sessionEntry?.[0] ?? linkedTableId;
+  }, [linkedTableId, linkedTableSession, liveSessions]);
+
+  useEffect(() => {
+    if (
+      activeOrderType !== "dine_in" ||
+      activeOrderPaidStatus !== "Paid" ||
+      !linkedSessionTableId ||
+      !linkedTableSession ||
+      linkedTableSession.status === "paid" ||
+      linkedTableSession.status === "cleaning"
+    ) {
+      return;
+    }
+
+    void useTableSessionStore
+      .getState()
+      .dispatchAction({
+        type: "FULL_PAYMENT",
+        tableId: linkedSessionTableId,
+      })
+      .then((result) => {
+        if (!result.success) {
+          console.warn(
+            `[BillSection] Failed to mark table ${linkedSessionTableId} paid after payment: ${result.error}`,
+          );
+        }
+      });
+  }, [
+    activeOrderPaidStatus,
+    activeOrderType,
+    linkedSessionTableId,
+    linkedTableSession,
+  ]);
 
   const ensureDineInOrderTableSession = useCallback(
     async (table: FloorPlanObject, token?: { cancelled: boolean }): Promise<boolean> => {

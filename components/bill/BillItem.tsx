@@ -325,6 +325,10 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         setDisplayQuantity(nextQuantity);
         setItemQuantity(item.id, nextQuantity);
       } else {
+        const modStore = useModifierSidebarStore.getState();
+        if (modStore.activeEditingItemId === item.id) {
+          modStore.close();
+        }
         removeItemFromActiveOrder(item.id);
       }
     } else {
@@ -684,7 +688,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         </Animated.View>
       )}
 
-      <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>
+      <GestureDetector gesture={isVoided || item.isDraft ? Gesture.Pan() : pan}>
         <Animated.View
           style={[
             animatedStyle,

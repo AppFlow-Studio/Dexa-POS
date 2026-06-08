@@ -99,7 +99,7 @@ export const initializeEventSubscribers = () => {
       const { useFloorPlanStore } = await import('@/stores/useFloorPlanStore')
 
       const order = useOrderStore.getState().ordersById[event.orderId]
-      const tableId =
+      let tableId =
         event.tableId ||
         order?.service_location_id ||
         (event.sessionId
@@ -110,7 +110,16 @@ export const initializeEventSubscribers = () => {
 
       if (tableId) {
         const sessionStore = useTableSessionStore.getState()
-        const session = sessionStore.getSession(tableId)
+        let session = sessionStore.getSession(tableId)
+        if (!session && event.sessionId) {
+          const bySessionId = sessionStore.getSessionBySessionId(
+            event.sessionId,
+          )
+          if (bySessionId) {
+            tableId = bySessionId.tableId
+            session = bySessionId.session
+          }
+        }
         if (
           session &&
           session.status !== 'paid' &&
