@@ -325,6 +325,10 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         setDisplayQuantity(nextQuantity);
         setItemQuantity(item.id, nextQuantity);
       } else {
+        const modStore = useModifierSidebarStore.getState();
+        if (modStore.activeEditingItemId === item.id) {
+          modStore.close();
+        }
         removeItemFromActiveOrder(item.id);
       }
     } else {
