@@ -381,9 +381,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                   }}
                 >
                   {activeCheckDiscount.type === 'percentage'
-                    ? `${Math.round(
-                        (activeCheckDiscount.value || 0) * 100
-                      )}% off`
+                    ? `${+((activeCheckDiscount.value || 0) * 100).toFixed(4).replace(/\.?0+$/, '')}% off`
                     : `$${activeCheckDiscount.value?.toFixed(2)} off`}
                 </Text>
               </View>

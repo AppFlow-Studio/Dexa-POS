@@ -88,13 +88,13 @@ const TotalsComponent: React.FC = () => {
       const discount = activeOrder.checkDiscount
       discountLabel =
         discount.type === 'percentage'
-          ? `Discount (${Math.round(discount.value * 100)}% off)`
+          ? `Discount (${+((discount.value * 100).toFixed(4)).replace(/\.?0+$/, '')}% off)`
           : `Discount ($${discount.value.toFixed(2)} off)`
     } else if (activeOrder?.applied_discounts?.length) {
       const discount = activeOrder.applied_discounts[0]
       discountLabel =
         discount.discount_type === 'percentage'
-          ? `Discount (${Math.round(discount.discount_value * 100)}% off)`
+          ? `Discount (${+((discount.discount_value).toFixed(4)).replace(/\.?0+$/, '')}% off)`
           : `Discount ($${discount.discount_value.toFixed(2)} off)`
     }
 
