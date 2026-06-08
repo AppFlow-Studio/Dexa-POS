@@ -1,6 +1,7 @@
+import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import { colors } from '@/lib/theme'
 import { X } from 'lucide-react-native'
-import React, { useCallback } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import {
   KeyboardAvoidingView,
   Modal,
@@ -35,18 +36,45 @@ interface AddWaitlistModalProps {
 
 export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(
   ({ visible, onClose, onSubmit, isLoading, mode = 'add', initialValues }) => {
-    const handleCancel = useCallback(() => onClose(), [onClose])
+    const [isDirty, setIsDirty] = useState(false)
+    const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+
+    useEffect(() => {
+      if (!visible) {
+        setIsDirty(false)
+        setShowDiscardConfirm(false)
+      }
+    }, [visible])
+
+    const requestClose = useCallback(() => {
+      if (isDirty) {
+        setShowDiscardConfirm(true)
+        return
+      }
+      onClose()
+    }, [isDirty, onClose])
+
+    const handleCancel = useCallback(() => requestClose(), [requestClose])
     const handleSubmit = useCallback(
-      (data: AddWaitlistPayload) => onSubmit(data),
+      async (data: AddWaitlistPayload) => {
+        await onSubmit(data)
+        setIsDirty(false)
+      },
       [onSubmit]
     )
+
+    const confirmDiscard = useCallback(() => {
+      setShowDiscardConfirm(false)
+      setIsDirty(false)
+      onClose()
+    }, [onClose])
 
     return (
       <Modal
         visible={visible}
         animationType='fade'
         transparent
-        onRequestClose={onClose}
+        onRequestClose={requestClose}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -106,7 +134,7 @@ export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={onClose}
+                onPress={requestClose}
                 style={{
                   padding: 6,
                   borderRadius: 8,
@@ -131,10 +159,20 @@ export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(
                 isLoading={isLoading}
                 mode={mode}
                 initialValues={initialValues}
+                onDirtyChange={setIsDirty}
               />
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+        <ConfirmationModal
+          isOpen={showDiscardConfirm}
+          onClose={() => setShowDiscardConfirm(false)}
+          onConfirm={confirmDiscard}
+          title='Discard changes?'
+          description='You have unsaved changes. Are you sure you want to close this form?'
+          confirmText='Discard'
+          variant='destructive'
+        />
       </Modal>
     )
   }

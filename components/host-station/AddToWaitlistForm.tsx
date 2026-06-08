@@ -58,6 +58,7 @@ interface AddToWaitlistFormProps {
     notes?: string
     quoted_wait_minutes?: number
   }
+  onDirtyChange?: (dirty: boolean) => void
 }
 
 const SEATING_PREFERENCES = ['No Preference', 'Indoor', 'Outdoor', 'Bar']
@@ -178,7 +179,8 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
   onCancel,
   isLoading,
   mode = 'add',
-  initialValues
+  initialValues,
+  onDirtyChange
 }) => {
   const tables = useFloorPlanStore(s => s.tables)
   const floorPlans = useFloorPlanStore(s => s.floorPlans)
@@ -266,6 +268,19 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
   )
   const [showSuggestions, setShowSuggestions] = useState(false)
   const suggestionsBlurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dirtyRef = useRef(false)
+
+  const markDirty = useCallback(() => {
+    if (dirtyRef.current) return
+    dirtyRef.current = true
+    onDirtyChange?.(true)
+  }, [onDirtyChange])
+
+  const clearDirty = useCallback(() => {
+    if (!dirtyRef.current) return
+    dirtyRef.current = false
+    onDirtyChange?.(false)
+  }, [onDirtyChange])
 
   useEffect(
     () => () => {
@@ -315,23 +330,32 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
       setEmail(customer.email ?? '')
       setCustomerQuery('')
       dismissSuggestions()
+      markDirty()
     },
-    [dismissSuggestions]
+    [dismissSuggestions, markDirty]
   )
 
-  const updatePartyName = useCallback((value: string) => {
-    setPartyName(value)
-    setLinkedCustomer(null)
-    setCustomerQuery(value)
-    setShowSuggestions(true)
-  }, [])
+  const updatePartyName = useCallback(
+    (value: string) => {
+      setPartyName(value)
+      setLinkedCustomer(null)
+      setCustomerQuery(value)
+      setShowSuggestions(true)
+      markDirty()
+    },
+    [markDirty]
+  )
 
-  const updatePhone = useCallback((value: string) => {
-    setPhone(value)
-    setLinkedCustomer(null)
-    setCustomerQuery(value)
-    setShowSuggestions(true)
-  }, [])
+  const updatePhone = useCallback(
+    (value: string) => {
+      setPhone(value)
+      setLinkedCustomer(null)
+      setCustomerQuery(value)
+      setShowSuggestions(true)
+      markDirty()
+    },
+    [markDirty]
+  )
 
   const handleChangeCustomer = useCallback(() => {
     setLinkedCustomer(null)
@@ -340,7 +364,8 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
     setEmail('')
     setCustomerQuery('')
     setShowSuggestions(false)
-  }, [])
+    markDirty()
+  }, [markDirty])
 
   useEffect(() => {
     if (tables.length === 0) return
@@ -361,6 +386,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
 
   const adjustPartySize = (delta: number) => {
     setPartySize(prev => Math.max(1, Math.min(20, prev + delta)))
+    markDirty()
   }
 
   const validateForm = (): boolean => {
@@ -380,6 +406,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
 
   const handleSubmit = () => {
     if (!validateForm()) return
+    clearDirty()
     onSubmit({
       party_name: partyName.trim(),
       party_size: partySize,
@@ -745,6 +772,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
               onChangeText={text => {
                 setQuotedWait(text)
                 setIsWaitOverridden(text !== String(autoCalculatedWait))
+                markDirty()
               }}
               placeholderTextColor={colors.muted}
               keyboardType='number-pad'
@@ -821,7 +849,10 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
             <Mail size={13} color={colors.muted} />
             <TextInput
               value={email}
-              onChangeText={setEmail}
+              onChangeText={value => {
+                setEmail(value)
+                markDirty()
+              }}
               placeholder='guest@example.com'
               placeholderTextColor={colors.muted}
               keyboardType='email-address'
@@ -942,7 +973,10 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
         </View>
         <TextInput
           value={notes}
-          onChangeText={setNotes}
+          onChangeText={value => {
+            setNotes(value)
+            markDirty()
+          }}
           placeholder='Allergies, occasion, high chair needed...'
           placeholderTextColor={colors.muted}
           multiline
@@ -1021,7 +1055,10 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
         title='Seating Preference'
         options={SEATING_PREFERENCES}
         selected={seatingPreference}
-        onSelect={setSeatingPreference}
+        onSelect={value => {
+          setSeatingPreference(value)
+          markDirty()
+        }}
       />
       <DropdownModal
         visible={showSectionDropdown}
@@ -1029,7 +1066,10 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
         title='Preferred Section'
         options={sectionOptions}
         selected={preferredSection}
-        onSelect={setPreferredSection}
+        onSelect={value => {
+          setPreferredSection(value)
+          markDirty()
+        }}
       />
     </View>
   )

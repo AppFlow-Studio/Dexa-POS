@@ -847,6 +847,39 @@ export class FloorPlanService {
     return { data, error };
   }
 
+  static async sendReservationSms(
+    client: SupabaseClient,
+    params: {
+      phone: string;
+      message: string;
+      reservation_id: string;
+      template_key?: string;
+    },
+  ): Promise<{
+    data: {
+      success: boolean;
+      sms?: boolean;
+      error?: string;
+      message?: string;
+      reason?: string;
+      provider_error?: string;
+    } | null;
+    error: any;
+  }> {
+    const { data, error } = await client.functions.invoke(
+      "notify-reservation-guest",
+      {
+        body: {
+          phone: params.phone,
+          message: params.message,
+          reservation_id: params.reservation_id,
+          template_key: params.template_key,
+        },
+      },
+    );
+    return { data, error };
+  }
+
   static async updateWaitlistStatus(
     client: SupabaseClient,
     waitlistId: string,

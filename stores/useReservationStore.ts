@@ -211,6 +211,17 @@ interface ReservationState {
   ) => Promise<boolean>
   updateStatus: (reservationId: string, status: string) => Promise<void>
   cancelReservation: (reservationId: string) => Promise<void>
+  sendReservationNotification: (
+    reservationId: string,
+    message: string,
+    templateKey: string
+  ) => Promise<{
+    success: boolean
+    sms?: boolean
+    error?: string
+    message?: string
+    reason?: string
+  }>
   seatReservation: (
     reservationId: string,
     tableIds?: string[]
@@ -474,6 +485,62 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
         isLoading: false
       })
       return false
+    }
+  },
+
+  sendReservationNotification: async (
+    reservationId: string,
+    message: string,
+    templateKey: string
+  ) => {
+    try {
+      const reservation = get().reservations.find(r => r.id === reservationId)
+      if (!reservation) return { success: false, error: 'Reservation not found' }
+      const phoneDigits = reservation.phone?.replace(/\D/g, '') ?? ''
+      if (!phoneDigits) {
+        return {
+          success: false,
+          error: 'no_phone',
+          message: 'No phone on file for this reservation'
+        }
+      }
+      const smsResult = await FloorPlanService.sendReservationSms(getClient(), {
+        phone: reservation.phone ?? '',
+        message,
+        reservation_id: reservationId,
+        template_key: templateKey
+      })
+      const smsData = smsResult.data
+      const smsFailed =
+        !!smsResult.error ||
+        !smsData ||
+        !smsData.success ||
+        smsData.sms === false
+
+      if (smsFailed) {
+        const failureMessage =
+          smsData?.message ||
+          smsData?.provider_error ||
+          (typeof smsResult.error?.message === 'string' &&
+            smsResult.error.message) ||
+          'Could not send SMS. Please notify guest verbally.'
+        return {
+          success: false,
+          error: 'sms_failed',
+          message: failureMessage,
+          reason: smsData?.reason
+        }
+      }
+      return smsData ?? { success: true, sms: true }
+    } catch (err: any) {
+      console.error('Failed to send reservation notification:', err)
+      return {
+        success: false,
+        error: 'sms_failed',
+        message:
+          err.message ||
+          'Could not send SMS. Please notify guest verbally.'
+      }
     }
   },
 

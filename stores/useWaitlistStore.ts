@@ -59,6 +59,17 @@ interface WaitlistState {
     message?: string
     reason?: string
   }>
+  sendWaitlistCustomNotification: (
+    entryId: string,
+    message: string,
+    templateKey: string
+  ) => Promise<{
+    success: boolean
+    sms?: boolean
+    error?: string
+    message?: string
+    reason?: string
+  }>
 
   // Local methods (for offline/fallback)
   addToWaitlist: (
@@ -474,6 +485,90 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         message:
           err.message ||
           'Could not send SMS. Failure logged. Please notify guest verbally.'
+      }
+    }
+  },
+
+  sendWaitlistCustomNotification: async (
+    entryId: string,
+    message: string,
+    templateKey: string
+  ) => {
+    try {
+      const entry = get().waitlist.find(e => e.id === entryId)
+      if (!entry) return { success: false, error: 'Entry not found' }
+
+      const phoneDigits = entry.phone?.replace(/\D/g, '') ?? ''
+      if (!phoneDigits) {
+        return {
+          success: false,
+          error: 'no_phone',
+          message: 'No phone on file for this guest'
+        }
+      }
+
+      const smsResult = await FloorPlanService.sendWaitlistSms(getClient(), {
+        phone: entry.phone ?? '',
+        message,
+        waitlist_id: entryId
+      })
+
+      const smsData = smsResult.data
+      const smsFailed =
+        !!smsResult.error ||
+        !smsData ||
+        !smsData.success ||
+        smsData.sms === false
+
+      if (smsData?.success && smsData.sms) {
+        set(state => ({
+          waitlist: state.waitlist.map(e =>
+            e.id === entryId
+              ? {
+                  ...e,
+                  notified_at: new Date().toISOString(),
+                  last_notification_type: templateKey
+                }
+              : e
+          )
+        }))
+      } else if (smsFailed) {
+        set(state => ({
+          waitlist: state.waitlist.map(e =>
+            e.id === entryId
+              ? {
+                  ...e,
+                  notification_failures: (e.notification_failures ?? 0) + 1
+                }
+              : e
+          )
+        }))
+      }
+
+      if (smsFailed) {
+        const failureMessage =
+          smsData?.message ||
+          smsData?.provider_error ||
+          (typeof smsResult.error?.message === 'string' &&
+            smsResult.error.message) ||
+          'Could not send SMS. Failure logged. Please notify guest verbally.'
+        return {
+          success: false,
+          error: 'sms_failed',
+          message: failureMessage,
+          reason: smsData?.reason
+        }
+      }
+
+      return smsData ?? { success: true, sms: true }
+    } catch (err: any) {
+      console.error('Failed to send custom waitlist notification:', err)
+      return {
+        success: false,
+        error: 'sms_failed',
+        message:
+          err.message ||
+          'Could not send SMS. Please notify guest verbally.'
       }
     }
   },

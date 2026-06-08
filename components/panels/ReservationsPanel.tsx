@@ -1,6 +1,8 @@
+import NotifyCustomerModal from "@/components/notifications/NotifyCustomerModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { useToast } from "@/contexts/ToastContext";
 import { iosOnly } from "@/lib/safeAnimations";
+import { NotifyContext, TemplateKey } from "@/lib/notifyTemplates";
 import { colors } from "@/lib/theme";
 import { getCachedCustomers } from "@/services/customer";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -366,6 +368,8 @@ const AddReservationModal: React.FC<{
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [isVip, setIsVip] = useState(false);
+  const [initSnapshot, setInitSnapshot] = useState<string>("");
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   // Customer search
   const [customerQuery, setCustomerQuery] = useState("");
@@ -418,7 +422,10 @@ const AddReservationModal: React.FC<{
   );
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      setShowDiscardConfirm(false);
+      return;
+    }
 
     if (initialData) {
       const nextDate = initialData.reservation_date
@@ -427,24 +434,87 @@ const AddReservationModal: React.FC<{
       const editableTime = toEditableTime(initialData.reservation_time);
       const [hour, minute] = editableTime.split(":");
 
-      setName(initialData.party_name ?? "");
-      setPartySize(initialData.party_size ?? 2);
-      setPhone(initialData.phone ?? "");
-      setSelectedDate(
-        Number.isFinite(nextDate.getTime()) ? nextDate : defaultDate,
-      );
-      setSelHour(hour ?? "19");
-      setSelMin(minute ?? "00");
-      setSelectedTableIds(initialData.assigned_table_ids ?? []);
-      setNotes(initialData.notes ?? initialData.special_requests ?? "");
-      setIsVip(Boolean(initialData.is_vip));
+      const initName = initialData.party_name ?? "";
+      const initPartySize = initialData.party_size ?? 2;
+      const initPhone = initialData.phone ?? "";
+      const initDate = Number.isFinite(nextDate.getTime())
+        ? nextDate
+        : defaultDate;
+      const initSelHour = hour ?? "19";
+      const initSelMin = minute ?? "00";
+      const initTableIds = initialData.assigned_table_ids ?? [];
+      const initNotes = initialData.notes ?? initialData.special_requests ?? "";
+      const initVip = Boolean(initialData.is_vip);
+
+      setName(initName);
+      setPartySize(initPartySize);
+      setPhone(initPhone);
+      setSelectedDate(initDate);
+      setSelHour(initSelHour);
+      setSelMin(initSelMin);
+      setSelectedTableIds(initTableIds);
+      setNotes(initNotes);
+      setIsVip(initVip);
       setLinkedCustomer(null);
       setCustomerQuery("");
+      setInitSnapshot(
+        JSON.stringify({
+          name: initName,
+          partySize: initPartySize,
+          phone: initPhone,
+          selectedDate: initDate.toISOString(),
+          selHour: initSelHour,
+          selMin: initSelMin,
+          selectedTableIds: [...initTableIds].sort(),
+          notes: initNotes,
+          isVip: initVip,
+        }),
+      );
       return;
     }
 
     resetForm();
+    setInitSnapshot(
+      JSON.stringify({
+        name: "",
+        partySize: 2,
+        phone: "",
+        selectedDate: defaultDate.toISOString(),
+        selHour: "19",
+        selMin: "00",
+        selectedTableIds: [],
+        notes: "",
+        isVip: false,
+      }),
+    );
   }, [visible, initialData, defaultDate]);
+
+  const isDirty = useMemo(() => {
+    if (!initSnapshot) return false;
+    const current = JSON.stringify({
+      name,
+      partySize,
+      phone,
+      selectedDate: selectedDate.toISOString(),
+      selHour,
+      selMin,
+      selectedTableIds: [...selectedTableIds].sort(),
+      notes,
+      isVip,
+    });
+    return current !== initSnapshot;
+  }, [
+    initSnapshot,
+    name,
+    partySize,
+    phone,
+    selectedDate,
+    selHour,
+    selMin,
+    selectedTableIds,
+    notes,
+    isVip,
+  ]);
 
   const customerResults = useMemo(() => {
     const q = customerQuery.toLowerCase().trim();
@@ -506,6 +576,16 @@ const AddReservationModal: React.FC<{
   };
 
   const handleClose = () => {
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+    resetForm();
+    onClose();
+  };
+
+  const confirmDiscard = () => {
+    setShowDiscardConfirm(false);
     resetForm();
     onClose();
   };
@@ -559,7 +639,7 @@ const AddReservationModal: React.FC<{
       >
         <Pressable
           style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-          onPress={handleClose}
+          onPress={() => {}}
         >
           <View
             style={{
@@ -1428,7 +1508,7 @@ const AddReservationModal: React.FC<{
       >
         <Pressable
           style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-          onPress={() => setShowDatePicker(false)}
+          onPress={() => {}}
         >
           <View
             style={{
@@ -1564,6 +1644,16 @@ const AddReservationModal: React.FC<{
           </View>
         </Pressable>
       </Modal>
+
+      <ConfirmationModal
+        isOpen={showDiscardConfirm}
+        onClose={() => setShowDiscardConfirm(false)}
+        onConfirm={confirmDiscard}
+        title="Discard changes?"
+        description="You have unsaved changes. Are you sure you want to close this form?"
+        confirmText="Discard"
+        variant="destructive"
+      />
     </>
   );
 };
@@ -2136,6 +2226,13 @@ const ReservationsPanel: React.FC = () => {
     title: "Failed",
     message: "",
   });
+  const [notifyReservation, setNotifyReservation] = useState<{
+    reservation: Reservation;
+    context: NotifyContext;
+  } | null>(null);
+  const sendReservationNotification = useReservationStore(
+    (s) => s.sendReservationNotification,
+  );
 
   // All selectable tables — show occupied too (reservation is for a future time)
   // Only exclude permanently unusable tables
@@ -2300,14 +2397,73 @@ const ReservationsPanel: React.FC = () => {
 
         if (!ok) throw new Error("Could not update reservation");
 
+        const previousDateStr = toIsoDateKeySafe(selectedDate);
+        const previousReservationDateStr = toIsoDateKeySafe(
+          editingReservation.reservation_date ??
+            editingReservation.reservation_time,
+        );
+        const dateChanged = previousReservationDateStr !== dateStr;
+        const newDate = new Date(`${dateStr}T00:00:00`);
+        const newDateValid = Number.isFinite(newDate.getTime());
+        const nextSelectedDate =
+          dateChanged && newDateValid && previousDateStr !== dateStr
+            ? newDate
+            : selectedDate;
+
+        if (dateChanged && newDateValid && previousDateStr !== dateStr) {
+          setSelectedDate(newDate);
+        }
+
+        const previousTime = toEditableTime(
+          editingReservation.reservation_time ?? "",
+        );
+        const timeChanged = previousTime !== data.time;
+        const partySizeChanged =
+          (editingReservation.party_size ?? null) !== data.partySize;
+
+        const changed: ("date" | "time" | "party_size")[] = [];
+        if (dateChanged) changed.push("date");
+        if (timeChanged) changed.push("time");
+        if (partySizeChanged) changed.push("party_size");
+
+        const phoneDigits = data.phone?.replace(/\D/g, "") ?? "";
+        const updatedReservation: Reservation = {
+          ...editingReservation,
+          party_name: data.name,
+          party_size: data.partySize,
+          phone: data.phone,
+          reservation_date: dateStr,
+          reservation_time: data.time,
+          notes: data.notes,
+          is_vip: data.isVip,
+        };
+
         show({
-          title: "Reservation Updated",
-          message: `${data.name} updated for ${formatPreset(data.time)}`,
+          title: dateChanged ? "Reservation Moved" : "Reservation Updated",
+          message: dateChanged
+            ? `${data.name} moved to ${formatDateLabel(newDate)} at ${formatPreset(data.time)}`
+            : `${data.name} updated for ${formatPreset(data.time)}`,
           type: "success",
         });
         setEditingReservation(null);
         if (selectedStore?.id) {
-          fetchReservations(selectedStore.id, selectedDate, { silent: true });
+          fetchReservations(selectedStore.id, nextSelectedDate, {
+            silent: true,
+          });
+        }
+
+        if (changed.length > 0 && phoneDigits.length > 0) {
+          setNotifyReservation({
+            reservation: updatedReservation,
+            context: {
+              kind: "reservation_update",
+              partyName: data.name,
+              storeName: selectedStore?.name ?? "our restaurant",
+              newDate: formatDateLabel(newDate),
+              newTime: formatPreset(data.time),
+              changed,
+            },
+          });
         }
       } catch (err: any) {
         const message = err.message || "Could not update reservation";
@@ -2325,10 +2481,31 @@ const ReservationsPanel: React.FC = () => {
       selectedStore?.id,
       editingReservation,
       selectedDate,
+      setSelectedDate,
       updateReservation,
       show,
       fetchReservations,
     ],
+  );
+
+  const handleSendReservationNotify = useCallback(
+    async (message: string, templateKey: TemplateKey) => {
+      if (!notifyReservation) return { success: false, error: "no_target" };
+      const result = await sendReservationNotification(
+        notifyReservation.reservation.id,
+        message,
+        templateKey,
+      );
+      if (result.success) {
+        show({
+          title: "Notified",
+          message: `SMS sent to ${notifyReservation.reservation.party_name}`,
+          type: "success",
+        });
+      }
+      return result;
+    },
+    [notifyReservation, sendReservationNotification, show],
   );
 
   const handleConfirm = useCallback(
@@ -2739,6 +2916,20 @@ const ReservationsPanel: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {notifyReservation && (
+        <NotifyCustomerModal
+          visible={!!notifyReservation}
+          onClose={() => setNotifyReservation(null)}
+          context={notifyReservation.context}
+          recipient={{
+            phone: notifyReservation.reservation.phone,
+            partyName: notifyReservation.reservation.party_name,
+            storeName: selectedStore?.name ?? "our restaurant",
+          }}
+          onSend={handleSendReservationNotify}
+        />
+      )}
     </View>
   );
 };
