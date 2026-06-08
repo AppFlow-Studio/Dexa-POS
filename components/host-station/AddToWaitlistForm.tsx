@@ -23,7 +23,7 @@ import {
   UserCircle,
   Users
 } from 'lucide-react-native'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Keyboard,
