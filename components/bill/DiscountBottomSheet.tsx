@@ -169,7 +169,9 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       return
     }
 
-    applyDiscountToCheck(activeOrderId, discount as any)
+    applyDiscountToCheck(activeOrderId, discount as any, (errorMsg) => {
+      show({ title: 'Discount not applied', message: errorMsg, type: 'error' })
+    })
   }
 
   const handleApplyCustomDiscount = () => {
@@ -215,7 +217,9 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       return
     }
 
-    applyDiscountToCheck(activeOrderId, customDiscount as any)
+    applyDiscountToCheck(activeOrderId, customDiscount as any, (errorMsg) => {
+      show({ title: 'Discount not applied', message: errorMsg, type: 'error' })
+    })
     setCustomDiscountValue('')
   }
 

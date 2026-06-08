@@ -22,6 +22,10 @@ import {
 } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import {
+  decrementDiscountUsage,
+  incrementDiscountUsage,
+} from "@/services/discountUsageTracker";
+import {
   completePaymentJournal,
   failPaymentJournal,
   getJournalById,
@@ -3620,7 +3624,7 @@ interface OrderState {
   setOpenedAt: (orderId: string, openedAt: string) => void;
   setClosedAt: (orderId: string, closedAt: string) => void;
   updateActiveOrderDetails: (details: Partial<OrderProfile>) => Promise<void>;
-  applyDiscountToCheck: (orderId: string, discount: Discount) => void;
+  applyDiscountToCheck: (orderId: string, discount: Discount, onError?: (msg: string) => void) => void;
   removeCheckDiscount: (orderId: string) => void;
   applyDiscountToItem: (orderId: string, itemId: string) => void;
   removeDiscountFromItem: (orderId: string, itemId: string) => void;
@@ -9885,7 +9889,7 @@ export const useOrderStore = create<OrderState>()(
             }
           },
 
-          applyDiscountToCheck: (orderId, discountInput) => {
+          applyDiscountToCheck: (orderId, discountInput, onError?) => {
             console.log("[applyDiscountToCheck] discountInput", discountInput);
             if (!_checkCartEditable(get(), orderId)) return;
             // Flush deferred totals so the discount applies on top of a fresh
@@ -10158,6 +10162,9 @@ export const useOrderStore = create<OrderState>()(
                             : d,
                         );
                     });
+                    if (applied.discount_id) {
+                      incrementDiscountUsage(applied.discount_id);
+                    }
                     console.log(
                       "[applyDiscountToCheck] RPC success, order_discount_id:",
                       result.order_discount_id,
@@ -10248,7 +10255,14 @@ export const useOrderStore = create<OrderState>()(
                     console.warn(
                       "[applyDiscountToCheck] Discount requires manager approval",
                     );
-                    // Could emit an event or show a toast here
+                    onError?.("This discount requires manager approval.");
+                    if (dbOrderId) {
+                      setTimeout(() => {
+                        useOrderStore
+                          .getState()
+                          .syncOrderFromBackendComplete(orderId);
+                      }, 0);
+                    }
                   } else if (!result.success) {
                     console.error(
                       "[applyDiscountToCheck] RPC failed:",
@@ -10268,9 +10282,22 @@ export const useOrderStore = create<OrderState>()(
                         localOrderId: orderId,
                       } as any);
                     } else {
+                      // Non-retryable policy rejection — roll back optimistic state and notify caller.
                       console.error(
                         "[applyDiscountToCheck] Not queueing non-retryable discount apply failure",
                       );
+                      onError?.(
+                        typeof result.error === "string" && result.error
+                          ? result.error
+                          : "Discount could not be applied.",
+                      );
+                      if (dbOrderId) {
+                        setTimeout(() => {
+                          useOrderStore
+                            .getState()
+                            .syncOrderFromBackendComplete(orderId);
+                        }, 0);
+                      }
                     }
                   }
                 })
@@ -10431,6 +10458,9 @@ export const useOrderStore = create<OrderState>()(
                           "[removeCheckDiscount] Successfully voided discount:",
                           discount.order_discount_id,
                         );
+                        if (discount.discount_id) {
+                          decrementDiscountUsage(discount.discount_id);
+                        }
 
                         // Merge affected_items into local state (mirrors applyDiscountToCheck)
                         set((state) => {
