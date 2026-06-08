@@ -684,7 +684,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         </Animated.View>
       )}
 
-      <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>
+      <GestureDetector gesture={isVoided || item.isDraft ? Gesture.Pan() : pan}>
         <Animated.View
           style={[
             animatedStyle,
