@@ -1499,7 +1499,7 @@ const AddReservationModal: React.FC<{
                         style={{
                           fontSize: 13,
                           fontWeight: "700",
-                          color: "#000000",
+                          color: "#ffffff",
                         }}
                       >
                         {submitLabel}
