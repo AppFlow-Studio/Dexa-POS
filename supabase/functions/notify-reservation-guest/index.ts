@@ -1,18 +1,16 @@
-// notify-waitlist-guest
+// notify-reservation-guest
 //
-// Hardened path (Lane D) + server-side template registry.
-//
-// Security guarantees:
+// Server-side template registry for reservation SMS, mirroring the
+// notify-waitlist-guest hardening:
 //   - verify_jwt = true (caller must be authenticated)
-//   - User-scoped supabase client reads waitlist + location via RLS
-//   - Template registry is server-side: caller picks a `template_key`, never
+//   - User-scoped supabase client reads reservation row via RLS
+//   - Server-side template registry: caller picks a `template_key`, never
 //     supplies the rendered SMS body (except for the explicit 'custom' key)
-//   - Rate-limited per-merchant via claim_waitlist_sms_slot RPC
 //   - CORS allowlist: *.dexapos.com, localhost, 127.0.0.1
 //
 // Request shape:
-//   { waitlist_id: string, template_key?: string, message?: string }
-//   - template_key defaults to 'waitlist.tableReady' for back-compat
+//   { reservation_id: string, template_key?: string, message?: string }
+//   - template_key defaults to 'reservation.created' for back-compat
 //   - message is only honored when template_key === 'custom'
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
@@ -27,7 +25,13 @@ const ALLOWED_ORIGIN_PATTERNS: RegExp[] = [
 function corsHeadersFor(origin: string | null): Record<string, string> {
   if (!origin) return {}
   const allowed = ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin))
-  if (!allowed) return {}
+  if (!allowed) {
+    return {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers':
+        'authorization, x-client-info, apikey, content-type'
+    }
+  }
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Headers':
@@ -37,13 +41,14 @@ function corsHeadersFor(origin: string | null): Record<string, string> {
   }
 }
 
-const SMS_RATE_LIMIT_PER_HOUR = 10
-
 type TemplateContext = {
   partyName: string
   storeName: string
   storeAddress: string
-  quotedWaitMinutes: number | null
+  partySize: number | null
+  reservationDate: string
+  reservationTime: string
+  confirmationNumber: string | null
 }
 
 function formatStoreAddress(loc: any): string {
@@ -55,31 +60,70 @@ function formatStoreAddress(loc: any): string {
   return [street, cityStateZip].filter(Boolean).join(', ')
 }
 
+function formatDateForSms(dateStr: string | null | undefined): string {
+  if (!dateStr) return ''
+  // Anchor at noon so timezone math doesn't roll us into the prior day.
+  const d = new Date(`${dateStr}T12:00:00`)
+  if (!Number.isFinite(d.getTime())) return dateStr
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
+function formatTimeForSms(timeStr: string | null | undefined): string {
+  if (!timeStr) return ''
+  const match = timeStr.match(/(\d{1,2}):(\d{2})/)
+  let hours = NaN
+  let minutes = NaN
+  if (match) {
+    hours = parseInt(match[1], 10)
+    minutes = parseInt(match[2], 10)
+  } else {
+    const d = new Date(timeStr)
+    if (Number.isFinite(d.getTime())) {
+      hours = d.getHours()
+      minutes = d.getMinutes()
+    }
+  }
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return timeStr
+  const period = hours >= 12 ? 'PM' : 'AM'
+  const displayHours = hours % 12 === 0 ? 12 : hours % 12
+  return `${displayHours}:${String(minutes).padStart(2, '0')} ${period}`
+}
+
 function renderTemplate(
   key: string,
   ctx: TemplateContext,
   customMessage?: string | null
 ): string | null {
-  const { partyName, storeName, storeAddress, quotedWaitMinutes } = ctx
+  const {
+    partyName,
+    storeName,
+    storeAddress,
+    partySize,
+    reservationDate,
+    reservationTime,
+    confirmationNumber
+  } = ctx
   const addressClause = storeAddress ? ` (${storeAddress})` : ''
-  const waitClause =
-    quotedWaitMinutes != null && quotedWaitMinutes > 0
-      ? `in ${quotedWaitMinutes} min`
-      : 'soon'
+  const partyClause = partySize ? ` for ${partySize}` : ''
+  const confClause = confirmationNumber
+    ? ` Confirmation #${confirmationNumber}.`
+    : ''
 
   switch (key) {
-    case 'waitlist.added':
-      return `Hi ${partyName}, you're on the waitlist at ${storeName}${addressClause}. Your seat should be ready ${waitClause}. We'll text you when it's ready.`
-    case 'waitlist.tableReady':
-      return `Hi ${partyName}! Your table at ${storeName} is ready. Please check in with the host within 10 minutes.`
-    case 'waitlist.almostReady':
-      return `Hi ${partyName}! Your table at ${storeName} will be ready in about 5 minutes. Please head back to the host stand.`
-    case 'waitlist.runningLate':
-      return `Hi ${partyName}, we're running a few more minutes behind at ${storeName}. Thanks for your patience — we'll have your table ready soon.`
-    case 'waitlist.updateConfirmed':
-      return `Hi ${partyName}, just a quick update on your wait at ${storeName}. We'll have your table ready as soon as possible.`
-    case 'waitlist.cancelled':
-      return `Hi ${partyName}, you've been removed from the waitlist at ${storeName}. Please contact us if this was a mistake.`
+    case 'reservation.created':
+      return `Hi ${partyName}, your reservation at ${storeName}${addressClause}${partyClause} is confirmed for ${reservationDate} at ${reservationTime}.${confClause} Reply to this message if you need to make changes.`
+    case 'reservation.moved':
+      return `Hi ${partyName}, your reservation at ${storeName} has been moved to ${reservationDate} at ${reservationTime}. Reply to this message to confirm.`
+    case 'reservation.timeChanged':
+      return `Hi ${partyName}, your reservation time at ${storeName} on ${reservationDate} has changed to ${reservationTime}. Reply to this message to confirm.`
+    case 'reservation.confirmation':
+      return `Hi ${partyName}, this is ${storeName} confirming your reservation on ${reservationDate} at ${reservationTime}. See you soon!`
+    case 'reservation.cancelled':
+      return `Hi ${partyName}, your reservation at ${storeName} on ${reservationDate} at ${reservationTime} has been cancelled. Reply or call us if you'd like to rebook.`
     case 'custom':
       return customMessage && customMessage.trim().length > 0
         ? customMessage.trim().slice(0, 500)
@@ -98,7 +142,7 @@ function normalizeToE164(rawPhone: string | null | undefined): string | null {
 }
 
 interface NotifyRequest {
-  waitlist_id?: string
+  reservation_id?: string
   template_key?: string
   message?: string
 }
@@ -145,59 +189,57 @@ serve(async (req: Request) => {
 
   try {
     const body = (await req.json().catch(() => ({}))) as NotifyRequest
-    const waitlistId =
-      typeof body.waitlist_id === 'string' ? body.waitlist_id : null
+    const reservationId =
+      typeof body.reservation_id === 'string' ? body.reservation_id : null
     const templateKey =
       typeof body.template_key === 'string' && body.template_key.length > 0
         ? body.template_key
-        : 'waitlist.tableReady'
+        : 'reservation.created'
     const customMessage =
       typeof body.message === 'string' ? body.message : null
 
-    if (!waitlistId) {
+    if (!reservationId) {
       return new Response(
         JSON.stringify({
           success: false,
           error: 'bad_request',
-          message: 'waitlist_id required'
+          message: 'reservation_id required'
         }),
         { status: 400, headers: jsonHeaders }
       )
     }
 
-    // Read waitlist via user-scoped client. RLS gates access.
-    const { data: waitlist, error: waitlistErr } = await userClient
-      .from('waitlist')
+    // RLS-scoped read.
+    const { data: reservation, error: reservationErr } = await userClient
+      .from('reservations')
       .select(
-        'id, merchant_id, location_id, party_name, phone, status, quoted_wait_minutes'
+        'id, merchant_id, location_id, party_name, party_size, phone, reservation_date, reservation_time, confirmation_number'
       )
-      .eq('id', waitlistId)
+      .eq('id', reservationId)
       .maybeSingle()
 
-    if (waitlistErr) {
-      console.error('waitlist read failed', waitlistErr)
+    if (reservationErr) {
+      console.error('reservation read failed', reservationErr)
       return new Response(
         JSON.stringify({ success: false, error: 'db_error' }),
         { status: 500, headers: jsonHeaders }
       )
     }
 
-    if (!waitlist) {
+    if (!reservation) {
       return new Response(
         JSON.stringify({ success: false, error: 'not_found' }),
         { status: 404, headers: jsonHeaders }
       )
     }
 
-    // Fetch location for store name + address. Service role is OK here — the
-    // RLS check above proved the caller has access to the merchant/location.
     const { data: location } = await adminClient
       .from('locations')
       .select('name, address_line1, address_line2, city, state, postal_code')
-      .eq('id', waitlist.location_id)
+      .eq('id', reservation.location_id)
       .maybeSingle()
 
-    const e164Phone = normalizeToE164(waitlist.phone)
+    const e164Phone = normalizeToE164(reservation.phone)
 
     if (!e164Phone) {
       return new Response(
@@ -206,13 +248,14 @@ serve(async (req: Request) => {
       )
     }
 
-    // Render template server-side. Caller picks the key; for 'custom' we accept
-    // a caller-supplied message (slice-capped at 500 chars).
     const ctx: TemplateContext = {
-      partyName: (waitlist.party_name ?? '').trim() || 'Guest',
+      partyName: (reservation.party_name ?? '').trim() || 'Guest',
       storeName: location?.name ?? 'our restaurant',
       storeAddress: formatStoreAddress(location),
-      quotedWaitMinutes: waitlist.quoted_wait_minutes ?? null
+      partySize: reservation.party_size ?? null,
+      reservationDate: formatDateForSms(reservation.reservation_date),
+      reservationTime: formatTimeForSms(reservation.reservation_time),
+      confirmationNumber: reservation.confirmation_number ?? null
     }
     const message = renderTemplate(templateKey, ctx, customMessage)
     if (!message) {
@@ -223,35 +266,6 @@ serve(async (req: Request) => {
           message: `Unknown template_key '${templateKey}'`
         }),
         { status: 400, headers: jsonHeaders }
-      )
-    }
-
-    // Atomic rate-limit claim.
-    const { data: claim, error: claimErr } = await adminClient.rpc(
-      'claim_waitlist_sms_slot',
-      {
-        p_merchant_id: waitlist.merchant_id,
-        p_max_per_hour: SMS_RATE_LIMIT_PER_HOUR
-      }
-    )
-
-    if (claimErr) {
-      console.error('rate limit claim failed', claimErr)
-      return new Response(
-        JSON.stringify({ success: false, error: 'rate_limit_check_failed' }),
-        { status: 500, headers: jsonHeaders }
-      )
-    }
-
-    if (!claim?.allowed) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'rate_limited',
-          message: `SMS rate limit reached for this merchant (${claim?.count}/${claim?.limit} this hour). Try again later.`,
-          retry_after_seconds: 600
-        }),
-        { status: 429, headers: jsonHeaders }
       )
     }
 
@@ -300,10 +314,10 @@ serve(async (req: Request) => {
       providerStatus !== 'sending_failed' &&
       providerStatus !== 'delivery_failed'
 
-    await adminClient.rpc('record_waitlist_sms_result', {
-      p_waitlist_id: waitlistId,
+    await adminClient.rpc('record_reservation_sms_result', {
+      p_reservation_id: reservationId,
       p_success: smsOk,
-      p_notification_type: 'sms'
+      p_template_key: templateKey
     })
 
     if (smsOk) {
@@ -325,7 +339,7 @@ serve(async (req: Request) => {
       { status: 502, headers: jsonHeaders }
     )
   } catch (err) {
-    console.error('notify-waitlist-guest error:', err)
+    console.error('notify-reservation-guest error:', err)
     return new Response(
       JSON.stringify({
         success: false,

@@ -1,6 +1,10 @@
+import NotifyCustomerModal from "@/components/notifications/NotifyCustomerModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import DiscardChangesModal from "@/components/ui/DiscardChangesModal";
 import { useToast } from "@/contexts/ToastContext";
 import { iosOnly } from "@/lib/safeAnimations";
+import { NotifyContext, TemplateKey } from "@/lib/notifyTemplates";
+import { formatUsPhone, normalizeUsPhoneDigits } from "@/lib/phone";
 import { colors } from "@/lib/theme";
 import { getCachedCustomers } from "@/services/customer";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -91,13 +95,18 @@ function toIsoDateKeySafe(
   value: Date | string | null | undefined,
 ): string | null {
   if (!value) return null;
-  const d = value instanceof Date ? new Date(value.getTime()) : new Date(value);
-  if (!Number.isFinite(d.getTime())) return null;
-  try {
-    return d.toISOString().split("T")[0];
-  } catch {
-    return null;
+  // Pass through pure date-only strings to preserve server values.
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
   }
+  const d = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(d.getTime())) return null;
+  // Use local components — toISOString() shifts to UTC and lands on the
+  // previous calendar day for any user east of UTC (or near midnight UTC).
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function toEpochSafe(value: Date | string | null | undefined): number {
@@ -366,6 +375,8 @@ const AddReservationModal: React.FC<{
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [isVip, setIsVip] = useState(false);
+  const [initSnapshot, setInitSnapshot] = useState<string>("");
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   // Customer search
   const [customerQuery, setCustomerQuery] = useState("");
@@ -418,7 +429,10 @@ const AddReservationModal: React.FC<{
   );
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      setShowDiscardConfirm(false);
+      return;
+    }
 
     if (initialData) {
       const nextDate = initialData.reservation_date
@@ -427,24 +441,87 @@ const AddReservationModal: React.FC<{
       const editableTime = toEditableTime(initialData.reservation_time);
       const [hour, minute] = editableTime.split(":");
 
-      setName(initialData.party_name ?? "");
-      setPartySize(initialData.party_size ?? 2);
-      setPhone(initialData.phone ?? "");
-      setSelectedDate(
-        Number.isFinite(nextDate.getTime()) ? nextDate : defaultDate,
-      );
-      setSelHour(hour ?? "19");
-      setSelMin(minute ?? "00");
-      setSelectedTableIds(initialData.assigned_table_ids ?? []);
-      setNotes(initialData.notes ?? initialData.special_requests ?? "");
-      setIsVip(Boolean(initialData.is_vip));
+      const initName = initialData.party_name ?? "";
+      const initPartySize = initialData.party_size ?? 2;
+      const initPhone = formatUsPhone(initialData.phone ?? "");
+      const initDate = Number.isFinite(nextDate.getTime())
+        ? nextDate
+        : defaultDate;
+      const initSelHour = hour ?? "19";
+      const initSelMin = minute ?? "00";
+      const initTableIds = initialData.assigned_table_ids ?? [];
+      const initNotes = initialData.notes ?? initialData.special_requests ?? "";
+      const initVip = Boolean(initialData.is_vip);
+
+      setName(initName);
+      setPartySize(initPartySize);
+      setPhone(initPhone);
+      setSelectedDate(initDate);
+      setSelHour(initSelHour);
+      setSelMin(initSelMin);
+      setSelectedTableIds(initTableIds);
+      setNotes(initNotes);
+      setIsVip(initVip);
       setLinkedCustomer(null);
       setCustomerQuery("");
+      setInitSnapshot(
+        JSON.stringify({
+          name: initName,
+          partySize: initPartySize,
+          phone: initPhone,
+          selectedDate: initDate.toISOString(),
+          selHour: initSelHour,
+          selMin: initSelMin,
+          selectedTableIds: [...initTableIds].sort(),
+          notes: initNotes,
+          isVip: initVip,
+        }),
+      );
       return;
     }
 
     resetForm();
+    setInitSnapshot(
+      JSON.stringify({
+        name: "",
+        partySize: 2,
+        phone: "",
+        selectedDate: defaultDate.toISOString(),
+        selHour: "19",
+        selMin: "00",
+        selectedTableIds: [],
+        notes: "",
+        isVip: false,
+      }),
+    );
   }, [visible, initialData, defaultDate]);
+
+  const isDirty = useMemo(() => {
+    if (!initSnapshot) return false;
+    const current = JSON.stringify({
+      name,
+      partySize,
+      phone,
+      selectedDate: selectedDate.toISOString(),
+      selHour,
+      selMin,
+      selectedTableIds: [...selectedTableIds].sort(),
+      notes,
+      isVip,
+    });
+    return current !== initSnapshot;
+  }, [
+    initSnapshot,
+    name,
+    partySize,
+    phone,
+    selectedDate,
+    selHour,
+    selMin,
+    selectedTableIds,
+    notes,
+    isVip,
+  ]);
 
   const customerResults = useMemo(() => {
     const q = customerQuery.toLowerCase().trim();
@@ -461,7 +538,7 @@ const AddReservationModal: React.FC<{
   const handleSelectCustomer = (c: CustomerWithMeta) => {
     setLinkedCustomer(c);
     setName(c.name ?? "");
-    setPhone(c.phone ?? c.phoneNumber ?? "");
+    setPhone(formatUsPhone(c.phone ?? c.phoneNumber ?? ""));
     setCustomerQuery("");
     dismissSuggestions();
   };
@@ -505,6 +582,16 @@ const AddReservationModal: React.FC<{
   };
 
   const handleClose = () => {
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+    resetForm();
+    onClose();
+  };
+
+  const confirmDiscard = () => {
+    setShowDiscardConfirm(false);
     resetForm();
     onClose();
   };
@@ -515,7 +602,7 @@ const AddReservationModal: React.FC<{
     await onSubmit({
       name: name.trim() || "Guest",
       partySize,
-      phone: phone.trim(),
+      phone: normalizeUsPhoneDigits(phone),
       date: d,
       time: selectedTime,
       tableIds: selectedTableIds,
@@ -535,9 +622,15 @@ const AddReservationModal: React.FC<{
   const formInputSurface = isLightTheme ? colors.card : colors.inset;
   const formControlSurface = isLightTheme ? colors.card : colors.inset;
   const formActionSurface = isLightTheme ? colors.card : colors.screen;
+  // Re-read theme-dependent colors on every render. The module-level
+  // `inputStyle` captures `colors.heading` once at load time, which freezes
+  // the value to whatever theme was active when the module evaluated; on
+  // light theme the captured dark-theme heading color is near-white and
+  // becomes invisible against the light input surface.
   const themedInputStyle = {
     ...inputStyle,
     backgroundColor: formInputSurface,
+    color: colors.heading,
   } as const;
 
   const surfaceCard = {
@@ -558,7 +651,7 @@ const AddReservationModal: React.FC<{
       >
         <Pressable
           style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-          onPress={handleClose}
+          onPress={() => {}}
         >
           <View
             style={{
@@ -942,9 +1035,12 @@ const AddReservationModal: React.FC<{
                         <Text style={labelStyle}>Phone</Text>
                         <TextInput
                           value={phone}
-                          onChangeText={setPhone}
+                          onChangeText={(value) =>
+                            setPhone(formatUsPhone(value))
+                          }
                           keyboardType="phone-pad"
-                          placeholder="Phone number"
+                          maxLength={14}
+                          placeholder="(555) 123-4567"
                           placeholderTextColor={colors.muted}
                           style={themedInputStyle}
                         />
@@ -1346,12 +1442,11 @@ const AddReservationModal: React.FC<{
                         onChangeText={setNotes}
                         placeholder="Allergies, occasion..."
                         placeholderTextColor={colors.muted}
-                        multiline
-                        style={{
-                          ...themedInputStyle,
-                          height: 94,
-                          textAlignVertical: "top",
-                        }}
+                        returnKeyType="done"
+                        blurOnSubmit
+                        onSubmitEditing={Keyboard.dismiss}
+                        maxLength={500}
+                        style={themedInputStyle}
                       />
                     </View>
                   </View>
@@ -1427,7 +1522,7 @@ const AddReservationModal: React.FC<{
       >
         <Pressable
           style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-          onPress={() => setShowDatePicker(false)}
+          onPress={() => {}}
         >
           <View
             style={{
@@ -1563,6 +1658,12 @@ const AddReservationModal: React.FC<{
           </View>
         </Pressable>
       </Modal>
+
+      <DiscardChangesModal
+        visible={showDiscardConfirm}
+        onClose={() => setShowDiscardConfirm(false)}
+        onConfirm={confirmDiscard}
+      />
     </>
   );
 };
@@ -2135,6 +2236,13 @@ const ReservationsPanel: React.FC = () => {
     title: "Failed",
     message: "",
   });
+  const [notifyReservation, setNotifyReservation] = useState<{
+    reservation: Reservation;
+    context: NotifyContext;
+  } | null>(null);
+  const sendReservationNotification = useReservationStore(
+    (s) => s.sendReservationNotification,
+  );
 
   // All selectable tables — show occupied too (reservation is for a future time)
   // Only exclude permanently unusable tables
@@ -2299,14 +2407,73 @@ const ReservationsPanel: React.FC = () => {
 
         if (!ok) throw new Error("Could not update reservation");
 
+        const previousDateStr = toIsoDateKeySafe(selectedDate);
+        const previousReservationDateStr = toIsoDateKeySafe(
+          editingReservation.reservation_date ??
+            editingReservation.reservation_time,
+        );
+        const dateChanged = previousReservationDateStr !== dateStr;
+        const newDate = new Date(`${dateStr}T00:00:00`);
+        const newDateValid = Number.isFinite(newDate.getTime());
+        const nextSelectedDate =
+          dateChanged && newDateValid && previousDateStr !== dateStr
+            ? newDate
+            : selectedDate;
+
+        if (dateChanged && newDateValid && previousDateStr !== dateStr) {
+          setSelectedDate(newDate);
+        }
+
+        const previousTime = toEditableTime(
+          editingReservation.reservation_time ?? "",
+        );
+        const timeChanged = previousTime !== data.time;
+        const partySizeChanged =
+          (editingReservation.party_size ?? null) !== data.partySize;
+
+        const changed: ("date" | "time" | "party_size")[] = [];
+        if (dateChanged) changed.push("date");
+        if (timeChanged) changed.push("time");
+        if (partySizeChanged) changed.push("party_size");
+
+        const phoneDigits = data.phone?.replace(/\D/g, "") ?? "";
+        const updatedReservation: Reservation = {
+          ...editingReservation,
+          party_name: data.name,
+          party_size: data.partySize,
+          phone: data.phone,
+          reservation_date: dateStr,
+          reservation_time: data.time,
+          notes: data.notes,
+          is_vip: data.isVip,
+        };
+
         show({
-          title: "Reservation Updated",
-          message: `${data.name} updated for ${formatPreset(data.time)}`,
+          title: dateChanged ? "Reservation Moved" : "Reservation Updated",
+          message: dateChanged
+            ? `${data.name} moved to ${formatDateLabel(newDate)} at ${formatPreset(data.time)}`
+            : `${data.name} updated for ${formatPreset(data.time)}`,
           type: "success",
         });
         setEditingReservation(null);
         if (selectedStore?.id) {
-          fetchReservations(selectedStore.id, selectedDate, { silent: true });
+          fetchReservations(selectedStore.id, nextSelectedDate, {
+            silent: true,
+          });
+        }
+
+        if (changed.length > 0 && phoneDigits.length > 0) {
+          setNotifyReservation({
+            reservation: updatedReservation,
+            context: {
+              kind: "reservation_update",
+              partyName: data.name,
+              storeName: selectedStore?.name ?? "our restaurant",
+              newDate: formatDateLabel(newDate),
+              newTime: formatPreset(data.time),
+              changed,
+            },
+          });
         }
       } catch (err: any) {
         const message = err.message || "Could not update reservation";
@@ -2324,10 +2491,31 @@ const ReservationsPanel: React.FC = () => {
       selectedStore?.id,
       editingReservation,
       selectedDate,
+      setSelectedDate,
       updateReservation,
       show,
       fetchReservations,
     ],
+  );
+
+  const handleSendReservationNotify = useCallback(
+    async (message: string, templateKey: TemplateKey) => {
+      if (!notifyReservation) return { success: false, error: "no_target" };
+      const result = await sendReservationNotification(
+        notifyReservation.reservation.id,
+        message,
+        templateKey,
+      );
+      if (result.success) {
+        show({
+          title: "Notified",
+          message: `SMS sent to ${notifyReservation.reservation.party_name}`,
+          type: "success",
+        });
+      }
+      return result;
+    },
+    [notifyReservation, sendReservationNotification, show],
   );
 
   const handleConfirm = useCallback(
@@ -2738,6 +2926,20 @@ const ReservationsPanel: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {notifyReservation && (
+        <NotifyCustomerModal
+          visible={!!notifyReservation}
+          onClose={() => setNotifyReservation(null)}
+          context={notifyReservation.context}
+          recipient={{
+            phone: notifyReservation.reservation.phone,
+            partyName: notifyReservation.reservation.party_name,
+            storeName: selectedStore?.name ?? "our restaurant",
+          }}
+          onSend={handleSendReservationNotify}
+        />
+      )}
     </View>
   );
 };

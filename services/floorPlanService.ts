@@ -822,7 +822,14 @@ export class FloorPlanService {
 
   static async sendWaitlistSms(
     client: SupabaseClient,
-    params: { phone: string; message: string; waitlist_id: string },
+    params: {
+      waitlist_id: string;
+      template_key?: string;
+      message?: string;
+      // Legacy field kept for back-compat with older call sites — ignored by
+      // the edge function (phone is read from the waitlist row server-side).
+      phone?: string;
+    },
   ): Promise<{
     data: {
       success: boolean;
@@ -838,9 +845,42 @@ export class FloorPlanService {
       "notify-waitlist-guest",
       {
         body: {
-          phone: params.phone,
-          message: params.message,
           waitlist_id: params.waitlist_id,
+          template_key: params.template_key,
+          message: params.message,
+        },
+      },
+    );
+    return { data, error };
+  }
+
+  static async sendReservationSms(
+    client: SupabaseClient,
+    params: {
+      reservation_id: string;
+      template_key?: string;
+      message?: string;
+      // Legacy — ignored by the edge function (phone read server-side).
+      phone?: string;
+    },
+  ): Promise<{
+    data: {
+      success: boolean;
+      sms?: boolean;
+      error?: string;
+      message?: string;
+      reason?: string;
+      provider_error?: string;
+    } | null;
+    error: any;
+  }> {
+    const { data, error } = await client.functions.invoke(
+      "notify-reservation-guest",
+      {
+        body: {
+          reservation_id: params.reservation_id,
+          template_key: params.template_key,
+          message: params.message,
         },
       },
     );
