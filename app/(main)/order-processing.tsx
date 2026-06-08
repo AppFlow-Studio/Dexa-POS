@@ -431,6 +431,19 @@ const OrderProcessing = () => {
     setActiveOrder(newOrder.id);
   }, [setActiveOrder, startNewOrder]);
 
+  // Eager backend create: whenever a local-only takeout order becomes active
+  // (fresh order, or a reused empty draft), create its backend row immediately
+  // so it behaves like dine-in — items stay blocked until db_order_id exists
+  // (see addItemToActiveOrder + BillSection's isCreatingOrder gate).
+  useEffect(() => {
+    if (!activeOrderId) return;
+    const order = useOrderStore.getState().ordersById[activeOrderId];
+    if (!order || order.db_order_id) return;
+    // Dine-in orders create at seating; only eager-create non-dine-in here.
+    if (order.order_type === "dine_in" || order.order_type === "Dine In") return;
+    void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+  }, [activeOrderId]);
+
   const handleViewItems = useCallback((orderId: string) => {
     setSelectedOrderId(orderId);
     setIsOrdersModuleOpen(false);

@@ -3569,6 +3569,14 @@ interface OrderState {
     localSessionId?: string; // Local session ID for offline
     orderId?: string; // Pre-generated order ID for optimistic seating
   }) => OrderProfile;
+  /**
+   * Eagerly create the backend row for an order that only exists locally
+   * (no db_order_id yet). Used so takeout orders create on the backend
+   * immediately — mirroring dine-in — instead of lazily on first item add.
+   * Resolves to the db_order_id (or "pending_offline"/null on failure).
+   * No-op (returns existing db_order_id) if already created.
+   */
+  ensureActiveOrderCreated: (orderId: string) => Promise<string | null>;
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
   setItemQuantity: (itemId: string, quantity: number) => void;
@@ -7327,6 +7335,102 @@ export const useOrderStore = create<OrderState>()(
             return newOrder;
           },
 
+          ensureActiveOrderCreated: async (orderId) => {
+            const order = get().ordersById[orderId];
+            if (!order) return null;
+            // Already created (or re-keyed) — nothing to do.
+            if (order.db_order_id) return order.db_order_id;
+
+            // Same setOrderDbId re-key callback used by the lazy item-add path,
+            // so eager creation routes the local→db re-key through identical
+            // bookkeeping (orderIds, activeOrderId, working set, indexes, chains,
+            // linked stores).
+            const setOrderDbIdAction: SetOrderDbIdFn = (
+              localId,
+              dbOrderId,
+              orderNumber,
+              displayNumber,
+              createdAt,
+              syncVersion,
+            ) => {
+              if (localId !== dbOrderId) {
+                set((state) => {
+                  const existingOrder = state.ordersById[localId];
+                  if (!existingOrder) return;
+                  const snapshot = current(existingOrder);
+                  delete state.ordersById[localId];
+                  state.ordersById[dbOrderId] = freeze({
+                    ...snapshot,
+                    id: dbOrderId,
+                    db_order_id: dbOrderId,
+                    order_number: orderNumber,
+                    display_number: displayNumber,
+                    sync_status: "synced" as const,
+                    sync_version: syncVersion ?? 1,
+                    opened_at: snapshot.opened_at || createdAt,
+                  });
+                  const idx = state.orderIds.indexOf(localId);
+                  if (idx !== -1) state.orderIds[idx] = dbOrderId;
+                  if (state.activeOrderId === localId)
+                    state.activeOrderId = dbOrderId;
+                  const wsIdx = state.workingSetOrderIds.indexOf(localId);
+                  if (wsIdx !== -1) state.workingSetOrderIds[wsIdx] = dbOrderId;
+                  state.dbOrderIdIndex[dbOrderId] = dbOrderId;
+                  delete state.dbOrderIdIndex[localId];
+                  if (state.persistableOrderIds[localId]) {
+                    delete state.persistableOrderIds[localId];
+                    state.persistableOrderIds[dbOrderId] = true;
+                  }
+                  // Drop from unsynced — it now has a backend row.
+                  state.unsyncedOrderIds = state.unsyncedOrderIds.filter(
+                    (id) => id !== localId,
+                  );
+                  syncTableOrderIdIndexForOrder(state, dbOrderId, snapshot);
+                });
+
+                const existingChain = orderAdditionChains.get(localId);
+                if (existingChain) {
+                  orderAdditionChains.set(dbOrderId, existingChain);
+                  orderAdditionChains.delete(localId);
+                }
+                const existingPending = pendingItemAdditions.get(localId);
+                if (existingPending) {
+                  pendingItemAdditions.set(dbOrderId, existingPending);
+                  pendingItemAdditions.delete(localId);
+                }
+
+                rekeyLinkedStores(localId, dbOrderId);
+              } else {
+                set((state) => {
+                  const o = state.ordersById[localId];
+                  if (!o) return;
+                  const previousOrder = current(o);
+                  o.db_order_id = dbOrderId;
+                  o.order_number = orderNumber;
+                  o.display_number = displayNumber;
+                  o.sync_status = "synced";
+                  o.sync_version = syncVersion ?? 1;
+                  o.opened_at = o.opened_at || createdAt;
+                  state.dbOrderIdIndex[dbOrderId] = localId;
+                  state.unsyncedOrderIds = state.unsyncedOrderIds.filter(
+                    (id) => id !== localId,
+                  );
+                  syncTableOrderIdIndexForOrder(state, localId, previousOrder);
+                });
+              }
+
+              localIdToDbOrderId.set(localId, dbOrderId);
+              persistLocalIdMap();
+            };
+
+            try {
+              return await ensureOrderCreated(order, setOrderDbIdAction);
+            } catch (err) {
+              console.error("[ensureActiveOrderCreated] Failed:", err);
+              return null;
+            }
+          },
+
           addItemToActiveOrder: (newItem) => {
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
@@ -7344,9 +7448,14 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
 
+            // Block adding items until the backend order exists. Applies to ALL
+            // order types now: dine-in creates at seating, takeout eager-creates
+            // on order start (ensureActiveOrderCreated). The order row must exist
+            // before items attach — EXCEPT offline, where a create_order op has
+            // been queued and items legitimately proceed under the local ID.
             if (
-              activeOrder.order_type === "dine_in" &&
-              !activeOrder.db_order_id
+              !activeOrder.db_order_id &&
+              !getOrderCreationOperationId(activeOrder.id)
             ) {
               toastService.show({
                 title: "Creating order",

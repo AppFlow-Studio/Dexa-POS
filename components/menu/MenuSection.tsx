@@ -301,15 +301,19 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       ? s.sessions[currentOrderTableId]?.status === "seating"
       : false;
   });
-  const isCreatingDineInOrder =
-    currentOrderType === "dine_in" && !!activeOrderId && !currentOrderDbId;
-  const isMenuAddDisabled = isTableSeating || isCreatingDineInOrder;
-  const menuDisabledTitle = isCreatingDineInOrder
-    ? "Creating order"
-    : "Seating in progress";
-  const menuDisabledMessage = isCreatingDineInOrder
-    ? "Items can be added once the order is ready."
-    : "Items can be added once the table is seated.";
+  // Block menu adds until the backend order exists — for ALL order types now.
+  // Dine-in creates at seating; takeout eager-creates on order start. In both
+  // cases the order has no db_order_id until the backend row lands.
+  const isCreatingOrder = !!activeOrderId && !currentOrderDbId;
+  const isMenuAddDisabled = isTableSeating || isCreatingOrder;
+  // Seating takes precedence over "creating" in the label (a dine-in order is
+  // also db_order_id-less while seating, but "Seating in progress" is clearer).
+  const menuDisabledTitle = isTableSeating
+    ? "Seating in progress"
+    : "Creating order";
+  const menuDisabledMessage = isTableSeating
+    ? "Items can be added once the table is seated."
+    : "Items can be added once the order is ready.";
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails,
   );
