@@ -11,6 +11,7 @@ import {
     isMenuModifierPreWarmCurrent,
 } from "@/lib/menuModifierPreWarmControl";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { MenuItemType } from "@/lib/types";
 // import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -304,7 +305,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // Block menu adds until the backend order exists — for ALL order types now.
   // Dine-in creates at seating; takeout eager-creates on order start. In both
   // cases the order has no db_order_id until the backend row lands.
-  const isCreatingOrder = !!activeOrderId && !currentOrderDbId;
+  //
+  // OFFLINE: a backend row can't be created, so the order is created locally and
+  // its create_order op is queued — items legitimately proceed under the local ID
+  // (mirrors the offline carve-out in addItemToActiveOrder). Only block while
+  // ONLINE, otherwise the overlay would stick on "Creating order" forever offline.
+  const { isOnline } = useNetworkStatus();
+  const isCreatingOrder = isOnline && !!activeOrderId && !currentOrderDbId;
   const isMenuAddDisabled = isTableSeating || isCreatingOrder;
   // Seating takes precedence over "creating" in the label (a dine-in order is
   // also db_order_id-less while seating, but "Seating in progress" is clearer).
