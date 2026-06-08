@@ -94,6 +94,42 @@ export function renderTemplate(key: TemplateKey, ctx: NotifyContext): string {
   }
 }
 
+// Mirror of the server-side `waitlist.added` template. The edge function is the
+// source of truth — this helper is kept so the in-app preview matches what the
+// guest actually receives.
+export function renderWaitlistAddedMessage(params: {
+  partyName: string;
+  storeName: string;
+  storeAddress?: string;
+  quotedWaitMinutes?: number;
+}): string {
+  const addressClause = params.storeAddress ? ` (${params.storeAddress})` : "";
+  const waitClause =
+    params.quotedWaitMinutes != null && params.quotedWaitMinutes > 0
+      ? `in ${params.quotedWaitMinutes} min`
+      : "soon";
+  return `Hi ${params.partyName}, you're on the waitlist at ${params.storeName}${addressClause}. Your seat should be ready ${waitClause}. We'll text you when it's ready.`;
+}
+
+// Auto-send confirmation after a new reservation is created. Not surfaced in
+// NotifyCustomerModal (that modal is for updates / Notify-now flows).
+export function renderReservationCreatedMessage(params: {
+  partyName: string;
+  storeName: string;
+  storeAddress?: string;
+  partySize?: number;
+  reservationDate: string;
+  reservationTime: string;
+  confirmationNumber?: string;
+}): string {
+  const addressClause = params.storeAddress ? ` (${params.storeAddress})` : "";
+  const partyClause = params.partySize ? ` for ${params.partySize}` : "";
+  const confClause = params.confirmationNumber
+    ? ` Confirmation #${params.confirmationNumber}.`
+    : "";
+  return `Hi ${params.partyName}, your reservation at ${params.storeName}${addressClause}${partyClause} is confirmed for ${params.reservationDate} at ${params.reservationTime}.${confClause} Reply to this message if you need to make changes.`;
+}
+
 export function describeContext(ctx: NotifyContext): string {
   switch (ctx.kind) {
     case "waitlist_ready":

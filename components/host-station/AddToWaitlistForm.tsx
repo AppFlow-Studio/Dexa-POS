@@ -1,3 +1,4 @@
+import { formatUsPhone, normalizeUsPhoneDigits } from '@/lib/phone'
 import { colors } from '@/lib/theme'
 import { getCachedCustomers } from '@/services/customer'
 import WaitTimeCalculator from '@/lib/waitlist/waitTimeCalculator'
@@ -240,7 +241,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
 
   const [partyName, setPartyName] = useState(initialValues?.party_name ?? '')
   const [partySize, setPartySize] = useState(initialValues?.party_size ?? 2)
-  const [phone, setPhone] = useState(initialValues?.phone ?? '')
+  const [phone, setPhone] = useState(formatUsPhone(initialValues?.phone ?? ''))
   const [email, setEmail] = useState(initialValues?.email ?? '')
   const [seatingPreference, setSeatingPreference] = useState(
     initialValues?.seating_preference ?? 'No Preference'
@@ -326,7 +327,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
     (customer: CustomerWithMeta) => {
       setLinkedCustomer(customer)
       setPartyName(customer.name ?? '')
-      setPhone(customer.phone ?? customer.phoneNumber ?? '')
+      setPhone(formatUsPhone(customer.phone ?? customer.phoneNumber ?? ''))
       setEmail(customer.email ?? '')
       setCustomerQuery('')
       dismissSuggestions()
@@ -348,7 +349,8 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
 
   const updatePhone = useCallback(
     (value: string) => {
-      setPhone(value)
+      const formatted = formatUsPhone(value)
+      setPhone(formatted)
       setLinkedCustomer(null)
       setCustomerQuery(value)
       setShowSuggestions(true)
@@ -407,10 +409,11 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
   const handleSubmit = () => {
     if (!validateForm()) return
     clearDirty()
+    const phoneDigits = normalizeUsPhoneDigits(phone)
     onSubmit({
       party_name: partyName.trim(),
       party_size: partySize,
-      phone: phone.trim() || undefined,
+      phone: phoneDigits || undefined,
       email: email.trim() || undefined,
       seating_preference:
         seatingPreference !== 'No Preference' ? seatingPreference : undefined,
@@ -829,7 +832,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
               placeholder='(555) 123-4567'
               placeholderTextColor={colors.muted}
               keyboardType='phone-pad'
-              maxLength={20}
+              maxLength={14}
               style={{
                 flex: 1,
                 fontSize: 13,
@@ -979,7 +982,9 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
           }}
           placeholder='Allergies, occasion, high chair needed...'
           placeholderTextColor={colors.muted}
-          multiline
+          returnKeyType='done'
+          blurOnSubmit
+          onSubmitEditing={Keyboard.dismiss}
           maxLength={500}
           style={{
             backgroundColor: colors.card,
@@ -989,9 +994,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
             paddingHorizontal: 12,
             paddingVertical: 10,
             fontSize: 13,
-            color: colors.heading,
-            minHeight: 70,
-            textAlignVertical: 'top'
+            color: colors.heading
           }}
         />
       </View>

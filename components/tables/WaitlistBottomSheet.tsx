@@ -4,6 +4,7 @@ import AppNoticeModal from '@/components/ui/AppNoticeModal'
 import { useToast } from '@/contexts/ToastContext'
 import { useTableTimerTick } from '@/hooks/useTableTimerTick'
 import { NotifyContext, TemplateKey } from '@/lib/notifyTemplates'
+import { formatUsPhone, normalizeUsPhoneDigits } from '@/lib/phone'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import { getCachedCustomers } from '@/services/customer'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
@@ -301,7 +302,7 @@ const AddEntryForm: React.FC<{
     (customer: CustomerWithMeta) => {
       setLinkedCustomer(customer)
       setName(customer.name ?? '')
-      setPhone(customer.phone ?? customer.phoneNumber ?? '')
+      setPhone(formatUsPhone(customer.phone ?? customer.phoneNumber ?? ''))
       setCustomerQuery('')
       dismissSuggestions()
     },
@@ -316,19 +317,20 @@ const AddEntryForm: React.FC<{
   }, [])
 
   const updatePhone = useCallback((value: string) => {
-    setPhone(value)
+    setPhone(formatUsPhone(value))
     setLinkedCustomer(null)
     setCustomerQuery(value)
     setShowSuggestions(true)
   }, [])
 
   const handleSubmit = () => {
+    const phoneDigits = normalizeUsPhoneDigits(phone)
     onSubmit({
       name: name || 'Guest',
       partySize: parseInt(partySize || '2', 10),
       quotedTime: parseInt(quotedTime || '15', 10),
       notes,
-      phone: phone || undefined
+      phone: phoneDigits || undefined
     })
     setName('')
     setPartySize('')
@@ -527,7 +529,8 @@ const AddEntryForm: React.FC<{
           }}
           returnKeyType='done'
           keyboardType='phone-pad'
-          placeholder='Phone number'
+          maxLength={14}
+          placeholder='(555) 123-4567'
           placeholderTextColor={colors.muted}
           style={{
             backgroundColor: colors.screen,
@@ -551,7 +554,10 @@ const AddEntryForm: React.FC<{
           onChangeText={setNotes}
           placeholder='Special requests, allergies...'
           placeholderTextColor={colors.muted}
-          multiline
+          returnKeyType='done'
+          blurOnSubmit
+          onSubmitEditing={Keyboard.dismiss}
+          maxLength={500}
           style={{
             backgroundColor: colors.screen,
             color: 'white',
@@ -559,9 +565,7 @@ const AddEntryForm: React.FC<{
             padding: 14,
             borderRadius: 12,
             borderWidth: 1,
-            borderColor: colors.border,
-            height: 80,
-            textAlignVertical: 'top'
+            borderColor: colors.border
           }}
         />
       </View>

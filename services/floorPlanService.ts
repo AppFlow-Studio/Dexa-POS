@@ -822,7 +822,14 @@ export class FloorPlanService {
 
   static async sendWaitlistSms(
     client: SupabaseClient,
-    params: { phone: string; message: string; waitlist_id: string },
+    params: {
+      waitlist_id: string;
+      template_key?: string;
+      message?: string;
+      // Legacy field kept for back-compat with older call sites — ignored by
+      // the edge function (phone is read from the waitlist row server-side).
+      phone?: string;
+    },
   ): Promise<{
     data: {
       success: boolean;
@@ -838,9 +845,9 @@ export class FloorPlanService {
       "notify-waitlist-guest",
       {
         body: {
-          phone: params.phone,
-          message: params.message,
           waitlist_id: params.waitlist_id,
+          template_key: params.template_key,
+          message: params.message,
         },
       },
     );
@@ -850,10 +857,11 @@ export class FloorPlanService {
   static async sendReservationSms(
     client: SupabaseClient,
     params: {
-      phone: string;
-      message: string;
       reservation_id: string;
       template_key?: string;
+      message?: string;
+      // Legacy — ignored by the edge function (phone read server-side).
+      phone?: string;
     },
   ): Promise<{
     data: {
@@ -870,10 +878,9 @@ export class FloorPlanService {
       "notify-reservation-guest",
       {
         body: {
-          phone: params.phone,
-          message: params.message,
           reservation_id: params.reservation_id,
           template_key: params.template_key,
+          message: params.message,
         },
       },
     );

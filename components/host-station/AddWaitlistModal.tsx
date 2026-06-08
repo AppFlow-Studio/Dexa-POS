@@ -1,4 +1,4 @@
-import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
+import DiscardChangesModal from '@/components/ui/DiscardChangesModal'
 import { colors } from '@/lib/theme'
 import { X } from 'lucide-react-native'
 import React, { useCallback, useEffect, useState } from 'react'
@@ -164,14 +164,10 @@ export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
-        <ConfirmationModal
-          isOpen={showDiscardConfirm}
+        <DiscardChangesModal
+          visible={showDiscardConfirm}
           onClose={() => setShowDiscardConfirm(false)}
           onConfirm={confirmDiscard}
-          title='Discard changes?'
-          description='You have unsaved changes. Are you sure you want to close this form?'
-          confirmText='Discard'
-          variant='destructive'
         />
       </Modal>
     )

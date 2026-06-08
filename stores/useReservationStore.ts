@@ -337,6 +337,19 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       )
       if (error) throw error
       set({ isLoading: false })
+
+      // Fire-and-forget reservation-confirmation SMS. The edge function renders
+      // the message server-side from `template_key` + reservation row.
+      const phoneDigits = (params.p_phone ?? '').replace(/\D/g, '')
+      if (data?.reservation_id && phoneDigits.length > 0) {
+        FloorPlanService.sendReservationSms(getClient(), {
+          reservation_id: data.reservation_id,
+          template_key: 'reservation.created'
+        }).catch(err => {
+          console.warn('Reservation confirmation SMS failed:', err)
+        })
+      }
+
       return data
     } catch (err: any) {
       console.error('Failed to create reservation:', err)
@@ -504,11 +517,11 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
           message: 'No phone on file for this reservation'
         }
       }
+      const isCustom = templateKey === 'custom'
       const smsResult = await FloorPlanService.sendReservationSms(getClient(), {
-        phone: reservation.phone ?? '',
-        message,
         reservation_id: reservationId,
-        template_key: templateKey
+        template_key: templateKey,
+        message: isCustom ? message : undefined
       })
       const smsData = smsResult.data
       const smsFailed =
@@ -573,6 +586,9 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
   },
 
   cancelReservation: async reservationId => {
+    // Snapshot phone before we mutate so we can fire the cancel SMS on success.
+    const reservation = get().reservations.find(r => r.id === reservationId)
+    const phoneDigits = (reservation?.phone ?? '').replace(/\D/g, '')
     try {
       const { error } = await FloorPlanService.updateReservationStatus(
         getClient(),
@@ -591,6 +607,17 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
           )
         }
       })
+
+      // Fire-and-forget cancellation SMS. Edge function pulls date/time from
+      // the row, which is unchanged on cancel (only the status flips).
+      if (phoneDigits.length > 0) {
+        FloorPlanService.sendReservationSms(getClient(), {
+          reservation_id: reservationId,
+          template_key: 'reservation.cancelled'
+        }).catch(err => {
+          console.warn('Reservation cancel SMS failed:', err)
+        })
+      }
     } catch (err: any) {
       console.error('Failed to cancel reservation:', err)
       // Remove locally for UX

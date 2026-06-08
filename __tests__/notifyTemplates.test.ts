@@ -2,7 +2,9 @@ import {
   NotifyContext,
   describeContext,
   getTemplatesForContext,
+  renderReservationCreatedMessage,
   renderTemplate,
+  renderWaitlistAddedMessage,
 } from "@/lib/notifyTemplates";
 
 describe("notifyTemplates", () => {
@@ -161,6 +163,93 @@ describe("notifyTemplates", () => {
       expect(renderTemplate("reservation.moved", ctx)).toBe("");
       expect(renderTemplate("reservation.timeChanged", ctx)).toBe("");
       expect(renderTemplate("reservation.confirmation", ctx)).toBe("");
+    });
+  });
+
+  describe("renderWaitlistAddedMessage", () => {
+    it("includes party, store, address, and wait estimate", () => {
+      const message = renderWaitlistAddedMessage({
+        partyName: "Alex",
+        storeName: "Test Bistro",
+        storeAddress: "100 Main St, Newark NJ 07102",
+        quotedWaitMinutes: 25,
+      });
+      expect(message).toContain("Alex");
+      expect(message).toContain("Test Bistro");
+      expect(message).toContain("100 Main St, Newark NJ 07102");
+      expect(message).toMatch(/your seat should be ready in 25 min/i);
+      expect(message).toMatch(/text you when it's ready/i);
+    });
+
+    it("falls back to 'soon' when no wait time is provided", () => {
+      const message = renderWaitlistAddedMessage({
+        partyName: "Alex",
+        storeName: "Test Bistro",
+      });
+      expect(message).toMatch(/your seat should be ready soon/i);
+    });
+
+    it("omits address clause when no address is provided", () => {
+      const message = renderWaitlistAddedMessage({
+        partyName: "Alex",
+        storeName: "Test Bistro",
+        quotedWaitMinutes: 15,
+      });
+      expect(message).toContain("Test Bistro");
+      expect(message).not.toContain("(");
+    });
+  });
+
+  describe("renderReservationCreatedMessage", () => {
+    it("includes all key details", () => {
+      const message = renderReservationCreatedMessage({
+        partyName: "Alex",
+        storeName: "Test Bistro",
+        storeAddress: "100 Main St, Newark NJ 07102",
+        partySize: 4,
+        reservationDate: "Fri, Jun 12",
+        reservationTime: "7:00 PM",
+        confirmationNumber: "ABC123",
+      });
+      expect(message).toContain("Alex");
+      expect(message).toContain("Test Bistro");
+      expect(message).toContain("100 Main St, Newark NJ 07102");
+      expect(message).toContain("for 4");
+      expect(message).toContain("Fri, Jun 12");
+      expect(message).toContain("7:00 PM");
+      expect(message).toContain("Confirmation #ABC123");
+      expect(message.toLowerCase()).toContain("reply");
+    });
+
+    it("omits party-size clause when partySize is absent", () => {
+      const message = renderReservationCreatedMessage({
+        partyName: "Alex",
+        storeName: "Test Bistro",
+        reservationDate: "Fri, Jun 12",
+        reservationTime: "7:00 PM",
+      });
+      // No "for <number>" before "Fri" — confirmed for date is still there.
+      expect(message).not.toMatch(/for \d/);
+    });
+
+    it("omits confirmation number when not provided", () => {
+      const message = renderReservationCreatedMessage({
+        partyName: "Alex",
+        storeName: "Test Bistro",
+        reservationDate: "Fri, Jun 12",
+        reservationTime: "7:00 PM",
+      });
+      expect(message).not.toContain("Confirmation #");
+    });
+
+    it("omits address clause when no address is provided", () => {
+      const message = renderReservationCreatedMessage({
+        partyName: "Alex",
+        storeName: "Test Bistro",
+        reservationDate: "Fri, Jun 12",
+        reservationTime: "7:00 PM",
+      });
+      expect(message).not.toContain("(");
     });
   });
 

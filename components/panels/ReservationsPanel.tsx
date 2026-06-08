@@ -1,8 +1,10 @@
 import NotifyCustomerModal from "@/components/notifications/NotifyCustomerModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import DiscardChangesModal from "@/components/ui/DiscardChangesModal";
 import { useToast } from "@/contexts/ToastContext";
 import { iosOnly } from "@/lib/safeAnimations";
 import { NotifyContext, TemplateKey } from "@/lib/notifyTemplates";
+import { formatUsPhone, normalizeUsPhoneDigits } from "@/lib/phone";
 import { colors } from "@/lib/theme";
 import { getCachedCustomers } from "@/services/customer";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -93,13 +95,18 @@ function toIsoDateKeySafe(
   value: Date | string | null | undefined,
 ): string | null {
   if (!value) return null;
-  const d = value instanceof Date ? new Date(value.getTime()) : new Date(value);
-  if (!Number.isFinite(d.getTime())) return null;
-  try {
-    return d.toISOString().split("T")[0];
-  } catch {
-    return null;
+  // Pass through pure date-only strings to preserve server values.
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
   }
+  const d = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(d.getTime())) return null;
+  // Use local components — toISOString() shifts to UTC and lands on the
+  // previous calendar day for any user east of UTC (or near midnight UTC).
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function toEpochSafe(value: Date | string | null | undefined): number {
@@ -436,7 +443,7 @@ const AddReservationModal: React.FC<{
 
       const initName = initialData.party_name ?? "";
       const initPartySize = initialData.party_size ?? 2;
-      const initPhone = initialData.phone ?? "";
+      const initPhone = formatUsPhone(initialData.phone ?? "");
       const initDate = Number.isFinite(nextDate.getTime())
         ? nextDate
         : defaultDate;
@@ -531,7 +538,7 @@ const AddReservationModal: React.FC<{
   const handleSelectCustomer = (c: CustomerWithMeta) => {
     setLinkedCustomer(c);
     setName(c.name ?? "");
-    setPhone(c.phone ?? c.phoneNumber ?? "");
+    setPhone(formatUsPhone(c.phone ?? c.phoneNumber ?? ""));
     setCustomerQuery("");
     dismissSuggestions();
   };
@@ -596,7 +603,7 @@ const AddReservationModal: React.FC<{
     await onSubmit({
       name: name.trim() || "Guest",
       partySize,
-      phone: phone.trim(),
+      phone: normalizeUsPhoneDigits(phone),
       date: d,
       time: selectedTime,
       tableIds: selectedTableIds,
@@ -616,9 +623,15 @@ const AddReservationModal: React.FC<{
   const formInputSurface = isLightTheme ? colors.card : colors.inset;
   const formControlSurface = isLightTheme ? colors.card : colors.inset;
   const formActionSurface = isLightTheme ? colors.card : colors.screen;
+  // Re-read theme-dependent colors on every render. The module-level
+  // `inputStyle` captures `colors.heading` once at load time, which freezes
+  // the value to whatever theme was active when the module evaluated; on
+  // light theme the captured dark-theme heading color is near-white and
+  // becomes invisible against the light input surface.
   const themedInputStyle = {
     ...inputStyle,
     backgroundColor: formInputSurface,
+    color: colors.heading,
   } as const;
 
   const surfaceCard = {
@@ -1023,9 +1036,12 @@ const AddReservationModal: React.FC<{
                         <Text style={labelStyle}>Phone</Text>
                         <TextInput
                           value={phone}
-                          onChangeText={setPhone}
+                          onChangeText={(value) =>
+                            setPhone(formatUsPhone(value))
+                          }
                           keyboardType="phone-pad"
-                          placeholder="Phone number"
+                          maxLength={14}
+                          placeholder="(555) 123-4567"
                           placeholderTextColor={colors.muted}
                           style={themedInputStyle}
                         />
@@ -1427,12 +1443,11 @@ const AddReservationModal: React.FC<{
                         onChangeText={setNotes}
                         placeholder="Allergies, occasion..."
                         placeholderTextColor={colors.muted}
-                        multiline
-                        style={{
-                          ...themedInputStyle,
-                          height: 94,
-                          textAlignVertical: "top",
-                        }}
+                        returnKeyType="done"
+                        blurOnSubmit
+                        onSubmitEditing={Keyboard.dismiss}
+                        maxLength={500}
+                        style={themedInputStyle}
                       />
                     </View>
                   </View>
@@ -1645,14 +1660,10 @@ const AddReservationModal: React.FC<{
         </Pressable>
       </Modal>
 
-      <ConfirmationModal
-        isOpen={showDiscardConfirm}
+      <DiscardChangesModal
+        visible={showDiscardConfirm}
         onClose={() => setShowDiscardConfirm(false)}
         onConfirm={confirmDiscard}
-        title="Discard changes?"
-        description="You have unsaved changes. Are you sure you want to close this form?"
-        confirmText="Discard"
-        variant="destructive"
       />
     </>
   );
