@@ -601,17 +601,20 @@ const OrderProcessing = () => {
 
   useEffect(() => {
     if (renderStage >= 2 && moreOptionsOpenedOnce) {
-      moreOptionsSheetRef.current?.expand();
+      const id = setTimeout(() => moreOptionsSheetRef.current?.expand(), 80);
+      return () => clearTimeout(id);
     }
   }, [moreOptionsOpenedOnce, renderStage]);
   useEffect(() => {
     if (renderStage >= 2 && discountOpenedOnce) {
-      discountSheetRef.current?.expand();
+      const id = setTimeout(() => discountSheetRef.current?.expand(), 80);
+      return () => clearTimeout(id);
     }
   }, [discountOpenedOnce, renderStage]);
   useEffect(() => {
     if (renderStage >= 2 && serviceChargeOpenedOnce) {
-      serviceChargeSheetRef.current?.expand();
+      const id = setTimeout(() => serviceChargeSheetRef.current?.expand(), 80);
+      return () => clearTimeout(id);
     }
   }, [renderStage, serviceChargeOpenedOnce]);
 
