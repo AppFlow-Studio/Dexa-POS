@@ -300,6 +300,7 @@ function buildServiceChargeInputForOrder(
   | "snapshottedAppliesOn"
   | "snapshottedName"
   | "manualServiceCharge"
+  | "manualServiceChargeTaxable"
   | "serverConfirmedServiceCharge"
 > {
   if (!order) return {};
@@ -371,6 +372,7 @@ function buildServiceChargeInputForOrder(
     snapshottedAppliesOn: order.service_charge_applies_on ?? null,
     snapshottedName: order.service_charge_name ?? null,
     manualServiceCharge,
+    manualServiceChargeTaxable: order.service_charge_is_taxable ?? null,
     serverConfirmedServiceCharge,
   };
 }
@@ -6333,6 +6335,8 @@ export const useOrderStore = create<OrderState>()(
                   existing.service_charge_rule_id;
                 orderProfile.service_charge_is_manual =
                   existing.service_charge_is_manual;
+                orderProfile.service_charge_is_taxable =
+                  existing.service_charge_is_taxable;
               }
             }
 
@@ -6746,6 +6750,8 @@ export const useOrderStore = create<OrderState>()(
                 (serverOrder as any).service_charge_rule_id ?? null,
               service_charge_is_manual:
                 (serverOrder as any).service_charge_is_manual ?? false,
+              service_charge_is_taxable:
+                (serverOrder as any).service_charge_is_taxable ?? null,
               _serverConfirmedServiceCharge:
                 serverOrder.service_charge ?? 0,
 
@@ -16757,6 +16763,9 @@ export const useOrderStore = create<OrderState>()(
                     service_charge_is_manual:
                       (orderData as any).service_charge_is_manual ??
                       currentOrder.service_charge_is_manual ?? false,
+                    service_charge_is_taxable:
+                      (orderData as any).service_charge_is_taxable ??
+                      currentOrder.service_charge_is_taxable ?? null,
                     _serverConfirmedServiceCharge:
                       orderData.service_charge ?? 0,
                     // Status fields — preserve local status when items are pending sync or payments are ahead

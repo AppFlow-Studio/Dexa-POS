@@ -188,21 +188,27 @@ const ManagerPinModal = () => {
         })
         return
       }
-      const newAmount =
-        actionToPerform.type === 'edit_service_charge'
-          ? actionToPerform.payload.newAmount
-          : 0
+      const isEdit = actionToPerform.type === 'edit_service_charge'
+      const newAmount = isEdit ? actionToPerform.payload.newAmount : 0
+      const overrideMode = isEdit ? (actionToPerform.payload.mode ?? 'amount') : 'amount'
+      const overrideRate = isEdit ? (actionToPerform.payload.rate ?? null) : null
+      // Edit: explicit taxable choice from the override sheet. Remove: leave
+      // taxability untouched (null = server carries over prior value).
+      const overrideIsTaxable = isEdit ? actionToPerform.payload.isTaxable : null
       const stationId =
         useStoreSettingsStore.getState().selectedStation?.id ?? null
       setIsSubmitting(true)
       const { data, error } = await OrderService.overrideServiceCharge(
         supabase,
         {
-          p_order_id: dbOrderId,
-          p_amount: newAmount,
+          p_order_id:   dbOrderId,
           p_manager_id: employee!.id,
-          p_reason: actionToPerform.payload.reason ?? null,
+          p_mode:       overrideMode,
+          p_amount:     overrideMode === 'amount' ? newAmount : null,
+          p_rate:       overrideMode === 'percent' ? overrideRate : null,
+          p_reason:     actionToPerform.payload.reason ?? null,
           p_station_id: stationId,
+          p_is_taxable: overrideIsTaxable,
         },
       )
       setIsSubmitting(false)
@@ -239,7 +245,9 @@ const ManagerPinModal = () => {
             : 'Service charge removed',
         message:
           actionToPerform.type === 'edit_service_charge'
-            ? `New amount: $${newAmount.toFixed(2)}`
+            ? overrideMode === 'percent'
+              ? `${overrideRate}% → $${newAmount.toFixed(2)}`
+              : `New amount: $${newAmount.toFixed(2)}`
             : 'Service charge cleared from this order.',
         type: 'success',
       })
@@ -278,7 +286,9 @@ const ManagerPinModal = () => {
       : actionToPerform?.type === 'select_category'
       ? `Unlock "${actionToPerform.payload.categoryName}" Category`
       : actionToPerform?.type === 'edit_service_charge'
-      ? `Edit Service Charge — $${actionToPerform.payload.newAmount.toFixed(2)}`
+      ? actionToPerform.payload.mode === 'percent'
+        ? `Edit Service Charge — ${actionToPerform.payload.rate}% (≈ $${actionToPerform.payload.newAmount.toFixed(2)})`
+        : `Edit Service Charge — $${actionToPerform.payload.newAmount.toFixed(2)}`
       : actionToPerform?.type === 'remove_service_charge'
       ? 'Remove Service Charge'
       : 'Manager Override'

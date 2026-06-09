@@ -40,10 +40,6 @@ export async function sendToKitchenEffect (
     return
   }
 
-  // Track which items had db_order_item_id at press time.
-  // Items without it at press time rely on addItemToBackend's retroactive path (Scenario E).
-  const hadDbIdAtPressTime = new Set(dbItemIds)
-
   // Wait for any in-flight item syncs AND quantity updates to complete
   // before broadcasting to the kitchen (same logic as sendNewItemsToKitchen).
   // This covers Scenarios B, C, D — all pending promises resolve here.
@@ -74,18 +70,41 @@ export async function sendToKitchenEffect (
     return
   }
 
-  // Rebuild dbItemIds excluding items handled by the retroactive path:
-  // items that had no db_order_item_id at press time were already sent to kitchen
-  // by addItemToBackend when they finished syncing (Scenario E).
+  // Rebuild dbItemIds from the FRESH order: send every item in this batch that
+  // has resolved a db_order_item_id by now — regardless of whether it had one at
+  // press time. The previous logic excluded items that only got their db id during
+  // the wait, trusting addItemToBackend's retroactive path (Scenario E) to send
+  // them. But on slow WiFi the retroactive path's "last sibling" gate can race
+  // with the marking step and silently skip such items, which is exactly the
+  // "sent 4, only 2 reached the kitchen" symptom. We now send them here too.
+  //
+  // Items still missing a db_order_item_id after the wait are the only ones left
+  // to the retroactive path. A possible double-send (effect + retroactive) is
+  // harmless: setting an item to the same kitchen status twice is idempotent.
   const sentLocalIds = new Set(itemIds)
   const freshSentItems = (freshOrder?.items ?? []).filter(
-    i =>
-      sentLocalIds.has(i.id) && hadDbIdAtPressTime.has(i.db_order_item_id ?? '')
+    i => sentLocalIds.has(i.id) && !!i.db_order_item_id
   )
   dbItemIds = freshSentItems.map(i => i.db_order_item_id!).filter(Boolean)
 
+  // Straggler safety net: any batch item that STILL has no db_order_item_id after
+  // the wait is left to addItemToBackend's retroactive path. That path can race
+  // and miss, so we also queue these locally — the offline queue replays the send
+  // once the id lands, guaranteeing delivery. (Idempotent if retroactive also fires.)
+  const stragglerIds = (freshOrder?.items ?? [])
+    .filter(i => sentLocalIds.has(i.id) && !i.db_order_item_id)
+    .map(i => i.id)
+  if (stragglerIds.length > 0) {
+    await queueFailedOperation(
+      'send_to_kitchen',
+      { localOrderId: orderId, localItemIds: stragglerIds, offline_batch: true },
+      orderId
+    )
+  }
+
   if (dbItemIds.length === 0) {
-    // All items were handled by the retroactive path — nothing left to do
+    // No items have a backend id yet — the queued stragglers (above) and the
+    // retroactive path will send them once their db_order_item_id lands.
     return
   }
 

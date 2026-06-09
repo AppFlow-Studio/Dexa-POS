@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Flame,
   Plus,
+  Printer,
   Send,
   X
 } from 'lucide-react-native'
@@ -51,6 +52,7 @@ interface CourseAccordionProps {
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
   onRemoveCourse?: (courseId: number) => void
+  onPressSendAllToKitchen?: () => void
   enableCoursing?: boolean
   isOvertime?: boolean
   overtimeMinutes?: number
@@ -251,25 +253,23 @@ function CourseGroupInner ({
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 9,
-                paddingVertical: 4,
-                borderRadius: 8,
-                backgroundColor: colors.teal + '18',
-                borderWidth: 1,
-                borderColor: colors.teal + '50'
+                gap: 4,
+                paddingHorizontal: 8,
+                height: 26,
+                borderRadius: 6,
+                backgroundColor: colors.teal
               }}
-              activeOpacity={0.6}
+              activeOpacity={0.8}
             >
-              <Send size={13} color={colors.teal} />
+              <Printer size={11} color={colors.onSolid} />
               <Text
                 style={{
-                  color: colors.teal,
-                  fontSize: 12,
-                  fontWeight: '700'
+                  color: colors.onSolid,
+                  fontSize: 11,
+                  fontWeight: '600'
                 }}
               >
-                Send to Kitchen
+                Send
               </Text>
             </TouchableOpacity>
           )}
@@ -484,6 +484,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onPrioritizeCourse,
   onResendCourse,
   onRemoveCourse,
+  onPressSendAllToKitchen,
   enableCoursing = true,
   isOvertime,
   overtimeMinutes
@@ -576,6 +577,18 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
 
     return Array.from(allCourses).sort((a, b) => a - b)
   }, [groupedItems, activeOrder, currentCourse, storeCourseNumbers])
+
+  // Total non-voided items still waiting to be sent — matches the filter used
+  // by TableOrderView.handleSendAllToKitchen so the badge can't over-promise.
+  const unsentItemCount = useMemo(
+    () =>
+      activeOrder?.items?.reduce(
+        (sum, i) =>
+          !i.is_voided && isKitchenItemUnsent(i) ? sum + (i.quantity ?? 1) : sum,
+        0
+      ) ?? 0,
+    [activeOrder?.items]
+  )
 
   // Track previous values to prevent re-triggering
   const prevCurrentCourse = useRef<number | undefined>(currentCourse)
@@ -792,6 +805,34 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
                 style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}
               >
                 New Course
+              </Text>
+            </TouchableOpacity>
+          )}
+          {onPressSendAllToKitchen && (
+            <TouchableOpacity
+              onPress={onPressSendAllToKitchen}
+              disabled={unsentItemCount === 0}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 13,
+                paddingVertical: 7,
+                borderRadius: 8,
+                backgroundColor: colors.teal,
+                opacity: unsentItemCount === 0 ? 0.4 : 1
+              }}
+              activeOpacity={0.8}
+            >
+              <Printer size={14} color={colors.onSolid} />
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: colors.onSolid
+                }}
+              >
+                Send All{unsentItemCount > 0 ? ` (${unsentItemCount})` : ''}
               </Text>
             </TouchableOpacity>
           )}

@@ -419,7 +419,10 @@ export function calculateOrderTotals (
     orderType,
     snapshottedRate,
     snapshottedAppliesOn,
-    snapshottedName
+    snapshottedName,
+    manualServiceCharge,
+    manualServiceChargeTaxable,
+    serverConfirmedServiceCharge,
   } = input
   const activeItems = items.filter(item => !item.is_voided && !item.isDraft)
 
@@ -685,7 +688,15 @@ export function calculateOrderTotals (
     partySize != null &&
     partySize >= serviceChargeRule.min_party_size
 
-  if (ruleEligible) {
+  if (manualServiceCharge != null) {
+    // Manager override — bypass rule eligibility entirely. The server is
+    // authoritative; we just mirror its flat dollar value locally so totals
+    // stay consistent before the next sync. is_manual=true is the gate, NOT
+    // a non-null rate, so both amount-mode and percent-mode overrides land here.
+    serviceCharge = new Decimal(manualServiceCharge)
+    cashServiceCharge = serviceCharge
+    serviceChargeName = snapshottedName ?? (effectiveName || 'Service Charge')
+  } else if (ruleEligible) {
     const cardBase =
       effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
     serviceCharge = cardBase
@@ -707,6 +718,13 @@ export function calculateOrderTotals (
         { partySize, threshold: serviceChargeRule!.min_party_size }
       )
     }
+  } else if (serverConfirmedServiceCharge != null && serverConfirmedServiceCharge > 0) {
+    // Rule eligibility failed locally (rules store not yet loaded, partySize
+    // unresolvable) but the server already applied SC. Use as a fallback so
+    // outstanding totals don't drop SC and under-collect from the customer.
+    serviceCharge = new Decimal(serverConfirmedServiceCharge)
+    cashServiceCharge = serviceCharge
+    serviceChargeName = snapshottedName ?? (effectiveName || 'Service Charge')
   }
 
   // =========================================================================
@@ -717,7 +735,17 @@ export function calculateOrderTotals (
   let serviceChargeTax = new Decimal(0)
   let cashServiceChargeTax = new Decimal(0)
 
-  if (ruleEligible && serviceChargeRule!.is_taxable) {
+  // SC tax applies in two cases, both mirroring calculate_order_totals_fast:
+  //  1) Rule-eligible SC whose rule has is_taxable = true.
+  //  2) Manual override flagged taxable (orders.service_charge_is_taxable),
+  //     surfaced here via manualServiceChargeTaxable. The server taxes the
+  //     overridden SC via the service_charge_is_taxable column fallback (the
+  //     rule_id is nulled on override), so the client must match or the
+  //     cashier prompt would diverge from the server-authoritative total.
+  const scIsTaxable =
+    (ruleEligible && serviceChargeRule!.is_taxable === true) ||
+    (manualServiceCharge != null && manualServiceChargeTaxable === true)
+  if (scIsTaxable && serviceCharge.gt(0)) {
     // Resolve the SC tax rate: prefer 'standard', fall back to the first non-zero
     // rate in the map (handles locations where the category key differs from 'standard').
     const rawScTaxRate =
@@ -1348,7 +1376,10 @@ export function hashCalculationInput (input: OrderCalculationInput): string {
       orderType: input.orderType ?? null,
       snapRate: input.snapshottedRate ?? null,
       snapAppliesOn: input.snapshottedAppliesOn ?? null,
-      snapName: input.snapshottedName ?? null
+      snapName: input.snapshottedName ?? null,
+      manual: input.manualServiceCharge ?? null,
+      manualTaxable: input.manualServiceChargeTaxable ?? null,
+      serverConfirmed: input.serverConfirmedServiceCharge ?? null,
     }
     // Don't include taxRatesMap in hash - it rarely changes
   }

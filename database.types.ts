@@ -23347,6 +23347,19 @@ export type Database = {
         }
         Returns: Json
       }
+      override_service_charge_v3: {
+        Args: {
+          p_order_id: string
+          p_manager_id: string
+          p_mode?: string
+          p_amount?: number
+          p_rate?: number
+          p_reason?: string
+          p_idempotency_key?: string
+          p_station_id?: string
+        }
+        Returns: Json
+      }
       phone_last10: { Args: { p: string }; Returns: string }
       ping: { Args: never; Returns: number }
       pos_staff_login:

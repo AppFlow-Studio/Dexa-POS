@@ -57,6 +57,15 @@ export interface OrderCalculationInput {
    */
   manualServiceCharge?: number | null;
   /**
+   * Whether the manually-overridden SC (manualServiceCharge) should be taxed.
+   * Snapshotted on the order as orders.service_charge_is_taxable. When true,
+   * SC tax is added to both card and cash totals using the standard tax rate —
+   * matching the server's calculate_order_totals_fast taxability fallback for
+   * overrides (where service_charge_rule_id is null). Ignored unless
+   * manualServiceCharge is set.
+   */
+  manualServiceChargeTaxable?: boolean | null;
+  /**
    * Wave D follow-up — server-confirmed SC fallback. Used when local rule
    * eligibility fails (rules store not loaded, partySize unresolvable) but
    * the server has already applied a rule-derived SC to the order. Without

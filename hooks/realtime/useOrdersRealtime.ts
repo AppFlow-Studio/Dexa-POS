@@ -205,6 +205,7 @@ export interface BroadcastOrderData {
   service_charge_applies_on?: 'pre_discount' | 'post_discount' | null
   service_charge_rule_id?: string | null
   service_charge_is_manual?: boolean | null
+  service_charge_is_taxable?: boolean | null
   total_amount: number
 
   // Card pricing (default - what credit card customers pay)
