@@ -244,6 +244,7 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       manualServiceCharge: activeOrder.service_charge_is_manual === true
         ? (activeOrder.service_charge ?? 0)
         : null,
+      manualServiceChargeTaxable: activeOrder.service_charge_is_taxable ?? null,
       serverConfirmedServiceCharge: activeOrder.service_charge_is_manual !== true
         ? (activeOrder.service_charge ?? null)
         : null,
@@ -409,6 +410,7 @@ export function useOrderTotals(
       manualServiceCharge: order.service_charge_is_manual === true
         ? (order.service_charge ?? 0)
         : null,
+      manualServiceChargeTaxable: order.service_charge_is_taxable ?? null,
       serverConfirmedServiceCharge: order.service_charge_is_manual !== true
         ? (order.service_charge ?? null)
         : null,

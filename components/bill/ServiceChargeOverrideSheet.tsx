@@ -9,7 +9,7 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { Receipt, X } from 'lucide-react-native'
-import React, { forwardRef, useMemo, useState } from 'react'
+import React, { forwardRef, useEffect, useMemo, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
 interface Props {
@@ -32,9 +32,21 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
   const [amountInput, setAmountInput] = useState('')
   const [percentInput, setPercentInput] = useState('')
   const [reason, setReason] = useState('')
+  // Default to the order's current taxability so re-editing a taxable SC keeps
+  // it taxable unless the manager explicitly toggles it off.
+  const [isTaxable, setIsTaxable] = useState<boolean>(
+    activeOrder?.service_charge_is_taxable ?? false
+  )
 
   const currentSC = totals?.serviceCharge ?? 0
   const scName = totals?.serviceChargeName || 'Service Charge'
+
+  // Keep the taxable toggle in sync when the active order changes (the sheet
+  // stays mounted, so the useState initializer won't re-run on order switch).
+  const orderTaxable = activeOrder?.service_charge_is_taxable ?? false
+  useEffect(() => {
+    setIsTaxable(orderTaxable)
+  }, [activeOrderId, orderTaxable])
 
   // Server-side guard rejects when any non-voided payment has status
   // captured / partially_refunded / refunded. normalizeFetchedPayment collapses
@@ -99,6 +111,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
           newAmount: flat,
           mode:      'amount',
           rate:      null,
+          isTaxable,
           reason:    reason.trim() || undefined,
         },
       })
@@ -113,6 +126,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
           newAmount: flat,
           mode:      'percent',
           rate:      Math.round(parsedPercent * 100) / 100,
+          isTaxable,
           reason:    reason.trim() || undefined,
         },
       })
@@ -352,6 +366,54 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
             )}
           </>
         )}
+
+        {/* Taxable toggle */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: colors.card,
+            borderRadius: 10,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 20,
+          }}
+        >
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.heading }}>
+              Taxable
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+              Apply tax on the service charge amount.
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => !hasBlockingPayment && setIsTaxable(t => !t)}
+            disabled={hasBlockingPayment}
+            style={{
+              width: 52,
+              height: 30,
+              borderRadius: 15,
+              padding: 3,
+              justifyContent: 'center',
+              alignItems: isTaxable ? 'flex-end' : 'flex-start',
+              backgroundColor: isTaxable ? colors.teal : colors.border,
+              opacity: hasBlockingPayment ? 0.5 : 1,
+            }}
+          >
+            <View
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: '#FFFFFF',
+              }}
+            />
+          </TouchableOpacity>
+        </View>
 
         {/* Reason */}
         <Text

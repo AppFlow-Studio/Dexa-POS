@@ -729,6 +729,7 @@ export function transformBroadcastToOrder (
       backendOrder.service_charge_applies_on ?? null,
     service_charge_rule_id: backendOrder.service_charge_rule_id ?? null,
     service_charge_is_manual: backendOrder.service_charge_is_manual ?? false,
+    service_charge_is_taxable: backendOrder.service_charge_is_taxable ?? null,
 
     // Eagerly restore discount metadata when order_discounts are present (from query joins)
     ...(backendOrder.order_discounts && backendOrder.order_discounts.length > 0
@@ -835,6 +836,7 @@ export interface FetchedOrderData {
   service_charge_applies_on?: string | null
   service_charge_rule_id?: string | null
   service_charge_is_manual?: boolean | null
+  service_charge_is_taxable?: boolean | null
   total_amount?: number | null
   card_subtotal?: number | null
   card_tax_amount?: number | null
@@ -1258,6 +1260,7 @@ export function normalizeFetchedOrder (
         | null) ?? null,
     service_charge_rule_id: fetchedOrder.service_charge_rule_id ?? null,
     service_charge_is_manual: fetchedOrder.service_charge_is_manual ?? false,
+    service_charge_is_taxable: fetchedOrder.service_charge_is_taxable ?? null,
     total_amount: fetchedOrder.total_amount ?? 0,
     card_subtotal: fetchedOrder.card_subtotal ?? 0,
     card_tax_amount: fetchedOrder.card_tax_amount ?? 0,

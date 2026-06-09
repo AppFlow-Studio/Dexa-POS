@@ -192,6 +192,9 @@ const ManagerPinModal = () => {
       const newAmount = isEdit ? actionToPerform.payload.newAmount : 0
       const overrideMode = isEdit ? (actionToPerform.payload.mode ?? 'amount') : 'amount'
       const overrideRate = isEdit ? (actionToPerform.payload.rate ?? null) : null
+      // Edit: explicit taxable choice from the override sheet. Remove: leave
+      // taxability untouched (null = server carries over prior value).
+      const overrideIsTaxable = isEdit ? actionToPerform.payload.isTaxable : null
       const stationId =
         useStoreSettingsStore.getState().selectedStation?.id ?? null
       setIsSubmitting(true)
@@ -205,6 +208,7 @@ const ManagerPinModal = () => {
           p_rate:       overrideMode === 'percent' ? overrideRate : null,
           p_reason:     actionToPerform.payload.reason ?? null,
           p_station_id: stationId,
+          p_is_taxable: overrideIsTaxable,
         },
       )
       setIsSubmitting(false)

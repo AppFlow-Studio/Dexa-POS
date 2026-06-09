@@ -1798,6 +1798,8 @@ export class OrderService {
       p_rate?: number | null;
       p_reason?: string | null;
       p_station_id?: string | null;
+      /** Whether the overridden SC should be taxed. null = carry over prior taxability. */
+      p_is_taxable?: boolean | null;
     },
   ): Promise<{ data: { success: boolean } | null; error: Error | null }> {
     const { data, error } = await _runWithDeadline<any>(
@@ -1813,6 +1815,7 @@ export class OrderService {
             p_rate:        params.p_rate ?? null,
             p_reason:      params.p_reason ?? null,
             p_station_id:  params.p_station_id ?? null,
+            p_is_taxable:  params.p_is_taxable ?? null,
           })
           .abortSignal(signal);
         return { data: d, error: e };

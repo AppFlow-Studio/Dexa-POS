@@ -13,6 +13,8 @@ type OverrideAction =
         mode: 'amount' | 'percent';
         /** Percentage value 0-100 when mode='percent'; null when mode='amount'. */
         rate: number | null;
+        /** Whether the overridden SC should be taxed. */
+        isTaxable: boolean;
         reason?: string;
       };
     }

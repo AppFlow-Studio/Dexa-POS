@@ -421,6 +421,7 @@ export function calculateOrderTotals (
     snapshottedAppliesOn,
     snapshottedName,
     manualServiceCharge,
+    manualServiceChargeTaxable,
     serverConfirmedServiceCharge,
   } = input
   const activeItems = items.filter(item => !item.is_voided && !item.isDraft)
@@ -734,13 +735,17 @@ export function calculateOrderTotals (
   let serviceChargeTax = new Decimal(0)
   let cashServiceChargeTax = new Decimal(0)
 
-  // SC tax only applies when the SC came from rule eligibility — not from a
-  // manual override or server-confirmed fallback. calculate_order_totals_fast
-  // (server) reads cash_tax_amount from order_items only; it has no SC tax
-  // path. Applying SC tax on manual overrides would make the client total
-  // diverge from the server-authoritative cash_total, causing the payment
-  // amount shown to the cashier to exceed what the server expects.
-  if (ruleEligible && serviceChargeRule!.is_taxable) {
+  // SC tax applies in two cases, both mirroring calculate_order_totals_fast:
+  //  1) Rule-eligible SC whose rule has is_taxable = true.
+  //  2) Manual override flagged taxable (orders.service_charge_is_taxable),
+  //     surfaced here via manualServiceChargeTaxable. The server taxes the
+  //     overridden SC via the service_charge_is_taxable column fallback (the
+  //     rule_id is nulled on override), so the client must match or the
+  //     cashier prompt would diverge from the server-authoritative total.
+  const scIsTaxable =
+    (ruleEligible && serviceChargeRule!.is_taxable === true) ||
+    (manualServiceCharge != null && manualServiceChargeTaxable === true)
+  if (scIsTaxable && serviceCharge.gt(0)) {
     // Resolve the SC tax rate: prefer 'standard', fall back to the first non-zero
     // rate in the map (handles locations where the category key differs from 'standard').
     const rawScTaxRate =
@@ -1373,6 +1378,7 @@ export function hashCalculationInput (input: OrderCalculationInput): string {
       snapAppliesOn: input.snapshottedAppliesOn ?? null,
       snapName: input.snapshottedName ?? null,
       manual: input.manualServiceCharge ?? null,
+      manualTaxable: input.manualServiceChargeTaxable ?? null,
       serverConfirmed: input.serverConfirmedServiceCharge ?? null,
     }
     // Don't include taxRatesMap in hash - it rarely changes
