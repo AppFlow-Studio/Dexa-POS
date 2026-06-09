@@ -1,7 +1,10 @@
+import NotifyCustomerModal from '@/components/notifications/NotifyCustomerModal'
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import AppNoticeModal from '@/components/ui/AppNoticeModal'
 import { useToast } from '@/contexts/ToastContext'
 import { useTableTimerTick } from '@/hooks/useTableTimerTick'
+import { NotifyContext, TemplateKey } from '@/lib/notifyTemplates'
+import { formatUsPhone, normalizeUsPhoneDigits } from '@/lib/phone'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import { getCachedCustomers } from '@/services/customer'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
@@ -279,7 +282,7 @@ const AddEntryForm: React.FC<{
   const applyCustomer = useCallback((customer: CustomerWithMeta) => {
     setLinkedCustomer(customer)
     setName(customer.name ?? '')
-    setPhone(customer.phone ?? customer.phoneNumber ?? '')
+    setPhone(formatUsPhone(customer.phone ?? customer.phoneNumber ?? ''))
     setCustomerQuery('')
   }, [])
 
@@ -290,7 +293,7 @@ const AddEntryForm: React.FC<{
   }, [])
 
   const updatePhone = useCallback((value: string) => {
-    setPhone(value)
+    setPhone(formatUsPhone(value))
     setLinkedCustomer(null)
     setCustomerQuery(value)
   }, [])
@@ -316,12 +319,13 @@ const AddEntryForm: React.FC<{
   }, [allCustomers, applyCustomer, linkedCustomer, name, phone])
 
   const handleSubmit = () => {
+    const phoneDigits = normalizeUsPhoneDigits(phone)
     onSubmit({
       name: name || 'Guest',
       partySize: parseInt(partySize || '2', 10),
       quotedTime: parseInt(quotedTime || '15', 10),
       notes,
-      phone: phone || undefined
+      phone: phoneDigits || undefined
     })
     setName('')
     setPartySize('')
@@ -501,7 +505,8 @@ const AddEntryForm: React.FC<{
           value={phone}
           onChangeText={updatePhone}
           keyboardType='phone-pad'
-          placeholder='Phone number'
+          maxLength={14}
+          placeholder='(555) 123-4567'
           placeholderTextColor={colors.muted}
           style={{
             backgroundColor: colors.screen,
@@ -525,7 +530,10 @@ const AddEntryForm: React.FC<{
           onChangeText={setNotes}
           placeholder='Special requests, allergies...'
           placeholderTextColor={colors.muted}
-          multiline
+          returnKeyType='done'
+          blurOnSubmit
+          onSubmitEditing={Keyboard.dismiss}
+          maxLength={500}
           style={{
             backgroundColor: colors.screen,
             color: 'white',
@@ -533,9 +541,7 @@ const AddEntryForm: React.FC<{
             padding: 14,
             borderRadius: 12,
             borderWidth: 1,
-            borderColor: colors.border,
-            height: 80,
-            textAlignVertical: 'top'
+            borderColor: colors.border
           }}
         />
       </View>
@@ -694,6 +700,7 @@ const WaitlistBottomSheet: React.FC = () => {
   const [selectedEntry, setSelectedEntry] = useState<WaitlistEntry | null>(null)
   const [isTablePickerOpen, setTablePickerOpen] = useState(false)
   const [itemToDelete, setItemToDelete] = useState<WaitlistEntry | null>(null)
+  const [notifyTarget, setNotifyTarget] = useState<WaitlistEntry | null>(null)
   const [notice, setNotice] = useState<{
     title: string
     description: string
@@ -770,12 +777,10 @@ const WaitlistBottomSheet: React.FC = () => {
     ]
   )
 
-  // Notify action
+  // Notify action — opens the NotifyCustomerModal (templates + custom message)
   const handleNotify = useCallback(
-    async (entry: WaitlistEntry) => {
+    (entry: WaitlistEntry) => {
       const phoneDigits = entry.phone?.replace(/\D/g, '') ?? ''
-
-      // In-app alert only when no phone on file
       if (!phoneDigits) {
         setNotice({
           title: 'No Phone Number',
@@ -784,63 +789,43 @@ const WaitlistBottomSheet: React.FC = () => {
         })
         return
       }
-
-      try {
-        const result = await useWaitlistStore
-          .getState()
-          .notifyWaitlistPartyAsync(entry.id)
-
-        if (!result.success) {
-          if (result.error === 'sms_failed') {
-            setNotice({
-              title: 'SMS Failed',
-              description:
-                result.message ||
-                'Could not send SMS. Failure logged. Please notify guest verbally.',
-              variant: 'error'
-            })
-          } else {
-            setNotice({
-              title: 'Could Not Notify',
-              description: result.error || 'Failed to notify party',
-              variant: 'error'
-            })
-          }
-        } else if (result.sms) {
-          show({
-            title: 'Notified',
-            message: `SMS sent to ${entry.party_name}`,
-            type: 'success'
-          })
-        } else if (result.reason === 'no_valid_phone') {
-          show({
-            title: 'Invalid Phone Number',
-            message: `Could not send SMS — invalid number on file. Please notify ${entry.party_name} verbally.`,
-            type: 'warning'
-          })
-        } else {
-          // Fallback: RPC succeeded but SMS was not sent for an unhandled reason
-          show({
-            title: 'Party Notified',
-            message: `${entry.party_name} has been notified`,
-            type: 'success'
-          })
-        }
-
-        if (result.success && selectedStore?.id) {
-          fetchWaitlist(selectedStore.id)
-        }
-      } catch (err: any) {
-        show({
-          title: 'Could Not Notify',
-          message:
-            err.message ||
-            `Failed to notify ${entry.party_name}. Please try again.`,
-          type: 'error'
-        })
-      }
+      setNotifyTarget(entry)
     },
-    [show, selectedStore?.id, fetchWaitlist]
+    []
+  )
+
+  const notifyContext: NotifyContext | null = notifyTarget
+    ? notifyTarget.status === 'notified'
+      ? {
+          kind: 'waitlist_update',
+          partyName: notifyTarget.party_name,
+          storeName: selectedStore?.name ?? 'our restaurant'
+        }
+      : {
+          kind: 'waitlist_ready',
+          partyName: notifyTarget.party_name,
+          storeName: selectedStore?.name ?? 'our restaurant'
+        }
+    : null
+
+  const handleSendNotify = useCallback(
+    async (message: string, templateKey: TemplateKey) => {
+      if (!notifyTarget) return { success: false, error: 'no_target' }
+      const result = await useWaitlistStore
+        .getState()
+        .sendWaitlistCustomNotification(notifyTarget.id, message, templateKey)
+      if (result.success) {
+        show({
+          title: 'Notified',
+          message: `SMS sent to ${notifyTarget.party_name}`,
+          type: 'success'
+        })
+        if (selectedStore?.id)
+          fetchWaitlist(selectedStore.id, { silent: true })
+      }
+      return result
+    },
+    [notifyTarget, show, selectedStore?.id, fetchWaitlist]
   )
 
   // Delete confirm
@@ -992,6 +977,20 @@ const WaitlistBottomSheet: React.FC = () => {
           title={notice.title}
           description={notice.description}
           variant={notice.variant}
+        />
+      )}
+
+      {notifyTarget && notifyContext && (
+        <NotifyCustomerModal
+          visible={!!notifyTarget}
+          onClose={() => setNotifyTarget(null)}
+          context={notifyContext}
+          recipient={{
+            phone: notifyTarget.phone,
+            partyName: notifyTarget.party_name,
+            storeName: selectedStore?.name ?? 'our restaurant'
+          }}
+          onSend={handleSendNotify}
         />
       )}
     </>

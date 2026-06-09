@@ -1,9 +1,11 @@
 import { AddWaitlistModal } from '@/components/host-station/AddWaitlistModal'
 import { TableSelectionSheet } from '@/components/host-station/TableSelectionSheet'
+import NotifyCustomerModal from '@/components/notifications/NotifyCustomerModal'
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import { WaitlistCard } from '@/components/tables/waitlist-shared'
 import AppNoticeModal from '@/components/ui/AppNoticeModal'
 import { useToast } from '@/contexts/ToastContext'
+import { NotifyContext, TemplateKey } from '@/lib/notifyTemplates'
 import { colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -54,6 +56,7 @@ const WaitlistPanel: React.FC = () => {
   } | null>(null)
   const [entryToEdit, setEntryToEdit] = useState<WaitlistEntry | null>(null)
   const [isEditLoading, setIsEditLoading] = useState(false)
+  const [notifyTarget, setNotifyTarget] = useState<WaitlistEntry | null>(null)
 
   useEffect(() => {
     if (selectedStore?.id) fetchWaitlist(selectedStore.id)
@@ -102,60 +105,52 @@ const WaitlistPanel: React.FC = () => {
     ]
   )
 
-  const handleNotify = useCallback(
-    async (entry: WaitlistEntry) => {
-      const phoneDigits = entry.phone?.replace(/\D/g, '') ?? ''
-      if (!phoneDigits) {
-        setNotice({
-          title: 'No Phone Number',
-          description: `Please call out "${entry.party_name}" — no phone on file`,
-          variant: 'warning'
-        })
-        return
-      }
-      try {
-        const result = await useWaitlistStore
-          .getState()
-          .notifyWaitlistPartyAsync(entry.id)
-        if (!result.success) {
-          setNotice({
-            title:
-              result.error === 'sms_failed' ? 'SMS Failed' : 'Could Not Notify',
-            description:
-              result.message || result.error || 'Failed to notify party',
-            variant: 'error'
-          })
-        } else if (result.sms) {
-          show({
-            title: 'Notified',
-            message: `SMS sent to ${entry.party_name}`,
-            type: 'success'
-          })
-        } else if (result.reason === 'no_valid_phone') {
-          show({
-            title: 'Invalid Phone Number',
-            message: `Could not send SMS — invalid number on file. Please notify ${entry.party_name} verbally.`,
-            type: 'warning'
-          })
-        } else {
-          show({
-            title: 'Party Notified',
-            message: `${entry.party_name} has been notified`,
-            type: 'success'
-          })
+  const handleNotify = useCallback((entry: WaitlistEntry) => {
+    const phoneDigits = entry.phone?.replace(/\D/g, '') ?? ''
+    if (!phoneDigits) {
+      setNotice({
+        title: 'No Phone Number',
+        description: `Please call out "${entry.party_name}" — no phone on file`,
+        variant: 'warning'
+      })
+      return
+    }
+    setNotifyTarget(entry)
+  }, [])
+
+  const notifyContext: NotifyContext | null = notifyTarget
+    ? notifyTarget.status === 'notified'
+      ? {
+          kind: 'waitlist_update',
+          partyName: notifyTarget.party_name,
+          storeName: selectedStore?.name ?? 'our restaurant'
         }
-        if (result.success && selectedStore?.id) fetchWaitlist(selectedStore.id)
-      } catch (err: any) {
-        show({
-          title: 'Could Not Notify',
-          message:
-            err.message ||
-            `Failed to notify ${entry.party_name}. Please try again.`,
-          type: 'error'
-        })
+      : {
+          kind: 'waitlist_ready',
+          partyName: notifyTarget.party_name,
+          storeName: selectedStore?.name ?? 'our restaurant'
+        }
+    : null
+
+  const handleSendNotify = useCallback(
+    async (message: string, templateKey: TemplateKey) => {
+      if (!notifyTarget) {
+        return { success: false, error: 'no_target' }
       }
+      const result = await useWaitlistStore
+        .getState()
+        .sendWaitlistCustomNotification(notifyTarget.id, message, templateKey)
+      if (result.success) {
+        show({
+          title: 'Notified',
+          message: `SMS sent to ${notifyTarget.party_name}`,
+          type: 'success'
+        })
+        if (selectedStore?.id) fetchWaitlist(selectedStore.id, { silent: true })
+      }
+      return result
     },
-    [show, selectedStore?.id, fetchWaitlist]
+    [notifyTarget, show, selectedStore?.id, fetchWaitlist]
   )
 
   const confirmDelete = useCallback(async () => {
@@ -398,6 +393,19 @@ const WaitlistPanel: React.FC = () => {
           title={notice.title}
           description={notice.description}
           variant={notice.variant}
+        />
+      )}
+      {notifyTarget && notifyContext && (
+        <NotifyCustomerModal
+          visible={!!notifyTarget}
+          onClose={() => setNotifyTarget(null)}
+          context={notifyContext}
+          recipient={{
+            phone: notifyTarget.phone,
+            partyName: notifyTarget.party_name,
+            storeName: selectedStore?.name ?? 'our restaurant'
+          }}
+          onSend={handleSendNotify}
         />
       )}
     </View>
