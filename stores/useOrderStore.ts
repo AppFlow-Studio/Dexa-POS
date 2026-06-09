@@ -22,6 +22,10 @@ import {
 } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import {
+  decrementDiscountUsage,
+  incrementDiscountUsage,
+} from "@/services/discountUsageTracker";
+import {
   completePaymentJournal,
   failPaymentJournal,
   getJournalById,
@@ -164,6 +168,23 @@ const resolveTableNameForOrder = (tableIdOrName?: string | null): string | null 
   return useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ?? tableIdOrName;
 };
 
+function isOrderTableStillSeating(order?: OrderProfile | null): boolean {
+  if (!order || order.order_type !== "dine_in") return false;
+
+  const sessionStore = useTableSessionStore.getState();
+  if (order.session_id) {
+    const linked = sessionStore.getSessionBySessionId(order.session_id);
+    if (linked?.session.status === "seating") return true;
+  }
+  if (order.local_session_id) {
+    const linked = sessionStore.getSessionBySessionId(order.local_session_id);
+    if (linked?.session.status === "seating") return true;
+  }
+  const tableId = order.service_location_id;
+  if (!tableId) return false;
+  return sessionStore.getSession(tableId)?.status === "seating";
+}
+
 // ============================================================================
 // CART-EDIT OWNERSHIP GUARD (Lever 2)
 // ============================================================================
@@ -279,6 +300,7 @@ function buildServiceChargeInputForOrder(
   | "snapshottedAppliesOn"
   | "snapshottedName"
   | "manualServiceCharge"
+  | "manualServiceChargeTaxable"
   | "serverConfirmedServiceCharge"
 > {
   if (!order) return {};
@@ -350,6 +372,7 @@ function buildServiceChargeInputForOrder(
     snapshottedAppliesOn: order.service_charge_applies_on ?? null,
     snapshottedName: order.service_charge_name ?? null,
     manualServiceCharge,
+    manualServiceChargeTaxable: order.service_charge_is_taxable ?? null,
     serverConfirmedServiceCharge,
   };
 }
@@ -3058,7 +3081,14 @@ const syncPaymentToBackend = async (
               item.db_order_item_id || "",
             );
             if (typeof backendPaidQty === "number") {
-              return { ...item, paidQuantity: backendPaidQty };
+              // Patch 3: backend confirmed → drop the optimistic-payment
+              // fingerprint; the FIFO absorb no longer needs to protect
+              // this item from a race.
+              return {
+                ...item,
+                paidQuantity: backendPaidQty,
+                pendingPaymentSeq: undefined,
+              };
             }
             return item;
           });
@@ -3545,6 +3575,14 @@ interface OrderState {
     localSessionId?: string; // Local session ID for offline
     orderId?: string; // Pre-generated order ID for optimistic seating
   }) => OrderProfile;
+  /**
+   * Eagerly create the backend row for an order that only exists locally
+   * (no db_order_id yet). Used so takeout orders create on the backend
+   * immediately — mirroring dine-in — instead of lazily on first item add.
+   * Resolves to the db_order_id (or "pending_offline"/null on failure).
+   * No-op (returns existing db_order_id) if already created.
+   */
+  ensureActiveOrderCreated: (orderId: string) => Promise<string | null>;
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
   setItemQuantity: (itemId: string, quantity: number) => void;
@@ -3588,7 +3626,7 @@ interface OrderState {
   setOpenedAt: (orderId: string, openedAt: string) => void;
   setClosedAt: (orderId: string, closedAt: string) => void;
   updateActiveOrderDetails: (details: Partial<OrderProfile>) => Promise<void>;
-  applyDiscountToCheck: (orderId: string, discount: Discount) => void;
+  applyDiscountToCheck: (orderId: string, discount: Discount, onError?: (msg: string) => void) => void;
   removeCheckDiscount: (orderId: string) => void;
   applyDiscountToItem: (orderId: string, itemId: string) => void;
   removeDiscountFromItem: (orderId: string, itemId: string) => void;
@@ -3826,6 +3864,16 @@ const pendingItemsBlockStart: Record<string, number> = {};
 const PENDING_ITEMS_BLOCK_MIN_MS = 3000;
 const PENDING_ITEMS_BLOCK_MAX_MS = 10000;
 
+// Monotonic counter for the `pendingPaymentSeq` fingerprint stamped on items
+// optimistically updated by addPaymentToOrder. The FIFO absorb in
+// _handleOrderBroadcast / upsertOrder / syncOrderFromBackendComplete prefers
+// stamped candidates over non-stamped same-composite-key items so a late
+// broadcast clone can't displace the in-flight optimistic copy. Cleared by
+// the data.success reconciliation path once the backend confirms via
+// `data.updated_items`.
+let _pendingPaymentSeqCounter = 0;
+const nextPendingPaymentSeq = () => ++_pendingPaymentSeqCounter;
+
 // Own-station mutation window: suppress _debouncedOrderRefresh from stale
 // own-station broadcasts that arrive shortly after a local mutation.
 // Set by addItemToActiveOrder, removeItemFromActiveOrder, etc.
@@ -4048,6 +4096,94 @@ export const useOrderStore = create<OrderState>()(
           }
           // For takeaway orders, the order status is managed manually (not based on item statuses)
         };
+
+        // --- Shared setOrderDbId callback ---
+        // Applies the local→backend re-key (or in-place db_order_id stamp) after
+        // a backend create. Previously duplicated inline at every create site
+        // (item-add, eager-create, confirm-draft, retry); centralised here so the
+        // re-key bookkeeping stays consistent across all of them.
+        const applySetOrderDbId: SetOrderDbIdFn = (
+          localId,
+          dbOrderId,
+          orderNumber,
+          displayNumber,
+          createdAt,
+          syncVersion,
+        ) => {
+          if (localId !== dbOrderId) {
+            set((state) => {
+              const existingOrder = state.ordersById[localId];
+              if (!existingOrder) return;
+              const snapshot = current(existingOrder);
+              delete state.ordersById[localId];
+              state.ordersById[dbOrderId] = freeze({
+                ...snapshot,
+                id: dbOrderId,
+                db_order_id: dbOrderId,
+                order_number: orderNumber,
+                display_number: displayNumber,
+                sync_status: "synced" as const,
+                sync_version: syncVersion ?? 1,
+                opened_at: snapshot.opened_at || createdAt,
+              });
+              const idx = state.orderIds.indexOf(localId);
+              if (idx !== -1) state.orderIds[idx] = dbOrderId;
+              if (state.activeOrderId === localId)
+                state.activeOrderId = dbOrderId;
+              const wsIdx = state.workingSetOrderIds.indexOf(localId);
+              if (wsIdx !== -1) {
+                state.workingSetOrderIds[wsIdx] = dbOrderId;
+                delete state._workingSetLookup[localId];
+                state._workingSetLookup[dbOrderId] = true;
+              }
+              state.dbOrderIdIndex[dbOrderId] = dbOrderId;
+              delete state.dbOrderIdIndex[localId];
+              if (state.persistableOrderIds[localId]) {
+                delete state.persistableOrderIds[localId];
+                state.persistableOrderIds[dbOrderId] = true;
+              }
+              // Drop from unsynced — it now has a backend row (or queued create).
+              state.unsyncedOrderIds = state.unsyncedOrderIds.filter(
+                (id) => id !== localId,
+              );
+              syncTableOrderIdIndexForOrder(state, dbOrderId, snapshot);
+            });
+
+            const existingChain = orderAdditionChains.get(localId);
+            if (existingChain) {
+              orderAdditionChains.set(dbOrderId, existingChain);
+              orderAdditionChains.delete(localId);
+            }
+            const existingPending = pendingItemAdditions.get(localId);
+            if (existingPending) {
+              pendingItemAdditions.set(dbOrderId, existingPending);
+              pendingItemAdditions.delete(localId);
+            }
+
+            rekeyLinkedStores(localId, dbOrderId);
+          } else {
+            set((state) => {
+              const order = state.ordersById[localId];
+              if (!order) return;
+              const previousOrder = current(order);
+              order.db_order_id = dbOrderId;
+              order.order_number = orderNumber;
+              order.display_number = displayNumber;
+              order.sync_status = "synced";
+              order.sync_version = syncVersion ?? 1;
+              order.opened_at = order.opened_at || createdAt;
+              state.dbOrderIdIndex[dbOrderId] = localId;
+              state.unsyncedOrderIds = state.unsyncedOrderIds.filter(
+                (id) => id !== localId,
+              );
+              syncTableOrderIdIndexForOrder(state, localId, previousOrder);
+            });
+          }
+
+          localIdToDbOrderId.set(localId, dbOrderId);
+          persistLocalIdMap();
+        };
+
         // --- Helper function to generate a unique composite key for cart items ---
         // Memoized via WeakMap keyed on customizations object reference
         const compositeKeyCache = new WeakMap<
@@ -4577,8 +4713,43 @@ export const useOrderStore = create<OrderState>()(
             const state = get();
             const { currentStationId } = state;
             // O(1) order lookup via direct key or dbOrderIdIndex
-            const localOrderKey = state.dbOrderIdIndex[dbOrderId] ?? dbOrderId;
-            const localOrder = state.ordersById[localOrderKey] ?? null;
+            let localOrderKey: string =
+              state.dbOrderIdIndex[dbOrderId] ?? dbOrderId;
+            let localOrder: OrderProfile | null =
+              state.ordersById[localOrderKey] ?? null;
+
+            // [FIFO-ORDER-BLEED] guard: if the routed-to local entry is bound
+            // to a different db_order_id than the broadcast's, the
+            // dbOrderIdIndex is stale and merging would leak items from this
+            // broadcast into the wrong cart (the S2-0013 Blueberry Muffin
+            // scenario). Treat the local entry as missing so the broadcast
+            // routes through a fresh upsert under dbOrderId instead of
+            // mutating the wrong order. The mismatch is logged so the next
+            // recurrence captures the bleed source.
+            if (
+              localOrder &&
+              localOrder.db_order_id &&
+              localOrder.db_order_id !== dbOrderId
+            ) {
+              console.warn(
+                "[FIFO-ORDER-BLEED] _handleOrderBroadcast routed broadcast to mismatched local entry — skipping merge",
+                {
+                  broadcastDbOrderId: dbOrderId,
+                  localOrderKey,
+                  localOrderDbId: localOrder.db_order_id,
+                  incomingItemIds: (backendOrder.order_items ?? [])
+                    .map((it: any) => it?.id)
+                    .filter(Boolean),
+                  incomingItemNames: (backendOrder.order_items ?? [])
+                    .map((it: any) => it?.menu_item_name ?? it?.name)
+                    .filter(Boolean),
+                  indexHas: dbOrderId in state.dbOrderIdIndex,
+                },
+              );
+              localOrder = null;
+              localOrderKey = dbOrderId;
+            }
+
             const currentLocationId =
               useStoreSettingsStore.getState().selectedStore?.id;
 
@@ -5039,17 +5210,31 @@ export const useOrderStore = create<OrderState>()(
                         // but hasn't called setState() to stamp db_order_item_id locally yet.
                         // In that window the broadcast item appears in updatedSyncedItems AND
                         // the local copy appears in localPendingItems — creating a duplicate.
-                        // Absorbing by unique menuItemId prevents the duplicate being written.
+                        // FIFO by menuItemId: each unmatched broadcast twin claims the
+                        // oldest unclaimed local pending candidate. (Skipping on ambiguity
+                        // here left duplicates for items ordered ≥2× while syncing.)
                         const broadcastClaimedPendingIds = new Set<string>();
                         {
+                          // Composite key (menuItemId + size + addons + modifiers
+                          // + notes) — previously this was `menuItemId || name`
+                          // which collapsed items differing only in modifiers
+                          // into the same FIFO bucket. With the composite key
+                          // a Black Coffee (plain) and a Black Coffee (oat
+                          // milk) live in distinct buckets and never absorb
+                          // each other's pending twin. Patch 3 also stamps
+                          // `pendingPaymentSeq` on optimistically-paid items
+                          // so the FIFO prefers those over a non-stamped
+                          // late-arriving broadcast clone.
                           const localPendingByKey = new Map<
                             string,
                             CartItem[]
                           >();
                           for (const pendingItem of localPendingItems) {
                             if (pendingItem.isDraft) continue;
-                            const key =
-                              pendingItem.menuItemId || pendingItem.name;
+                            const key = generateItemCompositeKey(
+                              pendingItem.menuItemId,
+                              pendingItem.customizations,
+                            );
                             if (!localPendingByKey.has(key))
                               localPendingByKey.set(key, []);
                             localPendingByKey.get(key)!.push(pendingItem);
@@ -5066,14 +5251,23 @@ export const useOrderStore = create<OrderState>()(
                             );
                             if (alreadyMatched) continue;
 
-                            const key = si.menuItemId || si.name;
-                            const candidates = (
-                              localPendingByKey.get(key) ?? []
-                            ).filter(
-                              (c) => !broadcastClaimedPendingIds.has(c.id),
+                            const key = generateItemCompositeKey(
+                              si.menuItemId,
+                              si.customizations,
                             );
-                            // Only absorb when unambiguous (exactly one pending candidate)
-                            if (candidates.length !== 1) continue;
+                            const bucket = localPendingByKey.get(key) ?? [];
+                            const stamped = bucket.find(
+                              (c) =>
+                                !broadcastClaimedPendingIds.has(c.id) &&
+                                c.pendingPaymentSeq !== undefined,
+                            );
+                            const candidates = stamped
+                              ? [stamped]
+                              : bucket.filter(
+                                  (c) =>
+                                    !broadcastClaimedPendingIds.has(c.id),
+                                );
+                            if (candidates.length === 0) continue;
 
                             const pendingItem = candidates[0];
                             broadcastClaimedPendingIds.add(pendingItem.id);
@@ -5126,13 +5320,26 @@ export const useOrderStore = create<OrderState>()(
                         );
 
                         // Combine: filtered synced items + local pending (excluding absorbed) + locally-synced-but-not-yet-in-broadcast
-                        mergedItems = [
+                        const concatMergedItems = [
                           ...filteredSyncedItems,
                           ...localPendingItems.filter(
                             (item) => !broadcastClaimedPendingIds.has(item.id),
                           ),
                           ...localSyncedNotInBroadcast,
                         ];
+
+                        // Defensive dedupe by db_order_item_id (first wins).
+                        // Items without a db_order_item_id pass through unchanged.
+                        const seenBroadcastDbIds = new Set<string>();
+                        mergedItems = [];
+                        for (const it of concatMergedItems) {
+                          if (it.db_order_item_id) {
+                            if (seenBroadcastDbIds.has(it.db_order_item_id))
+                              continue;
+                            seenBroadcastDbIds.add(it.db_order_item_id);
+                          }
+                          mergedItems.push(it);
+                        }
 
                         // Preserve local item ordering — broadcasts may return
                         // items in a different order than the user added them.
@@ -5805,7 +6012,8 @@ export const useOrderStore = create<OrderState>()(
             // to find orders stored under a mapped temp key (e.g. "local_order_xxx").
             // Without this, a broadcast UPDATE for a rekeyed-in-flight order creates
             // a duplicate entry with empty items at ordersById[dbOrderId].
-            let existing = get().ordersById[dbOrderId];
+            let existing: OrderProfile | undefined =
+              get().ordersById[dbOrderId];
             const tempAliasKey = Object.keys(get().ordersById).find(
               (key) =>
                 key !== dbOrderId &&
@@ -5831,6 +6039,36 @@ export const useOrderStore = create<OrderState>()(
                 get().rekeyOrder(indexedKey, dbOrderId);
                 existing = get().ordersById[dbOrderId];
               }
+            }
+
+            // [FIFO-ORDER-BLEED] guard: refuse to merge the incoming broadcast
+            // into the resolved `existing` if its db_order_id doesn't match the
+            // broadcast's. This catches a stale dbOrderIdIndex / wrong-rekey
+            // routing the wrong order's items into another local cart (the
+            // S2-0013 Blueberry Muffin scenario). On mismatch, drop `existing`
+            // so the rest of upsertOrder creates a fresh entry under dbOrderId
+            // rather than mutating the wrong order's items array.
+            if (
+              existing &&
+              existing.db_order_id &&
+              existing.db_order_id !== dbOrderId
+            ) {
+              console.warn(
+                "[FIFO-ORDER-BLEED] upsertOrder resolved to mismatched local entry — dropping `existing` to force clean upsert",
+                {
+                  broadcastDbOrderId: dbOrderId,
+                  existingDbId: existing.db_order_id,
+                  existingSessionId: existing.session_id,
+                  incomingSessionId: backendOrder.session_id ?? null,
+                  incomingItemIds: (backendOrder.order_items ?? [])
+                    .map((it: any) => it?.id)
+                    .filter(Boolean),
+                  incomingItemNames: (backendOrder.order_items ?? [])
+                    .map((it: any) => it?.menu_item_name ?? it?.name)
+                    .filter(Boolean),
+                },
+              );
+              existing = undefined;
             }
 
             if (existing) {
@@ -5952,18 +6190,41 @@ export const useOrderStore = create<OrderState>()(
                   const claimedPendingIds = new Set<string>();
                   const pendingByKey = new Map<string, CartItem[]>();
 
+                  // Composite key — same upgrade as _handleOrderBroadcast.
+                  // Items differing only in customizations (size / addons /
+                  // modifiers / notes) get distinct buckets, so a plain
+                  // Black Coffee can't claim an oat-milk Black Coffee.
                   for (const pendingItem of localPendingItems) {
-                    const key = pendingItem.menuItemId || pendingItem.name;
+                    const key = generateItemCompositeKey(
+                      pendingItem.menuItemId,
+                      pendingItem.customizations,
+                    );
                     if (!pendingByKey.has(key)) pendingByKey.set(key, []);
                     pendingByKey.get(key)!.push(pendingItem);
                   }
 
+                  // FIFO absorb: each server twin claims the oldest unclaimed
+                  // pending candidate by composite key. A `pendingPaymentSeq`-
+                  // stamped candidate is preferred (Patch 3) so an
+                  // optimistically-paid item is never lost to a late broadcast
+                  // clone arriving in the same race window.
                   orderProfile.items = orderProfile.items.map((serverItem) => {
-                    const key = serverItem.menuItemId || serverItem.name;
-                    const candidates = (pendingByKey.get(key) ?? []).filter(
-                      (item) => !claimedPendingIds.has(item.id),
+                    const key = generateItemCompositeKey(
+                      serverItem.menuItemId,
+                      serverItem.customizations,
                     );
-                    if (candidates.length !== 1) return serverItem;
+                    const bucket = pendingByKey.get(key) ?? [];
+                    const stamped = bucket.find(
+                      (item) =>
+                        !claimedPendingIds.has(item.id) &&
+                        item.pendingPaymentSeq !== undefined,
+                    );
+                    const candidates = stamped
+                      ? [stamped]
+                      : bucket.filter(
+                          (item) => !claimedPendingIds.has(item.id),
+                        );
+                    if (candidates.length === 0) return serverItem;
 
                     const pendingItem = candidates[0];
                     claimedPendingIds.add(pendingItem.id);
@@ -5977,13 +6238,25 @@ export const useOrderStore = create<OrderState>()(
                     };
                   });
 
-                  orderProfile.items = [
+                  const concatItems = [
                     ...orderProfile.items,
                     ...localPendingItems.filter(
                       (item) => !claimedPendingIds.has(item.id),
                     ),
                     ...localDraftItems,
                   ];
+                  // Defensive dedupe by db_order_item_id (first wins). Items
+                  // without a db_order_item_id pass through unchanged.
+                  const seenDbIds = new Set<string>();
+                  const deduped: CartItem[] = [];
+                  for (const it of concatItems) {
+                    if (it.db_order_item_id) {
+                      if (seenDbIds.has(it.db_order_item_id)) continue;
+                      seenDbIds.add(it.db_order_item_id);
+                    }
+                    deduped.push(it);
+                  }
+                  orderProfile.items = deduped;
                 }
               }
 
@@ -6062,6 +6335,8 @@ export const useOrderStore = create<OrderState>()(
                   existing.service_charge_rule_id;
                 orderProfile.service_charge_is_manual =
                   existing.service_charge_is_manual;
+                orderProfile.service_charge_is_taxable =
+                  existing.service_charge_is_taxable;
               }
             }
 
@@ -6475,6 +6750,8 @@ export const useOrderStore = create<OrderState>()(
                 (serverOrder as any).service_charge_rule_id ?? null,
               service_charge_is_manual:
                 (serverOrder as any).service_charge_is_manual ?? false,
+              service_charge_is_taxable:
+                (serverOrder as any).service_charge_is_taxable ?? null,
               _serverConfirmedServiceCharge:
                 serverOrder.service_charge ?? 0,
 
@@ -7156,6 +7433,20 @@ export const useOrderStore = create<OrderState>()(
             return newOrder;
           },
 
+          ensureActiveOrderCreated: async (orderId) => {
+            const order = get().ordersById[orderId];
+            if (!order) return null;
+            // Already created (or re-keyed) — nothing to do.
+            if (order.db_order_id) return order.db_order_id;
+
+            try {
+              return await ensureOrderCreated(order, applySetOrderDbId);
+            } catch (err) {
+              console.error("[ensureActiveOrderCreated] Failed:", err);
+              return null;
+            }
+          },
+
           addItemToActiveOrder: (newItem) => {
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
@@ -7163,6 +7454,37 @@ export const useOrderStore = create<OrderState>()(
 
             const activeOrder = ordersById[activeOrderId]; // O(1) lookup
             if (!activeOrder) return;
+
+            if (isOrderTableStillSeating(activeOrder)) {
+              toastService.show({
+                title: "Seating in progress",
+                message: "Please wait until the table is seated before adding items.",
+                type: "warning",
+              });
+              return;
+            }
+
+            // Block adding items until the backend order exists. Applies to ALL
+            // order types now: dine-in creates at seating, takeout eager-creates
+            // on order start (ensureActiveOrderCreated).
+            //
+            // Only enforce while ONLINE. Offline a backend row can't be created —
+            // the order lives under its local ID and its create_order op is queued,
+            // so items must proceed locally (offline-first). Blocking offline would
+            // strand the user permanently. The queued-create check also lets adds
+            // through once the create op is registered, even on a flaky connection.
+            if (
+              getIsOnline() &&
+              !activeOrder.db_order_id &&
+              !getOrderCreationOperationId(activeOrder.id)
+            ) {
+              toastService.show({
+                title: "Creating order",
+                message: "Please wait until the order is ready before adding items.",
+                type: "warning",
+              });
+              return;
+            }
 
             // Block adding items to closed checks
             if (activeOrder.check_status === "Closed") {
@@ -7355,101 +7677,7 @@ export const useOrderStore = create<OrderState>()(
                   );
                 };
 
-                const setOrderDbIdAction = (
-                  orderId: string,
-                  dbOrderId: string,
-                  orderNumber: string,
-                  displayNumber: string,
-                  createdAt: string,
-                  syncVersion?: number,
-                ) => {
-                  set((state) => {
-                    const existingOrder = state.ordersById[orderId];
-                    if (!existingOrder) return;
-
-                    // If orderId is already the dbOrderId, just update in place (no re-key needed)
-                    if (orderId === dbOrderId) {
-                      existingOrder.db_order_id = dbOrderId;
-                      existingOrder.order_number = orderNumber;
-                      existingOrder.display_number = displayNumber;
-                      existingOrder.sync_status = "synced";
-                      existingOrder.sync_version = syncVersion ?? 1;
-                      existingOrder.opened_at =
-                        existingOrder.opened_at || createdAt;
-                      // Surgical dbOrderIdIndex maintenance
-                      state.dbOrderIdIndex[dbOrderId] = orderId;
-                      return;
-                    }
-
-                    // Otherwise, re-key: remove old key, add new key
-                    console.log(
-                      `[setOrderDbId] Re-keying order from ${orderId} to ${dbOrderId}`,
-                    );
-
-                    // Snapshot the draft to a plain object before re-keying
-                    // to avoid orphaned child draft proxies under the deleted path
-                    const snapshot = current(existingOrder);
-                    delete state.ordersById[orderId];
-                    state.ordersById[dbOrderId] = freeze({
-                      ...snapshot,
-                      id: dbOrderId,
-                      db_order_id: dbOrderId,
-                      order_number: orderNumber,
-                      display_number: displayNumber,
-                      sync_status: "synced" as const,
-                      sync_version: syncVersion ?? 1,
-                      opened_at: snapshot.opened_at || createdAt,
-                    });
-
-                    // Update orderIds list
-                    const idx = state.orderIds.indexOf(orderId);
-                    if (idx !== -1) state.orderIds[idx] = dbOrderId;
-
-                    // Update active order if needed
-                    if (state.activeOrderId === orderId)
-                      state.activeOrderId = dbOrderId;
-
-                    // Update working set if needed
-                    const wsIdx = state.workingSetOrderIds.indexOf(orderId);
-                    if (wsIdx !== -1) {
-                      state.workingSetOrderIds[wsIdx] = dbOrderId;
-                      delete state._workingSetLookup[orderId];
-                      state._workingSetLookup[dbOrderId] = true;
-                    }
-
-                    // Surgical dbOrderIdIndex maintenance
-                    state.dbOrderIdIndex[dbOrderId] = dbOrderId;
-                    delete state.dbOrderIdIndex[orderId];
-                    // Surgical persistableOrderIds maintenance
-                    if (state.persistableOrderIds[orderId]) {
-                      delete state.persistableOrderIds[orderId];
-                      state.persistableOrderIds[dbOrderId] = true;
-                    }
-
-                    syncTableOrderIdIndexForOrder(state, dbOrderId, snapshot);
-                  });
-
-                  // Record persistent localId → dbOrderId mapping so that
-                  // ensureOrderCreated and resolveQueueKey can find the order
-                  // even after pendingOrderCreations is cleaned up.
-                  localIdToDbOrderId.set(orderId, dbOrderId);
-                  persistLocalIdMap();
-
-                  // Migrate the serial addition chain from the old local key
-                  // to the new db key so future items join the same chain.
-                  const existingChain = orderAdditionChains.get(orderId);
-                  if (existingChain) {
-                    orderAdditionChains.set(dbOrderId, existingChain);
-                    orderAdditionChains.delete(orderId);
-                  }
-                  const existingPending = pendingItemAdditions.get(orderId);
-                  if (existingPending) {
-                    pendingItemAdditions.set(dbOrderId, existingPending);
-                    pendingItemAdditions.delete(orderId);
-                  }
-
-                  rekeyLinkedStores(orderId, dbOrderId);
-                };
+                const setOrderDbIdAction = applySetOrderDbId;
 
                 // Create and track the sync promise - wrapped in queue to serialize additions
                 // Pass isMerge flag for merge candidates that already have db_order_item_id
@@ -9433,87 +9661,7 @@ export const useOrderStore = create<OrderState>()(
                 );
               };
 
-              const setOrderDbIdAction = (
-                orderId: string,
-                dbOrderId: string,
-                orderNumber: string,
-                displayNumber: string,
-                createdAt: string,
-                syncVersion?: number,
-              ) => {
-                if (orderId !== dbOrderId) {
-                  // Full rekey needed — replicate addItemToActiveOrder's logic
-                  set((state) => {
-                    const existingOrder = state.ordersById[orderId];
-                    if (!existingOrder) return;
-
-                    const snapshot = current(existingOrder);
-                    delete state.ordersById[orderId];
-                    state.ordersById[dbOrderId] = freeze({
-                      ...snapshot,
-                      id: dbOrderId,
-                      db_order_id: dbOrderId,
-                      order_number: orderNumber,
-                      display_number: displayNumber,
-                      sync_status: "synced" as const,
-                      sync_version: syncVersion ?? 1,
-                      opened_at: snapshot.opened_at || createdAt,
-                    });
-
-                    const idx = state.orderIds.indexOf(orderId);
-                    if (idx !== -1) state.orderIds[idx] = dbOrderId;
-                    if (state.activeOrderId === orderId)
-                      state.activeOrderId = dbOrderId;
-                    const wsIdx = state.workingSetOrderIds.indexOf(orderId);
-                    if (wsIdx !== -1)
-                      state.workingSetOrderIds[wsIdx] = dbOrderId;
-                    state.dbOrderIdIndex[dbOrderId] = dbOrderId;
-                    delete state.dbOrderIdIndex[orderId];
-                    if (state.persistableOrderIds[orderId]) {
-                      delete state.persistableOrderIds[orderId];
-                      state.persistableOrderIds[dbOrderId] = true;
-                    }
-
-                    syncTableOrderIdIndexForOrder(state, dbOrderId, snapshot);
-                  });
-
-                  // Migrate chain maps to new key
-                  const existingChain = orderAdditionChains.get(orderId);
-                  if (existingChain) {
-                    orderAdditionChains.set(dbOrderId, existingChain);
-                    orderAdditionChains.delete(orderId);
-                  }
-                  const existingPending = pendingItemAdditions.get(orderId);
-                  if (existingPending) {
-                    pendingItemAdditions.set(dbOrderId, existingPending);
-                    pendingItemAdditions.delete(orderId);
-                  }
-
-                  rekeyLinkedStores(orderId, dbOrderId);
-                } else {
-                  set((state) => {
-                    const order = state.ordersById[orderId];
-                    if (!order) return;
-                    const previousOrder = current(order);
-                    order.db_order_id = dbOrderId;
-                    order.order_number = orderNumber;
-                    order.display_number = displayNumber;
-                    order.sync_status = "synced";
-                    order.sync_version = syncVersion ?? 1;
-                    order.opened_at = order.opened_at || createdAt;
-                    state.dbOrderIdIndex[dbOrderId] = orderId;
-                    syncTableOrderIdIndexForOrder(
-                      state,
-                      orderId,
-                      previousOrder,
-                    );
-                  });
-                }
-
-                // Record persistent localId → dbOrderId mapping
-                localIdToDbOrderId.set(orderId, dbOrderId);
-                persistLocalIdMap();
-              };
+              const setOrderDbIdAction = applySetOrderDbId;
 
               // Create and track the sync promise - wrapped in queue to serialize additions
               const syncPromise = queueItemAddition(currentOrderId, () =>
@@ -9747,7 +9895,7 @@ export const useOrderStore = create<OrderState>()(
             }
           },
 
-          applyDiscountToCheck: (orderId, discountInput) => {
+          applyDiscountToCheck: (orderId, discountInput, onError?) => {
             console.log("[applyDiscountToCheck] discountInput", discountInput);
             if (!_checkCartEditable(get(), orderId)) return;
             // Flush deferred totals so the discount applies on top of a fresh
@@ -10020,6 +10168,9 @@ export const useOrderStore = create<OrderState>()(
                             : d,
                         );
                     });
+                    if (applied.discount_id) {
+                      incrementDiscountUsage(applied.discount_id);
+                    }
                     console.log(
                       "[applyDiscountToCheck] RPC success, order_discount_id:",
                       result.order_discount_id,
@@ -10110,7 +10261,14 @@ export const useOrderStore = create<OrderState>()(
                     console.warn(
                       "[applyDiscountToCheck] Discount requires manager approval",
                     );
-                    // Could emit an event or show a toast here
+                    onError?.("This discount requires manager approval.");
+                    if (dbOrderId) {
+                      setTimeout(() => {
+                        useOrderStore
+                          .getState()
+                          .syncOrderFromBackendComplete(orderId);
+                      }, 0);
+                    }
                   } else if (!result.success) {
                     console.error(
                       "[applyDiscountToCheck] RPC failed:",
@@ -10130,9 +10288,22 @@ export const useOrderStore = create<OrderState>()(
                         localOrderId: orderId,
                       } as any);
                     } else {
+                      // Non-retryable policy rejection — roll back optimistic state and notify caller.
                       console.error(
                         "[applyDiscountToCheck] Not queueing non-retryable discount apply failure",
                       );
+                      onError?.(
+                        typeof result.error === "string" && result.error
+                          ? result.error
+                          : "Discount could not be applied.",
+                      );
+                      if (dbOrderId) {
+                        setTimeout(() => {
+                          useOrderStore
+                            .getState()
+                            .syncOrderFromBackendComplete(orderId);
+                        }, 0);
+                      }
                     }
                   }
                 })
@@ -10293,6 +10464,9 @@ export const useOrderStore = create<OrderState>()(
                           "[removeCheckDiscount] Successfully voided discount:",
                           discount.order_discount_id,
                         );
+                        if (discount.discount_id) {
+                          decrementDiscountUsage(discount.discount_id);
+                        }
 
                         // Merge affected_items into local state (mirrors applyDiscountToCheck)
                         set((state) => {
@@ -10966,6 +11140,10 @@ export const useOrderStore = create<OrderState>()(
                 "[allocationMap | addPaymentToOrder] allocationMap",
                 allocationMap,
               );
+              // Patch 3: one sequence per call so all items updated in this
+              // payment share the same fingerprint — lets the FIFO absorb
+              // group them together if more than one was claimed at once.
+              const paymentSeq = nextPendingPaymentSeq();
               // Per-item payment: Increment paidQuantity by the specified quantity (not full quantity)
               updatedItems = order.items.map((item) => {
                 // Match by db_order_item_id first, fall back to local item.id for offline items
@@ -10984,6 +11162,13 @@ export const useOrderStore = create<OrderState>()(
                   return {
                     ...item,
                     paidQuantity: newPaidQty,
+                    // Stamp the optimistic-payment fingerprint so the FIFO
+                    // absorb in _handleOrderBroadcast / upsertOrder /
+                    // syncOrderFromBackendComplete prefers this copy over a
+                    // late broadcast clone of the same composite key.
+                    // Cleared by the data.success reconciliation path once
+                    // the backend confirms via `data.updated_items`.
+                    pendingPaymentSeq: paymentSeq,
                     // Update kitchen and item status for items that haven't been sent yet
                     ...(shouldUpdateThisItem && {
                       kitchen_status: "sent" as const,
@@ -10996,6 +11181,10 @@ export const useOrderStore = create<OrderState>()(
             } else {
               // Default FIFO: Mark items as paid in order until amount is exhausted
               let remaining = amount;
+              // Patch 3: stamp the same fingerprint across all items covered
+              // by this default-FIFO payment (same protection logic as the
+              // itemAllocations branch above).
+              const paymentSeq = nextPendingPaymentSeq();
               updatedItems = order.items.map((item) => {
                 const unitPrice =
                   method === "Cash"
@@ -11016,6 +11205,7 @@ export const useOrderStore = create<OrderState>()(
                 return {
                   ...item,
                   paidQuantity: (item.paidQuantity || 0) + maxCoverQty,
+                  pendingPaymentSeq: paymentSeq,
                   // Update kitchen and item status for items that haven't been sent yet
                   ...(shouldUpdateThisItem && {
                     kitchen_status: "sent" as const,
@@ -13334,8 +13524,9 @@ export const useOrderStore = create<OrderState>()(
                     return false;
                   }
                   // void_order RPC confirmed — session is closed on backend.
-                  // Realtime broadcast (_handleSessionChange with is_active=false) will
-                  // keep local state in sync. No refetch needed here.
+                  // The floor broadcast that follows triggers an authoritative
+                  // loadFloorPlanStatus() reconcile in useFloorRealtime, which
+                  // converges the table/session state. No refetch needed here.
                 })
                 .catch((err) => console.error("Void order sync failed:", err));
             }
@@ -14040,86 +14231,7 @@ export const useOrderStore = create<OrderState>()(
                 updateItemSyncStatus(orderId, itemId, "failed", error);
               };
 
-              const setOrderDbIdAction = (
-                id: string,
-                dbOrderId: string,
-                orderNumber: string,
-                displayNumber: string,
-                createdAt: string,
-                syncVersion?: number,
-              ) => {
-                if (id !== dbOrderId) {
-                  // Full rekey needed
-                  set((state) => {
-                    const existingOrder = state.ordersById[id];
-                    if (!existingOrder) return;
-
-                    const snapshot = current(existingOrder);
-                    delete state.ordersById[id];
-                    state.ordersById[dbOrderId] = freeze({
-                      ...snapshot,
-                      id: dbOrderId,
-                      db_order_id: dbOrderId,
-                      order_number: orderNumber,
-                      display_number: displayNumber,
-                      sync_status: "synced" as const,
-                      sync_version: syncVersion ?? 1,
-                      opened_at: snapshot.opened_at || createdAt,
-                    });
-
-                    const idx = state.orderIds.indexOf(id);
-                    if (idx !== -1) state.orderIds[idx] = dbOrderId;
-                    if (state.activeOrderId === id)
-                      state.activeOrderId = dbOrderId;
-                    const wsIdx = state.workingSetOrderIds.indexOf(id);
-                    if (wsIdx !== -1) {
-                      state.workingSetOrderIds[wsIdx] = dbOrderId;
-                      delete state._workingSetLookup[id];
-                      state._workingSetLookup[dbOrderId] = true;
-                    }
-                    state.dbOrderIdIndex[dbOrderId] = dbOrderId;
-                    delete state.dbOrderIdIndex[id];
-                    if (state.persistableOrderIds[id]) {
-                      delete state.persistableOrderIds[id];
-                      state.persistableOrderIds[dbOrderId] = true;
-                    }
-
-                    syncTableOrderIdIndexForOrder(state, dbOrderId, snapshot);
-                  });
-
-                  // Migrate chain maps to new key
-                  const existingChain = orderAdditionChains.get(id);
-                  if (existingChain) {
-                    orderAdditionChains.set(dbOrderId, existingChain);
-                    orderAdditionChains.delete(id);
-                  }
-                  const existingPending = pendingItemAdditions.get(id);
-                  if (existingPending) {
-                    pendingItemAdditions.set(dbOrderId, existingPending);
-                    pendingItemAdditions.delete(id);
-                  }
-
-                  rekeyLinkedStores(id, dbOrderId);
-                } else {
-                  set((state) => {
-                    const order = state.ordersById[id];
-                    if (!order) return;
-                    const previousOrder = current(order);
-                    order.db_order_id = dbOrderId;
-                    order.order_number = orderNumber;
-                    order.display_number = displayNumber;
-                    order.sync_status = "synced";
-                    order.sync_version = syncVersion ?? 1;
-                    order.opened_at = order.opened_at || createdAt;
-                    state.dbOrderIdIndex[dbOrderId] = id;
-                    syncTableOrderIdIndexForOrder(state, id, previousOrder);
-                  });
-                }
-
-                // Record persistent localId → dbOrderId mapping
-                localIdToDbOrderId.set(id, dbOrderId);
-                persistLocalIdMap();
-              };
+              const setOrderDbIdAction = applySetOrderDbId;
 
               // Wrapped in queue to serialize additions during retry
               const syncPromise = queueItemAddition(orderId, () =>
@@ -16381,17 +16493,25 @@ export const useOrderStore = create<OrderState>()(
                   // but not yet called useOrderStore.setState() to set db_order_item_id
                   // locally. In that window, the backend item appears in transformedItems
                   // but the local item appears in localPendingItems — creating a duplicate.
-                  // Absorbing them here (by unique menuItemId match) prevents the duplicate
-                  // from ever being written to state. Fix A in addItemToBackend handles any
-                  // remaining cases where this absorption couldn't run in time.
+                  // FIFO by menuItemId: each unmatched backend twin claims the oldest
+                  // unclaimed pending candidate (insertion order = user add order). The
+                  // previous "exactly one candidate" guard skipped both copies when the
+                  // user added the same item ≥2× before partial payment, leaving every
+                  // backend twin AND every local pending item in the final concat — the
+                  // Table-6 duplicate Black Coffee / Cold Brew bug.
                   const claimedPendingIds = new Set<string>();
                   {
-                    // Build menuItemId → pending items map for O(n) lookup
+                    // Composite key — items differing only in size/addons/
+                    // modifiers/notes live in distinct FIFO buckets, so a
+                    // plain coffee can't claim a modified coffee's twin.
                     const localPendingByKey = new Map<string, CartItem[]>();
                     for (const pendingItem of currentOrder.items) {
                       if (pendingItem.db_order_item_id || pendingItem.isDraft)
                         continue;
-                      const key = pendingItem.menuItemId || pendingItem.name;
+                      const key = generateItemCompositeKey(
+                        pendingItem.menuItemId,
+                        pendingItem.customizations,
+                      );
                       if (!localPendingByKey.has(key))
                         localPendingByKey.set(key, []);
                       localPendingByKey.get(key)!.push(pendingItem);
@@ -16403,13 +16523,23 @@ export const useOrderStore = create<OrderState>()(
                       // Skip items already matched by db_order_item_id (handled above)
                       if (localItemsByDbId.has(ti.db_order_item_id)) continue;
 
-                      const key = ti.menuItemId || ti.name;
-                      const candidates = (
-                        localPendingByKey.get(key) ?? []
-                      ).filter((c) => !claimedPendingIds.has(c.id));
-                      // Only absorb when there is exactly one candidate — ambiguous
-                      // cases (same item ordered twice while syncing) are left for Fix A.
-                      if (candidates.length !== 1) continue;
+                      const key = generateItemCompositeKey(
+                        ti.menuItemId,
+                        ti.customizations,
+                      );
+                      const bucket = localPendingByKey.get(key) ?? [];
+                      // Prefer optimistically-paid candidates (Patch 3) over
+                      // unstamped ones so an in-flight optimistic claim isn't
+                      // displaced by a late broadcast clone of the same item.
+                      const stamped = bucket.find(
+                        (c) =>
+                          !claimedPendingIds.has(c.id) &&
+                          c.pendingPaymentSeq !== undefined,
+                      );
+                      const candidates = stamped
+                        ? [stamped]
+                        : bucket.filter((c) => !claimedPendingIds.has(c.id));
+                      if (candidates.length === 0) continue;
 
                       const pendingItem = candidates[0];
                       claimedPendingIds.add(pendingItem.id);
@@ -16560,20 +16690,33 @@ export const useOrderStore = create<OrderState>()(
                         // Preserve draft items (user still configuring on ModifierScreen)
                         ...localDraftItems,
                       ];
+                      // Defensive dedupe by db_order_item_id: backend twin
+                      // (first) wins, any later copy is dropped. Items without
+                      // a db_order_item_id (true local pendings + drafts) pass
+                      // through unchanged.
+                      const seenDbIds = new Set<string>();
+                      const deduped: CartItem[] = [];
+                      for (const it of merged) {
+                        if (it.db_order_item_id) {
+                          if (seenDbIds.has(it.db_order_item_id)) continue;
+                          seenDbIds.add(it.db_order_item_id);
+                        }
+                        deduped.push(it);
+                      }
                       // Preserve local item ordering — backend may return items
                       // in a different order than the user added them.
                       // Items not in local state (new from backend) sort to end.
                       const localIdOrder = new Map(
                         currentOrder.items.map((item, idx) => [item.id, idx]),
                       );
-                      merged.sort((a, b) => {
+                      deduped.sort((a, b) => {
                         const aIdx =
                           localIdOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER;
                         const bIdx =
                           localIdOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER;
                         return aIdx - bIdx;
                       });
-                      return merged;
+                      return deduped;
                     })(),
                     payments: [...mergedPayments, ...localPendingPayments],
                     // Reversals and refund items from backend
@@ -16620,6 +16763,9 @@ export const useOrderStore = create<OrderState>()(
                     service_charge_is_manual:
                       (orderData as any).service_charge_is_manual ??
                       currentOrder.service_charge_is_manual ?? false,
+                    service_charge_is_taxable:
+                      (orderData as any).service_charge_is_taxable ??
+                      currentOrder.service_charge_is_taxable ?? null,
                     _serverConfirmedServiceCharge:
                       orderData.service_charge ?? 0,
                     // Status fields — preserve local status when items are pending sync or payments are ahead

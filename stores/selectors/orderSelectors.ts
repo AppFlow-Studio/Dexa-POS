@@ -241,6 +241,13 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       snapshottedRate: activeOrder.service_charge_rate ?? null,
       snapshottedAppliesOn: activeOrder.service_charge_applies_on ?? null,
       snapshottedName: activeOrder.service_charge_name ?? null,
+      manualServiceCharge: activeOrder.service_charge_is_manual === true
+        ? (activeOrder.service_charge ?? 0)
+        : null,
+      manualServiceChargeTaxable: activeOrder.service_charge_is_taxable ?? null,
+      serverConfirmedServiceCharge: activeOrder.service_charge_is_manual !== true
+        ? (activeOrder.service_charge ?? null)
+        : null,
     });
 
     // Get tip from payments array (sum of all non-voided payment tips)
@@ -400,6 +407,13 @@ export function useOrderTotals(
       snapshottedRate: order.service_charge_rate ?? null,
       snapshottedAppliesOn: order.service_charge_applies_on ?? null,
       snapshottedName: order.service_charge_name ?? null,
+      manualServiceCharge: order.service_charge_is_manual === true
+        ? (order.service_charge ?? 0)
+        : null,
+      manualServiceChargeTaxable: order.service_charge_is_taxable ?? null,
+      serverConfirmedServiceCharge: order.service_charge_is_manual !== true
+        ? (order.service_charge ?? null)
+        : null,
     });
 
     // Get tip from payments array (sum of all non-voided payment tips)

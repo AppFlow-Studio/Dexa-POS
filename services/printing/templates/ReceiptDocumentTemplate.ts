@@ -431,7 +431,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
 
   // ═══ SEAM: handoff from DEXA top to Figure body ══════════════════════
   nodes.push({ type: "empty_line" });
-  nodes.push({ type: "empty_line" });
 
 
   // ── D. Items (Figure style: bold name left, bold price right) ────────
@@ -463,13 +462,9 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   });
 
   if ((validated.tax ?? 0) > 0) {
-    const taxLabel =
-      cfg?.showTaxBreakdown !== false && validated.taxRate
-        ? `Tax (${(validated.taxRate * 100).toFixed(2)}%)`
-        : "Tax";
     nodes.push({
       type: "two_column",
-      left: taxLabel,
+      left: "Tax",
       right: safeCurrency(validated.tax),
       lineWidth: w,
       labelAlign: "mid",
@@ -520,9 +515,9 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   if (hasDualPricing) {
     const totalPrice = safeCurrency(validated.total);
     const cashPrice = safeCurrency(validated.cashTotal);
-    // Figure pattern: "Total" (prominent) → "Card Total" / "Cash Total"
-    // (slightly indented, same bold weight). Total is the headline, the
-    // two below are the breakdown.
+    // Total is the headline. Card Total / Cash Total are the breakdown
+    // rows below in normal weight (no bold) — the headline is doing all
+    // the visual work.
     nodes.push({
       type: "two_column",
       left: "Total",
@@ -530,13 +525,11 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       lineWidth: w,
       format: BOLD,
     });
-    // Single leading space — does NOT trigger Kotlin's wasCentered (>=3).
     nodes.push({
       type: "two_column",
       left: " Card Total",
       right: totalPrice,
       lineWidth: w,
-      format: BOLD,
       labelAlign: "mid",
     });
     nodes.push({
@@ -544,7 +537,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: " Cash Total",
       right: cashPrice,
       lineWidth: w,
-      format: BOLD,
       labelAlign: "mid",
     });
   } else {
@@ -560,8 +552,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
 
   // ── G. Tip Write-In Line (skip if tip already collected) ─────────────
   if (cfg?.showTipLine !== false && (validated.tip ?? 0) <= 0) {
-    // nodes.push({ type: "divider", style: "solid", lineWidth: w });
-    nodes.push({ type: "empty_line" });
     nodes.push({ type: "empty_line" });
     nodes.push({
       type: "two_column",
@@ -580,8 +570,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
 
   // ── H. Payments (conditional) ────────────────────────────────────────
   if (validated.payments.length > 0) {
-    // nodes.push({ type: "divider", style: "solid", lineWidth: w });
-    nodes.push({ type: "empty_line" });
     nodes.push({ type: "empty_line" });
     for (const payment of validated.payments) {
       const methodLabel = `Paid: ${sanitizeForPrint(payment.method)}`;
@@ -736,6 +724,16 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
 
+  if (cfg?.showCustomerPhone !== false && validated.customerPhone) {
+    nodes.push({
+      type: "two_column",
+      left: "Phone",
+      right: truncate(sanitizeForPrint(validated.customerPhone), META_VALUE_MAX),
+      lineWidth: w,
+      labelAlign : 'meta'
+    });
+  }
+
   if (validated.printDate && validated.printTime) {
     const printed = `${validated.printDate}, ${validated.printTime}`;
     nodes.push({
@@ -768,7 +766,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     format: BOLD,
   });
   nodes.push({ type: "empty_line" });
-  nodes.push({ type: "empty_line" });
   nodes.push({
     type: "text_line",
     content: "Created with Dexa",
@@ -776,8 +773,10 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     format: BOLD,
   });
 
-  // ── K. Feed + Cut ────────────────────────────────────────────────────
-  nodes.push({ type: "feed", lines: 5 });
+  // ── K. Cut ───────────────────────────────────────────────────────────
+  // No renderer feed before cut: Star's actionCut handles cutter clearance
+  // internally; Landi's driver appends a 10-line cutter-clearance feed
+  // (LandiDriver.ts:119). An extra feed here is pure whitespace trailer.
   nodes.push({ type: "cut" });
 
   return { nodes, maxCharsPerLine: w };

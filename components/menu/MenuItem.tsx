@@ -199,6 +199,7 @@ interface MenuItemProps {
   onOrderClosedCheck?: () => boolean;
   categoryId?: string;
   menuId?: string;
+  disabled?: boolean;
 }
 
 const MenuItem: React.FC<MenuItemProps> = ({
@@ -208,6 +209,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   onOrderClosedCheck,
   categoryId,
   menuId,
+  disabled = false,
 }) => {
   const { colorScheme } = useColorScheme();
   const styles = useMemo(() => getStylesForScheme(colorScheme), [colorScheme]);
@@ -235,7 +237,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   );
 
   const isReadOnly = useIsActiveOrderReadOnly();
-  const isDisabled = item.availability === false || isReadOnly;
+  const isDisabled = disabled || item.availability === false || isReadOnly;
 
   const handlePressIn = useCallback(() => {
     cancelMenuModifierPreWarm();
@@ -369,6 +371,7 @@ export default React.memo(MenuItem, (prevProps, nextProps) => {
     prevProps.item.cardBgColor === nextProps.item.cardBgColor &&
     prevProps.item.placeholderIcon === nextProps.item.placeholderIcon &&
     prevProps.categoryId === nextProps.categoryId &&
+    prevProps.disabled === nextProps.disabled &&
     prevProps.imageSource === nextProps.imageSource &&
     prevProps.imagePriority === nextProps.imagePriority
   );

@@ -1,3 +1,4 @@
+import { resolveMenuImage } from '@/services/menuImageCache'
 import { extractMenuItemPlaceholderIconKey } from '@/lib/menuItemPlaceholderIcon'
 import {
   Category,
@@ -669,6 +670,37 @@ export const useMenuStore = create<MenuState>((set, get) => {
           error: null,
           lastSyncedAt: data.synced_at
         }
+      })
+
+      // Offload base64 images to filesystem so they don't live in the JS heap.
+      // Runs fire-and-forget after state is set — UI renders with base64 initially
+      // then gets patched to file:// URIs as each image is written to disk.
+      queueMicrotask(async () => {
+        const itemsWithBase64 = menuItems.filter(
+          item => item.image && item.image.length > 200 && !item.image.includes('://')
+        )
+        if (itemsWithBase64.length === 0) return
+
+        const patches: Record<string, string> = {}
+        await Promise.all(
+          itemsWithBase64.map(async item => {
+            const uri = await resolveMenuImage(item.id, item.image)
+            if (uri && uri !== item.image) patches[item.id] = uri
+          })
+        )
+
+        if (Object.keys(patches).length === 0) return
+
+        set(state => ({
+          menuItems: state.menuItems.map(item =>
+            patches[item.id] ? { ...item, image: patches[item.id] } : item
+          ),
+          menuItemsById: Object.fromEntries(
+            Object.entries(state.menuItemsById).map(([id, item]) =>
+              patches[id] ? [id, { ...item, image: patches[id] }] : [id, item]
+            )
+          )
+        }))
       })
 
       // Clear stale precomputed modifier cache so newly synced modifiers are picked up

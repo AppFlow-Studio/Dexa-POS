@@ -48,16 +48,13 @@ export interface MenuFormProps {
 }
 
 const getImageSource = (image: string | undefined) => {
-  if (image && image.length > 200) {
-    return { uri: `data:image/jpeg;base64,${image}` };
+  if (!image) return undefined;
+  if (image.includes('://')) return { uri: image };
+  if (image.length > 200) return { uri: `data:image/jpeg;base64,${image}` };
+  if (MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP]) {
+    return MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP];
   }
-  if (image) {
-    if (MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP]) {
-      return MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP];
-    }
-    return { uri: image };
-  }
-  return undefined;
+  return { uri: image };
 };
 
 const MenuForm: React.FC<MenuFormProps> = ({

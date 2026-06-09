@@ -431,6 +431,19 @@ const OrderProcessing = () => {
     setActiveOrder(newOrder.id);
   }, [setActiveOrder, startNewOrder]);
 
+  // Eager backend create: whenever a local-only takeout order becomes active
+  // (fresh order, or a reused empty draft), create its backend row immediately
+  // so it behaves like dine-in — items stay blocked until db_order_id exists
+  // (see addItemToActiveOrder + BillSection's isCreatingOrder gate).
+  useEffect(() => {
+    if (!activeOrderId) return;
+    const order = useOrderStore.getState().ordersById[activeOrderId];
+    if (!order || order.db_order_id) return;
+    // Dine-in orders create at seating; only eager-create non-dine-in here.
+    if (order.order_type === "dine_in" || order.order_type === "Dine In") return;
+    void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+  }, [activeOrderId]);
+
   const handleViewItems = useCallback((orderId: string) => {
     setSelectedOrderId(orderId);
     setIsOrdersModuleOpen(false);
@@ -588,17 +601,20 @@ const OrderProcessing = () => {
 
   useEffect(() => {
     if (renderStage >= 2 && moreOptionsOpenedOnce) {
-      moreOptionsSheetRef.current?.expand();
+      const id = setTimeout(() => moreOptionsSheetRef.current?.expand(), 80);
+      return () => clearTimeout(id);
     }
   }, [moreOptionsOpenedOnce, renderStage]);
   useEffect(() => {
     if (renderStage >= 2 && discountOpenedOnce) {
-      discountSheetRef.current?.expand();
+      const id = setTimeout(() => discountSheetRef.current?.expand(), 80);
+      return () => clearTimeout(id);
     }
   }, [discountOpenedOnce, renderStage]);
   useEffect(() => {
     if (renderStage >= 2 && serviceChargeOpenedOnce) {
-      serviceChargeSheetRef.current?.expand();
+      const id = setTimeout(() => serviceChargeSheetRef.current?.expand(), 80);
+      return () => clearTimeout(id);
     }
   }, [renderStage, serviceChargeOpenedOnce]);
 
@@ -1233,7 +1249,7 @@ const OrderProcessing = () => {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    onPress={() => router.push("/tables")}
+                    onPress={() => router.replace("/tables")}
                     className="flex-row items-center rounded-lg p-3 justify-start"
                     style={{
                       borderWidth: 1,
@@ -1582,10 +1598,6 @@ const OrderProcessing = () => {
               discountSheetRef={lazyDiscountSheetRef}
               serviceChargeSheetRef={lazyServiceChargeSheetRef}
               onCloseCheck={handleCloseCheck}
-              onReopenCheck={() => {
-                const orderId = useOrderStore.getState().activeOrderId
-                if (orderId) handleReopenCheck(orderId)
-              }}
               onNoSale={handleNoSale}
               onManageDrawer={() => setCashDrawerSheetOpen(true)}
             />

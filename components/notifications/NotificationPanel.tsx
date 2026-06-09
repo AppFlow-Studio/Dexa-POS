@@ -78,7 +78,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
         break;
       case "shift_updated":
       case "shift_assigned":
-        router.push("/scheduling");
+        router.replace("/scheduling");
         break;
       case "schedule_published":
         const schedulePayload = notification.payload as { scheduleId: string; scheduleType: "period" | "weekly" } | undefined;

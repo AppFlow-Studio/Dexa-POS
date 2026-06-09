@@ -9,12 +9,14 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { Receipt, X } from 'lucide-react-native'
-import React, { forwardRef, useMemo, useState } from 'react'
+import React, { forwardRef, useEffect, useMemo, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
 interface Props {
   onClose: () => void
 }
+
+type Mode = 'amount' | 'percent'
 
 const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
@@ -26,11 +28,25 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const requestPinOverride = usePinOverrideStore(s => s.requestPinOverride)
 
+  const [mode, setMode] = useState<Mode>('amount')
   const [amountInput, setAmountInput] = useState('')
+  const [percentInput, setPercentInput] = useState('')
   const [reason, setReason] = useState('')
+  // Default to the order's current taxability so re-editing a taxable SC keeps
+  // it taxable unless the manager explicitly toggles it off.
+  const [isTaxable, setIsTaxable] = useState<boolean>(
+    activeOrder?.service_charge_is_taxable ?? false
+  )
 
   const currentSC = totals?.serviceCharge ?? 0
   const scName = totals?.serviceChargeName || 'Service Charge'
+
+  // Keep the taxable toggle in sync when the active order changes (the sheet
+  // stays mounted, so the useState initializer won't re-run on order switch).
+  const orderTaxable = activeOrder?.service_charge_is_taxable ?? false
+  useEffect(() => {
+    setIsTaxable(orderTaxable)
+  }, [activeOrderId, orderTaxable])
 
   // Server-side guard rejects when any non-voided payment has status
   // captured / partially_refunded / refunded. normalizeFetchedPayment collapses
@@ -50,22 +66,71 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
   // Strip locale thousands separators (Android keyboards on some locales emit
   // commas). parseFloat("1,000.50") would yield 1; we want 1000.50.
   const parsedAmount = parseFloat(amountInput.replace(/,/g, ''))
-  const isEditValid =
+  const parsedPercent = parseFloat(percentInput.replace(/,/g, ''))
+
+  // Subtotal base for the live preview (post-discount, matching server default).
+  // Use totals selector values — same source as the receipt line items.
+  const subtotalBase = useMemo(() => {
+    const sub = totals?.subtotal ?? 0
+    const disc = totals?.discount ?? 0
+    return Math.max(0, sub - disc)
+  }, [totals?.subtotal, totals?.discount])
+
+  // Preview dollar value shown under the percent input.
+  const previewDollar = useMemo(() => {
+    if (mode !== 'percent' || Number.isNaN(parsedPercent) || parsedPercent < 0) return null
+    return Math.round((parsedPercent / 100) * subtotalBase * 100) / 100
+  }, [mode, parsedPercent, subtotalBase])
+
+  const isAmountValid =
+    mode === 'amount' &&
     !!activeOrderId &&
     !hasBlockingPayment &&
     !Number.isNaN(parsedAmount) &&
     parsedAmount > 0
 
+  const isPercentValid =
+    mode === 'percent' &&
+    !!activeOrderId &&
+    !hasBlockingPayment &&
+    !Number.isNaN(parsedPercent) &&
+    parsedPercent > 0 &&
+    parsedPercent <= 100
+
+  const isEditValid = isAmountValid || isPercentValid
+
   const handleEdit = () => {
     if (!isEditValid || !activeOrderId) return
-    requestPinOverride({
-      type: 'edit_service_charge',
-      payload: {
-        orderId: activeOrderId,
-        newAmount: Math.round(parsedAmount * 100) / 100,
-        reason: reason.trim() || undefined,
-      },
-    })
+
+    if (mode === 'amount') {
+      const flat = Math.round(parsedAmount * 100) / 100
+      requestPinOverride({
+        type: 'edit_service_charge',
+        payload: {
+          orderId:   activeOrderId,
+          newAmount: flat,
+          mode:      'amount',
+          rate:      null,
+          isTaxable,
+          reason:    reason.trim() || undefined,
+        },
+      })
+    } else {
+      // Server resolves the flat amount; send preview value so the context
+      // label in ManagerPinModal can show a meaningful dollar figure.
+      const flat = previewDollar ?? 0
+      requestPinOverride({
+        type: 'edit_service_charge',
+        payload: {
+          orderId:   activeOrderId,
+          newAmount: flat,
+          mode:      'percent',
+          rate:      Math.round(parsedPercent * 100) / 100,
+          isTaxable,
+          reason:    reason.trim() || undefined,
+        },
+      })
+    }
     onClose()
   }
 
@@ -75,7 +140,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
       type: 'remove_service_charge',
       payload: {
         orderId: activeOrderId,
-        reason: reason.trim() || undefined,
+        reason:  reason.trim() || undefined,
       },
     })
     onClose()
@@ -105,6 +170,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
         contentContainerStyle={{ padding: 20 }}
         nestedScrollEnabled
       >
+        {/* Header */}
         <View
           style={{
             flexDirection: 'row',
@@ -124,6 +190,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
           </TouchableOpacity>
         </View>
 
+        {/* Current SC */}
         <View
           style={{
             backgroundColor: colors.card,
@@ -150,6 +217,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
           ) : null}
         </View>
 
+        {/* Payment block warning */}
         {hasBlockingPayment ? (
           <View
             style={{
@@ -168,36 +236,186 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
           </View>
         ) : null}
 
-        <Text
+        {/* $ | % toggle */}
+        <View
           style={{
-            fontSize: 13,
-            fontWeight: '600',
-            color: colors.heading,
-            marginBottom: 6,
+            flexDirection: 'row',
+            backgroundColor: colors.screen,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: 3,
+            marginBottom: 16,
+            alignSelf: 'flex-start',
           }}
         >
-          New Amount ($)
-        </Text>
-        <BottomSheetTextInput
-          value={amountInput}
-          onChangeText={setAmountInput}
-          keyboardType="decimal-pad"
-          placeholder="0.00"
-          editable={!hasBlockingPayment}
+          {(['amount', 'percent'] as Mode[]).map(m => (
+            <TouchableOpacity
+              key={m}
+              onPress={() => setMode(m)}
+              style={{
+                paddingHorizontal: 20,
+                paddingVertical: 7,
+                borderRadius: 8,
+                backgroundColor: mode === m ? colors.teal : 'transparent',
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '700',
+                  color: mode === m ? '#FFFFFF' : colors.muted,
+                }}
+              >
+                {m === 'amount' ? '$' : '%'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {mode === 'amount' ? (
+          <>
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: colors.heading,
+                marginBottom: 6,
+              }}
+            >
+              New Amount ($)
+            </Text>
+            <BottomSheetTextInput
+              value={amountInput}
+              onChangeText={setAmountInput}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              editable={!hasBlockingPayment}
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 16,
+                color: colors.heading,
+                borderWidth: 1,
+                borderColor: colors.border,
+                marginBottom: 16,
+                opacity: hasBlockingPayment ? 0.5 : 1,
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: colors.heading,
+                marginBottom: 6,
+              }}
+            >
+              New Percentage (%)
+            </Text>
+            <BottomSheetTextInput
+              value={percentInput}
+              onChangeText={setPercentInput}
+              keyboardType="decimal-pad"
+              placeholder="0"
+              editable={!hasBlockingPayment}
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 16,
+                color: colors.heading,
+                borderWidth: 1,
+                borderColor:
+                  !Number.isNaN(parsedPercent) && parsedPercent > 100
+                    ? '#F87171'
+                    : colors.border,
+                marginBottom: 6,
+                opacity: hasBlockingPayment ? 0.5 : 1,
+              }}
+            />
+            {/* Live preview */}
+            {previewDollar !== null && (
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: colors.teal,
+                  marginBottom: 16,
+                  fontWeight: '600',
+                }}
+              >
+                = ${previewDollar.toFixed(2)}
+                {'  '}
+                <Text style={{ fontWeight: '400', color: colors.muted }}>
+                  ({parsedPercent}% of ${subtotalBase.toFixed(2)} subtotal)
+                </Text>
+              </Text>
+            )}
+            {!Number.isNaN(parsedPercent) && parsedPercent > 100 && (
+              <Text style={{ fontSize: 12, color: '#EF4444', marginBottom: 16 }}>
+                Percentage must be between 0 and 100.
+              </Text>
+            )}
+            {previewDollar === null && (
+              <View style={{ marginBottom: 16 }} />
+            )}
+          </>
+        )}
+
+        {/* Taxable toggle */}
+        <View
           style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
             backgroundColor: colors.card,
             borderRadius: 10,
             paddingHorizontal: 14,
             paddingVertical: 12,
-            fontSize: 16,
-            color: colors.heading,
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 16,
-            opacity: hasBlockingPayment ? 0.5 : 1,
+            marginBottom: 20,
           }}
-        />
+        >
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.heading }}>
+              Taxable
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+              Apply tax on the service charge amount.
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => !hasBlockingPayment && setIsTaxable(t => !t)}
+            disabled={hasBlockingPayment}
+            style={{
+              width: 52,
+              height: 30,
+              borderRadius: 15,
+              padding: 3,
+              justifyContent: 'center',
+              alignItems: isTaxable ? 'flex-end' : 'flex-start',
+              backgroundColor: isTaxable ? colors.teal : colors.border,
+              opacity: hasBlockingPayment ? 0.5 : 1,
+            }}
+          >
+            <View
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: '#FFFFFF',
+              }}
+            />
+          </TouchableOpacity>
+        </View>
 
+        {/* Reason */}
         <Text
           style={{
             fontSize: 13,
@@ -227,6 +445,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
           }}
         />
 
+        {/* Edit button */}
         <TouchableOpacity
           onPress={handleEdit}
           disabled={!isEditValid}
@@ -243,6 +462,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
           </Text>
         </TouchableOpacity>
 
+        {/* Remove button */}
         <TouchableOpacity
           onPress={handleRemove}
           disabled={hasBlockingPayment || !activeOrderId || currentSC <= 0}

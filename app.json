@@ -2,9 +2,9 @@
   "expo": {
     "name": "Dexa-POS",
     "slug": "dexa-pos",
-    "version": "2.0.5",
+    "version": "2.0.6",
     "orientation": "landscape",
-    "icon": "./assets/images/dexalogo.png",
+    "icon": "./assets/images/dexalogolight.png",
     "scheme": "dexapos",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -12,11 +12,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.temurappflowstudios.dexapos",
-      "runtimeVersion": "2.0.5"
+      "runtimeVersion": "2.0.6"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/dexalogo.png",
+        "foregroundImage": "./assets/images/dexalogolight.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -28,7 +28,7 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
-      "runtimeVersion": "2.0.5"
+      "runtimeVersion": "2.0.6"
     },
     "web": {
       "bundler": "metro",
@@ -50,12 +50,12 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/dexalogo.png",
+          "image": "./assets/images/dexalogolight.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#F8FAFC",
           "dark": {
-            "image": "./assets/images/dexalogo.png",
+            "image": "./assets/images/dexalogolight.png",
             "backgroundColor": "#0C0F1A"
           }
         }

@@ -1,5 +1,4 @@
 import { queryClient } from "@/contexts/TanstackProvider";
-import { useInventorySync } from "@/hooks/pos/useInventorySync";
 import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
@@ -87,6 +86,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   );
   const isKDS = selectedStation?.station_type === "kds";
   const hasCheckedStorageSizeRef = useRef(false);
+  const lastStoreSettingsRefreshRef = useRef<number>(0);
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
@@ -158,6 +158,56 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         .then(async (capabilities) => {
           // Fetch printers into local store so PrinterService can route jobs
           await usePrinterStore.getState().fetchPrinters(selectedStore.id);
+
+          // Reconcile DB ↔ MMKV per-station receipt printer claim. The DB
+          // (stations.current_receipt_printer_id) is now the source of
+          // truth; useSettingsStore.defaultReceiptPrinterId is kept as a
+          // boot-window cache + safety net while devices roll over.
+          try {
+            const stationId = selectedStation.id;
+            const { data: stationRow } = await supabase
+              .from("stations")
+              .select("current_receipt_printer_id")
+              .eq("id", stationId)
+              .maybeSingle();
+
+            const dbClaim = stationRow?.current_receipt_printer_id ?? null;
+            const mmkvClaim =
+              useSettingsStore.getState().defaultReceiptPrinterId;
+            const setMmkv =
+              useSettingsStore.getState().setDefaultReceiptPrinterId;
+            const printers = usePrinterStore.getState().printers;
+
+            if (dbClaim) {
+              // Mirror DB onto selectedStation + MMKV so PrintRouter's fast
+              // path can read from the cache without an extra fetch.
+              if (selectedStation.current_receipt_printer_id !== dbClaim) {
+                useStoreSettingsStore.getState().setSelectedStation({
+                  ...selectedStation,
+                  current_receipt_printer_id: dbClaim,
+                });
+              }
+              if (mmkvClaim !== dbClaim) setMmkv(dbClaim);
+            } else if (mmkvClaim) {
+              // Legacy MMKV-only claim — promote to DB if the printer still
+              // exists at this location; otherwise clear the stale local id.
+              const stillExists = printers.some(
+                (p) => p.id === mmkvClaim && p.isActive,
+              );
+              if (stillExists) {
+                await usePrinterStore
+                  .getState()
+                  .setStationReceiptPrinter(stationId, mmkvClaim);
+              } else {
+                setMmkv(null);
+              }
+            }
+          } catch (e) {
+            console.warn(
+              "[PosSyncProvider] Receipt printer claim reconciliation failed:",
+              e,
+            );
+          }
 
           // Pre-warm Landi printer + cashBox so the first cash payment
           // doesn't pay cold-init cost on the AIDL bus (10-15s delay).
@@ -451,16 +501,10 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     locationId: isKDS ? null : (selectedStore?.id ?? null),
   });
 
-  // --- INVENTORY SYNC --- (skip for KDS)
-  const { data: inventoryData } = useInventorySync(
-    isKDS ? null : (selectedStore?.id ?? null),
-  );
-  const setInventoryData = useInventoryStore((state) => state.setInventoryData);
+  // Inventory data is fetched lazily in inventory/_layout.tsx, not at startup.
+  // We still need to register the Supabase client so store methods work when inventory loads.
   const setInventorySupabase = useInventoryStore(
     (state) => state.setSupabaseClient,
-  );
-  const fetchPurchaseOrders = useInventoryStore(
-    (state) => state.fetchPurchaseOrders,
   );
 
   useEffect(() => {
@@ -507,32 +551,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  useEffect(() => {
-    if (inventoryData) {
-      setInventoryData({
-        items: inventoryData.inventoryItems,
-        vendors: inventoryData.vendors,
-      });
-
-      // Merge Recipe Data into MenuStore
-      applyRecipes(posSyncData);
-
-      console.log(
-        "✅ Inventory & Recipe data synced:",
-        inventoryData.inventoryItems.length,
-        "items,",
-        inventoryData.menuRecipes?.length || 0,
-        "menu recipes",
-      );
-    }
-  }, [inventoryData]);
   // --- END INVENTORY SYNC ---
 
-  useEffect(() => {
-    if (!isKDS && selectedStore?.id) {
-      fetchPurchaseOrders(selectedStore.id);
-    }
-  }, [fetchPurchaseOrders, isKDS, selectedStore?.id]);
 
   // Update menu store when sync data changes
   useEffect(() => {
@@ -667,19 +687,23 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       if (nextState === "active") {
         console.log("[PosSyncProvider] App became active - refreshing data");
 
-        // Refresh location settings for ALL devices (fallback for missed broadcasts)
+        // Refresh location settings for ALL devices (fallback for missed broadcasts).
+        // Gate behind a 5-minute staleness window — fires on every active event
+        // (including brief foreground→background→foreground cycles) otherwise,
+        // which adds a network round-trip on the critical first-tap path.
         const storeSettings = useStoreSettingsStore.getState();
-        storeSettings.refreshSelectedStore(supabase);
+        const settingsAge = Date.now() - lastStoreSettingsRefreshRef.current;
+        if (settingsAge > 5 * 60 * 1000) {
+          lastStoreSettingsRefreshRef.current = Date.now();
+          storeSettings.refreshSelectedStore(supabase);
+        }
 
         if (!isKDS) {
           const floorPlanStore = useFloorPlanStore.getState();
 
-          // Reconnect realtime if disconnected or reconnecting
-          if (floorPlanStore.realtimeStatus !== "connected") {
-            floorPlanStore.manualReconnect();
-          }
-
-          // Refresh stale floor plan data
+          // Floor realtime (re)connection on foreground is owned by
+          // useFloorRealtime / useRealtimeChannel (AppState-aware). Here we only
+          // converge state via the authoritative snapshot if it's stale.
           floorPlanStore.loadFloorPlanStatusIfStale();
 
           // Refresh orders when app resumes — only if data is older than staleTime.

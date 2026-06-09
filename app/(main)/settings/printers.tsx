@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { Minus, Plus, Printer, Route, Settings2 } from "lucide-react-native";
+import { Minus, Plus, Printer, RefreshCw, Route, Settings2 } from "lucide-react-native";
 
 import { DiscoveredPrinterList } from "@/components/settings/DiscoveredPrinterList";
 import { ManualIpPanel } from "@/components/settings/ManualIpPanel";
 import { PrinterListSection } from "@/components/settings/PrinterListSection";
 import { PrinterRoutingModal } from "@/components/settings/PrinterRoutingModal";
+import { useLocationStations } from "@/hooks/useLocationStations";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { usePrinterDiscovery } from "@/hooks/usePrinterDiscovery";
+import { getPrinterReachability } from "@/stores/selectors/printerSelectors";
 import { colors } from "@/lib/theme";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
@@ -185,6 +187,124 @@ export default function PrintersScreen() {
 // PRINTER LIST TAB
 // ---------------------------------------------------------------------------
 
+function YourStationReceiptPrinterCard({
+  printer,
+  onChange,
+  onTest,
+  testingId,
+}: {
+  printer: PrinterConfig | null;
+  onChange: () => void;
+  onTest: () => void;
+  testingId: string | null;
+}) {
+  const reachability = printer ? getPrinterReachability(printer) : "unknown";
+  const dotColor =
+    reachability === "connectable"
+      ? colors.success
+      : reachability === "in_use"
+        ? colors.warning
+        : reachability === "offline"
+          ? colors.danger
+          : colors.muted;
+
+  return (
+    <View
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: 12,
+        marginBottom: 8,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: "700",
+          color: colors.muted,
+          textTransform: "uppercase",
+          letterSpacing: 0.6,
+          marginBottom: 6,
+        }}
+      >
+        Your Station's Receipt Printer
+      </Text>
+
+      {printer ? (
+        <View
+          style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+        >
+          <View
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: dotColor,
+            }}
+          />
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}
+              numberOfLines={1}
+            >
+              {printer.printerName}
+            </Text>
+            <Text style={{ fontSize: 11, color: colors.muted }} numberOfLines={1}>
+              {printer.networkAddress ?? printer.connectionType.toUpperCase()}
+              {" · "}
+              {reachability === "connectable"
+                ? "Connectable"
+                : reachability === "in_use"
+                  ? "In use"
+                  : reachability === "offline"
+                    ? "Offline"
+                    : "Unknown"}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={onTest}
+            disabled={testingId === printer.id}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 7,
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              opacity: testingId === printer.id ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label }}>
+              {testingId === printer.id ? "Testing…" : "Test"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onChange}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 7,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
+              Change
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <Text style={{ fontSize: 12, color: colors.muted }}>
+          No receipt printer set — claim one from the list below.
+        </Text>
+      )}
+    </View>
+  );
+}
+
 function PrinterListTab({
   onOpenRouting,
   onOpenEdit,
@@ -282,26 +402,91 @@ function PrinterListTab({
     [storedPrinters],
   );
 
+  // Pull every active station at this location so we can render the
+  // "Used by N other stations" chip + the "Your Station's Receipt Printer"
+  // card. Single TanStack query shared with the Settings → Stations screen.
+  const { data: stations } = useLocationStations();
+  const claimsByPrinterId = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const s of stations ?? []) {
+      const pid = s.current_receipt_printer_id;
+      if (!pid) continue;
+      if (!map[pid]) map[pid] = [];
+      map[pid].push(s.id);
+    }
+    return map;
+  }, [stations]);
+
+  const claimedPrinterId =
+    selectedStation?.current_receipt_printer_id ?? null;
+  const claimedPrinter = useMemo(
+    () =>
+      claimedPrinterId
+        ? storedPrinters.find((p) => p.id === claimedPrinterId) ?? null
+        : null,
+    [claimedPrinterId, storedPrinters],
+  );
+
   return (
     <View>
+      <YourStationReceiptPrinterCard
+        printer={claimedPrinter}
+        onChange={() => claimedPrinter && onOpenEdit(claimedPrinter)}
+        onTest={() => claimedPrinter && testPrint(claimedPrinter)}
+        testingId={scanState.testPrintingId}
+      />
+
       <SectionHeader
         title="Available Printers"
         rightContent={
-          <TouchableOpacity
-            onPress={() => setShowManualIp((v) => !v)}
-            style={{
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 6,
-              backgroundColor: showManualIp ? colors.teal + "20" : colors.card,
-              borderWidth: 1,
-              borderColor: showManualIp ? colors.teal + "60" : colors.border,
-            }}
-          >
-            <Text style={{ fontSize: 11, fontWeight: "600", color: showManualIp ? colors.teal : colors.label }}>
-              {showManualIp ? "Hide manual IP" : "Enter IP manually"}
-            </Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            <TouchableOpacity
+              onPress={() => {
+                if (!scanState.isScanning) scan();
+              }}
+              disabled={scanState.isScanning}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 6,
+                backgroundColor: colors.teal + "15",
+                borderWidth: 1,
+                borderColor: colors.teal + "40",
+                opacity: scanState.isScanning ? 0.7 : 1,
+              }}
+            >
+              {scanState.isScanning ? (
+                <ActivityIndicator size="small" color={colors.teal} />
+              ) : (
+                <RefreshCw size={11} color={colors.teal} />
+              )}
+              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
+                {scanState.isScanning
+                  ? scanState.scanSecondsRemaining != null
+                    ? `Scanning… ${scanState.scanSecondsRemaining}s`
+                    : "Scanning…"
+                  : "Scan network"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowManualIp((v) => !v)}
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 6,
+                backgroundColor: showManualIp ? colors.teal + "20" : colors.card,
+                borderWidth: 1,
+                borderColor: showManualIp ? colors.teal + "60" : colors.border,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: "600", color: showManualIp ? colors.teal : colors.label }}>
+                {showManualIp ? "Hide manual IP" : "Enter IP manually"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         }
       />
 
@@ -345,6 +530,7 @@ function PrinterListTab({
       <PrinterListSection
         printers={receiptPrinters}
         selectedStationId={selectedStation?.id ?? null}
+        claimsByPrinterId={claimsByPrinterId}
         onRetryConnection={async (p) => {
           await retryConnection(p);
         }}
@@ -364,6 +550,7 @@ function PrinterListTab({
       <PrinterListSection
         printers={kitchenPrinters}
         selectedStationId={selectedStation?.id ?? null}
+        claimsByPrinterId={claimsByPrinterId}
         onRetryConnection={async (p) => {
           await retryConnection(p);
         }}
@@ -1168,14 +1355,37 @@ function EditPrinterDialog({
   onClose: () => void;
 }) {
   const updatePrinterConfig = usePrinterStore((s) => s.updatePrinterConfig);
+  const setStationReceiptPrinter = usePrinterStore(
+    (s) => s.setStationReceiptPrinter,
+  );
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const fetchPrinters = usePrinterStore((s) => s.fetchPrinters);
+  const { data: stations } = useLocationStations();
+  // Count stations OTHER than the current one that have this printer claimed
+  // — drives the soft-collision disclosure copy in the Claim section.
+  const otherClaimCount = useMemo(
+    () =>
+      (stations ?? []).filter(
+        (s) =>
+          s.current_receipt_printer_id === printer.id &&
+          s.id !== selectedStation?.id,
+      ).length,
+    [stations, printer.id, selectedStation?.id],
+  );
   const [name, setName] = useState(printer.printerName);
   const [role, setRole] = useState(printer.printerRole);
-  const [isDefaultReceipt, setIsDefaultReceipt] = useState(printer.isDefaultReceipt);
   const [isDefaultKitchen, setIsDefaultKitchen] = useState(printer.isDefaultKitchen);
   const [isActive, setIsActive] = useState(printer.isActive);
   const [saving, setSaving] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+
+  // Receipt-printer claim is owned by the station, not the printer. The
+  // toggle here is replaced by a single "Claim as Receipt Printer" button
+  // that writes stations.current_receipt_printer_id directly. Multiple
+  // stations can independently claim the same printer (soft sharing).
+  const isClaimedByThisStation =
+    selectedStation?.current_receipt_printer_id === printer.id;
 
   const handleSave = async () => {
     const trimmed = name.trim();
@@ -1188,7 +1398,6 @@ function EditPrinterDialog({
       await updatePrinterConfig(printer.id, {
         printerName: trimmed,
         printerRole: role,
-        isDefaultReceipt,
         isDefaultKitchen,
         isActive,
       });
@@ -1198,6 +1407,19 @@ function EditPrinterDialog({
       Alert.alert("Error", e.message || "Failed to update printer");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleClaim = async () => {
+    if (!selectedStation?.id) return;
+    setClaiming(true);
+    try {
+      await setStationReceiptPrinter(selectedStation.id, printer.id);
+      onClose();
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to claim receipt printer");
+    } finally {
+      setClaiming(false);
     }
   };
 
@@ -1271,11 +1493,60 @@ function EditPrinterDialog({
           })}
         </View>
 
-        <ToggleRow
-          label="Default Receipt Printer"
-          value={isDefaultReceipt}
-          onToggle={setIsDefaultReceipt}
-        />
+        <View
+          style={{
+            backgroundColor: colors.card,
+            borderRadius: 8,
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+            marginBottom: 4,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, color: colors.heading, marginBottom: 2 }}>
+                Receipt Printer for This Station
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.muted }}>
+                {isClaimedByThisStation
+                  ? "Currently claimed by this station."
+                  : otherClaimCount > 0
+                    ? `Already claimed by ${otherClaimCount} other station${otherClaimCount === 1 ? "" : "s"}. Both will share this printer — may briefly fail if both stations print at the same time.`
+                    : "Set this printer as the one your station prints receipts to."}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleClaim}
+              disabled={claiming || isClaimedByThisStation || !selectedStation?.id}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 8,
+                backgroundColor: isClaimedByThisStation ? colors.card : colors.teal + "20",
+                borderWidth: 1,
+                borderColor: isClaimedByThisStation ? colors.border : colors.teal + "50",
+                opacity: claiming ? 0.6 : 1,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "700",
+                  color: isClaimedByThisStation ? colors.muted : colors.teal,
+                }}
+              >
+                {isClaimedByThisStation ? "Claimed" : claiming ? "Claiming…" : "Claim"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
         <ToggleRow
           label="Default Kitchen Printer"
           value={isDefaultKitchen}

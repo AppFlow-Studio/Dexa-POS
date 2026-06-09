@@ -36,6 +36,10 @@ export function resolveMenuItemImageSource(
     return { uri: trimmed };
   }
 
+  if (trimmed.startsWith('file://')) {
+    return { uri: trimmed };
+  }
+
   if (trimmed.length > 200) {
     return { uri: `data:image/jpeg;base64,${trimmed}` };
   }

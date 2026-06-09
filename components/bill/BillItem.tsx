@@ -325,6 +325,10 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         setDisplayQuantity(nextQuantity);
         setItemQuantity(item.id, nextQuantity);
       } else {
+        const modStore = useModifierSidebarStore.getState();
+        if (modStore.activeEditingItemId === item.id) {
+          modStore.close();
+        }
         removeItemFromActiveOrder(item.id);
       }
     } else {
@@ -567,12 +571,17 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const effectiveIsActive =
     isActive || isModifierActive || item.isDraft === true;
 
-  // Normalize status from both status fields to keep visual state accurate
-  // across legacy values and backend/kds variants.
+  // Keep draft/new items visually unsent even if a stale item_status lingers.
   const normalizedKitchenStatus = (item.kitchen_status ?? "").toLowerCase();
   const normalizedItemStatus = (item.item_status ?? "").toLowerCase();
+  const isUnsentItem =
+    item.isDraft === true ||
+    normalizedKitchenStatus === "" ||
+    normalizedKitchenStatus === "new";
   const effectivePrepStatus =
-    normalizedKitchenStatus && normalizedKitchenStatus !== "new"
+    isUnsentItem
+      ? "new"
+      : normalizedKitchenStatus
       ? normalizedKitchenStatus
       : normalizedItemStatus;
 
@@ -679,7 +688,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         </Animated.View>
       )}
 
-      <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>
+      <GestureDetector gesture={isVoided || item.isDraft ? Gesture.Pan() : pan}>
         <Animated.View
           style={[
             animatedStyle,

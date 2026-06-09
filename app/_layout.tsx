@@ -1,5 +1,5 @@
 import "@/global.css";
-import "@/lib/screenConfig"; // must be first — calls enableFreeze() before any Screen mounts
+import "@/lib/screenConfig";
 import { PortalHost } from "@rn-primitives/portal";
 import { PortalProvider } from "react-native-teleport";
 

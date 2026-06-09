@@ -218,6 +218,7 @@ export interface ReceiptTemplateData {
   orderType: string;
   tableName?: string;
   customerName?: string;
+  customerPhone?: string;
   serverName?: string;
   backendOrderNumber?: string; // "ORD-YYYYMMDD-XXXX" from orders table
 

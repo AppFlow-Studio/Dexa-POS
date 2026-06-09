@@ -421,6 +421,13 @@ export interface CartItem {
   sync_status?: 'pending' | 'syncing' | 'synced' | 'failed'
   sync_error?: string
   sync_retry_count?: number
+  // Optimistic-payment fingerprint. Stamped by addPaymentToOrder when the
+  // itemAllocations branch updates paidQuantity locally; cleared by the
+  // backend reconciliation path once `data.updated_items` arrives. The FIFO
+  // absorb in _handleOrderBroadcast / upsertOrder prefers stamped candidates
+  // over non-stamped ones so a same-composite-key broadcast clone arriving
+  // mid-race can't be claimed instead of the in-flight optimistic copy.
+  pendingPaymentSeq?: number
   // NEW: Context for price level tracking - which category/menu was this item added from
   addedFromCategoryId?: string | null
   addedFromMenuId?: string | null
@@ -972,6 +979,13 @@ export interface OrderProfile {
   service_charge_rule_id?: string | null
   /** Set true by the manager-PIN override flow (Part 3); Wave B never writes true. */
   service_charge_is_manual?: boolean
+  /**
+   * Whether the service charge is taxable. Snapshotted on the order
+   * (orders.service_charge_is_taxable) so a manager override — which clears
+   * service_charge_rule_id — can still drive SC tax. Mirrored to the
+   * calculator as manualServiceChargeTaxable.
+   */
+  service_charge_is_taxable?: boolean | null
   /**
    * Last `service_charge` value confirmed by the server via the
    * apply_service_charge_v1 RPC sync-back. The drift gate in

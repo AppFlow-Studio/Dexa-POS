@@ -17,6 +17,8 @@ interface PinInputModalProps {
   subtitle?: string
   onConfirm: (pin: string) => void
   onCancel: () => void
+  /** Render into a named PortalHost (e.g. when shown above a fullScreen Modal). */
+  portalHost?: string
 }
 
 const PinInputModal: React.FC<PinInputModalProps> = ({
@@ -24,7 +26,8 @@ const PinInputModal: React.FC<PinInputModalProps> = ({
   title,
   subtitle,
   onConfirm,
-  onCancel
+  onCancel,
+  portalHost
 }) => {
   const [pin, setPin] = useState('')
 
@@ -79,6 +82,7 @@ const PinInputModal: React.FC<PinInputModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={handleCancel}>
       <DialogContent
+        portalHost={portalHost}
         className='h-fit p-6'
         style={{
           width: 350,

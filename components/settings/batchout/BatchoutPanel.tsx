@@ -24,6 +24,7 @@ import type { CastlesSettlementHostResult } from '@/types/castles'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
 import { useAuth } from '@clerk/clerk-expo'
 import { useQuery } from '@tanstack/react-query'
+import { useFocusEffect } from 'expo-router'
 import {
   AlertTriangle,
   CheckCircle,
@@ -70,6 +71,7 @@ interface SettlementBatchRow {
   netDeposit: number
   acquirer: string | null
   batchNumber: string | null
+  isClosedToday: boolean
 }
 
 interface BatchPaymentRow {
@@ -141,15 +143,21 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
   const {
     data: batches,
     isLoading: batchesLoading,
+    isError: batchesErrored,
     refetch: refetchBatches
   } = useQuery({
-    queryKey: ['batchout-open-batches', locationId],
+    queryKey: ['batchout-batches-v2', locationId, businessDay],
     enabled: Boolean(locationId) && Boolean(showBatchLog),
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<SettlementBatchRow[]> => {
       const { data, error } = await supabase.rpc(
-        'get_open_batches_v1' as any,
-        { p_location_id: locationId } as any
+        'get_open_batches_v2' as any,
+        {
+          p_location_id: locationId,
+          p_today_business_date: businessDay
+        } as any
       )
       if (error) throw error
       const rows = Array.isArray(data) ? data : []
@@ -168,7 +176,8 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         tipAmount: Number(b.tip_amount) || 0,
         netDeposit: Number(b.net_deposit) || 0,
         acquirer: b.acquirer ?? null,
-        batchNumber: b.batch_number ?? null
+        batchNumber: b.batch_number ?? null,
+        isClosedToday: Boolean(b.is_closed_today)
       }))
     }
   })
@@ -190,6 +199,18 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
   useEffect(() => {
     loadStats()
   }, [loadStats])
+
+  // Refetch on screen focus. refetchOnWindowFocus covers background->foreground,
+  // but in-app navigation (Tables -> Settings -> Batchout) keeps AppState
+  // 'active' and would otherwise serve cached data.
+  useFocusEffect(
+    useCallback(() => {
+      if (locationId && showBatchLog) {
+        refetchBatches()
+        loadStats()
+      }
+    }, [locationId, showBatchLog, refetchBatches, loadStats])
+  )
 
   const storeCtx = useCallback<() => BatchSummaryStoreContext>(() => {
     if (!selectedStore) return {}
@@ -423,7 +444,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         <BatchLog
           batches={batches}
           loading={batchesLoading}
-          currentTerminalId={terminal?.id ?? null}
+          errored={batchesErrored}
           onPrintBatch={printBatch}
         />
       ) : null}
@@ -1060,29 +1081,37 @@ function PendingFinalizeSection ({
 function BatchLog ({
   batches,
   loading,
-  currentTerminalId,
+  errored,
   onPrintBatch
 }: {
   batches: SettlementBatchRow[] | undefined
   loading: boolean
-  currentTerminalId: string | null
+  errored: boolean
   onPrintBatch: (settlementBatchId: string) => void
 }) {
   const list = batches || []
-  // Batches with no payment_terminal_id (legacy/cash-only edge case) bucket
-  // with "other" so they aren't surfaced as actionable for this station.
-  const mine = currentTerminalId
-    ? list.filter(b => b.paymentTerminalId === currentTerminalId)
-    : []
-  const others = currentTerminalId
-    ? list.filter(b => b.paymentTerminalId !== currentTerminalId)
-    : list
+  // Flat: every open batch at the location, regardless of which terminal
+  // owns it. BatchRow renders the terminal label so users can tell rows
+  // apart, and the settle action targets each batch's own terminal.
+  const openBatches = list.filter(b => !b.isClosedToday)
+  const closedToday = list.filter(b => b.isClosedToday)
 
-  const mineCount =
-    mine.length === 0 ? '' : mine.length === 1 ? '1 batch' : `${mine.length} batches`
+  const openCount =
+    openBatches.length === 0
+      ? ''
+      : openBatches.length === 1
+      ? '1 open'
+      : `${openBatches.length} open`
 
   return (
     <View style={{ gap: 10, marginTop: 8 }}>
+      {!loading && closedToday.length > 0 ? (
+        <ClosedTodayCollapsible
+          batches={closedToday}
+          onPrintBatch={onPrintBatch}
+        />
+      ) : null}
+
       <View
         style={{
           flexDirection: 'row',
@@ -1095,8 +1124,8 @@ function BatchLog ({
         >
           Open Batches
         </Text>
-        {mineCount ? (
-          <Text style={{ fontSize: 11, color: colors.muted }}>{mineCount}</Text>
+        {openCount ? (
+          <Text style={{ fontSize: 11, color: colors.muted }}>{openCount}</Text>
         ) : null}
       </View>
 
@@ -1104,33 +1133,33 @@ function BatchLog ({
         <Card>
           <ActivityIndicator color={colors.teal} />
         </Card>
-      ) : mine.length === 0 ? (
+      ) : errored && openBatches.length === 0 ? (
         <Card>
           <Text style={{ fontSize: 13, color: colors.muted }}>
-            No open batches on this terminal.
+            Couldn{'’'}t load batches. Pull down to refresh.
+          </Text>
+        </Card>
+      ) : openBatches.length === 0 ? (
+        <Card>
+          <Text style={{ fontSize: 13, color: colors.muted }}>
+            No open batches.
           </Text>
         </Card>
       ) : (
-        mine.map(b => (
+        openBatches.map(b => (
           <BatchRow
             key={b.id}
             batch={b}
+            showTerminalLabel
             onPrint={() => onPrintBatch(b.id)}
           />
         ))
       )}
-
-      {!loading && others.length > 0 ? (
-        <OtherTerminalsCollapsible
-          batches={others}
-          onPrintBatch={onPrintBatch}
-        />
-      ) : null}
     </View>
   )
 }
 
-function OtherTerminalsCollapsible ({
+function ClosedTodayCollapsible ({
   batches,
   onPrintBatch
 }: {
@@ -1140,11 +1169,11 @@ function OtherTerminalsCollapsible ({
   const [expanded, setExpanded] = useState(false)
   const label =
     batches.length === 1
-      ? '1 open batch on another terminal'
-      : `${batches.length} open batches on other terminals`
+      ? '1 batch closed today'
+      : `${batches.length} batches closed today`
 
   return (
-    <View style={{ gap: 10, marginTop: 4 }}>
+    <View style={{ gap: 10 }}>
       <TouchableOpacity
         onPress={() => setExpanded(v => !v)}
         activeOpacity={0.7}
@@ -1177,7 +1206,6 @@ function OtherTerminalsCollapsible ({
             <BatchRow
               key={b.id}
               batch={b}
-              showTerminalLabel
               onPrint={() => onPrintBatch(b.id)}
             />
           ))

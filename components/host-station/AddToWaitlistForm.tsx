@@ -1,4 +1,6 @@
+import { formatUsPhone, normalizeUsPhoneDigits } from '@/lib/phone'
 import { colors } from '@/lib/theme'
+import { getCachedCustomers } from '@/services/customer'
 import WaitTimeCalculator from '@/lib/waitlist/waitTimeCalculator'
 import { FloorPlanService } from '@/services/floorPlanService'
 import {
@@ -7,6 +9,7 @@ import {
 } from '@/stores/useFloorPlanStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
+import type { CustomerWithMeta } from '@/types/customer'
 import {
   AlertCircle,
   ChevronDown,
@@ -15,13 +18,15 @@ import {
   Minus,
   Phone,
   Plus,
+  Search,
   StickyNote,
   UserCircle,
   Users
 } from 'lucide-react-native'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Keyboard,
   Modal,
   Text,
   TextInput,
@@ -54,10 +59,13 @@ interface AddToWaitlistFormProps {
     notes?: string
     quoted_wait_minutes?: number
   }
+  onDirtyChange?: (dirty: boolean) => void
 }
 
 const SEATING_PREFERENCES = ['No Preference', 'Indoor', 'Outdoor', 'Bar']
 const NO_SECTION_PREFERENCE = 'No Preference'
+const normalizePhone = (value?: string | null) =>
+  (value ?? '').replace(/\D/g, '')
 
 const labelStyle = {
   color: colors.muted,
@@ -172,7 +180,8 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
   onCancel,
   isLoading,
   mode = 'add',
-  initialValues
+  initialValues,
+  onDirtyChange
 }) => {
   const tables = useFloorPlanStore(s => s.tables)
   const floorPlans = useFloorPlanStore(s => s.floorPlans)
@@ -182,6 +191,9 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
   const setFloorPlans = useFloorPlanStore(s => s.setFloorPlans)
   const selectedStoreId = useStoreSettingsStore(s => s.selectedStore?.id)
   const waitlist = useWaitlistStore(s => s.waitlist)
+  const [allCustomers, setAllCustomers] = useState<CustomerWithMeta[]>(() =>
+    getCachedCustomers()
+  )
 
   const [isLoadingFloorPlans, setIsLoadingFloorPlans] = useState(false)
 
@@ -229,7 +241,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
 
   const [partyName, setPartyName] = useState(initialValues?.party_name ?? '')
   const [partySize, setPartySize] = useState(initialValues?.party_size ?? 2)
-  const [phone, setPhone] = useState(initialValues?.phone ?? '')
+  const [phone, setPhone] = useState(formatUsPhone(initialValues?.phone ?? ''))
   const [email, setEmail] = useState(initialValues?.email ?? '')
   const [seatingPreference, setSeatingPreference] = useState(
     initialValues?.seating_preference ?? 'No Preference'
@@ -251,6 +263,146 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
   )
   const [isWaitOverridden, setIsWaitOverridden] = useState(mode === 'edit')
   const [estimatedReadyAt, setEstimatedReadyAt] = useState<Date | null>(null)
+  const [customerQuery, setCustomerQuery] = useState('')
+  const [linkedCustomer, setLinkedCustomer] = useState<CustomerWithMeta | null>(
+    null
+  )
+  const [isCustomerAutoFillPaused, setIsCustomerAutoFillPaused] =
+    useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const suggestionsBlurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dirtyRef = useRef(false)
+
+  const markDirty = useCallback(() => {
+    if (dirtyRef.current) return
+    dirtyRef.current = true
+    onDirtyChange?.(true)
+  }, [onDirtyChange])
+
+  const clearDirty = useCallback(() => {
+    if (!dirtyRef.current) return
+    dirtyRef.current = false
+    onDirtyChange?.(false)
+  }, [onDirtyChange])
+
+  useEffect(
+    () => () => {
+      if (suggestionsBlurTimer.current) clearTimeout(suggestionsBlurTimer.current)
+    },
+    []
+  )
+
+  const handleSuggestionsBlur = useCallback(() => {
+    if (suggestionsBlurTimer.current) clearTimeout(suggestionsBlurTimer.current)
+    suggestionsBlurTimer.current = setTimeout(() => setShowSuggestions(false), 150)
+  }, [])
+
+  const dismissSuggestions = useCallback(() => {
+    if (suggestionsBlurTimer.current) clearTimeout(suggestionsBlurTimer.current)
+    setShowSuggestions(false)
+  }, [])
+
+  useEffect(() => {
+    setAllCustomers(getCachedCustomers())
+  }, [selectedStoreId])
+
+  const customerResults = useMemo(() => {
+    const query = customerQuery.toLowerCase().trim()
+    const phoneQuery = normalizePhone(customerQuery)
+    if (query.length < 2 && phoneQuery.length < 3) return []
+
+    return allCustomers
+      .filter(customer => {
+        const customerName = (customer.name ?? '').toLowerCase()
+        const customerPhone = normalizePhone(
+          customer.phone ?? customer.phoneNumber
+        )
+        return (
+          (query.length >= 2 && customerName.includes(query)) ||
+          (phoneQuery.length >= 3 && customerPhone.includes(phoneQuery))
+        )
+      })
+      .slice(0, 4)
+  }, [allCustomers, customerQuery])
+
+  const applyCustomer = useCallback(
+    (customer: CustomerWithMeta) => {
+      setLinkedCustomer(customer)
+      setPartyName(customer.name ?? '')
+      setPhone(formatUsPhone(customer.phone ?? customer.phoneNumber ?? ''))
+      setEmail(customer.email ?? '')
+      setCustomerQuery('')
+      setIsCustomerAutoFillPaused(false)
+      dismissSuggestions()
+      markDirty()
+    },
+    [dismissSuggestions, markDirty]
+  )
+
+  const updatePartyName = useCallback(
+    (value: string) => {
+      setPartyName(value)
+      setLinkedCustomer(null)
+      setCustomerQuery(value)
+      setShowSuggestions(true)
+      setIsCustomerAutoFillPaused(false)
+      markDirty()
+    },
+    [markDirty]
+  )
+
+  const updatePhone = useCallback(
+    (value: string) => {
+      const formatted = formatUsPhone(value)
+      setPhone(formatted)
+      setLinkedCustomer(null)
+      setCustomerQuery(value)
+      setShowSuggestions(true)
+      setIsCustomerAutoFillPaused(false)
+      markDirty()
+    },
+    [markDirty]
+  )
+
+  const handleChangeCustomer = useCallback(() => {
+    setLinkedCustomer(null)
+    setPartyName('')
+    setPhone('')
+    setEmail('')
+    setCustomerQuery('')
+    setIsCustomerAutoFillPaused(false)
+    setShowSuggestions(false)
+    markDirty()
+  }, [markDirty])
+
+  useEffect(() => {
+    if (mode === 'edit' || linkedCustomer || isCustomerAutoFillPaused) return
+
+    const typedName = partyName.toLowerCase().trim()
+    const typedPhone = normalizePhone(phone)
+    if (typedName.length < 3 && typedPhone.length < 7) return
+
+    const match = allCustomers.find(customer => {
+      const customerName = (customer.name ?? '').toLowerCase().trim()
+      const customerPhone = normalizePhone(
+        customer.phone ?? customer.phoneNumber
+      )
+      return (
+        (typedName.length >= 3 && customerName === typedName) ||
+        (typedPhone.length >= 7 && customerPhone.endsWith(typedPhone))
+      )
+    })
+
+    if (match) applyCustomer(match)
+  }, [
+    allCustomers,
+    applyCustomer,
+    isCustomerAutoFillPaused,
+    linkedCustomer,
+    mode,
+    partyName,
+    phone
+  ])
 
   useEffect(() => {
     if (tables.length === 0) return
@@ -267,10 +419,11 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
 
   useEffect(() => {
     if (errors.length > 0) setErrors([])
-  }, [partyName, partySize, phone, email, quotedWait])
+  }, [errors.length, partyName, partySize, phone, email, quotedWait])
 
   const adjustPartySize = (delta: number) => {
     setPartySize(prev => Math.max(1, Math.min(20, prev + delta)))
+    markDirty()
   }
 
   const validateForm = (): boolean => {
@@ -290,10 +443,12 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
 
   const handleSubmit = () => {
     if (!validateForm()) return
+    clearDirty()
+    const phoneDigits = normalizeUsPhoneDigits(phone)
     onSubmit({
       party_name: partyName.trim(),
       party_size: partySize,
-      phone: phone.trim() || undefined,
+      phone: phoneDigits || undefined,
       email: email.trim() || undefined,
       seating_preference:
         seatingPreference !== 'No Preference' ? seatingPreference : undefined,
@@ -345,7 +500,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
       )}
 
       {/* ── Party Name ── */}
-      <View style={{ marginBottom: 12 }}>
+      <View style={{ marginBottom: 12, zIndex: 30 }}>
         <Text style={labelStyle}>Guest Name *</Text>
         <View
           style={{
@@ -363,7 +518,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
           <TextInput
             autoFocus
             value={partyName}
-            onChangeText={setPartyName}
+            onChangeText={updatePartyName}
             placeholder='Guest name or party'
             placeholderTextColor={colors.muted}
             maxLength={100}
@@ -376,6 +531,118 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
             }}
           />
         </View>
+        {linkedCustomer && (
+          <View
+            style={{
+              marginTop: 6,
+              flexDirection: 'row',
+              alignItems: 'center',
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.teal + '45',
+              backgroundColor: colors.teal + '10',
+              paddingHorizontal: 10,
+              paddingVertical: 7,
+              gap: 8
+            }}
+          >
+            <Search size={12} color={colors.teal} />
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{ color: colors.heading, fontSize: 12, fontWeight: '700' }}
+                numberOfLines={1}
+              >
+                {linkedCustomer.name ?? 'Customer'}
+              </Text>
+              <Text style={{ color: colors.muted, fontSize: 11 }} numberOfLines={1}>
+                {linkedCustomer.phone ?? linkedCustomer.phoneNumber ?? 'No phone'}
+                {linkedCustomer.email ? ` · ${linkedCustomer.email}` : ''}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleChangeCustomer}
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 5,
+                borderRadius: 6,
+                backgroundColor: colors.screen,
+                borderWidth: 1,
+                borderColor: colors.border
+              }}
+            >
+              <Text style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}>
+                Change
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {!linkedCustomer && customerResults.length > 0 && (
+          <View
+            style={{
+              position: 'absolute',
+              top: 66,
+              left: 0,
+              right: 0,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              overflow: 'hidden',
+              zIndex: 40,
+              elevation: 8,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.18,
+              shadowRadius: 12
+            }}
+          >
+            {customerResults.map((customer, index) => (
+              <TouchableOpacity
+                key={customer.id}
+                onPress={() => applyCustomer(customer)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  borderTopWidth: index > 0 ? 1 : 0,
+                  borderTopColor: colors.border
+                }}
+              >
+                <View
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor: colors.teal + '16',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Text style={{ color: colors.teal, fontSize: 10, fontWeight: '800' }}>
+                    {(customer.name ?? 'G')[0].toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{ color: colors.heading, fontSize: 12, fontWeight: '700' }}
+                    numberOfLines={1}
+                  >
+                    {customer.name ?? 'Guest'}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 11 }} numberOfLines={1}>
+                    {customer.phone ?? customer.phoneNumber ?? 'No phone'}
+                    {customer.email ? ` · ${customer.email}` : ''}
+                  </Text>
+                </View>
+                <Text style={{ color: colors.teal, fontSize: 10, fontWeight: '800' }}>
+                  Select
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* ── Party Size + Wait Time ── */}
@@ -534,6 +801,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
               onChangeText={text => {
                 setQuotedWait(text)
                 setIsWaitOverridden(text !== String(autoCalculatedWait))
+                markDirty()
               }}
               placeholderTextColor={colors.muted}
               keyboardType='number-pad'
@@ -577,11 +845,11 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
             <Phone size={13} color={colors.muted} />
             <TextInput
               value={phone}
-              onChangeText={setPhone}
+              onChangeText={updatePhone}
               placeholder='(555) 123-4567'
               placeholderTextColor={colors.muted}
               keyboardType='phone-pad'
-              maxLength={20}
+              maxLength={14}
               style={{
                 flex: 1,
                 fontSize: 13,
@@ -601,7 +869,10 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
             <Mail size={13} color={colors.muted} />
             <TextInput
               value={email}
-              onChangeText={setEmail}
+              onChangeText={value => {
+                setEmail(value)
+                markDirty()
+              }}
               placeholder='guest@example.com'
               placeholderTextColor={colors.muted}
               keyboardType='email-address'
@@ -722,10 +993,15 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
         </View>
         <TextInput
           value={notes}
-          onChangeText={setNotes}
+          onChangeText={value => {
+            setNotes(value)
+            markDirty()
+          }}
           placeholder='Allergies, occasion, high chair needed...'
           placeholderTextColor={colors.muted}
-          multiline
+          returnKeyType='done'
+          blurOnSubmit
+          onSubmitEditing={Keyboard.dismiss}
           maxLength={500}
           style={{
             backgroundColor: colors.card,
@@ -735,9 +1011,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
             paddingHorizontal: 12,
             paddingVertical: 10,
             fontSize: 13,
-            color: colors.heading,
-            minHeight: 70,
-            textAlignVertical: 'top'
+            color: colors.heading
           }}
         />
       </View>
@@ -801,7 +1075,10 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
         title='Seating Preference'
         options={SEATING_PREFERENCES}
         selected={seatingPreference}
-        onSelect={setSeatingPreference}
+        onSelect={value => {
+          setSeatingPreference(value)
+          markDirty()
+        }}
       />
       <DropdownModal
         visible={showSectionDropdown}
@@ -809,7 +1086,10 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
         title='Preferred Section'
         options={sectionOptions}
         selected={preferredSection}
-        onSelect={setPreferredSection}
+        onSelect={value => {
+          setPreferredSection(value)
+          markDirty()
+        }}
       />
     </View>
   )

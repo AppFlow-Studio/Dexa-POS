@@ -33,10 +33,8 @@ import {
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
-    Easing,
     FadeIn,
     FadeOut,
-    Layout,
 } from "react-native-reanimated";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
 import { type PaymentStatus } from "./PaymentStatusBadge";
@@ -390,7 +388,6 @@ const ExpandedView: React.FC<{
     (s) => s.updateSessionStatus,
   );
   const dispatchAction = useTableSessionStore((s) => s.dispatchAction);
-  const archiveOrder = useOrderStore((s) => s.archiveOrder);
   const deleteOrder = useOrderStore((s) => s.deleteOrder);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const getOrder = useOrderStore((s) => s.getOrder);
@@ -483,66 +480,57 @@ const ExpandedView: React.FC<{
     }
     const sessionId = table.session.id;
 
-    if (tableData.orders.length === 0) {
+    // Resolve the session's actual underlying order. `tableData.orders` is the
+    // RESOLVED-order view and can be empty even when the session references a
+    // real order that just wasn't resolved this moment, so fall back to the
+    // session's order_id.
+    const liveOrderId =
+      useTableSessionStore.getState().getSession(table.id)?.order_id ??
+      table.session?.order_id ??
+      null;
+    const underlyingOrder = liveOrderId
+      ? (getOrder(liveOrderId) ?? getOrderByDbId(liveOrderId) ?? null)
+      : null;
+
+    // No real order on the table → nothing to void; just free the table.
+    const hasAnyOrder =
+      tableData.orders.length > 0 ||
+      !!underlyingOrder?.items.length ||
+      (underlyingOrder?._broadcastItemCount ?? 0) > 0;
+
+    if (!hasAnyOrder) {
+      if (underlyingOrder) deleteOrder(underlyingOrder.id);
       await updateSessionStatus(sessionId, "available");
       onToggleExpand();
       return;
     }
 
-    const allOrdersArePaid = tableData.orders.every(
-      (o) => o.paid_status === "Paid",
-    );
-
-    if (allOrdersArePaid) {
-      const allItemsInGroupAreReady = tableData.orders.every((order) =>
-        order.items.every(
-          (item) =>
-            item.item_status === "Ready" || item.item_status === "Served",
-        ),
-      );
-
-      if (allItemsInGroupAreReady) {
-        // Use dispatch for CLEAR_TABLE — handles archive + cleaning transition
-        const [firstOrder, ...remainingOrders] = tableData.orders;
-        for (const order of remainingOrders) {
-          archiveOrder(order.id);
-        }
-        if (firstOrder) {
-          await dispatchAction({
-            type: "CLEAR_TABLE",
-            tableId: table.id,
-            orderId: firstOrder.id,
-          });
-        }
-        show({
-          title: "Tables Cleared",
-          message: `Tables ${tableData.displayName} are now marked for cleaning.`,
-          type: "success",
-        });
-      } else {
-        show({
-          title: "Action Restricted",
-          message:
-            "Cannot clear tables until all items are marked as 'Ready' or 'Served'.",
-          type: "error",
-        });
-      }
-    } else {
-      const groupHasAnyItems = tableData.orders.some((o) => o.items.length > 0);
-      if (groupHasAnyItems) {
-        setVoidConfirmOpen(true);
-      } else {
-        tableData.orders.forEach((order) => deleteOrder(order.id));
-        await updateSessionStatus(sessionId, "available");
-      }
-    }
+    // There is an order → confirm, then VOID it through the backend. This is the
+    // single behaviour now: "Void" always voids (restores inventory, marks the
+    // order voided so it can't reappear), regardless of paid/unpaid.
+    setVoidConfirmOpen(true);
   };
 
   const onConfirmVoid = async () => {
     if (!tableData || !table.session?.id) return;
 
+    // Prefer the resolved order group; fall back to the session's underlying
+    // order when the resolved view is empty (lookup-timing gap) so Void still
+    // acts on the real order.
+    let ordersToVoid = tableData.orders;
+    if (ordersToVoid.length === 0) {
+      const liveOrderId =
+        useTableSessionStore.getState().getSession(table.id)?.order_id ??
+        table.session?.order_id ??
+        null;
+      const underlyingOrder = liveOrderId
+        ? (getOrder(liveOrderId) ?? getOrderByDbId(liveOrderId) ?? null)
+        : null;
+      if (underlyingOrder) ordersToVoid = [underlyingOrder];
+    }
+
     // Use dispatch for VOID_ORDER — includes inventory deduction (fixes bug)
-    for (const order of tableData.orders) {
+    for (const order of ordersToVoid) {
       await dispatchAction({
         type: "VOID_ORDER",
         tableId: table.id,
@@ -745,7 +733,7 @@ const ExpandedView: React.FC<{
           onPress={() => setReceiptOpen(true)}
         />
         <QuickActionButton
-          label="Close Table"
+          label="Void"
           onPress={handleCloseTable}
           variant="destructive"
           disabled={isForeignStationSession}
@@ -861,7 +849,6 @@ const TableListItem: React.FC<{
 
   return (
     <Animated.View
-      layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
       style={{ marginBottom: 4, overflow: isExpanded ? "visible" : "hidden" }}
     >
       <TouchableOpacity

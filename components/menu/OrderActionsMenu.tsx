@@ -238,7 +238,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
 
       if (isEmptyDraft) {
         useOrderStore.getState().setActiveOrder(orderId);
-        router.push("/order-processing");
+        router.replace("/order-processing");
       }
     })();
   };

@@ -5,7 +5,18 @@ type OverrideAction =
   | { type: "select_category"; payload: { categoryName: string } }
   | {
       type: "edit_service_charge";
-      payload: { orderId: string; newAmount: number; reason?: string };
+      payload: {
+        orderId: string;
+        /** Resolved flat dollar amount (always set, used for the context label). */
+        newAmount: number;
+        /** 'amount' (default) or 'percent' — forwarded to override_service_charge_v3. */
+        mode: 'amount' | 'percent';
+        /** Percentage value 0-100 when mode='percent'; null when mode='amount'. */
+        rate: number | null;
+        /** Whether the overridden SC should be taxed. */
+        isTaxable: boolean;
+        reason?: string;
+      };
     }
   | {
       type: "remove_service_charge";
