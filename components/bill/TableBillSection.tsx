@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Flame,
   Plus,
+  Printer,
   Send,
   Users,
   X
@@ -318,19 +319,17 @@ const CourseSubHeader = React.memo(
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 3,
-              paddingHorizontal: 6,
-              paddingVertical: 2,
-              borderRadius: 5,
-              backgroundColor: colors.teal + '18',
-              borderWidth: 1,
-              borderColor: colors.teal + '50'
+              gap: 4,
+              paddingHorizontal: 10,
+              height: 24,
+              borderRadius: 6,
+              backgroundColor: colors.teal
             }}
-            activeOpacity={0.6}
+            activeOpacity={0.8}
           >
-            <Send size={8} color={colors.teal} />
+            <Printer size={11} color={colors.onSolid} />
             <Text
-              style={{ color: colors.teal, fontSize: 9, fontWeight: '700' }}
+              style={{ color: colors.onSolid, fontSize: 11, fontWeight: '600' }}
             >
               Send
             </Text>
@@ -407,6 +406,7 @@ const DenseSeatView = React.memo(
     onPrioritizeCourse,
     onResendCourse,
     onRemoveCourse,
+    onPressSendAllToKitchen,
     enableCoursing = false,
     isOvertime,
     overtimeMinutes
@@ -427,6 +427,7 @@ const DenseSeatView = React.memo(
     onPrioritizeCourse?: (courseId: number) => void
     onResendCourse?: (courseId: number) => void
     onRemoveCourse?: (courseId: number) => void
+    onPressSendAllToKitchen?: () => void
     enableCoursing?: boolean
     isOvertime?: boolean
     overtimeMinutes?: number
@@ -894,6 +895,46 @@ const DenseSeatView = React.memo(
                 </Text>
               </TouchableOpacity>
             )}
+            {onPressSendAllToKitchen &&
+              (() => {
+                const unsent =
+                  activeOrder?.items?.reduce(
+                    (sum, i) =>
+                      !i.is_voided &&
+                      (!i.kitchen_status || i.kitchen_status === 'new')
+                        ? sum + (i.quantity ?? 1)
+                        : sum,
+                    0
+                  ) ?? 0
+                return (
+                  <TouchableOpacity
+                    onPress={onPressSendAllToKitchen}
+                    disabled={unsent === 0}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      paddingHorizontal: 9,
+                      paddingVertical: 5,
+                      borderRadius: 6,
+                      backgroundColor: colors.teal,
+                      opacity: unsent === 0 ? 0.4 : 1
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Printer size={12} color={colors.onSolid} />
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: '600',
+                        color: colors.onSolid
+                      }}
+                    >
+                      Send All{unsent > 0 ? ` (${unsent})` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })()}
           </View>
         </View>
 
@@ -1182,6 +1223,7 @@ const TableBillSection = ({
           onPrioritizeCourse={onPrioritizeCourse}
           onResendCourse={onResendCourse}
           onRemoveCourse={onRemoveCourse}
+          onPressSendAllToKitchen={onPressSendAllToKitchen}
           enableCoursing={enableCoursing}
           isOvertime={isOvertime}
           overtimeMinutes={overtimeMinutes}
@@ -1204,6 +1246,7 @@ const TableBillSection = ({
         onPrioritizeCourse={onPrioritizeCourse}
         onResendCourse={onResendCourse}
         onRemoveCourse={onRemoveCourse}
+        onPressSendAllToKitchen={onPressSendAllToKitchen}
         enableCoursing={enableCoursing}
         isOvertime={isOvertime}
         overtimeMinutes={overtimeMinutes}
@@ -1260,50 +1303,8 @@ const TableBillSection = ({
           </View>
         )}
 
-        {(() => {
-          const unsent =
-            activeOrder?.items?.filter(
-              i => !i.kitchen_status || i.kitchen_status === 'new'
-            ) ?? []
-          if (!onPressSendAllToKitchen || unsent.length === 0) return null
-          return (
-            <View
-              style={{
-                paddingHorizontal: 10,
-                paddingBottom: 6,
-                backgroundColor: colors.panel
-              }}
-            >
-              <TouchableOpacity
-                onPress={onPressSendAllToKitchen}
-                activeOpacity={0.8}
-                style={{
-                  height: 34,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: colors.teal + '55',
-                  backgroundColor: colors.teal + '14',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6
-                }}
-              >
-                <Send size={13} color={colors.teal} />
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: '700',
-                    color: colors.teal
-                  }}
-                >
-                  Send to Kitchen ({unsent.length}{' '}
-                  {unsent.length === 1 ? 'item' : 'items'})
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )
-        })()}
+        {/* Send All now lives next to "New Course" in each view's header
+            (DenseSeatView + CourseAccordion), so the bottom bar was removed. */}
 
         <BottomActionBar
           activeOrder={activeOrder}
@@ -1364,11 +1365,11 @@ export default React.memo(TableBillSection, (prev, next) => {
     return false
   const prevHasUnsent =
     prev.activeOrder?.items?.some(
-      i => !i.kitchen_status || i.kitchen_status === 'new'
+      i => !i.is_voided && (!i.kitchen_status || i.kitchen_status === 'new')
     ) ?? false
   const nextHasUnsent =
     next.activeOrder?.items?.some(
-      i => !i.kitchen_status || i.kitchen_status === 'new'
+      i => !i.is_voided && (!i.kitchen_status || i.kitchen_status === 'new')
     ) ?? false
   if (prevHasUnsent !== nextHasUnsent) return false
   if (prev.activeOrder?.payments !== next.activeOrder?.payments) return false

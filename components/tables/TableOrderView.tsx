@@ -38,6 +38,7 @@ import { usePaymentStore } from '@/stores/usePaymentStore'
 import { useReservationStore } from '@/stores/useReservationStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
+import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { useRouter } from 'expo-router'
 import { CreditCard } from 'lucide-react-native'
@@ -175,6 +176,9 @@ const TableOrderView = React.forwardRef<
   const router = useRouter()
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
+  const activeEmployeeId = useEmployeeStore(s => s.activeEmployeeId)
+  const checkEmployeeInShift = useTimeclockStore(s => s.checkEmployeeInShift)
+  const showClockInWall = useTimeclockStore(s => s.showClockInWall)
   const supabase = useSupabaseClient()
   const defaultSittingTimeMinutes = useLocationConfigStore(
     s => s.config.dining.defaultSittingTimeMinutes
@@ -995,12 +999,36 @@ const TableOrderView = React.forwardRef<
       : null
     if (!activeOrder) return
 
+    // Mirror BillSection.handleSendToKitchen guards so the two flows behave
+    // identically: block off-shift sends and unconfirmed (draft) items.
+    if (activeEmployeeId && !checkEmployeeInShift(activeEmployeeId)) {
+      showClockInWall()
+      return
+    }
+    const hasDraftItems = activeOrder.items.some(
+      i => i.isDraft && !i.is_voided
+    )
+    if (hasDraftItems) {
+      show({
+        title: 'Unconfirmed Items',
+        message:
+          'Please confirm or remove any customized items before sending the order to the kitchen.',
+        type: 'error'
+      })
+      return
+    }
+
     const state = getForOrder(activeOrder.id)
+    // Every non-voided item that hasn't reached the kitchen yet, grouped into
+    // the courses we will actually dispatch. Using this single source of truth
+    // (instead of counting in the button and re-deriving here) guarantees we
+    // never skip an item that the UI claimed was sendable.
+    const unsentItems = activeOrder.items.filter(
+      i => !i.is_voided && isKitchenItemUnsent(i)
+    )
     const pendingCourses = Array.from(
       new Set(
-        activeOrder.items
-          .filter(i => !i.is_voided && isKitchenItemUnsent(i))
-          .map(i => i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1)
+        unsentItems.map(i => i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1)
       )
     ).sort((a, b) => a - b)
 
@@ -1013,18 +1041,22 @@ const TableOrderView = React.forwardRef<
       return
     }
 
-    const results = await Promise.all(
-      pendingCourses.map(course =>
-        handleSendCourseToKitchen(course, false, true)
-      )
-    )
-    const sentCount = results.filter(Boolean).length
+    // Send courses SEQUENTIALLY. The previous Promise.all fired every course
+    // dispatch concurrently against the same table session + order store, and
+    // the interleaved SEND_TO_KITCHEN dispatches could race — that is what was
+    // dropping items. Awaiting each send in order makes the batch atomic per
+    // course, matching BillSection's single flat send.
+    let sentCount = 0
+    for (const course of pendingCourses) {
+      const ok = await handleSendCourseToKitchen(course, false, true)
+      if (ok) sentCount++
+    }
 
     if (sentCount === pendingCourses.length) {
       show({
         title: 'Sent to Kitchen',
-        message: `${sentCount} course${
-          sentCount > 1 ? 's' : ''
+        message: `${unsentItems.length} item${
+          unsentItems.length > 1 ? 's' : ''
         } sent successfully.`,
         type: 'success'
       })
@@ -1036,7 +1068,14 @@ const TableOrderView = React.forwardRef<
       message: `Sent ${sentCount} of ${pendingCourses.length} courses.`,
       type: sentCount > 0 ? 'warning' : 'error'
     })
-  }, [getForOrder, handleSendCourseToKitchen, show])
+  }, [
+    activeEmployeeId,
+    checkEmployeeInShift,
+    showClockInWall,
+    getForOrder,
+    handleSendCourseToKitchen,
+    show
+  ])
 
   const handleDoubleTapCourse = useCallback(
     (course: number) => {
