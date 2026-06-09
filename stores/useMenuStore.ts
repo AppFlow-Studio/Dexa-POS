@@ -120,6 +120,12 @@ interface MenuState {
     fromIndex: number,
     toIndex: number
   ) => void
+  reorderModifierGroups: (fromIndex: number, toIndex: number) => void
+  reorderModifierOptions: (
+    groupId: string,
+    fromIndex: number,
+    toIndex: number
+  ) => void
   getMenuItems: (menuId: string) => MenuItemType[]
 
   // CRUD Operations for Modifier Groups
@@ -277,6 +283,15 @@ const transformMenuItemsFromSync = (
     context: { menuId?: string; categoryId?: string }
   ): MenuItemType => {
     const dbItem = syncItem.menu_item || syncItem // Handle both wrapper and direct item
+    const orderedModifierGroups = [...(dbItem.modifier_groups || [])].sort(
+      (a: any, b: any) => {
+        const orderDiff =
+          getModifierDisplayOrder(a.display_order) -
+          getModifierDisplayOrder(b.display_order)
+        if (orderDiff !== 0) return orderDiff
+        return (a.name || '').localeCompare(b.name || '')
+      }
+    )
 
     return {
       id: dbItem.id,
@@ -296,7 +311,7 @@ const transformMenuItemsFromSync = (
       availability: dbItem.effective_availability,
       stockQuantity: dbItem.current_stock ?? undefined,
       stockTrackingMode: dbItem.stock_tracking_mode,
-      modifierGroupIds: (dbItem.modifier_groups || []).map((mg: any) => mg.id),
+      modifierGroupIds: orderedModifierGroups.map((mg: any) => mg.id),
       priceLevels: dbItem.price_levels,
       priceSource: dbItem.price_source as MenuItemType['priceSource'],
       location_id: dbItem.location_id,
@@ -465,6 +480,31 @@ const transformMenuItemsFromSync = (
   }
 }
 
+const getModifierDisplayOrder = (value: number | null | undefined) =>
+  value ?? 999999
+
+const sortModifierGroups = <T extends { displayOrder?: number | null; name: string }>(
+  groups: T[]
+): T[] =>
+  [...groups].sort((a, b) => {
+    const orderDiff =
+      getModifierDisplayOrder(a.displayOrder) -
+      getModifierDisplayOrder(b.displayOrder)
+    if (orderDiff !== 0) return orderDiff
+    return a.name.localeCompare(b.name)
+  })
+
+const sortModifierOptions = <T extends { displayOrder?: number | null; name: string }>(
+  options: T[]
+): T[] =>
+  [...options].sort((a, b) => {
+    const orderDiff =
+      getModifierDisplayOrder(a.displayOrder) -
+      getModifierDisplayOrder(b.displayOrder)
+    if (orderDiff !== 0) return orderDiff
+    return a.name.localeCompare(b.name)
+  })
+
 /**
  * Transform modifier groups from all menu items to flat ModifierCategory[] format
  */
@@ -503,20 +543,24 @@ const transformModifierGroupsFromSync = (
             modifierMap.set(mg.id, {
               id: mg.id,
               name: mg.name,
+              displayOrder: (mg as any).display_order ?? undefined,
               // Map is_required + min/max_selections to legacy type/selectionType
               type: mg.is_required ? 'required' : 'optional',
               selectionType: mg.max_selections === 1 ? 'single' : 'multiple',
               maxSelections: mg.max_selections,
               description: undefined, // API doesn't have description in this format
               // Map items (API) to options (legacy)
-              options: (mg.items || []).map(opt => ({
-                id: opt.id,
-                name: opt.name,
-                price: opt.price_modifier, // API uses price_modifier
-                isAvailable: opt.is_active,
-                isDefault: opt.is_default ?? false,
-                recipe: ingredientsMap.get(opt.id)
-              })),
+              options: sortModifierOptions(
+                (mg.items || []).map(opt => ({
+                  id: opt.id,
+                  name: opt.name,
+                  price: opt.price_modifier, // API uses price_modifier
+                  displayOrder: opt.display_order ?? undefined,
+                  isAvailable: opt.is_active,
+                  isDefault: opt.is_default ?? false,
+                  recipe: ingredientsMap.get(opt.id)
+                }))
+              ),
               location_id: (mg as any).location_id ?? undefined,
               location_name: (mg as any).location_name?.name ?? undefined
             })
@@ -526,7 +570,7 @@ const transformModifierGroupsFromSync = (
     })
   })
 
-  return Array.from(modifierMap.values())
+  return sortModifierGroups(Array.from(modifierMap.values()))
 }
 
 // ============================================================
@@ -1173,6 +1217,59 @@ export const useMenuStore = create<MenuState>((set, get) => {
       })
     },
 
+    reorderModifierGroups: (fromIndex, toIndex) => {
+      set(state => {
+        const nextGroups = [...state.modifierGroups]
+        const [movedGroup] = nextGroups.splice(fromIndex, 1)
+        if (!movedGroup) return {}
+        nextGroups.splice(toIndex, 0, movedGroup)
+
+        const normalizedGroups = nextGroups.map((group, index) => ({
+          ...group,
+          displayOrder: index
+        }))
+
+        return {
+          modifierGroups: normalizedGroups,
+          modifierGroupsById: Object.fromEntries(
+            normalizedGroups.map(group => [group.id, group])
+          )
+        }
+      })
+    },
+
+    reorderModifierOptions: (groupId, fromIndex, toIndex) => {
+      set(state => {
+        const existingGroup = state.modifierGroupsById[groupId]
+        if (!existingGroup?.options?.length) return {}
+
+        const nextOptions = [...existingGroup.options]
+        const [movedOption] = nextOptions.splice(fromIndex, 1)
+        if (!movedOption) return {}
+        nextOptions.splice(toIndex, 0, movedOption)
+
+        const normalizedOptions = nextOptions.map((option, index) => ({
+          ...option,
+          displayOrder: index
+        }))
+
+        const updatedGroup = {
+          ...existingGroup,
+          options: normalizedOptions
+        }
+
+        return {
+          modifierGroups: state.modifierGroups.map(group =>
+            group.id === groupId ? updatedGroup : group
+          ),
+          modifierGroupsById: {
+            ...state.modifierGroupsById,
+            [groupId]: updatedGroup
+          }
+        }
+      })
+    },
+
     getMenuItems: (menuId: string): MenuItemType[] => {
       const state = useMenuStore.getState()
       const menu = state.menus.find(m => m.id === menuId)
@@ -1191,18 +1288,28 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
     // CRUD Operations for Modifier Groups
     addModifierGroup: modifierGroupData => {
+      const state = get()
       const newModifierGroup: ModifierCategory = {
         ...modifierGroupData,
-        id: (modifierGroupData as any).id || generateModifierGroupId()
+        id: (modifierGroupData as any).id || generateModifierGroupId(),
+        displayOrder:
+          modifierGroupData.displayOrder ?? state.modifierGroups.length,
+        options: (modifierGroupData.options || []).map((option, index) => ({
+          ...option,
+          displayOrder: option.displayOrder ?? index
+        }))
       }
 
-      set(state => ({
-        modifierGroups: [...state.modifierGroups, newModifierGroup],
-        // Keep O(1) Map in sync
-        modifierGroupsById: {
-          ...state.modifierGroupsById,
-          [newModifierGroup.id]: newModifierGroup
-        }
+      const nextModifierGroups = sortModifierGroups([
+        ...state.modifierGroups,
+        newModifierGroup
+      ])
+
+      set(() => ({
+        modifierGroups: nextModifierGroups,
+        modifierGroupsById: Object.fromEntries(
+          nextModifierGroups.map(group => [group.id, group])
+        )
       }))
 
       console.log('Modifier group added:', newModifierGroup)
@@ -1211,17 +1318,33 @@ export const useMenuStore = create<MenuState>((set, get) => {
     updateModifierGroup: (id, updates) => {
       set(state => {
         const updatedModifierGroup = state.modifierGroupsById[id]
-          ? { ...state.modifierGroupsById[id], ...updates }
+          ? {
+              ...state.modifierGroupsById[id],
+              ...updates,
+              options: updates.options
+                ? sortModifierOptions(
+                    updates.options.map((option, index) => ({
+                      ...option,
+                      displayOrder: option.displayOrder ?? index
+                    }))
+                  )
+                : state.modifierGroupsById[id].options
+            }
           : undefined
+        const nextModifierGroups = updatedModifierGroup
+          ? sortModifierGroups(
+              state.modifierGroups.map(modifierGroup =>
+                modifierGroup.id === id ? updatedModifierGroup : modifierGroup
+              )
+            )
+          : state.modifierGroups
         return {
-          modifierGroups: state.modifierGroups.map(modifierGroup =>
-            modifierGroup.id === id
-              ? { ...modifierGroup, ...updates }
-              : modifierGroup
-          ),
+          modifierGroups: nextModifierGroups,
           // Keep O(1) Map in sync
           modifierGroupsById: updatedModifierGroup
-            ? { ...state.modifierGroupsById, [id]: updatedModifierGroup }
+            ? Object.fromEntries(
+                nextModifierGroups.map(group => [group.id, group])
+              )
             : state.modifierGroupsById
         }
       })
@@ -1814,6 +1937,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
                   id: opt.id,
                   name: opt.name,
                   price: opt.price_modifier ?? 0,
+                  displayOrder: opt.display_order ?? undefined,
                   isAvailable: opt.is_active ?? true,
                   isDefault: opt.is_default ?? false,
                   recipe: modifierIngredientsMap.get(opt.id)
@@ -1827,6 +1951,9 @@ export const useMenuStore = create<MenuState>((set, get) => {
                 mg.location_id !== null
               const shouldPatchLocationName =
                 !existingModifier.location_name && !!mg.location_name?.name
+              const shouldPatchDisplayOrder =
+                existingModifier.displayOrder !==
+                (mg.display_order ?? existingModifier.displayOrder)
               const shouldPatchItems =
                 (!existingModifier.items ||
                   existingModifier.items.length === 0) &&
@@ -1841,6 +1968,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
                     )
                     return (
                       !existingOpt ||
+                      (existingOpt.displayOrder ?? null) !==
+                        (standaloneOpt.displayOrder ?? null) ||
                       (existingOpt.isDefault ?? false) !==
                         standaloneOpt.isDefault
                     )
@@ -1849,11 +1978,15 @@ export const useMenuStore = create<MenuState>((set, get) => {
               if (
                 shouldPatchLocationId ||
                 shouldPatchLocationName ||
+                shouldPatchDisplayOrder ||
                 shouldPatchItems ||
                 shouldPatchOptions
               ) {
                 const patchedModifier: ModifierCategory = {
                   ...existingModifier,
+                  displayOrder: shouldPatchDisplayOrder
+                    ? mg.display_order ?? existingModifier.displayOrder
+                    : existingModifier.displayOrder,
                   location_id: shouldPatchLocationId
                     ? mg.location_id
                     : existingModifier.location_id,
@@ -1872,7 +2005,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
                       }))
                     : existingModifier.items,
                   options: shouldPatchOptions
-                    ? standaloneOptions
+                    ? sortModifierOptions(standaloneOptions)
                     : existingModifier.options
                 }
 
@@ -1892,18 +2025,22 @@ export const useMenuStore = create<MenuState>((set, get) => {
             const mappedModifier: ModifierCategory = {
               id: mg.id,
               name: mg.name,
+              displayOrder: mg.display_order ?? undefined,
               description: mg.description ?? undefined,
               type: mg.is_required ? 'required' : 'optional',
               selectionType: mg.max_selections === 1 ? 'single' : 'multiple',
               maxSelections: mg.max_selections ?? undefined,
-              options: (mg.modifier_group_items || []).map((opt: any) => ({
-                id: opt.id,
-                name: opt.name,
-                price: opt.price_modifier ?? 0,
-                isAvailable: opt.is_active ?? true,
-                isDefault: opt.is_default ?? false,
-                recipe: modifierIngredientsMap.get(opt.id) // Attach recipe
-              })),
+              options: sortModifierOptions(
+                (mg.modifier_group_items || []).map((opt: any) => ({
+                  id: opt.id,
+                  name: opt.name,
+                  price: opt.price_modifier ?? 0,
+                  displayOrder: opt.display_order ?? undefined,
+                  isAvailable: opt.is_active ?? true,
+                  isDefault: opt.is_default ?? false,
+                  recipe: modifierIngredientsMap.get(opt.id) // Attach recipe
+                }))
+              ),
               location_id: mg.location_id,
               location_name: mg.location_name?.name,
               items: (mg.menu_item_modifier_groups || []).map((mimg: any) => ({
@@ -1972,8 +2109,13 @@ export const useMenuStore = create<MenuState>((set, get) => {
             categoriesByName: newCategoriesByName,
             menuItems: newMenuItems,
             menuItemsById: newMenuItemsById,
-            modifierGroups: newModifierGroups,
-            modifierGroupsById: newModifierGroupsById,
+            modifierGroups: sortModifierGroups(newModifierGroups),
+            modifierGroupsById: Object.fromEntries(
+              sortModifierGroups(newModifierGroups).map(group => [
+                group.id,
+                group
+              ])
+            ),
             menus: newMenus,
             menusById: newMenusById
           }
@@ -1985,8 +2127,13 @@ export const useMenuStore = create<MenuState>((set, get) => {
           categoriesByName: newCategoriesByName,
           menuItems: newMenuItems,
           menuItemsById: newMenuItemsById,
-          modifierGroups: newModifierGroups,
-          modifierGroupsById: newModifierGroupsById
+          modifierGroups: sortModifierGroups(newModifierGroups),
+          modifierGroupsById: Object.fromEntries(
+            sortModifierGroups(newModifierGroups).map(group => [
+              group.id,
+              group
+            ])
+          )
         }
       })
     },

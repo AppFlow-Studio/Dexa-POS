@@ -177,6 +177,7 @@ export interface ModifierOption {
   id: string
   name: string
   price: number
+  displayOrder?: number
   isAvailable?: boolean // For items that are "86'd" (unavailable)
   isDefault?: boolean // For default selected options
   recipe?: RecipeItem[]
@@ -185,6 +186,7 @@ export interface ModifierOption {
 export interface ModifierCategory {
   id: string
   name: string
+  displayOrder?: number
   type: 'required' | 'optional'
   selectionType: 'single' | 'multiple'
   maxSelections?: number // For multiple selection with limits

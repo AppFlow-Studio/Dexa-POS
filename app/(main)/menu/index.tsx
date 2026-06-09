@@ -36,6 +36,10 @@ import {
 } from 'lucide-react-native'
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { FlatList, Image, Text, TouchableOpacity, View } from 'react-native'
+import DraggableFlatList, {
+  RenderItemParams,
+  ScaleDecorator
+} from 'react-native-draggable-flatlist'
 import {
   Gesture,
   GestureDetector,
@@ -91,13 +95,15 @@ interface Category {
 interface ExtendedModifierGroup {
   id: string
   name: string
+  displayOrder?: number
   type: 'required' | 'optional'
   selectionType: 'single' | 'multiple'
   maxSelections?: number
   description?: string
   options: any[]
+  location_id?: string | null
+  location_name?: string
   items: MenuItemType[]
-  source: 'menuItem' | 'store'
 }
 
 // Draggable Menu Component
@@ -856,6 +862,9 @@ const MenuPage: React.FC = () => {
   const updateMenu = useMenuStore(s => s.updateMenu)
   const reorderMenus = useMenuStore(s => s.reorderMenus)
   const reorderCategoryItems = useMenuStore(s => s.reorderCategoryItems)
+  const reorderModifierGroupsInStore = useMenuStore(
+    s => s.reorderModifierGroups
+  )
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const supabase = useSupabaseClient()
   const { activeTab, searchQuery } = useMenuLayout()
@@ -1002,7 +1011,13 @@ const MenuPage: React.FC = () => {
         ...group,
         items: modifierToItemsMap.get(group.id) || []
       }))
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => {
+        const orderDiff =
+          (a.displayOrder ?? Number.MAX_SAFE_INTEGER) -
+          (b.displayOrder ?? Number.MAX_SAFE_INTEGER)
+        if (orderDiff !== 0) return orderDiff
+        return a.name.localeCompare(b.name)
+      })
   }, [modifierGroups, modifierToItemsMap])
 
   // Filter menu items based on search — memoized to avoid O(N) on every render
@@ -1277,6 +1292,49 @@ const MenuPage: React.FC = () => {
       }
     },
     [reorderCategoryItems, supabase, showToast, triggerPosSync, selectedStore]
+  )
+
+  const handleReorderModifierGroups = useCallback(
+    async (fromIndex: number, toIndex: number) => {
+      if (!selectedStore?.merchant_id) {
+        showToast({
+          title: 'Error',
+          message: 'Select a store before reordering modifiers',
+          type: 'error'
+        })
+        return
+      }
+
+      reorderModifierGroupsInStore(fromIndex, toIndex)
+
+      const updatedGroups = useMenuStore.getState().modifierGroups
+      const { error } = await MenuService.reorderModifierGroups(
+        supabase,
+        selectedStore.merchant_id,
+        updatedGroups.map((group, index) => ({
+          modifierGroupId: group.id,
+          displayOrder: index
+        }))
+      )
+
+      if (error) {
+        showToast({
+          title: 'Error',
+          message: 'Failed to save modifier order',
+          type: 'error'
+        })
+        if (selectedStore?.id) {
+          triggerPosSync(selectedStore.id, selectedStore.merchant_id)
+        }
+      }
+    },
+    [
+      reorderModifierGroupsInStore,
+      selectedStore,
+      showToast,
+      supabase,
+      triggerPosSync
+    ]
   )
 
   const isEntityEditable = useCallback(
@@ -1965,59 +2023,81 @@ const MenuPage: React.FC = () => {
         isRefreshing={isRefreshing}
       />
 
-      <FlatList
+      <DraggableFlatList
         key='modifiers-list'
-        data={[...uniqueModifierGroups].sort((a, b) =>
-          a.name.localeCompare(b.name)
-        )}
+        data={uniqueModifierGroups}
         keyExtractor={item => item.id}
         contentContainerStyle={{ gap: 8 }}
         removeClippedSubviews={true}
         maxToRenderPerBatch={5}
         windowSize={5}
         initialNumToRender={5}
-        renderItem={({ item: modifierGroup }) => {
+        activationDistance={10}
+        onDragEnd={({ from, to }) => {
+          if (from !== to) {
+            handleReorderModifierGroups(from, to)
+          }
+        }}
+        renderItem={({
+          item: modifierGroup,
+          drag,
+          isActive
+        }: RenderItemParams<ExtendedModifierGroup>) => {
           const editable = isEntityEditable(
             modifierGroup.location_id,
             modifierGroup.name
           )
           return (
-            <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: 12
-              }}
-            >
-              {/* Header row */}
+            <ScaleDecorator>
               <View
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 10
+                  backgroundColor: isActive ? colors.teal + '08' : colors.card,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: isActive ? colors.teal + '40' : colors.border,
+                  padding: 12
                 }}
               >
+                {/* Header row */}
                 <View
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 6,
-                    flex: 1,
-                    flexWrap: 'wrap'
+                    justifyContent: 'space-between',
+                    marginBottom: 10
                   }}
                 >
-                  <Text
+                  <View
                     style={{
-                      fontSize: 13,
-                      fontWeight: '700',
-                      color: colors.heading
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      flex: 1,
+                      flexWrap: 'wrap'
                     }}
                   >
-                    {modifierGroup.name}
-                  </Text>
+                    <TouchableOpacity
+                      onLongPress={drag}
+                      delayLongPress={120}
+                      style={{
+                        padding: 4,
+                        borderRadius: 8,
+                        backgroundColor: colors.panel,
+                        borderWidth: 1,
+                        borderColor: colors.border
+                      }}
+                    >
+                      <GripVertical size={13} color={colors.muted} />
+                    </TouchableOpacity>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '700',
+                        color: colors.heading
+                      }}
+                    >
+                      {modifierGroup.name}
+                    </Text>
 
                   {modifierGroup.location_id ? (
                     <View
@@ -2117,103 +2197,32 @@ const MenuPage: React.FC = () => {
                   </View>
                 </View>
 
-                <TouchableOpacity
-                  onPress={
-                    editable
-                      ? () =>
-                          router.push(`/menu/edit-modifier?id=${modifierGroup.id}`)
-                      : undefined
-                  }
-                  disabled={!editable}
-                  style={{
-                    padding: 6,
-                    backgroundColor: colors.panel,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    opacity: editable ? 1 : 0.4
-                  }}
-                >
-                  <Pencil
-                    size={14}
-                    color={editable ? colors.label : colors.muted}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {/* Options */}
-              <View style={{ marginBottom: 10 }}>
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '600',
-                    color: colors.muted,
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.5,
-                    marginBottom: 6
-                  }}
-                >
-                  Options ({Array.isArray(modifierGroup.options) ? modifierGroup.options.length : 0})
-                </Text>
-                <View
-                  style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}
-                >
-                  {(Array.isArray(modifierGroup.options)
-                    ? modifierGroup.options
-                    : []
-                  )
-                    .slice(0, 5)
-                    .map((option, index) => (
-                    <View
-                      key={index}
-                      style={{
-                        backgroundColor: colors.panel,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
-                        borderRadius: 6
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, color: colors.heading }}>
-                        {option.name}
-                        {option.price > 0 && (
-                          <Text style={{ color: colors.teal }}>
-                            {' '}
-                            (+${option.price.toFixed(2)})
-                          </Text>
-                        )}
-                      </Text>
-                    </View>
-                  ))}
-                  {(Array.isArray(modifierGroup.options)
-                    ? modifierGroup.options
-                    : []
-                  ).length > 5 && (
-                    <View
-                      style={{
-                        backgroundColor: colors.panel,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
-                        borderRadius: 6
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, color: colors.muted }}>
-                        +{(Array.isArray(modifierGroup.options)
-                          ? modifierGroup.options
-                          : []
-                        ).length - 5} more
-                      </Text>
-                    </View>
-                  )}
+                  <TouchableOpacity
+                    onPress={
+                      editable
+                        ? () =>
+                            router.push(`/menu/edit-modifier?id=${modifierGroup.id}`)
+                        : undefined
+                    }
+                    disabled={!editable}
+                    style={{
+                      padding: 6,
+                      backgroundColor: colors.panel,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      opacity: editable ? 1 : 0.4
+                    }}
+                  >
+                    <Pencil
+                      size={14}
+                      color={editable ? colors.label : colors.muted}
+                    />
+                  </TouchableOpacity>
                 </View>
-              </View>
 
-              {/* Items using this modifier */}
-              {modifierGroup.items.length > 0 && (
-                <View>
+                {/* Options */}
+                <View style={{ marginBottom: 10 }}>
                   <Text
                     style={{
                       fontSize: 11,
@@ -2224,106 +2233,178 @@ const MenuPage: React.FC = () => {
                       marginBottom: 6
                     }}
                   >
-                    Used by ({modifierGroup.items.length})
+                    Options ({Array.isArray(modifierGroup.options) ? modifierGroup.options.length : 0})
                   </Text>
                   <View
-                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}
+                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}
                   >
-                    {modifierGroup.items.slice(0, 6).map(item =>
-                      (() => {
-                        const imageSource = resolveMenuItemImageSource(
-                          item.image
-                        )
-                        const PlaceholderIcon = getPlaceholderIconForItem(item)
-                        return (
-                          <View
-                            key={item.id}
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 7,
-                              backgroundColor: colors.panel,
-                              paddingHorizontal: 10,
-                              paddingVertical: 6,
-                              borderRadius: 8,
-                              borderWidth: 1,
-                              borderColor: colors.border
-                            }}
-                          >
-                            <View
-                              style={{
-                                width: 26,
-                                height: 26,
-                                borderRadius: 6,
-                                overflow: 'hidden',
-                                backgroundColor: colors.card
-                              }}
-                            >
-                              {imageSource ? (
-                                <Image
-                                  source={imageSource}
-                                  style={{ width: '100%', height: '100%' }}
-                                  resizeMode='cover'
-                                />
-                              ) : (
-                                <View
-                                  style={{
-                                    flex: 1,
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                  }}
-                                >
-                                  <PlaceholderIcon
-                                    color={colors.muted}
-                                    size={12}
-                                    strokeWidth={2}
-                                  />
-                                </View>
-                              )}
-                            </View>
-                            <Text
-                              style={{
-                                fontSize: 12,
-                                color: colors.heading,
-                                fontWeight: '500'
-                              }}
-                              numberOfLines={1}
-                            >
-                              {item.name}
+                    {(Array.isArray(modifierGroup.options)
+                      ? modifierGroup.options
+                      : []
+                    )
+                      .slice(0, 5)
+                      .map((option, index) => (
+                      <View
+                        key={index}
+                        style={{
+                          backgroundColor: colors.panel,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                          borderRadius: 6
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, color: colors.heading }}>
+                          {option.name}
+                          {option.price > 0 && (
+                            <Text style={{ color: colors.teal }}>
+                              {' '}
+                              (+${option.price.toFixed(2)})
                             </Text>
-                            <Text
-                              style={{
-                                fontSize: 12,
-                                color: colors.teal,
-                                fontWeight: '600'
-                              }}
-                            >
-                              ${item.price.toFixed(2)}
-                            </Text>
-                          </View>
-                        )
-                      })()
-                    )}
-                    {modifierGroup.items.length > 6 && (
+                          )}
+                        </Text>
+                      </View>
+                    ))}
+                    {(Array.isArray(modifierGroup.options)
+                      ? modifierGroup.options
+                      : []
+                    ).length > 5 && (
                       <View
                         style={{
                           backgroundColor: colors.panel,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          paddingHorizontal: 7,
+                          paddingHorizontal: 8,
                           paddingVertical: 4,
-                          borderRadius: 8
+                          borderRadius: 6
                         }}
                       >
                         <Text style={{ fontSize: 11, color: colors.muted }}>
-                          +{modifierGroup.items.length - 6} more
+                          +{(Array.isArray(modifierGroup.options)
+                            ? modifierGroup.options
+                            : []
+                          ).length - 5} more
                         </Text>
                       </View>
                     )}
                   </View>
                 </View>
-              )}
-            </View>
+
+                {/* Items using this modifier */}
+                {modifierGroup.items.length > 0 && (
+                  <View>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '600',
+                        color: colors.muted,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                        marginBottom: 6
+                      }}
+                    >
+                      Used by ({modifierGroup.items.length})
+                    </Text>
+                    <View
+                      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}
+                    >
+                      {modifierGroup.items.slice(0, 6).map(item =>
+                        (() => {
+                          const imageSource = resolveMenuItemImageSource(
+                            item.image
+                          )
+                          const PlaceholderIcon = getPlaceholderIconForItem(item)
+                          return (
+                            <View
+                              key={item.id}
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 7,
+                                backgroundColor: colors.panel,
+                                paddingHorizontal: 10,
+                                paddingVertical: 6,
+                                borderRadius: 8,
+                                borderWidth: 1,
+                                borderColor: colors.border
+                              }}
+                            >
+                              <View
+                                style={{
+                                  width: 26,
+                                  height: 26,
+                                  borderRadius: 6,
+                                  overflow: 'hidden',
+                                  backgroundColor: colors.card
+                                }}
+                              >
+                                {imageSource ? (
+                                  <Image
+                                    source={imageSource}
+                                    style={{ width: '100%', height: '100%' }}
+                                    resizeMode='cover'
+                                  />
+                                ) : (
+                                  <View
+                                    style={{
+                                      flex: 1,
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
+                                    }}
+                                  >
+                                    <PlaceholderIcon
+                                      color={colors.muted}
+                                      size={12}
+                                      strokeWidth={2}
+                                    />
+                                  </View>
+                                )}
+                              </View>
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  color: colors.heading,
+                                  fontWeight: '500'
+                                }}
+                                numberOfLines={1}
+                              >
+                                {item.name}
+                              </Text>
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  color: colors.teal,
+                                  fontWeight: '600'
+                                }}
+                              >
+                                ${item.price.toFixed(2)}
+                              </Text>
+                            </View>
+                          )
+                        })()
+                      )}
+                      {modifierGroup.items.length > 6 && (
+                        <View
+                          style={{
+                            backgroundColor: colors.panel,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            paddingHorizontal: 7,
+                            paddingVertical: 4,
+                            borderRadius: 8
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, color: colors.muted }}>
+                            +{modifierGroup.items.length - 6} more
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+              </View>
+            </ScaleDecorator>
           )
         }}
       />
