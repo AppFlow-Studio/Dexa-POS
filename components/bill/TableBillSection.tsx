@@ -595,6 +595,7 @@ const DenseSeatView = React.memo(
                 type: 'item',
                 itemId: item.id,
                 isSent: isSentToKitchen(item) && !item.is_voided,
+                hasUnsentItems,
                 indentLeft: 14,
                 seatKey,
                 courseKey: `${seatKey}-${course}`
@@ -604,12 +605,14 @@ const DenseSeatView = React.memo(
           return
         }
 
+        const seatHasUnsentItems = allItems.some(item => !isSentToKitchen(item) && !item.is_voided)
         allItems.forEach(item => {
           nextRows.push({
             id: `item-${item.id}`,
             type: 'item',
             itemId: item.id,
             isSent: isSentToKitchen(item) && !item.is_voided,
+            hasUnsentItems: seatHasUnsentItems,
             indentLeft: 6,
             seatKey
           })
@@ -777,6 +780,7 @@ const DenseSeatView = React.memo(
             orderId={d.orderId}
             itemId={row.itemId}
             isSent={row.isSent}
+            hasUnsentItems={row.hasUnsentItems}
             indentLeft={row.indentLeft}
             enableCoursing={d.enableCoursing}
             orderHasPayments={d.orderHasPayments}
@@ -1150,7 +1154,10 @@ const TableBillSection = ({
   }, [])
 
   useEffect(() => {
-    if (discountOpenedOnce) discountSheetRef.current?.expand()
+    if (discountOpenedOnce) {
+      const id = setTimeout(() => discountSheetRef.current?.expand(), 80)
+      return () => clearTimeout(id)
+    }
   }, [discountOpenedOnce])
 
   // Determine which view to render
