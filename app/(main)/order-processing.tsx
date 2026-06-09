@@ -1598,10 +1598,6 @@ const OrderProcessing = () => {
               discountSheetRef={lazyDiscountSheetRef}
               serviceChargeSheetRef={lazyServiceChargeSheetRef}
               onCloseCheck={handleCloseCheck}
-              onReopenCheck={() => {
-                const orderId = useOrderStore.getState().activeOrderId
-                if (orderId) handleReopenCheck(orderId)
-              }}
               onNoSale={handleNoSale}
               onManageDrawer={() => setCashDrawerSheetOpen(true)}
             />
