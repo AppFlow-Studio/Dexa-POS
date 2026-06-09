@@ -1787,4 +1787,37 @@ export class OrderService {
 
     return result;
   }
+
+  static async overrideServiceCharge(
+    client: SupabaseClient,
+    params: {
+      p_order_id: string;
+      p_manager_id: string;
+      p_mode?: 'amount' | 'percent';
+      p_amount?: number | null;
+      p_rate?: number | null;
+      p_reason?: string | null;
+      p_station_id?: string | null;
+    },
+  ): Promise<{ data: { success: boolean } | null; error: Error | null }> {
+    const { data, error } = await _runWithDeadline<any>(
+      'override_service_charge_v3',
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data: d, error: e } = await client
+          .rpc('override_service_charge_v3', {
+            p_order_id:    params.p_order_id,
+            p_manager_id:  params.p_manager_id,
+            p_mode:        params.p_mode ?? 'amount',
+            p_amount:      params.p_amount ?? null,
+            p_rate:        params.p_rate ?? null,
+            p_reason:      params.p_reason ?? null,
+            p_station_id:  params.p_station_id ?? null,
+          })
+          .abortSignal(signal);
+        return { data: d, error: e };
+      },
+    );
+    return { data: data ?? null, error: error ?? null };
+  }
 }
