@@ -54,6 +54,7 @@ interface CourseAccordionProps {
   onRemoveCourse?: (courseId: number) => void
   onPressSendAllToKitchen?: () => void
   enableCoursing?: boolean
+  sendDisabled?: boolean
   isOvertime?: boolean
   overtimeMinutes?: number
 }
@@ -72,6 +73,7 @@ interface CourseGroupProps {
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
   onRemoveCourse?: (courseId: number) => void
+  sendDisabled?: boolean
 }
 
 // --- Helpers ---
@@ -144,7 +146,8 @@ function CourseGroupInner ({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
-  onRemoveCourse
+  onRemoveCourse,
+  sendDisabled = false
 }: CourseGroupProps) {
   const scale = useSharedValue(1)
   const [showActions, setShowActions] = useState(false)
@@ -249,6 +252,7 @@ function CourseGroupInner ({
           )}
           {hasUnsentItems && (
             <TouchableOpacity
+              disabled={sendDisabled}
               onPress={() => onDoubleTap(courseId)}
               style={{
                 flexDirection: 'row',
@@ -257,7 +261,8 @@ function CourseGroupInner ({
                 paddingHorizontal: 8,
                 height: 26,
                 borderRadius: 6,
-                backgroundColor: colors.teal
+                backgroundColor: colors.teal,
+                opacity: sendDisabled ? 0.4 : 1
               }}
               activeOpacity={0.8}
             >
@@ -453,6 +458,7 @@ const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
   if (prev.onPrioritizeCourse !== next.onPrioritizeCourse) return false
   if (prev.onResendCourse !== next.onResendCourse) return false
   if (prev.onRemoveCourse !== next.onRemoveCourse) return false
+  if (prev.sendDisabled !== next.sendDisabled) return false
   if (prev.items.length !== next.items.length) return false
   for (let i = 0; i < prev.items.length; i++) {
     const p = prev.items[i]
@@ -485,6 +491,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onResendCourse,
   onRemoveCourse,
   onPressSendAllToKitchen,
+  sendDisabled = false,
   enableCoursing = true,
   isOvertime,
   overtimeMinutes
@@ -811,7 +818,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
           {onPressSendAllToKitchen && (
             <TouchableOpacity
               onPress={onPressSendAllToKitchen}
-              disabled={unsentItemCount === 0}
+              disabled={unsentItemCount === 0 || sendDisabled}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -820,7 +827,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
                 paddingVertical: 7,
                 borderRadius: 8,
                 backgroundColor: colors.teal,
-                opacity: unsentItemCount === 0 ? 0.4 : 1
+                opacity: unsentItemCount === 0 || sendDisabled ? 0.4 : 1
               }}
               activeOpacity={0.8}
             >
@@ -859,6 +866,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
                   onPrioritizeCourse={onPrioritizeCourse}
                   onResendCourse={onResendCourse}
                   onRemoveCourse={onRemoveCourse}
+                  sendDisabled={sendDisabled}
                 />
               ))
             ) : (

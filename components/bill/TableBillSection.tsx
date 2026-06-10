@@ -4,6 +4,10 @@ import { colors } from '@/lib/theme'
 import { CartItem, OrderProfile } from '@/lib/types'
 import { useOrderItem } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
+import {
+  selectIsOpen as selectModifierIsOpen,
+  useModifierSidebarStore
+} from '@/stores/useModifierSidebarStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import {
   ArrowUpToLine,
@@ -242,6 +246,7 @@ const CourseSubHeader = React.memo(
     sentAt,
     onPress,
     onSend,
+    sendDisabled = false,
     onLongPress,
     onRemove
   }: {
@@ -255,6 +260,7 @@ const CourseSubHeader = React.memo(
     sentAt?: number
     onPress?: () => void
     onSend?: () => void
+    sendDisabled?: boolean
     onLongPress?: () => void
     onRemove?: () => void
   }) => (
@@ -312,6 +318,7 @@ const CourseSubHeader = React.memo(
         )}
         {hasUnsentItems && onSend && (
           <TouchableOpacity
+            disabled={sendDisabled}
             onPress={e => {
               e.stopPropagation()
               onSend()
@@ -323,7 +330,8 @@ const CourseSubHeader = React.memo(
               paddingHorizontal: 10,
               height: 24,
               borderRadius: 6,
-              backgroundColor: colors.teal
+              backgroundColor: colors.teal,
+              opacity: sendDisabled ? 0.4 : 1
             }}
             activeOpacity={0.8}
           >
@@ -408,6 +416,7 @@ const DenseSeatView = React.memo(
     onRemoveCourse,
     onPressSendAllToKitchen,
     enableCoursing = false,
+    sendDisabled = false,
     isOvertime,
     overtimeMinutes
   }: {
@@ -429,6 +438,7 @@ const DenseSeatView = React.memo(
     onRemoveCourse?: (courseId: number) => void
     onPressSendAllToKitchen?: () => void
     enableCoursing?: boolean
+    sendDisabled?: boolean
     isOvertime?: boolean
     overtimeMinutes?: number
   }) => {
@@ -692,7 +702,8 @@ const DenseSeatView = React.memo(
       onDoubleTapCourse,
       setActionCourse,
       courseSentAtMap,
-      onRemoveCourse
+      onRemoveCourse,
+      sendDisabled
     })
     renderDataRef.current = {
       enableCoursing,
@@ -705,7 +716,8 @@ const DenseSeatView = React.memo(
       onDoubleTapCourse,
       setActionCourse,
       courseSentAtMap,
-      onRemoveCourse
+      onRemoveCourse,
+      sendDisabled
     }
 
     // Stable renderRow — reads volatile data from ref, no deps to invalidate
@@ -762,6 +774,7 @@ const DenseSeatView = React.memo(
                   ? () => d.onDoubleTapCourse!(row.course)
                   : undefined
               }
+              sendDisabled={d.sendDisabled}
               onLongPress={
                 row.isSent ? () => d.setActionCourse(row.course) : undefined
               }
@@ -909,7 +922,7 @@ const DenseSeatView = React.memo(
                 return (
                   <TouchableOpacity
                     onPress={onPressSendAllToKitchen}
-                    disabled={unsent === 0}
+                    disabled={unsent === 0 || sendDisabled}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
@@ -918,7 +931,7 @@ const DenseSeatView = React.memo(
                       paddingVertical: 5,
                       borderRadius: 6,
                       backgroundColor: colors.teal,
-                      opacity: unsent === 0 ? 0.4 : 1
+                      opacity: unsent === 0 || sendDisabled ? 0.4 : 1
                     }}
                     activeOpacity={0.8}
                   >
@@ -1159,6 +1172,9 @@ const TableBillSection = ({
 }) => {
   const removeCheckDiscount = useOrderStore(state => state.removeCheckDiscount)
   const currentStationId = useOrderStore(s => s.currentStationId)
+  // While the modifier screen is open, items are mid-edit — disable all
+  // send-to-kitchen actions so an incomplete order isn't pushed.
+  const isModifierScreenOpen = useModifierSidebarStore(selectModifierIsOpen)
   const claimActiveOrder = useOrderStore(s => s.claimActiveOrder)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
   const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false)
@@ -1225,6 +1241,7 @@ const TableBillSection = ({
           onRemoveCourse={onRemoveCourse}
           onPressSendAllToKitchen={onPressSendAllToKitchen}
           enableCoursing={enableCoursing}
+          sendDisabled={isModifierScreenOpen}
           isOvertime={isOvertime}
           overtimeMinutes={overtimeMinutes}
         />
@@ -1248,6 +1265,7 @@ const TableBillSection = ({
         onRemoveCourse={onRemoveCourse}
         onPressSendAllToKitchen={onPressSendAllToKitchen}
         enableCoursing={enableCoursing}
+        sendDisabled={isModifierScreenOpen}
         isOvertime={isOvertime}
         overtimeMinutes={overtimeMinutes}
       />
