@@ -212,10 +212,19 @@ const CustomerSheet: React.FC = () => {
 
   const handleSaveNewCustomer = async () => {
     const rawPhone = newPhone.replace(/\D/g, "");
-    if (!newName.trim() || rawPhone.length < 10) {
+    if (!newName.trim()) {
       show({
         title: "Missing Information",
-        message: "Please enter a valid name and a 10-digit phone number.",
+        message: "Please enter a customer name.",
+        type: "error",
+      });
+      return;
+    }
+    // Phone is optional, but if provided it must be a complete 10-digit number.
+    if (rawPhone.length > 0 && rawPhone.length < 10) {
+      show({
+        title: "Invalid Phone Number",
+        message: "Please enter a complete 10-digit phone number, or leave it blank.",
         type: "error",
       });
       return;
@@ -516,7 +525,7 @@ const CustomerSheet: React.FC = () => {
 
                     <View style={{ gap: 5 }}>
                       <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>
-                        Phone Number {viewMode === "add" ? "*" : "(read-only)"}
+                        Phone Number {viewMode === "add" ? "(optional)" : "(read-only)"}
                       </Text>
                       <TextInput
                         value={newPhone}
