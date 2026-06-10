@@ -2,7 +2,7 @@ import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
-import { formatOrderStatus } from '@/utils/orderStatusHelpers'
+import { formatOrderStatus, formatPaymentStatus } from '@/utils/orderStatusHelpers'
 import { CheckCircle2, ChevronRight, Eye, Printer } from 'lucide-react-native'
 import React, { useMemo } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
@@ -135,7 +135,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
                 color: paidStatusColor
               }}
             >
-              {effectivePaidStatus ?? order.paid_status}
+              {formatPaymentStatus(effectivePaidStatus ?? order.paid_status)}
             </Text>
           </View>
         </View>

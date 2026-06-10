@@ -2,6 +2,7 @@ import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
+import { formatPaymentStatus } from '@/utils/orderStatusHelpers'
 import {
   ArrowDown,
   ArrowUp,
@@ -82,13 +83,13 @@ const STATUS_PILL: Record<
     bg: colors.warning + '20',
     border: colors.warning + '50',
     text: colors.warning,
-    label: 'Pending'
+    label: formatPaymentStatus('Pending')
   },
   Unpaid: {
     bg: colors.warning + '20',
     border: colors.warning + '50',
     text: colors.warning,
-    label: 'Pending'
+    label: formatPaymentStatus('Unpaid')
   },
   Partial: {
     bg: colors.paymentPartial + '20',

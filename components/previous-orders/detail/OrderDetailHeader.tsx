@@ -2,6 +2,7 @@ import DeliveryPlatformBadge from '@/components/order/DeliveryPlatformBadge'
 import { colors } from '@/lib/theme'
 import { PreviousOrder } from '@/lib/types'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { formatPaymentStatus } from '@/utils/orderStatusHelpers'
 import {
   ArrowLeft,
   MonitorSmartphone,
@@ -176,7 +177,7 @@ const OrderDetailHeader: React.FC<OrderDetailHeaderProps> = ({
                 color: paymentStyle.text
               }}
             >
-              {order.paymentStatus}
+              {formatPaymentStatus(order.paymentStatus)}
             </Text>
           </View>
 

@@ -23,6 +23,7 @@ import {
     forceSetLocalSequence,
     parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
+import { formatOrderStatus, formatPaymentStatus } from "@/utils/orderStatusHelpers";
 import { getHeaderHeight } from "@/lib/headerHeight";
 import { iosOnly } from "@/lib/safeAnimations";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
@@ -116,9 +117,7 @@ const getPaidStatusColor = (status?: string | null) => {
 };
 
 const formatOrderStatusLabel = (status?: string | null) =>
-  (status || "pending")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  formatOrderStatus(status || "pending");
 
 const OrderProcessing = () => {
   const router = useRouter();
@@ -907,7 +906,7 @@ const OrderProcessing = () => {
                     fontWeight: "700",
                   }}
                 >
-                  {effectivePaidStatus ?? item.paid_status}
+                  {formatPaymentStatus(effectivePaidStatus ?? item.paid_status)}
                 </Text>
               </View>
             </View>
