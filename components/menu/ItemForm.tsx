@@ -29,6 +29,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  GripVertical,
   Plus,
   Save,
   Search,
@@ -50,6 +51,10 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
+import DraggableFlatList, {
+  RenderItemParams,
+  ScaleDecorator
+} from 'react-native-draggable-flatlist'
 
 export interface MenuItemFormData {
   name: string
@@ -441,14 +446,33 @@ const ItemForm: React.FC<ItemFormProps> = ({
   }, [filteredInventoryItems])
 
   const filteredModifierGroups = useMemo(() => {
-    if (!modifierSearch.trim()) return modifierGroups
     const query = modifierSearch.toLowerCase()
-    return modifierGroups.filter(
-      m =>
-        m.name.toLowerCase().includes(query) ||
-        (m.description || '').toLowerCase().includes(query)
-    )
+    const matchingGroups = !modifierSearch.trim()
+      ? modifierGroups
+      : modifierGroups.filter(
+          m =>
+            m.name.toLowerCase().includes(query) ||
+            (m.description || '').toLowerCase().includes(query)
+        )
+
+    return [...matchingGroups].sort((a, b) => {
+      const orderDiff =
+        (a.displayOrder ?? Number.MAX_SAFE_INTEGER) -
+        (b.displayOrder ?? Number.MAX_SAFE_INTEGER)
+      if (orderDiff !== 0) return orderDiff
+      return a.name.localeCompare(b.name)
+    })
   }, [modifierSearch, modifierGroups])
+
+  const selectedModifierGroups = useMemo(
+    () =>
+      formData.modifiers
+        .map(modifierId => modifierGroups.find(m => m.id === modifierId))
+        .filter((modifier): modifier is (typeof modifierGroups)[number] =>
+          Boolean(modifier)
+        ),
+    [formData.modifiers, modifierGroups]
+  )
 
   const getInventoryItemName = (id: string) =>
     inventoryItems.find(i => i.id === id)?.name || 'Unknown Item'
@@ -1383,49 +1407,110 @@ const ItemForm: React.FC<ItemFormProps> = ({
               })}
             </View>
 
-            {formData.modifiers.length > 0 && (
-              <View
-                style={{
-                  marginTop: 10,
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  gap: 5
-                }}
-              >
-                {formData.modifiers.map(modifierId => {
-                  const modifier = modifierGroups.find(m => m.id === modifierId)
-                  return (
-                    <View
-                      key={modifierId}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        backgroundColor: colors.teal + '15',
-                        borderWidth: 1,
-                        borderColor: colors.teal + '40',
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
-                        borderRadius: 20,
-                        gap: 4
-                      }}
-                    >
-                      <Text
+            {selectedModifierGroups.length > 0 && (
+              <View style={{ marginTop: 10, gap: 8 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '600',
+                      color: colors.muted,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5
+                    }}
+                  >
+                    Assigned Order
+                  </Text>
+                  <Text style={{ fontSize: 10, color: colors.muted }}>
+                    Drag selected groups
+                  </Text>
+                </View>
+                <DraggableFlatList
+                  data={selectedModifierGroups}
+                  keyExtractor={item => item.id}
+                  scrollEnabled={false}
+                  activationDistance={10}
+                  onDragEnd={({ data }) =>
+                    setFormData(prev => ({
+                      ...prev,
+                      modifiers: data.map(modifier => modifier.id)
+                    }))
+                  }
+                  renderItem={({
+                    item,
+                    drag,
+                    isActive,
+                    getIndex
+                  }: RenderItemParams<(typeof selectedModifierGroups)[number]>) => (
+                    <ScaleDecorator>
+                      <View
                         style={{
-                          fontSize: 11,
-                          color: colors.teal,
-                          fontWeight: '600'
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 10,
+                          backgroundColor: isActive
+                            ? colors.teal + '10'
+                            : colors.card,
+                          borderWidth: 1,
+                          borderColor: isActive
+                            ? colors.teal + '45'
+                            : colors.border,
+                          borderRadius: 10,
+                          paddingHorizontal: 10,
+                          paddingVertical: 9
                         }}
                       >
-                        {modifier?.name}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => toggleModifier(modifierId)}
-                      >
-                        <X size={10} color={colors.teal} />
-                      </TouchableOpacity>
-                    </View>
-                  )
-                })}
+                        <TouchableOpacity
+                          onLongPress={drag}
+                          delayLongPress={120}
+                          style={{
+                            padding: 4,
+                            borderRadius: 6,
+                            backgroundColor: colors.panel
+                          }}
+                        >
+                          <GripVertical size={14} color={colors.muted} />
+                        </TouchableOpacity>
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: '600',
+                              color: colors.heading
+                            }}
+                          >
+                            {(getIndex() ?? 0) + 1}. {item.name}
+                          </Text>
+                          <Text
+                            style={{ fontSize: 10, color: colors.muted }}
+                          >
+                            {item.type === 'required' ? 'Required' : 'Optional'}
+                            {' • '}
+                            {item.selectionType === 'single'
+                              ? 'Single choice'
+                              : 'Multiple choice'}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => toggleModifier(item.id)}
+                          style={{
+                            padding: 5,
+                            borderRadius: 6,
+                            backgroundColor: colors.danger + '12'
+                          }}
+                        >
+                          <X size={12} color={colors.danger} />
+                        </TouchableOpacity>
+                      </View>
+                    </ScaleDecorator>
+                  )}
+                />
               </View>
             )}
           </View>

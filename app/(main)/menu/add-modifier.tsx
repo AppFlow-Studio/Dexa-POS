@@ -8,7 +8,11 @@ import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { colors } from "@/lib/theme";
 import { router, useLocalSearchParams } from "expo-router";
-import { ArrowLeft, Check, Plus, Save, Trash2 } from "lucide-react-native";
+import DraggableFlatList, {
+  RenderItemParams,
+  ScaleDecorator,
+} from "react-native-draggable-flatlist";
+import { ArrowLeft, Check, GripVertical, Plus, Save, Trash2 } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -40,6 +44,7 @@ interface FormErrors {
 
 const AddModifierScreen: React.FC = () => {
   const addModifierGroup = useMenuStore((s) => s.addModifierGroup);
+  const modifierGroups = useMenuStore((s) => s.modifierGroups);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
@@ -115,6 +120,7 @@ const AddModifierScreen: React.FC = () => {
         description: formData.description?.trim() || undefined,
         isRequired, minSelections,
         maxSelections: maxSelections ?? undefined,
+        displayOrder: modifierGroups.length,
       });
 
       if (error) {
@@ -131,12 +137,17 @@ const AddModifierScreen: React.FC = () => {
             modifierGroupId: createdGroup.id,
             name: option.name.trim(),
             priceModifier: option.price,
-            displayOrder: i,
+            displayOrder: option.displayOrder ?? i,
             isActive: true,
             isDefault: option.isDefault,
             merchantId,
           });
-          optionsWithBackendIds.push({ ...option, name: option.name.trim(), id: createdOption?.id || option.id });
+          optionsWithBackendIds.push({
+            ...option,
+            name: option.name.trim(),
+            id: createdOption?.id || option.id,
+            displayOrder: option.displayOrder ?? i,
+          });
         }
       }
 
@@ -191,6 +202,16 @@ const AddModifierScreen: React.FC = () => {
       newOptions[index].isDefault = !newOptions[index].isDefault;
       return { ...prev, options: newOptions };
     });
+  };
+
+  const handleOptionDragEnd = (data: ModifierOption[]) => {
+    setFormData((prev) => ({
+      ...prev,
+      options: data.map((option, index) => ({
+        ...option,
+        displayOrder: index,
+      })),
+    }));
   };
 
   const sectionLabel = { fontSize: 11, fontWeight: "600" as const, color: colors.muted, textTransform: "uppercase" as const, letterSpacing: 0.5 };
@@ -371,88 +392,104 @@ const AddModifierScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={{ gap: 8 }}>
-              {formData.options.map((option, index) => (
-                <View
-                  key={option.id}
-                  style={{
-                    backgroundColor: colors.screen,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: option.isDefault ? colors.success + "50" : colors.border,
-                    padding: 10,
-                  }}
-                >
-                  {/* Option header */}
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      Option {index + 1}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => removeOption(index)}
-                      style={{ padding: 4, backgroundColor: colors.danger + "15", borderRadius: 6 }}
+            <DraggableFlatList
+              data={formData.options}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              activationDistance={10}
+              onDragEnd={({ data }) => handleOptionDragEnd(data)}
+              renderItem={({ item: option, drag, isActive, getIndex }: RenderItemParams<ModifierOption>) => {
+                const index = getIndex() ?? 0;
+                return (
+                  <ScaleDecorator>
+                    <View
+                      style={{
+                        backgroundColor: colors.screen,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: option.isDefault ? colors.success + "50" : isActive ? colors.teal + "45" : colors.border,
+                        padding: 10,
+                        marginBottom: 8,
+                      }}
                     >
-                      <Trash2 size={13} color={colors.danger} />
-                    </TouchableOpacity>
-                  </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          <TouchableOpacity
+                            onLongPress={drag}
+                            delayLongPress={120}
+                            style={{ padding: 4, borderRadius: 6, backgroundColor: colors.card }}
+                          >
+                            <GripVertical size={13} color={colors.muted} />
+                          </TouchableOpacity>
+                          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                            Option {index + 1}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => removeOption(index)}
+                          style={{ padding: 4, backgroundColor: colors.danger + "15", borderRadius: 6 }}
+                        >
+                          <Trash2 size={13} color={colors.danger} />
+                        </TouchableOpacity>
+                      </View>
 
-                  {/* Name + Price row */}
-                  <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Name</Text>
-                      <TextInput
-                        style={inputStyle}
-                        placeholder="e.g., Large"
-                        placeholderTextColor={colors.muted}
-                        value={option.name}
-                        onChangeText={(text) => updateOption(index, "name", text)}
-                      />
-                    </View>
-                    <View style={{ width: 90 }}>
-                      <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Price (+$)</Text>
-                      <TextInput
-                        style={inputStyle}
-                        placeholder="0.00"
-                        placeholderTextColor={colors.muted}
-                        value={option.price === 0 ? "" : option.price.toString()}
-                        onChangeText={(text) => updateOption(index, "price", parseFloat(text) || 0)}
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  </View>
+                      <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Name</Text>
+                          <TextInput
+                            style={inputStyle}
+                            placeholder="e.g., Large"
+                            placeholderTextColor={colors.muted}
+                            value={option.name}
+                            onChangeText={(text) => updateOption(index, "name", text)}
+                          />
+                        </View>
+                        <View style={{ width: 90 }}>
+                          <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Price (+$)</Text>
+                          <TextInput
+                            style={inputStyle}
+                            placeholder="0.00"
+                            placeholderTextColor={colors.muted}
+                            value={option.price === 0 ? "" : option.price.toString()}
+                            onChangeText={(text) => updateOption(index, "price", parseFloat(text) || 0)}
+                            keyboardType="numeric"
+                          />
+                        </View>
+                      </View>
 
-                  {/* Default toggle */}
-                  <TouchableOpacity
-                    onPress={() => toggleDefaultOption(index)}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: 8,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      backgroundColor: option.isDefault ? colors.success + "12" : colors.card,
-                      borderColor: option.isDefault ? colors.success + "40" : colors.border,
-                    }}
-                  >
-                    <View style={{
-                      width: 18, height: 18, borderRadius: 4, borderWidth: 1.5,
-                      borderColor: option.isDefault ? colors.success : colors.border,
-                      backgroundColor: option.isDefault ? colors.success : "transparent",
-                      alignItems: "center", justifyContent: "center",
-                    }}>
-                      {option.isDefault && <Check size={10} color="#fff" />}
+                      <TouchableOpacity
+                        onPress={() => toggleDefaultOption(index)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: 8,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          backgroundColor: option.isDefault ? colors.success + "12" : colors.card,
+                          borderColor: option.isDefault ? colors.success + "40" : colors.border,
+                        }}
+                      >
+                        <View style={{
+                          width: 18, height: 18, borderRadius: 4, borderWidth: 1.5,
+                          borderColor: option.isDefault ? colors.success : colors.border,
+                          backgroundColor: option.isDefault ? colors.success : "transparent",
+                          alignItems: "center", justifyContent: "center",
+                        }}>
+                          {option.isDefault && <Check size={10} color="#fff" />}
+                        </View>
+                        <View>
+                          <Text style={{ fontSize: 12, fontWeight: "500", color: option.isDefault ? colors.success : colors.label }}>
+                            Default Selection
+                          </Text>
+                          <Text style={{ fontSize: 10, color: colors.muted }}>Pre-selected for customers</Text>
+                        </View>
+                      </TouchableOpacity>
                     </View>
-                    <View>
-                      <Text style={{ fontSize: 12, fontWeight: "500", color: option.isDefault ? colors.success : colors.label }}>
-                        Default Selection
-                      </Text>
-                      <Text style={{ fontSize: 10, color: colors.muted }}>Pre-selected for customers</Text>
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
+                  </ScaleDecorator>
+                );
+              }}
+            />
           )}
 
           {errors.options && (
