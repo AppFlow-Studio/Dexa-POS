@@ -162,7 +162,8 @@ const EditMenuItemScreen: React.FC = () => {
           await MenuService.assignModifierToItem(supabase, {
             menuItemId: itemId,
             modifierGroupId,
-            merchantId: selectedStore.merchant_id
+            merchantId: selectedStore.merchant_id,
+            displayOrder: newModifierIds.indexOf(modifierGroupId)
           })
         }
       }
@@ -172,6 +173,28 @@ const EditMenuItemScreen: React.FC = () => {
           itemId,
           modifierGroupId
         )
+      }
+
+      if (newModifierIds.length > 0) {
+        const reorderResult = await MenuService.reorderMenuItemModifierGroups(
+          supabase,
+          itemId,
+          newModifierIds.map((modifierGroupId, index) => ({
+            modifierGroupId,
+            displayOrder: index
+          }))
+        )
+
+        if (!reorderResult.success) {
+          show({
+            title: 'Error',
+            message:
+              reorderResult.error?.message ||
+              'Failed to save modifier order. Please try again.',
+            type: 'error'
+          })
+          return false
+        }
       }
 
       // 4. Save Recipe Ingredients (New)

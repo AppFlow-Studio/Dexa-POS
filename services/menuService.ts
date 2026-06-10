@@ -1077,4 +1077,90 @@ export class MenuService {
 
     return { success: true, error: null }
   }
+
+  /**
+   * Reorder modifier groups in the library.
+   */
+  static async reorderModifierGroups (
+    client: SupabaseClient,
+    merchantId: string,
+    groupOrders: { modifierGroupId: string; displayOrder: number }[]
+  ): Promise<{ success: boolean; error: any }> {
+    const normalizedOrders = groupOrders
+      .map(order => ({
+        modifier_group_id: order.modifierGroupId,
+        display_order: order.displayOrder
+      }))
+      .filter(order => !!order.modifier_group_id)
+
+    const { error } = await client.rpc('reorder_modifier_groups', {
+      p_merchant_id: merchantId,
+      p_group_orders: normalizedOrders
+    })
+
+    if (error) {
+      console.error('Failed to reorder modifier groups:', error)
+      return { success: false, error }
+    }
+
+    return { success: true, error: null }
+  }
+
+  /**
+   * Reorder options within a modifier group.
+   */
+  static async reorderModifierGroupItems (
+    client: SupabaseClient,
+    locationId: string | null,
+    modifierGroupId: string,
+    itemOrders: { modifierGroupItemId: string; displayOrder: number }[]
+  ): Promise<{ success: boolean; error: any }> {
+    const normalizedOrders = itemOrders
+      .map(order => ({
+        modifier_group_item_id: order.modifierGroupItemId,
+        display_order: order.displayOrder
+      }))
+      .filter(order => !!order.modifier_group_item_id)
+
+    const { error } = await client.rpc('reorder_modifier_group_items', {
+      p_location_id: locationId ?? null,
+      p_modifier_group_id: modifierGroupId,
+      p_item_orders: normalizedOrders
+    })
+
+    if (error) {
+      console.error('Failed to reorder modifier group items:', error)
+      return { success: false, error }
+    }
+
+    return { success: true, error: null }
+  }
+
+  /**
+   * Reorder modifier groups attached to a single menu item.
+   */
+  static async reorderMenuItemModifierGroups (
+    client: SupabaseClient,
+    menuItemId: string,
+    groupOrders: { modifierGroupId: string; displayOrder: number }[]
+  ): Promise<{ success: boolean; error: any }> {
+    const normalizedOrders = groupOrders
+      .map(order => ({
+        modifier_group_id: order.modifierGroupId,
+        display_order: order.displayOrder
+      }))
+      .filter(order => !!order.modifier_group_id)
+
+    const { error } = await client.rpc('reorder_menu_item_modifier_groups', {
+      p_menu_item_id: menuItemId,
+      p_group_orders: normalizedOrders
+    })
+
+    if (error) {
+      console.error('Failed to reorder menu item modifier groups:', error)
+      return { success: false, error }
+    }
+
+    return { success: true, error: null }
+  }
 }
