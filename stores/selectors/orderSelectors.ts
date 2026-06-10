@@ -249,6 +249,18 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
         ? (activeOrder.service_charge ?? null)
         : null,
     });
+    // TEMP-SC-DIAG: log every selector recompute so we can see when the
+    // breakdown briefly believes the override is gone.
+    if (__DEV__) {
+      console.log("[useActiveOrderTotals] recompute:", {
+        orderId: activeOrderId,
+        is_manual: activeOrder.service_charge_is_manual,
+        order_service_charge: activeOrder.service_charge,
+        computed_sc: totals.service_charge,
+        rule_present: !!serviceChargeRule,
+        partySize,
+      });
+    }
 
     // Get tip from payments array (sum of all non-voided payment tips)
     const tip = (activeOrder.payments ?? [])
@@ -331,10 +343,14 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       outstandingServiceCharge: totals.outstanding_service_charge,
       cashOutstandingServiceCharge: totals.cash_outstanding_service_charge,
       serviceChargeName: totals.service_charge_name,
+      // Amount-mode manual overrides have a flat dollar SC with no rate —
+      // showing the auto-rule rate as a fallback misleads the cashier (the SC
+      // shown is the manager's flat amount, not rule × subtotal).
       serviceChargeRate:
         activeOrder.service_charge_rate ??
-        serviceChargeRule?.rate_percent ??
-        null,
+        (activeOrder.service_charge_is_manual
+          ? null
+          : serviceChargeRule?.rate_percent ?? null),
     };
   }, [
     activeOrderId,
@@ -480,7 +496,10 @@ export function useOrderTotals(
       cashOutstandingServiceCharge: totals.cash_outstanding_service_charge,
       serviceChargeName: totals.service_charge_name,
       serviceChargeRate:
-        order.service_charge_rate ?? serviceChargeRule?.rate_percent ?? null,
+        order.service_charge_rate ??
+        (order.service_charge_is_manual
+          ? null
+          : serviceChargeRule?.rate_percent ?? null),
     };
   }, [orderId, order, taxRatesMap, serviceChargeRule, sessionPartySize, seatCount]);
 }

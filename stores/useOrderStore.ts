@@ -4680,6 +4680,17 @@ export const useOrderStore = create<OrderState>()(
                 orderId: backendOrder?.id,
                 status: backendOrder?.status,
                 itemCount: backendOrder?.order_items?.length || 0,
+                // TEMP-SC-DIAG: dump SC snapshot fields from the raw broadcast
+                // so we can confirm the trigger fix is actually shipping them.
+                _sc: {
+                  service_charge: (backendOrder as any)?.service_charge,
+                  is_manual: (backendOrder as any)?.service_charge_is_manual,
+                  is_taxable: (backendOrder as any)?.service_charge_is_taxable,
+                  rate: (backendOrder as any)?.service_charge_rate,
+                  applies_on: (backendOrder as any)?.service_charge_applies_on,
+                  rule_id: (backendOrder as any)?.service_charge_rule_id,
+                  name: (backendOrder as any)?.service_charge_name,
+                },
               });
             }
 
@@ -6337,6 +6348,42 @@ export const useOrderStore = create<OrderState>()(
                   existing.service_charge_is_manual;
                 orderProfile.service_charge_is_taxable =
                   existing.service_charge_is_taxable;
+              }
+
+              // Defensive: independently preserve the SC snapshot fields when
+              // the broadcast omits them entirely. Older broadcast_order_changes
+              // trigger versions didn't include service_charge_is_manual /
+              // service_charge_is_taxable / service_charge_rate (etc.) in the
+              // payload — transformBroadcastToOrder mapped the missing field to
+              // `false` / `null`, silently flipping a manager override flag and
+              // making the calculator fall back to rule-based 18% SC. The
+              // trigger now ships these fields, but any broadcast in-flight
+              // from an older replica, or a cached payload, would still hit
+              // the regression. Detect "field missing from raw broadcast" and
+              // restore from local — independent of the SC=0 guard above.
+              if (backendOrder.service_charge_is_manual === undefined) {
+                orderProfile.service_charge_is_manual =
+                  existing.service_charge_is_manual;
+              }
+              if (backendOrder.service_charge_is_taxable === undefined) {
+                orderProfile.service_charge_is_taxable =
+                  existing.service_charge_is_taxable;
+              }
+              if (backendOrder.service_charge_rate === undefined) {
+                orderProfile.service_charge_rate =
+                  existing.service_charge_rate;
+              }
+              if (backendOrder.service_charge_applies_on === undefined) {
+                orderProfile.service_charge_applies_on =
+                  existing.service_charge_applies_on;
+              }
+              if (backendOrder.service_charge_rule_id === undefined) {
+                orderProfile.service_charge_rule_id =
+                  existing.service_charge_rule_id;
+              }
+              if (backendOrder.service_charge_name === undefined) {
+                orderProfile.service_charge_name =
+                  existing.service_charge_name;
               }
             }
 
@@ -8693,22 +8740,33 @@ export const useOrderStore = create<OrderState>()(
               // updateItem) leaves o.service_charge stale relative to the
               // recomputed total_amount — and skips the server SC RPC fire
               // below, so the persisted SC rots.
-              order.service_charge = totals.service_charge;
-              if (totals.service_charge > 0) {
-                if (order.service_charge_rate == null) {
-                  const rule = useServiceChargeRulesStore
-                    .getState()
-                    .resolveRule(
-                      useStoreSettingsStore.getState().selectedStore?.id ?? null,
-                    );
-                  if (rule) {
-                    order.service_charge_rule_id = rule.id;
-                    order.service_charge_rate = rule.rate_percent;
-                    order.service_charge_applies_on = rule.applies_on;
+              //
+              // EXCEPTION: when a manager has manually overridden SC
+              // (service_charge_is_manual === true), do NOT touch
+              // service_charge or repopulate rate/rule_id/applies_on from the
+              // auto rule. Otherwise the calculator's percent-mode branch
+              // would treat the populated rate=18 as if the manager had
+              // chosen "18% override" and recompute 18% × subtotal — the
+              // bug behind manual $50 SC silently rendering as $2.84 after
+              // any item-edit RPC. Mirrors the guard in _ensureTotalsFresh.
+              if (!order.service_charge_is_manual) {
+                order.service_charge = totals.service_charge;
+                if (totals.service_charge > 0) {
+                  if (order.service_charge_rate == null) {
+                    const rule = useServiceChargeRulesStore
+                      .getState()
+                      .resolveRule(
+                        useStoreSettingsStore.getState().selectedStore?.id ?? null,
+                      );
+                    if (rule) {
+                      order.service_charge_rule_id = rule.id;
+                      order.service_charge_rate = rule.rate_percent;
+                      order.service_charge_applies_on = rule.applies_on;
+                    }
                   }
-                }
-                if (!order.service_charge_name) {
-                  order.service_charge_name = totals.service_charge_name;
+                  if (!order.service_charge_name) {
+                    order.service_charge_name = totals.service_charge_name;
+                  }
                 }
               }
 
@@ -9903,6 +9961,17 @@ export const useOrderStore = create<OrderState>()(
             get()._ensureTotalsFresh(orderId);
             const order = get().ordersById[orderId];
             if (!order) return;
+            // TEMP-SC-DIAG: dump the order's SC state at the moment of the
+            // discount tap. If is_manual is false here, the optimistic calc
+            // will use rule-based SC and the breakdown will briefly show 18%.
+            console.log("[applyDiscountToCheck] order SC state:", {
+              service_charge: order.service_charge,
+              is_manual: order.service_charge_is_manual,
+              is_taxable: order.service_charge_is_taxable,
+              rate: order.service_charge_rate,
+              rule_id: order.service_charge_rule_id,
+              applies_on: order.service_charge_applies_on,
+            });
 
             // Normalize incoming discount
             const isRecord = (discountInput as any).discount_type !== undefined;
@@ -15766,22 +15835,31 @@ export const useOrderStore = create<OrderState>()(
               // Update the live SC amount on every recompute. Snapshot the rate
               // / applies_on / name / rule_id the FIRST time SC applies so live
               // rule changes don't retroactively shift open orders.
-              o.service_charge = totals.service_charge;
-              if (totals.service_charge > 0) {
-                if (o.service_charge_rate == null) {
-                  const rule = useServiceChargeRulesStore
-                    .getState()
-                    .resolveRule(
-                      useStoreSettingsStore.getState().selectedStore?.id ?? null,
-                    );
-                  if (rule) {
-                    o.service_charge_rule_id = rule.id;
-                    o.service_charge_rate = rule.rate_percent;
-                    o.service_charge_applies_on = rule.applies_on;
+              //
+              // EXCEPTION: skip for manually-overridden orders. The override
+              // RPC sets service_charge_is_manual=true and clears rule_id/rate.
+              // Repopulating them here from the auto rule (rate=18) makes the
+              // calculator's percent-mode branch treat the override as a 18%
+              // override and recompute SC = 18% × subtotal. Mirrors the guard
+              // in _ensureTotalsFresh / applyBackendItemData.
+              if (!o.service_charge_is_manual) {
+                o.service_charge = totals.service_charge;
+                if (totals.service_charge > 0) {
+                  if (o.service_charge_rate == null) {
+                    const rule = useServiceChargeRulesStore
+                      .getState()
+                      .resolveRule(
+                        useStoreSettingsStore.getState().selectedStore?.id ?? null,
+                      );
+                    if (rule) {
+                      o.service_charge_rule_id = rule.id;
+                      o.service_charge_rate = rule.rate_percent;
+                      o.service_charge_applies_on = rule.applies_on;
+                    }
                   }
-                }
-                if (!o.service_charge_name) {
-                  o.service_charge_name = totals.service_charge_name;
+                  if (!o.service_charge_name) {
+                    o.service_charge_name = totals.service_charge_name;
+                  }
                 }
               }
 
@@ -16057,6 +16135,14 @@ export const useOrderStore = create<OrderState>()(
                     refundItemsCount: data.order_refund_items?.length || 0,
                     discountsCount: data.order_discounts?.length || 0,
                     stationName: data.station_name,
+                    // TEMP-SC-DIAG: confirm get_order_details is returning SC snapshot.
+                    _sc: {
+                      service_charge: data.order?.service_charge,
+                      is_manual: data.order?.service_charge_is_manual,
+                      is_taxable: data.order?.service_charge_is_taxable,
+                      rate: data.order?.service_charge_rate,
+                      rule_id: data.order?.service_charge_rule_id,
+                    },
                   },
                 );
 

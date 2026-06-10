@@ -689,14 +689,45 @@ export function calculateOrderTotals (
     partySize >= serviceChargeRule.min_party_size
 
   if (manualServiceCharge != null) {
-    // Manager override — bypass rule eligibility entirely. The server is
-    // authoritative; we just mirror its flat dollar value locally so totals
-    // stay consistent before the next sync. is_manual=true is the gate, NOT
-    // a non-null rate, so both amount-mode and percent-mode overrides land here.
-    serviceCharge = new Decimal(manualServiceCharge)
+    // Manager override — bypass rule eligibility entirely. Percent-mode
+    // overrides (snapshottedRate != null) recompute dynamically from
+    // rate × current base, mirroring calculate_order_totals_fast v3.
+    // Amount-mode overrides (rate null) stay frozen at the flat dollar
+    // amount the manager set.
+    if (snapshottedRate != null && snapshottedRate > 0) {
+      const cardBase =
+        effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
+      serviceCharge = Decimal.max(cardBase, 0)
+        .times(snapshottedRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    } else {
+      serviceCharge = new Decimal(manualServiceCharge)
+    }
     cashServiceCharge = serviceCharge
     serviceChargeName = snapshottedName ?? (effectiveName || 'Service Charge')
+    // TEMP-SC-DIAG: confirm we entered the manual branch and report the
+    // result before the function continues. If you see the selector log
+    // computed_sc=X but this log shows a different value, the cache is
+    // returning a stale result from before the override.
+    if (__DEV__) {
+      console.log('[order-calculator] MANUAL branch:', {
+        manualServiceCharge,
+        snapshottedRate,
+        effectiveAppliesOn,
+        resultSc: serviceCharge.toNumber(),
+      })
+    }
   } else if (ruleEligible) {
+    // TEMP-SC-DIAG: rule branch reached. If we land here despite is_manual=true
+    // upstream, then manualServiceCharge was somehow null in the input.
+    if (__DEV__) {
+      console.log('[order-calculator] RULE branch entered:', {
+        manualServiceCharge,
+        ruleEligible,
+        effectiveRate,
+      })
+    }
     const cardBase =
       effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
     serviceCharge = cardBase
