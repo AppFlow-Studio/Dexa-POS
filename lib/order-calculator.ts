@@ -706,28 +706,7 @@ export function calculateOrderTotals (
     }
     cashServiceCharge = serviceCharge
     serviceChargeName = snapshottedName ?? (effectiveName || 'Service Charge')
-    // TEMP-SC-DIAG: confirm we entered the manual branch and report the
-    // result before the function continues. If you see the selector log
-    // computed_sc=X but this log shows a different value, the cache is
-    // returning a stale result from before the override.
-    if (__DEV__) {
-      console.log('[order-calculator] MANUAL branch:', {
-        manualServiceCharge,
-        snapshottedRate,
-        effectiveAppliesOn,
-        resultSc: serviceCharge.toNumber(),
-      })
-    }
   } else if (ruleEligible) {
-    // TEMP-SC-DIAG: rule branch reached. If we land here despite is_manual=true
-    // upstream, then manualServiceCharge was somehow null in the input.
-    if (__DEV__) {
-      console.log('[order-calculator] RULE branch entered:', {
-        manualServiceCharge,
-        ruleEligible,
-        effectiveRate,
-      })
-    }
     const cardBase =
       effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
     serviceCharge = cardBase

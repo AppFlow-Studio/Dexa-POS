@@ -249,18 +249,6 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
         ? (activeOrder.service_charge ?? null)
         : null,
     });
-    // TEMP-SC-DIAG: log every selector recompute so we can see when the
-    // breakdown briefly believes the override is gone.
-    if (__DEV__) {
-      console.log("[useActiveOrderTotals] recompute:", {
-        orderId: activeOrderId,
-        is_manual: activeOrder.service_charge_is_manual,
-        order_service_charge: activeOrder.service_charge,
-        computed_sc: totals.service_charge,
-        rule_present: !!serviceChargeRule,
-        partySize,
-      });
-    }
 
     // Get tip from payments array (sum of all non-voided payment tips)
     const tip = (activeOrder.payments ?? [])

@@ -4680,17 +4680,6 @@ export const useOrderStore = create<OrderState>()(
                 orderId: backendOrder?.id,
                 status: backendOrder?.status,
                 itemCount: backendOrder?.order_items?.length || 0,
-                // TEMP-SC-DIAG: dump SC snapshot fields from the raw broadcast
-                // so we can confirm the trigger fix is actually shipping them.
-                _sc: {
-                  service_charge: (backendOrder as any)?.service_charge,
-                  is_manual: (backendOrder as any)?.service_charge_is_manual,
-                  is_taxable: (backendOrder as any)?.service_charge_is_taxable,
-                  rate: (backendOrder as any)?.service_charge_rate,
-                  applies_on: (backendOrder as any)?.service_charge_applies_on,
-                  rule_id: (backendOrder as any)?.service_charge_rule_id,
-                  name: (backendOrder as any)?.service_charge_name,
-                },
               });
             }
 
@@ -9961,17 +9950,6 @@ export const useOrderStore = create<OrderState>()(
             get()._ensureTotalsFresh(orderId);
             const order = get().ordersById[orderId];
             if (!order) return;
-            // TEMP-SC-DIAG: dump the order's SC state at the moment of the
-            // discount tap. If is_manual is false here, the optimistic calc
-            // will use rule-based SC and the breakdown will briefly show 18%.
-            console.log("[applyDiscountToCheck] order SC state:", {
-              service_charge: order.service_charge,
-              is_manual: order.service_charge_is_manual,
-              is_taxable: order.service_charge_is_taxable,
-              rate: order.service_charge_rate,
-              rule_id: order.service_charge_rule_id,
-              applies_on: order.service_charge_applies_on,
-            });
 
             // Normalize incoming discount
             const isRecord = (discountInput as any).discount_type !== undefined;
@@ -16135,14 +16113,6 @@ export const useOrderStore = create<OrderState>()(
                     refundItemsCount: data.order_refund_items?.length || 0,
                     discountsCount: data.order_discounts?.length || 0,
                     stationName: data.station_name,
-                    // TEMP-SC-DIAG: confirm get_order_details is returning SC snapshot.
-                    _sc: {
-                      service_charge: data.order?.service_charge,
-                      is_manual: data.order?.service_charge_is_manual,
-                      is_taxable: data.order?.service_charge_is_taxable,
-                      rate: data.order?.service_charge_rate,
-                      rule_id: data.order?.service_charge_rule_id,
-                    },
                   },
                 );
 
