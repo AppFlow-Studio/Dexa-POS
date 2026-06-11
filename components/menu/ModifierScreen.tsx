@@ -1575,9 +1575,12 @@ const ModifierScreenContent = ({
     ) {
       const draftItemId = item.id;
       lastDraftMenuItemIdRef.current = null;
-      InteractionManager.runAfterInteractions(() => {
+      // setTimeout(0), not runAfterInteractions — same reasoning as
+      // handleSave: avoids batching with this screen's pending reveal/grow
+      // handles which could delay cleanup past the next item's open().
+      setTimeout(() => {
         removeDraftItems(draftItemId);
-      });
+      }, 0);
     }
   }, []);
 
