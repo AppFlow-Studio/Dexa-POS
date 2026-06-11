@@ -1319,11 +1319,13 @@ const ModifierScreenContent = ({
     }
 
     // Close the modal immediately so the slide-out animation isn't blocked by
-    // the (potentially expensive) cart mutation below. The mutation runs
-    // after interactions/animations settle.
+    // the (potentially expensive) cart mutation below. setTimeout(0) (not
+    // runAfterInteractions) so this doesn't get batched with unrelated
+    // pending interaction handles from this screen's reveal/grow effects —
+    // that batching was delaying the cart write past the next item's open().
     closeModal();
 
-    InteractionManager.runAfterInteractions(() => {
+    setTimeout(() => {
     if (
       isOpenItem &&
       (currentMode === "edit" || currentMode === "fullscreen") &&
@@ -1553,7 +1555,7 @@ const ModifierScreenContent = ({
         }
       }
     }
-    });
+    }, 0);
   }, []);
 
   const handleCancel = useCallback(() => {
