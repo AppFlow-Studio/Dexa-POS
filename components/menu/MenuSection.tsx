@@ -1192,6 +1192,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                     numColumns={numColumns}
                     estimatedItemSize={estimatedItemSize}
                     getItemType={getItemType}
+                    disableAutoLayout
+                    drawDistance={500}
                     contentContainerStyle={{
                       backgroundColor: colors.card,
                       paddingBottom: 128,
