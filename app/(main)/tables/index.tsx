@@ -12,6 +12,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { pauseTimerTick, resumeTimerTick } from '@/hooks/useTableTimerTick'
 import { getDeviceId } from '@/lib/deviceId'
+import { startInteraction } from '@/lib/perf'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { transferTableServer } from '@/services/serverAssignmentService'
@@ -731,7 +732,18 @@ const TablesScreen = () => {
               {floorPlans.map(layout => (
                 <TouchableOpacity
                   key={layout.id}
-                  onPress={() => setActiveFloorPlan(layout.id)}
+                  onPress={() => {
+                    if (layout.id === activeFloorPlanId) return
+                    // Perf T0: tap → switched-floor painted. `cached` tells us
+                    // whether the instant cache path or the skeleton+RPC path ran.
+                    const perf = startInteraction('pos.floor_switch', {
+                      cached:
+                        !!useFloorPlanStore.getState().floorPlanCache[layout.id]
+                    })
+                    setActiveFloorPlan(layout.id).finally(() =>
+                      perf.endAfterPaint()
+                    )
+                  }}
                   style={[
                     {
                       paddingHorizontal: 10,

@@ -427,6 +427,54 @@ export class OrderService {
   }
 
   /**
+   * Perf A1: transition an order out of draft for a kitchen send, with the
+   * verify-SELECT on the ERROR PATH ONLY (was unconditionally a third round
+   * trip at every send-to-kitchen call site).
+   *
+   * - RPC success → the returned row is the post-update state from the same
+   *   transaction, i.e. non-draft by definition. Proceed. (~99% path, 1 RT.)
+   * - P0001 / "already in" → ambiguous: deployed update_order_status raises
+   *   P0001 for BOTH "already in <status>" (benign) and "Order not found"
+   *   (fatal). Verified identical on staging + prod 2026-06-11. Discriminate
+   *   with today's SELECT: not-found/draft → fail (preserves retry →
+   *   dead-letter visibility); non-draft → proceed.
+   * - Any other error → fail.
+   */
+  static async ensureOrderOutOfDraft(
+    client: SupabaseClient,
+    orderId: string,
+    targetStatus: OrderStatus,
+  ): Promise<{ ok: boolean; error?: any }> {
+    const { error } = await OrderService.updateOrderStatus(
+      client,
+      orderId,
+      targetStatus,
+    );
+    if (!error) return { ok: true };
+
+    const maybeBenign =
+      error.code === "P0001" || error.message?.includes("already in");
+    if (!maybeBenign) return { ok: false, error };
+
+    const { data: row, error: verifyError } = await client
+      .from("orders")
+      .select("status")
+      .eq("id", orderId)
+      .single();
+    if (verifyError || row?.status === "draft") {
+      return {
+        ok: false,
+        error:
+          verifyError ??
+          new Error(
+            `Order ${orderId} remained draft after status update`,
+          ),
+      };
+    }
+    return { ok: true };
+  }
+
+  /**
    * Calculate tax for an order
    */
   static async calculateOrderTax(

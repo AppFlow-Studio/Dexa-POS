@@ -1,5 +1,11 @@
 # Lessons Learned
 
+## Hidden coupling: TTL guards poisoned by mass operations
+
+- The floor-switch "all tables available" regression: `_patchSessionsFromTables` cleared OTHER plans' sessions on every plan-scoped snapshot patch (wrong authority scope), and each CLEAR fed `recentlyClearedSessions` (a 30s TTL guard meant for real table clears). The TTL map then made `fetchFloorPlanSnapshot` strip those sessions from every fresh fetch — so making fetches MORE frequent (prefetch re-warm) surfaced a latent state-destruction loop.
+- Pattern: a "recently X" TTL guard is only sound if X is recorded ONLY for genuine X events. Before adding/refreshing any fetch path, grep for guards that filter its output (`wasRecently*`, suppress windows) and check what feeds them.
+- Snapshot patch functions must match the snapshot's authority scope: a plan-scoped fetch may only clear state for tables IN that plan.
+
 ## Native code in "JS" dependencies
 
 - Never claim a new dependency needs no dev-client rebuild without checking for an `android/` or `ios/` directory in its package. `@shopify/flash-list` v1 looks JS-only (RecyclerListView heritage) but ships native views (`AutoLayoutView`, `CellContainer`) — old dev clients throw "View config not found".

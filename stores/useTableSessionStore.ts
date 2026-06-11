@@ -750,10 +750,15 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           const currentSessions = get().sessions;
           const actions: Array<{ tableId: string; action: SessionAction }> = [];
 
+          // Snapshots are PLAN-SCOPED (loadFloorPlanStatus / the floor cache
+          // fetch one plan's tables). They can only make claims about their
+          // own tables — sessions for OTHER plans' tables must be preserved.
+          const snapshotTableIds = new Set<string>();
           // Collect table IDs that have sessions in the incoming data
           const incomingTableIds = new Set<string>();
 
           for (const table of tables) {
+            snapshotTableIds.add(table.id);
             if (!table.session) continue;
             incomingTableIds.add(table.id);
 
@@ -764,21 +769,24 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             });
           }
 
-          // Clear sessions for tables that no longer have sessions
-          // but preserve optimistic local-only sessions (seating, ordering, etc.)
+          // Clear sessions ONLY for tables that are IN this snapshot but came
+          // back without a session (genuinely freed). Tables from other floor
+          // plans are out of scope — clearing them (the old behavior) both
+          // lost their state on every plan switch AND poisoned the
+          // recently-cleared TTL map, which then made fetchFloorPlanSnapshot
+          // strip those sessions from fresh snapshots for 30s — the
+          // "all tables show available after switching plans" bug.
+          // Local-only optimistic sessions (seating, ordering, …) stay.
           for (const tableId of Object.keys(currentSessions)) {
-            if (!incomingTableIds.has(tableId)) {
-              const existing = currentSessions[tableId];
-              if (existing && isLocalOnlyStatus(existing.status)) {
-                continue;
-              }
-              // This path is only ever fed by loadFloorPlanStatus's authoritative
-              // snapshot (the single writer of backend-owned state). A table
-              // missing the session here genuinely lost it — clear it. No TTL
-              // guard needed: broadcasts are never applied to state anymore, so
-              // there's no stale-broadcast race to defend against.
-              actions.push({ tableId, action: { type: "CLEAR" } });
+            if (incomingTableIds.has(tableId)) continue;
+            if (!snapshotTableIds.has(tableId)) continue;
+            const existing = currentSessions[tableId];
+            if (existing && isLocalOnlyStatus(existing.status)) {
+              continue;
             }
+            // This path is only ever fed by an authoritative plan snapshot.
+            // A table in the snapshot missing its session genuinely lost it.
+            actions.push({ tableId, action: { type: "CLEAR" } });
           }
 
           if (actions.length > 0) {

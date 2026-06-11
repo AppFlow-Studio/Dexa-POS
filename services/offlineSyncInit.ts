@@ -1253,90 +1253,114 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         };
 
         // ============================================================
-        // PRE-PAYMENT VALIDATION (Edge Case 4 — Payment Integrity)
-        // Check if the order was voided/cancelled while we were offline
+        // PRE-PAYMENT VALIDATION + DEFENSIVE AUTH-CHECK — run CONCURRENTLY
+        // (Perf A2; was two serial round trips per replayed payment)
+        //
+        // 1) Void/cancel check (Edge Case 4 — Payment Integrity): discard if
+        //    the order was voided/cancelled while we were offline.
+        // 2) check_recent_payment (Bad-WiFi Phase 2 — Wave 1): discard if a
+        //    matching payment already landed (previous attempt succeeded but
+        //    the response was lost) — never re-charge the customer.
+        //
+        // Both are independent reads. Each promise contains its OWN failure
+        // and fails open (supabase-js REJECTS on network throws/aborts —
+        // exactly the reconnect-flush conditions this code runs under — so a
+        // bare Promise.all over raw awaits would turn today's fail-open
+        // semantics into a spurious retry). Results are evaluated in the
+        // original order: void-check first, then duplicate-charge.
         // ============================================================
-        if (finalParams.p_order_id && isValidUUID(finalParams.p_order_id)) {
-          try {
-            const { data: currentOrder } = await _supabaseClient
-              .from("orders")
-              .select("order_status")
-              .eq("id", finalParams.p_order_id)
-              .single();
+        const hasCheckableOrderId =
+          !!finalParams.p_order_id && isValidUUID(finalParams.p_order_id);
 
-            if (
-              currentOrder?.order_status === "void" ||
-              currentOrder?.order_status === "cancelled"
-            ) {
-              console.warn(
-                `[OfflineSync:payment] Order ${finalParams.p_order_id} is ${currentOrder.order_status} — discarding payment`,
-              );
-              return true; // Discard
-            }
-          } catch (checkErr) {
-            // Non-fatal — proceed with payment (RPC will validate)
-            console.warn(
-              "[OfflineSync:payment] Pre-payment status check failed:",
-              checkErr,
-            );
-          }
+        const statusCheckPromise: Promise<string | null> = hasCheckableOrderId
+          ? (async () => {
+              try {
+                const { data: currentOrder } = await _supabaseClient
+                  .from("orders")
+                  .select("order_status")
+                  .eq("id", finalParams.p_order_id)
+                  .single();
+                return currentOrder?.order_status ?? null;
+              } catch (checkErr) {
+                // Non-fatal — proceed with payment (RPC will validate)
+                console.warn(
+                  "[OfflineSync:payment] Pre-payment status check failed:",
+                  checkErr,
+                );
+                return null;
+              }
+            })()
+          : Promise.resolve(null);
+
+        // Lookback window = max(time since op was queued + 5 min slack, 10 min).
+        const authCheckPromise: Promise<{ matched: boolean; raw: unknown } | null> =
+          hasCheckableOrderId
+            ? (async () => {
+                try {
+                  const opAgeMs = Date.now() - new Date(op.timestamp).getTime();
+                  const lookbackSeconds = Math.max(
+                    600,
+                    Math.ceil(opAgeMs / 1000) + 300,
+                  );
+                  const amountCents =
+                    typeof finalParams.p_amount === "number" &&
+                    finalParams.p_amount > 0
+                      ? Math.round(finalParams.p_amount * 100)
+                      : null;
+
+                  const { data: authCheck, error: authCheckError } =
+                    await _supabaseClient.rpc("check_recent_payment", {
+                      p_order_id: finalParams.p_order_id,
+                      p_lookback_seconds: lookbackSeconds,
+                      p_amount_cents: amountCents,
+                      p_split_portion_index:
+                        finalParams.p_split_portion_index ?? null,
+                    });
+
+                  if (authCheckError) {
+                    // Don't block on the safety check failing — defensive only
+                    console.warn(
+                      "[OfflineSync:payment] check_recent_payment failed; proceeding (defensive only):",
+                      authCheckError,
+                    );
+                    return null;
+                  }
+                  return {
+                    matched: !!(authCheck as any)?.matched,
+                    raw: authCheck,
+                  };
+                } catch (checkErr) {
+                  console.warn(
+                    "[OfflineSync:payment] check_recent_payment threw; proceeding (defensive only):",
+                    checkErr,
+                  );
+                  return null;
+                }
+              })()
+            : Promise.resolve(null);
+
+        // Safe: both promises catch internally and never reject.
+        const [preCheckOrderStatus, authCheckResult] = await Promise.all([
+          statusCheckPromise,
+          authCheckPromise,
+        ]);
+
+        if (
+          preCheckOrderStatus === "void" ||
+          preCheckOrderStatus === "cancelled"
+        ) {
+          console.warn(
+            `[OfflineSync:payment] Order ${finalParams.p_order_id} is ${preCheckOrderStatus} — discarding payment`,
+          );
+          return true; // Discard
         }
 
-        // ============================================================
-        // DEFENSIVE AUTH-CHECK (Bad-WiFi Phase 2 — Wave 1)
-        // ============================================================
-        // Before replaying a queued payment, ask the server whether a payment
-        // matching this op already landed. If yes, the previous attempt
-        // succeeded but the response was lost — DISCARD the queued op rather
-        // than re-charging the customer.
-        //
-        // Reuses the W2 idempotency-layer story (per-RPC keys close the same
-        // gap from the other side). This Wave 1 check is purely defensive:
-        // any error or false negative falls back to the existing behavior.
-        //
-        // Lookback window = max(time since op was queued + 5 min slack, 10 min).
-        // ============================================================
-        if (finalParams.p_order_id && isValidUUID(finalParams.p_order_id)) {
-          try {
-            const opAgeMs = Date.now() - new Date(op.timestamp).getTime();
-            const lookbackSeconds = Math.max(
-              600,
-              Math.ceil(opAgeMs / 1000) + 300,
-            );
-            const amountCents =
-              typeof finalParams.p_amount === "number" &&
-              finalParams.p_amount > 0
-                ? Math.round(finalParams.p_amount * 100)
-                : null;
-
-            const { data: authCheck, error: authCheckError } =
-              await _supabaseClient.rpc("check_recent_payment", {
-                p_order_id: finalParams.p_order_id,
-                p_lookback_seconds: lookbackSeconds,
-                p_amount_cents: amountCents,
-                p_split_portion_index:
-                  finalParams.p_split_portion_index ?? null,
-              });
-
-            if (authCheckError) {
-              // Don't block on the safety check failing — it's defensive only
-              console.warn(
-                "[OfflineSync:payment] check_recent_payment failed; proceeding (defensive only):",
-                authCheckError,
-              );
-            } else if ((authCheck as any)?.matched) {
-              console.warn(
-                `[OfflineSync:payment] DUPLICATE-CHARGE PREVENTED — payment for order ${finalParams.p_order_id} (amount=${finalParams.p_amount ?? "full-remaining"}, portion=${finalParams.p_split_portion_index ?? "-"}) already exists on server. Discarding queued op.`,
-                authCheck,
-              );
-              return true; // discard queued op without replaying
-            }
-          } catch (checkErr) {
-            console.warn(
-              "[OfflineSync:payment] check_recent_payment threw; proceeding (defensive only):",
-              checkErr,
-            );
-          }
+        if (authCheckResult?.matched) {
+          console.warn(
+            `[OfflineSync:payment] DUPLICATE-CHARGE PREVENTED — payment for order ${finalParams.p_order_id} (amount=${finalParams.p_amount ?? "full-remaining"}, portion=${finalParams.p_split_portion_index ?? "-"}) already exists on server. Discarding queued op.`,
+            authCheckResult.raw,
+          );
+          return true; // discard queued op without replaying
         }
 
         // Wave Cat-B: prefer the journal's idempotencyKey (survives across queue
@@ -2732,49 +2756,26 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                   ? "preparing"
                   : "preparing";
 
-          const { error: statusError } = await OrderService.updateOrderStatus(
+          // Perf A1: ensureOrderOutOfDraft trusts the RPC's returned row on
+          // success and runs the verify-SELECT only on the ambiguous-P0001
+          // error path (catches "Order not found" masquerading as the benign
+          // "already in status" — both raise P0001 on staging+prod).
+          const transition = await OrderService.ensureOrderOutOfDraft(
             _supabaseClient,
             resolvedOrderId,
             backendStatus as any,
           );
 
-          if (statusError) {
-            // P0001 = raise exception from PL/pgSQL — typically "already in target status"
-            if (statusError.code === "P0001") {
-              console.log(
-                `[OfflineSync:send_to_kitchen] Order already in target status (P0001), treating as success`,
-              );
-            } else {
-              console.error(
-                "[OfflineSync:send_to_kitchen] Failed to update order status:",
-                statusError,
-              );
-              return false;
-            }
-          } else {
-            console.log(
-              `[OfflineSync:send_to_kitchen] Order status updated to "${backendStatus}"`,
-            );
-          }
-
-          const { data: backendOrder, error: verifyError } =
-            await _supabaseClient
-              .from("orders")
-              .select("status")
-              .eq("id", resolvedOrderId)
-              .single();
-
-          if (verifyError || backendOrder?.status === "draft") {
-            console.warn(
-              "[OfflineSync:send_to_kitchen] Backend order remained draft after status update; deferring item sync",
-              {
-                resolvedOrderId,
-                verifyError,
-                backendStatus: backendOrder?.status,
-              },
+          if (!transition.ok) {
+            console.error(
+              "[OfflineSync:send_to_kitchen] Order status transition failed; deferring item sync",
+              { resolvedOrderId, error: transition.error },
             );
             return false;
           }
+          console.log(
+            `[OfflineSync:send_to_kitchen] Order out of draft (target "${backendStatus}")`,
+          );
 
           // 3. Update resolved item statuses
           if (resolvedItemIds.length > 0) {

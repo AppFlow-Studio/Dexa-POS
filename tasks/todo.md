@@ -1,5 +1,32 @@
 # Tasks
 
+## Perf Roadmap — Phase 3: Data layer + Tables flow (in progress)
+
+Plan approved 2026-06-11 (persona-reviewed: 3 blockers fixed in design). Order: T → A → B. Wave C deferred.
+
+### Wave T — Tables & dine-in (code complete)
+- [x] **Regression fix (user-reported)**: floor switch showed all tables available. Root cause chain: `_patchSessionsFromTables` cleared OTHER plans' sessions on every plan-scoped patch → each CLEAR poisoned the 30s `recentlyClearedSessions` TTL map → `fetchFloorPlanSnapshot` stripped those sessions from every fresh fetch (incl. T1a's prefetch re-warm + the cached-path hydrate). Fix: plan-scoped clear sweep (only clear sessions of tables IN the snapshot); cached-path now hydrates the session store at switch (`setActiveFloorPlan`). Regression test: `__tests__/patchSessionsPlanScoped.test.ts` (3 tests).
+- [x] T0: spans `pos.floor_switch` (tab press, tag `cached`; skips no-op tap on active plan) + `pos.table_open` (markStart in `usePendingTableOverlay.openTable` → markEnd at TableOrderView renderStage≥1, tag `prefetch_hit`)
+- [x] T1a (revised): `setActiveFloorPlan` ALREADY paints any cached snapshot (explorer claim wrong); real gap was `prefetchFloorPlan` early-returning on ANY cache → permanently stale entries. Now re-warms entries older than 30s, so post-switch background refreshes mostly no-op.
+- [x] T1b: broadcast-debounce reconcile in `useFloorRealtime` skips when an authoritative snapshot landed <1.2s ago; (re)subscribe catch-up, heartbeat, and fallback poll deliberately NOT suppressed.
+- [x] T2a: `loadFloorPlanStatus` now reuses previous per-table object identities via depth-3 value-equality (`shallowValueEqual` — conservative on unknown fields). `useShallow(s.tables)` subscribers skip re-rendering when elements identical; only genuinely changed tables propagate.
+- [x] T3a: `useTableSession` mount-path fetch now `await ensureOrderPrefetched(...)` (joins the global in-flight prefetch; kills the duplicate parallel `syncOrderFromDatabase`). Post-seat + recovery call sites left as-is (no race there). Added `__DEV__` log on Priority-3 O(n) scan hits.
+- [x] T3b: `prefetchCoursing` in tableOrderPrefetch (gated on `config.dining.enableCoursing`; mirrors the hook's 10s/lastSyncAt + syncing guards; fires on cached hits AND after prefetch resolves) — coursing loads at tap time instead of screen mount.
+- [x] T3c: reservations 30s interval cleanup verified CORRECT as-is (explorer claim wrong; cleanup clears both task and interval). No change.
+- [x] Verified: tsc 0 new errors (useFloorPlanStore:1500 error pre-exists at HEAD:1447 — line shift only), eslint 0 errors, rapidTableOrderHydration + sync suites pass (21/21). NOTE: `tableReopenCheckWiring` + `clearTableServedTransition` source-snapshot suites fail on HEAD too (pre-existing drift, asserted files untouched).
+- [ ] (User) on-device: switch floor tabs (watch `[perf] pos.floor_switch` in metro/logcat; no skeleton on revisited plans), tap occupied table (`pos.table_open` with prefetch_hit=true), two-station session change re-renders only the affected table.
+
+### Wave A — Kitchen/payment client cuts (code complete)
+- [x] Pre-flight PASSED: `pg_get_functiondef(update_order_status)` identical on staging AND prod to the repo reference (returns post-update jsonb row; P0001 for both not-found and already-in-status). Note: prod copy lacks `SET search_path` (pre-existing convention violation, untouched).
+- [x] A1: new `OrderService.ensureOrderOutOfDraft` helper (success → trust RPC row, NO verify; ambiguous P0001/"already in" → verify-SELECT discriminates not-found vs benign; other errors → fail). Converted **FIVE** sites (not the plan's four — exploration found more): `sendNewItemsToKitchen`, `sendNewItemsToKitchenForOrder` (payment path), `fireActiveOrderToKitchen`, both `addItemToBackend` retroactive paths, + the offlineSyncInit replay executor. Replay executor previously treated ANY P0001 as success — now not-found correctly fails to retry/dead-letter.
+- [x] A1: `__tests__/ensureOrderOutOfDraft.test.ts` — 6 tests covering the three-way branch + no-SELECT-on-success + legacy message routing. All pass.
+- [x] A2: payment-replay pre-checks run concurrently — two self-catching promises (NOT bare Promise.all over raw awaits; supabase-js rejects on network aborts), evaluated void-first then duplicate-charge. Outcome matrix preserved exactly; one serial RT removed per replayed payment.
+- [x] Verified: tsc 0 new errors (offlineSyncInit TS2448 `createOrderParams` TDZ pre-exists at HEAD — latent bug in create_order replay logging, reported to user), eslint 0 errors, 44/44 queue-contract tests + 6/6 new.
+
+### Wave B — send_order_to_kitchen_v1 (staging migration + flagged client)
+- [ ] Migration + rollback SQL → staging only; staging test matrix incl. legacy-key dedupe + 40P01
+- [ ] Client: OrderService.sendOrderToKitchen + flag + PGRST202/42883 fallback + 22023/40P01 classification
+
 ## Perf Roadmap — Phase 2: Render structural (code complete)
 
 - [x] F8 — Menu grid migrated FlatList → **FlashList 1.7.6** (`npx expo install` pinned the SDK-53 version). **Requires a native rebuild** — FlashList ships native views (`AutoLayoutView`/`CellContainer`); old dev clients throw "View config not found for AutoLayoutView". Rebuild via `npm run android` (emulator) / EAS development build (Landi).

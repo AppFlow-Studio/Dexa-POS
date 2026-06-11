@@ -8,6 +8,8 @@
  * Initialize once in root layout after both stores hydrate.
  */
 
+import { useCoursingStore } from "@/stores/useCoursingStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 
@@ -97,9 +99,48 @@ function getCachedOrderId(orderId: string): string | null {
   return null;
 }
 
+/**
+ * Perf T3b: warm the coursing data for an order alongside the order itself.
+ * Mirrors useTableCoursing's mount guards (10s lastSyncAt window, in-flight
+ * skip) so the hook's own load becomes a no-op when this ran first. Coursing
+ * RPC only fires for dine-in orders with a db_order_id and only when the
+ * merchant has coursing enabled.
+ */
+function prefetchCoursing(localOrderId: string): void {
+  try {
+    if (!useLocationConfigStore.getState().config.dining.enableCoursing) return;
+    const order = useOrderStore.getState().ordersById[localOrderId];
+    const dbOrderId = order?.db_order_id;
+    if (!dbOrderId) return;
+
+    const coursing = useCoursingStore.getState();
+    const existing = coursing.byOrderId[localOrderId];
+    if (existing?.syncing) return;
+    if (
+      existing?.lastSyncAt &&
+      Date.now() - existing.lastSyncAt.getTime() < 10_000
+    ) {
+      return;
+    }
+
+    if (!existing) {
+      // Fresh init auto-loads from server when a dbOrderId is present.
+      coursing.initializeForOrder(localOrderId, dbOrderId);
+      return;
+    }
+    if (!existing.dbOrderId) coursing.setDbOrderId(localOrderId, dbOrderId);
+    void coursing.loadFromServer(localOrderId).catch(() => {});
+  } catch {
+    // Prefetch is best-effort — never let it break the tap path.
+  }
+}
+
 export function ensureOrderPrefetched(orderId: string): Promise<string | null> {
   const cachedOrderId = getCachedOrderId(orderId);
-  if (cachedOrderId) return Promise.resolve(cachedOrderId);
+  if (cachedOrderId) {
+    prefetchCoursing(cachedOrderId);
+    return Promise.resolve(cachedOrderId);
+  }
 
   const inFlightPrefetch = _inFlightPrefetches.get(orderId);
   if (inFlightPrefetch) return inFlightPrefetch;
@@ -108,6 +149,10 @@ export function ensureOrderPrefetched(orderId: string): Promise<string | null> {
   const prefetch = useOrderStore
     .getState()
     .syncOrderFromDatabase(orderId)
+    .then((localOrderId) => {
+      if (localOrderId) prefetchCoursing(localOrderId);
+      return localOrderId;
+    })
     .finally(() => {
       _inFlightOrderIds.delete(orderId);
       _inFlightPrefetches.delete(orderId);

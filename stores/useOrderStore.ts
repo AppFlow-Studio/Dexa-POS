@@ -1854,44 +1854,17 @@ const addItemToBackend = async (
           try {
             // Update order status first (draft → sent_to_kitchen) before setting
             // item statuses — the DB constraint rejects sent_to_kitchen_at on draft orders.
+            // Perf A1: verify-SELECT lives inside ensureOrderOutOfDraft, error path only.
             if (dbOrderId) {
-              const { error: statusError } =
-                await OrderService.updateOrderStatus(
-                  supabase,
-                  dbOrderId,
-                  getOrderSentStatus(),
-                );
-              if (
-                statusError &&
-                statusError.code !== "P0001" &&
-                !statusError.message?.includes("already in")
-              ) {
+              const transition = await OrderService.ensureOrderOutOfDraft(
+                supabase,
+                dbOrderId,
+                getOrderSentStatus(),
+              );
+              if (!transition.ok) {
                 console.warn(
-                  "[addItemToBackend] Failed to update order status before retroactive kitchen send:",
-                  statusError,
-                );
-                queueFailedOperation(
-                  "send_to_kitchen",
-                  { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
-                  resolveOrderKey(),
-                );
-                return true;
-              }
-
-              const { data: backendOrder, error: verifyError } = await supabase
-                .from("orders")
-                .select("status")
-                .eq("id", dbOrderId)
-                .single();
-
-              if (verifyError || backendOrder?.status === "draft") {
-                console.warn(
-                  "[addItemToBackend] Backend order remained draft after status update; deferring retroactive kitchen send",
-                  {
-                    dbOrderId,
-                    verifyError,
-                    backendStatus: backendOrder?.status,
-                  },
+                  "[addItemToBackend] Order status transition failed before retroactive kitchen send; deferring",
+                  { dbOrderId, error: transition.error },
                 );
                 queueFailedOperation(
                   "send_to_kitchen",
@@ -2380,43 +2353,17 @@ const addItemToBackend = async (
           // The order was created as 'draft' in the backend; bulkUpdateOrderItemStatus
           // sets sent_to_kitchen_at on the order which is rejected if still draft
           // (valid_status_transitions constraint). Update order status first (idempotent).
+          // Perf A1: verify-SELECT lives inside ensureOrderOutOfDraft, error path only.
           if (dbOrderId) {
-            const { error: statusError } = await OrderService.updateOrderStatus(
+            const transition = await OrderService.ensureOrderOutOfDraft(
               supabase,
               dbOrderId,
               getOrderSentStatus(),
             );
-            if (
-              statusError &&
-              statusError.code !== "P0001" &&
-              !statusError.message?.includes("already in")
-            ) {
+            if (!transition.ok) {
               console.warn(
-                "[addItemToBackend] Failed to update order status before retroactive kitchen send:",
-                statusError,
-              );
-              queueFailedOperation(
-                "send_to_kitchen",
-                { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
-                resolveOrderKey(),
-              );
-              return true;
-            }
-
-            const { data: backendOrder, error: verifyError } = await supabase
-              .from("orders")
-              .select("status")
-              .eq("id", dbOrderId)
-              .single();
-
-            if (verifyError || backendOrder?.status === "draft") {
-              console.warn(
-                "[addItemToBackend] Backend order remained draft after status update; deferring retroactive kitchen send",
-                {
-                  dbOrderId,
-                  verifyError,
-                  backendStatus: backendOrder?.status,
-                },
+                "[addItemToBackend] Order status transition failed before retroactive kitchen send; deferring",
+                { dbOrderId, error: transition.error },
               );
               queueFailedOperation(
                 "send_to_kitchen",
@@ -12866,20 +12813,21 @@ export const useOrderStore = create<OrderState>()(
                 // All items synced — send as a single batch
                 // Update order status FIRST (draft -> sent_to_kitchen/preparing)
                 // Then update items (which also sets sent_to_kitchen_at on the order via trigger)
-                OrderService.updateOrderStatus(
+                // Perf A1: verify-SELECT lives inside ensureOrderOutOfDraft,
+                // error path only.
+                OrderService.ensureOrderOutOfDraft(
                   supabase,
                   currentOrder.db_order_id!,
                   getOrderSentStatus(),
                 )
-                  .then(({ error }) => {
-                    if (
-                      error &&
-                      error.code !== "P0001" &&
-                      !error.message?.includes("already in")
-                    ) {
-                      console.error(
-                        "Failed to update backend order status:",
-                        error,
+                  .then((transition) => {
+                    if (!transition.ok) {
+                      console.warn(
+                        "[fireActiveOrderToKitchen] Backend order status transition failed; deferring item sync",
+                        {
+                          dbOrderId: currentOrder.db_order_id,
+                          error: transition.error,
+                        },
                       );
                       queueFailedOperation(
                         "send_to_kitchen",
@@ -12889,43 +12837,19 @@ export const useOrderStore = create<OrderState>()(
                       return; // Don't update items if order status failed
                     }
 
-                    return supabase
-                      .from("orders")
-                      .select("status")
-                      .eq("id", currentOrder.db_order_id!)
-                      .single()
-                      .then(({ data: backendOrder, error: verifyError }) => {
-                        if (verifyError || backendOrder?.status === "draft") {
-                          console.warn(
-                            "[fireActiveOrderToKitchen] Backend order remained draft after status update; deferring item sync",
-                            {
-                              dbOrderId: currentOrder.db_order_id,
-                              verifyError,
-                              backendStatus: backendOrder?.status,
-                            },
-                          );
-                          queueFailedOperation(
-                            "send_to_kitchen",
-                            { localOrderId: activeOrderId, localItemIds },
-                            activeOrderId,
-                          );
-                          return;
-                        }
-
-                        // THEN update item statuses in one bulk call
-                        const kitchenSent = getKitchenSentStatus();
-                        return OrderService.bulkUpdateOrderItemStatus(
-                          supabase,
+                    // THEN update item statuses in one bulk call
+                    const kitchenSent = getKitchenSentStatus();
+                    return OrderService.bulkUpdateOrderItemStatus(
+                      supabase,
+                      dbItemIds,
+                      kitchenSent,
+                      {
+                        keyOverride: toBulkUpdateStatusKey(
                           dbItemIds,
                           kitchenSent,
-                          {
-                            keyOverride: toBulkUpdateStatusKey(
-                              dbItemIds,
-                              kitchenSent,
-                            ),
-                          },
-                        );
-                      });
+                        ),
+                      },
+                    );
                   })
                   .then((result) => {
                     if (result?.error) {
@@ -13169,20 +13093,21 @@ export const useOrderStore = create<OrderState>()(
               } else if (dbItemIds.length > 0) {
                 // Always transition backend order status before item updates.
                 // Local state may already be optimistic/non-draft while backend is still draft.
-                OrderService.updateOrderStatus(
+                // Perf A1: verify-SELECT happens inside ensureOrderOutOfDraft
+                // on the error path only (success trusts the RPC's returned row).
+                OrderService.ensureOrderOutOfDraft(
                   supabase,
                   freshOrder.db_order_id!,
                   getOrderSentStatus(),
                 )
-                  .then(({ error }) => {
-                    if (
-                      error &&
-                      error.code !== "P0001" &&
-                      !error.message?.includes("already in")
-                    ) {
-                      console.error(
-                        "Failed to update backend order status:",
-                        error,
+                  .then((transition) => {
+                    if (!transition.ok) {
+                      console.warn(
+                        "[sendNewItemsToKitchen] Backend order status transition failed; deferring item sync",
+                        {
+                          dbOrderId: freshOrder.db_order_id,
+                          error: transition.error,
+                        },
                       );
                       queueFailedOperation(
                         "send_to_kitchen",
@@ -13192,42 +13117,18 @@ export const useOrderStore = create<OrderState>()(
                       return;
                     }
 
-                    return supabase
-                      .from("orders")
-                      .select("status")
-                      .eq("id", freshOrder.db_order_id!)
-                      .single()
-                      .then(({ data: backendOrder, error: verifyError }) => {
-                        if (verifyError || backendOrder?.status === "draft") {
-                          console.warn(
-                            "[sendNewItemsToKitchen] Backend order remained draft after status update; deferring item sync",
-                            {
-                              dbOrderId: freshOrder.db_order_id,
-                              verifyError,
-                              backendStatus: backendOrder?.status,
-                            },
-                          );
-                          queueFailedOperation(
-                            "send_to_kitchen",
-                            { localOrderId: activeOrderId, localItemIds },
-                            activeOrderId,
-                          );
-                          return;
-                        }
-
-                        const kitchenSent = getKitchenSentStatus();
-                        return OrderService.bulkUpdateOrderItemStatus(
-                          supabase,
+                    const kitchenSent = getKitchenSentStatus();
+                    return OrderService.bulkUpdateOrderItemStatus(
+                      supabase,
+                      dbItemIds,
+                      kitchenSent,
+                      {
+                        keyOverride: toBulkUpdateStatusKey(
                           dbItemIds,
                           kitchenSent,
-                          {
-                            keyOverride: toBulkUpdateStatusKey(
-                              dbItemIds,
-                              kitchenSent,
-                            ),
-                          },
-                        );
-                      });
+                        ),
+                      },
+                    );
                   })
                   .then((result) => {
                     if (result?.error) {
@@ -13360,45 +13261,20 @@ export const useOrderStore = create<OrderState>()(
                   orderId,
                 );
               } else if (dbItemIds.length > 0) {
-                // Always transition backend status first, then verify backend is no longer draft.
-                // Local status can be optimistic and out of sync with backend reality.
-                const { error: statusError } =
-                  await OrderService.updateOrderStatus(
-                    supabase,
-                    order.db_order_id!,
-                    getOrderSentStatus(),
-                  );
-                if (
-                  statusError &&
-                  statusError.code !== "P0001" &&
-                  !statusError.message?.includes("already in")
-                ) {
-                  console.error(
-                    "Failed to update backend order status:",
-                    statusError,
-                  );
-                  queueFailedOperation(
-                    "send_to_kitchen",
-                    { localOrderId: orderId, localItemIds },
-                    orderId,
-                  );
-                  return;
-                }
-
-                const { data: backendOrder, error: verifyError } =
-                  await supabase
-                    .from("orders")
-                    .select("status")
-                    .eq("id", order.db_order_id!)
-                    .single();
-
-                if (verifyError || backendOrder?.status === "draft") {
+                // Always transition backend status first. Perf A1: the
+                // verify-SELECT lives inside ensureOrderOutOfDraft and runs on
+                // the error path only (success trusts the RPC's returned row).
+                const transition = await OrderService.ensureOrderOutOfDraft(
+                  supabase,
+                  order.db_order_id!,
+                  getOrderSentStatus(),
+                );
+                if (!transition.ok) {
                   console.warn(
-                    "[sendNewItemsToKitchenForOrder] Backend order remained draft after status update; deferring item sync",
+                    "[sendNewItemsToKitchenForOrder] Backend order status transition failed; deferring item sync",
                     {
                       dbOrderId: order.db_order_id,
-                      verifyError,
-                      backendStatus: backendOrder?.status,
+                      error: transition.error,
                     },
                   );
                   queueFailedOperation(

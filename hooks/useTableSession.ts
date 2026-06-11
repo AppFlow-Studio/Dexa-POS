@@ -3,6 +3,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { orderStoreDiagnosticLog } from '@/lib/performanceDiagnostics'
 import { OrderProfile } from '@/lib/types'
+import { ensureOrderPrefetched } from '@/services/tableOrderPrefetch'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { hasPendingOrderCreation, useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
@@ -188,6 +189,13 @@ export function useTableSession (
     // between startNewOrder and setActiveOrder, or after a rekey clears the index).
     // Skip terminal-status orders so a previously-closed order lingering in
     // ordersById can't be returned for a freshly-seated session on the same table.
+    // Perf T3: this O(n) scan runs per selector evaluation until the order
+    // resolves — frequent hits mean dbOrderIdIndex/tableOrderIdIndex misses.
+    if (__DEV__) {
+      console.log(
+        `[useTableSession] Priority-3 O(n) order scan for table ${tableId} (index miss)`
+      )
+    }
     const entries = Object.values(state.ordersById)
     for (let i = 0; i < entries.length; i++) {
       const o = entries[i]
@@ -490,7 +498,12 @@ export function useTableSession (
               }
               syncInFlightRef.current = sOrderId
 
-              const localOrderId = await syncOrderFromDatabase(sOrderId)
+              // Perf T3a: join the shared prefetch (single-flight) instead of
+              // issuing a parallel syncOrderFromDatabase. If the floor-plan
+              // tap already started this fetch, we await THAT promise; if not,
+              // ensureOrderPrefetched starts one and registers it so later
+              // callers join us. Also kicks the coursing prefetch.
+              const localOrderId = await ensureOrderPrefetched(sOrderId)
               if (getPhase(phaseRef) === 'navigating_away') return
 
               if (localOrderId) {
