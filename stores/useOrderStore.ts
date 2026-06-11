@@ -7803,7 +7803,6 @@ export const useOrderStore = create<OrderState>()(
               console.log(
                 "updatedItems [updateItemInActiveOrder]",
                 updatedItems.length,
-                updatedItems,
               );
             }
 
