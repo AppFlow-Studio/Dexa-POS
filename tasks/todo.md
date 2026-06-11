@@ -1,5 +1,18 @@
 # Tasks
 
+## Perf Roadmap — Phase 2: Render structural (code complete)
+
+- [x] F8 — Menu grid migrated FlatList → **FlashList 1.7.6** (`npx expo install` pinned the SDK-53 version; pure-JS dep, no dev-client rebuild needed). `MenuSection.tsx`: FlashList + `estimatedItemSize` (240 image-tiles / 78 text-tiles), `getItemType` separates spacer cells from MenuItem recycling pool, gutters moved to a `gridCell` wrapper (FlashList has no `columnWrapperStyle`). `MenuItem.tsx`: container width `19%` → `100%` (fills its cell). Recycling-safety: MenuItem has no local state; `OptimizedListImage` already takes `recyclingKey`. **Needs visual check on device** (gutter parity, last-row alignment).
+- [x] F8 (deferred) — KDS ticket grid + orders carousel migrations stay gated on Phase 0 FPS baselines per plan.
+- [x] F9 — Subscription/getState audit on hot screens: **verified already-clean, no changes needed.** Flagged `getState()` sites are inside effects/handlers (correct pattern); tables screen uses granular selectors; `useStationOrders` is O(n)-bounded with `useStableOrderList` stabilization; order-processing uses per-field selectors. The audit's render findings did not reproduce.
+- [x] F10 — KDS derivations: **verified already memoized** (kds.tsx wraps the filter/aggregate/sort pipeline in one useMemo). No change.
+- [x] Found dead code: `components/bill/PaymentModal.tsx` + `components/bill/ paymentView/SplitPaymentView.tsx` are never imported (SplitPaymentView still destructures the removed `orders[]` store field — would crash if ever mounted). Reported to user for deletion.
+- [x] Verified: tsc 0 new errors (ItemCustomizationDialog 2 errors pre-existing), eslint 0 errors, 26/26 core tests.
+- [ ] (User/on-device) menu grid: visual parity + fling-scroll FPS vs baseline; category-switch latency.
+
+### Phase 2 review
+Phase 2 shrank under verification: of the audit's three structural render findings, two (F9 subscriptions, F10 KDS memoization) were already in the target state — React Compiler plus earlier perf waves had done the work. The remaining genuine win was the FlashList grid migration. Lesson: this codebase's render layer is more optimized than fresh audits assume; verify before churning.
+
 ## Perf Roadmap — Phase 1: Quick wins (code complete)
 
 Plan: `~/.claude/plans/role-objective-cryptic-dusk.md` · Verify each item against Phase 0 baselines per `docs/perf-baseline-protocol.md`

@@ -39,7 +39,10 @@ const menuItemStylesByScheme = new Map<string, MenuItemStyles>();
 const createStyles = () =>
   StyleSheet.create({
     container: {
-      width: "19%",
+      // Perf F8: fills its FlashList grid cell (1/numColumns of the grid);
+      // gutters come from MenuSection's gridCell wrapper. Was "19%" of the
+      // FlatList row.
+      width: "100%",
       aspectRatio: 1,
       borderRadius: 12,
       marginBottom: 4,
