@@ -4256,16 +4256,9 @@ export const useOrderStore = create<OrderState>()(
             return item.seatNumber;
           }
 
-          try {
-            const { useSeatingStore } =
-              require("@/stores/useSeatingStore") as typeof import("@/stores/useSeatingStore");
-
-            return useSeatingStore
-              .getState()
-              .getItemSeat(orderId, item.id, item.db_order_item_id);
-          } catch {
-            return null;
-          }
+          return useSeatingStore
+            .getState()
+            .getItemSeat(orderId, item.id, item.db_order_item_id);
         };
 
         const areCartItemsMergeIdentical = (
