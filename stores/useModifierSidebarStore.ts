@@ -86,6 +86,19 @@ type PreWarmEntry = {
 
 const preWarmCache = new Map<string, PreWarmEntry>()
 
+// Perf F5: whole categories are now pre-warmed (not just the first 6-12
+// items), so cap the cache. FIFO eviction — Map iteration order is insertion
+// order, and the TTL already handles staleness.
+const PREWARM_MAX_ENTRIES = 400
+
+function capPreWarmCache () {
+  while (preWarmCache.size > PREWARM_MAX_ENTRIES) {
+    const oldestKey = preWarmCache.keys().next().value
+    if (oldestKey === undefined) break
+    preWarmCache.delete(oldestKey)
+  }
+}
+
 /** Clear all cached precomputed modifier data. Call after menu sync to avoid stale modifiers. */
 export function clearModifierPreWarmCache () {
   preWarmCache.clear()
@@ -458,6 +471,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         null
       )
       preWarmCache.set(item.id, { data: result, createdAt: Date.now() })
+      capPreWarmCache()
     },
 
     preWarmMany: (items, categoryId, menuId) => {
@@ -476,6 +490,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           preWarmCache.set(item.id, { data: result, createdAt: now })
         }
       }
+      capPreWarmCache()
     },
 
     open: config => {

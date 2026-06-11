@@ -24,6 +24,7 @@ import {
     parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
 import { getHeaderHeight } from "@/lib/headerHeight";
+import { markEnd } from "@/lib/perf";
 import { iosOnly } from "@/lib/safeAnimations";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { colors } from "@/lib/theme";
@@ -593,6 +594,9 @@ const OrderProcessing = () => {
         setRenderStage(1);
         requestAnimationFrame(() => {
           setRenderStage(2);
+          // Perf Phase 0: closes pos.boot_to_order (started at PIN success).
+          // No-op when no mark is pending (e.g. plain navigation here).
+          markEnd("pos.boot_to_order");
         });
       });
     });

@@ -9,6 +9,7 @@ import {
   setSyncJSON,
 } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
+import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
   CartItem,
@@ -7534,6 +7535,11 @@ export const useOrderStore = create<OrderState>()(
 
             // Phase 5: Any visible order can be modified - no ownership guard needed
 
+            // Perf Phase 0: tap→paint span; both paths below commit a set().
+            const perfAdd = startInteraction("pos.add_to_cart", {
+              draft: !!newItem.isDraft,
+            });
+
             // ================================================================
             // FAST PATH: Draft items skip all expensive operations
             // ================================================================
@@ -7554,6 +7560,7 @@ export const useOrderStore = create<OrderState>()(
                 order.items.push(draftCartItem);
                 order.last_activity_at = new Date().toISOString();
               });
+              perfAdd.endAfterPaint();
               return; // Early exit - no sync, no totals
             }
 
@@ -7672,6 +7679,7 @@ export const useOrderStore = create<OrderState>()(
               }
             });
             get()._scheduleTotalsRecompute(activeOrderId);
+            perfAdd.endAfterPaint({ merged: isMergeOperation });
 
             // Track mutation for own-station broadcast guard
             const _dbId = get().ordersById[activeOrderId]?.db_order_id;
@@ -13000,6 +13008,11 @@ export const useOrderStore = create<OrderState>()(
 
             if (newItems.length === 0) return;
 
+            // Perf Phase 0: tap → optimistic local ack (state flip + toast paint)
+            const perfSend = startInteraction("pos.send_to_kitchen", {
+              item_count: newItems.length,
+            });
+
             let cartToProcess = [...currentOrder.items];
             const itemsToKeep: CartItem[] = [];
             const mergedItemIds = new Set<string>();
@@ -13074,6 +13087,7 @@ export const useOrderStore = create<OrderState>()(
               } sent to the kitchen.`,
               type: "success",
             });
+            perfSend.endAfterPaint();
 
             // Auto-print kitchen tickets (centralized — fires for all send-to-kitchen paths)
             const orderForPrint = get().ordersById[activeOrderId];

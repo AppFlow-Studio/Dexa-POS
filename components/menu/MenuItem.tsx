@@ -10,6 +10,7 @@ import {
 } from "@/lib/menuItemPlaceholderIcon";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { cancelMenuModifierPreWarm } from "@/lib/menuModifierPreWarmControl";
+import { startInteraction } from "@/lib/perf";
 import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -278,11 +279,17 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const handlePress = useCallback(() => {
     if (!isMenuBlockedSync()) return;
+    const perf = startInteraction("pos.open_modifier_sheet", {
+      item_id: item.id,
+      has_modifiers: !!hasModifiers,
+      prewarmed: isModifierPreWarmed(item.id),
+    });
     const { activeOrderId } = useOrderStore.getState();
     useModifierSidebarStore
       .getState()
       .openToAdd(item, activeOrderId, categoryId, menuId);
-  }, [item, categoryId, menuId]);
+    perf.endAfterPaint();
+  }, [item, categoryId, menuId, hasModifiers]);
 
   const resolvedImageSource =
     imageSource ?? resolveMenuItemImageSource(item.image);

@@ -1,5 +1,41 @@
 # Tasks
 
+## Perf Roadmap — Phase 1: Quick wins (code complete)
+
+Plan: `~/.claude/plans/role-objective-cryptic-dusk.md` · Verify each item against Phase 0 baselines per `docs/perf-baseline-protocol.md`
+
+- [x] F1 — `useOrderPayments` staleTime 0 → 60s (`hooks/orders/useOrderPayments.ts`) **+ realtime gate fix**: payments-query invalidation in `useOrdersRealtime.ts` was online-orders-only; now fires for all orders (unmounted = mark-stale only, no network) so the 60s cache has no cross-station freshness gap. Prefetch stays online-only.
+- [x] F2 — POS boot block in `app/_layout.tsx` (draft cleanup, PrinterService start, payment/refund journal scans) moved from `useIsomorphicLayoutEffect` (blocked first paint) into `InteractionManager.runAfterInteractions`, with cancel on unmount.
+- [x] F3 — `PosSyncProvider`: **deduped double sync** — floor plans + tax rates were fetched twice per store selection by two parallel effects; single owner now (the clear-then-sync effect). Employee sync + the floor/tax/template effect both deferred via InteractionManager. Note: `initializeOfflineSync` was already fire-and-forget (audit claim wrong, no change).
+- [x] F4 — `OrderLineSection`: removed `itemLayoutAnimation` (LinearTransition spring re-animated every visible card on any data change). `entering` slide stays (iOS-only already).
+- [x] F5 — Modifier precompute now warms the WHOLE active category (rAF-chunked, list order, modifier-bearing items only) instead of first 6/12; image prefetch still capped to visible window. Added FIFO cap (400 entries) to `preWarmCache` in `useModifierSidebarStore`.
+- [x] F6 — `react-native-gifted-charts` lazy: confirmed expo-router import mode is `sync` (routes execute at boot), created `components/charts/LazyGiftedCharts.tsx` (React.lazy + Suspense facade) and swapped all 7 import sites. No static imports of the lib remain.
+- [x] F7 — TanStack: explicit defaults (`networkMode: 'offlineFirst'`, `refetchOnReconnect: false`, `refetchOnWindowFocus: false`) + `lib/network/setupTanstackOnlineManager.ts` wires `onlineManager` to `getIsOnline()` (NetInfo + connectionQuality slow-mode, both subscriptions). `refetchOnReconnect:false` preserves pre-wiring behavior — reconnect recovery stays owned by useOrderSyncRecovery/sync queue (bad-WiFi cross-check honored).
+- [x] Verified: tsc 0 new errors (9 implicit-any errors in `GiftedChartsSalesTrendChart.tsx` confirmed pre-existing by revert test), eslint 0 errors, 49/49 tests across sync/order/payment suites.
+- [ ] (User/on-device) re-run baseline protocol on Landi; compare `pos.*` spans + cold start vs baseline.
+
+### Phase 1 review
+The two audit corrections that mattered: (1) the payments-query realtime invalidation was gated to online orders, so raising staleTime without un-gating it would have created a 60s cross-station payment blind spot; (2) PosSyncProvider was double-fetching floor plans and tax rates on every store selection — the dedupe is likely worth as much as the deferral. F7's onlineManager wiring deliberately pairs with `refetchOnReconnect: false`; flipping that to true later would re-introduce a reconnect stampede and must go through the bad-WiFi cross-check.
+
+## Perf Roadmap — Phase 0: Measurement (code complete)
+
+Plan: `~/.claude/plans/role-objective-cryptic-dusk.md` (approved 2026-06-11)
+
+- [x] `lib/perf.ts` — interaction-span helper wrapping Sentry (startInactiveSpan + double-rAF end for tap-to-paint; cross-screen marks with 2-min TTL)
+- [x] Instrument `pos.add_to_cart` (useOrderStore.addItemToActiveOrder — both draft fast path and regular path; tags `draft`, `merged`)
+- [x] Instrument `pos.open_modifier_sheet` (MenuItem.handlePress; tags `item_id`, `has_modifiers`, `prewarmed`)
+- [x] Instrument `pos.send_to_kitchen` (useOrderStore.sendNewItemsToKitchen — tap → optimistic state flip + toast paint; tags `item_count`)
+- [x] Instrument `pos.open_payment` (usePaymentStore.open — guards → set({isOpen}) → paint; tags `method`, `view`)
+- [x] Instrument `pos.boot_to_order` (markStart at pin-login success → markEnd at order-processing renderStage 2; TTL-cancels on KDS routes)
+- [x] Instrument `pos.queue_flush` (offlineSyncService.processQueue — real flushes only; tags ready/blocked/pending counts, success/fail counts)
+- [x] Write repeatable Landi baseline protocol doc (`docs/perf-baseline-protocol.md`)
+- [x] Type check + lint (0 errors; only pre-existing warnings) + 26 tests pass (offlineSyncBlocking, wave26AddItem, payment-store-sc)
+- [ ] (User/on-device) run baseline protocol on Landi, fill budget-table baselines
+- [ ] (User/Sentry UI) confirm slow/frozen frames per transaction; build `transaction.op:pos.interaction` dashboard
+
+### Phase 0 review
+Spans are standalone transactions (`op: pos.interaction`, `forceTransaction: true`) so they appear in Sentry Performance under the global 30% prod sample rate. Tap→paint spans end via double-rAF after the state commit, so the measured window includes the painted frame. `__DEV__` builds also log `[perf] <name>: <ms>ms` to console for on-device iteration without the dashboard. The `pos.boot_to_order` mark auto-cancels (attribute `cancelled:true`) after 2 minutes so KDS-routed logins never report phantom boots; `markEnd` is a no-op on plain navigations to order-processing.
+
 ## Completed
 
 - [x] Speed up MenuSection for low-end devices

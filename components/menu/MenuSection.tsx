@@ -654,6 +654,12 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   useEffect(() => {
     if (!filteredMenuItems.length || !currentCategoryId || !activeMenuId)
       return;
+    // Perf F5: warm the WHOLE category, not just the first 6/12 — items past
+    // the old window paid the full modifier-tree computation on tap (latency
+    // cliff at index 12). The rAF-chunked loop below keeps each batch small,
+    // and the cursor runs in list order so above-the-fold items still warm
+    // first. Image prefetch stays capped to the visible window.
+    const itemsToWarm = filteredMenuItems;
     const visibleItems = filteredMenuItems.slice(0, isTableOrder ? 6 : 12);
     let cancelled = false;
     let pendingRaf: number | null = null;
@@ -674,7 +680,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         let cursor = 0;
         const step = () => {
           if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
-          const slice = visibleItems.slice(cursor, cursor + chunkSize);
+          const slice = itemsToWarm.slice(cursor, cursor + chunkSize);
           if (slice.length === 0) {
             pendingRaf = null;
             return;

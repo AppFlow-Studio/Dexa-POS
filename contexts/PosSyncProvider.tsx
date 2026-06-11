@@ -66,7 +66,7 @@ import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { TaxRate } from "@/types/menu";
 import * as Sentry from "@sentry/react-native";
 import React, { useCallback, useEffect, useRef } from "react";
-import { AppState, AppStateStatus } from "react-native";
+import { AppState, AppStateStatus, InteractionManager } from "react-native";
 
 // Debug server URL - use your machine's local IP (run: ipconfig getifaddr en0)
 // Change this IP to match your machine's IP address
@@ -413,24 +413,25 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     [supabase],
   );
 
-  // Sync employees and floor plans when store is selected (parallel)
-  // KDS only needs employees (for PIN verification)
+  // Sync employees when store is selected.
+  // KDS only needs employees (for PIN verification).
+  // Floor plans + tax rates sync lives in the effect further down (the one
+  // that clears stale floor data first) — it used to ALSO run here, which
+  // double-fetched both on every store selection (perf F3 dedupe).
+  // Deferred past interactions so boot syncs don't compete with first paint.
   useEffect(() => {
-    if (selectedStore?.id) {
-      syncEmployees(selectedStore.id).then(() => {
+    if (!selectedStore?.id) return;
+    const storeId = selectedStore.id;
+    const task = InteractionManager.runAfterInteractions(() => {
+      syncEmployees(storeId).then(() => {
         // Hydrate active shifts after employees are loaded (needs employee data for mapping)
         if (!isKDS) {
-          useTimeclockStore
-            .getState()
-            .hydrateActiveShifts(supabase, selectedStore.id);
+          useTimeclockStore.getState().hydrateActiveShifts(supabase, storeId);
         }
       });
-      if (!isKDS) {
-        syncFloorPlans(selectedStore.id);
-        syncTaxRates(selectedStore.id);
-      }
-    }
-  }, [selectedStore?.id, isKDS, syncEmployees, syncFloorPlans, syncTaxRates]);
+    });
+    return () => task.cancel();
+  }, [selectedStore?.id, isKDS, syncEmployees, supabase]);
 
   // Run timeclock queue processor at app scope so it is not tied to mounted screens.
   useEffect(() => {
@@ -666,18 +667,24 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     // };
   }, [selectedStore?.id]);
 
+  // Single owner of floor plan + tax rate + receipt template sync (perf F3:
+  // the employee-sync effect above no longer duplicates these fetches).
+  // Deferred past interactions; the three calls run concurrently.
   useEffect(() => {
-    if (selectedStore?.id && !isKDS) {
+    if (!selectedStore?.id || isKDS) return;
+    const storeId = selectedStore.id;
+    const task = InteractionManager.runAfterInteractions(() => {
       // Clear potentially stale floor plan data before fresh sync
       useFloorPlanStore.setState({
         tables: [],
         lastSyncAt: null,
       });
 
-      syncFloorPlans(selectedStore.id);
-      syncTaxRates(selectedStore.id);
-      useReceiptTemplateStore.getState().fetchTemplates(selectedStore.id);
-    }
+      syncFloorPlans(storeId);
+      syncTaxRates(storeId);
+      useReceiptTemplateStore.getState().fetchTemplates(storeId);
+    });
+    return () => task.cancel();
   }, [selectedStore?.id, isKDS, syncFloorPlans, syncTaxRates]);
 
   // App state listener - reconnect realtime and refresh stale data when app becomes active
