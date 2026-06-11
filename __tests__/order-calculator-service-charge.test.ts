@@ -364,3 +364,106 @@ describe("Service Charge — existing callers unaffected", () => {
     expect(r.service_charge_name).toBe("");
   });
 });
+
+// Mirrors calculate_order_totals_fast v3 (20260610113531). Manual percent-mode
+// overrides (manualServiceCharge != null AND snapshottedRate present) recompute
+// SC from rate × current base on every recalc — so adding/removing items moves
+// the SC. Manual amount-mode overrides (rate NULL) stay frozen at the flat
+// dollar amount the manager set.
+describe("Service Charge — manual override modes", () => {
+  it("percent-mode recomputes against current subtotal (item added)", () => {
+    // Manager set 15% when subtotal was $100; SC was frozen at $15 (manualServiceCharge).
+    // Now subtotal is $150 — dynamic recompute should give $22.50.
+    const r = calculateOrderTotals({
+      items: [item(150)],
+      checkDiscount: null,
+      taxRatesMap: NO_TAX,
+      manualServiceCharge: 15,
+      snapshottedRate: 15,
+      snapshottedAppliesOn: "post_discount",
+    });
+    expect(r.service_charge).toBe(22.5);
+    expect(r.total_amount).toBe(172.5);
+  });
+
+  it("percent-mode recomputes against current subtotal (item removed)", () => {
+    // Manager set 15% when subtotal was $100; now subtotal is $50.
+    const r = calculateOrderTotals({
+      items: [item(50)],
+      checkDiscount: null,
+      taxRatesMap: NO_TAX,
+      manualServiceCharge: 15,
+      snapshottedRate: 15,
+      snapshottedAppliesOn: "post_discount",
+    });
+    expect(r.service_charge).toBe(7.5);
+    expect(r.total_amount).toBe(57.5);
+  });
+
+  it("amount-mode stays frozen regardless of items", () => {
+    // Manager said "exactly $20". Items change → SC stays $20.
+    const r = calculateOrderTotals({
+      items: [item(250)],
+      checkDiscount: null,
+      taxRatesMap: NO_TAX,
+      manualServiceCharge: 20,
+      // snapshottedRate intentionally omitted (amount-mode override).
+    });
+    expect(r.service_charge).toBe(20);
+    expect(r.total_amount).toBe(270);
+  });
+
+  it("percent-mode pre_discount uses gross subtotal", () => {
+    const discount = {
+      id: "d",
+      name: "10%",
+      label: "10%",
+      type: "percentage" as const,
+      value: 0.1,
+    } as unknown as Discount;
+    const r = calculateOrderTotals({
+      items: [item(100)],
+      checkDiscount: discount,
+      taxRatesMap: NO_TAX,
+      manualServiceCharge: 1, // stale flat — should be ignored
+      snapshottedRate: 10,
+      snapshottedAppliesOn: "pre_discount",
+    });
+    expect(r.service_charge).toBe(10); // 10% × $100 gross
+  });
+
+  it("percent-mode post_discount uses net subtotal", () => {
+    const discount = {
+      id: "d",
+      name: "10%",
+      label: "10%",
+      type: "percentage" as const,
+      value: 0.1,
+    } as unknown as Discount;
+    const r = calculateOrderTotals({
+      items: [item(100)],
+      checkDiscount: discount,
+      taxRatesMap: NO_TAX,
+      manualServiceCharge: 1,
+      snapshottedRate: 10,
+      snapshottedAppliesOn: "post_discount",
+    });
+    expect(r.service_charge).toBe(9); // 10% × $90 net
+  });
+
+  it("percent-mode taxable flag still taxes the recomputed SC", () => {
+    const r = calculateOrderTotals({
+      items: [item(100)],
+      checkDiscount: null,
+      taxRatesMap: { standard: 10, alcohol: 0, exempt: 0 },
+      manualServiceCharge: 5,
+      manualServiceChargeTaxable: true,
+      snapshottedRate: 15,
+      snapshottedAppliesOn: "post_discount",
+    });
+    // SC = 15% × $100 = $15; SC tax = 10% × $15 = $1.50.
+    expect(r.service_charge).toBe(15);
+    // Item tax = 10% × $100 = $10, plus SC tax $1.50 = $11.50.
+    expect(r.tax_amount).toBe(11.5);
+  });
+});

@@ -689,11 +689,21 @@ export function calculateOrderTotals (
     partySize >= serviceChargeRule.min_party_size
 
   if (manualServiceCharge != null) {
-    // Manager override — bypass rule eligibility entirely. The server is
-    // authoritative; we just mirror its flat dollar value locally so totals
-    // stay consistent before the next sync. is_manual=true is the gate, NOT
-    // a non-null rate, so both amount-mode and percent-mode overrides land here.
-    serviceCharge = new Decimal(manualServiceCharge)
+    // Manager override — bypass rule eligibility entirely. Percent-mode
+    // overrides (snapshottedRate != null) recompute dynamically from
+    // rate × current base, mirroring calculate_order_totals_fast v3.
+    // Amount-mode overrides (rate null) stay frozen at the flat dollar
+    // amount the manager set.
+    if (snapshottedRate != null && snapshottedRate > 0) {
+      const cardBase =
+        effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
+      serviceCharge = Decimal.max(cardBase, 0)
+        .times(snapshottedRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    } else {
+      serviceCharge = new Decimal(manualServiceCharge)
+    }
     cashServiceCharge = serviceCharge
     serviceChargeName = snapshottedName ?? (effectiveName || 'Service Charge')
   } else if (ruleEligible) {

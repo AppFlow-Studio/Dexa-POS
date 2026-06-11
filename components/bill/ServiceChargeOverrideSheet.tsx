@@ -33,9 +33,9 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
   const [percentInput, setPercentInput] = useState('')
   const [reason, setReason] = useState('')
   // Default to the order's current taxability so re-editing a taxable SC keeps
-  // it taxable unless the manager explicitly toggles it off.
+  // it taxable unless the manager explicitly toggles it off. When unset, default ON.
   const [isTaxable, setIsTaxable] = useState<boolean>(
-    activeOrder?.service_charge_is_taxable ?? false
+    activeOrder?.service_charge_is_taxable ?? true
   )
 
   const currentSC = totals?.serviceCharge ?? 0
@@ -43,7 +43,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
 
   // Keep the taxable toggle in sync when the active order changes (the sheet
   // stays mounted, so the useState initializer won't re-run on order switch).
-  const orderTaxable = activeOrder?.service_charge_is_taxable ?? false
+  const orderTaxable = activeOrder?.service_charge_is_taxable ?? true
   useEffect(() => {
     setIsTaxable(orderTaxable)
   }, [activeOrderId, orderTaxable])
@@ -211,9 +211,16 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
             ${currentSC.toFixed(2)}
           </Text>
           {activeOrder?.service_charge_is_manual ? (
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>
-              Already manually overridden — further edits stay manual.
-            </Text>
+            <>
+              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>
+                Already manually overridden — further edits stay manual.
+              </Text>
+              {activeOrder?.service_charge_rate != null ? (
+                <Text style={{ fontSize: 12, color: colors.teal, marginTop: 4, fontWeight: '600' }}>
+                  {activeOrder.service_charge_rate}% — recalculates as items change
+                </Text>
+              ) : null}
+            </>
           ) : null}
         </View>
 
