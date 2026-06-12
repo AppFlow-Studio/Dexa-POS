@@ -4526,7 +4526,7 @@ export const useOrderStore = create<OrderState>()(
                 : Math.abs(
                     totals.service_charge - lastServerConfirmed,
                   ) >= 0.01;
-            if (__DEV__) {
+            if (__DEV__ && _scChanged) {
               console.log("[SC-DIAG/_ensureTotalsFresh] gate", {
                 orderId,
                 dbOrderId: order.db_order_id,
@@ -8789,7 +8789,7 @@ export const useOrderStore = create<OrderState>()(
                 : Math.abs(
                     totals.service_charge - lastServerConfirmed,
                   ) >= 0.01;
-            if (__DEV__) {
+            if (__DEV__ && _scChanged) {
               console.log("[SC-DIAG/applyBackendItemData] gate", {
                 activeOrderId,
                 dbOrderId: order.db_order_id,
