@@ -7,7 +7,7 @@ import { useWasOrderRecentlyUpdated } from '@/stores/useConflictStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { formatOrderStatus } from '@/utils/orderStatusHelpers'
+import { formatOrderStatus, formatPaymentStatus } from '@/utils/orderStatusHelpers'
 import {
   CheckCircle2,
   ChevronRight,
@@ -118,7 +118,7 @@ const getStatusPillStyle = (
   return {
     bg: 'rgba(156,163,175,0.15)',
     textColor: colors.muted,
-    label: 'Pending'
+    label: formatPaymentStatus('Pending')
   }
 }
 
@@ -743,6 +743,8 @@ const PopoverContent = React.memo<PopoverContentProps>(
   }
 )
 
+PopoverContent.displayName = 'PopoverContent'
+
 // ============================================================================
 // MAIN COMPONENT - Lightweight badge with lazy popover
 // ============================================================================
@@ -805,9 +807,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   const statusLabel = useMemo(() => {
     if (refundState.isFullyRefunded) return 'refunded'
     if (refundState.isPartiallyRefunded) return 'partial refund'
-    const status = order.order_status
-    if (status === 'sent_to_kitchen') return 'sent to kitchen'
-    return status || 'pending'
+    return formatOrderStatus(order.order_status || 'pending').toLowerCase()
   }, [
     order.order_status,
     refundState.isFullyRefunded,
