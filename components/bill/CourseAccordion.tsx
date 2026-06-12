@@ -4,6 +4,10 @@ import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
+import {
+  SendAllButton,
+  SendCourseButton
+} from '@/components/bill/SendToKitchenButton'
 import { useCoursingStore } from '@/stores/useCoursingStore'
 import { useOrderItem } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -13,7 +17,6 @@ import {
   ChevronRight,
   Flame,
   Plus,
-  Printer,
   Send,
   X
 } from 'lucide-react-native'
@@ -54,7 +57,6 @@ interface CourseAccordionProps {
   onRemoveCourse?: (courseId: number) => void
   onPressSendAllToKitchen?: () => void
   enableCoursing?: boolean
-  sendDisabled?: boolean
   isOvertime?: boolean
   overtimeMinutes?: number
 }
@@ -73,7 +75,6 @@ interface CourseGroupProps {
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
   onRemoveCourse?: (courseId: number) => void
-  sendDisabled?: boolean
 }
 
 // --- Helpers ---
@@ -146,8 +147,7 @@ function CourseGroupInner ({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
-  onRemoveCourse,
-  sendDisabled = false
+  onRemoveCourse
 }: CourseGroupProps) {
   const scale = useSharedValue(1)
   const [showActions, setShowActions] = useState(false)
@@ -251,32 +251,7 @@ function CourseGroupInner ({
             </TouchableOpacity>
           )}
           {hasUnsentItems && (
-            <TouchableOpacity
-              disabled={sendDisabled}
-              onPress={() => onDoubleTap(courseId)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 8,
-                height: 26,
-                borderRadius: 6,
-                backgroundColor: colors.teal,
-                opacity: sendDisabled ? 0.4 : 1
-              }}
-              activeOpacity={0.8}
-            >
-              <Printer size={11} color={colors.onSolid} />
-              <Text
-                style={{
-                  color: colors.onSolid,
-                  fontSize: 11,
-                  fontWeight: '600'
-                }}
-              >
-                Send
-              </Text>
-            </TouchableOpacity>
+            <SendCourseButton onPress={() => onDoubleTap(courseId)} />
           )}
           <TouchableOpacity
             onPress={() => onToggle(courseId)}
@@ -458,7 +433,6 @@ const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
   if (prev.onPrioritizeCourse !== next.onPrioritizeCourse) return false
   if (prev.onResendCourse !== next.onResendCourse) return false
   if (prev.onRemoveCourse !== next.onRemoveCourse) return false
-  if (prev.sendDisabled !== next.sendDisabled) return false
   if (prev.items.length !== next.items.length) return false
   for (let i = 0; i < prev.items.length; i++) {
     const p = prev.items[i]
@@ -491,7 +465,6 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onResendCourse,
   onRemoveCourse,
   onPressSendAllToKitchen,
-  sendDisabled = false,
   enableCoursing = true,
   isOvertime,
   overtimeMinutes
@@ -816,32 +789,10 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
             </TouchableOpacity>
           )}
           {onPressSendAllToKitchen && (
-            <TouchableOpacity
+            <SendAllButton
               onPress={onPressSendAllToKitchen}
-              disabled={unsentItemCount === 0 || sendDisabled}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 13,
-                paddingVertical: 7,
-                borderRadius: 8,
-                backgroundColor: colors.teal,
-                opacity: unsentItemCount === 0 || sendDisabled ? 0.4 : 1
-              }}
-              activeOpacity={0.8}
-            >
-              <Printer size={14} color={colors.onSolid} />
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '600',
-                  color: colors.onSolid
-                }}
-              >
-                Send All{unsentItemCount > 0 ? ` (${unsentItemCount})` : ''}
-              </Text>
-            </TouchableOpacity>
+              unsentCount={unsentItemCount}
+            />
           )}
         </View>
       </View>
@@ -866,7 +817,6 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
                   onPrioritizeCourse={onPrioritizeCourse}
                   onResendCourse={onResendCourse}
                   onRemoveCourse={onRemoveCourse}
-                  sendDisabled={sendDisabled}
                 />
               ))
             ) : (

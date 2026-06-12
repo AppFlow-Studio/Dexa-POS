@@ -749,10 +749,15 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         activeEditingItemId: null // Clear active item highlight
       })
 
-      // Phase 2: release the heavy precomputed maps after the close slide
-      // settles. open() calls clearDeferredModifierResetTimer() before any
-      // state writes, so a rapid re-open cancels this timer cleanly. The
-      // double guard below covers the off-by-a-tick case where the timer
+      // Phase 2: release the heavy precomputed maps once ModifierScreenOverlay
+      // has actually unmounted the screen (it keeps it mounted+subscribed for
+      // 1.5s via keepMountedDuringClose for fast repeat edits). Resetting these
+      // any sooner forces a full re-render of the still-mounted ModifierScreen
+      // (menuItemForModifiers/optionsById/total all recompute) right as the
+      // close slide and cart-mutation re-render are happening — the combo reads
+      // as a freeze on Android. open() calls clearDeferredModifierResetTimer()
+      // before any state writes, so a rapid re-open cancels this timer cleanly.
+      // The double guard below covers the off-by-a-tick case where the timer
       // task was already dispatched when the next open() ran.
       //
       // Lightweight scalars (mode, seatCount, etc.) are NOT cleared here —
@@ -773,7 +778,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           initialSelections: null,
           precomputedForItemId: null
         })
-      }, 90)
+      }, 1600)
     },
 
     cancelAndRemoveDraft: () => {
@@ -810,7 +815,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         }
       }
 
-      // Close the modal immediately, then clear heavier payload after animation.
+      // Close the modal immediately, then clear heavier payload once
+      // ModifierScreenOverlay has actually unmounted the screen (see close()
+      // for why this can't happen at 90ms while keepMountedDuringClose is true).
       set({
         isOpen: false,
         isMenuBlocked: false,
@@ -842,7 +849,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           seatCount: 0,
           showSeatPicker: false
         })
-      }, 90)
+      }, 1600)
     },
 
     setSelectedItemPosition: (position: ItemPosition | null) => {

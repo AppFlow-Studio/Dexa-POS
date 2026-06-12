@@ -1298,6 +1298,34 @@ const ModifierScreenContent = ({
 
     if (!baseItem && !isOpenItem) return;
 
+    // Validate required selections BEFORE closing — a failed validation must
+    // keep the modal open so the user can fix it.
+    if (modifiersItem?.modifiers && modifiersItem.modifiers.length > 0) {
+      const hasRequiredSelections = modifiersItem.modifiers.every(
+        (category) => {
+          if (category.type === "required")
+            return (currentState.selectionCounts[category.id] ?? 0) > 0;
+          return true;
+        },
+      );
+      if (!hasRequiredSelections) {
+        showToast({
+          title: "Missing Selections",
+          message: "Please select all required options before proceeding.",
+          type: "error",
+        });
+        return;
+      }
+    }
+
+    // Close the modal immediately so the slide-out animation isn't blocked by
+    // the (potentially expensive) cart mutation below. setTimeout(0) (not
+    // runAfterInteractions) so this doesn't get batched with unrelated
+    // pending interaction handles from this screen's reveal/grow effects —
+    // that batching was delaying the cart write past the next item's open().
+    closeModal();
+
+    setTimeout(() => {
     if (
       isOpenItem &&
       (currentMode === "edit" || currentMode === "fullscreen") &&
@@ -1373,7 +1401,6 @@ const ModifierScreenContent = ({
         message: `${currentCartItem.name} quantity updated to ${currentState.quantity}.`,
         type: "success",
       });
-      closeModal();
       return;
     }
 
@@ -1394,31 +1421,9 @@ const ModifierScreenContent = ({
         freshMenuItem?.cashPrice ?? baseItem.cashPrice ?? baseItem.price;
     }
 
-    if (modifiersItem?.modifiers && modifiersItem.modifiers.length > 0) {
-      const hasRequiredSelections = modifiersItem.modifiers.every(
-        (category) => {
-          if (category.type === "required")
-            return (currentState.selectionCounts[category.id] ?? 0) > 0;
-          return true;
-        },
-      );
-      if (!hasRequiredSelections) {
-        showToast({
-          title: "Missing Selections",
-          message: "Please select all required options before proceeding.",
-          type: "error",
-        });
-        return;
-      }
-    }
-
     const resolvedCashPrice =
       safeCashPrice ?? getCurrentItemCashPrice(baseItem);
 
-    // Build the cart item synchronously and apply it BEFORE closing. Doing
-    // the cart mutation first lets React commit the items update on the
-    // still-mounted modifier screen, so the close slide animation runs on a
-    // settled JS thread instead of competing with the addItem re-render.
     const selectedModifiers = modifiersItem?.modifiers
       ? Object.entries(currentState.modifierSelections)
           .map(([cId, selections]) => {
@@ -1466,7 +1471,6 @@ const ModifierScreenContent = ({
       (currentMode === "fullscreen" && currentCartItem)
     ) {
       if (!currentCartItem) {
-        closeModal();
         return;
       }
       const updatedItem = {
@@ -1551,8 +1555,7 @@ const ModifierScreenContent = ({
         }
       }
     }
-
-    closeModal();
+    }, 0);
   }, []);
 
   const handleCancel = useCallback(() => {
@@ -1563,16 +1566,22 @@ const ModifierScreenContent = ({
       currentItem: item,
       close: closeModal,
     } = latestStateRef.current;
+    closeModal();
     if (
       currentMode !== "edit" &&
       !(currentMode === "fullscreen" && cart) &&
       !cart &&
       item
     ) {
-      removeDraftItems(item.id);
+      const draftItemId = item.id;
       lastDraftMenuItemIdRef.current = null;
+      // setTimeout(0), not runAfterInteractions — same reasoning as
+      // handleSave: avoids batching with this screen's pending reveal/grow
+      // handles which could delay cleanup past the next item's open().
+      setTimeout(() => {
+        removeDraftItems(draftItemId);
+      }, 0);
     }
-    closeModal();
   }, []);
 
   // ============================================================================

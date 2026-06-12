@@ -4256,16 +4256,9 @@ export const useOrderStore = create<OrderState>()(
             return item.seatNumber;
           }
 
-          try {
-            const { useSeatingStore } =
-              require("@/stores/useSeatingStore") as typeof import("@/stores/useSeatingStore");
-
-            return useSeatingStore
-              .getState()
-              .getItemSeat(orderId, item.id, item.db_order_item_id);
-          } catch {
-            return null;
-          }
+          return useSeatingStore
+            .getState()
+            .getItemSeat(orderId, item.id, item.db_order_item_id);
         };
 
         const areCartItemsMergeIdentical = (
@@ -4533,7 +4526,7 @@ export const useOrderStore = create<OrderState>()(
                 : Math.abs(
                     totals.service_charge - lastServerConfirmed,
                   ) >= 0.01;
-            if (__DEV__) {
+            if (__DEV__ && _scChanged) {
               console.log("[SC-DIAG/_ensureTotalsFresh] gate", {
                 orderId,
                 dbOrderId: order.db_order_id,
@@ -7803,7 +7796,6 @@ export const useOrderStore = create<OrderState>()(
               console.log(
                 "updatedItems [updateItemInActiveOrder]",
                 updatedItems.length,
-                updatedItems,
               );
             }
 
@@ -8797,7 +8789,7 @@ export const useOrderStore = create<OrderState>()(
                 : Math.abs(
                     totals.service_charge - lastServerConfirmed,
                   ) >= 0.01;
-            if (__DEV__) {
+            if (__DEV__ && _scChanged) {
               console.log("[SC-DIAG/applyBackendItemData] gate", {
                 activeOrderId,
                 dbOrderId: order.db_order_id,
