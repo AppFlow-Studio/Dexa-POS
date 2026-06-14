@@ -674,11 +674,19 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     if (!selectedStore?.id || isKDS) return;
     const storeId = selectedStore.id;
     const task = InteractionManager.runAfterInteractions(() => {
-      // Clear potentially stale floor plan data before fresh sync
-      useFloorPlanStore.setState({
-        tables: [],
-        lastSyncAt: null,
-      });
+      // Clear stale floor plan data ONLY on a genuine station switch. On a
+      // same-station cold boot, locationId (persisted) already equals storeId,
+      // so we keep the rehydrated geometry + bridged sessions and let
+      // syncFloorPlans reconcile in the background. Blanking tables here on
+      // every boot caused a blank board (and forced the re-fetch that paints
+      // from the session-stripped cache) before fresh data arrived.
+      const fp = useFloorPlanStore.getState();
+      if (fp.locationId && fp.locationId !== storeId) {
+        useFloorPlanStore.setState({
+          tables: [],
+          lastSyncAt: null,
+        });
+      }
 
       syncFloorPlans(storeId);
       syncTaxRates(storeId);

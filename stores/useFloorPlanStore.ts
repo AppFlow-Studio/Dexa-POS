@@ -701,6 +701,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             // closing) against the snapshot's backend status, so a stale cache
             // can't downgrade an in-progress table; the authoritative load still
             // reconciles right after.
+            // NOT authoritative: a rehydrated (cold-start) cache has its sessions
+            // STRIPPED, so we must NOT pass clearMissing here. add-only — present
+            // sessions are synced, persisted sessions are left intact, and the
+            // background loadFloorPlanStatus below (stale cache) reconciles
+            // authoritatively. Without this guard a stripped cache wiped the
+            // whole session store on launch (all tables flashed "available").
             getTableSessionStore()
               .getState()
               ._patchSessionsFromTables(cached.tables);
@@ -1005,10 +1011,14 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 });
               }
 
-              // Hydrate session store from fresh table data
+              // Hydrate session store from fresh table data. Authoritative
+              // network snapshot — clearMissing lets it clear genuinely-freed
+              // tables (table present, no session).
               getTableSessionStore()
                 .getState()
-                ._patchSessionsFromTables(snapshot.data.tables);
+                ._patchSessionsFromTables(snapshot.data.tables, {
+                  clearMissing: true,
+                });
 
               // Order prefetch is now handled by services/tableOrderPrefetch.ts subscriber
             } finally {
@@ -1204,10 +1214,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             },
           });
 
-          // Hydrate session store from merged tables
+          // Hydrate session store from merged tables. Authoritative network
+          // snapshot (getLocationTableStatus) — clearMissing lets it clear
+          // genuinely-freed tables.
           getTableSessionStore()
             .getState()
-            ._patchSessionsFromTables(mergedTables);
+            ._patchSessionsFromTables(mergedTables, { clearMissing: true });
         },
 
         getCachedFloorPlan: (floorPlanId: string) => {

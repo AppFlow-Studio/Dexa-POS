@@ -365,8 +365,16 @@ interface TableSessionStoreState {
   /** Hydrate sessions from backend via get_location_table_status_v2 */
   hydrateFromBackend: (locationId: string) => Promise<void>;
 
-  /** Hydrate sessions from FloorPlanObject[] (called after loadFloorPlanStatus) */
-  _patchSessionsFromTables: (tables: FloorPlanObject[]) => void;
+  /**
+   * Hydrate sessions from FloorPlanObject[] (called after loadFloorPlanStatus).
+   * `clearMissing` controls the CLEAR sweep: only pass `true` from an
+   * AUTHORITATIVE (network) snapshot. A rehydrated/cached snapshot has its
+   * sessions stripped and must NOT be allowed to clear the persisted store.
+   */
+  _patchSessionsFromTables: (
+    tables: FloorPlanObject[],
+    opts?: { clearMissing?: boolean },
+  ) => void;
 
   /** Bridge: write session data back into useFloorPlanStore (removed in Phase 3) */
   _syncToFloorPlanStore: (changedTableId?: string | string[]) => void;
@@ -758,7 +766,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         // _patchSessionsFromTables — hydrate sessions from FloorPlanObject[]
         // ------------------------------------------------------------------
 
-        _patchSessionsFromTables: (tables: FloorPlanObject[]) => {
+        _patchSessionsFromTables: (
+          tables: FloorPlanObject[],
+          opts?: { clearMissing?: boolean },
+        ) => {
           const currentSessions = get().sessions;
           const actions: Array<{ tableId: string; action: SessionAction }> = [];
 
@@ -804,16 +815,26 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           // strip those sessions from fresh snapshots for 30s — the
           // "all tables show available after switching plans" bug.
           // Local-only optimistic sessions (seating, ordering, …) stay.
-          for (const tableId of Object.keys(currentSessions)) {
-            if (incomingTableIds.has(tableId)) continue;
-            if (!snapshotTableIds.has(tableId)) continue;
-            const existing = currentSessions[tableId];
-            if (existing && isLocalOnlyStatus(existing.status)) {
-              continue;
+          //
+          // Gated on opts.clearMissing: only an AUTHORITATIVE (network) snapshot
+          // may treat "table present, no session" as "freed". A rehydrated/cached
+          // snapshot has its sessions STRIPPED, so running this sweep against it
+          // wipes the whole persisted session store on cold start (all tables
+          // flash "available") and poisons the recently-cleared TTL so the
+          // following fresh fetch gets stripped too. Cache-paint and mount
+          // callers omit the flag → add-only, never clear.
+          if (opts?.clearMissing) {
+            for (const tableId of Object.keys(currentSessions)) {
+              if (incomingTableIds.has(tableId)) continue;
+              if (!snapshotTableIds.has(tableId)) continue;
+              const existing = currentSessions[tableId];
+              if (existing && isLocalOnlyStatus(existing.status)) {
+                continue;
+              }
+              // A table in the authoritative snapshot missing its session
+              // genuinely lost it.
+              actions.push({ tableId, action: { type: "CLEAR" } });
             }
-            // This path is only ever fed by an authoritative plan snapshot.
-            // A table in the snapshot missing its session genuinely lost it.
-            actions.push({ tableId, action: { type: "CLEAR" } });
           }
 
           if (actions.length > 0) {
