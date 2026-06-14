@@ -289,7 +289,38 @@ function precomputeModifierData (
         option => option.isDefault === true && option.isAvailable !== false
       )
 
-      if (defaultOptions.length > 0) {
+      // Local settings gate the "auto-pick first option" behavior for required
+      // groups. `autoSelectFirstRequiredOption` enables it at all; the
+      // `autoSelectAllRequiredGroups` sub-setting extends it to EVERY required
+      // group, overriding configured `isDefault` options. Without the
+      // sub-setting it only applies to required groups that have no defaults.
+      // When the primary setting is off we leave required-no-default groups
+      // unselected (submit-time validation in ModifierScreen enforces the pick).
+      const settings = useSettingsStore.getState()
+      const autoSelectFirst =
+        category.type === 'required' && settings.autoSelectFirstRequiredOption
+      const wantFirstFree =
+        autoSelectFirst &&
+        (settings.autoSelectAllRequiredGroups || defaultOptions.length === 0)
+
+      if (wantFirstFree) {
+        // Select first available option with price $0, else first available.
+        const freeOption = category.options.find(
+          option => option.isAvailable !== false && option.price === 0
+        )
+
+        if (freeOption) {
+          initialSelections[category.id][freeOption.id] = true
+        } else {
+          // No free option - select first available option
+          const firstAvailableOption = category.options.find(
+            option => option.isAvailable !== false
+          )
+          if (firstAvailableOption) {
+            initialSelections[category.id][firstAvailableOption.id] = true
+          }
+        }
+      } else if (defaultOptions.length > 0) {
         // For single-select, use the first default; for multiple, use all defaults
         if (category.selectionType === 'single') {
           initialSelections[category.id][defaultOptions[0].id] = true
@@ -298,30 +329,6 @@ function precomputeModifierData (
           defaultOptions.forEach(option => {
             initialSelections[category.id][option.id] = true
           })
-        }
-      } else if (
-        category.type === 'required' &&
-        useSettingsStore.getState().autoSelectFirstRequiredOption
-      ) {
-        // No defaults set on required category, and the local
-        // "auto-select first required option" setting is on. When off, we
-        // leave the group unselected so the cashier must pick manually
-        // (submit-time validation in ModifierScreen enforces the pick).
-        // Select first available option with price $0.
-        const freeOption = category.options.find(
-          option => option.isAvailable !== false && option.price === 0
-        )
-
-        if (freeOption) {
-          initialSelections[category.id][freeOption.id] = true
-        } else {
-          // Priority 3: No free option - select first available option
-          const firstAvailableOption = category.options.find(
-            option => option.isAvailable !== false
-          )
-          if (firstAvailableOption) {
-            initialSelections[category.id][firstAvailableOption.id] = true
-          }
         }
       }
       // OPTIMIZATION: Skip setting false values - component uses ?? false

@@ -160,6 +160,11 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   // first free (then first available) option. Off = require manual selection.
   autoSelectFirstRequiredOption: boolean;
   setAutoSelectFirstRequiredOption: (value: boolean) => void;
+  // Sub-setting of the above (only meaningful when it is on): apply the
+  // first-free-option pick to ALL required groups, even ones that have
+  // `isDefault` options configured — overriding those defaults.
+  autoSelectAllRequiredGroups: boolean;
+  setAutoSelectAllRequiredGroups: (value: boolean) => void;
 
   // Actions
   setDefaultSittingTimeMinutes: (minutes: number) => void;
@@ -488,6 +493,9 @@ export const useSettingsStore = create<SettingsState>()(
       autoSelectFirstRequiredOption: true,
       setAutoSelectFirstRequiredOption: (value) =>
         set({ autoSelectFirstRequiredOption: value }),
+      autoSelectAllRequiredGroups: false,
+      setAutoSelectAllRequiredGroups: (value) =>
+        set({ autoSelectAllRequiredGroups: value }),
 
       setDefaultSittingTimeMinutes: (minutes) =>
         set({ defaultSittingTimeMinutes: minutes }),
@@ -581,6 +589,7 @@ export const useSettingsStore = create<SettingsState>()(
         showMenuImages: state.showMenuImages,
         posMenuNavigationMode: state.posMenuNavigationMode,
         autoSelectFirstRequiredOption: state.autoSelectFirstRequiredOption,
+        autoSelectAllRequiredGroups: state.autoSelectAllRequiredGroups,
         // Order Line
         orderLineSettings: state.orderLineSettings,
         // Printer Assignment
