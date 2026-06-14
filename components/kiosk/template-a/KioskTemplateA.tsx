@@ -1,6 +1,8 @@
 import { KioskTemplateProps } from "@/components/kiosk/KioskTemplateRouter";
-import { KioskMenuView } from "@/components/kiosk/template-a/KioskMenuView";
+import { KioskCartButton } from "@/components/kiosk/shared/KioskCartButton";
+import { KioskHeader } from "@/components/kiosk/shared/KioskHeader";
 import { KioskOrderTypeScreen } from "@/components/kiosk/shared/KioskOrderTypeScreen";
+import { KioskMenuView } from "@/components/kiosk/template-a/KioskMenuView";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useState } from "react";
@@ -30,6 +32,7 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
   const [screen, setScreen] = useState<TemplateAScreen>("orderType");
   const [selectedItem, setSelectedItem] = useState<MenuItemType | null>(null);
   const itemCount = useKioskCartStore((s) => s.itemCount());
+  const subtotal = useKioskCartStore((s) => s.subtotal());
   const orderType = useKioskCartStore((s) => s.orderType);
   const setOrderType = useKioskCartStore((s) => s.setOrderType);
 
@@ -46,49 +49,32 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
     );
   }
 
-  const orderTypeLabel = orderType === "dine_in" ? "Dine In" : "Takeaway";
-
   return (
     <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
-      {/* Header */}
-      <View
-        className="flex-row items-center justify-between px-6 py-4"
-        style={{ backgroundColor: config.primaryColor }}
-      >
-        <View className="flex-row items-center gap-4">
-          <Text className="text-white text-lg font-semibold">
-            {config.profileName}
-          </Text>
-          {/* Editable order-type chip — tap to change. */}
-          <Pressable
-            onPress={() => setScreen("orderType")}
-            className="px-3 py-1 rounded-full"
-            style={{ backgroundColor: "rgba(255,255,255,0.2)" }}
-          >
-            <Text className="text-white text-sm font-medium">
-              {orderTypeLabel} ▾
-            </Text>
-          </Pressable>
-        </View>
-        <View className="flex-row items-center gap-4">
-          <Pressable onPress={() => setScreen("cart")}>
-            <Text className="text-white font-semibold">Cart · {itemCount}</Text>
-          </Pressable>
-          <Pressable onPress={onExit}>
-            <Text className="text-white/80">Cancel</Text>
-          </Pressable>
-        </View>
-      </View>
+      <KioskHeader
+        config={config}
+        orderType={orderType}
+        onChangeOrderType={setOrderType}
+        onExit={onExit}
+      />
 
       {/* Body */}
       {screen === "menu" && (
-        <KioskMenuView
-          config={config}
-          onSelectItem={(item) => {
-            setSelectedItem(item);
-            setScreen("itemDetail");
-          }}
-        />
+        <View className="flex-1">
+          <KioskMenuView
+            config={config}
+            onSelectItem={(item) => {
+              setSelectedItem(item);
+              setScreen("itemDetail");
+            }}
+          />
+          <KioskCartButton
+            config={config}
+            itemCount={itemCount}
+            subtotal={subtotal}
+            onPress={() => setScreen("cart")}
+          />
+        </View>
       )}
 
       {screen !== "menu" && (
