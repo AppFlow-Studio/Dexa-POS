@@ -58,8 +58,15 @@ export function lineTotal(line: KioskCartLine): number {
   return lineUnitPrice(line) * line.quantity;
 }
 
+/** Customer-selected fulfilment type, mapped to order_type at checkout. */
+export type KioskOrderType = "dine_in" | "takeout";
+
 interface KioskCartState {
   lines: KioskCartLine[];
+  /** Null until the customer picks one on the order-type screen. */
+  orderType: KioskOrderType | null;
+
+  setOrderType: (type: KioskOrderType) => void;
 
   /** Add a fully-built line. Returns the generated lineId. */
   addLine: (line: Omit<KioskCartLine, "lineId">) => string;
@@ -82,6 +89,9 @@ const genLineId = () =>
 
 export const useKioskCartStore = create<KioskCartState>((set, get) => ({
   lines: [],
+  orderType: null,
+
+  setOrderType: (type) => set({ orderType: type }),
 
   addLine: (line) => {
     const lineId = genLineId();
@@ -119,7 +129,7 @@ export const useKioskCartStore = create<KioskCartState>((set, get) => ({
       lines: state.lines.filter((l) => l.lineId !== lineId),
     })),
 
-  clear: () => set({ lines: [] }),
+  clear: () => set({ lines: [], orderType: null }),
 
   subtotal: () => get().lines.reduce((sum, l) => sum + lineTotal(l), 0),
 
