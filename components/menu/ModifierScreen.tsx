@@ -1,16 +1,12 @@
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { CartItem, ModifierCategory } from "@/lib/types";
-import { OrderService } from "@/services/orderService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
     getLastModifierOpenStartedAt,
     useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
-import {
-    getOrderStoreSupabaseClient,
-    useOrderStore,
-} from "@/stores/useOrderStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
 
 import OptimizedListImage from "@/components/ui/OptimizedListImage";
@@ -1366,35 +1362,15 @@ const ModifierScreenContent = ({
         }
       }
 
-      // Sync open item changes to backend
-      if (currentCartItem.db_order_item_id) {
-        const client = getOrderStoreSupabaseClient();
-        if (client) {
-          const params: Record<string, any> = {
-            p_order_item_id: currentCartItem.db_order_item_id,
-          };
-          if (currentState.quantity !== currentCartItem.quantity) {
-            params.p_quantity = currentState.quantity;
-          }
-          if (
-            currentState.notes &&
-            currentState.notes !== currentCartItem.customizations?.notes
-          ) {
-            params.p_special_instructions = currentState.notes;
-          }
-          if (shouldApplySeat && seatVal !== undefined) {
-            params.p_seat_number = seatVal;
-          }
-          if (Object.keys(params).length > 1) {
-            OrderService.updateOpenItem(client, params as any).catch((err) => {
-              console.error(
-                "[ModifierScreen] Failed to sync open item update:",
-                err,
-              );
-            });
-          }
-        }
-      }
+      // Backend sync is already handled above: updateItemInActiveOrder syncs
+      // quantity + instructions (each deadline-wrapped via
+      // updateOrderItemQuantity / updateOrderItem with toUpdateItemKey, and
+      // queued on failure — useOrderStore.ts ~8243-8367), and setItemSeat syncs
+      // the seat. The previous raw OrderService.updateOpenItem call here was a
+      // REDUNDANT second sync of the same edit (keyless update_order_item_v2,
+      // no deadline, fire-and-forget) — it double-wrote on good WiFi and hung
+      // 30s+ on bad WiFi with no recovery. Removed: the path above is the
+      // single, deadline-wrapped, offline-queue-backed writer.
 
       showToast({
         title: "Item Updated",

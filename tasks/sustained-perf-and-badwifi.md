@@ -57,6 +57,28 @@ Full invariant checklist + thresholds are in the research output; implement the 
 
 ---
 
+## ✅ Option-C Wave 2 — IMPLEMENTED (cross-checked + senior-persona reviewed)
+
+The persona review **reshaped the plan** (the original gap list was half wrong — caught before shipping):
+
+- **`runWithDeadline` contract** (verified): on timeout it *returns* `{ data:null, error:{ code:'DEADLINE_EXCEEDED' } }` (never throws), auto-reports to `connectionQuality`, and is a no-op when the kill switch is off. Recovery = the caller's existing error branch calling `queueFailedOperation` → existing offline queue + dead-letter → per-item Retry chip (auto-wired). No new op types/UI needed.
+
+- **B (flagship) — DELETED a redundant double-sync, not "added a wrap".** `ModifierScreen`'s raw `OrderService.updateOpenItem` call was **redundant**: `updateItemInActiveOrder` already syncs qty (`update_item_quantity`) + notes (`updateOrderItem` w/ `toUpdateItemKey`) — both deadline-wrapped **and** queued on failure (`useOrderStore.ts:8243-8367`) — and seat goes via `setItemSeat`. The raw call was a keyless second write that double-synced on *good* WiFi and hung 30s+ on bad WiFi. **Removed** it (+ its now-dead imports). Net: one deadline-wrapped, offline-queue-backed writer.
+
+- **A (corrected target) — wrapped the LIVE KDS poll.** The real 30s-hang was `client.rpc('get_kds_tickets_v2')` direct in `useKDSStore.ts` `fetchTickets` + `_backgroundFetchTickets` — *not* the dead `OrderService.getKDSTickets`. Both poll sites now `runWithDeadline('get_kds_tickets', DEADLINES.read, …abortSignal)`; their error branches already reset `isFetching` and the next poll recovers. The other 5 "utility read" wraps were **dropped** — verified dead code (zero callers), so wrapping them was pure no-op theater.
+
+- **C — wrapped the `seat_guests` legacy PGRST202 fallback** (`floorPlanService.ts`). Timeout → `{error}` → existing `seatGuests` caller queues `seat_guests` (replays the idempotency-keyed MAIN path). PGRST202 is a deterministic signature mismatch (not a timeout), so no retry loop.
+
+- **D — `addOrderDiscount` confirmed dead** (zero callers; also a table insert, never a deadline target). Left for a separate trivial cleanup commit.
+
+- **E — connectionQuality `degraded/slow` UI badge:** still deferred (UX wave).
+
+**Tests:** `__tests__/badWifiWave2.test.ts` (5, green) guards: the redundant double-sync stays removed, both KDS polls stay wrapped, the seat fallback stays wrapped. `runWithDeadline` timeout→`{error}` behavior is covered by the existing `runWithDeadline.test.ts`; the `update_order_item_v3` partial-param no-op is covered by `idempotencyConcurrency.test.ts`. **Verify:** tsc identical to baseline (no new errors), lint pre-existing only, full suite identical to baseline (23 pre-existing failures unchanged; 814→819 passing). Zero regressions.
+
+**Still open (tracked, not done):** the `connectionQuality` status badge (E); a one-line grep `client.rpc(` without `.abortSignal` to find any RAW calls outside OrderService/FloorPlanService before declaring bad-WiFi "done"; Category-B server-side idempotency stays deferred (high-risk, no operator demand).
+
+---
+
 ## Verification (this session's changes)
 - `npx jest __tests__/longSessionSoak.test.ts` green (3/3). Full suite identical to baseline (9 suites/23 tests pre-existing; 811→814 passing) → A3 + soak = zero regressions.
 - A3 is a behavior-preserving reduction (skips a redundant fetch); manually verify on-device that a fresh re-switch still shows live sessions (realtime path) and a >30s switch still reconciles.

@@ -12,6 +12,8 @@ import {
     toIdempotencyKey,
 } from "@/lib/network/idempotencyKey";
 import { isRecallExpired } from "@/lib/kdsAutomation";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { normalizePlatform } from "@/lib/platformAliases";
 import { createLazyPersistStorage, getJSON, setJSON } from "@/lib/storage";
 import { OrderService } from "@/services/orderService";
@@ -1430,9 +1432,19 @@ export const useKDSStore = create<KDSState>()(
             params.p_kds_display_id = kdsDisplayId;
           }
 
-          const { data, error } = await client.rpc(
-            "get_kds_tickets_v2",
-            params,
+          // Bad-WiFi: bound the KDS poll so it can't hang 30s+ on a slow link
+          // (this is the live hot-path fetch). On DEADLINE_EXCEEDED it returns
+          // { error } and the branch below resets isFetching; the next poll
+          // (15-30s, connection-quality-aware) recovers.
+          const { data, error } = await runWithDeadline<KDSTicket[]>(
+            "get_kds_tickets",
+            DEADLINES.read,
+            async (signal) => {
+              const res = await client
+                .rpc("get_kds_tickets_v2", params)
+                .abortSignal(signal);
+              return { data: res.data as KDSTicket[] | null, error: res.error };
+            },
           );
 
           // Discard stale response (but still reset isFetching)
@@ -1554,9 +1566,16 @@ export const useKDSStore = create<KDSState>()(
             params.p_kds_display_id = kdsDisplayId;
           }
 
-          const { data, error } = await client.rpc(
-            "get_kds_tickets_v2",
-            params,
+          // Bad-WiFi: bound the background KDS poll (same as fetchTickets).
+          const { data, error } = await runWithDeadline<KDSTicket[]>(
+            "get_kds_tickets",
+            DEADLINES.read,
+            async (signal) => {
+              const res = await client
+                .rpc("get_kds_tickets_v2", params)
+                .abortSignal(signal);
+              return { data: res.data as KDSTicket[] | null, error: res.error };
+            },
           );
 
           // Discard stale response
