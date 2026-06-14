@@ -32,4 +32,17 @@ New: `patchSessionsLocalOnlyPreserve`, `fetchSnapshotLocalOnlyFromSessionStore`,
 - Stream A: seat → `ordering`/`paying` on Plan A → switch to Plan B → back to A → status persists (cold >30 s cache AND warm prefetch); + realtime reconcile on a *different* table doesn't flash the local-only table. CFD idle-gate: no CFD → `cfdItems` empty; connect built-in + paired CFD mid-order → items populate.
 - Stream B: D5 — auto-fire/bump still fire at configured delays on a busy board (no starvation); recalled ticket not auto-bumped. D6 — the profile gate above.
 
+## Stream C — Navigation render time (page→page, floor→floor): defer work without sacrificing usability
+
+Goal: enter fast AND be usable on arrival. A 3-agent mount/teardown map confirmed the codebase **already** has the right bones — `order-processing` progressive `renderStage` (skeleton→bill→menu) and `TableOrderView`'s cached-fast-path/`InteractionManager` staging (cached order → instant stage 2; uncached → stage-1 paint, defer heavy stage 2). Two real gaps remained, both speculative/non-critical work that was *not* yielding to the frame:
+
+- **I4a `services/tableOrderPrefetch.ts`** — the session→order-prefetch subscriber used `queueMicrotask`, which drains *before* the next paint. A realtime broadcast landing during a screen mount/transition ran the fetch's synchronous prelude (the `getCachedOrderId` O(n) scans) in the same frame, and FIFO microtask order could run it *before* a user's tap handler → the primary jank vector all three agents converged on. Swapped both the broadcast callback **and** the initial setup run to `InteractionManager.runAfterInteractions` (subscriber *registration* stays sync). Usability preserved: opening a table still prefetches its order on tap (`ensureOrderPrefetched`) and `useTableSession` single-flight-hydrates a miss. This also de-janks **floor→floor** switches (the subscriber fires on session changes during a switch).
+- **I4b `app/(main)/order-processing.tsx`** — the eager `ensureActiveOrderCreated` RPC for non-dine-in orders fired un-deferred on mount; its broadcast/re-render could land mid-first-interaction. Wrapped in `InteractionManager.runAfterInteractions` with `task.cancel()` cleanup. The local draft is usable immediately; the create is idempotent + single-flight, so the add-item path still creates on demand.
+
+**Deliberately NOT deferred** (verify-before-churning / correctness): `useActiveOrderOwnershipRecheck` focus recheck (correctness-sensitive flip-away/ownership guard; already throttled), the order-init effect (must be sync to set `activeOrderId` before render), FlatList `windowSize` tuning + `TableBillSection` virtualization (speculative; no evidence dine-in orders hit 100+ items). These need a device profile (`pos.floor_switch`/`pos.table_open`/`pos.boot_to_order` spans) before touching.
+
+**Principle honored:** only speculative/background work moved off the critical frame (each with an on-demand fallback) — nothing the page needs to render or respond to first taps was deferred. `runAfterInteractions` fires between gestures (constantly on a normal board), so prefetch still warms promptly; it just yields during the actual transition/gesture.
+
+Verification: tsc/lint clean on edited files; `tableOrderPrefetchTeardown` green; full suite **identical to baseline** (9 suites/23 tests pre-existing, 800 passing) → no regressions.
+
 ## Not committed — working tree only (per the initiative's convention).

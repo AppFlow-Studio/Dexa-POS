@@ -8,6 +8,7 @@
  * Initialize once in root layout after both stores hydrate.
  */
 
+import { InteractionManager } from "react-native";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -232,8 +233,16 @@ export function setupTableOrderPrefetch() {
       return ids;
     },
     (orderIds) => {
-      // Defer to avoid blocking UI
-      queueMicrotask(() => {
+      // Defer the speculative warm to AFTER interactions/animations settle.
+      // queueMicrotask drains before the next paint, so a broadcast landing
+      // mid-navigation ran this fetch's synchronous prelude (the getCachedOrderId
+      // O(n) scans) in the same frame as a screen mount — and FIFO microtask
+      // order could run it before a user's tap handler. runAfterInteractions
+      // yields to touches/transitions first. This is best-effort warming, not
+      // needed for first paint/interaction: opening a table still prefetches
+      // its order on tap (ensureOrderPrefetched) and useTableSession single-
+      // flight-hydrates a miss, so usability is unchanged.
+      InteractionManager.runAfterInteractions(() => {
         prefetchUncachedOrders(orderIds).catch((err) => {
           console.error("[prefetch] Failed:", err);
         });
@@ -249,10 +258,10 @@ export function setupTableOrderPrefetch() {
     },
   );
 
-  // Run immediately for sessions already loaded before this subscriber was set up.
-  // Without this, tables that were occupied at startup never get their orders
-  // fetched until a session change occurs (e.g. long-press triggers a manual sync).
-  queueMicrotask(() => {
+  // Run for sessions already loaded before this subscriber was set up (tables
+  // occupied at startup). Deferred past interactions so this boot-time warm
+  // batch doesn't contend with the first screen's paint/first-interaction.
+  InteractionManager.runAfterInteractions(() => {
     prefetchUncachedOrders(getSessionOrderIds()).catch((err) => {
       console.error("[prefetch] Initial fetch failed:", err);
     });

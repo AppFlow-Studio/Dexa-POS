@@ -230,19 +230,17 @@ function buildEditModeSelections (
 
 /**
  * Build the modifier selection map for ADD mode — apply the auto-select rules.
- * Reads the local "auto-select required option" settings, so this MUST run at
+ * Reads the local `autoSelectFirstRequiredOption` setting, so this MUST run at
  * open() time (not only at pre-warm) or a settings toggle won't take effect on
- * already-cached items. Two mutually-exclusive modes for required groups (the
- * "all required groups" sub-setting is only offered when the primary is off, so
- * they never combine):
- *   - autoSelectFirstRequiredOption ON  → auto-pick only for required groups
- *     that have NO configured default (defaults are respected).
- *   - it OFF + autoSelectAllRequiredGroups ON → auto-pick for EVERY required
- *     group, overriding any configured `isDefault` options.
- *   - both OFF → no auto-pick (defaults still honored where present;
- *     submit-time validation in ModifierScreen enforces a manual pick).
- * Within a group: explicit `isDefault` options win (single = first, multiple =
- * all); otherwise the first free ($0) option, else the first available option.
+ * already-cached items.
+ *   - setting OFF → required groups are left empty (NO pre-selection at all,
+ *     including any configured `isDefault`); submit-time validation in
+ *     ModifierScreen enforces a manual pick.
+ *   - setting ON → required groups are pre-selected: the configured default if
+ *     present (single = first, multiple = all), otherwise the first free ($0)
+ *     option, else the first available option.
+ * Optional (non-required) groups are unaffected by the setting and always keep
+ * their configured `isDefault` options.
  */
 function computeAddModeSelections (
   modifiers: ModifierCategory[]
@@ -255,11 +253,15 @@ function computeAddModeSelections (
       option => option.isDefault === true && option.isAvailable !== false
     )
     const isRequired = category.type === 'required'
-    const wantFirstFree =
-      isRequired &&
-      (settings.autoSelectFirstRequiredOption
-        ? defaultOptions.length === 0
-        : settings.autoSelectAllRequiredGroups)
+    // Required groups are pre-selected ONLY when the setting is on. When off,
+    // leave them empty — suppressing even configured `isDefault` options — so
+    // the cashier must pick (submit-time validation enforces it). Optional
+    // groups are unaffected and keep their defaults (handled below).
+    if (isRequired && !settings.autoSelectFirstRequiredOption) return
+
+    // Reached only when not-required, or required-with-setting-on. For a
+    // required group with no configured default, fall back to first-free.
+    const wantFirstFree = isRequired && defaultOptions.length === 0
 
     if (wantFirstFree) {
       // Select first available option with price $0, else first available.

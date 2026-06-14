@@ -65,6 +65,7 @@ import React, {
 } from "react";
 import {
     Dimensions,
+    InteractionManager,
     Keyboard,
     Modal,
     PanResponder,
@@ -441,7 +442,15 @@ const OrderProcessing = () => {
     if (!order || order.db_order_id) return;
     // Dine-in orders create at seating; only eager-create non-dine-in here.
     if (order.order_type === "dine_in" || order.order_type === "Dine In") return;
-    void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+    // Defer the eager backend create off the screen-entry frame: it's an RPC
+    // whose broadcast/re-render can land mid-first-interaction. The local draft
+    // is already usable; this just pre-persists it so the first item-add is
+    // faster. ensureActiveOrderCreated is idempotent + single-flight, so the
+    // add-item path still creates on demand if this hasn't run yet.
+    const task = InteractionManager.runAfterInteractions(() => {
+      void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+    });
+    return () => task.cancel();
   }, [activeOrderId]);
 
   const handleViewItems = useCallback((orderId: string) => {

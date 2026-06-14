@@ -238,12 +238,6 @@ const GeneralSettingsScreen = () => {
   const setAutoSelectFirstRequiredOption = useSettingsStore(
     (s) => s.setAutoSelectFirstRequiredOption,
   );
-  const autoSelectAllRequiredGroups = useSettingsStore(
-    (s) => s.autoSelectAllRequiredGroups,
-  );
-  const setAutoSelectAllRequiredGroups = useSettingsStore(
-    (s) => s.setAutoSelectAllRequiredGroups,
-  );
   const { colorScheme, setColorScheme } = useColorScheme();
 
   // ── Derived display values ──────────────────────────────────────────────
@@ -1058,44 +1052,6 @@ const GeneralSettingsScreen = () => {
                   onCheckedChange={setAutoSelectFirstRequiredOption}
                 />
               </View>
-
-              {/* Auto-select for ALL required groups — alternative mode, only
-                  offered when the primary auto-select above is turned off */}
-              {!autoSelectFirstRequiredOption && (
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingVertical: 10,
-                    paddingLeft: 20,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.border,
-                  }}
-                >
-                  <View style={{ flex: 1, marginRight: 16 }}>
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        color: colors.heading,
-                        fontWeight: "500",
-                      }}
-                    >
-                      Apply to all required groups
-                    </Text>
-                    <Text
-                      style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
-                    >
-                      Auto-pick the first option for every required group, even
-                      ones with a preset default — overriding those defaults.
-                    </Text>
-                  </View>
-                  <Switch
-                    checked={autoSelectAllRequiredGroups}
-                    onCheckedChange={setAutoSelectAllRequiredGroups}
-                  />
-                </View>
-              )}
 
               {/* Theme */}
               <View
