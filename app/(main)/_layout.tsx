@@ -109,47 +109,19 @@ export default function MainLayout() {
   // --- POS Sound Notifications for external orders ---
   const soundServiceRef = useRef<KDSSoundService | null>(null);
 
-  // Orientation guard: kiosk routes can manage orientation themselves; all
-  // other screens should be frozen in whatever orientation the device is
-  // currently in so rotation is effectively ignored.
+  // Orientation guard: the app is landscape-only everywhere EXCEPT the kiosk
+  // screen, which manages its own orientation from config.orientation (see
+  // hooks/kiosk/useKioskOrientation). On the kiosk we step back entirely; off
+  // it we force LANDSCAPE so device rotation never affects POS/KDS screens and
+  // a kiosk's portrait lock is always undone on exit.
   useEffect(() => {
     if (Platform.OS === "web") return;
+    if (isKiosk || isKioskRoute) return;
     (async () => {
       try {
-        if (isKiosk || isKioskRoute) {
-          await ScreenOrientation.lockAsync(
-            ScreenOrientation.OrientationLock.DEFAULT,
-          );
-          return;
-        }
-
-        const orientation = await ScreenOrientation.getOrientationAsync();
-        switch (orientation) {
-          case ScreenOrientation.Orientation.PORTRAIT_UP:
-            await ScreenOrientation.lockAsync(
-              ScreenOrientation.OrientationLock.PORTRAIT_UP,
-            );
-            break;
-          case ScreenOrientation.Orientation.PORTRAIT_DOWN:
-            await ScreenOrientation.lockAsync(
-              ScreenOrientation.OrientationLock.PORTRAIT_DOWN,
-            );
-            break;
-          case ScreenOrientation.Orientation.LANDSCAPE_LEFT:
-            await ScreenOrientation.lockAsync(
-              ScreenOrientation.OrientationLock.LANDSCAPE_LEFT,
-            );
-            break;
-          case ScreenOrientation.Orientation.LANDSCAPE_RIGHT:
-            await ScreenOrientation.lockAsync(
-              ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT,
-            );
-            break;
-          default:
-            await ScreenOrientation.lockAsync(
-              ScreenOrientation.OrientationLock.LANDSCAPE,
-            );
-        }
+        await ScreenOrientation.lockAsync(
+          ScreenOrientation.OrientationLock.LANDSCAPE,
+        );
       } catch (err) {
         console.warn("[MainLayout] ScreenOrientation lock failed:", err);
       }

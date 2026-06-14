@@ -48,7 +48,13 @@ export interface StationPaymentTerminal {
 export interface Station {
   id: string;
   station_name: string;
-  station_type: "register" | "terminal" | "kiosk" | "mobile" | "kds";
+  station_type:
+    | "register"
+    | "terminal"
+    | "self_service"
+    | "kiosk"
+    | "mobile"
+    | "kds";
   station_number: number;
   is_active: boolean;
   is_available: boolean;

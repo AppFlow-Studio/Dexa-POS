@@ -1,4 +1,5 @@
 import { KioskAttractScreen } from "@/components/kiosk/KioskAttractScreen";
+import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
 import { useKioskProfile } from "@/hooks/kiosk/useKioskProfile";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
@@ -23,6 +24,10 @@ export default function KioskScreen() {
   const { config, status, error } = useKioskProfile();
   const isIdle = useKioskProfileStore((s) => s.isIdle);
   const setIdle = useKioskProfileStore((s) => s.setIdle);
+
+  // Lock the device to the configured orientation. Re-locks when the config's
+  // orientation changes (e.g. a committed edit).
+  useKioskOrientation(config?.orientation);
 
   // No config yet (first ever load, nothing cached). A persisted config renders
   // immediately even while the background poll refreshes.
