@@ -2,7 +2,7 @@ import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
-import { formatOrderStatus } from '@/utils/orderStatusHelpers'
+import { formatOrderStatus, formatPaymentStatus } from '@/utils/orderStatusHelpers'
 import {
   Archive,
   ArrowUpRight,
@@ -102,7 +102,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
     ? 'REFUNDED'
     : refundStatus.isPartiallyRefunded
     ? 'Partial Refund'
-    : order.paid_status
+    : formatPaymentStatus(order.paid_status ?? 'Pending')
 
   const currentStationId = useOrderStore(s => s.currentStationId)
 

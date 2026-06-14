@@ -5,13 +5,27 @@ import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import React, { useDeferredValue, useMemo } from 'react'
 import { Text, View } from 'react-native'
+import { useShallow } from 'zustand/react/shallow'
 
 const TotalsComponent: React.FC = () => {
   const totals = useDeferredValue(useActiveOrderTotals())
   const defaultTaxRate = useStoreSettingsStore(s => s.taxRatesMap.standard ?? 0)
-  const activeOrder = useOrderStore(s =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined
-  )
+  const activeOrder = useOrderStore(useShallow(s => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined
+    if (!order) return undefined
+    return {
+      order_source: order.order_source,
+      db_order_id: order.db_order_id,
+      payments: order.payments,
+      paid_status: order.paid_status,
+      amount_paid: order.amount_paid,
+      checkDiscount: order.checkDiscount,
+      applied_discounts: order.applied_discounts,
+      items: order.items,
+      order_refund_items: order.order_refund_items,
+      reversals: order.reversals
+    }
+  }))
   const isOnlineOrder = activeOrder?.order_source?.toLowerCase() === 'online'
   const {
     payments: hydratedPayments,

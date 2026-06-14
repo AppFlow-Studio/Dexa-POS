@@ -261,17 +261,23 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
     []
   )
 
+  // PERF: This sheet stays mounted (gorhom BottomSheetModal renders content
+  // even while dismissed) so these recompute on every operations/session
+  // change even while closed. Skip the work entirely while closed — none of
+  // it is visible and it's all recomputed fresh in the effect above when
+  // `isOpen` flips back to true.
   const runningBalance = useMemo(
-    () => getRunningBalance(),
-    [operations, activeSession]
+    () => (isOpen ? getRunningBalance() : 0),
+    [isOpen, operations, activeSession]
   )
   const variance = useMemo(
-    () => getVariance(closingTotal),
-    [closingTotal, operations, activeSession]
+    () => (isOpen ? getVariance(closingTotal) : 0),
+    [isOpen, closingTotal, operations, activeSession]
   )
 
   // Totals for the session summary bar
   const sessionTotals = useMemo(() => {
+    if (!isOpen) return { cashIn: 0, cashOut: 0, sales: 0 }
     let cashIn = 0
     let cashOut = 0
     let sales = 0
@@ -287,11 +293,11 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       }
     }
     return { cashIn, cashOut, sales }
-  }, [operations])
+  }, [isOpen, operations])
 
   const recentOps = useMemo(
-    () => [...operations].reverse().slice(0, 30),
-    [operations]
+    () => (isOpen ? [...operations].reverse().slice(0, 30) : []),
+    [isOpen, operations]
   )
 
   const isBlind = cashDrawerSettings.blindCloseCount
@@ -300,12 +306,15 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
   // Local variance flags for the close view (no RPC needed)
   const localVarianceFlags = useMemo(
-    () => computeLocalVarianceFlags(operations, variance),
-    [operations, variance]
+    () => (isOpen ? computeLocalVarianceFlags(operations, variance) : []),
+    [isOpen, operations, variance]
   )
   const localTimeline = useMemo(
-    () => computeLocalTimeline(operations, activeSession?.openingAmount || 0),
-    [operations, activeSession?.openingAmount]
+    () =>
+      isOpen
+        ? computeLocalTimeline(operations, activeSession?.openingAmount || 0)
+        : [],
+    [isOpen, operations, activeSession?.openingAmount]
   )
 
   const handleFetchAnalysis = useCallback(async () => {
@@ -1889,7 +1898,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             paddingBottom: 12
           }}
         >
-          {view === 'open' && (
+          {/* PERF: This sheet stays mounted while dismissed (gorhom keeps the
+              content tree alive), so skip building the view JSX entirely
+              while closed — it's all rebuilt by the effect above on reopen. */}
+          {isOpen && view === 'open' && (
             <>
               {renderOpenView()}
               <View
@@ -1904,8 +1916,8 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               </View>
             </>
           )}
-          {view === 'active' && renderActiveView()}
-          {view === 'close' && (
+          {isOpen && view === 'active' && renderActiveView()}
+          {isOpen && view === 'close' && (
             <>
               {renderCloseView()}
               <View
@@ -1920,7 +1932,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               </View>
             </>
           )}
-          {view === 'close_summary' && renderCloseSummary()}
+          {isOpen && view === 'close_summary' && renderCloseSummary()}
         </BottomSheetScrollView>
       </BottomSheetModal>
 

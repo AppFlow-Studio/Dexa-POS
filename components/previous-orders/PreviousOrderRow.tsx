@@ -6,6 +6,7 @@ import {
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { formatPaymentStatus } from "@/utils/orderStatusHelpers";
 import {
     AlertTriangle,
     CheckCircle,
@@ -170,7 +171,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
     return null;
   });
 
-  const needsAttention = status === "Pending";
+  const needsAttention = status === "Pending" || status === "Unpaid";
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -372,7 +373,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
                   color: statusConfig.color,
                 }}
               >
-                {status}
+                {formatPaymentStatus(status)}
               </Text>
             </View>
           )}
