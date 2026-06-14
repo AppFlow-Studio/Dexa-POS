@@ -35,7 +35,7 @@ export function KioskMenuView({
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
   const isVertical = config.orientation === "vertical";
-  const numColumns = isVertical ? 2 : 3;
+  const numColumns = isVertical ? 2 : 4;
 
   // Build one section per available menu, listing its available categories.
   const sections = useMemo<CategorySection[]>(() => {
@@ -80,30 +80,43 @@ export function KioskMenuView({
       <View
         style={{
           width: isVertical ? "33.3333%" : "25%",
-          backgroundColor: `${config.primaryColor}0D`,
+          backgroundColor: `${config.primaryColor}06`,
           borderRightWidth: 1,
-          borderRightColor: `${config.accentColor}20`,
+          borderRightColor: `${config.textColor}0F`,
         }}
       >
         <SectionList
           sections={sections}
           keyExtractor={(cat, index) => `${cat.id}-${index}`}
           stickySectionHeadersEnabled={false}
-          contentContainerStyle={{ paddingVertical: 12 }}
+          contentContainerStyle={{ paddingVertical: 16, paddingHorizontal: 12 }}
           showsVerticalScrollIndicator={false}
           renderSectionHeader={({ section }) => (
-            <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 6 }}>
+            <View
+              style={{
+                paddingHorizontal: 12,
+                paddingTop: section.menuId === sections[0]?.menuId ? 4 : 22,
+                paddingBottom: 10,
+              }}
+            >
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: "800",
-                  letterSpacing: 1,
+                  letterSpacing: 1.5,
                   textTransform: "uppercase",
-                  color: `${config.textColor}80`,
+                  color: config.accentColor,
+                  marginBottom: 10,
                 }}
               >
                 {section.title}
               </Text>
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: `${config.textColor}12`,
+                }}
+              />
             </View>
           )}
           renderItem={({ item: cat, section }) => {
@@ -113,16 +126,33 @@ export function KioskMenuView({
               <Pressable
                 onPress={() => setActiveKey(key)}
                 style={{
-                  paddingHorizontal: 20,
-                  paddingVertical: 16,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingHorizontal: 16,
+                  paddingVertical: 15,
+                  marginBottom: 6,
+                  borderRadius: 14,
                   backgroundColor: selected
                     ? config.primaryColor
                     : "transparent",
+                  ...(selected
+                    ? {
+                        shadowColor: config.primaryColor,
+                        shadowOpacity: 0.3,
+                        shadowRadius: 10,
+                        shadowOffset: { width: 0, height: 4 },
+                        elevation: 4,
+                      }
+                    : {}),
                 }}
               >
+                
+               
                 <Text
                   style={{
-                    fontSize: 17,
+                    flex: 1,
+                    fontSize: 16,
                     fontWeight: selected ? "700" : "500",
                     color: selected ? "#FFFFFF" : config.textColor,
                   }}

@@ -2,6 +2,7 @@ import { KioskTemplateProps } from "@/components/kiosk/KioskTemplateRouter";
 import { KioskCartButton } from "@/components/kiosk/shared/KioskCartButton";
 import { KioskHeader } from "@/components/kiosk/shared/KioskHeader";
 import { KioskOrderTypeScreen } from "@/components/kiosk/shared/KioskOrderTypeScreen";
+import { KioskItemDetail } from "@/components/kiosk/template-a/KioskItemDetail";
 import { KioskMenuView } from "@/components/kiosk/template-a/KioskMenuView";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
@@ -77,7 +78,18 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
         </View>
       )}
 
-      {screen !== "menu" && (
+      {screen === "itemDetail" && selectedItem && (
+        <KioskItemDetail
+          config={config}
+          item={selectedItem}
+          onBack={() => setScreen("menu")}
+          onAdded={() => setScreen("menu")}
+        />
+      )}
+
+      {(screen === "cart" ||
+        screen === "checkout" ||
+        screen === "confirmation") && (
         <View className="flex-1 items-center justify-center px-8">
           <Text
             className="text-3xl font-bold"
@@ -85,11 +97,6 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
           >
             {screen}
           </Text>
-          {selectedItem && (
-            <Text className="mt-2" style={{ color: config.textColor }}>
-              {selectedItem.name}
-            </Text>
-          )}
           <Pressable
             onPress={() => setScreen("menu")}
             className="mt-10 px-6 py-3 rounded-full"
