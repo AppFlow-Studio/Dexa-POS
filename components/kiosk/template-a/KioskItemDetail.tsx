@@ -344,6 +344,8 @@ export function KioskItemDetail({
   // ─── Horizontal layout ───────────────────────────────────────────
 
   if (isHorizontal) {
+    const hasModifiers = groups.length > 0;
+
     return (
       <View
         className="flex-1"
@@ -365,20 +367,22 @@ export function KioskItemDetail({
             {titleBlock}
           </View>
 
-          {/* Right panel — modifiers only */}
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingBottom: 32,
-              paddingHorizontal: 24,
-              flexGrow: 1,
-            }}
-            style={{ flex: 1 }}
-          >
-            <View style={{ width: "100%", maxWidth: 640 }}>
-              {modifierGroups}
-            </View>
-          </ScrollView>
+          {/* Right panel — modifiers only (hidden if none) */}
+          {hasModifiers ? (
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{
+                paddingBottom: 32,
+                paddingHorizontal: 24,
+                flexGrow: 1,
+              }}
+              style={{ flex: 1 }}
+            >
+              <View style={{ width: "100%", maxWidth: 640 }}>
+                {modifierGroups}
+              </View>
+            </ScrollView>
+          ) : null}
         </View>
 
         {footer}
