@@ -469,9 +469,17 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   isOvertime,
   overtimeMinutes
 }) => {
-  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(
-    new Set()
-  )
+  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(() => {
+    const initial = new Set<number>()
+    activeOrder?.items?.forEach(item => {
+      if (item.is_voided) return
+      initial.add(item.courseNumber ?? itemCourseMap?.[item.id] ?? 1)
+    })
+    if (currentCourse !== undefined && currentCourse !== null) {
+      initial.add(currentCourse)
+    }
+    return initial
+  })
   const prevItemCount = useRef<number>(0)
   // Narrow selectors — subscribe only to the specific fields we display, not the whole order
   const orderMeta = useOrderStore(
