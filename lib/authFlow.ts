@@ -6,7 +6,7 @@ export function resolvePostLoginRoute(
   stationType?: string | null,
 ): "home" | "kds" | "kiosk" {
   if (stationType === "kds") return "kds";
-  if (stationType === "kiosk") return "kiosk";
+  if (stationType === "self_service") return "kiosk";
   return "home";
 }
 

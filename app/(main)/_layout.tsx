@@ -57,7 +57,7 @@ export default function MainLayout() {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const isKDS = selectedStation?.station_type === "kds";
-  const isKiosk = selectedStation?.station_type === "kiosk";
+  const isKiosk = selectedStation?.station_type === "self_service";
   const isKioskRoute = pathname === "/kiosk" || pathname.endsWith("/kiosk");
   const isFullScreenStation = isKDS || isKiosk || isKioskRoute;
   const disableKeyboardAvoiding =
