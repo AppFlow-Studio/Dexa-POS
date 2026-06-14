@@ -1208,6 +1208,12 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                       paddingBottom: 128,
                     }}
                     showsVerticalScrollIndicator={false}
+                    // Re-render visible cells when the add-disabled state flips
+                    // (e.g. first order's db_order_id arrives → isMenuAddDisabled
+                    // false). Without this, dataWithSpacers keeps the same item
+                    // references so FlashList leaves the first category's cells
+                    // grayed out until a category switch rebuilds the data.
+                    extraData={isMenuAddDisabled}
                     ListEmptyComponent={
                       <View
                         style={{
