@@ -105,7 +105,11 @@ const menuSectionStyles = StyleSheet.create({
   gridContainer: {
     flex: 1,
     marginTop: 8,
-    backgroundColor: colors.card,
+    // NOTE: backgroundColor is applied inline at the render site, NOT here.
+    // `colors` is a theme Proxy that defaults to dark; StyleSheet.create runs
+    // at module load (before setThemeMode('light')), so a themed color frozen
+    // here would lock to the dark value (#1E2340) and show as a dark rectangle
+    // below short lists. Inline styles read the live (light) value.
   },
 });
 const EMPTY_HIDDEN_MENU_IDS: string[] = [];
@@ -1185,7 +1189,12 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                     Column gutters moved into renderItem's gridCell wrapper
                     (no columnWrapperStyle in FlashList); the old batching
                     props (windowSize etc.) have no FlashList equivalent. */}
-                <View style={menuSectionStyles.gridContainer}>
+                <View
+                  style={[
+                    menuSectionStyles.gridContainer,
+                    { backgroundColor: colors.card },
+                  ]}
+                >
                   <FlashList
                     data={dataWithSpacers}
                     keyExtractor={keyExtractor}

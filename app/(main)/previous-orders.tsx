@@ -354,6 +354,10 @@ const PreviousOrdersScreen = () => {
     for (const id of liveIds) {
       const o = ordersById[id]
       if (!o) continue
+      // Hide empty drafts — including the active order / working set, which are
+      // added to `liveIds` unconditionally above and so skip the draft filter
+      // in the scan loop. A draft with no items isn't worth a row here.
+      if (o.order_status === 'draft' && o.items.length === 0) continue
       // Patch stale paid_status using fresh DB data from previous orders store
       if (o.db_order_id && o.paid_status === 'Refunded') {
         const po = poByDbId.get(o.db_order_id)
