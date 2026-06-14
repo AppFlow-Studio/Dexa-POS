@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest9717503611237570660.xml:2:13-83
+INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest9717503611237570660.xml:2:13-83
+	package
+		INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest9717503611237570660.xml
+	xmlns:android
+		ADDED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest9717503611237570660.xml:2:23-81
+uses-sdk
+INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest9717503611237570660.xml reason: use-sdk injection requested
+INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest9717503611237570660.xml
+INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest9717503611237570660.xml
+	android:targetSdkVersion
+		INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest9717503611237570660.xml
+	android:minSdkVersion
+		INJECTED from /Users/temurbeksayfutdinov/Documents/AppFlowStudios/Dexa-POS/modules/castles-usb/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest9717503611237570660.xml
