@@ -15,6 +15,7 @@ import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { FlashList } from '@shopify/flash-list'
 import {
   AlertTriangle,
   ArrowDown,
@@ -32,7 +33,6 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
@@ -636,7 +636,7 @@ const PreviousOrdersScreen = () => {
     [setActiveOrder, router]
   )
 
-  // ─── FlatList render ────────────────────────────────────
+  // ─── FlashList render ───────────────────────────────────
   const renderItem = useCallback(
     ({ item }: { item: OrderProfile }) => {
       const canContinue =
@@ -806,10 +806,19 @@ const PreviousOrdersScreen = () => {
             backgroundColor: colors.screen
           }}
         >
-          <FlatList
+          {/* FlashList recycles row cells for smoother fling scrolling. Rows
+              expand on tap, so `extraData={expandedOrderId}` is REQUIRED to
+              re-render recycled cells when the expanded row changes, and
+              `disableAutoLayout` is intentionally NOT set (variable-height rows
+              need auto-layout correction). FlatList batching props have no
+              FlashList equivalent. */}
+          <FlashList
             data={filteredOrders}
             keyExtractor={item => item.id}
             renderItem={renderItem}
+            extraData={expandedOrderId}
+            estimatedItemSize={90}
+            drawDistance={500}
             ListEmptyComponent={
               isInitialLoading ? (
                 <View style={{ paddingTop: 4 }}>
@@ -849,10 +858,6 @@ const PreviousOrdersScreen = () => {
               paddingBottom: 16,
               backgroundColor: colors.screen
             }}
-            initialNumToRender={10}
-            maxToRenderPerBatch={10}
-            windowSize={5}
-            removeClippedSubviews={true}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.3}
             ListFooterComponent={

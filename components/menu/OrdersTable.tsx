@@ -3,6 +3,7 @@ import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { formatPaymentStatus } from '@/utils/orderStatusHelpers'
+import { FlashList } from '@shopify/flash-list'
 import {
   ArrowDown,
   ArrowUp,
@@ -13,7 +14,6 @@ import {
 import React, { memo, useCallback, useMemo } from 'react'
 import {
   ActivityIndicator,
-  FlatList,
   Text,
   TouchableOpacity,
   View
@@ -555,12 +555,19 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         ))}
       </View>
 
-      {/* Table Body */}
-      <FlatList
+      {/* Table Body — FlashList recycles row cells instead of mount/unmount
+          on fling scroll (matches the menu grid's Perf F8 migration). Rows are
+          uniform-height, so `disableAutoLayout` is safe and avoids the New-Arch
+          AutoLayout "dark rectangle" artifact. FlatList batching props
+          (initialNumToRender/windowSize/etc.) have no FlashList equivalent. */}
+      <FlashList
         data={sortedOrders}
         renderItem={renderItem}
         keyExtractor={(item: OrderProfile) => item.id}
-        contentContainerStyle={{ flexGrow: 1, backgroundColor: colors.screen }}
+        estimatedItemSize={53}
+        disableAutoLayout
+        drawDistance={500}
+        contentContainerStyle={{ backgroundColor: colors.screen }}
         ListEmptyComponent={() => (
           <View className='py-20 items-center justify-center'>
             <Text style={{ color: colors.muted }} className='text-sm'>
@@ -568,10 +575,6 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
             </Text>
           </View>
         )}
-        initialNumToRender={12}
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        removeClippedSubviews={true}
         showsVerticalScrollIndicator={true}
         refreshing={refreshing}
         onRefresh={onRefresh}
