@@ -3,12 +3,14 @@ import { CartItem, OrderProfile } from "@/lib/types";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { SelectedLocation, useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { colors } from "@/lib/theme";
 import { Barcode, Mail, MessageSquare, Printer, QrCode, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
+  Image,
   Modal,
   PanResponder,
   Pressable,
@@ -252,27 +254,31 @@ const TotalsRow: React.FC<{
   label: string;
   value: string;
   bold?: boolean;
+  large?: boolean;
   isDiscount?: boolean;
-}> = ({ label, value, bold = false, isDiscount = false }) => (
-  <View className="flex-row justify-between py-0.5">
-    <Text
-      className={`text-xs ${bold ? "font-bold text-sm" : ""} ${
-        isDiscount ? "text-green-600" : "text-zinc-700"
-      }`}
-      style={{ fontFamily: "monospace" }}
-    >
-      {label}
-    </Text>
-    <Text
-      className={`text-xs ${bold ? "font-bold text-sm" : ""} ${
-        isDiscount ? "text-green-600" : "text-zinc-800"
-      }`}
-      style={{ fontFamily: "monospace" }}
-    >
-      {value}
-    </Text>
-  </View>
-);
+}> = ({ label, value, bold = false, large = false, isDiscount = false }) => {
+  const sizeClass = large ? "font-bold text-base" : bold ? "font-bold text-sm" : "";
+  return (
+    <View className="flex-row justify-between py-0.5">
+      <Text
+        className={`text-xs ${sizeClass} ${
+          isDiscount ? "text-green-600" : "text-zinc-700"
+        }`}
+        style={{ fontFamily: "monospace" }}
+      >
+        {label}
+      </Text>
+      <Text
+        className={`text-xs ${sizeClass} ${
+          isDiscount ? "text-green-600" : "text-zinc-800"
+        }`}
+        style={{ fontFamily: "monospace" }}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+};
 
 // ==========================================
 // ANIMATION CONSTANTS
@@ -437,6 +443,30 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
   // Receipt template
   const getReceiptTemplate = useReceiptTemplateStore(s => s.getReceiptTemplate);
   const template = location ? getReceiptTemplate(location.id) : null;
+  const cachedLogoBase64 = useReceiptTemplateStore(s => s.cachedLogoBase64);
+  const logoSource = template?.showLogo
+    ? cachedLogoBase64
+      ? { uri: `data:image/png;base64,${cachedLogoBase64}` }
+      : template.logoUrl
+        ? { uri: template.logoUrl }
+        : null
+    : null;
+  const receiptTableName = useMemo(() => {
+    if (!order) return null;
+    const uuidLike =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const explicitName = order.service_location_name?.trim();
+    if (explicitName && !uuidLike.test(explicitName)) return explicitName;
+    return (
+      (order.service_location_id
+        ? useFloorPlanStore.getState().tablesById[order.service_location_id]?.name
+        : null) ||
+      (explicitName
+        ? useFloorPlanStore.getState().tablesById[explicitName]?.name
+        : null) ||
+      null
+    );
+  }, [order]);
 
   // Handle print action
   const handlePrint = () => {
@@ -542,15 +572,23 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
                 {/* logo */}
                 {template?.showLogo && (
-                  <View style={{ alignItems: "center", marginBottom: 6, paddingHorizontal: 20 }}>
-                    <View style={{ width: 36, height: 36, backgroundColor: "#e5e7eb", borderRadius: 6, alignItems: "center", justifyContent: "center" }}>
-                      <Text style={{ fontSize: 8, color: "#9ca3af", fontWeight: "700", fontFamily: "monospace" }}>LOGO</Text>
-                    </View>
+                  <View style={{ alignItems: "center", marginBottom: 2, paddingHorizontal: 20 }}>
+                    {logoSource ? (
+                      <Image
+                        source={logoSource}
+                        style={{ width: 64, height: 64 }}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View style={{ width: 36, height: 36, backgroundColor: "#e5e7eb", borderRadius: 6, alignItems: "center", justifyContent: "center" }}>
+                        <Text style={{ fontSize: 8, color: "#9ca3af", fontWeight: "700", fontFamily: "monospace" }}>LOGO</Text>
+                      </View>
+                    )}
                   </View>
                 )}
 
                 {/* storeInfo */}
-                <View style={{ alignItems: "center", paddingHorizontal: 20, marginBottom: 4 }}>
+                <View style={{ alignItems: "center", paddingHorizontal: 20, marginBottom: 2 }}>
                   {template?.headerText ? (
                     <Text style={{ fontSize: 9, color: "#374151", textAlign: "center", marginBottom: 2, fontFamily: "monospace" }}>
                       {template.headerText}
@@ -573,7 +611,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 </View>
 
                 {/* orderInfo */}
-                <View style={{ paddingHorizontal: 20, marginBottom: 4 }}>
+                <View style={{ paddingHorizontal: 20, marginBottom: 2 }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                     <Text style={{ fontSize: 9, color: "#111827", fontFamily: "monospace" }}>
                       Order #{order.display_number || order.order_number || order.id.slice(-4)}
@@ -583,7 +621,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   <Text style={{ fontSize: 9, color: "#6b7280", marginTop: 1, fontFamily: "monospace" }}>{time}</Text>
                   {template?.showOrderType !== false && (
                     <Text style={{ fontSize: 9, color: "#6b7280", marginTop: 1, fontFamily: "monospace" }}>
-                      {getOrderTypeDisplay(order.order_type)}{order.service_location_name ? ` - ${order.service_location_name}` : ""}
+                      {getOrderTypeDisplay(order.order_type)}{receiptTableName ? ` - Table: ${receiptTableName}` : ""}
                     </Text>
                   )}
                   {template?.showServerName !== false && order.server_name ? (
@@ -592,11 +630,14 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   {order.customer_name ? (
                     <Text style={{ fontSize: 9, color: "#6b7280", fontFamily: "monospace" }}>Customer: {order.customer_name}</Text>
                   ) : null}
+                  {template?.showCustomerPhone !== false && order.customer_phone ? (
+                    <Text style={{ fontSize: 9, color: "#6b7280", fontFamily: "monospace" }}>Phone: {order.customer_phone}</Text>
+                  ) : null}
                   <DottedLine />
                 </View>
 
                 {/* items */}
-                <View style={{ paddingHorizontal: 20, marginBottom: 4, gap: 3 }}>
+                <View style={{ paddingHorizontal: 20, marginBottom: 2, gap: 3 }}>
                   {order.items.filter(i => !i.is_voided).map((item) => (
                     <ItemRow key={item.id} item={item} showModifiers={template?.showItemModifiers !== false} />
                   ))}
@@ -604,7 +645,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 </View>
 
                 {/* totals */}
-                <View style={{ paddingHorizontal: 20, marginBottom: 4 }}>
+                <View style={{ paddingHorizontal: 20, marginBottom: 2 }}>
                   <TotalsRow label="Subtotal" value={formatCurrency(totals.subtotal)} />
                   {template?.showTaxBreakdown !== false && totals.tax > 0 && (
                     <TotalsRow label="Tax" value={formatCurrency(totals.tax)} />
@@ -615,13 +656,13 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   <DoubleLine />
                   <TotalsRow label="TOTAL" value={formatCurrency(totals.total)} bold />
                   {totals.cashTotal !== totals.total && (
-                    <TotalsRow label="TOTAL (Cash)" value={formatCurrency(totals.cashTotal)} bold />
+                    <TotalsRow label="TOTAL (Cash)" value={formatCurrency(totals.cashTotal)} />
                   )}
                 </View>
 
                 {/* tipLine */}
                 {template?.showTipLine && (
-                  <View style={{ paddingHorizontal: 20, marginBottom: 4 }}>
+                  <View style={{ paddingHorizontal: 20, marginBottom: 2 }}>
                     <DottedLine />
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                       <Text style={{ fontSize: 9, color: "#111827", fontFamily: "monospace" }}>Tip:</Text>
@@ -636,7 +677,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
                 {/* payment */}
                 {completedPayments.length > 0 && (
-                  <View style={{ paddingHorizontal: 20, marginBottom: 4 }}>
+                  <View style={{ paddingHorizontal: 20, marginBottom: 2 }}>
                     <DottedLine />
                     {completedPayments.map((payment, idx) => (
                       <View key={idx} style={{ flexDirection: "row", justifyContent: "space-between" }}>
@@ -658,7 +699,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 )}
 
                 {/* footer */}
-                <View style={{ alignItems: "center", paddingHorizontal: 20, marginBottom: 4 }}>
+                <View style={{ alignItems: "center", paddingHorizontal: 20, marginBottom: 2 }}>
                   {template?.footerText ? (
                     <>
                       <DottedLine />

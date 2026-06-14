@@ -1,9 +1,13 @@
-import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import { AlertDialog, AlertDialogContent } from '@/components/ui/alert-dialog'
 import { colors } from '@/lib/theme'
-import { AlertTriangle } from 'lucide-react-native'
+import { AlertTriangle, Lock } from 'lucide-react-native'
 import React from 'react'
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import {
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
 
 interface NotReadyItem {
   id: string
@@ -33,16 +37,13 @@ interface TableAlertDialogsProps {
   // Order closed warning
   isOrderClosedWarningOpen: boolean
   onOrderClosedWarningChange: (open: boolean) => void
+  onConfirmReopen: () => void
 
   // Course resend
   courseToResend: number | null
   onCourseResendChange: (course: number | null) => void
   onConfirmResend: () => void
 
-  // Reopen check
-  isReopenModalOpen: boolean
-  onReopenModalClose: () => void
-  onConfirmReopen: () => void
 }
 
 const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
@@ -58,12 +59,10 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
   onConfirmVoid,
   isOrderClosedWarningOpen,
   onOrderClosedWarningChange,
+  onConfirmReopen,
   courseToResend,
   onCourseResendChange,
-  onConfirmResend,
-  isReopenModalOpen,
-  onReopenModalClose,
-  onConfirmReopen
+  onConfirmResend
 }) => {
   const warningRing = `${colors.warning}33`
   const warningFill = `${colors.warning}20`
@@ -270,20 +269,57 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
         open={isOrderClosedWarningOpen}
         onOpenChange={onOrderClosedWarningChange}
       >
-        <AlertDialogContent className='w-[450px] p-4 rounded-2xl bg-surface'>
-          <Text className='text-lg font-bold text-white mb-2'>
-            Order is Closed
+        <AlertDialogContent
+          className='w-[450px] p-5 rounded-2xl border'
+          style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+        >
+          <View className='items-center mb-4'>
+            <View
+              className='w-16 h-16 rounded-full items-center justify-center'
+              style={{ backgroundColor: `${colors.muted}20` }}
+            >
+              <Lock size={32} color={colors.muted} />
+            </View>
+          </View>
+          <Text
+            className='text-xl font-bold text-center mb-2'
+            style={{ color: colors.heading }}
+          >
+            Check is Closed
           </Text>
-          <Text className='text-sm text-gray-400 mb-4'>
-            This order is currently closed. Please reopen the check to add
-            items.
+          <Text
+            className='text-sm text-center mb-5'
+            style={{ color: colors.muted }}
+          >
+            This check is closed. Reopen it to add more items.
           </Text>
-          <View className='flex-row gap-2'>
+          <View className='flex-row gap-3'>
             <TouchableOpacity
               onPress={() => onOrderClosedWarningChange(false)}
-              className='flex-1 py-2 bg-blue-500 rounded-lg items-center'
+              className='flex-1 py-3 rounded-xl items-center'
+              style={{ backgroundColor: colors.card }}
             >
-              <Text className='font-semibold text-white text-base'>OK</Text>
+              <Text
+                className='font-semibold text-base'
+                style={{ color: colors.label }}
+              >
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onConfirmReopen}
+              className='flex-1 py-3 rounded-xl items-center border'
+              style={{
+                backgroundColor: colors.teal,
+                borderColor: `${colors.teal}CC`
+              }}
+            >
+              <Text
+                className='font-semibold text-base'
+                style={{ color: colors.onSolid }}
+              >
+                Reopen Check
+              </Text>
             </TouchableOpacity>
           </View>
         </AlertDialogContent>
@@ -321,16 +357,6 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Reopen Check Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={isReopenModalOpen}
-        onClose={onReopenModalClose}
-        onConfirm={onConfirmReopen}
-        title='Reopen Check?'
-        description='Are you sure you want to reopen this closed check? This will allow adding new items.'
-        confirmText='Reopen'
-        variant='default'
-      />
     </>
   )
 }

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Text,
@@ -6,8 +6,9 @@ import {
   View,
 } from "react-native";
 import {
-  AlertTriangle,
   CheckCircle2,
+  HelpCircle,
+  Lock,
   Printer,
   RefreshCw,
   Route,
@@ -22,6 +23,8 @@ import type {
   PrinterRole,
 } from "@/types/printer";
 import { colors } from "@/lib/theme";
+import { getPrinterReachability } from "@/stores/selectors/printerSelectors";
+import { triggerHealthCheckNow } from "@/services/hardware/starPrinterHealthCheck";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -30,6 +33,10 @@ import { colors } from "@/lib/theme";
 export interface PrinterListSectionProps {
   printers: PrinterConfig[];
   selectedStationId: string | null;
+  // Map of printer.id -> array of station IDs that currently claim it as
+  // their receipt printer. Drives the "Your station" / "Used by N other
+  // station(s)" chips. Omit (or pass {}) to disable the chip column.
+  claimsByPrinterId?: Record<string, string[]>;
   // Callbacks
   onRetryConnection: (printer: PrinterConfig) => Promise<void>;
   onTestPrint: (printer: PrinterConfig) => Promise<void>;
@@ -48,32 +55,30 @@ export interface PrinterListSectionProps {
 // ---------------------------------------------------------------------------
 
 function getPrinterStatusColor(printer: PrinterConfig): string {
-  if (printer.lastStatus === "verified") return colors.success;
-  if (printer.isConnected) return colors.success;
-  if (printer.lastStatus?.startsWith("verification_failed")) return colors.danger;
-  if (printer.errorCount > 0) return colors.muted;
-  return colors.muted;
+  switch (getPrinterReachability(printer)) {
+    case "connectable": return colors.success;
+    case "in_use": return colors.warning;
+    case "offline": return colors.danger;
+    case "unknown": return colors.muted;
+  }
 }
 
 function getPrinterStatusLabel(printer: PrinterConfig): string {
-  if (printer.lastStatus === "verified") return "Verified";
-  if (printer.isConnected) return "Online";
-  if (printer.lastStatus?.startsWith("verification_failed")) return "Verify Failed";
-  if (printer.errorCount > 0) return "Error";
-  return "Offline";
+  switch (getPrinterReachability(printer)) {
+    case "connectable": return "Connectable";
+    case "in_use": return "In use";
+    case "offline": return "Offline";
+    case "unknown": return "Unknown";
+  }
 }
 
 function getPrinterStatusIcon(printer: PrinterConfig): React.ReactNode {
-  if (printer.lastStatus === "verified" || printer.isConnected) {
-    return <CheckCircle2 size={13} color={colors.success} />;
+  switch (getPrinterReachability(printer)) {
+    case "connectable": return <CheckCircle2 size={13} color={colors.success} />;
+    case "in_use": return <Lock size={13} color={colors.warning} />;
+    case "offline": return <XCircle size={13} color={colors.danger} />;
+    case "unknown": return <HelpCircle size={13} color={colors.muted} />;
   }
-  if (printer.lastStatus?.startsWith("verification_failed")) {
-    return <XCircle size={13} color={colors.danger} />;
-  }
-  if (printer.errorCount > 0) {
-    return <AlertTriangle size={13} color={colors.muted} />;
-  }
-  return <XCircle size={13} color={colors.muted} />;
 }
 
 function getRoleBadge(role: PrinterRole): { label: string; bg: string; text: string } {
@@ -106,37 +111,13 @@ function getRelativeTime(iso: string | null): string {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers — status classification (mirrors printers-kitchen.tsx logic)
-// ---------------------------------------------------------------------------
-
-function isOnline(p: PrinterConfig): boolean {
-  return p.isActive && p.isConnected;
-}
-
-function isError(p: PrinterConfig): boolean {
-  return (
-    p.isActive &&
-    !p.isConnected &&
-    !!(
-      p.lastStatus?.includes("error") ||
-      p.lastStatus?.includes("Paper") ||
-      p.lastStatus?.includes("Cover") ||
-      p.lastStatus?.includes("Cutter")
-    )
-  );
-}
-
-function isOffline(p: PrinterConfig): boolean {
-  return p.isActive && !p.isConnected && !isError(p);
-}
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export function PrinterListSection({
   printers,
   selectedStationId,
+  claimsByPrinterId,
   onRetryConnection,
   onTestPrint,
   onConfigurePrinter,
@@ -145,39 +126,26 @@ export function PrinterListSection({
   onOpenRouting,
 }: PrinterListSectionProps) {
   // Local state
-  const [printerScope, setPrinterScope] = useState<"station" | "location">("station");
-  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline" | "error">("all");
   const [retryingPrinterId, setRetryingPrinterId] = useState<string | null>(null);
   const [testPrintingId, setTestPrintingId] = useState<string | null>(null);
   const [editingPrinterId, setEditingPrinterId] = useState<string | null>(null);
 
-  // ── Scope filtering ──────────────────────────────────────────
-  const scopedPrinters = useMemo(() => {
-    return printers.filter((p) => {
-      if (printerScope === "station") {
-        return p.stationId === selectedStationId || p.stationId === null;
-      }
-      // "location" mode: show all, but hide other stations' builtins
-      return p.connectionType !== "builtin" || p.stationId === selectedStationId;
-    });
-  }, [printers, printerScope, selectedStationId]);
+  // Kick a single probe round on mount so badges reflect current reachability
+  // immediately instead of waiting up to 2 minutes for the next background
+  // tick. The health-check is guarded by isChecking, so this is safe to call
+  // concurrently with the periodic interval.
+  useEffect(() => {
+    triggerHealthCheckNow();
+  }, []);
 
-  // ── Status counts ────────────────────────────────────────────
-  const onlineCount = useMemo(() => scopedPrinters.filter(isOnline).length, [scopedPrinters]);
-  const offlineCount = useMemo(() => scopedPrinters.filter(isOffline).length, [scopedPrinters]);
-  const errorCount = useMemo(() => scopedPrinters.filter(isError).length, [scopedPrinters]);
-  const totalActive = useMemo(() => scopedPrinters.filter((p) => p.isActive).length, [scopedPrinters]);
-
-  // ── Status filtering ────────────────────────────────────────
+  // Scoped to this station: builtins / Dejavoo bound to other stations are
+  // hidden; location-level printers (Star — station_id NULL) and this
+  // station's own printers stay visible.
   const visiblePrinters = useMemo(() => {
-    if (statusFilter === "all") return scopedPrinters;
-    return scopedPrinters.filter((p) => {
-      if (statusFilter === "online") return isOnline(p);
-      if (statusFilter === "offline") return isOffline(p);
-      if (statusFilter === "error") return isError(p);
-      return true;
-    });
-  }, [scopedPrinters, statusFilter]);
+    return printers.filter(
+      (p) => p.stationId === selectedStationId || p.stationId === null,
+    );
+  }, [printers, selectedStationId]);
 
   // ── Handlers ─────────────────────────────────────────────────
   const handleRetryConnection = async (printer: PrinterConfig) => {
@@ -199,126 +167,14 @@ export function PrinterListSection({
   };
 
   // ── Render ───────────────────────────────────────────────────
+  // Minimal layout: just the cards. Parent (printers.tsx) supplies the
+  // section title ("Receipt Printers" / "Kitchen / Bar / Label Printers")
+  // and the "Your Station's Receipt Printer" summary card above. The
+  // previous count header + scope toggle + status filter pills are gone —
+  // per-station claim semantics + the per-card claim chip already convey
+  // everything an operator needs at a glance.
   return (
     <View>
-      {/* Header: title + printer count badge */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
-            Configured Printers
-          </Text>
-          <View style={{
-            backgroundColor: colors.teal + "20",
-            borderRadius: 10,
-            paddingHorizontal: 8,
-            paddingVertical: 2,
-            minWidth: 22,
-            alignItems: "center",
-          }}>
-            <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
-              {scopedPrinters.length}
-            </Text>
-          </View>
-        </View>
-        {/* Connection summary dot */}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <View style={{
-            width: 7, height: 7, borderRadius: 4,
-            backgroundColor:
-              onlineCount === totalActive && totalActive > 0 ? colors.success
-                : onlineCount > 0 ? colors.warning
-                  : colors.danger,
-          }} />
-          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted }}>
-            {onlineCount}/{totalActive} online
-          </Text>
-        </View>
-      </View>
-
-      {/* Scope toggle: This Station / All Location */}
-      <View style={{
-        flexDirection: "row",
-        backgroundColor: colors.card,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: colors.border,
-        overflow: "hidden",
-        marginBottom: 10,
-      }}>
-        {([
-          { key: "station" as const, label: "This Station" },
-          { key: "location" as const, label: "All Location" },
-        ]).map(({ key, label }) => (
-          <TouchableOpacity
-            key={key}
-            onPress={() => setPrinterScope(key)}
-            style={{
-              flex: 1,
-              paddingVertical: 8,
-              alignItems: "center",
-              backgroundColor: printerScope === key ? colors.teal + "20" : "transparent",
-            }}
-          >
-            <Text style={{
-              fontSize: 12,
-              fontWeight: "600",
-              color: printerScope === key ? colors.teal : colors.label,
-            }}>
-              {label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Status filter pills (only show when 4+ active printers) */}
-      {totalActive > 3 && (
-        <View style={{ flexDirection: "row", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-          {([
-            { key: "all" as const, label: "All", count: scopedPrinters.length, color: undefined },
-            { key: "online" as const, label: "Online", count: onlineCount, color: colors.success },
-            { key: "offline" as const, label: "Offline", count: offlineCount, color: colors.warning },
-            { key: "error" as const, label: "Error", count: errorCount, color: colors.danger },
-          ] as const).map(({ key, label, count, color }) => {
-            const isActive = statusFilter === key;
-            const pillColor = color ?? colors.teal;
-            return (
-              <TouchableOpacity
-                key={key}
-                onPress={() => setStatusFilter(key)}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 14,
-                  backgroundColor: isActive ? pillColor + "20" : colors.panel,
-                  borderWidth: 1,
-                  borderColor: isActive ? pillColor + "50" : colors.border,
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: "600", color: isActive ? pillColor : colors.label }}>
-                  {label}
-                </Text>
-                <View style={{
-                  backgroundColor: isActive ? pillColor + "30" : colors.border,
-                  borderRadius: 8,
-                  paddingHorizontal: 5,
-                  paddingVertical: 1,
-                  minWidth: 18,
-                  alignItems: "center",
-                }}>
-                  <Text style={{ fontSize: 10, fontWeight: "700", color: isActive ? pillColor : colors.muted }}>
-                    {count}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
-
-      {/* Printer cards list */}
       {visiblePrinters.length === 0 ? (
         <View style={{
           backgroundColor: colors.card,
@@ -332,9 +188,7 @@ export function PrinterListSection({
         }}>
           <Printer size={20} color={colors.muted} />
           <Text style={{ fontSize: 12, color: colors.muted }}>
-            {statusFilter !== "all"
-              ? `No ${statusFilter} printers`
-              : "No printers configured"}
+            No printers configured
           </Text>
         </View>
       ) : (
@@ -344,6 +198,17 @@ export function PrinterListSection({
           const isEditing = editingPrinterId === printer.id;
           const statusColor = getPrinterStatusColor(printer);
           const statusLabel = getPrinterStatusLabel(printer);
+
+          // Soft-shared receipt-printer claim chip.
+          // Green "Your station" if this device's station owns the claim;
+          // gray "Used by N other station(s)" otherwise. Chip is informational
+          // — routing remains permissive at the print-queue level.
+          const claimingStationIds = claimsByPrinterId?.[printer.id] ?? [];
+          const claimedByCurrent =
+            !!selectedStationId && claimingStationIds.includes(selectedStationId);
+          const otherClaimCount = claimingStationIds.filter(
+            (sid) => sid !== selectedStationId,
+          ).length;
 
           return (
             <View
@@ -436,6 +301,32 @@ export function PrinterListSection({
                       {role.label}
                     </Text>
                   </View>
+                  {claimedByCurrent && (
+                    <View style={{
+                      flexShrink: 0,
+                      backgroundColor: colors.success + "20",
+                      borderWidth: 1, borderColor: colors.success + "55",
+                      paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20,
+                    }}>
+                      <Text style={{ fontSize: 10, fontWeight: "700", color: colors.success }}>
+                        Your station
+                      </Text>
+                    </View>
+                  )}
+                  {!claimedByCurrent && otherClaimCount > 0 && (
+                    <View style={{
+                      flexShrink: 0,
+                      backgroundColor: colors.muted + "20",
+                      borderWidth: 1, borderColor: colors.muted + "55",
+                      paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20,
+                    }}>
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: colors.muted }}>
+                        {otherClaimCount === 1
+                          ? "Used by 1 other station"
+                          : `Used by ${otherClaimCount} other stations`}
+                      </Text>
+                    </View>
+                  )}
                   {printer.isDefaultReceipt && printer.printerRole !== "receipt" && (
                     <View style={{
                       flexShrink: 0, backgroundColor: colors.teal + "15",
@@ -463,7 +354,7 @@ export function PrinterListSection({
 
                 {/* Col 4 -- Action buttons */}
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 10 }}>
-                  {!printer.isConnected && (
+                  {getPrinterReachability(printer) !== "connectable" && (
                     <TouchableOpacity
                       onPress={() => handleRetryConnection(printer)}
                       disabled={retryingPrinterId === printer.id}

@@ -34,6 +34,7 @@ export interface ReceiptTemplateConfig {
   showServerName: boolean
   showTaxBreakdown: boolean
   showTipLine: boolean
+  showCustomerPhone: boolean
   showItemModifiers: boolean
   showAllergyAlert: boolean
   showReadyByTime: boolean
@@ -69,6 +70,7 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplateConfig = {
   showServerName: true,
   showTaxBreakdown: true,
   showTipLine: true,
+  showCustomerPhone: true,
   showItemModifiers: true,
   showAllergyAlert: true,
   showReadyByTime: true,
@@ -117,6 +119,7 @@ export function receiptTemplateConfigToRow (
     show_server_name: config.showServerName,
     show_tax_breakdown: config.showTaxBreakdown,
     show_tip_line: config.showTipLine,
+    show_customer_phone: config.showCustomerPhone,
     show_item_modifiers: config.showItemModifiers,
     show_allergy_alert: config.showAllergyAlert,
     show_ready_by_time: config.showReadyByTime,
@@ -158,6 +161,7 @@ export function receiptTemplateRowToConfig (
     showServerName: row.show_server_name ?? true,
     showTaxBreakdown: row.show_tax_breakdown ?? true,
     showTipLine: row.show_tip_line ?? true,
+    showCustomerPhone: (row as any).show_customer_phone ?? true,
     showItemModifiers: row.show_item_modifiers ?? true,
     showAllergyAlert: row.show_allergy_alert ?? true,
     showReadyByTime: row.show_ready_by_time ?? true,

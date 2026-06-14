@@ -171,6 +171,9 @@ export class CFDController {
       subtotalCash: this.lastPayload.subtotalCash ?? 0,
       subtotalCard: this.lastPayload.subtotalCard ?? 0,
       discountAmount: this.lastPayload.discountAmount ?? 0,
+      serviceCharge: this.lastPayload.serviceCharge ?? 0,
+      serviceChargeName: this.lastPayload.serviceChargeName ?? null,
+      serviceChargeRate: this.lastPayload.serviceChargeRate ?? null,
       taxAmount: this.lastPayload.taxAmount ?? 0,
       taxCash: this.lastPayload.taxCash ?? 0,
       taxCard: this.lastPayload.taxCard ?? 0,
@@ -227,6 +230,9 @@ export class CFDController {
     subtotalCash: number
     subtotalCard: number
     discountAmount: number
+    serviceCharge: number
+    serviceChargeName: string | null
+    serviceChargeRate: number | null
     taxAmount: number
     taxCash: number
     taxCard: number
@@ -386,6 +392,9 @@ export class CFDController {
       subtotalCash: 0,
       subtotalCard: 0,
       discountAmount: 0,
+      serviceCharge: 0,
+      serviceChargeName: null,
+      serviceChargeRate: null,
       taxAmount: 0,
       taxCash: 0,
       taxCard: 0,

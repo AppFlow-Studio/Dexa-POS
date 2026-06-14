@@ -69,6 +69,16 @@ interface PrinterStoreState {
 
   deletePrinter: (printerId: string) => Promise<void>;
 
+  // Soft-shared per-station receipt printer claim. Writes
+  // stations.current_receipt_printer_id and mirrors the legacy MMKV cache
+  // (useSettingsStore.defaultReceiptPrinterId) when stationId === current.
+  // Multiple stations may share the same printer; the chip on the picker
+  // surfaces that, jobs route permissively.
+  setStationReceiptPrinter: (
+    stationId: string,
+    printerId: string | null,
+  ) => Promise<void>;
+
   // Discovery actions (ephemeral)
   setDiscoveredPrinters: (printers: DiscoveredStarPrinter[]) => void;
   addDiscoveredPrinter: (printer: DiscoveredStarPrinter) => void;
@@ -352,6 +362,55 @@ export const usePrinterStore = create<PrinterStoreState>()(
       clearDiscoveredPrinters: () =>
         set({ discoveredPrinters: [], lastScanAt: null }),
       setIsScanning: (scanning) => set({ isScanning: scanning }),
+
+      setStationReceiptPrinter: async (
+        stationId: string,
+        printerId: string | null,
+      ) => {
+        const supabase = getOrderStoreSupabaseClient();
+        if (!supabase) {
+          console.warn("[PrinterStore] No Supabase client available");
+          return;
+        }
+
+        const { error } = await supabase
+          .from("stations")
+          .update({ current_receipt_printer_id: printerId })
+          .eq("id", stationId);
+
+        if (error) {
+          console.error(
+            "[PrinterStore] Failed to set station receipt printer:",
+            error,
+          );
+          throw error;
+        }
+
+        // Mirror to the selectedStation cache + MMKV when the write targets
+        // the current device's station. Lazy-imported to avoid a store
+        // import cycle (useStoreSettingsStore re-exports from this file's
+        // dependency tree on first load).
+        try {
+          const {
+            useStoreSettingsStore,
+          } = require("@/stores/useStoreSettingsStore");
+          const settingsState = useStoreSettingsStore.getState();
+          const selected = settingsState.selectedStation;
+          if (selected?.id === stationId) {
+            settingsState.setSelectedStation({
+              ...selected,
+              current_receipt_printer_id: printerId,
+            });
+            const { useSettingsStore } = require("@/stores/useSettingsStore");
+            useSettingsStore.getState().setDefaultReceiptPrinterId(printerId);
+          }
+        } catch (e) {
+          console.warn(
+            "[PrinterStore] Failed to mirror station claim into local caches:",
+            e,
+          );
+        }
+      },
 
       deletePrinter: async (printerId: string) => {
         const supabase = getOrderStoreSupabaseClient();

@@ -14,6 +14,7 @@ import {
 } from "lucide-react-native";
 import { colors } from "@/lib/theme";
 import type { DiscoveredStarPrinter } from "@/services/printing/discovery/StarPrinterDiscovery";
+import { selectAvailableDiscovered } from "@/stores/selectors/printerSelectors";
 import type { PrinterConfig } from "@/types/printer";
 
 // ---------------------------------------------------------------------------
@@ -87,9 +88,9 @@ export function DiscoveredPrinterList({
   onProvision,
   onTest,
 }: DiscoveredPrinterListProps) {
-  const newPrinters = discoveredPrinters.filter(
-    (dp) => !storedPrinters.some((p) => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress),
-  );
+  // Dedup by MAC → serial → IP (legacy fallback). IP-only match would re-show
+  // a saved printer that has DHCP-shifted, which is the bug being fixed.
+  const newPrinters = selectAvailableDiscovered(discoveredPrinters, storedPrinters);
 
   // Hide entire section when not scanning and there are no new printers to show
   if (!isScanning && newPrinters.length === 0) return null;

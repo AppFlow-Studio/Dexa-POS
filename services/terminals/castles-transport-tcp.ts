@@ -147,6 +147,16 @@ export class CastlesTcpTransport implements ICastlesTransport {
    *   same cId race each other and the second one hits a missing id → native
    *   IllegalArgumentException → process crash.
    *
+   * KNOWN LIMITATION: react-native-tcp-socket does not expose `setLinger`,
+   * so we cannot force a TCP RST from JS — destroy() ends up sending FIN.
+   * That means a terminal-side TCP stack may keep its half of the connection
+   * in CLOSE_WAIT for an extended period after we "disconnect". This is fine
+   * for the normal flow (the terminal will GC eventually), but it does NOT
+   * help recover a CastlesPay app that has stopped servicing the listener
+   * entirely. Such a wedge requires terminal-side recovery (WiFi-toggle,
+   * reboot, or a managed-power-cycle of the terminal). See the service-level
+   * recovery comments in castles-service.ts._connectInner.
+   *
    * We do not need end()'s graceful FIN here: the Castles protocol is app-layer
    * stateful (return2Idle). _gracefulDisconnectInner() handles the app-layer
    * graceful shutdown; disconnect() is the ungraceful path (retries, timeouts,

@@ -82,6 +82,9 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
   const isKickedRef = useRef(false); // Ref to avoid stale closures
   const isVoluntaryLogoutRef = useRef(false); // Set true when we intentionally end the session
   const reconnectAttemptRef = useRef(0);
+  // Layer 3 cooldown — Layer 2 already polls every 30s, so firing on every
+  // active event is pure overhead on the first-tap path after idle.
+  const lastLayer3ValidateRef = useRef<number>(0);
 
   // Get device ID (synchronous from MMKV)
   const deviceId = getDeviceId();
@@ -326,8 +329,12 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
 
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === "active" && !isKickedRef.current) {
+        // Layer 2 polls every 30s, so only fire here if it's been a while —
+        // avoids an extra RPC on the critical first-tap path after idle.
+        const age = Date.now() - lastLayer3ValidateRef.current;
+        if (age < 5 * 60 * 1000) return;
+        lastLayer3ValidateRef.current = Date.now();
         if (__DEV__) console.log("[KickListener] Layer 3: App became active - validating session");
-        // Small delay to let network reconnect after backgrounding
         setTimeout(() => {
           validateSession();
         }, 500);

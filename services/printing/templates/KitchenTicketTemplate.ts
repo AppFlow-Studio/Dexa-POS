@@ -45,13 +45,13 @@ export function buildKitchenTicketCommands(
   b.textLine(`ORDER ${data.orderNumber}`);
   b.doubleSize(false);
 
-  // Combined order type + table on one line
+  // Order type and table on separate rows
   if (cfg?.showOrderType !== false) {
-    const typeLine = data.tableName
-      ? `${data.orderType.toUpperCase()} - ${data.tableName}`
-      : data.orderType.toUpperCase();
     b.doubleHeight(true);
-    b.textLine(typeLine);
+    b.textLine(data.orderType.toUpperCase());
+    if (data.tableName) {
+      b.textLine(`TABLE: ${data.tableName}`);
+    }
     b.doubleHeight(false);
   }
 

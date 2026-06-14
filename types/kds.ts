@@ -22,6 +22,7 @@ export interface KDSTicketItem {
   recalled?: boolean
   seat_number?: number | null
   is_voided?: boolean
+  acknowledged?: boolean
   is_refunded?: boolean
   refunded_quantity?: number
 }
@@ -43,6 +44,7 @@ export interface KDSTicket {
   start_time: string | null
   start_time_epoch: number
   done_time_epoch?: number
+  ready_time_epoch?: number
   item_count: number
   items: KDSTicketItem[]
   prioritized?: boolean
@@ -62,6 +64,7 @@ export interface KDSDisplayConfig {
   showOrderNotes: boolean | null
   showServerName: boolean | null
   fontScale: number | null
+  showAllItems: boolean | null
 }
 
 export interface KDSRoutingRule {

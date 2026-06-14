@@ -4,7 +4,12 @@ import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
+import {
+  SendAllButton,
+  SendCourseButton
+} from '@/components/bill/SendToKitchenButton'
 import { useCoursingStore } from '@/stores/useCoursingStore'
+import { useOrderItem } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
 import {
   ArrowUpToLine,
@@ -50,12 +55,14 @@ interface CourseAccordionProps {
   onPrioritizeCourse?: (courseId: number) => void
   onResendCourse?: (courseId: number) => void
   onRemoveCourse?: (courseId: number) => void
+  onPressSendAllToKitchen?: () => void
   enableCoursing?: boolean
   isOvertime?: boolean
   overtimeMinutes?: number
 }
 
 interface CourseGroupProps {
+  orderId: string
   courseId: number
   items: CartItem[]
   isExpanded: boolean
@@ -101,8 +108,34 @@ function deriveAggregateStatus (items: CartItem[]): AggregateKitchenStatus {
   return null
 }
 
+function isKitchenItemUnsent (item: CartItem): boolean {
+  return !item.kitchen_status || item.kitchen_status === 'new'
+}
+
+const CourseBillItemRow = React.memo(
+  function CourseBillItemRow ({
+    orderId,
+    itemId,
+    className
+  }: {
+    orderId: string
+    itemId: string
+    className?: string
+  }) {
+    const item = useOrderItem(orderId, itemId)
+    if (!item) return null
+
+    return (
+      <View className={className}>
+        <BillItem item={item} isEditable={true} />
+      </View>
+    )
+  }
+)
+
 // --- Sub-Component: CourseGroup with Animations ---
 function CourseGroupInner ({
+  orderId,
   courseId,
   items,
   isExpanded,
@@ -147,9 +180,11 @@ function CourseGroupInner ({
   })
 
   const courseItemCount = items.reduce((sum, item) => sum + item.quantity, 0)
-  const shouldAnimateRows = items.length <= 12
-
   const aggregateStatus = useMemo(() => deriveAggregateStatus(items), [items])
+  const hasUnsentItems = useMemo(
+    () => items.some(isKitchenItemUnsent),
+    [items]
+  )
 
   const longPress = Gesture.LongPress()
     .minDuration(500)
@@ -215,33 +250,8 @@ function CourseGroupInner ({
               <X size={14} color={colors.muted} />
             </TouchableOpacity>
           )}
-          {isCurrent && !isSent && !aggregateStatus && courseItemCount > 0 && (
-            <TouchableOpacity
-              onPress={() => onDoubleTap(courseId)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 9,
-                paddingVertical: 4,
-                borderRadius: 8,
-                backgroundColor: colors.teal + '18',
-                borderWidth: 1,
-                borderColor: colors.teal + '50'
-              }}
-              activeOpacity={0.6}
-            >
-              <Send size={13} color={colors.teal} />
-              <Text
-                style={{
-                  color: colors.teal,
-                  fontSize: 12,
-                  fontWeight: '700'
-                }}
-              >
-                Send to Kitchen
-              </Text>
-            </TouchableOpacity>
+          {hasUnsentItems && (
+            <SendCourseButton onPress={() => onDoubleTap(courseId)} />
           )}
           <TouchableOpacity
             onPress={() => onToggle(courseId)}
@@ -268,9 +278,11 @@ function CourseGroupInner ({
       {isExpanded && (
         <View className='pl-4 gap-y-2'>
           {items.map(item => (
-            <View key={item.id}>
-              <BillItem item={item} isEditable={true} />
-            </View>
+            <CourseBillItemRow
+              key={item.id}
+              orderId={orderId}
+              itemId={item.id}
+            />
           ))}
         </View>
       )}
@@ -409,6 +421,7 @@ function CourseGroupInner ({
 }
 
 const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
+  if (prev.orderId !== next.orderId) return false
   if (prev.courseId !== next.courseId) return false
   if (prev.isExpanded !== next.isExpanded) return false
   if (prev.isSent !== next.isSent) return false
@@ -428,6 +441,7 @@ const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
       p.id !== n.id ||
       p.quantity !== n.quantity ||
       p.is_voided !== n.is_voided ||
+      p.kitchen_status !== n.kitchen_status ||
       p.price !== n.price ||
       p.customizations !== n.customizations
     )
@@ -450,6 +464,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onPrioritizeCourse,
   onResendCourse,
   onRemoveCourse,
+  onPressSendAllToKitchen,
   enableCoursing = true,
   isOvertime,
   overtimeMinutes
@@ -479,15 +494,6 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
     if (!locId) return null
     return s.tablesById[locId]?.name ?? locId
   })
-
-  // Stable key: only regroup when item IDs/courses change, not on every kitchen_status update
-  const itemsGroupingKey = useMemo(() => {
-    if (!activeOrder?.items) return ''
-    return activeOrder.items
-      .filter(i => !i.is_voided)
-      .map(i => `${i.id}:${i.courseNumber ?? itemCourseMap?.[i.id] ?? 1}`)
-      .join(',')
-  }, [activeOrder?.items, itemCourseMap])
 
   // Group items by course — recalculates when grouping changes OR item content changes
   const groupedItems = useMemo(() => {
@@ -551,6 +557,18 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
 
     return Array.from(allCourses).sort((a, b) => a - b)
   }, [groupedItems, activeOrder, currentCourse, storeCourseNumbers])
+
+  // Total non-voided items still waiting to be sent — matches the filter used
+  // by TableOrderView.handleSendAllToKitchen so the badge can't over-promise.
+  const unsentItemCount = useMemo(
+    () =>
+      activeOrder?.items?.reduce(
+        (sum, i) =>
+          !i.is_voided && isKitchenItemUnsent(i) ? sum + (i.quantity ?? 1) : sum,
+        0
+      ) ?? 0,
+    [activeOrder?.items]
+  )
 
   // Track previous values to prevent re-triggering
   const prevCurrentCourse = useRef<number | undefined>(currentCourse)
@@ -618,11 +636,17 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   // Pre-warm modifier cache for ALL items regardless of accordion state.
   // BillItem's own preWarm only fires when mounted (expanded). This ensures
   // the cache is warm before the user taps any course → item.
-  const allItemIds = useMemo(
-    () => (activeOrder?.items ?? []).map(i => i.menuItemId).filter(Boolean),
+  const allItemIdsKey = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (activeOrder?.items ?? []).map(i => i.menuItemId).filter(Boolean)
+        )
+      ).join(','),
     [activeOrder?.items]
   )
   useEffect(() => {
+    const allItemIds = allItemIdsKey ? allItemIdsKey.split(',') : []
     if (allItemIds.length === 0) return
     const handle = setTimeout(() => {
       const store = useModifierSidebarStore.getState()
@@ -635,7 +659,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       }
     }, 50) // slight delay to not block initial render
     return () => clearTimeout(handle)
-  }, [allItemIds])
+  }, [allItemIdsKey])
 
   if (!activeOrder) {
     return (
@@ -764,6 +788,12 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
               </Text>
             </TouchableOpacity>
           )}
+          {onPressSendAllToKitchen && (
+            <SendAllButton
+              onPress={onPressSendAllToKitchen}
+              unsentCount={unsentItemCount}
+            />
+          )}
         </View>
       </View>
 
@@ -774,6 +804,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
               sortedCourses.map(courseId => (
                 <CourseGroup
                   key={`course-${courseId}`}
+                  orderId={activeOrder.id}
                   courseId={courseId}
                   items={groupedItems[courseId] || []}
                   isExpanded={expandedCourseIds.has(courseId)}
@@ -798,9 +829,12 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
           ) : flatItems.length > 0 ? (
             <View className='gap-y-2'>
               {flatItems.map(item => (
-                <View key={item.id} className='overflow-hidden'>
-                  <BillItem item={item} isEditable={true} />
-                </View>
+                <CourseBillItemRow
+                  key={item.id}
+                  orderId={activeOrder.id}
+                  itemId={item.id}
+                  className='overflow-hidden'
+                />
               ))}
             </View>
           ) : (

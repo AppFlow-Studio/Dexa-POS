@@ -1,0 +1,469 @@
+/**
+ * Service Charge math tests for calculateOrderTotals.
+ *
+ * Covers: eligibility matrix, pre/post discount base, snapshot durability,
+ * outstanding proportion, cash = card flat SC, hashCalculationInput
+ * cache invalidation.
+ */
+
+import {
+  calculateOrderTotals,
+  hashCalculationInput,
+} from "@/lib/order-calculator";
+import { CartItem, Discount } from "@/lib/types";
+import {
+  OrderCalculationInput,
+} from "@/types/order-calculations";
+import type { ServiceChargeRule } from "@/stores/useServiceChargeRulesStore";
+import { TaxRatesMap } from "@/types/menu";
+
+const NO_TAX: TaxRatesMap = { standard: 0, alcohol: 0, exempt: 0 };
+
+const item = (price: number, qty = 1): CartItem =>
+  ({
+    id: `i_${price}_${qty}_${Math.random().toString(36).slice(2)}`,
+    menuItemId: "m1",
+    name: "Item",
+    quantity: qty,
+    paidQuantity: 0,
+    originalPrice: price,
+    price,
+    unitPrice: price,
+    cashPrice: price,
+    baseCardPrice: price,
+    baseCashPrice: price,
+    customizations: {},
+    subtotal: price * qty,
+    cashSubtotal: price * qty,
+    taxRate: 0,
+    taxAmount: 0,
+    cashTaxAmount: 0,
+  }) as unknown as CartItem;
+
+const rule = (overrides: Partial<ServiceChargeRule> = {}): ServiceChargeRule => ({
+  id: "rule_1",
+  merchant_id: "m1",
+  location_id: null,
+  name: "Service Charge",
+  rate_percent: 18,
+  min_party_size: 4,
+  applies_to_order_types: ["dine_in"],
+  applies_on: "pre_discount",
+  is_taxable: false,
+  auto_apply: true,
+  is_active: true,
+  updated_at: "2026-05-29T00:00:00Z",
+  ...overrides,
+});
+
+const baseInput = (
+  overrides: Partial<OrderCalculationInput> = {},
+): OrderCalculationInput => ({
+  items: [item(50)],
+  checkDiscount: null,
+  taxRatesMap: NO_TAX,
+  serviceChargeRule: rule(),
+  partySize: 4,
+  orderType: "dine_in",
+  ...overrides,
+});
+
+describe("Service Charge — eligibility matrix", () => {
+  it("applies when party_size >= threshold and order_type matches", () => {
+    const r = calculateOrderTotals(baseInput());
+    expect(r.service_charge).toBe(9);
+    expect(r.cash_service_charge).toBe(9);
+    expect(r.service_charge_name).toBe("Service Charge");
+    expect(r.total_amount).toBe(59);
+    expect(r.cash_total_amount).toBe(59);
+  });
+
+  it("does not apply when party_size below threshold", () => {
+    const r = calculateOrderTotals(baseInput({ partySize: 3 }));
+    expect(r.service_charge).toBe(0);
+    expect(r.total_amount).toBe(50);
+  });
+
+  it("does not apply for non-matching order_type", () => {
+    const r = calculateOrderTotals(baseInput({ orderType: "takeout" }));
+    expect(r.service_charge).toBe(0);
+  });
+
+  it("does not apply when rule is inactive", () => {
+    const r = calculateOrderTotals(
+      baseInput({ serviceChargeRule: rule({ is_active: false }) }),
+    );
+    expect(r.service_charge).toBe(0);
+  });
+
+  it("does not apply when auto_apply is false", () => {
+    const r = calculateOrderTotals(
+      baseInput({ serviceChargeRule: rule({ auto_apply: false }) }),
+    );
+    expect(r.service_charge).toBe(0);
+  });
+
+  it("does not apply when no rule is provided", () => {
+    const r = calculateOrderTotals(baseInput({ serviceChargeRule: null }));
+    expect(r.service_charge).toBe(0);
+  });
+
+  it("does not apply when partySize is null", () => {
+    const r = calculateOrderTotals(baseInput({ partySize: null }));
+    expect(r.service_charge).toBe(0);
+  });
+
+  it("applies at party_size == min_party_size (off-by-one)", () => {
+    const r = calculateOrderTotals(
+      baseInput({ partySize: 4, serviceChargeRule: rule({ min_party_size: 4 }) }),
+    );
+    expect(r.service_charge).toBe(9);
+  });
+});
+
+describe("Service Charge — pre vs post discount base", () => {
+  const discount: Discount = {
+    id: "d",
+    name: "10%",
+    label: "10%",
+    type: "percentage",
+    value: 0.1,
+  } as unknown as Discount;
+
+  it("pre_discount: SC = rate × gross subtotal", () => {
+    const r = calculateOrderTotals(
+      baseInput({
+        checkDiscount: discount,
+        serviceChargeRule: rule({ applies_on: "pre_discount" }),
+      }),
+    );
+    expect(r.service_charge).toBe(9); // 18% of $50, not $45
+  });
+
+  it("post_discount: SC = rate × net subtotal", () => {
+    const r = calculateOrderTotals(
+      baseInput({
+        checkDiscount: discount,
+        serviceChargeRule: rule({ applies_on: "post_discount" }),
+      }),
+    );
+    expect(r.service_charge).toBe(8.1); // 18% of $45
+  });
+
+  // Wave A: card_total / cash_total must INCLUDE service_charge after a
+  // discount is applied. Server-side this invariant was broken by
+  // manage_order_discount_v2 (wrote card_total = subtotal+tax with no SC);
+  // Wave A's manage_order_discount_v3 fork hands off totals to
+  // apply_service_charge_v1 + calculate_order_totals_fast so it now holds
+  // both client and server side. These two tests lock in the client-side
+  // half of the invariant.
+  it("pre_discount: card_total = (subtotal − discount) + tax + service_charge", () => {
+    const r = calculateOrderTotals(
+      baseInput({
+        checkDiscount: discount,
+        serviceChargeRule: rule({ applies_on: "pre_discount" }),
+      }),
+    );
+    // $50 − 10% = $45 net; SC = 18% × $50 = $9 (gross-based); total = 54
+    expect(r.discount_amount).toBe(5);
+    expect(r.service_charge).toBe(9);
+    expect(r.total_amount).toBe(54);
+    expect(r.total_amount).toBe(
+      r.subtotal - r.discount_amount + r.tax_amount + r.service_charge,
+    );
+    expect(r.cash_total_amount).toBe(
+      r.cash_subtotal -
+        r.cash_discount_amount +
+        r.cash_tax_amount +
+        r.cash_service_charge,
+    );
+  });
+
+  it("post_discount: card_total = (subtotal − discount) + tax + service_charge (SC dropped)", () => {
+    const r = calculateOrderTotals(
+      baseInput({
+        checkDiscount: discount,
+        serviceChargeRule: rule({ applies_on: "post_discount" }),
+      }),
+    );
+    // $50 − 10% = $45 net; SC = 18% × $45 = $8.10 (net-based); total = 53.10
+    expect(r.discount_amount).toBe(5);
+    expect(r.service_charge).toBe(8.1);
+    expect(r.total_amount).toBe(53.1);
+    expect(r.total_amount).toBe(
+      r.subtotal - r.discount_amount + r.tax_amount + r.service_charge,
+    );
+  });
+
+  it("void/no-discount: totals return to gross baseline with full SC", () => {
+    // Same setup, but checkDiscount=null (simulates voiding the discount).
+    const r = calculateOrderTotals(
+      baseInput({
+        checkDiscount: null,
+        serviceChargeRule: rule({ applies_on: "post_discount" }),
+      }),
+    );
+    expect(r.discount_amount).toBe(0);
+    expect(r.service_charge).toBe(9); // 18% × $50 gross
+    expect(r.total_amount).toBe(59);
+  });
+});
+
+describe("Service Charge — snapshot durability", () => {
+  it("snapshotted rate wins over live rule rate", () => {
+    const r = calculateOrderTotals(
+      baseInput({
+        serviceChargeRule: rule({ rate_percent: 20 }),
+        snapshottedRate: 18,
+      }),
+    );
+    expect(r.service_charge).toBe(9); // snapshotted 18% × 50, not live 20%
+  });
+
+  it("snapshotted applies_on wins over live rule applies_on", () => {
+    const discount = {
+      id: "d",
+      name: "10%",
+      label: "10%",
+      type: "percentage" as const,
+      value: 0.1,
+    } as unknown as Discount;
+    const r = calculateOrderTotals(
+      baseInput({
+        checkDiscount: discount,
+        serviceChargeRule: rule({ applies_on: "post_discount" }),
+        snapshottedAppliesOn: "pre_discount",
+      }),
+    );
+    expect(r.service_charge).toBe(9); // pre-discount wins
+  });
+
+  it("snapshotted name wins over live rule name", () => {
+    const r = calculateOrderTotals(
+      baseInput({
+        serviceChargeRule: rule({ name: "Gratuity" }),
+        snapshottedName: "Service Charge",
+      }),
+    );
+    expect(r.service_charge_name).toBe("Service Charge");
+  });
+});
+
+describe("Service Charge — outstanding proportion", () => {
+  it("full SC outstanding when nothing paid", () => {
+    const r = calculateOrderTotals(baseInput());
+    expect(r.outstanding_total).toBe(59);
+  });
+
+  it("outstanding_total = total - paid (payment-based)", () => {
+    const items = [item(25), item(25)];
+    items[0].paidQuantity = 1; // half paid by item
+    const r = calculateOrderTotals(
+      baseInput({ items, payments: [{ amount: 25 }] }),
+    );
+    // Subtotal $50, SC $9, total $59. Customer paid $25. Owes $34.
+    // (Payment-level handler reconciles item-level outstanding $29.50
+    // up to the payment-based outstanding $34 — what the customer
+    // actually still owes including the unpaid SC slice.)
+    expect(r.total_amount).toBe(59);
+    expect(r.outstanding_total).toBe(34);
+  });
+});
+
+describe("Service Charge — dual pricing", () => {
+  it("uses the same flat SC for card and cash", () => {
+    const cardCashItem = item(50);
+    (cardCashItem as any).baseCashPrice = 48; // 4% cash discount
+    const r = calculateOrderTotals(baseInput({ items: [cardCashItem] }));
+    // Card subtotal 50, card SC = 18% of 50 = 9.
+    // Cash subtotal stays 48, but cash adds the same flat $9 SC.
+    expect(r.service_charge).toBe(9);
+    expect(r.cash_service_charge).toBe(9);
+    expect(r.cash_total_amount).toBe(57); // 48 + shared flat $9 SC
+  });
+
+  it("taxes the shared SC for cash when the rule is taxable", () => {
+    const cardCashItem = item(50);
+    (cardCashItem as any).baseCashPrice = 48;
+    const r = calculateOrderTotals(
+      baseInput({
+        items: [cardCashItem],
+        taxRatesMap: { standard: 10, alcohol: 0, exempt: 0 },
+        serviceChargeRule: rule({ is_taxable: true }),
+      }),
+    );
+    // Cash total = cash subtotal + shared SC + tax on both: 48 + 9 + 4.8 + 0.9.
+    expect(r.cash_service_charge).toBe(9);
+    expect(r.cash_tax_amount).toBe(5.7);
+    expect(r.cash_total_amount).toBe(62.7);
+  });
+
+  it("keeps the full shared SC due after cash-priced items are paid", () => {
+    const cardCashItem = item(50);
+    (cardCashItem as any).baseCashPrice = 48;
+    cardCashItem.paidQuantity = 1;
+    const r = calculateOrderTotals(
+      baseInput({
+        items: [cardCashItem],
+        payments: [{ amount: 48, isCashPriced: true, cashSavings: 2 }],
+      }),
+    );
+    expect(r.outstanding_total).toBe(9);
+    expect(r.cash_outstanding_total).toBe(9);
+  });
+});
+
+describe("Service Charge — hashCalculationInput cache invalidation", () => {
+  it("differs when rule rate changes", () => {
+    const a = hashCalculationInput(baseInput());
+    const b = hashCalculationInput(
+      baseInput({ serviceChargeRule: rule({ rate_percent: 20 }) }),
+    );
+    expect(a).not.toBe(b);
+  });
+
+  it("differs when party_size changes", () => {
+    const a = hashCalculationInput(baseInput({ partySize: 4 }));
+    const b = hashCalculationInput(baseInput({ partySize: 5 }));
+    expect(a).not.toBe(b);
+  });
+
+  it("differs when applies_on changes", () => {
+    const a = hashCalculationInput(
+      baseInput({ serviceChargeRule: rule({ applies_on: "pre_discount" }) }),
+    );
+    const b = hashCalculationInput(
+      baseInput({ serviceChargeRule: rule({ applies_on: "post_discount" }) }),
+    );
+    expect(a).not.toBe(b);
+  });
+
+  it("differs when snapshottedRate is set", () => {
+    const a = hashCalculationInput(baseInput());
+    const b = hashCalculationInput(baseInput({ snapshottedRate: 20 }));
+    expect(a).not.toBe(b);
+  });
+
+  it("matches when SC inputs are identical", () => {
+    const fixedItem = { ...item(50), id: "fixed_id" };
+    const a = hashCalculationInput(baseInput({ items: [fixedItem] }));
+    const b = hashCalculationInput(baseInput({ items: [fixedItem] }));
+    expect(a).toBe(b);
+  });
+});
+
+describe("Service Charge — existing callers unaffected", () => {
+  it("returns service_charge=0 with no rule/partySize (default)", () => {
+    const r = calculateOrderTotals({
+      items: [item(10)],
+      checkDiscount: null,
+      taxRatesMap: NO_TAX,
+    });
+    expect(r.service_charge).toBe(0);
+    expect(r.cash_service_charge).toBe(0);
+    expect(r.service_charge_name).toBe("");
+  });
+});
+
+// Mirrors calculate_order_totals_fast v3 (20260610113531). Manual percent-mode
+// overrides (manualServiceCharge != null AND snapshottedRate present) recompute
+// SC from rate × current base on every recalc — so adding/removing items moves
+// the SC. Manual amount-mode overrides (rate NULL) stay frozen at the flat
+// dollar amount the manager set.
+describe("Service Charge — manual override modes", () => {
+  it("percent-mode recomputes against current subtotal (item added)", () => {
+    // Manager set 15% when subtotal was $100; SC was frozen at $15 (manualServiceCharge).
+    // Now subtotal is $150 — dynamic recompute should give $22.50.
+    const r = calculateOrderTotals({
+      items: [item(150)],
+      checkDiscount: null,
+      taxRatesMap: NO_TAX,
+      manualServiceCharge: 15,
+      snapshottedRate: 15,
+      snapshottedAppliesOn: "post_discount",
+    });
+    expect(r.service_charge).toBe(22.5);
+    expect(r.total_amount).toBe(172.5);
+  });
+
+  it("percent-mode recomputes against current subtotal (item removed)", () => {
+    // Manager set 15% when subtotal was $100; now subtotal is $50.
+    const r = calculateOrderTotals({
+      items: [item(50)],
+      checkDiscount: null,
+      taxRatesMap: NO_TAX,
+      manualServiceCharge: 15,
+      snapshottedRate: 15,
+      snapshottedAppliesOn: "post_discount",
+    });
+    expect(r.service_charge).toBe(7.5);
+    expect(r.total_amount).toBe(57.5);
+  });
+
+  it("amount-mode stays frozen regardless of items", () => {
+    // Manager said "exactly $20". Items change → SC stays $20.
+    const r = calculateOrderTotals({
+      items: [item(250)],
+      checkDiscount: null,
+      taxRatesMap: NO_TAX,
+      manualServiceCharge: 20,
+      // snapshottedRate intentionally omitted (amount-mode override).
+    });
+    expect(r.service_charge).toBe(20);
+    expect(r.total_amount).toBe(270);
+  });
+
+  it("percent-mode pre_discount uses gross subtotal", () => {
+    const discount = {
+      id: "d",
+      name: "10%",
+      label: "10%",
+      type: "percentage" as const,
+      value: 0.1,
+    } as unknown as Discount;
+    const r = calculateOrderTotals({
+      items: [item(100)],
+      checkDiscount: discount,
+      taxRatesMap: NO_TAX,
+      manualServiceCharge: 1, // stale flat — should be ignored
+      snapshottedRate: 10,
+      snapshottedAppliesOn: "pre_discount",
+    });
+    expect(r.service_charge).toBe(10); // 10% × $100 gross
+  });
+
+  it("percent-mode post_discount uses net subtotal", () => {
+    const discount = {
+      id: "d",
+      name: "10%",
+      label: "10%",
+      type: "percentage" as const,
+      value: 0.1,
+    } as unknown as Discount;
+    const r = calculateOrderTotals({
+      items: [item(100)],
+      checkDiscount: discount,
+      taxRatesMap: NO_TAX,
+      manualServiceCharge: 1,
+      snapshottedRate: 10,
+      snapshottedAppliesOn: "post_discount",
+    });
+    expect(r.service_charge).toBe(9); // 10% × $90 net
+  });
+
+  it("percent-mode taxable flag still taxes the recomputed SC", () => {
+    const r = calculateOrderTotals({
+      items: [item(100)],
+      checkDiscount: null,
+      taxRatesMap: { standard: 10, alcohol: 0, exempt: 0 },
+      manualServiceCharge: 5,
+      manualServiceChargeTaxable: true,
+      snapshottedRate: 15,
+      snapshottedAppliesOn: "post_discount",
+    });
+    // SC = 15% × $100 = $15; SC tax = 10% × $15 = $1.50.
+    expect(r.service_charge).toBe(15);
+    // Item tax = 10% × $100 = $10, plus SC tax $1.50 = $11.50.
+    expect(r.tax_amount).toBe(11.5);
+  });
+});

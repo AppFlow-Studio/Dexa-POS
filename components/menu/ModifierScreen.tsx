@@ -15,6 +15,7 @@ import { useSeatingStore } from "@/stores/useSeatingStore";
 
 import OptimizedListImage from "@/components/ui/OptimizedListImage";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
+import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -698,6 +699,13 @@ const ModifierScreenContent = ({
   const actionHandledRef = useRef(false);
   const draftItemIdRef = useRef<string | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
+  // Tracks whether the user has touched the modifier-screen qty stepper this
+  // session. When false, external cart-side qty changes (e.g. swipe-right
+  // increments on the cart row while modifier is open) sync into state.quantity
+  // so a subsequent save doesn't clobber the cart's latest qty with the
+  // modifier screen's stale opened-at value. When true, the modifier's qty
+  // wins. Reset on session change (new item or new cart entry).
+  const userTouchedQtyRef = useRef(false);
   const [visibleOptionCount, setVisibleOptionCount] = useState(8);
   const [showSecondarySections, setShowSecondarySections] = useState(false);
   const [hasInteractedSinceOpen, setHasInteractedSinceOpen] = useState(false);
@@ -710,6 +718,9 @@ const ModifierScreenContent = ({
     ? `${precomputedForItemId ?? ""}_${cartItem?.id ?? ""}_${mode}`
     : null;
   const prevSessionRef = useRef<string | null>(null);
+  const shouldShowSeatPicker =
+    showSeatPicker &&
+    (state.isSeatPickerOpen || sessionId !== prevSessionRef.current);
 
   useEffect(() => {
     if (!sessionId) {
@@ -721,7 +732,7 @@ const ModifierScreenContent = ({
     if (__DEV__) {
       const openStartedAt = getLastModifierOpenStartedAt();
       if (openStartedAt > 0) {
-        console.log(
+        orderStoreDiagnosticLog(
           `[perf][modifier] session ready in ${Math.round(
             nowMs() - openStartedAt,
           )}ms`,
@@ -732,6 +743,7 @@ const ModifierScreenContent = ({
     actionHandledRef.current = false;
     draftItemIdRef.current = null;
     lastDraftMenuItemIdRef.current = null;
+    userTouchedQtyRef.current = false;
     const selections = storeInitialSelections ?? {};
     dispatch({
       type: "INITIALIZE",
@@ -761,6 +773,24 @@ const ModifierScreenContent = ({
     setShowSecondarySections(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  // Sync external qty mutations into the modifier screen state. Without this,
+  // swiping the cart row to increment qty while the modifier screen is open
+  // leaves state.quantity stale at the modifier-open value; saving would then
+  // overwrite the cart's latest qty with the stale modifier value. Skipped
+  // when the user has actively touched the modifier qty stepper this session
+  // — in that case the modifier's intent wins. Reset by the session-init
+  // effect above when the user opens a different item.
+  useEffect(() => {
+    if (!sessionId) return;
+    if (userTouchedQtyRef.current) return;
+    const externalQty = cartItem?.quantity;
+    if (externalQty == null) return;
+    const { state: currentState } = latestStateRef.current;
+    if (currentState.quantity === externalQty) return;
+    dispatch({ type: "SET_QUANTITY", payload: externalQty });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, cartItem?.quantity]);
 
   useEffect(() => {
     if (!isOpen || showSecondarySections) return;
@@ -1173,8 +1203,10 @@ const ModifierScreenContent = ({
   const handleQuantitySubmit = useCallback(() => {
     const { state } = latestStateRef.current;
     const newQuantity = parseInt(state.quantityInput, 10);
-    if (newQuantity && newQuantity > 0)
+    if (newQuantity && newQuantity > 0) {
+      userTouchedQtyRef.current = true;
       dispatch({ type: "SET_QUANTITY", payload: newQuantity });
+    }
     dispatch({ type: "CLOSE_QUANTITY_MODAL" });
   }, []);
 
@@ -1192,6 +1224,7 @@ const ModifierScreenContent = ({
 
   const handleQuantityDecrement = useCallback(() => {
     const { state: currentState } = latestStateRef.current;
+    userTouchedQtyRef.current = true;
     dispatch({
       type: "SET_QUANTITY",
       payload: Math.max(1, currentState.quantity - 1),
@@ -1200,6 +1233,7 @@ const ModifierScreenContent = ({
 
   const handleQuantityIncrement = useCallback(() => {
     const { state: currentState } = latestStateRef.current;
+    userTouchedQtyRef.current = true;
     dispatch({ type: "SET_QUANTITY", payload: currentState.quantity + 1 });
   }, []);
 
@@ -1264,6 +1298,34 @@ const ModifierScreenContent = ({
 
     if (!baseItem && !isOpenItem) return;
 
+    // Validate required selections BEFORE closing — a failed validation must
+    // keep the modal open so the user can fix it.
+    if (modifiersItem?.modifiers && modifiersItem.modifiers.length > 0) {
+      const hasRequiredSelections = modifiersItem.modifiers.every(
+        (category) => {
+          if (category.type === "required")
+            return (currentState.selectionCounts[category.id] ?? 0) > 0;
+          return true;
+        },
+      );
+      if (!hasRequiredSelections) {
+        showToast({
+          title: "Missing Selections",
+          message: "Please select all required options before proceeding.",
+          type: "error",
+        });
+        return;
+      }
+    }
+
+    // Close the modal immediately so the slide-out animation isn't blocked by
+    // the (potentially expensive) cart mutation below. setTimeout(0) (not
+    // runAfterInteractions) so this doesn't get batched with unrelated
+    // pending interaction handles from this screen's reveal/grow effects —
+    // that batching was delaying the cart write past the next item's open().
+    closeModal();
+
+    setTimeout(() => {
     if (
       isOpenItem &&
       (currentMode === "edit" || currentMode === "fullscreen") &&
@@ -1339,7 +1401,6 @@ const ModifierScreenContent = ({
         message: `${currentCartItem.name} quantity updated to ${currentState.quantity}.`,
         type: "success",
       });
-      closeModal();
       return;
     }
 
@@ -1360,31 +1421,9 @@ const ModifierScreenContent = ({
         freshMenuItem?.cashPrice ?? baseItem.cashPrice ?? baseItem.price;
     }
 
-    if (modifiersItem?.modifiers && modifiersItem.modifiers.length > 0) {
-      const hasRequiredSelections = modifiersItem.modifiers.every(
-        (category) => {
-          if (category.type === "required")
-            return (currentState.selectionCounts[category.id] ?? 0) > 0;
-          return true;
-        },
-      );
-      if (!hasRequiredSelections) {
-        showToast({
-          title: "Missing Selections",
-          message: "Please select all required options before proceeding.",
-          type: "error",
-        });
-        return;
-      }
-    }
-
     const resolvedCashPrice =
       safeCashPrice ?? getCurrentItemCashPrice(baseItem);
 
-    // Build the cart item synchronously and apply it BEFORE closing. Doing
-    // the cart mutation first lets React commit the items update on the
-    // still-mounted modifier screen, so the close slide animation runs on a
-    // settled JS thread instead of competing with the addItem re-render.
     const selectedModifiers = modifiersItem?.modifiers
       ? Object.entries(currentState.modifierSelections)
           .map(([cId, selections]) => {
@@ -1432,7 +1471,6 @@ const ModifierScreenContent = ({
       (currentMode === "fullscreen" && currentCartItem)
     ) {
       if (!currentCartItem) {
-        closeModal();
         return;
       }
       const updatedItem = {
@@ -1517,8 +1555,7 @@ const ModifierScreenContent = ({
         }
       }
     }
-
-    closeModal();
+    }, 0);
   }, []);
 
   const handleCancel = useCallback(() => {
@@ -1529,16 +1566,22 @@ const ModifierScreenContent = ({
       currentItem: item,
       close: closeModal,
     } = latestStateRef.current;
+    closeModal();
     if (
       currentMode !== "edit" &&
       !(currentMode === "fullscreen" && cart) &&
       !cart &&
       item
     ) {
-      removeDraftItems(item.id);
+      const draftItemId = item.id;
       lastDraftMenuItemIdRef.current = null;
+      // setTimeout(0), not runAfterInteractions — same reasoning as
+      // handleSave: avoids batching with this screen's pending reveal/grow
+      // handles which could delay cleanup past the next item's open().
+      setTimeout(() => {
+        removeDraftItems(draftItemId);
+      }, 0);
     }
-    closeModal();
   }, []);
 
   // ============================================================================
@@ -1810,7 +1853,7 @@ const ModifierScreenContent = ({
         </View>
 
         {/* ── Seat Picker ──────────────────────────────────────────────────── */}
-        {showSecondarySections && state.isSeatPickerOpen && showSeatPicker && (
+        {shouldShowSeatPicker && (
           <View
             className="px-4 py-3 border-t"
             style={{ borderColor: colors.border }}

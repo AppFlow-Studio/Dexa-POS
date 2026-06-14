@@ -1,5 +1,6 @@
 import { isTransientRpcError } from "@/lib/network/idempotencyKey";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
+import { computeItemRefundAmount } from "@/lib/refundScShare";
 import { OrderService } from "@/services/orderService";
 import {
     completeRefundJournal,
@@ -38,6 +39,7 @@ type RefundContext = {
   merchantId?: string | null;
   stationId?: string | null;
 };
+
 
 export class RefundService {
   private supabase: SupabaseClient;
@@ -142,6 +144,9 @@ export class RefundService {
           "amount",
           "tip_amount",
           "refunded_amount",
+          // Wave R-SC: SC share baked into `amount` by process_payment_v14.
+          // Used by buildItemRefundAllocation to prorate SC into item refunds.
+          "service_charge",
           "payment_method",
           "batch_number",
           "rrn",
@@ -207,6 +212,7 @@ export class RefundService {
         const amount = Number(p.amount || 0);
         const refundedAmount = Number(p.refunded_amount || 0);
         const availableForRefund = Math.max(0, amount - refundedAmount);
+        const serviceCharge = Number(p.service_charge || 0);
         // Extract STAN from processor_response JSONB (stored by Castles integration)
         const castlesTxn = p.processor_response?.castles_transaction;
         const stan =
@@ -223,6 +229,7 @@ export class RefundService {
           tipAmount: Number(p.tip_amount || 0),
           refundedAmount,
           availableForRefund,
+          serviceCharge,
           paymentMethod: p.payment_method,
           batchNumber: p.batch_number || "",
           isVoidable: !p.is_settled && refundedAmount === 0, // Void only if unsettled AND no prior refunds
@@ -776,6 +783,96 @@ export class RefundService {
       );
     }
 
+    // Wave R-SC: record proportional per-item refund rows so partial-amount
+    // refunds leave an item-level audit trail (CFD/printed receipt/reports
+    // currently see only a lump amount with no breakdown). Skip qty updates
+    // — partial-amount refunds don't return units, just dollars. Only fire
+    // when the payment-row update succeeded; otherwise the audit rows would
+    // dangle.
+    if (!paymentResult.error) {
+      try {
+        const { data: paymentItems } = await this.supabase
+          .from("order_payment_items")
+          .select(
+            "id, order_item_id, quantity_paid, unit_price_paid, subtotal_paid, tax_paid",
+          )
+          .eq("order_payment_id", payment.paymentId);
+
+        const itemsTotal = (paymentItems || []).reduce(
+          (s: number, pi: any) =>
+            s + Number(pi.subtotal_paid || 0) + Number(pi.tax_paid || 0),
+          0,
+        );
+
+        if (itemsTotal > 0 && paymentItems && paymentItems.length > 0) {
+          // Distribute the user-typed amount proportionally across paid items,
+          // weighted by each item's (subtotal_paid + tax_paid). The last row
+          // absorbs the rounding remainder so SUM(total_refunded) === amount.
+          let distributed = 0;
+          const proportionalRows = paymentItems.map(
+            (pi: any, idx: number) => {
+              const itemSlice =
+                Number(pi.subtotal_paid || 0) + Number(pi.tax_paid || 0);
+              const ratio = itemsTotal > 0 ? itemSlice / itemsTotal : 0;
+              const isLast = idx === paymentItems.length - 1;
+              const subtotalRefunded = round2(
+                amount * (Number(pi.subtotal_paid || 0) / itemsTotal),
+              );
+              const taxRefunded = round2(
+                amount * (Number(pi.tax_paid || 0) / itemsTotal),
+              );
+              const proportionalTotal = round2(amount * ratio);
+              const totalRefunded = isLast
+                ? round2(amount - distributed)
+                : proportionalTotal;
+              distributed = round2(distributed + totalRefunded);
+              return {
+                order_item_id: pi.order_item_id,
+                order_payment_item_id: pi.id,
+                // quantity_refunded=0 marks this as an operator-amount refund,
+                // not a unit-return (no inventory side-effects). Schema allows
+                // it (no CHECK > 0); record_refund_items_v2 is called with
+                // skipQuantityUpdate=true so refunded_quantity isn't bumped.
+                quantity_refunded: 0,
+                unit_price_refunded: 0,
+                subtotal_refunded: subtotalRefunded,
+                tax_refunded: taxRefunded,
+                total_refunded: totalRefunded,
+                refund_reason: request.reason,
+                refund_reason_detail:
+                  request.reasonDetail ?? "Operator partial amount",
+                return_to_inventory: false,
+                inventory_updated: false,
+              };
+            },
+          );
+
+          const recordResult = await OrderService.recordRefundItems(
+            this.supabase,
+            reversal.id,
+            proportionalRows,
+            true, // skipQuantityUpdate
+            {
+              keyOverride: toRefundStepKey(idempotencyKey, "record_refund_items"),
+            },
+          );
+          if (recordResult.error) {
+            console.warn(
+              "[RefundService] partial-refund record_refund_items failed (non-fatal):",
+              recordResult.error,
+            );
+          }
+        }
+      } catch (err) {
+        // Non-fatal: partial refund succeeded server-side; the audit row is
+        // an enhancement, not a correctness requirement.
+        console.warn(
+          "[RefundService] partial-refund record_refund_items threw (non-fatal):",
+          err,
+        );
+      }
+    }
+
     // Step 6 — update_order_payment_status
     const orderResult = await OrderService.updateOrderPaymentStatusAfterRefund(
       this.supabase,
@@ -852,12 +949,21 @@ export class RefundService {
           (paymentTotals[alloc.paymentId] || 0) + alloc.total;
       }
 
-      for (const [paymentId, amount] of Object.entries(paymentTotals)) {
+      for (const [paymentId, itemsTotal] of Object.entries(paymentTotals)) {
         const payment = context.payments.find((p) => p.paymentId === paymentId);
         if (!payment) {
           errors.push(`Payment ${paymentId} not found`);
           continue;
         }
+
+        // Wave R-SC: fold the per-payment SC share into the refund amount so
+        // the customer gets back items + tax + SC (not just items + tax).
+        // process_payment_v14 baked SC into op.amount; the per-item rows
+        // (subtotal_paid + tax_paid) only carry the items+tax slice. Without
+        // this share, apply_refund_to_payment_v4's proportional SC reversal
+        // (delta_sc = SC × refund/op.amount) under-collects on every item
+        // refund where SC was present. See computeItemRefundAmount above.
+        const { amount } = computeItemRefundAmount(payment, itemsTotal);
 
         // Each payment gets a deterministic sub-key from the parent batch key + index.
         const subKey = toRefundStepKey(
@@ -1197,15 +1303,17 @@ export class RefundService {
     terminalResponse?: Record<string, unknown>;
     error?: string;
   }> {
-    if (!terminal.ip_address) {
+    const isUsb = terminal.connection_type === 'usb';
+    if (!isUsb && !terminal.ip_address) {
       return { success: false, error: "Castles terminal missing IP address." };
     }
 
     const castles = getSharedCastlesService();
     try {
       await castles.connect({
-        host: terminal.ip_address,
-        port: terminal.port ?? CASTLES_DEFAULT_PORT,
+        connectionType: isUsb ? 'usb' : 'local_socket',
+        host: isUsb ? undefined : terminal.ip_address,
+        port: isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT),
         timeout: CASTLES_SOCKET_TIMEOUT_MS,
         terminalId: terminal.id,
       });
@@ -1214,7 +1322,12 @@ export class RefundService {
         terminalId: terminal.id,
         supabaseClient: this.supabase,
       });
-      const referenceId = await counter.next();
+      // Counter is MMKV-backed and must hydrate from disk/DB before next()
+      // is callable. Every other counter callsite does this check; the
+      // refund path was the only one missing it, so the first refund after
+      // any boot threw "Not initialized. Call await initialize() first."
+      if (!counter.isInitialized) await counter.initialize();
+      const referenceId = counter.next();
 
       if (useVoid) {
         const rrn = payment.rrn || undefined;

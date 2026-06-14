@@ -1,8 +1,4 @@
 import { enableFreeze } from 'react-native-screens';
-
-// Activate react-freeze for inactive screens.
-// Must run before any ScreenStack mounts.
-// Inactive screens are wrapped in <Suspense> — they stop re-rendering entirely.
 enableFreeze(true);
 
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
@@ -22,5 +18,4 @@ export const POS_SCREEN_OPTIONS: NativeStackNavigationOptions = {
   animation: 'none',
   gestureEnabled: false,
   fullScreenGestureEnabled: false,
-  freezeOnBlur: true,
 };

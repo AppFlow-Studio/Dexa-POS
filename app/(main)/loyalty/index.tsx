@@ -28,6 +28,7 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  FlatList,
   ScrollView,
   Text,
   TextInput,
@@ -1023,6 +1024,110 @@ const ProgramsTab: React.FC<{
 
 // ─── Tab: Customers ───────────────────────────────────────────────────────────
 
+// Memoized row so FlatList can recycle off-screen items instead of keeping
+// every customer's view tree mounted (the old ScrollView+.map leaked Views).
+const CustomerRow: React.FC<{ e: LoyaltyEnrollment }> = React.memo(({ e }) => {
+  const cust = e.customer
+  const prog = e.program
+  const accent = colors.teal
+  const progress = progressForEnrollment(e)
+  const pct = progress
+    ? Math.min(Math.round((progress.current / progress.target) * 100), 100)
+    : null
+  const rewardReady = pct === 100
+
+  const stats: string[] = []
+  if (e.current_points > 0)
+    stats.push(`${e.current_points.toLocaleString()} pts`)
+  if (e.current_visits > 0) stats.push(`${e.current_visits} visits`)
+  if (e.current_punches > 0) stats.push(`${e.current_punches} punches`)
+  if (prog?.name) stats.push(prog.name)
+
+  return (
+    <View
+      style={{
+        backgroundColor: colors.card,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 9,
+        gap: 6
+      }}
+    >
+      {/* Main row */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        {/* Avatar */}
+        <View
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 14,
+            backgroundColor: accent + '18',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <Text style={{ fontSize: 11, fontWeight: '700', color: accent }}>
+            {(cust?.name ?? '?')[0].toUpperCase()}
+          </Text>
+        </View>
+
+        {/* Name + meta */}
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}
+          >
+            {cust?.name ?? 'Unknown'}
+          </Text>
+          <Text style={{ fontSize: 10, color: colors.muted }}>
+            {stats.join(' · ')}
+          </Text>
+        </View>
+
+        {/* Right side */}
+        {rewardReady ? (
+          <Text
+            style={{ fontSize: 10, fontWeight: '600', color: colors.success }}
+          >
+            🎉 Ready
+          </Text>
+        ) : (
+          <View style={{ alignItems: 'flex-end' }}>
+            {progress && (
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: colors.heading
+                }}
+              >
+                {progress.current}/{progress.target}
+              </Text>
+            )}
+            {progress && (
+              <Text style={{ fontSize: 10, color: colors.muted }}>
+                {progress.label}
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* Progress bar */}
+      {progress && (
+        <View style={{ paddingLeft: 36 }}>
+          <ProgressBar
+            current={progress.current}
+            target={progress.target}
+            color={rewardReady ? colors.success : accent}
+          />
+        </View>
+      )}
+    </View>
+  )
+})
+
 // Fix #6 — better layout, better program filter design
 const CustomersTab: React.FC<{
   enrollments: LoyaltyEnrollment[]
@@ -1155,175 +1260,64 @@ const CustomersTab: React.FC<{
         </View>
       )}
 
-      <ScrollView
+      <FlatList
+        data={filtered}
+        keyExtractor={e => e.id}
+        renderItem={({ item }) => <CustomerRow e={item} />}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 20, gap: 8 }}
-      >
-        {/* Enroll CTA */}
-        <TouchableOpacity
-          onPress={onEnroll}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            backgroundColor: colors.teal + '10',
-            borderWidth: 1,
-            borderColor: colors.teal + '30',
-            borderRadius: 12,
-            marginBottom: 4
-          }}
-        >
-          <View
+        removeClippedSubviews
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        ListHeaderComponent={
+          /* Enroll CTA */
+          <TouchableOpacity
+            onPress={onEnroll}
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 9,
-              backgroundColor: colors.teal + '25',
+              flexDirection: 'row',
               alignItems: 'center',
-              justifyContent: 'center'
+              gap: 10,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              backgroundColor: colors.teal + '10',
+              borderWidth: 1,
+              borderColor: colors.teal + '30',
+              borderRadius: 12,
+              marginBottom: 8
             }}
           >
-            <Plus size={15} color={colors.teal} />
-          </View>
-          <View>
-            <Text
-              style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}
-            >
-              Enroll New Customer
-            </Text>
-            <Text style={{ fontSize: 11, color: colors.teal + 'AA' }}>
-              Add a customer to a loyalty program
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        {filtered.map(e => {
-          const cust = e.customer
-          const prog = e.program
-          const accent = colors.teal
-          const progress = progressForEnrollment(e)
-          const pct = progress
-            ? Math.min(
-                Math.round((progress.current / progress.target) * 100),
-                100
-              )
-            : null
-          const rewardReady = pct === 100
-
-          const stats: string[] = []
-          if (e.current_points > 0)
-            stats.push(`${e.current_points.toLocaleString()} pts`)
-          if (e.current_visits > 0) stats.push(`${e.current_visits} visits`)
-          if (e.current_punches > 0) stats.push(`${e.current_punches} punches`)
-          if (prog?.name) stats.push(prog.name)
-
-          return (
             <View
-              key={e.id}
               style={{
-                backgroundColor: colors.card,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 10,
-                paddingHorizontal: 12,
-                paddingVertical: 9,
-                gap: 6
+                width: 32,
+                height: 32,
+                borderRadius: 9,
+                backgroundColor: colors.teal + '25',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
             >
-              {/* Main row */}
-              <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-              >
-                {/* Avatar */}
-                <View
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 14,
-                    backgroundColor: accent + '18',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <Text
-                    style={{ fontSize: 11, fontWeight: '700', color: accent }}
-                  >
-                    {(cust?.name ?? '?')[0].toUpperCase()}
-                  </Text>
-                </View>
-
-                {/* Name + meta */}
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: '600',
-                      color: colors.heading
-                    }}
-                  >
-                    {cust?.name ?? 'Unknown'}
-                  </Text>
-                  <Text style={{ fontSize: 10, color: colors.muted }}>
-                    {stats.join(' · ')}
-                  </Text>
-                </View>
-
-                {/* Right side */}
-                {rewardReady ? (
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      fontWeight: '600',
-                      color: colors.success
-                    }}
-                  >
-                    🎉 Ready
-                  </Text>
-                ) : (
-                  <View style={{ alignItems: 'flex-end' }}>
-                    {progress && (
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '700',
-                          color: colors.heading
-                        }}
-                      >
-                        {progress.current}/{progress.target}
-                      </Text>
-                    )}
-                    {progress && (
-                      <Text style={{ fontSize: 10, color: colors.muted }}>
-                        {progress.label}
-                      </Text>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              {/* Progress bar */}
-              {progress && (
-                <View style={{ paddingLeft: 36 }}>
-                  <ProgressBar
-                    current={progress.current}
-                    target={progress.target}
-                    color={rewardReady ? colors.success : accent}
-                  />
-                </View>
-              )}
+              <Plus size={15} color={colors.teal} />
             </View>
-          )
-        })}
-
-        {filtered.length === 0 && (
+            <View>
+              <Text
+                style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}
+              >
+                Enroll New Customer
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.teal + 'AA' }}>
+                Add a customer to a loyalty program
+              </Text>
+            </View>
+          </TouchableOpacity>
+        }
+        ListEmptyComponent={
           <EmptyState
             icon={<Users size={28} color={colors.muted} />}
             text='No enrolled customers found'
           />
-        )}
-      </ScrollView>
+        }
+      />
     </View>
   )
 }
@@ -1369,6 +1363,15 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     clearRedeemState()
   }
+
+  // Clear any pending debounce timer on unmount so its closure (which
+  // retains this component's tree) doesn't outlive the screen.
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    },
+    []
+  )
 
   const totalPoints = enrollments.reduce(
     (s, e) => s + (e.current_points ?? 0),

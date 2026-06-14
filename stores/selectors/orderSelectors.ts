@@ -10,12 +10,15 @@
  */
 
 import { calculateOrderTotals } from "@/lib/order-calculator";
-import type { OrderProfile, OrderProfilePayment } from "@/lib/types";
+import type { CartItem, OrderProfile, OrderProfilePayment } from "@/lib/types";
 import { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useOrderStore } from "../useOrderStore";
+import { useSeatingStore } from "../useSeatingStore";
+import { useServiceChargeRulesStore } from "../useServiceChargeRulesStore";
 import { useSettingsStore } from "../useSettingsStore";
 import { useStoreSettingsStore } from "../useStoreSettingsStore";
+import { useTableSessionStore } from "../useTableSessionStore";
 
 /**
  * Shallow-compare two arrays of order IDs (string[]).
@@ -50,6 +53,36 @@ function getOrderTime(value: string | null | undefined): number {
   if (!value) return 0;
   const time = Date.parse(value);
   return Number.isNaN(time) ? 0 : time;
+}
+
+function isOutstandingLocalEditAhead(
+  order: OrderProfile,
+  backendAmount: number | null | undefined,
+  calculatedAmount: number,
+): boolean {
+  // Reopened checks can receive new local items before the backend header
+  // catches up. Do not let the historical paid snapshot hide that new balance.
+  const hasPendingCartEdit = order.items.some(
+    (item) =>
+      !item.isDraft &&
+      (!item.db_order_item_id || item.sync_status === "pending"),
+  );
+  return (
+    order.check_status === "Opened" &&
+    (order._reopenedForOrdering || hasPendingCartEdit) &&
+    calculatedAmount > (backendAmount ?? 0) + 0.01
+  );
+}
+
+function resolveOutstandingAmount(
+  order: OrderProfile,
+  backendAmount: number | null | undefined,
+  calculatedAmount: number,
+): number {
+  if (isOutstandingLocalEditAhead(order, backendAmount, calculatedAmount)) {
+    return calculatedAmount;
+  }
+  return backendAmount ?? calculatedAmount;
 }
 
 /**
@@ -103,6 +136,7 @@ export interface ActiveOrderTotals {
   tax: number;
   total: number;
   discount: number;
+  cashDiscount: number;
   itemCount: number;
   tip: number;
   // Outstanding amounts (what's left to pay)
@@ -111,9 +145,21 @@ export interface ActiveOrderTotals {
   // Full breakdown if needed
   outstandingSubtotal: number;
   outstandingTax: number;
+  cashOutstandingSubtotal: number;
+  cashOutstandingTax: number;
   cashSubtotal: number;
   cashTax: number;
   cashTotal: number;
+  // Service charge (folded into total / cashTotal). Snapshot rate is preferred
+  // (so live rule edits don't shift open orders); falls back to live rule.
+  serviceCharge: number;
+  cashServiceCharge: number;
+  // Remaining (unpaid) SC for partially-paid orders. Equals serviceCharge when
+  // nothing is paid. Lets the breakdown UI reconcile rows to balance due.
+  outstandingServiceCharge: number;
+  cashOutstandingServiceCharge: number;
+  serviceChargeName: string;
+  serviceChargeRate: number | null;
 }
 
 /**
@@ -144,10 +190,43 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
     enabled ? s.taxRatesMap : EMPTY_TAX_RATES_MAP,
   );
 
+  // Service charge: rule (location-scoped) + party_size (session-scoped).
+  // Subscribed so the totals re-derive when staff bumps the seat stepper or
+  // the rules sync hook receives a fresh payload.
+  const scLocationId = useStoreSettingsStore((s) =>
+    enabled ? (s.selectedStore?.id ?? null) : null,
+  );
+  const serviceChargeRule = useServiceChargeRulesStore((s) =>
+    enabled ? s.resolveRule(scLocationId) : null,
+  );
+  const sessionPartySize = useTableSessionStore((s) => {
+    const sessionId = activeOrder?.session_id;
+    if (!enabled || !sessionId) return null;
+    for (const sess of Object.values(s.sessions)) {
+      if (sess.id === sessionId) return sess.party_size ?? null;
+    }
+    return null;
+  });
+  // seatCount is the local UI truth (SeatSelector stepper), session.party_size
+  // is the backend-authoritative fallback. order.guest_count intentionally not
+  // read — it's a write-only mirror and gets wiped by broadcast hydration.
+  const seatCount = useSeatingStore((s) =>
+    enabled && activeOrderId ? (s.byOrderId[activeOrderId]?.seatCount ?? null) : null,
+  );
+
   return useMemo(() => {
     if (!activeOrderId || !activeOrder) return null;
 
     const activeItems = activeOrder.items.filter((item) => !item.is_voided);
+
+    // Fallback for order-processing dine-in orders: no seating store entry and
+    // no table session means guest_count is the only available party size signal.
+    const guestCountFallback =
+      seatCount == null && sessionPartySize == null && !activeOrder.session_id &&
+      typeof activeOrder.guest_count === "number" && activeOrder.guest_count > 0
+        ? activeOrder.guest_count
+        : null;
+    const partySize = seatCount ?? sessionPartySize ?? guestCountFallback ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({
@@ -155,6 +234,20 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       checkDiscount: activeOrder.checkDiscount ?? null,
       taxRatesMap,
       payments: activeOrder.payments ?? [],
+      preserveItemLevelOutstanding: activeOrder._reopenedForOrdering === true,
+      serviceChargeRule,
+      partySize,
+      orderType: activeOrder.order_type ?? null,
+      snapshottedRate: activeOrder.service_charge_rate ?? null,
+      snapshottedAppliesOn: activeOrder.service_charge_applies_on ?? null,
+      snapshottedName: activeOrder.service_charge_name ?? null,
+      manualServiceCharge: activeOrder.service_charge_is_manual === true
+        ? (activeOrder.service_charge ?? 0)
+        : null,
+      manualServiceChargeTaxable: activeOrder.service_charge_is_taxable ?? null,
+      serverConfirmedServiceCharge: activeOrder.service_charge_is_manual !== true
+        ? (activeOrder.service_charge ?? null)
+        : null,
     });
 
     // Get tip from payments array (sum of all non-voided payment tips)
@@ -171,17 +264,30 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
     // Before payment: use frontend calculations for real-time accuracy
     // After payment: use backend values as source of truth for payment state
     const amountDue = hasPayments
-      ? (backendAmountDue ?? totals.outstanding_total)
+      ? resolveOutstandingAmount(
+          activeOrder,
+          backendAmountDue,
+          totals.outstanding_total,
+        )
       : totals.outstanding_total;
 
     const cashAmountDue = hasPayments
-      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+      ? resolveOutstandingAmount(
+          activeOrder,
+          backendCashAmountDue,
+          totals.cash_outstanding_total,
+        )
       : totals.cash_outstanding_total;
 
     // Diagnostic: warn when frontend and backend values diverge
     if (
       hasPayments &&
       backendAmountDue !== undefined &&
+      !isOutstandingLocalEditAhead(
+        activeOrder,
+        backendAmountDue,
+        totals.outstanding_total,
+      ) &&
       Math.abs(backendAmountDue - totals.outstanding_total) > 0.02
     ) {
       console.warn("[useActiveOrderTotals] Frontend/backend mismatch:", {
@@ -209,16 +315,39 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       cashTax: totals.cash_tax_amount,
       total: totals.total_amount,
       discount: totals.discount_amount,
+      cashDiscount: totals.cash_discount_amount,
       itemCount,
       tip,
       amountDue,
       cashAmountDue,
       outstandingSubtotal: totals.outstanding_subtotal,
       outstandingTax: totals.outstanding_tax,
+      cashOutstandingSubtotal: totals.cash_outstanding_subtotal,
+      cashOutstandingTax: totals.cash_outstanding_tax,
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
+      serviceCharge: totals.service_charge,
+      cashServiceCharge: totals.cash_service_charge,
+      outstandingServiceCharge: totals.outstanding_service_charge,
+      cashOutstandingServiceCharge: totals.cash_outstanding_service_charge,
+      serviceChargeName: totals.service_charge_name,
+      // Amount-mode manual overrides have a flat dollar SC with no rate —
+      // showing the auto-rule rate as a fallback misleads the cashier (the SC
+      // shown is the manager's flat amount, not rule × subtotal).
+      serviceChargeRate:
+        activeOrder.service_charge_rate ??
+        (activeOrder.service_charge_is_manual
+          ? null
+          : serviceChargeRule?.rate_percent ?? null),
     };
-  }, [activeOrderId, activeOrder, taxRatesMap]);
+  }, [
+    activeOrderId,
+    activeOrder,
+    taxRatesMap,
+    serviceChargeRule,
+    sessionPartySize,
+    seatCount,
+  ]);
 }
 
 /**
@@ -239,10 +368,35 @@ export function useOrderTotals(
   const order = useOrderStore((s) => (orderId ? s.ordersById[orderId] : null));
   const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
 
+  const scLocationId = useStoreSettingsStore(
+    (s) => s.selectedStore?.id ?? null,
+  );
+  const serviceChargeRule = useServiceChargeRulesStore((s) =>
+    s.resolveRule(scLocationId),
+  );
+  const sessionPartySize = useTableSessionStore((s) => {
+    const sessionId = order?.session_id;
+    if (!sessionId) return null;
+    for (const sess of Object.values(s.sessions)) {
+      if (sess.id === sessionId) return sess.party_size ?? null;
+    }
+    return null;
+  });
+  const seatCount = useSeatingStore((s) =>
+    orderId ? (s.byOrderId[orderId]?.seatCount ?? null) : null,
+  );
+
   return useMemo(() => {
     if (!orderId || !order) return null;
 
     const activeItems = order.items.filter((item) => !item.is_voided);
+
+    const guestCountFallback =
+      seatCount == null && sessionPartySize == null && !order.session_id &&
+      typeof order.guest_count === "number" && order.guest_count > 0
+        ? order.guest_count
+        : null;
+    const partySize = seatCount ?? sessionPartySize ?? guestCountFallback ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({
@@ -250,6 +404,20 @@ export function useOrderTotals(
       checkDiscount: order.checkDiscount ?? null,
       taxRatesMap,
       payments: order.payments ?? [],
+      preserveItemLevelOutstanding: order._reopenedForOrdering === true,
+      serviceChargeRule,
+      partySize,
+      orderType: order.order_type ?? null,
+      snapshottedRate: order.service_charge_rate ?? null,
+      snapshottedAppliesOn: order.service_charge_applies_on ?? null,
+      snapshottedName: order.service_charge_name ?? null,
+      manualServiceCharge: order.service_charge_is_manual === true
+        ? (order.service_charge ?? 0)
+        : null,
+      manualServiceChargeTaxable: order.service_charge_is_taxable ?? null,
+      serverConfirmedServiceCharge: order.service_charge_is_manual !== true
+        ? (order.service_charge ?? null)
+        : null,
     });
 
     // Get tip from payments array (sum of all non-voided payment tips)
@@ -264,17 +432,26 @@ export function useOrderTotals(
 
     // Authority logic: frontend before first payment, backend after
     const amountDue = hasPayments
-      ? (backendAmountDue ?? totals.outstanding_total)
+      ? resolveOutstandingAmount(order, backendAmountDue, totals.outstanding_total)
       : totals.outstanding_total;
 
     const cashAmountDue = hasPayments
-      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+      ? resolveOutstandingAmount(
+          order,
+          backendCashAmountDue,
+          totals.cash_outstanding_total,
+        )
       : totals.cash_outstanding_total;
 
     // Diagnostic: warn when frontend and backend values diverge
     if (
       hasPayments &&
       backendAmountDue !== undefined &&
+      !isOutstandingLocalEditAhead(
+        order,
+        backendAmountDue,
+        totals.outstanding_total,
+      ) &&
       Math.abs(backendAmountDue - totals.outstanding_total) > 0.02
     ) {
       console.warn("[useOrderTotals] Frontend/backend mismatch:", {
@@ -290,16 +467,29 @@ export function useOrderTotals(
       cashTax: totals.cash_tax_amount,
       total: totals.total_amount,
       discount: totals.discount_amount,
+      cashDiscount: totals.cash_discount_amount,
       itemCount: activeItems.reduce((sum, item) => sum + item.quantity, 0),
       tip,
       amountDue,
       cashAmountDue,
       outstandingSubtotal: totals.outstanding_subtotal,
       outstandingTax: totals.outstanding_tax,
+      cashOutstandingSubtotal: totals.cash_outstanding_subtotal,
+      cashOutstandingTax: totals.cash_outstanding_tax,
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
+      serviceCharge: totals.service_charge,
+      cashServiceCharge: totals.cash_service_charge,
+      outstandingServiceCharge: totals.outstanding_service_charge,
+      cashOutstandingServiceCharge: totals.cash_outstanding_service_charge,
+      serviceChargeName: totals.service_charge_name,
+      serviceChargeRate:
+        order.service_charge_rate ??
+        (order.service_charge_is_manual
+          ? null
+          : serviceChargeRule?.rate_percent ?? null),
     };
-  }, [orderId, order, taxRatesMap]);
+  }, [orderId, order, taxRatesMap, serviceChargeRule, sessionPartySize, seatCount]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -619,6 +809,7 @@ export function useOrderLineFilteredOrders(): OrderProfile[] {
       const myStationId = state.currentStationId;
 
       const result: OrderProfile[] = [];
+      const seenOrderIds = new Set<string>();
       for (let i = state.orderIds.length - 1; i >= 0; i--) {
         const o = state.ordersById[state.orderIds[i]];
         if (!o) continue;
@@ -638,6 +829,9 @@ export function useOrderLineFilteredOrders(): OrderProfile[] {
         )
           continue;
 
+        const canonicalId = o.db_order_id ?? o.id;
+        if (seenOrderIds.has(canonicalId)) continue;
+        seenOrderIds.add(canonicalId);
         result.push(o);
       }
       result.sort(
@@ -662,6 +856,20 @@ export function useOrder(
   orderId: string | null | undefined,
 ): OrderProfile | null {
   return useOrderStore((s) => (orderId ? (s.getOrder(orderId) ?? null) : null));
+}
+
+/**
+ * Subscribe to a single item in a local order.
+ * Immer keeps untouched item references stable when sibling items change.
+ */
+export function useOrderItem(
+  orderId: string | null | undefined,
+  itemId: string,
+): CartItem | null {
+  return useOrderStore((s) => {
+    if (!orderId) return null;
+    return s.getOrder(orderId)?.items.find((item) => item.id === itemId) ?? null;
+  });
 }
 
 /**

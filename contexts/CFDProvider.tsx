@@ -33,6 +33,10 @@ import { queueOperation } from '@/services/offlineSyncService'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { getOrCreateCounter } from '@/services/terminals/castles-txn-counter'
 import { adjustTips, type TipAdjustment } from '@/services/tipAdjustService'
+import {
+  getOrderTypeDisplay,
+  resolveTableDisplayName
+} from '@/lib/orderDisplay'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useCFDBuiltinStore } from '@/stores/useCFDBuiltinStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
@@ -135,6 +139,7 @@ interface CFDContextType {
 }
 
 const CFDContext = createContext<CFDContextType | null>(null)
+const CFDOrderProcessingActivityContext = createContext<() => void>(() => {})
 
 function areStringArraysEqual (a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false
@@ -196,7 +201,9 @@ export function CFDProvider ({ children }: { children: React.ReactNode }) {
   // In CFD client mode, this device is a display client — don't start server
   if (isCFDMode) {
     return (
-      <CFDContext.Provider value={noopCFDValue}>{children}</CFDContext.Provider>
+      <CFDOrderProcessingActivityContext.Provider value={noopCFDValue.markOrderProcessingActivity}>
+        <CFDContext.Provider value={noopCFDValue}>{children}</CFDContext.Provider>
+      </CFDOrderProcessingActivityContext.Provider>
     )
   }
 
@@ -339,6 +346,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const showCFDOrderingRightPanel = useStoreSettingsStore(
     s => s.showCFDOrderingRightPanel
   )
+  const cfdPricingDisplayMode = useStoreSettingsStore(
+    s => (s.selectedStore?.cfd_pricing_display_mode ?? 'dual') as 'dual' | 'card_only' | 'cash_only'
+  )
   const cfdOrderingRightPanelMode = useStoreSettingsStore(
     s => s.cfdOrderingRightPanelMode
   )
@@ -380,6 +390,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         subtotalCash: s.subtotalCash,
         subtotalCard: s.subtotalCard,
         discountAmount: s.discountAmount,
+        serviceCharge: s.serviceCharge,
+        serviceChargeName: s.serviceChargeName,
+        serviceChargeRate: s.serviceChargeRate,
         taxAmount: s.taxAmount,
         taxCash: s.taxCash,
         taxCard: s.taxCard,
@@ -400,6 +413,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         loyaltyResult: s.loyaltyResult,
         paymentMethod: s.paymentMethod,
         merchantHasLoyalty: s.merchantHasLoyalty,
+        pricingDisplayMode: s.pricingDisplayMode,
         themeMode: s.themeMode
       }
     })
@@ -437,12 +451,15 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   // loyalty_programs rows exist, hiding the button even with flag=0.
   const merchantHasLoyalty = !cfdLoyaltyDisabled
 
-  console.log('[CFDProvider] loyalty flags', {
-    EXPO_PUBLIC_CFD_DISABLE_LOYALTY:
-      process.env.EXPO_PUBLIC_CFD_DISABLE_LOYALTY,
-    cfdLoyaltyDisabled,
-    merchantHasLoyalty
-  })
+  useEffect(() => {
+    if (!DEBUG) return
+    console.log('[CFDProvider] loyalty flags', {
+      EXPO_PUBLIC_CFD_DISABLE_LOYALTY:
+        process.env.EXPO_PUBLIC_CFD_DISABLE_LOYALTY,
+      cfdLoyaltyDisabled,
+      merchantHasLoyalty
+    })
+  }, [cfdLoyaltyDisabled, merchantHasLoyalty])
 
   // Mirror merchantHasLoyalty (persisted in useLoyaltyStore via MMKV) into
   // useCFDBuiltinStore so the WebView/legacy CFD pick it up on every load,
@@ -454,6 +471,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     )
     useCFDBuiltinStore.getState().update({ merchantHasLoyalty })
   }, [merchantHasLoyalty])
+
+  // Mirror pricingDisplayMode into useCFDBuiltinStore so the built-in WebView
+  // picks up the location setting on every load.
+  useEffect(() => {
+    useCFDBuiltinStore.getState().update({ pricingDisplayMode: cfdPricingDisplayMode })
+  }, [cfdPricingDisplayMode])
 
   // Order store selectors - Individual selectors for stability
   const activeOrderId = useOrderStore(s => s.activeOrderId)
@@ -1179,12 +1202,17 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       activeOrder?.display_number ??
       activeOrder?.order_number ??
       null
-    const displayOrderType =
-      frozen?.orderType ?? activeOrder?.order_type ?? null
+    const rawOrderType = frozen?.orderType ?? activeOrder?.order_type ?? null
+    const displayOrderType = rawOrderType
+      ? getOrderTypeDisplay(rawOrderType)
+      : null
     const liveTableName = activeOrder?.order_type
       ?.toLowerCase()
       .includes('dine')
-      ? activeOrder?.service_location_id ?? null
+      ? resolveTableDisplayName(
+          activeOrder?.service_location_id,
+          activeOrder?.service_location_name
+        )
       : null
     const displayTableName = frozen?.tableName ?? liveTableName
     const displayGuestCount =
@@ -1234,8 +1262,17 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     let cashTax =
       frozen?.taxCash ??
       Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100)
+    // Prefer the live calculator's totals over the legacy
+    // `activeOrderTotal` store field. The legacy field is written by
+    // recalculateOrder / _ensureTotalsFresh / applyBackendItemData and
+    // lags by one render relative to `useActiveOrderTotals()` — which
+    // means the CFD's TOTAL can show the pre-SC value while the SC line
+    // (sourced from orderTotals.serviceCharge below) reflects the fresh
+    // SC. They then disagree by ~SC's worth (the CFD-vs-POS-total bug).
+    // Both POS panes (PricingBreakdownSheet / Totals.tsx) already use
+    // orderTotals exclusively; CFD should too.
     const liveCardTotal = Math.round(
-      (activeOrderTotal + currentTip.amount) * 100
+      ((orderTotals?.total ?? activeOrderTotal) + currentTip.amount) * 100
     )
     const liveCashTotal = Math.round(
       ((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100
@@ -1340,6 +1377,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       subtotalCash: cashSubtotal,
       subtotalCard: cardSubtotal,
       discountAmount: displayDiscountAmount,
+      serviceCharge: Math.round((orderTotals?.serviceCharge ?? 0) * 100),
+      serviceChargeName: orderTotals?.serviceChargeName ?? null,
+      serviceChargeRate: orderTotals?.serviceChargeRate ?? null,
       taxAmount: cardTax,
       taxCash: cashTax,
       taxCard: cardTax,
@@ -1363,6 +1403,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
           ? useCFDBuiltinStore.getState().loyaltyResult
           : null,
       merchantHasLoyalty,
+      pricingDisplayMode: cfdPricingDisplayMode,
       themeMode: colorScheme
     }
 
@@ -1379,13 +1420,13 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         displayGuestCount ?? ''
       }|` +
       `${cardSubtotal}|${cashSubtotal}|${cardTax}|${cashTax}|${cardTotal}|${cashTotal}|` +
-      `${displayDiscountAmount}|${displayTipAmount}|${
+      `${displayDiscountAmount}|${orderTotals?.serviceCharge ?? 0}|${displayTipAmount}|${
         currentTip.percentage ?? ''
       }|` +
       `${displayOutstandingTotal}|${displayAmountPaid}|${savingsAmount}|` +
       `${showCFDOrderingRightPanel ? 1 : 0}|${cfdOrderingRightPanelMode}|${
         merchantHasLoyalty ? 1 : 0
-      }`
+      }|${cfdPricingDisplayMode}`
 
     if (wsFingerprint === lastPayloadHashRef.current) {
       return () => {
@@ -1446,7 +1487,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     cfdOrderingRightPanelMode,
     paymentActiveSplit,
     colorScheme,
-    merchantHasLoyalty
+    merchantHasLoyalty,
+    cfdPricingDisplayMode
   ])
 
   // ==================== BUILT-IN SECONDARY DISPLAY ====================
@@ -1617,8 +1659,12 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       )
       let cardTax = Math.round(activeOrderTax * 100)
       let cashTax = Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100)
+      // Same SC-vs-total divergence fix as the primary path above —
+      // prefer orderTotals.total (live calc, SC-inclusive in the same
+      // pass as orderTotals.serviceCharge) over the legacy
+      // activeOrderTotal store field which lags by one render.
       const liveCardTotal = Math.round(
-        (activeOrderTotal + currentTip.amount) * 100
+        ((orderTotals?.total ?? activeOrderTotal) + currentTip.amount) * 100
       )
       const liveCashTotal = Math.round(
         ((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100
@@ -1683,11 +1729,14 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         displayDiscountAmount = stable.discountAmount
       }
 
-      // For dine-in orders, get table ID
+      // For dine-in orders, resolve the table's display name (not its UUID).
       const builtinTableName = activeOrder?.order_type
         ?.toLowerCase()
         .includes('dine')
-        ? activeOrder?.service_location_id ?? null
+        ? resolveTableDisplayName(
+            activeOrder?.service_location_id,
+            activeOrder?.service_location_name
+          )
         : null
 
       const computedOrderNumber =
@@ -1712,7 +1761,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         `${activeOrderOrderType ?? ''}|${builtinTableName ?? ''}|` +
         `${activeOrderGuestCount ?? ''}|` +
         `${cardSubtotal}|${cashSubtotal}|${cardTax}|${cashTax}|` +
-        `${cardTotal}|${cashTotal}|${displayDiscountAmount}|${displayTipAmount}|` +
+        `${cardTotal}|${cashTotal}|${displayDiscountAmount}|${orderTotals?.serviceCharge ?? 0}|${displayTipAmount}|` +
         `${currentTip.percentage ?? ''}|${displayOutstandingTotal}|` +
         `${displayAmountPaid}|${savingsAmount}|` +
         `${selectedStore?.name ?? ''}|${selectedStore?.code ?? ''}|` +
@@ -1729,7 +1778,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         customerName: activeOrder?.customer_name ?? null,
         customerPhone: activeOrder?.customer_phone ?? null,
         orderNumber: computedOrderNumber,
-        orderType: activeOrder?.order_type ?? null,
+        orderType: activeOrder?.order_type
+          ? getOrderTypeDisplay(activeOrder.order_type)
+          : null,
         tableName: builtinTableName,
         guestCount: activeOrder?.guest_count ?? null,
         items: cfdItems,
@@ -1737,6 +1788,9 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         subtotalCash: cashSubtotal,
         subtotalCard: cardSubtotal,
         discountAmount: displayDiscountAmount,
+        serviceCharge: Math.round((orderTotals?.serviceCharge ?? 0) * 100),
+        serviceChargeName: orderTotals?.serviceChargeName ?? null,
+        serviceChargeRate: orderTotals?.serviceChargeRate ?? null,
         taxAmount: cardTax,
         taxCash: cashTax,
         taxCard: cardTax,
@@ -2020,9 +2074,14 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         customerName: activeOrder?.customer_name ?? null,
         orderNumber:
           activeOrder?.display_number ?? activeOrder?.order_number ?? null,
-        orderType: activeOrder?.order_type ?? null,
+        orderType: activeOrder?.order_type
+          ? getOrderTypeDisplay(activeOrder.order_type)
+          : null,
         tableName: activeOrder?.order_type?.toLowerCase().includes('dine')
-          ? activeOrder?.service_location_id ?? null
+          ? resolveTableDisplayName(
+              activeOrder?.service_location_id,
+              activeOrder?.service_location_name
+            )
           : null,
         guestCount: activeOrder?.guest_count ?? null,
         items: cfdItems
@@ -2271,13 +2330,16 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       console.log('[CFD tip-adjust] settling 1.5s before terminal command')
       await new Promise<void>(resolve => setTimeout(resolve, 1500))
 
+      let terminalTipAdjustSucceeded = false
       try {
         if (captured.terminalType === 'castles') {
           const service = getSharedCastlesService()
-          const host = terminal.ip_address
-          if (!host) throw new Error('Castles terminal has no IP')
-          const port = terminal.port ?? CASTLES_DEFAULT_PORT
+          const isUsb = terminal.connection_type === 'usb'
+          const host = isUsb ? undefined : terminal.ip_address
+          if (!isUsb && !host) throw new Error('Castles terminal has no IP')
+          const port = isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT)
           await service.connect({
+            connectionType: isUsb ? 'usb' : 'local_socket',
             host,
             port,
             timeout: 120_000,
@@ -2319,6 +2381,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
                 message: result.error || 'Terminal rejected tip adjustment.'
               })
             } else {
+              terminalTipAdjustSucceeded = true
               console.log('[CFD tip-adjust] Castles tip adjust ok')
             }
           }
@@ -2337,8 +2400,20 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
               result.error
             )
           } else {
+            terminalTipAdjustSucceeded = true
             console.log('[CFD tip-adjust] Dejavoo tip adjust ok')
           }
+        }
+
+        // Terminal didn't accept the tip — skip DB write, optimistic patch,
+        // and totals update so the system doesn't show a tip that was never
+        // actually adjusted on the terminal. `finally` still runs to show
+        // the approved screen and clear the in-flight flag.
+        if (!terminalTipAdjustSucceeded) {
+          console.warn(
+            '[CFD tip-adjust] terminal adjust did not succeed — skipping persist/patch'
+          )
+          return
         }
 
         // ─── Resolve target order from the captured snapshot ───
@@ -3481,7 +3556,11 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     activeScreenState
   }
 
-  return <CFDContext.Provider value={value}>{children}</CFDContext.Provider>
+  return (
+    <CFDOrderProcessingActivityContext.Provider value={markOrderProcessingActivity}>
+      <CFDContext.Provider value={value}>{children}</CFDContext.Provider>
+    </CFDOrderProcessingActivityContext.Provider>
+  )
 }
 
 export function useCFD () {
@@ -3490,4 +3569,8 @@ export function useCFD () {
     throw new Error('useCFD must be used within a CFDProvider')
   }
   return context
+}
+
+export function useCFDOrderProcessingActivity () {
+  return useContext(CFDOrderProcessingActivityContext)
 }

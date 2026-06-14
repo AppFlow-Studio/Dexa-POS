@@ -8,6 +8,7 @@ import {
   derivePaidStatus,
   derivePaymentRefundState,
 } from "@/lib/paymentStatus";
+import { applyRefundRecovery } from "@/lib/refundRecovery";
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
@@ -45,8 +46,23 @@ function resolveHistoryLocationId(): string | null {
   return useFloorPlanStore.getState().locationId;
 }
 
+function resolvePreviousOrderTableName(
+  tableIdOrName?: string | null,
+  tableName?: string | null,
+): string | undefined {
+  const uuidLike =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (tableName?.trim() && !uuidLike.test(tableName.trim())) return tableName;
+  if (!tableIdOrName) return undefined;
+  return (
+    useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ??
+    (tableName ? useFloorPlanStore.getState().tablesById[tableName]?.name : null) ??
+    tableIdOrName
+  );
+}
+
 /** Resolve the BusinessDayConfig from the current location settings. */
-function resolveBusinessDayConfig(): BusinessDayConfig | null {
+export function resolveBusinessDayConfig(): BusinessDayConfig | null {
   const store = useStoreSettingsStore.getState().selectedStore;
   if (!store?.timezone) return null;
   return {
@@ -196,9 +212,12 @@ interface PreviousOrdersState {
   dateWindow: DateWindow;
 
   // Pagination state
-  _currentOffset: number;
+  _currentOffset: number; // Legacy offset cursor — kept for compat with refresh accounting
   _hasMore: boolean;
   _isLoadingMore: boolean;
+  // Keyset cursor: `created_at` of the oldest order currently loaded. loadMore
+  // requests rows older than this — constant-time vs offset-based skip.
+  _oldestCursor: string | null;
 
   // Actions
   addOrderToHistory: (order: OrderProfile) => void;
@@ -270,6 +289,7 @@ function _transformFetchedOrder(
     display_number: profile.display_number || `#${serialNo}`,
     paymentStatus: _derivePaymentStatus(profile),
     customer: profile.customer_name || "Walk-In Customer",
+    customer_phone: profile.customer_phone ?? null,
     server: profile.server_name || "Unknown",
     opened_at: profile.opened_at || orderTimestamp,
     closed_at: profile.closed_at || "",
@@ -282,6 +302,9 @@ function _transformFetchedOrder(
     type: (profile.order_type || "Dine In") as any,
     total: profile.total_amount || 0,
     tax: profile.total_tax || 0,
+    service_charge: profile.service_charge ?? 0,
+    service_charge_name: profile.service_charge_name ?? null,
+    service_charge_rate: profile.service_charge_rate ?? null,
     items: profile.items,
     notes: profile.notes,
     voided: profile.order_status === "void",
@@ -298,7 +321,10 @@ function _transformFetchedOrder(
     originalTotal: profile.total_amount || 0,
     payments: profile.payments,
     service_location_id: profile.service_location_id ?? undefined,
-    service_location_name: profile.service_location_name,
+    service_location_name: resolvePreviousOrderTableName(
+      profile.service_location_id,
+      profile.service_location_name,
+    ),
     station_id: profile.station_id,
     station_name: profile._sourceStationName || undefined,
     checkStatus: profile.check_status || "Opened",
@@ -323,6 +349,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     _currentOffset: 0,
     _hasMore: false,
     _isLoadingMore: false,
+    _oldestCursor: null,
 
     setDateWindow: (window) => {
       set({
@@ -336,6 +363,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         _currentOffset: 0,
         _hasMore: false, // Block loadMore until refresh resolves bounds + sets _hasMore
         _isLoadingMore: false,
+        _oldestCursor: null,
         newOrdersCount: 0,
       });
       // Trailing-edge debounce: rapid pill taps (Today → Yesterday → Last 7
@@ -425,6 +453,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         display_number: order.display_number || `#${serialNo}`,
         paymentStatus: _derivePaymentStatus(order),
         customer: order.customer_name || "Walk-In Customer",
+        customer_phone: order.customer_phone ?? null,
         server: order.server_name || "Unknown",
         opened_at: order.opened_at || orderTimestamp,
         closed_at: order.closed_at || "",
@@ -436,6 +465,9 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         cash_amount_due: order.cash_amount_due || 0,
         type: orderType,
         total: finalTotal,
+        service_charge: order.service_charge ?? 0,
+        service_charge_name: order.service_charge_name ?? null,
+        service_charge_rate: order.service_charge_rate ?? null,
         items: order.items,
         notes: order.notes, // Order-level notes (customer requests, special instructions)
         // Additional fields for refund tracking
@@ -444,7 +476,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         originalTotal: finalTotal,
         payments: order.payments,
         service_location_id: order.service_location_id ?? undefined,
-        service_location_name: order.service_location_name,
+        service_location_name: resolvePreviousOrderTableName(
+          order.service_location_id,
+          order.service_location_name,
+        ),
         // Station tracking for view_scope awareness
         station_id: order.station_id,
         station_name: order._sourceStationName || undefined,
@@ -722,6 +757,14 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
           const newLookup = buildOrderLookupMap(mergedPreviousOrders);
           const now = Date.now();
+          // Seed keyset cursor from the raw fetched rows (the DB created_at)
+          // rather than the transformed `timestamp` field — opened_at and
+          // created_at usually agree but the DB column is the source of truth
+          // for ORDER BY created_at DESC.
+          const lastFetchedRow = fetchedOrders[fetchedOrders.length - 1] as
+            | { created_at?: string }
+            | undefined;
+          const _oldestCursor = lastFetchedRow?.created_at ?? null;
           set({
             previousOrders: mergedPreviousOrders,
             newOrdersCount: 0,
@@ -732,6 +775,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             _currentOffset: mergedPreviousOrders.length,
             _hasMore: fetchedOrders.length === INITIAL_FETCH_SIZE,
             _isLoadingMore: false,
+            _oldestCursor,
           });
           if (__DEV__)
             console.log(
@@ -838,7 +882,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     },
 
     loadMoreOrders: async () => {
-      const { _isLoadingMore, _hasMore, _currentOffset } = get();
+      const { _isLoadingMore, _hasMore, _currentOffset, _oldestCursor } = get();
       if (_isLoadingMore || !_hasMore) return;
 
       // Cooldown: prevent onEndReached cascade
@@ -864,12 +908,12 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       set({ _isLoadingMore: true });
 
       try {
-        const { data, error, hasMore } =
-          await OrderService.getHistoryOrdersPaginated(
+        const { data, error, hasMore, nextCursor } =
+          await OrderService.getHistoryOrdersByCursor(
             client,
             locationId,
             LOAD_MORE_PAGE_SIZE,
-            _currentOffset,
+            _oldestCursor,
             null,
             _resolvedStartTs,
             _resolvedEndTs,
@@ -900,6 +944,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           set({
             _hasMore: hasMore,
             _currentOffset: _currentOffset + data.length,
+            _oldestCursor: nextCursor ?? _oldestCursor,
             _isLoadingMore: false,
           });
           return;
@@ -924,6 +969,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             _orderLookup: buildOrderLookupMap(merged),
             _currentOffset: _currentOffset + data.length,
             _hasMore: hasMore,
+            _oldestCursor: nextCursor ?? state._oldestCursor,
           };
         });
       } catch (err) {
@@ -975,6 +1021,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         if (result.kind === "verifying") {
           return result;
         }
+
+        // Sync local order state + reopen table session if applicable.
+        // Refund just rewrote payments[].refunded_amount + amount_due in DB;
+        // without this, useOrderStore stays at the pre-refund snapshot and
+        // the table stays at status='paid' from the original order:paid emit.
+        await applyRefundRecovery({
+          orderId,
+          tableId: order.service_location_id,
+        });
 
         // Audit log for fraud-flagged refunds
         if (metadata?.fraudFlags?.includes("same_cashier_refund")) {
@@ -1087,15 +1142,18 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
       // --- THIS IS THE CORRECTED LOGIC ---
 
-      // 1. Calculate the total refund amount for this transaction
-      // and prepare the items for the refund record.
+      // 1. Prepare the items for the refund record.
+      // Note (Wave R-SC): totalRefundedInThisTx is now populated from the
+      // server response below — `item.price * quantity` was pre-discount
+      // and over-counted the fraud-velocity threshold on every discounted
+      // refund. The authoritative SC-inclusive total comes from
+      // refundService.processRefund's reversals[].amount aggregation.
       itemsToRefund.forEach(({ itemId, quantity, reason }) => {
         const item = order.items.find((i) => i.id === itemId);
         // Ensure we are refunding a valid item and a valid quantity
         const maxRefundable =
           (item?.quantity || 0) - (item?.refundedQuantity || 0);
         if (item && quantity > 0 && quantity <= maxRefundable) {
-          totalRefundedInThisTx += item.price * quantity;
           refundItemsForRecord.push({
             itemId,
             quantity,
@@ -1149,6 +1207,19 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         if (result.kind === "verifying") {
           return result;
         }
+
+        // Wave R-SC: derive the authoritative refunded total from the
+        // server response (SC-inclusive, post-discount). Used by the audit
+        // log + fraud-velocity threshold below.
+        totalRefundedInThisTx = (result.data?.reversals ?? []).reduce(
+          (sum, r) => sum + Number(r.amount || 0),
+          0,
+        );
+
+        await applyRefundRecovery({
+          orderId,
+          tableId: order.service_location_id,
+        });
 
         // Audit log for fraud-flagged refunds
         if (metadata?.fraudFlags?.includes("same_cashier_refund")) {

@@ -7,9 +7,9 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
+import { useProfileOverlayStore } from "@/stores/useProfileOverlayStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { useRouter } from "expo-router";
 import {
     ArrowLeftRight,
     Bell,
@@ -37,7 +37,7 @@ const BREAK_DURATION_MIN = 30;
 // Countdown component for on-break users
 const BreakCountdown = ({ startTime }: { startTime: Date }) => {
   // Tick state to trigger re-render every second without flashing an initial default
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
 
   useEffect(() => {
     // Update immediately on mount to avoid any visible lag
@@ -85,22 +85,27 @@ const BreakCountdown = ({ startTime }: { startTime: Date }) => {
 
 // Individual chip for each user session
 const SessionChip = ({ sessionId }: { sessionId: string }) => {
-  const { sessions, activeEmployeeId, endBreak, startBreak } =
-    useTimeclockStore();
-  const { employees, signOut } = useEmployeeStore();
+  const session = useTimeclockStore((state) => state.sessions[sessionId]);
+  const activeEmployeeId = useTimeclockStore((state) => state.activeEmployeeId);
+  const endBreak = useTimeclockStore((state) => state.endBreak);
+  const startBreak = useTimeclockStore((state) => state.startBreak);
+  const employee = useEmployeeStore((state) =>
+    state.employees.find((e) => e.id === session?.employeeId),
+  );
+  const signOut = useEmployeeStore((state) => state.signOut);
   const isBreakAndSwitchEnabled = useLocationConfigStore(
     (s) => s.config.timeclock.breakAndSwitchEnabled,
   );
-  const { markAllAsRead } = useNotificationStore();
-  const router = useRouter();
   const { show } = useToast();
 
   const openSheet = useNotificationSheetStore((state) => state.openSheet);
+  const openProfile = useProfileOverlayStore((state) => state.openProfile);
 
   const [isPinModalOpen, setPinModalOpen] = useState(false);
   const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false);
   const [isBreakPinModalOpen, setBreakPinModalOpen] = useState(false);
   const [isLogoutPinModalOpen, setLogoutPinModalOpen] = useState(false);
+  const [isMenuOpen, setMenuOpen] = useState(false);
   const [deviceId, setDeviceId] = useState<string>("unknown");
   const [showCashDeclaration, setShowCashDeclaration] = useState(false);
   const pendingClockOutPinRef = useRef<string | null>(null);
@@ -114,8 +119,6 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     setDeviceId(getDeviceId());
   }, []);
 
-  const session = sessions[sessionId];
-  const employee = employees.find((e) => e.id === session?.employeeId);
   const employeeId = employee?.id;
   const employeeProfileId = employee?.profileId;
 
@@ -253,18 +256,16 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     openSheet();
   };
 
+  const handleOpenProfile = () => {
+    setMenuOpen(false);
+    requestAnimationFrame(() => {
+      openProfile();
+    });
+  };
+
   const handlePress = () => {
     if (isActive) return;
     setPinModalOpen(true);
-  };
-
-  const handlePinSuccess = () => {
-    setPinModalOpen(false);
-    if (isOnBreak) {
-      setBreakEndedModalOpen(true);
-    } else {
-      useTimeclockStore.getState().setActiveEmployee(session.employeeId);
-    }
   };
 
   const handleStartBreak = () => {
@@ -285,7 +286,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   if (isActive) {
     return (
       <>
-        <DropdownMenu>
+        <DropdownMenu open={isMenuOpen} onOpenChange={setMenuOpen}>
           <View className="flex-row items-center gap-2">
             {/* Avatar circle — tapping opens dropdown */}
             <DropdownMenuTrigger
@@ -426,7 +427,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
             {/* Menu items */}
             <View className="py-1.5">
               <DropdownMenuItem
-                onPress={() => router.push("/my-profile")}
+                onPress={handleOpenProfile}
                 className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5"
               >
                 <View
@@ -690,10 +691,10 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 
 // The main dock component
 const SessionDock = () => {
-  const { sessions, activeEmployeeId } = useTimeclockStore();
-
-  const activeSessionId = Object.keys(sessions).find(
-    (id) => sessions[id].employeeId === activeEmployeeId,
+  const activeSessionId = useTimeclockStore((state) =>
+    Object.keys(state.sessions).find(
+      (id) => state.sessions[id].employeeId === state.activeEmployeeId,
+    ),
   );
 
   return (

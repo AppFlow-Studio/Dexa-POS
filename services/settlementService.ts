@@ -23,8 +23,11 @@ export interface SettlementInput {
   terminalId: string; // payment_terminals.id (UUID)
   merchantId: string; // required by RPCs for tenant isolation
   initiatedBy: string; // Clerk userId — audit trail
-  terminalHost: string;
+  /** Required for TCP terminals; ignored for USB. */
+  terminalHost?: string;
   terminalPort?: number;
+  /** 'usb' for wired Castles, otherwise TCP. Defaults to 'local_socket'. */
+  connectionType?: 'local_socket' | 'usb';
   locationId: string;
   supabase: SupabaseClient;
   onStatus?: (message: string) => void;
@@ -200,20 +203,109 @@ export async function runSettlement(
     initiatedBy,
     terminalHost,
     terminalPort = CASTLES_DEFAULT_PORT,
+    connectionType = 'local_socket',
     supabase,
     onStatus,
   } = input;
 
+  const isUsb = connectionType === 'usb';
+  if (!isUsb && !terminalHost) {
+    throw new Error('Settlement requires either USB connection or a TCP terminal host');
+  }
+
   onStatus?.("Connecting to terminal...");
   const service = getSharedCastlesService();
   await service.connect({
-    host: terminalHost,
-    port: terminalPort,
+    connectionType: isUsb ? 'usb' : 'local_socket',
+    host: isUsb ? undefined : terminalHost,
+    port: isUsb ? undefined : terminalPort,
     timeout: 300_000,
     terminalId,
   });
 
+  // Settlement is non-idempotent at the terminal layer — we only get
+  // one clean shot per tap. Run the escalated return2Idle sequence so
+  // a lingering result-screen / partial-payment UI state from prior
+  // use can't sink the first attempt (the "had to tap twice" symptom).
+  onStatus?.("Preparing terminal...");
+  await service.escalatedReset();
+
   await verifyOrProvisionTerminal({ supabase, terminalId, onStatus });
+
+  // In the field we see a consistent "first tap rejects with 'failed' /
+  // contact-processor, second tap succeeds" pattern. prepare_castles_settlement
+  // Step 3a/3b already releases the previous failed batch's payments, so a
+  // second prepare→processSettlement→finalize cycle is safe and is exactly
+  // what staff did manually. Wrap it in one in-function retry loop.
+  const MAX_ATTEMPTS = 2;
+  let lastOutput: SettlementOutput | undefined;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const isRetry = attempt > 1;
+    if (isRetry) {
+      onStatus?.("Terminal not ready — retrying batchout...");
+      try {
+        await service.escalatedReset();
+      } catch (e) {
+        console.warn(
+          "[SettlementService] auto-retry escalatedReset failed (non-fatal):",
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    lastOutput = await _runSingleSettlementAttempt({
+      supabase,
+      terminalId,
+      merchantId,
+      initiatedBy,
+      service,
+      onStatus,
+      attempt,
+    });
+
+    // Stop unless this attempt looks like the auto-recoverable "failed" case.
+    // - dbWriteFailed: persisted as a pendingFinalize; don't double up.
+    // - partialSuccess: some acquirers settled on-device; manual review only.
+    // - shouldRetry: Castles itself asked for a retry; the existing UI handles it.
+    // - success: done.
+    const shouldAutoRetry =
+      !lastOutput.success &&
+      !lastOutput.partialSuccess &&
+      !lastOutput.shouldRetry &&
+      !lastOutput.dbWriteFailed;
+
+    if (!shouldAutoRetry) break;
+    if (attempt === MAX_ATTEMPTS) {
+      console.warn(
+        "[SettlementService] auto-retry exhausted; surfacing failure to user",
+      );
+    }
+  }
+
+  return lastOutput!;
+}
+
+// ── Inner per-attempt body (kept side-effectful: writes the settlement_batches row) ──
+
+async function _runSingleSettlementAttempt(params: {
+  supabase: SupabaseClient;
+  terminalId: string;
+  merchantId: string;
+  initiatedBy: string;
+  service: ReturnType<typeof getSharedCastlesService>;
+  onStatus?: (msg: string) => void;
+  attempt: number;
+}): Promise<SettlementOutput> {
+  const {
+    supabase,
+    terminalId,
+    merchantId,
+    initiatedBy,
+    service,
+    onStatus,
+    attempt,
+  } = params;
 
   onStatus?.("Preparing settlement batch...");
   const { data: prepareData, error: prepareError } = await supabase.rpc(
@@ -300,6 +392,10 @@ export async function runSettlement(
         "Settlement completed on terminal but failed to save results. Retry the DB sync from settings.",
     };
   }
+
+  console.log(
+    `[SettlementService] attempt #${attempt} → status=${finalizeData.status} return_code=${finalizeData.return_code}`,
+  );
 
   return {
     success: Boolean(finalizeData.success),

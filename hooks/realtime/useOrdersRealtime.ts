@@ -123,6 +123,10 @@ export interface BroadcastOrderPaymentData {
   refunded_amount?: number
   refunded_at?: string | null
 
+  // Service charge per-payment snapshot (process_payment_v13+)
+  service_charge?: number | null
+  service_charge_refunded?: number | null
+
   // Return/refund tracking fields
   is_returned?: boolean
   returned_at?: string | null
@@ -196,6 +200,12 @@ export interface BroadcastOrderData {
   tip_amount: number
   discount_amount: number
   service_charge: number
+  service_charge_name?: string | null
+  service_charge_rate?: number | null
+  service_charge_applies_on?: 'pre_discount' | 'post_discount' | null
+  service_charge_rule_id?: string | null
+  service_charge_is_manual?: boolean | null
+  service_charge_is_taxable?: boolean | null
   total_amount: number
 
   // Card pricing (default - what credit card customers pay)
@@ -222,6 +232,7 @@ export interface BroadcastOrderData {
   amount_due: number // Card price remaining
   cash_amount_due: number // Cash price remaining
   check_status: 'Opened' | 'Closed' | null
+  reopen_count?: number | null
 
   // Timestamps
   created_at: string

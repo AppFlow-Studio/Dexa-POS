@@ -41,7 +41,9 @@ export type IdempotentRpc =
   | "bulk_update_order_item_status"
   // Wave R-0 — refund pipeline idempotency
   | "update_reversal_status"
-  | "update_order_payment_status_after_refund";
+  | "update_order_payment_status_after_refund"
+  // Wave D — manager-PIN service-charge override
+  | "override_service_charge";
 
 const FLAG_PREFIX = "idempotent.";
 const RECOVERY_UI_KEY = "flag.paymentRecoveryUI";
@@ -115,6 +117,9 @@ const envRpcOverride: Partial<Record<IdempotentRpc, boolean>> = {
   ),
   update_order_payment_status_after_refund: isTruthyEnv(
     process.env.EXPO_PUBLIC_IDEMPOTENT_UPDATE_ORDER_PAYMENT_STATUS,
+  ),
+  override_service_charge: isTruthyEnv(
+    process.env.EXPO_PUBLIC_IDEMPOTENT_OVERRIDE_SERVICE_CHARGE,
   ),
 };
 

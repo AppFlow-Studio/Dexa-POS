@@ -1,6 +1,10 @@
+import NotifyCustomerModal from "@/components/notifications/NotifyCustomerModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import DiscardChangesModal from "@/components/ui/DiscardChangesModal";
 import { useToast } from "@/contexts/ToastContext";
 import { iosOnly } from "@/lib/safeAnimations";
+import { NotifyContext, TemplateKey } from "@/lib/notifyTemplates";
+import { formatUsPhone, normalizeUsPhoneDigits } from "@/lib/phone";
 import { colors } from "@/lib/theme";
 import { getCachedCustomers } from "@/services/customer";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -27,9 +31,10 @@ import {
     Users,
     X,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
+    Keyboard,
     Modal,
     Pressable,
     ScrollView,
@@ -90,13 +95,18 @@ function toIsoDateKeySafe(
   value: Date | string | null | undefined,
 ): string | null {
   if (!value) return null;
-  const d = value instanceof Date ? new Date(value.getTime()) : new Date(value);
-  if (!Number.isFinite(d.getTime())) return null;
-  try {
-    return d.toISOString().split("T")[0];
-  } catch {
-    return null;
+  // Pass through pure date-only strings to preserve server values.
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
   }
+  const d = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(d.getTime())) return null;
+  // Use local components — toISOString() shifts to UTC and lands on the
+  // previous calendar day for any user east of UTC (or near midnight UTC).
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function toEpochSafe(value: Date | string | null | undefined): number {
@@ -207,7 +217,7 @@ const inputStyle = {
   borderRadius: 8,
   borderWidth: 1,
   borderColor: colors.border,
-} as const;
+};
 
 const labelStyle = {
   fontSize: 10,
@@ -337,7 +347,7 @@ const AddReservationModal: React.FC<{
   onSubmit: (data: AddReservationData) => Promise<void>;
   isLoading: boolean;
   defaultDate: Date;
-  availableTables: { id: string; name: string }[];
+  availableTables: { id: string; name: string; occupied?: boolean }[];
   initialData?: Reservation | null;
   title?: string;
   subtitle?: string;
@@ -365,13 +375,40 @@ const AddReservationModal: React.FC<{
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [isVip, setIsVip] = useState(false);
+  const [initSnapshot, setInitSnapshot] = useState<string>("");
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   // Customer search
   const [customerQuery, setCustomerQuery] = useState("");
   const [linkedCustomer, setLinkedCustomer] = useState<CustomerWithMeta | null>(
     null,
   );
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsBlurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const allCustomers = useMemo(() => getCachedCustomers(), [visible]);
+
+  useEffect(
+    () => () => {
+      if (suggestionsBlurTimer.current)
+        clearTimeout(suggestionsBlurTimer.current);
+    },
+    [],
+  );
+
+  const handleSuggestionsBlur = useCallback(() => {
+    if (suggestionsBlurTimer.current)
+      clearTimeout(suggestionsBlurTimer.current);
+    suggestionsBlurTimer.current = setTimeout(
+      () => setShowSuggestions(false),
+      150,
+    );
+  }, []);
+
+  const dismissSuggestions = useCallback(() => {
+    if (suggestionsBlurTimer.current)
+      clearTimeout(suggestionsBlurTimer.current);
+    setShowSuggestions(false);
+  }, []);
   const timeOptions = useMemo(
     () => HOURS.flatMap((h) => MINUTES.map((m) => `${h.value}:${m.value}`)),
     [],
@@ -392,7 +429,10 @@ const AddReservationModal: React.FC<{
   );
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      setShowDiscardConfirm(false);
+      return;
+    }
 
     if (initialData) {
       const nextDate = initialData.reservation_date
@@ -401,24 +441,87 @@ const AddReservationModal: React.FC<{
       const editableTime = toEditableTime(initialData.reservation_time);
       const [hour, minute] = editableTime.split(":");
 
-      setName(initialData.party_name ?? "");
-      setPartySize(initialData.party_size ?? 2);
-      setPhone(initialData.phone ?? "");
-      setSelectedDate(
-        Number.isFinite(nextDate.getTime()) ? nextDate : defaultDate,
-      );
-      setSelHour(hour ?? "19");
-      setSelMin(minute ?? "00");
-      setSelectedTableIds(initialData.assigned_table_ids ?? []);
-      setNotes(initialData.notes ?? initialData.special_requests ?? "");
-      setIsVip(Boolean(initialData.is_vip));
+      const initName = initialData.party_name ?? "";
+      const initPartySize = initialData.party_size ?? 2;
+      const initPhone = formatUsPhone(initialData.phone ?? "");
+      const initDate = Number.isFinite(nextDate.getTime())
+        ? nextDate
+        : defaultDate;
+      const initSelHour = hour ?? "19";
+      const initSelMin = minute ?? "00";
+      const initTableIds = initialData.assigned_table_ids ?? [];
+      const initNotes = initialData.notes ?? initialData.special_requests ?? "";
+      const initVip = Boolean(initialData.is_vip);
+
+      setName(initName);
+      setPartySize(initPartySize);
+      setPhone(initPhone);
+      setSelectedDate(initDate);
+      setSelHour(initSelHour);
+      setSelMin(initSelMin);
+      setSelectedTableIds(initTableIds);
+      setNotes(initNotes);
+      setIsVip(initVip);
       setLinkedCustomer(null);
       setCustomerQuery("");
+      setInitSnapshot(
+        JSON.stringify({
+          name: initName,
+          partySize: initPartySize,
+          phone: initPhone,
+          selectedDate: initDate.toISOString(),
+          selHour: initSelHour,
+          selMin: initSelMin,
+          selectedTableIds: [...initTableIds].sort(),
+          notes: initNotes,
+          isVip: initVip,
+        }),
+      );
       return;
     }
 
     resetForm();
+    setInitSnapshot(
+      JSON.stringify({
+        name: "",
+        partySize: 2,
+        phone: "",
+        selectedDate: defaultDate.toISOString(),
+        selHour: "19",
+        selMin: "00",
+        selectedTableIds: [],
+        notes: "",
+        isVip: false,
+      }),
+    );
   }, [visible, initialData, defaultDate]);
+
+  const isDirty = useMemo(() => {
+    if (!initSnapshot) return false;
+    const current = JSON.stringify({
+      name,
+      partySize,
+      phone,
+      selectedDate: selectedDate.toISOString(),
+      selHour,
+      selMin,
+      selectedTableIds: [...selectedTableIds].sort(),
+      notes,
+      isVip,
+    });
+    return current !== initSnapshot;
+  }, [
+    initSnapshot,
+    name,
+    partySize,
+    phone,
+    selectedDate,
+    selHour,
+    selMin,
+    selectedTableIds,
+    notes,
+    isVip,
+  ]);
 
   const customerResults = useMemo(() => {
     const q = customerQuery.toLowerCase().trim();
@@ -435,14 +538,16 @@ const AddReservationModal: React.FC<{
   const handleSelectCustomer = (c: CustomerWithMeta) => {
     setLinkedCustomer(c);
     setName(c.name ?? "");
-    setPhone(c.phone ?? c.phoneNumber ?? "");
+    setPhone(formatUsPhone(c.phone ?? c.phoneNumber ?? ""));
     setCustomerQuery("");
+    dismissSuggestions();
   };
 
   const clearCustomer = () => {
     setLinkedCustomer(null);
     setName("");
     setPhone("");
+    setCustomerQuery("");
   };
 
   const setSelectedTime = (time: string) => {
@@ -473,9 +578,20 @@ const AddReservationModal: React.FC<{
     setIsVip(false);
     setLinkedCustomer(null);
     setCustomerQuery("");
+    dismissSuggestions();
   };
 
   const handleClose = () => {
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+    resetForm();
+    onClose();
+  };
+
+  const confirmDiscard = () => {
+    setShowDiscardConfirm(false);
     resetForm();
     onClose();
   };
@@ -486,7 +602,7 @@ const AddReservationModal: React.FC<{
     await onSubmit({
       name: name.trim() || "Guest",
       partySize,
-      phone: phone.trim(),
+      phone: normalizeUsPhoneDigits(phone),
       date: d,
       time: selectedTime,
       tableIds: selectedTableIds,
@@ -501,6 +617,21 @@ const AddReservationModal: React.FC<{
       prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id],
     );
   };
+
+  const isLightTheme = colors.card === "#F1F4F9";
+  const formInputSurface = isLightTheme ? colors.card : colors.inset;
+  const formControlSurface = isLightTheme ? colors.card : colors.inset;
+  const formActionSurface = isLightTheme ? colors.card : colors.screen;
+  // Re-read theme-dependent colors on every render. The module-level
+  // `inputStyle` captures `colors.heading` once at load time, which freezes
+  // the value to whatever theme was active when the module evaluated; on
+  // light theme the captured dark-theme heading color is near-white and
+  // becomes invisible against the light input surface.
+  const themedInputStyle = {
+    ...inputStyle,
+    backgroundColor: formInputSurface,
+    color: colors.heading,
+  } as const;
 
   const surfaceCard = {
     borderRadius: 12,
@@ -520,7 +651,7 @@ const AddReservationModal: React.FC<{
       >
         <Pressable
           style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-          onPress={handleClose}
+          onPress={() => {}}
         >
           <View
             style={{
@@ -595,7 +726,7 @@ const AddReservationModal: React.FC<{
 
               <View style={{ padding: 14, gap: 10 }}>
                 {/* Customer search — full width at top */}
-                <View style={surfaceCard}>
+                <View style={[surfaceCard, { zIndex: 30 }]}>
                   <Text style={labelStyle}>Customer (Optional)</Text>
                   {linkedCustomer ? (
                     /* Linked customer badge */
@@ -676,7 +807,7 @@ const AddReservationModal: React.FC<{
                           paddingHorizontal: 8,
                           paddingVertical: 5,
                           borderRadius: 6,
-                          backgroundColor: colors.screen,
+                          backgroundColor: formActionSurface,
                           borderWidth: 1,
                           borderColor: colors.border,
                         }}
@@ -694,13 +825,12 @@ const AddReservationModal: React.FC<{
                     </View>
                   ) : (
                     /* Search input + quick results */
-                    <View>
+                    <View style={{ zIndex: 30 }}>
                       <View
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
-                          ...inputStyle,
-                          backgroundColor: colors.inset,
+                          ...themedInputStyle,
                           paddingHorizontal: 10,
                           gap: 8,
                         }}
@@ -708,7 +838,20 @@ const AddReservationModal: React.FC<{
                         <Search size={14} color={colors.muted} />
                         <TextInput
                           value={customerQuery}
-                          onChangeText={setCustomerQuery}
+                          onChangeText={(value) => {
+                            setCustomerQuery(value);
+                            setShowSuggestions(true);
+                          }}
+                          onFocus={() => {
+                            if (customerQuery.trim().length > 0)
+                              setShowSuggestions(true);
+                          }}
+                          onBlur={handleSuggestionsBlur}
+                          onSubmitEditing={() => {
+                            dismissSuggestions();
+                            Keyboard.dismiss();
+                          }}
+                          returnKeyType="done"
                           placeholder="Search by name or phone..."
                           placeholderTextColor={colors.muted}
                           style={{
@@ -725,16 +868,26 @@ const AddReservationModal: React.FC<{
                           </TouchableOpacity>
                         )}
                       </View>
-                      {customerQuery.trim().length >= 2 &&
+                      {showSuggestions &&
+                        customerQuery.trim().length >= 2 &&
                         customerResults.length > 0 && (
                           <View
                             style={{
-                              marginTop: 6,
+                              position: "absolute",
+                              top: 42,
+                              left: 0,
+                              right: 0,
                               borderRadius: 8,
                               borderWidth: 1,
                               borderColor: colors.border,
                               backgroundColor: colors.card,
                               overflow: "hidden",
+                              zIndex: 40,
+                              elevation: 8,
+                              shadowColor: "#000",
+                              shadowOffset: { width: 0, height: 6 },
+                              shadowOpacity: 0.18,
+                              shadowRadius: 12,
                             }}
                           >
                             {customerResults.map((c, i) => (
@@ -805,7 +958,8 @@ const AddReservationModal: React.FC<{
                             ))}
                           </View>
                         )}
-                      {customerQuery.trim().length >= 2 &&
+                      {showSuggestions &&
+                        customerQuery.trim().length >= 2 &&
                         customerResults.length === 0 && (
                           <Text
                             style={{
@@ -838,7 +992,7 @@ const AddReservationModal: React.FC<{
                           onChangeText={setName}
                           placeholder="Enter name"
                           placeholderTextColor={colors.muted}
-                          style={inputStyle}
+                          style={themedInputStyle}
                           autoCapitalize="words"
                         />
                       </View>
@@ -853,7 +1007,7 @@ const AddReservationModal: React.FC<{
                           borderWidth: 1,
                           backgroundColor: isVip
                             ? colors.warning + "20"
-                            : colors.inset,
+                            : formControlSurface,
                           borderColor: isVip
                             ? colors.warning + "50"
                             : colors.border,
@@ -881,11 +1035,14 @@ const AddReservationModal: React.FC<{
                         <Text style={labelStyle}>Phone</Text>
                         <TextInput
                           value={phone}
-                          onChangeText={setPhone}
+                          onChangeText={(value) =>
+                            setPhone(formatUsPhone(value))
+                          }
                           keyboardType="phone-pad"
-                          placeholder="Phone number"
+                          maxLength={14}
+                          placeholder="(555) 123-4567"
                           placeholderTextColor={colors.muted}
-                          style={inputStyle}
+                          style={themedInputStyle}
                         />
                       </View>
                       <View style={{ width: 170 }}>
@@ -927,7 +1084,7 @@ const AddReservationModal: React.FC<{
                               flex: 1,
                               alignItems: "center",
                               justifyContent: "center",
-                              backgroundColor: colors.inset,
+                              backgroundColor: formControlSurface,
                             }}
                           >
                             <Text
@@ -983,7 +1140,7 @@ const AddReservationModal: React.FC<{
                             justifyContent: "center",
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.inset,
+                            backgroundColor: formControlSurface,
                           }}
                         >
                           <ChevronLeft size={14} color={colors.label} />
@@ -1002,7 +1159,7 @@ const AddReservationModal: React.FC<{
                             justifyContent: "center",
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.inset,
+                            backgroundColor: formControlSurface,
                           }}
                         >
                           <Text
@@ -1025,7 +1182,7 @@ const AddReservationModal: React.FC<{
                             justifyContent: "center",
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.inset,
+                            backgroundColor: formControlSurface,
                           }}
                         >
                           <ChevronRight size={14} color={colors.label} />
@@ -1040,7 +1197,7 @@ const AddReservationModal: React.FC<{
                           borderRadius: 10,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          backgroundColor: colors.inset,
+                          backgroundColor: formControlSurface,
                           padding: 8,
                           gap: 8,
                         }}
@@ -1063,7 +1220,7 @@ const AddReservationModal: React.FC<{
                               justifyContent: "center",
                               borderWidth: 1,
                               borderColor: colors.border,
-                              backgroundColor: colors.inset,
+                              backgroundColor: formControlSurface,
                               opacity: selectedTimeIndex <= 0 ? 0.4 : 1,
                             }}
                           >
@@ -1104,7 +1261,7 @@ const AddReservationModal: React.FC<{
                               justifyContent: "center",
                               borderWidth: 1,
                               borderColor: colors.border,
-                              backgroundColor: colors.panel,
+                              backgroundColor: formControlSurface,
                               opacity:
                                 selectedTimeIndex >= timeOptions.length - 1
                                   ? 0.4
@@ -1120,7 +1277,7 @@ const AddReservationModal: React.FC<{
                             borderRadius: 8,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.inset,
+                            backgroundColor: formControlSurface,
                             overflow: "hidden",
                             alignSelf: "center",
                           }}
@@ -1190,7 +1347,7 @@ const AddReservationModal: React.FC<{
                             borderRadius: 10,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            backgroundColor: colors.inset,
+                            backgroundColor: formControlSurface,
                             padding: 8,
                             gap: 8,
                           }}
@@ -1248,7 +1405,7 @@ const AddReservationModal: React.FC<{
                                       ? colors.teal + "20"
                                       : t.occupied
                                         ? colors.warning + "10"
-                                        : colors.inset,
+                                        : formControlSurface,
                                     borderColor: active
                                       ? colors.teal + "60"
                                       : t.occupied
@@ -1285,12 +1442,11 @@ const AddReservationModal: React.FC<{
                         onChangeText={setNotes}
                         placeholder="Allergies, occasion..."
                         placeholderTextColor={colors.muted}
-                        multiline
-                        style={{
-                          ...inputStyle,
-                          height: 94,
-                          textAlignVertical: "top",
-                        }}
+                        returnKeyType="done"
+                        blurOnSubmit
+                        onSubmitEditing={Keyboard.dismiss}
+                        maxLength={500}
+                        style={themedInputStyle}
                       />
                     </View>
                   </View>
@@ -1308,7 +1464,7 @@ const AddReservationModal: React.FC<{
                       justifyContent: "center",
                       borderWidth: 1,
                       borderColor: colors.border,
-                      backgroundColor: colors.screen,
+                      backgroundColor: formActionSurface,
                     }}
                   >
                     <Text
@@ -1343,7 +1499,7 @@ const AddReservationModal: React.FC<{
                         style={{
                           fontSize: 13,
                           fontWeight: "700",
-                          color: "#000000",
+                          color: "#ffffff",
                         }}
                       >
                         {submitLabel}
@@ -1366,7 +1522,7 @@ const AddReservationModal: React.FC<{
       >
         <Pressable
           style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-          onPress={() => setShowDatePicker(false)}
+          onPress={() => {}}
         >
           <View
             style={{
@@ -1424,14 +1580,14 @@ const AddReservationModal: React.FC<{
                   }}
                   markedDates={calendarMarkedDates}
                   theme={{
-                    calendarBackground: colors.panel,
+                    calendarBackground: formInputSurface,
                     monthTextColor: colors.heading,
                     dayTextColor: colors.heading,
                     textDisabledColor: colors.muted,
                     selectedDayBackgroundColor: colors.teal,
                     selectedDayTextColor: "#000000",
                     todayTextColor: colors.teal,
-                    backgroundColor: colors.inset,
+                    backgroundColor: formInputSurface,
                     textSectionTitleColor: colors.label,
                   }}
                 />
@@ -1458,7 +1614,7 @@ const AddReservationModal: React.FC<{
                     justifyContent: "center",
                     borderWidth: 1,
                     borderColor: colors.border,
-                    backgroundColor: colors.screen,
+                    backgroundColor: formActionSurface,
                   }}
                 >
                   <Text
@@ -1502,6 +1658,12 @@ const AddReservationModal: React.FC<{
           </View>
         </Pressable>
       </Modal>
+
+      <DiscardChangesModal
+        visible={showDiscardConfirm}
+        onClose={() => setShowDiscardConfirm(false)}
+        onConfirm={confirmDiscard}
+      />
     </>
   );
 };
@@ -2074,6 +2236,13 @@ const ReservationsPanel: React.FC = () => {
     title: "Failed",
     message: "",
   });
+  const [notifyReservation, setNotifyReservation] = useState<{
+    reservation: Reservation;
+    context: NotifyContext;
+  } | null>(null);
+  const sendReservationNotification = useReservationStore(
+    (s) => s.sendReservationNotification,
+  );
 
   // All selectable tables — show occupied too (reservation is for a future time)
   // Only exclude permanently unusable tables
@@ -2238,14 +2407,73 @@ const ReservationsPanel: React.FC = () => {
 
         if (!ok) throw new Error("Could not update reservation");
 
+        const previousDateStr = toIsoDateKeySafe(selectedDate);
+        const previousReservationDateStr = toIsoDateKeySafe(
+          editingReservation.reservation_date ??
+            editingReservation.reservation_time,
+        );
+        const dateChanged = previousReservationDateStr !== dateStr;
+        const newDate = new Date(`${dateStr}T00:00:00`);
+        const newDateValid = Number.isFinite(newDate.getTime());
+        const nextSelectedDate =
+          dateChanged && newDateValid && previousDateStr !== dateStr
+            ? newDate
+            : selectedDate;
+
+        if (dateChanged && newDateValid && previousDateStr !== dateStr) {
+          setSelectedDate(newDate);
+        }
+
+        const previousTime = toEditableTime(
+          editingReservation.reservation_time ?? "",
+        );
+        const timeChanged = previousTime !== data.time;
+        const partySizeChanged =
+          (editingReservation.party_size ?? null) !== data.partySize;
+
+        const changed: ("date" | "time" | "party_size")[] = [];
+        if (dateChanged) changed.push("date");
+        if (timeChanged) changed.push("time");
+        if (partySizeChanged) changed.push("party_size");
+
+        const phoneDigits = data.phone?.replace(/\D/g, "") ?? "";
+        const updatedReservation: Reservation = {
+          ...editingReservation,
+          party_name: data.name,
+          party_size: data.partySize,
+          phone: data.phone,
+          reservation_date: dateStr,
+          reservation_time: data.time,
+          notes: data.notes,
+          is_vip: data.isVip,
+        };
+
         show({
-          title: "Reservation Updated",
-          message: `${data.name} updated for ${formatPreset(data.time)}`,
+          title: dateChanged ? "Reservation Moved" : "Reservation Updated",
+          message: dateChanged
+            ? `${data.name} moved to ${formatDateLabel(newDate)} at ${formatPreset(data.time)}`
+            : `${data.name} updated for ${formatPreset(data.time)}`,
           type: "success",
         });
         setEditingReservation(null);
         if (selectedStore?.id) {
-          fetchReservations(selectedStore.id, selectedDate, { silent: true });
+          fetchReservations(selectedStore.id, nextSelectedDate, {
+            silent: true,
+          });
+        }
+
+        if (changed.length > 0 && phoneDigits.length > 0) {
+          setNotifyReservation({
+            reservation: updatedReservation,
+            context: {
+              kind: "reservation_update",
+              partyName: data.name,
+              storeName: selectedStore?.name ?? "our restaurant",
+              newDate: formatDateLabel(newDate),
+              newTime: formatPreset(data.time),
+              changed,
+            },
+          });
         }
       } catch (err: any) {
         const message = err.message || "Could not update reservation";
@@ -2263,10 +2491,31 @@ const ReservationsPanel: React.FC = () => {
       selectedStore?.id,
       editingReservation,
       selectedDate,
+      setSelectedDate,
       updateReservation,
       show,
       fetchReservations,
     ],
+  );
+
+  const handleSendReservationNotify = useCallback(
+    async (message: string, templateKey: TemplateKey) => {
+      if (!notifyReservation) return { success: false, error: "no_target" };
+      const result = await sendReservationNotification(
+        notifyReservation.reservation.id,
+        message,
+        templateKey,
+      );
+      if (result.success) {
+        show({
+          title: "Notified",
+          message: `SMS sent to ${notifyReservation.reservation.party_name}`,
+          type: "success",
+        });
+      }
+      return result;
+    },
+    [notifyReservation, sendReservationNotification, show],
   );
 
   const handleConfirm = useCallback(
@@ -2677,6 +2926,20 @@ const ReservationsPanel: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {notifyReservation && (
+        <NotifyCustomerModal
+          visible={!!notifyReservation}
+          onClose={() => setNotifyReservation(null)}
+          context={notifyReservation.context}
+          recipient={{
+            phone: notifyReservation.reservation.phone,
+            partyName: notifyReservation.reservation.party_name,
+            storeName: selectedStore?.name ?? "our restaurant",
+          }}
+          onSend={handleSendReservationNotify}
+        />
+      )}
     </View>
   );
 };

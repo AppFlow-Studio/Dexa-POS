@@ -54,6 +54,19 @@ export function useNetworkStatus(): NetworkStatus {
 }
 
 /**
+ * Row-level network hint without subscribing to the global pending-sync count.
+ */
+export function useIsNetworkDegraded(): boolean {
+  const rawIsOnline = useSyncExternalStore(
+    subscribeOnlineStatus,
+    getRawIsOnline,
+    getRawIsOnline,
+  );
+  const quality = useConnectionQuality();
+  return !rawIsOnline || quality === "slow" || quality === "probing";
+}
+
+/**
  * DEV-only hook: provides force-offline toggle for testing.
  * Returns current force state and a toggle function.
  */

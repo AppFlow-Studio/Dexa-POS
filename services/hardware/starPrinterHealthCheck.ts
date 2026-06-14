@@ -18,7 +18,8 @@ import {
 import {
   discoverStarPrinters,
 } from "@/services/printing/discovery/StarPrinterDiscovery";
-import type { PrinterConfig } from "@/types/printer";
+import { PRINTER_STATUS_IN_USE, type PrinterConfig } from "@/types/printer";
+import { getPrinterReachability } from "@/stores/selectors/printerSelectors";
 
 // ============================================================================
 // CONSTANTS
@@ -106,7 +107,8 @@ function findAlternativePrinter(
         p.id !== offlinePrinter.id &&
         p.printerType === "star_micronics" &&
         p.isActive &&
-        p.isConnected &&
+        // Only suggest printers we can actually claim — exclude in_use peers.
+        getPrinterReachability(p) === "connectable" &&
         ((offlinePrinter.isDefaultReceipt && p.printerRole === "receipt") ||
           (offlinePrinter.isDefaultKitchen && p.printerRole === "kitchen") ||
           p.printerRole === offlinePrinter.printerRole),
@@ -124,6 +126,10 @@ function sleep(ms: number): Promise<void> {
 
 interface ProbeResult {
   online: boolean;
+  // Reachable on the network but held by another device (StarIO10InUseError).
+  // online is still true — the printer is listening — but a print attempt may
+  // wait or fail until the peer releases.
+  inUse?: boolean;
   error?: string;
   paperNearEmpty?: boolean;
   paperEmpty?: boolean;
@@ -194,9 +200,10 @@ async function probePrinter(
       };
     } catch (e: any) {
       // InUseError means the printer is reachable but held by another connection
-      // (e.g. another POS station). Report as online — it's not offline.
+      // (e.g. another POS station). It IS on the network — surface as in_use so
+      // the badge can render yellow instead of silently merging into green.
       if (e instanceof StarIO10InUseError) {
-        return { online: true };
+        return { online: true, inUse: true };
       }
       try {
         await probe.close();
@@ -257,6 +264,31 @@ function handlePrinterOnline(printer: PrinterConfig, result?: ProbeResult): void
   console.log(`[StarPrinterHealthCheck] ${printer.printerName} online`);
 }
 
+function handlePrinterInUse(printer: PrinterConfig): void {
+  // In-use is a neutral steady state — the printer IS on the network, it's
+  // just claimed by a peer. Don't count it as a failure (no error_count++)
+  // and don't fire any toasts. Reachability selector renders the yellow badge
+  // based on the PRINTER_STATUS_IN_USE sentinel below.
+  const state = getState(printer.id);
+  state.consecutiveFailures = 0;
+  state.toastShownForStreak = false;
+  state.lastCheckAt = Date.now();
+
+  // Reachable — DHCP recovery is not needed.
+  dhcpRecoveryAttempted.delete(printer.id);
+
+  const pid = printer.id;
+  deferStoreUpdate(() => {
+    usePrinterStore.getState().syncPrinterStatus(pid, {
+      isConnected: true,
+      lastStatus: PRINTER_STATUS_IN_USE,
+      errorCount: 0,
+    });
+  });
+
+  console.log(`[StarPrinterHealthCheck] ${printer.printerName} in use by peer`);
+}
+
 function handlePrinterOffline(printer: PrinterConfig, errorMessage: string): void {
   const state = getState(printer.id);
   state.consecutiveFailures++;
@@ -302,17 +334,20 @@ function handlePrinterOffline(printer: PrinterConfig, errorMessage: string): voi
     }
   }
 
-  // DHCP IP Auto-Recovery: after threshold failures, if printer has MAC address,
-  // run a background scan to find the printer at its new IP.
-  // Only attempt once per failure streak to avoid repeated scans.
-  const macAddress = (printer.metadata as Record<string, unknown> | null)?.macAddress as string | undefined;
+  // DHCP IP Auto-Recovery: after threshold failures, if we have any stable key
+  // (MAC in metadata or top-level serial_number), run a background scan and
+  // try to match the printer to its new IP. Only attempt once per failure
+  // streak to avoid repeated scans.
+  const macAddress = (printer.metadata as Record<string, unknown> | null)
+    ?.macAddress as string | undefined;
+  const hasStableKey = !!macAddress || !!printer.serialNumber;
   if (
     state.consecutiveFailures >= FAILURE_TOAST_THRESHOLD &&
-    macAddress &&
+    hasStableKey &&
     !dhcpRecoveryAttempted.has(printer.id)
   ) {
     dhcpRecoveryAttempted.add(printer.id);
-    attemptDhcpRecovery(printer, macAddress);
+    attemptDhcpRecovery(printer, macAddress ?? null);
   }
 }
 
@@ -322,17 +357,31 @@ function handlePrinterOffline(printer: PrinterConfig, errorMessage: string): voi
  * and updates the printer config if found at a new IP.
  * Fire-and-forget — non-blocking.
  */
-function attemptDhcpRecovery(printer: PrinterConfig, macAddress: string): void {
+function attemptDhcpRecovery(printer: PrinterConfig, macAddress: string | null): void {
   console.log(
-    `[StarPrinterHealthCheck] Attempting DHCP recovery for ${printer.printerName} (MAC: ${macAddress})`,
+    `[StarPrinterHealthCheck] Attempting DHCP recovery for ${printer.printerName} (MAC: ${macAddress ?? "n/a"}, serial: ${printer.serialNumber ?? "n/a"})`,
   );
 
   // Fire-and-forget — don't block health check
   discoverStarPrinters(5000)
     .then(async (discovered) => {
-      const match = discovered.find(
-        (d) => d.macAddress && d.macAddress.toLowerCase() === macAddress.toLowerCase(),
-      );
+      // MAC wins when present (LAN-interface identifier the SDK returns
+      // directly). Fall back to serial_number for legacy rows that pre-date
+      // MAC capture.
+      const match =
+        (macAddress
+          ? discovered.find(
+              (d) =>
+                d.macAddress &&
+                d.macAddress.toLowerCase() === macAddress.toLowerCase(),
+            )
+          : undefined) ??
+        (printer.serialNumber
+          ? discovered.find(
+              (d) =>
+                d.serialNumber && d.serialNumber === printer.serialNumber,
+            )
+          : undefined);
 
       if (!match || match.ipAddress === printer.networkAddress) {
         console.log(
@@ -353,11 +402,11 @@ function attemptDhcpRecovery(printer: PrinterConfig, macAddress: string): void {
 
       // Immediately verify at new IP
       const verifyResult = await probePrinter(match.ipAddress);
-      if (verifyResult.online) {
-        handlePrinterOnline(
-          { ...printer, networkAddress: match.ipAddress },
-          verifyResult,
-        );
+      const movedPrinter = { ...printer, networkAddress: match.ipAddress };
+      if (verifyResult.online && verifyResult.inUse) {
+        handlePrinterInUse(movedPrinter);
+      } else if (verifyResult.online) {
+        handlePrinterOnline(movedPrinter, verifyResult);
 
         useToastStore.getState().show({
           title: "Printer Reconnected",
@@ -425,7 +474,9 @@ async function performHealthCheckRound(): Promise<void> {
 
       const result = await probePrinter(printer.networkAddress!);
 
-      if (result.online) {
+      if (result.online && result.inUse) {
+        handlePrinterInUse(printer);
+      } else if (result.online) {
         handlePrinterOnline(printer, result);
       } else {
         handlePrinterOffline(printer, result.error ?? "Unknown error");
@@ -525,4 +576,33 @@ export function stopStarPrinterHealthCheck(): void {
 
 export function isStarPrinterHealthCheckRunning(): boolean {
   return intervalId !== null;
+}
+
+// Kick a single round on demand (e.g. when the Printers screen mounts).
+// Safe to call concurrently — performHealthCheckRound is guarded by isChecking.
+export function triggerHealthCheckNow(): void {
+  performHealthCheckRound();
+}
+
+// Re-probe one printer on demand (e.g. per-card "Refresh" button). Reuses the
+// same probe path + handlers as the background round, so DB / store updates
+// are identical — just scoped to one printer.
+export async function probePrinterNow(printerId: string): Promise<void> {
+  const printer = usePrinterStore
+    .getState()
+    .printers.find((p) => p.id === printerId);
+  if (!printer || printer.printerType !== "star_micronics" || !printer.networkAddress) {
+    return;
+  }
+  if (isPrinterBusy(printer.id)) {
+    return;
+  }
+  const result = await probePrinter(printer.networkAddress);
+  if (result.online && result.inUse) {
+    handlePrinterInUse(printer);
+  } else if (result.online) {
+    handlePrinterOnline(printer, result);
+  } else {
+    handlePrinterOffline(printer, result.error ?? "Unknown error");
+  }
 }

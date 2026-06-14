@@ -8,6 +8,7 @@
  * Used by: store, payment preview, offline mode, tests
  */
 
+import { isServiceChargeEnabled } from '@/lib/serviceCharge'
 import { CartItem } from '@/lib/types'
 import {
   DualPriceSplitResult,
@@ -257,7 +258,17 @@ export function calculatePaidStatus (
       p.isCashPriced && p.cashSavings
         ? (p.amount ?? 0) + p.cashSavings
         : p.amount ?? 0
-    return sum + cardEquivalent
+    // Refund subtraction must scale by the cash↔card ratio: refundedAmount is
+    // stored in the payment's own currency, so for a fully-refunded cash
+    // payment we have to remove the entire card-equivalent (cash + savings),
+    // not just the cash portion — otherwise the cashSavings residue is left
+    // counted as "paid" and the order misreads as fully settled. Mirrors the
+    // proportional refund handling in calculateOrderTotals.
+    const refunded = p.refundedAmount ?? 0
+    const amount = p.amount ?? 0
+    const cardEquivalentRefunded =
+      amount > 0 ? (cardEquivalent * refunded) / amount : refunded
+    return sum + (cardEquivalent - cardEquivalentRefunded)
   }, 0)
 
   // No payments or zero total paid
@@ -397,7 +408,22 @@ export function calculateOrderTotals (
     return cached.result
   }
 
-  const { items, checkDiscount, taxRatesMap, payments = [] } = input
+  const {
+    items,
+    checkDiscount,
+    taxRatesMap,
+    payments = [],
+    preserveItemLevelOutstanding = false,
+    serviceChargeRule,
+    partySize,
+    orderType,
+    snapshottedRate,
+    snapshottedAppliesOn,
+    snapshottedName,
+    manualServiceCharge,
+    manualServiceChargeTaxable,
+    serverConfirmedServiceCharge,
+  } = input
   const activeItems = items.filter(item => !item.is_voided && !item.isDraft)
 
   if (activeItems.length === 0) {
@@ -634,13 +660,165 @@ export function calculateOrderTotals (
   }
 
   // =========================================================================
+  // SERVICE CHARGE
+  // Flat $ folded into both card and cash totals (matches calculate_order_totals_fast).
+  // Snapshot rate/name/applies_on take precedence over the live rule, so mid-shift
+  // rule edits don't retroactively change an open order's SC.
+  // =========================================================================
+
+  let serviceCharge = new Decimal(0)
+  let cashServiceCharge = new Decimal(0)
+  let serviceChargeName = ''
+
+  const effectiveRate =
+    snapshottedRate != null && snapshottedRate > 0
+      ? snapshottedRate
+      : serviceChargeRule?.rate_percent ?? 0
+  const effectiveAppliesOn =
+    snapshottedAppliesOn ?? serviceChargeRule?.applies_on ?? 'pre_discount'
+  const effectiveName = snapshottedName ?? serviceChargeRule?.name ?? ''
+
+  const ruleEligible =
+    isServiceChargeEnabled &&
+    serviceChargeRule != null &&
+    serviceChargeRule.is_active &&
+    serviceChargeRule.auto_apply &&
+    effectiveRate > 0 &&
+    serviceChargeRule.applies_to_order_types.includes(orderType ?? '') &&
+    partySize != null &&
+    partySize >= serviceChargeRule.min_party_size
+
+  if (manualServiceCharge != null) {
+    // Manager override — bypass rule eligibility entirely. Percent-mode
+    // overrides (snapshottedRate != null) recompute dynamically from
+    // rate × current base, mirroring calculate_order_totals_fast v3.
+    // Amount-mode overrides (rate null) stay frozen at the flat dollar
+    // amount the manager set.
+    if (snapshottedRate != null && snapshottedRate > 0) {
+      const cardBase =
+        effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
+      serviceCharge = Decimal.max(cardBase, 0)
+        .times(snapshottedRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    } else {
+      serviceCharge = new Decimal(manualServiceCharge)
+    }
+    cashServiceCharge = serviceCharge
+    serviceChargeName = snapshottedName ?? (effectiveName || 'Service Charge')
+  } else if (ruleEligible) {
+    const cardBase =
+      effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
+    serviceCharge = cardBase
+      .times(effectiveRate)
+      .dividedBy(100)
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+
+    // The SC dollar amount is identical for cash and card. Cash pricing only
+    // changes the item subtotal; taxable SC is added before the cash tax total.
+    cashServiceCharge = serviceCharge
+
+    serviceChargeName = effectiveName
+
+    if (__DEV__ && partySize != null && partySize < serviceChargeRule!.min_party_size) {
+      // Invariant: should never reach here per the eligibility check above.
+      // Logged in case the eligibility branch is later refactored unsafely.
+      console.warn(
+        '[service_charge] applied below threshold',
+        { partySize, threshold: serviceChargeRule!.min_party_size }
+      )
+    }
+  } else if (serverConfirmedServiceCharge != null && serverConfirmedServiceCharge > 0) {
+    // Rule eligibility failed locally (rules store not yet loaded, partySize
+    // unresolvable) but the server already applied SC. Use as a fallback so
+    // outstanding totals don't drop SC and under-collect from the customer.
+    serviceCharge = new Decimal(serverConfirmedServiceCharge)
+    cashServiceCharge = serviceCharge
+    serviceChargeName = snapshottedName ?? (effectiveName || 'Service Charge')
+  }
+
+  // =========================================================================
+  // SERVICE CHARGE TAX (when is_taxable = true)
+  // Tax is applied to the SC amount using the weighted effective tax rate.
+  // =========================================================================
+
+  let serviceChargeTax = new Decimal(0)
+  let cashServiceChargeTax = new Decimal(0)
+
+  // SC tax applies in two cases, both mirroring calculate_order_totals_fast:
+  //  1) Rule-eligible SC whose rule has is_taxable = true.
+  //  2) Manual override flagged taxable (orders.service_charge_is_taxable),
+  //     surfaced here via manualServiceChargeTaxable. The server taxes the
+  //     overridden SC via the service_charge_is_taxable column fallback (the
+  //     rule_id is nulled on override), so the client must match or the
+  //     cashier prompt would diverge from the server-authoritative total.
+  const scIsTaxable =
+    (ruleEligible && serviceChargeRule!.is_taxable === true) ||
+    (manualServiceCharge != null && manualServiceChargeTaxable === true)
+  if (scIsTaxable && serviceCharge.gt(0)) {
+    // Resolve the SC tax rate: prefer 'standard', fall back to the first non-zero
+    // rate in the map (handles locations where the category key differs from 'standard').
+    const rawScTaxRate =
+      taxRatesMap['standard'] ??
+      Object.values(taxRatesMap).find((r) => r > 0) ??
+      0
+    const scTaxRate = new Decimal(rawScTaxRate)
+    if (scTaxRate.gt(0)) {
+      serviceChargeTax = serviceCharge
+        .times(scTaxRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+      cashServiceChargeTax = cashServiceCharge
+        .times(scTaxRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+      totalCardTax = totalCardTax.plus(serviceChargeTax)
+      totalCashTax = totalCashTax.plus(cashServiceChargeTax)
+    }
+  }
+
+  // =========================================================================
   // FINAL TOTALS
   // =========================================================================
 
-  const cardTotal = netCardSubtotal.plus(totalCardTax)
-  const cashTotal = netCashSubtotal.plus(totalCashTax)
-  let outstandingCardTotal = outstandingCardSubtotal.plus(outstandingCardTax)
-  let outstandingCashTotal = outstandingCashSubtotal.plus(outstandingCashTax)
+  const cardTotal = netCardSubtotal.plus(totalCardTax).plus(serviceCharge)
+  const cashTotal = netCashSubtotal.plus(totalCashTax).plus(cashServiceCharge)
+
+  // Outstanding SC: proportional to the unpaid portion of the net subtotal.
+  // When nothing has been paid yet, outstanding ~= net, so full SC is outstanding.
+  //
+  // The SC dollar amount is a FLAT shared charge — identical for cash and card
+  // (cashServiceCharge === serviceCharge above) — so its remaining portion is
+  // also shared, NOT dual-priced. Using a separate cash-subtotal proportion
+  // produced a cash remainder that diverged from (and could exceed) the card
+  // remainder, which is nonsensical: cash must never cost more than card. Both
+  // sides therefore use the same card-subtotal proportion. This matches how the
+  // flat SC remainder (customRefundBalance) is added equally to both totals below.
+  const scUnpaidProportion = netCardSubtotal.gt(0)
+    ? Decimal.min(outstandingCardSubtotal.div(netCardSubtotal), new Decimal(1))
+    : new Decimal(activeItems.length > 0 ? 1 : 0)
+  const outstandingServiceCharge = serviceCharge
+    .times(scUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+  // Flat/shared: cash remainder equals the card remainder.
+  const outstandingCashServiceCharge = cashServiceCharge
+    .times(scUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+  const outstandingServiceChargeTax = serviceChargeTax
+    .times(scUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+  const outstandingCashServiceChargeTax = cashServiceChargeTax
+    .times(scUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+
+  let outstandingCardTotal = outstandingCardSubtotal
+    .plus(outstandingCardTax)
+    .plus(outstandingServiceCharge)
+    .plus(outstandingServiceChargeTax)
+  let outstandingCashTotal = outstandingCashSubtotal
+    .plus(outstandingCashTax)
+    .plus(outstandingCashServiceCharge)
+    .plus(outstandingCashServiceChargeTax)
 
   // =========================================================================
   // PAYMENT-LEVEL REFUND HANDLING
@@ -651,6 +829,14 @@ export function calculateOrderTotals (
     // Calculate effective paid using card-equivalent amounts (matches SQL §10)
     // For cash-priced payments, amount is cash price but cashSavings = original_amount - amount
     // So amount + cashSavings = original_amount = card equivalent
+    //
+    // Refund subtraction must scale by the same card↔cash ratio: order_payments
+    // stores refunded_amount in the payment's own currency (cash for a
+    // cash-priced payment). Subtracting that raw cash amount from
+    // cardEquivalent leaves the cashSavings residue counted as "paid", which
+    // diverges from the backend (it removes the refunded payment's full
+    // card-equivalent share). Proportional refund: cardEquiv × (refunded /
+    // amount), so a full refund zeros the contribution exactly.
     const effectivePaid = payments
       .filter(p => !p.isVoided && !p.isPreAuth)
       .reduce((sum, p) => {
@@ -660,7 +846,13 @@ export function calculateOrderTotals (
           p.isCashPriced && p.cashSavings
             ? new Decimal(p.amount).plus(p.cashSavings)
             : new Decimal(p.amount)
-        return sum.plus(cardEquivalentAmount.minus(refunded))
+        const cardEquivalentRefunded =
+          p.amount > 0
+            ? cardEquivalentAmount
+                .times(refunded)
+                .div(p.amount)
+            : new Decimal(refunded)
+        return sum.plus(cardEquivalentAmount.minus(cardEquivalentRefunded))
       }, new Decimal(0))
 
     // Payment-based outstanding = total - effective_paid
@@ -675,18 +867,16 @@ export function calculateOrderTotals (
       new Decimal(0)
     )
     outstandingCardTotal = outstandingCardTotal.plus(customRefundBalance)
-    // customRefundBalance is in card-equivalent terms; scale to cash-equivalent
-    // using order-level ratio (not current outstanding, which can be 0 when items are paid)
-    const cashToCardRatio = cardTotal.gt(0)
-      ? cashTotal.div(cardTotal)
-      : new Decimal(1)
-    outstandingCashTotal = outstandingCashTotal.plus(
-      customRefundBalance.times(cashToCardRatio)
-    )
+    // This balance is the shared order-level SC (and its tax). Cash and card
+    // carry the same flat remainder, so do not dual-price it.
+    outstandingCashTotal = outstandingCashTotal.plus(customRefundBalance)
 
     // Clamping: when payments exceed item-level tracking (e.g., split-evenly doesn't mark items),
     // clamp outstanding down to payment-based remaining (matches SQL §10 lines 796-803)
-    if (paymentBasedOutstanding.lt(outstandingCardTotal)) {
+    if (
+      !preserveItemLevelOutstanding &&
+      paymentBasedOutstanding.lt(outstandingCardTotal)
+    ) {
       if (outstandingCardTotal.gt(0)) {
         outstandingCashTotal = outstandingCashTotal
           .times(paymentBasedOutstanding)
@@ -727,7 +917,18 @@ export function calculateOrderTotals (
       .toDecimalPlaces(2)
       .toNumber(),
     cash_outstanding_tax: outstandingCashTax.toNumber(),
-    cash_outstanding_total: outstandingCashTotal.toDecimalPlaces(2).toNumber()
+    cash_outstanding_total: outstandingCashTotal.toDecimalPlaces(2).toNumber(),
+
+    // Service Charge
+    service_charge: serviceCharge.toNumber(),
+    cash_service_charge: cashServiceCharge.toNumber(),
+    // Outstanding (remaining) SC — proportional to the unpaid subtotal portion.
+    // Folded into outstanding_total above; exposed separately so the breakdown
+    // UI can show the remaining SC on a partially-paid order (the rows must
+    // reconcile to balance due).
+    outstanding_service_charge: outstandingServiceCharge.toNumber(),
+    cash_outstanding_service_charge: outstandingCashServiceCharge.toNumber(),
+    service_charge_name: serviceChargeName
   }
 
   if (calculationCache.size >= MAX_CACHE_SIZE) pruneCache()
@@ -758,7 +959,12 @@ function createEmptyTotals (): OrderTotals {
     cash_total_amount: 0,
     cash_outstanding_subtotal: 0,
     cash_outstanding_tax: 0,
-    cash_outstanding_total: 0
+    cash_outstanding_total: 0,
+    service_charge: 0,
+    cash_service_charge: 0,
+    outstanding_service_charge: 0,
+    cash_outstanding_service_charge: 0,
+    service_charge_name: ''
   }
 }
 
@@ -1165,7 +1371,26 @@ export function hashCalculationInput (input: OrderCalculationInput): string {
           type: input.checkDiscount.type,
           value: input.checkDiscount.value
         }
-      : null
+      : null,
+    // Service charge inputs — must invalidate cache when these change.
+    preserveItemLevelOutstanding: input.preserveItemLevelOutstanding ?? false,
+    sc: {
+      ruleId: input.serviceChargeRule?.id ?? null,
+      rate: input.serviceChargeRule?.rate_percent ?? null,
+      appliesOn: input.serviceChargeRule?.applies_on ?? null,
+      minParty: input.serviceChargeRule?.min_party_size ?? null,
+      active: input.serviceChargeRule?.is_active ?? null,
+      auto: input.serviceChargeRule?.auto_apply ?? null,
+      taxable: input.serviceChargeRule?.is_taxable ?? null,
+      partySize: input.partySize ?? null,
+      orderType: input.orderType ?? null,
+      snapRate: input.snapshottedRate ?? null,
+      snapAppliesOn: input.snapshottedAppliesOn ?? null,
+      snapName: input.snapshottedName ?? null,
+      manual: input.manualServiceCharge ?? null,
+      manualTaxable: input.manualServiceChargeTaxable ?? null,
+      serverConfirmed: input.serverConfirmedServiceCharge ?? null,
+    }
     // Don't include taxRatesMap in hash - it rarely changes
   }
   return JSON.stringify(key)

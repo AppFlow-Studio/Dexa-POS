@@ -34,6 +34,10 @@ interface CFDClientStore {
 
   discountAmount: number;
 
+  serviceCharge: number;
+  serviceChargeName: string | null;
+  serviceChargeRate: number | null;
+
   taxAmount: number;
   taxCash: number;
   taxCard: number;
@@ -59,6 +63,7 @@ interface CFDClientStore {
   paymentMethod: 'cash' | 'card' | 'manual' | null
   themeMode: 'light' | 'dark'
   merchantHasLoyalty: boolean
+  pricingDisplayMode: 'dual' | 'card_only' | 'cash_only'
 
   // Actions
   setPairing: (data: CFDPairingData) => void;
@@ -95,6 +100,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
 
       discountAmount: 0,
 
+      serviceCharge: 0,
+      serviceChargeName: null,
+      serviceChargeRate: null,
+
       taxAmount: 0,
       taxCash: 0,
       taxCard: 0,
@@ -120,6 +129,7 @@ export const useCFDClientStore = create<CFDClientStore>()(
       paymentMethod: null,
       themeMode: 'dark',
       merchantHasLoyalty: false,
+      pricingDisplayMode: 'dual',
 
       // Actions
       setPairing: (data) => {
@@ -168,6 +178,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
 
           discountAmount: payload.discountAmount,
 
+          serviceCharge: payload.serviceCharge,
+          serviceChargeName: payload.serviceChargeName,
+          serviceChargeRate: payload.serviceChargeRate,
+
           taxAmount: payload.taxAmount,
           taxCash: payload.taxCash,
           taxCard: payload.taxCard,
@@ -196,7 +210,9 @@ export const useCFDClientStore = create<CFDClientStore>()(
           // Carry forward when payload omits — POS includes this on every
           // update once cached, but defensive in case of partial payloads.
           merchantHasLoyalty:
-            payload.merchantHasLoyalty ?? get().merchantHasLoyalty
+            payload.merchantHasLoyalty ?? get().merchantHasLoyalty,
+          pricingDisplayMode:
+            payload.pricingDisplayMode ?? get().pricingDisplayMode
         })
     }),
     {

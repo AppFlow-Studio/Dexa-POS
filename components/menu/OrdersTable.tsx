@@ -1,6 +1,8 @@
+import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
+import { formatPaymentStatus } from '@/utils/orderStatusHelpers'
 import {
   ArrowDown,
   ArrowUp,
@@ -81,13 +83,13 @@ const STATUS_PILL: Record<
     bg: colors.warning + '20',
     border: colors.warning + '50',
     text: colors.warning,
-    label: 'Pending'
+    label: formatPaymentStatus('Pending')
   },
   Unpaid: {
     bg: colors.warning + '20',
     border: colors.warning + '50',
     text: colors.warning,
-    label: 'Pending'
+    label: formatPaymentStatus('Unpaid')
   },
   Partial: {
     bg: colors.paymentPartial + '20',
@@ -127,7 +129,7 @@ function getLeftBorderColor (order: OrderProfile): string {
   if (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0))
     return colors.danger
 
-  switch (order.paid_status) {
+  switch (deriveEffectivePaidStatus(order) ?? order.paid_status) {
     case 'Paid':
       return colors.muted
     case 'Partial':
@@ -157,7 +159,7 @@ function getEffectiveStatus (order: OrderProfile): string {
   )
   if (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0))
     return 'Refunded'
-  return order.paid_status || 'Pending'
+  return deriveEffectivePaidStatus(order) ?? order.paid_status ?? 'Pending'
 }
 
 // Sort priority for status column

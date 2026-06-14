@@ -190,9 +190,14 @@ const PreviousOrdersSection = () => {
         ids.add(id)
       }
       const result: OrderProfile[] = []
+      const seenOrderIds = new Set<string>()
       for (const id of ids) {
         const o = s.ordersById[id]
-        if (o) result.push(o)
+        if (!o) continue
+        const canonicalId = o.db_order_id ?? o.id
+        if (seenOrderIds.has(canonicalId)) continue
+        seenOrderIds.add(canonicalId)
+        result.push(o)
       }
       return result
     })
@@ -287,6 +292,7 @@ const PreviousOrdersSection = () => {
             total_amount: po.total,
             amount_paid: po.amount_paid,
             amount_due: po.amount_due,
+            cash_amount_due: po.cash_amount_due,
 
             // Timestamps
             opened_at: po.timestamp || po.opened_at,

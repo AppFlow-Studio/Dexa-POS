@@ -94,7 +94,7 @@ export function isMutationPending(mutationKey: string): boolean {
 }
 
 // Debounce timers for quantity/value updates
-const debounceTimers = new Map<string, NodeJS.Timeout>();
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /**
  * Debounced sync helper for rapid value changes (e.g., quantity updates).

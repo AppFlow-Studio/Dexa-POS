@@ -6,7 +6,12 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { prefetchMenuItemRemoteImages } from "@/lib/menuImagePrefetch";
+import {
+    beginMenuModifierPreWarm,
+    isMenuModifierPreWarmCurrent,
+} from "@/lib/menuModifierPreWarmControl";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { MenuItemType } from "@/lib/types";
 // import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -20,6 +25,8 @@ import {
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { BlurView } from "expo-blur";
 import { Link } from "expo-router";
 import {
     CheckCircle2,
@@ -42,6 +49,7 @@ import React, {
 } from "react";
 import {
     FlatList,
+    ActivityIndicator,
     InteractionManager,
     ListRenderItemInfo,
     Platform,
@@ -87,6 +95,7 @@ const menuSectionStyles = StyleSheet.create({
     width: "23%",
   },
 });
+const EMPTY_HIDDEN_MENU_IDS: string[] = [];
 
 const getBlockingOverlayStyle = (overlayColor: string): ViewStyle => ({
   ...StyleSheet.absoluteFillObject,
@@ -133,6 +142,78 @@ const MenuBlockingOverlay = React.memo(() => {
 });
 MenuBlockingOverlay.displayName = "MenuBlockingOverlay";
 
+const SeatingBlockingOverlay = React.memo(
+  ({
+    isVisible,
+    title,
+    message,
+  }: {
+    isVisible: boolean;
+    title: string;
+    message: string;
+  }) => {
+    if (!isVisible) return null;
+    return (
+      <Pressable style={getBlockingOverlayStyle("transparent")}>
+        <BlurView
+          intensity={22}
+          tint="dark"
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View
+          style={{
+            ...StyleSheet.absoluteFillObject,
+            backgroundColor: colors.background + "66",
+          }}
+        />
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 24,
+          }}
+        >
+          <View
+            style={{
+              alignItems: "center",
+              gap: 8,
+              paddingHorizontal: 18,
+              paddingVertical: 14,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.panel + "E6",
+            }}
+          >
+            <ActivityIndicator size="small" color={colors.teal} />
+            <Text
+              style={{
+                color: colors.heading,
+                fontSize: 15,
+                fontWeight: "700",
+                textAlign: "center",
+              }}
+            >
+              {title}
+            </Text>
+            <Text
+              style={{
+                color: colors.muted,
+                fontSize: 12,
+                textAlign: "center",
+              }}
+            >
+              {message}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    );
+  },
+);
+SeatingBlockingOverlay.displayName = "SeatingBlockingOverlay";
+
 const MenuSectionContent: React.FC<MenuSectionProps> = ({
   onOrderClosedCheck,
   isTableOrder = false,
@@ -157,23 +238,24 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const lastSelectedMenuId = useMenuStore((s) => s.lastSelectedMenuId);
   const setLastSelectedMenuId = useMenuStore((s) => s.setLastSelectedMenuId);
   const menuNavigationMode = useSettingsStore(
-    (s) => s.posMenuNavigationMode ?? "popup",
+    (s) => s.posMenuNavigationMode ?? "classic",
   );
   const usePopupMenuNavigation = menuNavigationMode === "popup";
 
-  const { requestPinOverride, isUnlocked } = usePinOverrideStore();
+  const requestPinOverride = usePinOverrideStore((s) => s.requestPinOverride);
+  const isUnlocked = usePinOverrideStore((s) => s.isUnlocked);
   const addTemporaryMenuAccess = useMenuStore((s) => s.addTemporaryMenuAccess);
   const addTemporaryCategoryAccess = useMenuStore(
     (s) => s.addTemporaryCategoryAccess,
   );
-  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
-  const hiddenMenuMap = useMenuVisibilityStore(
-    (s) => s.hiddenMenuIdsByLocation,
+  const selectedStoreId = useStoreSettingsStore(
+    (s) => s.selectedStore?.id ?? null,
   );
-  const selectedStoreId = selectedStore?.id ?? null;
-  const hiddenMenuIds = useMemo(
-    () => (selectedStoreId ? hiddenMenuMap[selectedStoreId] ?? [] : []),
-    [hiddenMenuMap, selectedStoreId],
+  const hiddenMenuIds = useMenuVisibilityStore(
+    (s) =>
+      (selectedStoreId
+        ? s.hiddenMenuIdsByLocation[selectedStoreId]
+        : null) ?? EMPTY_HIDDEN_MENU_IDS,
   );
 
   // OPTIMIZED: Use computed selector to get only order_type, avoiding re-renders on item changes
@@ -183,12 +265,68 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
     return order?.order_type || "takeout";
   });
+  const currentOrderDbId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.db_order_id ?? null;
+  });
+  const currentOrderSessionId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.session_id ?? null;
+  });
+  const currentOrderLocalSessionId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.local_session_id ?? null;
+  });
+  const currentOrderTableId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.service_location_id ?? null;
+  });
+  const isTableSeating = useTableSessionStore((s) => {
+    if (currentOrderType !== "dine_in") return false;
+    const sessionIds = [
+      currentOrderSessionId,
+      currentOrderLocalSessionId,
+    ].filter(Boolean);
+    const orderIds = [activeOrderId].filter(Boolean);
+    if (
+      Object.values(s.sessions).some(
+        (session) =>
+          session.status === "seating" &&
+          (sessionIds.includes(session.id) ||
+            (!!session.order_id && orderIds.includes(session.order_id))),
+      )
+    ) {
+      return true;
+    }
+    return currentOrderTableId
+      ? s.sessions[currentOrderTableId]?.status === "seating"
+      : false;
+  });
+  // Block menu adds until the backend order exists — for ALL order types now.
+  // Dine-in creates at seating; takeout eager-creates on order start. In both
+  // cases the order has no db_order_id until the backend row lands.
+  //
+  // OFFLINE: a backend row can't be created, so the order is created locally and
+  // its create_order op is queued — items legitimately proceed under the local ID
+  // (mirrors the offline carve-out in addItemToActiveOrder). Only block while
+  // ONLINE, otherwise the overlay would stick on "Creating order" forever offline.
+  const { isOnline } = useNetworkStatus();
+  const isCreatingOrder = isOnline && !!activeOrderId && !currentOrderDbId;
+  const isMenuAddDisabled = isTableSeating || isCreatingOrder;
+  // Seating takes precedence over "creating" in the label (a dine-in order is
+  // also db_order_id-less while seating, but "Seating in progress" is clearer).
+  const menuDisabledTitle = isTableSeating
+    ? "Seating in progress"
+    : "Creating order";
+  const menuDisabledMessage = isTableSeating
+    ? "Items can be added once the table is seated."
+    : "Items can be added once the order is ready.";
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails,
   );
 
-  const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
-    useOrderTypeDrawerStore();
+  const isOrderTypeDrawerOpen = useOrderTypeDrawerStore((s) => s.isOpen);
+  const closeDrawer = useOrderTypeDrawerStore((s) => s.closeDrawer);
 
   // Tick each minute to refresh availability indicators
   const [availabilityTick, setAvailabilityTick] = useState(0);
@@ -516,41 +654,46 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   useEffect(() => {
     if (!filteredMenuItems.length || !currentCategoryId || !activeMenuId)
       return;
-    const visibleItems = filteredMenuItems.slice(0, 12);
+    const visibleItems = filteredMenuItems.slice(0, isTableOrder ? 6 : 12);
     let cancelled = false;
     let pendingRaf: number | null = null;
+    let pendingTimeout: ReturnType<typeof setTimeout> | null = null;
+    const generation = beginMenuModifierPreWarm();
 
     const handle = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return;
+      if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
       // Image prefetch is fire-and-forget — kick it off immediately, it
       // doesn't compete with the JS thread.
-      prefetchMenuItemRemoteImages(visibleItems);
+      pendingTimeout = setTimeout(() => {
+        if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
+        prefetchMenuItemRemoteImages(visibleItems);
 
-      // Chunk modifier precompute 5 items per frame so a 15-item burst
-      // spreads across ~3 frames instead of one ~30–50ms task.
-      const CHUNK_SIZE = 5;
-      const store = useModifierSidebarStore.getState();
-      let cursor = 0;
-      const step = () => {
-        if (cancelled) return;
-        const slice = visibleItems.slice(cursor, cursor + CHUNK_SIZE);
-        if (slice.length === 0) {
-          pendingRaf = null;
-          return;
-        }
-        store.preWarmMany(slice, currentCategoryId, activeMenuId);
-        cursor += CHUNK_SIZE;
+        // Dine-in favors responsiveness: warm fewer items in smaller chunks.
+        const chunkSize = isTableOrder ? 2 : 5;
+        const store = useModifierSidebarStore.getState();
+        let cursor = 0;
+        const step = () => {
+          if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
+          const slice = visibleItems.slice(cursor, cursor + chunkSize);
+          if (slice.length === 0) {
+            pendingRaf = null;
+            return;
+          }
+          store.preWarmMany(slice, currentCategoryId, activeMenuId);
+          cursor += chunkSize;
+          pendingRaf = requestAnimationFrame(step);
+        };
         pendingRaf = requestAnimationFrame(step);
-      };
-      pendingRaf = requestAnimationFrame(step);
+      }, isTableOrder ? 180 : 0);
     });
 
     return () => {
       cancelled = true;
       handle.cancel?.();
+      if (pendingTimeout !== null) clearTimeout(pendingTimeout);
       if (pendingRaf !== null) cancelAnimationFrame(pendingRaf);
     };
-  }, [filteredMenuItems, currentCategoryId, activeMenuId]);
+  }, [filteredMenuItems, currentCategoryId, activeMenuId, isTableOrder]);
 
   // OPTIMIZED: Memoized keyExtractor to prevent recreation
   // NOTE: All hooks must be called before any early returns
@@ -574,10 +717,17 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
           onOrderClosedCheck={onOrderClosedCheck}
           categoryId={currentCategoryId}
           menuId={activeMenuId}
+          disabled={isMenuAddDisabled}
         />
       );
     },
-    [onOrderClosedCheck, currentCategoryId, activeMenuId, numColumns],
+    [
+      onOrderClosedCheck,
+      currentCategoryId,
+      activeMenuId,
+      numColumns,
+      isMenuAddDisabled,
+    ],
   );
 
   const formatTime = (d?: Date | null) =>
@@ -1058,6 +1208,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         </View>
 
         {/* Blocking overlay isolated — only re-renders when modifier opens */}
+        <SeatingBlockingOverlay
+          isVisible={isMenuAddDisabled}
+          title={menuDisabledTitle}
+          message={menuDisabledMessage}
+        />
         <MenuBlockingOverlay />
 
         {/* ModifierScreenOverlay renders on top when opened - keeps cart visible to cashier */}

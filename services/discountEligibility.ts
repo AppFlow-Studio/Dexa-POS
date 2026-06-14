@@ -128,7 +128,12 @@ export function checkDiscountEligibility(
   }
 
   const currentDay = currentDate.getDay();
-  if (!discount.applicable_days.includes(currentDay)) {
+  const applicableDays = discount.applicable_days;
+  if (
+    applicableDays != null &&
+    applicableDays.length > 0 &&
+    !applicableDays.map(Number).includes(currentDay)
+  ) {
     return {
       eligible: false,
       reason: "Not valid today",
@@ -172,6 +177,16 @@ export function checkDiscountEligibility(
         calculated_savings: 0,
       };
     }
+  }
+
+  if (discount.requires_manager_approval) {
+    return {
+      eligible: false,
+      reason: "Requires manager approval",
+      discount,
+      applicable_amount: 0,
+      calculated_savings: 0,
+    };
   }
 
   if (discount.max_uses_per_day !== null) {

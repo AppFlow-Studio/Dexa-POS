@@ -72,6 +72,11 @@ export interface CFDPayload {
 
   discountAmount: number
 
+  // Service charge folded into total_amount (cents). 0 when not applicable.
+  serviceCharge: number
+  serviceChargeName: string | null
+  serviceChargeRate: number | null
+
   taxAmount: number // Default/Card tax
   taxCash: number
   taxCard: number
@@ -142,6 +147,12 @@ export interface CFDPayload {
   // hides the "Join Loyalty" CTA on the result screen so customers don't see
   // a button that would lead nowhere.
   merchantHasLoyalty?: boolean
+
+  // Controls which price totals the CFD ordering screen displays.
+  // 'dual' = show both card and cash totals (default)
+  // 'card_only' = show only card total
+  // 'cash_only' = show only cash total
+  pricingDisplayMode?: 'dual' | 'card_only' | 'cash_only'
 
   // Theme
   themeMode?: 'light' | 'dark'

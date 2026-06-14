@@ -57,6 +57,17 @@ export interface OrderState {
   amount_due: number;
   cash_amount_due: number;
   amount_paid: number;
+  // Wave A (manage_order_discount_v3): SC + sync metadata carried back so
+  // clients can reconcile against the post-recalc orders row without a
+  // second round-trip. Optional on the type because v2 fallback responses
+  // (pre-Wave-A) omit them.
+  total_amount?: number;
+  service_charge?: number;
+  service_charge_rate?: number | null;
+  service_charge_applies_on?: string | null;
+  service_charge_rule_id?: string | null;
+  service_charge_name?: string | null;
+  sync_version?: number;
 }
 
 export interface AffectedItem {
@@ -104,8 +115,13 @@ export class OrderDiscountService {
   ): Promise<DiscountResult> {
     console.log("[OrderDiscountService:applyDiscount]", params);
 
+    // Wave A: v2 → v3 fallback. v3 hands off totals + SC re-resolution to
+    // apply_service_charge_v1 (internally PERFORMs calculate_order_totals_fast)
+    // so card_total/amount_due include service_charge atomically. v2 fallback
+    // writes (subtotal+tax) without SC and is the source of the SC drift
+    // bug Wave A closes. See manage_order_discount_v3_sc_recompute.sql.
     const { data, error } = await rpcWithIdempotency(
-      client, "manage_order_discount", "manage_order_discount", "manage_order_discount_v2",
+      client, "manage_order_discount", "manage_order_discount_v2", "manage_order_discount_v3",
       {
         p_action: "apply",
         p_order_id: params.order_id,
@@ -185,8 +201,9 @@ export class OrderDiscountService {
   ): Promise<DiscountResult> {
     console.log("[OrderDiscountService:voidDiscount]", params);
 
+    // Wave A: v2 → v3 fallback (see applyDiscount above for rationale).
     const { data, error } = await rpcWithIdempotency(
-      client, "manage_order_discount", "manage_order_discount", "manage_order_discount_v2",
+      client, "manage_order_discount", "manage_order_discount_v2", "manage_order_discount_v3",
       {
         p_action: "void",
         p_order_id: params.order_id,

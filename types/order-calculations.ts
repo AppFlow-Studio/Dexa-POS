@@ -12,6 +12,7 @@
 
 import { CartItem, Discount } from "@/lib/types";
 import { TaxRatesMap } from "@/types/menu";
+import type { ServiceChargeRule } from "@/stores/useServiceChargeRulesStore";
 
 // ============================================================================
 // CORE CALCULATION TYPES
@@ -25,8 +26,56 @@ export interface OrderCalculationInput {
   checkDiscount: Discount | null;
   taxRatesMap: TaxRatesMap;
   payments?: { amount: number; isVoided?: boolean; refundedAmount?: number; isCashPriced?: boolean; cashSavings?: number; isPreAuth?: boolean }[];
+  /**
+   * Keep item-level unpaid quantities authoritative even when historical
+   * payments exceed the current hydrated total. Used while a paid check is
+   * explicitly reopened for ordering.
+   */
+  preserveItemLevelOutstanding?: boolean;
   /** Optional cash discount rate for dual pricing (default uses store settings) */
   cashDiscountRate?: number;
+
+  // ---- Service Charge inputs ----
+  /** Resolved active rule for the current location (null = no auto-grat). */
+  serviceChargeRule?: ServiceChargeRule | null;
+  /** Party size from the table session (null = no dine-in session). */
+  partySize?: number | null;
+  /** Order type — only `dine_in` qualifies for auto-apply in v1. */
+  orderType?: string | null;
+  /**
+   * Rate snapshotted on the order at first apply. When set, drives recompute
+   * for the order's lifetime — live rule changes won't retroactively alter rate.
+   */
+  snapshottedRate?: number | null;
+  snapshottedAppliesOn?: "pre_discount" | "post_discount" | null;
+  snapshottedName?: string | null;
+  /**
+   * Wave D — when the order has orders.service_charge_is_manual = true, the
+   * server is authoritative for SC. Pass the override amount here so totals
+   * (total_amount / outstanding_total / cash equivalents) include the manual
+   * value instead of recomputing from the rule. Bypasses rule eligibility.
+   */
+  manualServiceCharge?: number | null;
+  /**
+   * Whether the manually-overridden SC (manualServiceCharge) should be taxed.
+   * Snapshotted on the order as orders.service_charge_is_taxable. When true,
+   * SC tax is added to both card and cash totals using the standard tax rate —
+   * matching the server's calculate_order_totals_fast taxability fallback for
+   * overrides (where service_charge_rule_id is null). Ignored unless
+   * manualServiceCharge is set.
+   */
+  manualServiceChargeTaxable?: boolean | null;
+  /**
+   * Wave D follow-up — server-confirmed SC fallback. Used when local rule
+   * eligibility fails (rules store not loaded, partySize unresolvable) but
+   * the server has already applied a rule-derived SC to the order. Without
+   * this, outstanding-cash drops SC entirely on the cashier prompt — the
+   * customer sees $7.43 on CFD but cashier collects $5.72 (under-collection
+   * surfaced by Latte / Table T-1 / order S6-0015 on staging 2026-05-29).
+   * Unlike manualServiceCharge, this is a *fallback*: rule eligibility
+   * still wins when it succeeds locally.
+   */
+  serverConfirmedServiceCharge?: number | null;
 }
 
 /**
@@ -54,6 +103,20 @@ export interface OrderTotals {
   cash_outstanding_subtotal: number;
   cash_outstanding_tax: number;
   cash_outstanding_total: number;
+
+  // ---- Service Charge ----
+  /** Flat $ added to both card and cash totals (same value, matching backend math). */
+  service_charge: number;
+  cash_service_charge: number;
+  /**
+   * Remaining (unpaid) SC, proportional to the unpaid subtotal portion. Equals
+   * service_charge when nothing is paid; folded into outstanding_total. Lets the
+   * breakdown UI show remaining SC so the rows reconcile to balance due.
+   */
+  outstanding_service_charge: number;
+  cash_outstanding_service_charge: number;
+  /** Snapshot label for display ("" when no SC applies). */
+  service_charge_name: string;
 }
 
 /**
@@ -301,6 +364,8 @@ export interface PaymentForCalculation {
   isVoided?: boolean;
   isCashPriced?: boolean;
   cashSavings?: number;
+  /** Amount refunded against this payment, in the payment's own currency. */
+  refundedAmount?: number;
 }
 
 /**

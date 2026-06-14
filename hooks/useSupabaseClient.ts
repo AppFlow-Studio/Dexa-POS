@@ -15,6 +15,40 @@ const getTokenRef = { current: null as (() => Promise<string | null>) | null };
 // to Supabase Realtime, shared across all 66+ call sites.
 let sharedClient: SupabaseClient | null = null;
 
+// Dev-only payload-size logger. RN's NetworkingModule materializes whole HTTP
+// bodies into a single Java String — a multi-MB response can OOM Android even
+// when the JS heap is fine. Anything above the threshold gets a console.warn
+// so the next outlier surfaces immediately during dev.
+const PAYLOAD_WARN_BYTES = 1_000_000; // 1 MB
+const instrumentedFetch: typeof fetch | undefined = __DEV__
+  ? async (input, init) => {
+      const start = Date.now();
+      const response = await fetch(input, init);
+      try {
+        const len = Number(response.headers.get("content-length") ?? 0);
+        if (len >= PAYLOAD_WARN_BYTES) {
+          const url =
+            typeof input === "string"
+              ? input
+              : input instanceof URL
+                ? input.toString()
+                : (input as Request).url;
+          // Strip query params for cleanliness — the path is what matters.
+          const path = url.split("?")[0];
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[supabase payload] ${(len / 1_000_000).toFixed(2)}MB in ${
+              Date.now() - start
+            }ms — ${path}`,
+          );
+        }
+      } catch {
+        /* logging must never break the request */
+      }
+      return response;
+    }
+  : undefined;
+
 function getSharedClient(): SupabaseClient {
   if (!sharedClient) {
     sharedClient = createClient(supabaseUrl, supabaseKey, {
@@ -22,6 +56,9 @@ function getSharedClient(): SupabaseClient {
         return (await getTokenRef.current?.()) ?? null;
       },
       realtime: realtimeConfig,
+      ...(instrumentedFetch
+        ? { global: { fetch: instrumentedFetch } }
+        : {}),
     });
   }
   return sharedClient;

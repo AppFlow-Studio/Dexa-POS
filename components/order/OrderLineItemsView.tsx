@@ -1,5 +1,6 @@
+import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { colors, PAYMENT_STATUS_COLORS } from '@/lib/theme'
-import { useOrder } from '@/stores/selectors/orderSelectors'
+import { useOrder, useOrderTotals } from '@/stores/selectors/orderSelectors'
 import { Banknote, CheckCircle2, CreditCard, X } from 'lucide-react-native'
 import { useMemo } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
@@ -44,11 +45,17 @@ const OrderLineItemsView = ({
 }: OrderLineItemsViewProps) => {
   const orderToView = useOrder(orderId)
   const items = orderToView?.items || []
+  // Live SC from the totals selector — reactive to seatCount + rule.
+  // Bypasses the deferred `_scheduleTotalsRecompute` write to
+  // order.service_charge so the SC line renders on the very first paint.
+  const liveTotals = useOrderTotals(orderId)
 
   const {
     subtotal,
     discount,
     tax,
+    serviceCharge,
+    serviceChargeName,
     total,
     amountPaid,
     amountDue,
@@ -60,6 +67,8 @@ const OrderLineItemsView = ({
         subtotal: 0,
         discount: 0,
         tax: 0,
+        serviceCharge: 0,
+        serviceChargeName: '',
         total: 0,
         amountPaid: 0,
         amountDue: 0,
@@ -77,9 +86,21 @@ const OrderLineItemsView = ({
         ? localSubtotal * orderToView.checkDiscount.value
         : 0)
     const finalTax = orderToView.total_tax ?? 0
+    // Prefer live selector SC over order snapshot — selector reflects the
+    // calculator output the instant items + seatCount + rule converge,
+    // while order.service_charge waits for the deferred recalc + possible
+    // broadcast wipe.
+    const finalServiceCharge =
+      liveTotals?.serviceCharge ?? orderToView.service_charge ?? 0
+    const finalServiceChargeName =
+      liveTotals?.serviceChargeName ||
+      orderToView.service_charge_name ||
+      'Service Charge'
     const finalTotal =
-      orderToView.total_amount ?? localSubtotal - disc + finalTax
-    const finalSubtotal = finalTotal - finalTax
+      orderToView.total_amount ??
+      localSubtotal - disc + finalTax + finalServiceCharge
+    // Subtotal = total - tax - service_charge (the displayed subtotal pre-tax pre-SC).
+    const finalSubtotal = finalTotal - finalTax - finalServiceCharge
     const finalAmountPaid = orderToView.amount_paid ?? 0
     const finalAmountDue = orderToView.amount_due ?? finalTotal
     const finalCashTotal = orderToView.total_cash_amount ?? 0
@@ -92,13 +113,15 @@ const OrderLineItemsView = ({
       subtotal: finalSubtotal > 0 ? finalSubtotal : localSubtotal,
       discount: disc,
       tax: finalTax,
+      serviceCharge: finalServiceCharge,
+      serviceChargeName: finalServiceChargeName,
       total: finalTotal,
       amountPaid: finalAmountPaid,
       amountDue: finalAmountDue,
       cashTotal: finalCashTotal,
       cashSavings: finalCashSavings
     }
-  }, [orderToView])
+  }, [orderToView, liveTotals?.serviceCharge, liveTotals?.serviceChargeName])
 
   if (!orderToView) return null
 
@@ -108,7 +131,8 @@ const OrderLineItemsView = ({
   const timeLabel = formatTime(orderToView.opened_at)
   const paidStatusColor =
     PAYMENT_STATUS_COLORS[orderToView.paid_status] || colors.muted
-  const isPaid = orderToView.paid_status === 'Paid'
+  const effectivePaidStatus = deriveEffectivePaidStatus(orderToView) ?? orderToView.paid_status
+  const isPaid = effectivePaidStatus === 'Paid'
   const displayId =
     orderToView.display_number || orderToView.order_number || '—'
   const isPartiallyPaid = (orderToView.amount_paid ?? 0) > 0 && !isPaid
@@ -294,6 +318,27 @@ const OrderLineItemsView = ({
             ${tax.toFixed(2)}
           </Text>
         </View>
+
+        {/* Service Charge */}
+        {serviceCharge > 0 && (
+          <View
+            style={{ flexDirection: 'row', justifyContent: 'space-between' }}
+            testID='service-charge-line'
+          >
+            <Text style={{ fontSize: 13, color: colors.muted }}>
+              {serviceChargeName}
+            </Text>
+            <Text
+              style={{
+                fontSize: 13,
+                color: colors.label,
+                fontVariant: ['tabular-nums']
+              }}
+            >
+              ${serviceCharge.toFixed(2)}
+            </Text>
+          </View>
+        )}
 
         {/* Amount paid (partial) */}
         {isPartiallyPaid && (

@@ -145,8 +145,10 @@ BEGIN
                 RETURN jsonb_build_object('success', false, 'error', 'Discount has expired');
             END IF;
             
-            IF v_discount.applicable_days IS NOT NULL AND 
-               NOT (EXTRACT(DOW FROM CURRENT_TIMESTAMP)::integer = ANY(v_discount.applicable_days)) THEN
+            IF v_discount.applicable_days IS NOT NULL AND
+               NOT (EXTRACT(DOW FROM CURRENT_TIMESTAMP)::integer = ANY(
+                   SELECT unnest(v_discount.applicable_days)::integer
+               )) THEN
                 RETURN jsonb_build_object('success', false, 'error', 'Discount not valid today');
             END IF;
             

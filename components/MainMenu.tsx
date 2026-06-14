@@ -215,7 +215,7 @@ const MainMenu: React.FC = () => {
 
     // All validations passed
     setPinDialogOpen(false);
-    if (targetRoute) router.push(targetRoute as any);
+    if (targetRoute) router.replace(targetRoute as any);
     setCurrentPin("");
     setTargetRoute(null);
     setPinError("");
@@ -352,7 +352,7 @@ const MainMenu: React.FC = () => {
                   if (item.isLocked) {
                     handleLockedAccess(item.route);
                   } else {
-                    router.push(item.route as any);
+                    router.replace(item.route as any);
                   }
                 }}
                 isLocked={item.isLocked}

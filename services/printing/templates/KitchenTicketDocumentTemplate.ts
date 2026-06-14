@@ -72,17 +72,24 @@ export function buildKitchenTicketDocument (
     format: { bold: true, doubleWidth: true, doubleHeight: true }
   })
 
-  // Combined order type + table on one line
+  // Order type and table on separate rows
   if (cfg?.showOrderType !== false) {
-    const typeLine = data.tableName
-      ? `${sanitizeForPrint(data.orderType).toUpperCase()} - ${sanitizeForPrint(data.tableName)}`
-      : sanitizeForPrint(data.orderType).toUpperCase()
+    const typeText = sanitizeForPrint(data.orderType).toUpperCase()
     nodes.push({
       type: 'text_line',
-      content: typeLine,
+      content: typeText,
       align: 'center',
-      format: scaledFormat(typeLine, w, { doubleHeight: true })
+      format: scaledFormat(typeText, w, { doubleHeight: true })
     })
+    if (data.tableName) {
+      const tableText = `TABLE: ${sanitizeForPrint(data.tableName)}`
+      nodes.push({
+        type: 'text_line',
+        content: tableText,
+        align: 'center',
+        format: scaledFormat(tableText, w, { doubleHeight: true })
+      })
+    }
   }
 
   // Server name

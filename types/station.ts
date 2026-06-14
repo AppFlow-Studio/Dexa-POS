@@ -78,6 +78,11 @@ export interface Station {
   app_version?: string | null;
   os_version?: string | null;
 
+  // The printer this station currently claims as its receipt printer.
+  // Soft sharing: multiple stations may point at the same printer. Source of
+  // truth lives in the stations row (was MMKV-only previously).
+  current_receipt_printer_id?: string | null;
+
   // Payment terminal linked to this station (non-sensitive metadata only)
   payment_terminal?: StationPaymentTerminal | null;
 }
@@ -103,6 +108,9 @@ export interface SelectedStation {
   can_void_orders?: boolean;
   can_apply_discounts?: boolean;
   can_update_kitchen_status?: boolean;
+  // The printer this station currently claims as its receipt printer. Hydrated
+  // from the stations row on boot; mutated via usePrinterStore.setStationReceiptPrinter.
+  current_receipt_printer_id?: string | null;
   // Payment terminal linked to this station (safe to persist - non-sensitive metadata only)
   payment_terminal?: StationPaymentTerminal | null;
 }

@@ -95,6 +95,8 @@ const PaymentBottomSheet: React.FC = () => {
     }
   }
 
+  if (!isOpen) return null
+
   return (
     <>
       <Modal

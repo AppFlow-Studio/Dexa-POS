@@ -227,7 +227,7 @@ const GeneralSettingsScreen = () => {
   const showMenuImages = useSettingsStore((s) => s.showMenuImages);
   const setShowMenuImages = useSettingsStore((s) => s.setShowMenuImages);
   const posMenuNavigationMode = useSettingsStore(
-    (s) => s.posMenuNavigationMode ?? "popup",
+    (s) => s.posMenuNavigationMode ?? "classic",
   );
   const setPosMenuNavigationMode = useSettingsStore(
     (s) => s.setPosMenuNavigationMode,
@@ -323,6 +323,13 @@ const GeneralSettingsScreen = () => {
         queryKey: ["pos_sync", selectedStore.id],
       }),
       queryClient.invalidateQueries({ queryKey: ["standalone_sync"] }),
+      queryClient.invalidateQueries({
+        queryKey: [
+          "service_charge_rules",
+          selectedStore.merchant_id,
+          selectedStore.id,
+        ],
+      }),
     ];
     const results = await Promise.allSettled(tasks);
     const failed = results.filter((r) => r.status === "rejected").length;

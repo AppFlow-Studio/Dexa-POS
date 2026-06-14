@@ -12,6 +12,7 @@ import {
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
+import { ensureOrderPrefetched } from '@/services/tableOrderPrefetch'
 import {
   findWallCornerSnap,
   WallEdgeFlags
@@ -23,7 +24,6 @@ import {
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
-import { useOrderStore } from '@/stores/useOrderStore'
 import { useFloorPlanEditorStore } from '@/stores/useFloorPlanEditorStore'
 import { useReservationStore } from '@/stores/useReservationStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
@@ -229,6 +229,7 @@ interface DraggableTableProps {
   onPress?: (table: FloorPlanObject) => void
   index?: number // For staggered entry animation
   enableEntryAnimation?: boolean
+  disableEntryAnimation?: boolean
   sectionColor?: string
   wallEdgeFlags?: WallEdgeFlags
 
@@ -247,6 +248,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   onPress,
   index = 0,
   enableEntryAnimation = true,
+  disableEntryAnimation = false,
   sectionColor,
   wallEdgeFlags,
   onLongPress,
@@ -267,11 +269,16 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   )
 
   // Subscribe directly to live session so table color/status updates without needing
-  // the floor plan store sync (matches how Sidebar's TableListItem works)
+  // the floor plan store sync (matches how Sidebar's TableListItem works).
+  // Once isInitialized, the store is authoritative — don't fall back to the stale
+  // table.session prop (TableLayoutView.memo blocks it from updating on session changes).
   const sessionStoreSession = useTableSessionStore(s =>
     isTableType ? s.sessions[table.id] : undefined
   )
-  const liveSession = sessionStoreSession ?? table.session
+  const sessionStoreInitialized = useTableSessionStore(s => s.isInitialized)
+  const liveSession = sessionStoreInitialized
+    ? sessionStoreSession
+    : (sessionStoreSession ?? table.session)
 
   // --- COMPONENT LOOKUP ---
   const shapeDef =
@@ -352,9 +359,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     missingOrderLastAttemptAt[id] = now
     missingOrderSyncInFlight.add(id)
 
-    useOrderStore
-      .getState()
-      .syncOrderFromDatabase(id)
+    ensureOrderPrefetched(id)
       .catch((err: unknown) => {
         console.warn(
           '[DraggableTable] Failed to sync missing order for table card:',
@@ -456,8 +461,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const rotateContext = useSharedValue(0)
 
   // Entry animation shared values
-  const entryScale = useSharedValue(0.8)
-  const entryOpacity = useSharedValue(0)
+  const entryScale = useSharedValue(disableEntryAnimation ? 1 : 0.8)
+  const entryOpacity = useSharedValue(disableEntryAnimation ? 1 : 0)
 
   // Pulse animation for realtime updates
   const pulseScale = useSharedValue(1)
@@ -467,18 +472,24 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   // Staggered entry animation on mount
   useEffect(() => {
-    if (!enableEntryAnimation) {
+    if (!enableEntryAnimation || disableEntryAnimation) {
       entryScale.value = 1
       entryOpacity.value = 1
       return
     }
-    const delay = index * 30 // 30ms stagger per table
+    const delay = Math.min(index, 8) * 25
     const timeout = setTimeout(() => {
       entryScale.value = withSpring(1, { damping: 15, stiffness: 200 })
       entryOpacity.value = withTiming(1, { duration: 200 })
     }, delay)
     return () => clearTimeout(timeout)
-  }, [enableEntryAnimation, index])
+  }, [
+    disableEntryAnimation,
+    enableEntryAnimation,
+    entryOpacity,
+    entryScale,
+    index
+  ])
 
   // Pulse animation when session status changes
   useEffect(() => {
@@ -736,10 +747,13 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   // Bind incoming (table) => void callbacks to this row's table once, so
   // runOnJS gets a stable nullary function instead of a per-render closure.
   const handleSelect = useCallback(() => onSelect(table), [onSelect, table])
-  const handlePress = useCallback(
-    () => onPress?.(table),
-    [onPress, table],
-  )
+  const handlePress = useCallback(() => {
+    const orderId = liveSession?.order_id
+    if (orderId) {
+      ensureOrderPrefetched(orderId).catch(() => {})
+    }
+    onPress?.(table)
+  }, [liveSession?.order_id, onPress, table])
   const handleLongPress = useCallback(
     () => onLongPress?.(table),
     [onLongPress, table],
@@ -1310,6 +1324,9 @@ export default React.memo(DraggableTable, (prev, next) => {
     return false
   }
   if (prev.interactionMode !== next.interactionMode) {
+    return false
+  }
+  if (prev.disableEntryAnimation !== next.disableEntryAnimation) {
     return false
   }
   if (

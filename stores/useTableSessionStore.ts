@@ -36,7 +36,6 @@ import {
     TableSession,
     TableStatus,
 } from "@/types/db-floor-plan-types";
-import type { TableSessionPayload } from "@/types/real-time";
 import { create } from "zustand";
 import { persist, subscribeWithSelector } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
@@ -128,6 +127,43 @@ function fireSideEffects(
 }
 
 // ---------------------------------------------------------------------------
+// Recently-CLEAR'd session tracker
+//
+// Records session ids that were CLEAR'd locally (status → "cleaning" via
+// CLEAR_TABLE, or full removal via CLEAR). useFloorPlanStore queries this via
+// wasSessionRecentlyCleared() to reject stale session restores from backend
+// snapshots or delayed realtime broadcasts that would otherwise re-stamp a
+// paid session onto tables[].session after the session store has wiped it.
+// ---------------------------------------------------------------------------
+
+const RECENTLY_CLEARED_TTL_MS = 30_000;
+const recentlyClearedSessions = new Map<string, number>();
+
+function _recordCleared(sessionId: string) {
+  recentlyClearedSessions.set(sessionId, Date.now());
+}
+
+export function wasSessionRecentlyCleared(sessionId: string): boolean {
+  const t = recentlyClearedSessions.get(sessionId);
+  if (!t) return false;
+  if (Date.now() - t > RECENTLY_CLEARED_TTL_MS) {
+    recentlyClearedSessions.delete(sessionId);
+    return false;
+  }
+  return true;
+}
+
+function _maybeRecordCleared(
+  prev: TableSession | undefined,
+  next: TableSession | undefined,
+) {
+  const enteredCleanup = (!next && !!prev) || next?.status === "cleaning";
+  if (!enteredCleanup) return;
+  const sid = next?.id ?? prev?.id;
+  if (sid) _recordCleared(sid);
+}
+
+// ---------------------------------------------------------------------------
 // Pure _applyAction — computes new session state without side effects
 // ---------------------------------------------------------------------------
 
@@ -209,6 +245,15 @@ function _applyAction(
   if (!current) return { session: undefined, changed: false };
   try {
     const nextStatus = transitionTableStatus(current.status, action.type);
+    // CLEAR_TABLE: drop the order_id reference so the cleaning-state session
+    // can't surface stale order data via UI selectors (TableContextSheet,
+    // useTableSession). Side effects receive orderId via the action payload.
+    if (action.type === "CLEAR_TABLE") {
+      return {
+        session: { ...current, status: nextStatus, order_id: undefined },
+        changed: true,
+      };
+    }
     return { session: { ...current, status: nextStatus }, changed: true };
   } catch {
     return { session: current, changed: false };
@@ -269,6 +314,8 @@ interface TableSessionStoreState {
   sessions: Record<string, TableSession>;
   /** sessionId → tableId[] (for merged tables) */
   sessionTableIndex: Record<string, string[]>;
+  /** true once the store has been populated from the backend at least once */
+  isInitialized: boolean;
   // ---- Dispatch API ----
 
   dispatch: (tableId: string, action: SessionAction) => boolean;
@@ -295,7 +342,7 @@ interface TableSessionStoreState {
     device_id?: string;
     localOrderId?: string;
     serverId?: string;
-  }) => Promise<{ sessionId: string; orderId?: string }>;
+  }) => Promise<{ sessionId: string; orderId?: string | null }>;
 
   updateSessionStatus: (
     sessionId: string,
@@ -317,9 +364,6 @@ interface TableSessionStoreState {
 
   /** Hydrate sessions from backend via get_location_table_status_v2 */
   hydrateFromBackend: (locationId: string) => Promise<void>;
-
-  /** Handle realtime broadcast for session changes */
-  _handleSessionChange: (payload: TableSessionPayload) => void;
 
   /** Hydrate sessions from FloorPlanObject[] (called after loadFloorPlanStatus) */
   _patchSessionsFromTables: (tables: FloorPlanObject[]) => void;
@@ -370,6 +414,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
       immer((set, get) => ({
         sessions: {},
         sessionTableIndex: {},
+        isInitialized: false,
 
         // ------------------------------------------------------------------
         // dispatch — single table action
@@ -393,6 +438,8 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               result.session,
             );
           });
+
+          _maybeRecordCleared(prev, result.session);
 
           _scheduleSyncToFloorPlan(tableId);
           fireSideEffects(tableId, prev, result.session, action);
@@ -433,6 +480,20 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               );
             }
           });
+
+          // A session that is SET onto some table within this same batch is being
+          // MOVED (e.g. a table transfer), not ended. Don't record it as
+          // recently-cleared, or the cleared-guard would wrongly strip it from
+          // the destination table on the next authoritative snapshot.
+          const movedSessionIds = new Set<string>();
+          for (const { result } of results) {
+            if (result.session?.id) movedSessionIds.add(result.session.id);
+          }
+          for (const { prev, result } of results) {
+            const sid = result.session?.id ?? prev?.id;
+            if (sid && movedSessionIds.has(sid)) continue;
+            _maybeRecordCleared(prev, result.session);
+          }
 
           // Selective sync — coalesced via microtask to avoid cascading re-renders
           const changedTableIds = results.map((r) => r.tableId);
@@ -667,6 +728,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             get().batchDispatch(actions);
           }
 
+          // Mark store as initialized — DraggableTable uses this to know the
+          // session store is authoritative and should not fall back to stale
+          // table.session props that TableLayoutView.memo blocks from updating.
+          set((state) => { state.isInitialized = true; });
+
           console.log(
             `[hydrateFromBackend] Synced ${
               incomingTableIds.size
@@ -706,6 +772,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               if (existing && isLocalOnlyStatus(existing.status)) {
                 continue;
               }
+              // This path is only ever fed by loadFloorPlanStatus's authoritative
+              // snapshot (the single writer of backend-owned state). A table
+              // missing the session here genuinely lost it — clear it. No TTL
+              // guard needed: broadcasts are never applied to state anymore, so
+              // there's no stale-broadcast race to defend against.
               actions.push({ tableId, action: { type: "CLEAR" } });
             }
           }
@@ -713,6 +784,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           if (actions.length > 0) {
             get().batchDispatch(actions);
           }
+          set((state) => { state.isInitialized = true; });
         },
 
         // ------------------------------------------------------------------
@@ -786,84 +858,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             tables: newTables,
             tablesById: buildTablesById(newTables),
           });
-        },
-
-        // ------------------------------------------------------------------
-        // _handleSessionChange — realtime broadcast handler
-        // ------------------------------------------------------------------
-
-        _handleSessionChange: (payload: TableSessionPayload) => {
-          const { operation, data } = payload;
-
-          if (operation === "DELETE" || !data?.session) {
-            useFloorPlanStore.getState()._debouncedRefresh();
-            return;
-          }
-
-          // If the session is no longer active, clear all tables associated with it
-          if (data.session.is_active === false) {
-            const sessionId = data.session.id;
-            // O(1) lookup via sessionTableIndex instead of scanning all sessions
-            const tableIds = get().sessionTableIndex[sessionId] || [];
-            const actions: Array<{ tableId: string; action: SessionAction }> =
-              [];
-            for (const tId of tableIds) {
-              actions.push({ tableId: tId, action: { type: "CLEAR" } });
-            }
-            if (actions.length > 0) get().batchDispatch(actions);
-            return;
-          }
-
-          const sessionId = data.session.id;
-          const tableIds = data.tables?.map((t) => t.table_id) || [];
-
-          const actions: Array<{ tableId: string; action: SessionAction }> = [];
-
-          // The broadcast payload (TableSessionData) doesn't include server_staff_id.
-          // Preserve it from the existing session so the server badge doesn't flicker
-          // until the next full loadFloorPlanStatus restores it from the DB.
-          const existingSessionForBroadcast =
-            tableIds.length > 0 ? get().sessions[tableIds[0]] : undefined;
-          const preservedServerStaffId =
-            existingSessionForBroadcast?.id === sessionId
-              ? existingSessionForBroadcast.server_staff_id
-              : undefined;
-
-          const incomingSession: TableSession = {
-            id: sessionId,
-            status: data.session.status,
-            party_size: data.session.party_size,
-            guest_name: data.session.guest_name,
-            seated_at: data.session.seated_at || new Date().toISOString(),
-            current_course: data.session.current_course,
-            needs_attention: data.session.needs_attention,
-            is_vip: data.session.is_vip,
-            order_id: data.session.order_id,
-            reservation_id: (data.session as any).reservation_id ?? null,
-            session_number: data.session.session_number,
-            merged_tables: tableIds.length > 1 ? tableIds : undefined,
-            server_staff_id: preservedServerStaffId,
-          };
-
-          // SYNC for tables in this session
-          for (const tableId of tableIds) {
-            actions.push({
-              tableId,
-              action: { type: "SYNC", session: incomingSession },
-            });
-          }
-
-          // CLEAR for tables that were previously in this session but aren't anymore
-          const currentSessions = get().sessions;
-          for (const [tId, sess] of Object.entries(currentSessions)) {
-            if (sess.id === sessionId && !tableIds.includes(tId)) {
-              actions.push({ tableId: tId, action: { type: "CLEAR" } });
-            }
-          }
-
-          if (actions.length > 0) {
-            get().batchDispatch(actions);
-          }
         },
 
         // ------------------------------------------------------------------
@@ -1063,6 +1057,25 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               orderId: localOrderId,
             });
             useOrderStore.getState().setActiveOrder(localOrderId);
+          } else if (params.localOrderId) {
+            // Caller supplied an existing local order (Path A — normal seat flow
+            // from tables/index.tsx, or BillSection's "assign existing order to
+            // table"). Force-pin guest_count to the modal's partySize so the
+            // order matches the session and downstream consumers (service
+            // charge eligibility, header banner, seat selector default) all
+            // see the same number. Prior behavior left guest_count stale,
+            // which broke SC eligibility when the original order was started
+            // with party=1 / undefined.
+            const { useOrderStore } = require("@/stores/useOrderStore");
+            const existing =
+              useOrderStore.getState().ordersById[params.localOrderId];
+            if (existing && existing.guest_count !== params.partySize) {
+              useOrderStore
+                .getState()
+                .patchOrder(params.localOrderId, {
+                  guest_count: params.partySize,
+                });
+            }
           }
 
           // Clear selection on floor plan store
@@ -1104,7 +1117,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                   reservationId: params.reservationId,
                   waitlistId: params.waitlistId,
                   createOrder: shouldCreateOrder,
-                  localOrderId: localOrderId,
+                  localOrderId: params.localOrderId ?? localOrderId,
                   optimisticSession,
                 },
                 {
@@ -1385,8 +1398,55 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
           if (error) throw error;
 
-          // Refresh via floor plan store (which calls _patchSessionsFromTables)
-          await useFloorPlanStore.getState().loadFloorPlanStatus();
+          // Optimistic own-action move: clear the source table(s) and stamp the
+          // session onto the new target(s) so the floor reacts instantly. The
+          // authoritative snapshot reconcile below confirms it. (Remote devices
+          // converge via useFloorRealtime's reconcile — they don't apply the
+          // raw broadcast.)
+          const sessions = get().sessions;
+          const moving = Object.values(sessions).find((s) => s?.id === sessionId);
+          if (moving) {
+            const targetSet = new Set(newTableIds);
+            const optimistic: Array<{ tableId: string; action: SessionAction }> =
+              [];
+            // Clear old source tables no longer in the new membership.
+            for (const [tId, sess] of Object.entries(sessions)) {
+              if (sess?.id === sessionId && !targetSet.has(tId)) {
+                optimistic.push({ tableId: tId, action: { type: "CLEAR" } });
+              }
+            }
+            // Stamp the session onto the new target tables.
+            const movedSession: TableSession = {
+              ...moving,
+              merged_tables: newTableIds.length > 1 ? newTableIds : undefined,
+            };
+            for (const tId of newTableIds) {
+              optimistic.push({
+                tableId: tId,
+                action: { type: "SET", session: movedSession },
+              });
+            }
+            if (optimistic.length > 0) get().batchDispatch(optimistic);
+
+            // Re-link the session's order to the new primary table. Without this
+            // the order keeps its old service_location_id, so BillSection and the
+            // order line (both keyed on service_location_id) still point at the
+            // old table and never reflect the transfer.
+            const newPrimaryTableId = newTableIds[0];
+            if (moving.order_id && newPrimaryTableId) {
+              const { useOrderStore } =
+                require("@/stores/useOrderStore") as typeof import("@/stores/useOrderStore");
+              const orderStore = useOrderStore.getState();
+              const localOrderId =
+                orderStore.dbOrderIdIndex[moving.order_id] ?? moving.order_id;
+              orderStore.transferOrderToTable?.(localOrderId, newPrimaryTableId);
+            }
+          }
+
+          // Authoritative reconcile — single source of truth. force=true so we
+          // don't reuse a snapshot read that began before the transfer RPC
+          // committed (which would revert the move to stale state).
+          await useFloorPlanStore.getState().loadFloorPlanStatus(true);
         },
 
         // ------------------------------------------------------------------
@@ -1639,76 +1699,22 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         // ------------------------------------------------------------------
 
         clearTableSession: async (tableId: string) => {
-          const isOnline = getIsOnline();
-          const supabase = getClient();
+          // Route through dispatchAction so the registered CLEAR_TABLE side
+          // effect (archiveOrder + setActiveOrder(null) + backend sync +
+          // reservation completion) actually fires. Bare `dispatch` only mutates
+          // session state and skips _fireEffects.
           const session = get().sessions[tableId];
-          const sessionId = session?.id;
-
-          if (sessionId) {
-            const reservationStore = (
-              require("./useReservationStore") as typeof import("./useReservationStore")
-            ).useReservationStore;
-            reservationStore
-              .getState()
-              .completeReservationForSession(sessionId)
-              .catch((err: unknown) => {
-                console.error(
-                  "[clearTableSession] Failed to complete reservation:",
-                  err,
-                );
-              });
-          }
-
-          // 1. Optimistic local transition to cleaning
-          const transitioned = get().dispatch(tableId, { type: "CLEAR_TABLE" });
-          if (!transitioned) {
+          const orderId = session?.order_id ?? undefined;
+          const result = await get().dispatchAction({
+            type: "CLEAR_TABLE",
+            tableId,
+            orderId,
+          });
+          if (!result.success) {
             console.warn(
-              "[clearTableSession] Could not transition to cleaning state",
+              "[clearTableSession] dispatchAction failed:",
+              result.error,
             );
-            return;
-          }
-
-          // 2. Try backend if online and session exists
-          if (isOnline && supabase && sessionId) {
-            try {
-              const p_staff_id =
-                useEmployeeStore.getState().loggedInEmployee?.profileId;
-              const { error } = await FloorPlanService.updateTableSessionStatus(
-                supabase,
-                {
-                  p_session_id: sessionId,
-                  p_status: "cleaning",
-                  p_staff_id,
-                },
-              );
-
-              if (error) {
-                console.error(
-                  "[clearTableSession] Backend error, queuing:",
-                  error,
-                );
-                await queueOperation({
-                  type: "update_session_status",
-                  params: { sessionId, status: "cleaning" },
-                  localOrderId: sessionId,
-                });
-              }
-            } catch (err) {
-              console.error("[clearTableSession] Exception, queuing:", err);
-              await queueOperation({
-                type: "update_session_status",
-                params: { sessionId, status: "cleaning" },
-                localOrderId: sessionId,
-              });
-            }
-          } else if (sessionId) {
-            // 3. Offline — queue for later
-            console.log("[clearTableSession] Offline, queuing");
-            await queueOperation({
-              type: "update_session_status",
-              params: { sessionId, status: "cleaning" },
-              localOrderId: sessionId,
-            });
           }
         },
 
@@ -1722,7 +1728,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           const session = get().sessions[tableId];
           const sessionId = session?.id;
 
-          // 1. Optimistic local transition to available
+          // 1. Optimistic local transition: clear the session immediately.
+          // FINISH_CLEANING → "available" means the table is free — remove it
+          // from the store now rather than waiting for the realtime broadcast,
+          // which can be slow or missed entirely, leaving the table stuck.
           const transitioned = get().dispatch(tableId, {
             type: "FINISH_CLEANING",
           });
@@ -1732,6 +1741,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             );
             return;
           }
+          // Immediately clear the session from the store so DraggableTable
+          // reverts to green without waiting for the realtime update.
+          get().dispatch(tableId, { type: "CLEAR" });
 
           // 2. Try backend if online and session exists
           if (isOnline && supabase && sessionId) {
@@ -1832,6 +1844,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 // ---------------------------------------------------------------------------
 useTableSessionStore.persist.onFinishHydration(() => {
   const sessions = useTableSessionStore.getState().sessions;
+  if (Object.keys(sessions).length > 0) {
+    useTableSessionStore.setState((s) => { s.isInitialized = true; });
+  }
   if (Object.keys(sessions).length === 0) return;
 
   // Lazy-require to avoid circular deps at module init time

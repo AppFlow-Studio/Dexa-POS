@@ -83,7 +83,8 @@ export function useActiveOrderOwnershipRecheck (): void {
         localOrder.order_status === 'void' ||
         localOrder.order_status === 'completed' ||
         localOrder.check_status === 'Closed'
-      const flippedAway = wasMine && !isMine && !orderIsTerminal
+      const flippedAway =
+        wasMine && newStationId != null && !isMine && !orderIsTerminal
 
       // Always refresh the local snapshot (covers the case where local has
       // stale station_name even when station_id matches).

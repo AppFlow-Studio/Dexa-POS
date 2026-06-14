@@ -465,6 +465,8 @@ function transformBroadcastPaymentToProfile (
     subtotal_portion: payment.subtotal_portion,
     tax_portion: payment.tax_portion,
     discount_portion: payment.discount_portion ?? undefined,
+    service_charge: payment.service_charge ?? 0,
+    service_charge_refunded: payment.service_charge_refunded ?? 0,
     voidedAt: payment.voided_at ?? undefined,
     splitInfo,
     itemsCovered,
@@ -679,10 +681,17 @@ export function transformBroadcastToOrder (
     order_type: mapOrderType(backendOrder.order_type),
     order_status: backendOrder.status,
     check_status: backendOrder.check_status || 'Opened',
+    reopen_count: backendOrder.reopen_count ?? 0,
     paid_status: mapPaymentStatus(backendOrder.payment_status),
     service_location_id: backendOrder.table_number,
     // table_number IS the table name (e.g., "T1"), so use it directly for display
     service_location_name: backendOrder.table_number || undefined,
+    // Session binding — preserved so downstream merges (upsertOrder,
+    // _handleOrderBroadcast) can enforce session-boundary checks and so the
+    // [FIFO-ORDER-BLEED] diagnostics can correlate cross-order item leaks
+    // back to the originating session. Broadcasts already carry this on
+    // BroadcastOrderData; we just need to surface it on OrderProfile.
+    session_id: backendOrder.session_id ?? undefined,
     server_name:
       backendOrder.server_name || backendOrder.assigned_server_id || undefined,
     created_by_staff_profile_id:
@@ -695,6 +704,13 @@ export function transformBroadcastToOrder (
     customer_id: backendOrder.customer_id || undefined,
     delivery_address: backendOrder.delivery_address || undefined,
 
+    // Party size: broadcasts don't carry guest_count (it lives on
+    // table_sessions.party_size, not orders), so preserve whatever the local
+    // store already had. Without this, every broadcast wipes guest_count back
+    // to undefined → header falls through to session.party_size or default,
+    // which breaks service-charge eligibility on the next recalc.
+    guest_count: existingOrder?.guest_count,
+
     // Financial - use card pricing as default
     total_amount: backendOrder.card_total || backendOrder.total_amount,
     total_cash_amount:
@@ -703,6 +719,17 @@ export function transformBroadcastToOrder (
       backendOrder.total_amount,
     total_tax: backendOrder.card_tax_amount || backendOrder.tax_amount,
     total_discount: backendOrder.discount_amount,
+
+    // Service charge snapshot — round-tripped so post-payment edits + future
+    // refund reconciliation (Part 3) can see what was billed.
+    service_charge: backendOrder.service_charge ?? 0,
+    service_charge_name: backendOrder.service_charge_name ?? null,
+    service_charge_rate: backendOrder.service_charge_rate ?? null,
+    service_charge_applies_on:
+      backendOrder.service_charge_applies_on ?? null,
+    service_charge_rule_id: backendOrder.service_charge_rule_id ?? null,
+    service_charge_is_manual: backendOrder.service_charge_is_manual ?? false,
+    service_charge_is_taxable: backendOrder.service_charge_is_taxable ?? null,
 
     // Eagerly restore discount metadata when order_discounts are present (from query joins)
     ...(backendOrder.order_discounts && backendOrder.order_discounts.length > 0
@@ -790,6 +817,7 @@ export interface FetchedOrderData {
   station_id?: string | null
   station_name?: string | null
   check_status?: string | null
+  reopen_count?: number | null
   session_id?: string | null
   order_source?: string | null
   delivery_platform?: string | null
@@ -803,6 +831,12 @@ export interface FetchedOrderData {
   tip_amount?: number | null
   discount_amount?: number | null
   service_charge?: number | null
+  service_charge_name?: string | null
+  service_charge_rate?: number | null
+  service_charge_applies_on?: string | null
+  service_charge_rule_id?: string | null
+  service_charge_is_manual?: boolean | null
+  service_charge_is_taxable?: boolean | null
   total_amount?: number | null
   card_subtotal?: number | null
   card_tax_amount?: number | null
@@ -944,6 +978,10 @@ export interface FetchedOrderPayment {
   void_reason: string | null
   refunded_amount: number | null
   refunded_at: string | null
+
+  // Service-charge per-payment snapshot (process_payment_v13+ / apply_refund_to_payment_v4)
+  service_charge: number | null
+  service_charge_refunded: number | null
 
   // Return/refund tracking fields
   is_returned: boolean | null
@@ -1098,6 +1136,8 @@ function normalizeFetchedPayment (
     subtotal_portion: payment.subtotal_portion ?? 0,
     tax_portion: payment.tax_portion ?? 0,
     discount_portion: payment.discount_portion ?? 0,
+    service_charge: payment.service_charge ?? 0,
+    service_charge_refunded: payment.service_charge_refunded ?? 0,
     voided_at: payment.voided_at ?? null,
     amount_tendered: payment.amount_tendered,
     change_given: payment.change_given ?? 0,
@@ -1211,6 +1251,16 @@ export function normalizeFetchedOrder (
     tip_amount: fetchedOrder.tip_amount ?? 0,
     discount_amount: fetchedOrder.discount_amount ?? 0,
     service_charge: fetchedOrder.service_charge ?? 0,
+    service_charge_name: fetchedOrder.service_charge_name ?? null,
+    service_charge_rate: fetchedOrder.service_charge_rate ?? null,
+    service_charge_applies_on:
+      (fetchedOrder.service_charge_applies_on as
+        | 'pre_discount'
+        | 'post_discount'
+        | null) ?? null,
+    service_charge_rule_id: fetchedOrder.service_charge_rule_id ?? null,
+    service_charge_is_manual: fetchedOrder.service_charge_is_manual ?? false,
+    service_charge_is_taxable: fetchedOrder.service_charge_is_taxable ?? null,
     total_amount: fetchedOrder.total_amount ?? 0,
     card_subtotal: fetchedOrder.card_subtotal ?? 0,
     card_tax_amount: fetchedOrder.card_tax_amount ?? 0,
@@ -1276,6 +1326,7 @@ export function normalizeFetchedOrder (
       fetchedOrder.stations?.station_name ?? fetchedOrder.station_name ?? null,
     check_status:
       (fetchedOrder.check_status as 'Opened' | 'Closed' | null) ?? 'Opened',
+    reopen_count: (fetchedOrder.reopen_count as number | null) ?? 0,
     server_name: fetchedOrder.created_by_staff
       ? `${fetchedOrder.created_by_staff.first_name || ''} ${
           fetchedOrder.created_by_staff.last_name || ''

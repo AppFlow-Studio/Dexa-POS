@@ -265,7 +265,30 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                         if (needsCut && supportsCutter) {
                             try {
                                 simplePrinter.cutPaper()
-                                Log.d(TAG, "VectorPrinter: paper cut after print")
+                                // cutPaper() only BUFFERS the cut command on the simple
+                                // Printer. Without a startPrint() the buffer is dropped
+                                // when closeDevice() runs — which is why receipts never
+                                // physically cut on the C20Pro. Fire startPrint() and
+                                // wait for the listener before continuing so the cut
+                                // actually executes on hardware.
+                                val cutLatch = java.util.concurrent.CountDownLatch(1)
+                                simplePrinter.startPrint(object : OnPrintListener {
+                                    override fun onSuccess() {
+                                        Log.d(TAG, "VectorPrinter: paper cut after print")
+                                        cutLatch.countDown()
+                                    }
+                                    override fun onFail(errorCode: Int) {
+                                        Log.w(
+                                            TAG,
+                                            "Cut startPrint failed (0x${errorCode.toString(16)}) — disabling cutter"
+                                        )
+                                        supportsCutter = false
+                                        cutLatch.countDown()
+                                    }
+                                })
+                                // Bounded wait so a stuck cutter can't hang the print
+                                // queue forever — 3s is plenty for a paper-cut motor.
+                                cutLatch.await(3, java.util.concurrent.TimeUnit.SECONDS)
                             } catch (cutEx: Exception) {
                                 Log.w(TAG, "cutPaper() failed — disabling: ${cutEx.message}")
                                 supportsCutter = false
@@ -399,6 +422,12 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 }
 
                 "image" -> {
+                    // TODO(landi-logo): VectorPrinter currently has no bitmap API exposed
+                    // in com.sdksuite.omnidriver. To enable logo printing on the C20Pro,
+                    // check the SDK AAR for a printBitmap/addImage call on either
+                    // VectorPrinter or the simple Printer, and wire it up here. Until
+                    // then, the JS side filters image nodes in LandiDriver.ts; the
+                    // showLogo toggle in receipt-templates settings notes this gap.
                     Log.d(TAG, "Skipping image node — not supported on built-in thermal printer")
                 }
 

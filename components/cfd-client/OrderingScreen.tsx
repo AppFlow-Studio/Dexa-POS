@@ -34,6 +34,8 @@ export function OrderingScreen () {
     subtotalCash,
     subtotalCard,
     discountAmount,
+    serviceCharge,
+    serviceChargeName,
     taxAmount,
     taxCash,
     taxCard,
@@ -46,8 +48,13 @@ export function OrderingScreen () {
     amountPaid,
     branding,
     layout,
-    orderingPanelImages
+    orderingPanelImages,
+    pricingDisplayMode
   } = useCFDDisplayData()
+
+  const showCard = pricingDisplayMode !== 'cash_only'
+  const showCash = pricingDisplayMode !== 'card_only'
+  const showDual = pricingDisplayMode === 'dual'
 
   const listRef = useRef<FlatList>(null)
   const prevCount = useRef(items.length)
@@ -205,7 +212,7 @@ export function OrderingScreen () {
                     color: colors.label
                   }}
                 >
-                  {orderType?.toUpperCase()}
+                  {orderType}
                   {tableName
                     ? ` · Table ${tableName}`
                     : serverName
@@ -293,6 +300,35 @@ export function OrderingScreen () {
                   {formatCurrency(displaySubtotalCard)}
                 </Text>
               </View>
+
+              {serviceCharge > 0 && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: 11,
+                      fontWeight: '500'
+                    }}
+                  >
+                    {serviceChargeName ?? 'Service Charge'}
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: 11,
+                      fontWeight: '500'
+                    }}
+                  >
+                    {formatCurrency(serviceCharge)}
+                  </Text>
+                </View>
+              )}
 
               {discountAmount > 0 && (
                 <View
@@ -390,64 +426,70 @@ export function OrderingScreen () {
             />
 
             {/* Total (card) */}
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 2
-              }}
-            >
-              <Text
-                style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
+            {showCard && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 2
+                }}
               >
-                Total (card)
-              </Text>
-              <Text
-                style={{ color: colors.teal, fontSize: 22, fontWeight: '700' }}
-              >
-                {formatCurrency(displayTotalCard)}
-              </Text>
-            </View>
+                <Text
+                  style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
+                >
+                  {showDual ? 'Total (card)' : 'Total'}
+                </Text>
+                <Text
+                  style={{ color: colors.teal, fontSize: 22, fontWeight: '700' }}
+                >
+                  {formatCurrency(displayTotalCard)}
+                </Text>
+              </View>
+            )}
 
             {/* Total (cash) */}
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 4
-              }}
-            >
-              <Text
-                style={{ color: colors.label, fontSize: 14, fontWeight: '600' }}
-              >
-                Total (cash)
-              </Text>
-              <Text
+            {showCash && (
+              <View
                 style={{
-                  color: colors.heading,
-                  fontSize: 20,
-                  fontWeight: '700'
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 4
                 }}
               >
-                {formatCurrency(displayTotalCash)}
-              </Text>
-            </View>
+                <Text
+                  style={{ color: showDual ? colors.label : colors.teal, fontSize: 14, fontWeight: '600' }}
+                >
+                  {showDual ? 'Total (cash)' : 'Total'}
+                </Text>
+                <Text
+                  style={{
+                    color: showDual ? colors.heading : colors.teal,
+                    fontSize: showDual ? 20 : 22,
+                    fontWeight: '700'
+                  }}
+                >
+                  {formatCurrency(displayTotalCash)}
+                </Text>
+              </View>
+            )}
 
-            {/* Cash Savings - Always visible to avoid layout flicker */}
-            <View style={{ marginBottom: 4 }}>
-              <Text
-                style={{
-                  color: displaySavingsAmount > 0 ? colors.teal : colors.label,
-                  fontWeight: '600',
-                  fontSize: 11,
-                  textAlign: 'center'
-                }}
-              >
-                Save {formatCurrency(displaySavingsAmount)} with cash
-              </Text>
-            </View>
+            {/* Cash Savings - only shown in dual mode */}
+            {showDual && (
+              <View style={{ marginBottom: 4 }}>
+                <Text
+                  style={{
+                    color: displaySavingsAmount > 0 ? colors.teal : colors.label,
+                    fontWeight: '600',
+                    fontSize: 11,
+                    textAlign: 'center'
+                  }}
+                >
+                  Save {formatCurrency(displaySavingsAmount)} with cash
+                </Text>
+              </View>
+            )}
 
             {/* Divider before Amount Due */}
             {amountPaid > 0 && (

@@ -1,13 +1,19 @@
+import NotifyCustomerModal from '@/components/notifications/NotifyCustomerModal'
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import AppNoticeModal from '@/components/ui/AppNoticeModal'
 import { useToast } from '@/contexts/ToastContext'
 import { useTableTimerTick } from '@/hooks/useTableTimerTick'
+import { NotifyContext, TemplateKey } from '@/lib/notifyTemplates'
+import { formatUsPhone, normalizeUsPhoneDigits } from '@/lib/phone'
 import { bottomSheetTheme, colors } from '@/lib/theme'
+import { getCachedCustomers } from '@/services/customer'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useWaitlistSheetStore } from '@/stores/useWaitlistSheetStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
+import type { CustomerWithMeta } from '@/types/customer'
 import { FloorPlanObject, WaitlistEntry } from '@/types/db-floor-plan-types'
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -24,6 +30,7 @@ import {
   ChevronUp,
   Clock,
   Phone,
+  Search,
   StickyNote,
   UserPlus,
   Users,
@@ -32,6 +39,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   Text,
   TouchableOpacity,
@@ -42,6 +50,9 @@ import Animated, {
   useSharedValue,
   withTiming
 } from 'react-native-reanimated'
+
+const normalizePhone = (value?: string | null) =>
+  (value ?? '').replace(/\D/g, '')
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -232,25 +243,97 @@ const AddEntryForm: React.FC<{
   onCancel: () => void
   isLoading: boolean
 }> = ({ onSubmit, onCancel, isLoading }) => {
+  const [allCustomers, setAllCustomers] = useState<CustomerWithMeta[]>(() =>
+    getCachedCustomers()
+  )
   const [name, setName] = useState('')
   const [partySize, setPartySize] = useState('')
   const [quotedTime, setQuotedTime] = useState('15')
   const [notes, setNotes] = useState('')
   const [phone, setPhone] = useState('')
+  const [customerQuery, setCustomerQuery] = useState('')
+  const [linkedCustomer, setLinkedCustomer] = useState<CustomerWithMeta | null>(
+    null
+  )
+
+  useEffect(() => {
+    setAllCustomers(getCachedCustomers())
+  }, [])
+
+  const customerResults = useMemo(() => {
+    const query = customerQuery.toLowerCase().trim()
+    const phoneQuery = normalizePhone(customerQuery)
+    if (query.length < 2 && phoneQuery.length < 3) return []
+
+    return allCustomers
+      .filter(customer => {
+        const customerName = (customer.name ?? '').toLowerCase()
+        const customerPhone = normalizePhone(
+          customer.phone ?? customer.phoneNumber
+        )
+        return (
+          (query.length >= 2 && customerName.includes(query)) ||
+          (phoneQuery.length >= 3 && customerPhone.includes(phoneQuery))
+        )
+      })
+      .slice(0, 4)
+  }, [allCustomers, customerQuery])
+
+  const applyCustomer = useCallback((customer: CustomerWithMeta) => {
+    setLinkedCustomer(customer)
+    setName(customer.name ?? '')
+    setPhone(formatUsPhone(customer.phone ?? customer.phoneNumber ?? ''))
+    setCustomerQuery('')
+  }, [])
+
+  const updateName = useCallback((value: string) => {
+    setName(value)
+    setLinkedCustomer(null)
+    setCustomerQuery(value)
+  }, [])
+
+  const updatePhone = useCallback((value: string) => {
+    setPhone(formatUsPhone(value))
+    setLinkedCustomer(null)
+    setCustomerQuery(value)
+  }, [])
+
+  useEffect(() => {
+    if (linkedCustomer) return
+    const typedName = name.toLowerCase().trim()
+    const typedPhone = normalizePhone(phone)
+    if (typedName.length < 3 && typedPhone.length < 7) return
+
+    const match = allCustomers.find(customer => {
+      const customerName = (customer.name ?? '').toLowerCase().trim()
+      const customerPhone = normalizePhone(
+        customer.phone ?? customer.phoneNumber
+      )
+      return (
+        (typedName.length >= 3 && customerName === typedName) ||
+        (typedPhone.length >= 7 && customerPhone.endsWith(typedPhone))
+      )
+    })
+
+    if (match) applyCustomer(match)
+  }, [allCustomers, applyCustomer, linkedCustomer, name, phone])
 
   const handleSubmit = () => {
+    const phoneDigits = normalizeUsPhoneDigits(phone)
     onSubmit({
       name: name || 'Guest',
       partySize: parseInt(partySize || '2', 10),
       quotedTime: parseInt(quotedTime || '15', 10),
       notes,
-      phone: phone || undefined
+      phone: phoneDigits || undefined
     })
     setName('')
     setPartySize('')
     setQuotedTime('15')
     setNotes('')
     setPhone('')
+    setCustomerQuery('')
+    setLinkedCustomer(null)
   }
 
   return (
@@ -262,7 +345,7 @@ const AddEntryForm: React.FC<{
         </Text>
         <BottomSheetTextInput
           value={name}
-          onChangeText={setName}
+          onChangeText={updateName}
           placeholder='Enter name'
           placeholderTextColor={colors.muted}
           style={{
@@ -275,6 +358,96 @@ const AddEntryForm: React.FC<{
             borderColor: colors.border
           }}
         />
+        {linkedCustomer && (
+          <View
+            style={{
+              marginTop: 6,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.teal + '45',
+              backgroundColor: colors.teal + '10'
+            }}
+          >
+            <Search size={13} color={colors.teal} />
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{ color: colors.heading, fontSize: 12, fontWeight: '700' }}
+                numberOfLines={1}
+              >
+                {linkedCustomer.name ?? 'Customer'}
+              </Text>
+              <Text style={{ color: colors.muted, fontSize: 11 }} numberOfLines={1}>
+                {linkedCustomer.phone ?? linkedCustomer.phoneNumber ?? 'No phone'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                setLinkedCustomer(null)
+                setCustomerQuery(name)
+              }}
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 5,
+                borderRadius: 6,
+                backgroundColor: colors.screen,
+                borderWidth: 1,
+                borderColor: colors.border
+              }}
+            >
+              <Text style={{ color: colors.label, fontSize: 11, fontWeight: '700' }}>
+                Change
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {!linkedCustomer && customerResults.length > 0 && (
+          <View
+            style={{
+              marginTop: 6,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              overflow: 'hidden'
+            }}
+          >
+            {customerResults.map((customer, index) => (
+              <TouchableOpacity
+                key={customer.id}
+                onPress={() => applyCustomer(customer)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  borderTopWidth: index > 0 ? 1 : 0,
+                  borderTopColor: colors.border
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{ color: colors.heading, fontSize: 12, fontWeight: '700' }}
+                    numberOfLines={1}
+                  >
+                    {customer.name ?? 'Guest'}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 11 }} numberOfLines={1}>
+                    {customer.phone ?? customer.phoneNumber ?? 'No phone'}
+                  </Text>
+                </View>
+                <Text style={{ color: colors.teal, fontSize: 10, fontWeight: '800' }}>
+                  Select
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Party Size + Quoted Time */}
@@ -330,9 +503,10 @@ const AddEntryForm: React.FC<{
         </Text>
         <BottomSheetTextInput
           value={phone}
-          onChangeText={setPhone}
+          onChangeText={updatePhone}
           keyboardType='phone-pad'
-          placeholder='Phone number'
+          maxLength={14}
+          placeholder='(555) 123-4567'
           placeholderTextColor={colors.muted}
           style={{
             backgroundColor: colors.screen,
@@ -356,7 +530,10 @@ const AddEntryForm: React.FC<{
           onChangeText={setNotes}
           placeholder='Special requests, allergies...'
           placeholderTextColor={colors.muted}
-          multiline
+          returnKeyType='done'
+          blurOnSubmit
+          onSubmitEditing={Keyboard.dismiss}
+          maxLength={500}
           style={{
             backgroundColor: colors.screen,
             color: 'white',
@@ -364,9 +541,7 @@ const AddEntryForm: React.FC<{
             padding: 14,
             borderRadius: 12,
             borderWidth: 1,
-            borderColor: colors.border,
-            height: 80,
-            textAlignVertical: 'top'
+            borderColor: colors.border
           }}
         />
       </View>
@@ -525,6 +700,7 @@ const WaitlistBottomSheet: React.FC = () => {
   const [selectedEntry, setSelectedEntry] = useState<WaitlistEntry | null>(null)
   const [isTablePickerOpen, setTablePickerOpen] = useState(false)
   const [itemToDelete, setItemToDelete] = useState<WaitlistEntry | null>(null)
+  const [notifyTarget, setNotifyTarget] = useState<WaitlistEntry | null>(null)
   const [notice, setNotice] = useState<{
     title: string
     description: string
@@ -585,7 +761,8 @@ const WaitlistBottomSheet: React.FC = () => {
         setActiveOrder(newOrder.id)
       }
 
-      router.push(`/tables/${table.id}`)
+      usePendingTableOverlay.getState().openTable(table.id)
+      router.push(`/tables`)
       setTablePickerOpen(false)
       setSelectedEntry(null)
       handleClose()
@@ -600,12 +777,10 @@ const WaitlistBottomSheet: React.FC = () => {
     ]
   )
 
-  // Notify action
+  // Notify action — opens the NotifyCustomerModal (templates + custom message)
   const handleNotify = useCallback(
-    async (entry: WaitlistEntry) => {
+    (entry: WaitlistEntry) => {
       const phoneDigits = entry.phone?.replace(/\D/g, '') ?? ''
-
-      // In-app alert only when no phone on file
       if (!phoneDigits) {
         setNotice({
           title: 'No Phone Number',
@@ -614,63 +789,43 @@ const WaitlistBottomSheet: React.FC = () => {
         })
         return
       }
-
-      try {
-        const result = await useWaitlistStore
-          .getState()
-          .notifyWaitlistPartyAsync(entry.id)
-
-        if (!result.success) {
-          if (result.error === 'sms_failed') {
-            setNotice({
-              title: 'SMS Failed',
-              description:
-                result.message ||
-                'Could not send SMS. Failure logged. Please notify guest verbally.',
-              variant: 'error'
-            })
-          } else {
-            setNotice({
-              title: 'Could Not Notify',
-              description: result.error || 'Failed to notify party',
-              variant: 'error'
-            })
-          }
-        } else if (result.sms) {
-          show({
-            title: 'Notified',
-            message: `SMS sent to ${entry.party_name}`,
-            type: 'success'
-          })
-        } else if (result.reason === 'no_valid_phone') {
-          show({
-            title: 'Invalid Phone Number',
-            message: `Could not send SMS — invalid number on file. Please notify ${entry.party_name} verbally.`,
-            type: 'warning'
-          })
-        } else {
-          // Fallback: RPC succeeded but SMS was not sent for an unhandled reason
-          show({
-            title: 'Party Notified',
-            message: `${entry.party_name} has been notified`,
-            type: 'success'
-          })
-        }
-
-        if (result.success && selectedStore?.id) {
-          fetchWaitlist(selectedStore.id)
-        }
-      } catch (err: any) {
-        show({
-          title: 'Could Not Notify',
-          message:
-            err.message ||
-            `Failed to notify ${entry.party_name}. Please try again.`,
-          type: 'error'
-        })
-      }
+      setNotifyTarget(entry)
     },
-    [show, selectedStore?.id, fetchWaitlist]
+    []
+  )
+
+  const notifyContext: NotifyContext | null = notifyTarget
+    ? notifyTarget.status === 'notified'
+      ? {
+          kind: 'waitlist_update',
+          partyName: notifyTarget.party_name,
+          storeName: selectedStore?.name ?? 'our restaurant'
+        }
+      : {
+          kind: 'waitlist_ready',
+          partyName: notifyTarget.party_name,
+          storeName: selectedStore?.name ?? 'our restaurant'
+        }
+    : null
+
+  const handleSendNotify = useCallback(
+    async (message: string, templateKey: TemplateKey) => {
+      if (!notifyTarget) return { success: false, error: 'no_target' }
+      const result = await useWaitlistStore
+        .getState()
+        .sendWaitlistCustomNotification(notifyTarget.id, message, templateKey)
+      if (result.success) {
+        show({
+          title: 'Notified',
+          message: `SMS sent to ${notifyTarget.party_name}`,
+          type: 'success'
+        })
+        if (selectedStore?.id)
+          fetchWaitlist(selectedStore.id, { silent: true })
+      }
+      return result
+    },
+    [notifyTarget, show, selectedStore?.id, fetchWaitlist]
   )
 
   // Delete confirm
@@ -822,6 +977,20 @@ const WaitlistBottomSheet: React.FC = () => {
           title={notice.title}
           description={notice.description}
           variant={notice.variant}
+        />
+      )}
+
+      {notifyTarget && notifyContext && (
+        <NotifyCustomerModal
+          visible={!!notifyTarget}
+          onClose={() => setNotifyTarget(null)}
+          context={notifyContext}
+          recipient={{
+            phone: notifyTarget.phone,
+            partyName: notifyTarget.party_name,
+            storeName: selectedStore?.name ?? 'our restaurant'
+          }}
+          onSend={handleSendNotify}
         />
       )}
     </>

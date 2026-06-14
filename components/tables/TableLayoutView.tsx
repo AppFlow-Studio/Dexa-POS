@@ -395,7 +395,17 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     [visibleTables],
   );
 
-  const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
+  const dimsKey = `floor_plan.container_dims.${layoutId}`
+  const [containerDims, setContainerDims] = useState(() => {
+    const cached = storage.getString(dimsKey)
+    if (cached) {
+      try {
+        const p = JSON.parse(cached)
+        if (p.width > 0 && p.height > 0) return p
+      } catch {}
+    }
+    return { width: 0, height: 0 }
+  });
   const [isLoading, setIsLoading] = useState(true);
   const viewLockedKey = `floor_plan.view_locked.${layoutId}`;
   const [, setViewLockedTick] = useState(0);
@@ -588,6 +598,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const onLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     setContainerDims({ width, height });
+    storage.set(dimsKey, JSON.stringify({ width, height }))
   };
 
   const panGesture = Gesture.Pan()
@@ -915,6 +926,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 canvasScale={scale}
                 index={index}
                 enableEntryAnimation={enableEntryAnimation}
+                disableEntryAnimation={prioritizedTables.length > 20}
                 sectionColor={
                   table.section_id
                     ? sectionsById?.[table.section_id]?.color

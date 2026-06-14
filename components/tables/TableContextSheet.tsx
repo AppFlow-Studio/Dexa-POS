@@ -1,4 +1,5 @@
 import { useSessionDuration } from '@/hooks/useSessionDuration'
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getEffectiveItemStatus } from '@/lib/kitchenStatusUtils'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { bottomSheetTheme, colors, TABLE_STATUS_COLORS } from '@/lib/theme'
@@ -9,6 +10,7 @@ import { useOrderStore } from '@/stores/useOrderStore'
 import { useReservationStore } from '@/stores/useReservationStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
+import { useToastStore } from '@/stores/useToastStore'
 import {
   FloorPlanObject,
   Reservation,
@@ -24,7 +26,6 @@ import {
   ArrowLeftRight,
   CalendarClock,
   ChevronRight,
-  ChevronUp,
   Clock,
   DollarSign,
   LogOut,
@@ -36,8 +37,16 @@ import {
   UtensilsCrossed,
   X
 } from 'lucide-react-native'
-import React, { useCallback, useEffect, useMemo, useRef } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
 
 interface TableContextSheetProps {
   table: FloorPlanObject | null
@@ -54,6 +63,8 @@ type ActionItem = {
   onPress: () => void
   variant?: 'primary' | 'secondary' | 'danger'
   disabled?: boolean
+  disabledMessage?: string
+  dismissOnPress?: boolean
 }
 
 function getActionsForStatus (
@@ -237,6 +248,22 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const clearTableSession = useFloorPlanStore(s => s.clearTableSession)
   const finishCleaning = useFloorPlanStore(s => s.finishCleaning)
   const updateSessionStatus = useFloorPlanStore(s => s.updateSessionStatus)
+  const transferSession = useFloorPlanStore(s => s.transferSession)
+  const refreshTableSessions = useFloorPlanStore(s => s.refreshTableSessions)
+  const floorTables = useFloorPlanStore(s => s.tables)
+  const sessionsByTableId = useTableSessionStore(s => s.sessions)
+  const showToast = useToastStore(s => s.show)
+  const { isOnline } = useNetworkStatus()
+  const [isTransferPickerOpen, setTransferPickerOpen] = useState(false)
+  const [isTransferPickerLoading, setTransferPickerLoading] = useState(false)
+  const [transferSourceTable, setTransferSourceTable] =
+    useState<FloorPlanObject | null>(null)
+  const [transferSourceSessionId, setTransferSourceSessionId] = useState<
+    string | null
+  >(null)
+  const [transferringTableId, setTransferringTableId] = useState<string | null>(
+    null
+  )
 
   useEffect(() => {
     if (table) sheetRef.current?.present()
@@ -248,12 +275,23 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const liveSession = useTableSessionStore(s =>
     table ? s.sessions[table.id] : undefined
   )
-  const status = (liveSession?.status ?? table?.session?.status) || 'available'
+  const sessionStoreInitialized = useTableSessionStore(s => s.isInitialized)
+  // Once isInitialized, useTableSessionStore is authoritative — don't fall
+  // back to the stale table.session prop (the floor plan store can retain
+  // a paid session locally after a Clear that wiped useTableSessionStore,
+  // which surfaces as a stuck-Paid sheet). Matches DraggableTable's pattern.
+  const status =
+    (sessionStoreInitialized
+      ? liveSession?.status
+      : (liveSession?.status ?? table?.session?.status)) || 'available'
   const tableColor = TABLE_STATUS_COLORS[status] || colors.teal
 
   const resolvedOrderId = useOrderStore(s => {
     const oid = liveSession?.order_id
-    if (!oid) return null
+    // Treat cleaning as "no live order context" so kitchen summary, items
+    // preview, totals, and server line don't render stale data if a realtime
+    // SYNC briefly restores the old order_id on a cleaning session.
+    if (!oid || status === 'cleaning') return null
     return s.dbOrderIdIndex[oid] ?? (s.ordersById[oid] ? oid : null)
   })
   const order = useOrderStore(s =>
@@ -269,6 +307,128 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const isForeignStationSession = isOrderReadOnly(order, currentStationId)
   const foreignStationLabel = order?.station_name?.trim() || 'another station'
   const { minutes: minutesSeated } = useSessionDuration(table?.id ?? '')
+
+
+  const handleMarkArrived = useCallback(async (reservationId: string) => {
+    await useReservationStore.getState().updateStatus(reservationId, 'arrived')
+  }, [])
+
+  const handleCancelReservation = useCallback(async (reservationId: string) => {
+    await useReservationStore.getState().cancelReservation(reservationId)
+  }, [])
+
+  const availableTransferTables = useMemo(() => {
+    const sourceTable = transferSourceTable ?? table
+    if (!sourceTable) return []
+
+    return floorTables
+      .filter(candidate => {
+        if (candidate.id === sourceTable.id) return false
+        if (candidate.is_active === false || candidate.is_visible === false) {
+          return false
+        }
+        if (!['table', 'booth'].includes(candidate.category)) return false
+        if (sessionsByTableId[candidate.id]) return false
+        if (candidate.session) return false
+        return true
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+  }, [floorTables, sessionsByTableId, table, transferSourceTable])
+
+  const handleOpenTransferPicker = useCallback(() => {
+    if (!table || !liveSession?.id) return
+    if (!isOnline) {
+      showToast({
+        title: 'Offline',
+        message:
+          'Table transfer requires a live connection to validate availability.',
+        type: 'warning'
+      })
+      return
+    }
+
+    setTransferSourceTable(table)
+    setTransferSourceSessionId(liveSession.id)
+    setTransferPickerOpen(true)
+    setTransferPickerLoading(true)
+    refreshTableSessions()
+      .catch(error => {
+        console.error('[TableContextSheet] Refresh before transfer failed', {
+          error,
+          sourceTableId: table?.id ?? null
+        })
+      })
+      .finally(() => setTransferPickerLoading(false))
+  }, [isOnline, liveSession?.id, refreshTableSessions, showToast, table])
+
+  const handleTransferTable = useCallback(
+    async (targetTable: FloorPlanObject) => {
+      if (!transferSourceSessionId || !transferSourceTable) return
+
+      setTransferringTableId(targetTable.id)
+      try {
+        await refreshTableSessions()
+        const targetSession =
+          useTableSessionStore.getState().sessions[targetTable.id]
+        if (targetSession && targetSession.id !== transferSourceSessionId) {
+          showToast({
+            title: 'Table Occupied',
+            message: `${targetTable.name} already has an active session.`,
+            type: 'warning'
+          })
+          return
+        }
+
+        await transferSession(transferSourceSessionId, [targetTable.id])
+        setTransferPickerOpen(false)
+        setTransferSourceTable(null)
+        setTransferSourceSessionId(null)
+        showToast({
+          title: 'Table Transferred',
+          message: `${transferSourceTable.name} moved to ${targetTable.name}.`,
+          type: 'success'
+        })
+      } catch (error) {
+        console.error('[TableContextSheet] Transfer table failed', {
+          error,
+          sessionId: transferSourceSessionId,
+          sourceTableId: transferSourceTable.id,
+          targetTableId: targetTable.id
+        })
+        const message =
+          error instanceof Error
+            ? error.message
+            : typeof error === 'object' &&
+              error !== null &&
+              'message' in error &&
+              typeof error.message === 'string'
+            ? error.message
+            : 'Could not transfer table.'
+        showToast({
+          title: 'Transfer Failed',
+          message,
+          type: 'error'
+        })
+      } finally {
+        setTransferringTableId(null)
+      }
+    },
+    [
+      refreshTableSessions,
+      showToast,
+      transferSession,
+      transferSourceSessionId,
+      transferSourceTable
+    ]
+  )
+
+  const handleCloseTransferPicker = useCallback(() => {
+    setTransferPickerOpen(false)
+    setTransferPickerLoading(false)
+    setTransferringTableId(null)
+    setTransferSourceTable(null)
+    setTransferSourceSessionId(null)
+  }, [])
 
   const kitchenSummary = useMemo(() => {
     if (!order?.items?.length) return null
@@ -316,13 +476,27 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
       'check_presented'
     ])
     if (
+      liveSession?.id &&
+      occupiedForTransfer.has(status)
+    ) {
+      baseActions.push({
+        label: 'Transfer Table',
+        icon: <ArrowLeftRight size={16} color={colors.label} />,
+        onPress: handleOpenTransferPicker,
+        disabled: !isOnline,
+        disabledMessage:
+          'Table transfer requires a live connection to validate availability.'
+      })
+    }
+
+    if (
       onTransferServer &&
       liveSession?.id &&
       occupiedForTransfer.has(status)
     ) {
       baseActions.push({
         label: 'Transfer Server',
-        icon: <ArrowLeftRight size={16} color={colors.label} />,
+        icon: <UserCheck size={16} color={colors.label} />,
         onPress: () => onTransferServer(table.id, liveSession.id)
       })
     }
@@ -332,7 +506,30 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
         baseActions.push({
           label: 'Print Receipt',
           icon: <Printer size={16} color={colors.label} />,
-          onPress: () => PrinterService.printReceipt(order, selectedStore)
+          onPress: () => {
+            // Pre-payment receipts need the projected service charge folded
+            // in. buildReceiptTemplateData recomputes SC from the rule + a
+            // (seatCount → session.party_size) lookup, which misses the
+            // guest_count fallback that useOrderTotals already covers — so
+            // a table seated without per-seat or session.party_size data
+            // would print without SC even though the UI shows it. Override
+            // via the manual-SC field so the print snapshot matches what the
+            // user is looking at on screen.
+            const sc = totals?.serviceCharge ?? 0
+            const printOrder =
+              sc > 0
+                ? {
+                    ...order,
+                    service_charge: sc,
+                    service_charge_name:
+                      totals?.serviceChargeName ?? order.service_charge_name,
+                    service_charge_rate:
+                      totals?.serviceChargeRate ?? order.service_charge_rate,
+                    service_charge_is_manual: true
+                  }
+                : order
+            PrinterService.printReceipt(printOrder, selectedStore)
+          }
         })
       }
       if (['seated', 'ordering', 'ordered'].includes(status)) {
@@ -380,39 +577,35 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     onTransferServer,
     upcomingReservation,
     handleMarkArrived,
-    handleCancelReservation
+    handleCancelReservation,
+    handleOpenTransferPicker,
+    isOnline,
+    totals
   ])
 
   const partySize = liveSession?.party_size ?? table?.session?.party_size
 
   // upcomingReservation is now read from the precomputed store map (line 262)
 
-  const handleMarkArrived = useCallback(async (reservationId: string) => {
-    await useReservationStore.getState().updateStatus(reservationId, 'arrived')
-  }, [])
-
-  const handleCancelReservation = useCallback(async (reservationId: string) => {
-    await useReservationStore.getState().cancelReservation(reservationId)
-  }, [])
-
   return (
-    <BottomSheetModal
-      ref={sheetRef}
-      snapPoints={snapPoints}
-      enableDynamicSizing={false}
-      onDismiss={handleDismiss}
-      backdropComponent={props => (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          pressBehavior='close'
-        />
-      )}
-      backgroundStyle={bottomSheetTheme.backgroundStyle}
-      handleIndicatorStyle={bottomSheetTheme.handleIndicatorStyle}
-      enablePanDownToClose
-    >
+    <>
+      <BottomSheetModal
+        ref={sheetRef}
+        snapPoints={snapPoints}
+        enableDynamicSizing={false}
+        onDismiss={handleDismiss}
+        backdropComponent={props => (
+          <BottomSheetBackdrop
+            {...props}
+            appearsOnIndex={0}
+            disappearsOnIndex={-1}
+            pressBehavior='close'
+          />
+        )}
+        backgroundStyle={bottomSheetTheme.backgroundStyle}
+        handleIndicatorStyle={bottomSheetTheme.handleIndicatorStyle}
+        enablePanDownToClose
+      >
       <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         {/* Header */}
         <View
@@ -867,9 +1060,20 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
               <TouchableOpacity
                 key={idx}
                 onPress={() => {
-                  if (action.disabled) return
+                  if (action.disabled) {
+                    if (action.disabledMessage) {
+                      showToast({
+                        title: 'Offline',
+                        message: action.disabledMessage,
+                        type: 'warning'
+                      })
+                    }
+                    return
+                  }
                   action.onPress()
-                  sheetRef.current?.dismiss()
+                  if (action.dismissOnPress !== false) {
+                    sheetRef.current?.dismiss()
+                  }
                 }}
                 disabled={action.disabled}
                 activeOpacity={0.7}
@@ -929,7 +1133,173 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
           )}
         </View>
       </BottomSheetScrollView>
-    </BottomSheetModal>
+      </BottomSheetModal>
+
+      <Modal
+        visible={isTransferPickerOpen}
+        transparent
+        animationType='fade'
+        statusBarTranslucent
+        onRequestClose={handleCloseTransferPicker}
+      >
+        <Pressable
+          onPress={handleCloseTransferPicker}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 18
+          }}
+        >
+          <Pressable
+            onPress={event => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              maxHeight: '78%',
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.background,
+              overflow: 'hidden'
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                gap: 10
+              }}
+            >
+              <ArrowLeftRight size={17} color={colors.teal} />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '700',
+                    color: colors.heading
+                  }}
+                >
+                  Transfer Table
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                  Select an available table
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleCloseTransferPicker}
+                hitSlop={10}
+              >
+                <X size={18} color={colors.muted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ padding: 10, gap: 6 }}>
+              {isTransferPickerLoading ? (
+                <View
+                  style={{
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingVertical: 18,
+                    gap: 8
+                  }}
+                >
+                  <ActivityIndicator size='small' color={colors.teal} />
+                  <Text style={{ fontSize: 12, color: colors.muted }}>
+                    Checking tables...
+                  </Text>
+                </View>
+              ) : null}
+
+              {!isTransferPickerLoading && availableTransferTables.map(targetTable => {
+                const isTransferring = transferringTableId === targetTable.id
+                return (
+                  <TouchableOpacity
+                    key={targetTable.id}
+                    onPress={() => handleTransferTable(targetTable)}
+                    disabled={!!transferringTableId}
+                    activeOpacity={0.75}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: 12,
+                      paddingVertical: 11,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.card,
+                      gap: 10,
+                      opacity: transferringTableId && !isTransferring ? 0.45 : 1
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 8,
+                        backgroundColor: colors.success + '16',
+                        borderWidth: 1,
+                        borderColor: colors.success + '40',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: 4,
+                          backgroundColor: colors.success
+                        }}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: '700',
+                          color: colors.heading
+                        }}
+                      >
+                        {targetTable.name}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.muted }}>
+                        {targetTable.capacity
+                          ? `${targetTable.capacity} seats`
+                          : 'Available'}
+                      </Text>
+                    </View>
+                    {isTransferring ? (
+                      <ActivityIndicator size='small' color={colors.teal} />
+                    ) : (
+                      <ChevronRight size={14} color={colors.muted} />
+                    )}
+                  </TouchableOpacity>
+                )
+              })}
+
+              {!isTransferPickerLoading && availableTransferTables.length === 0 ? (
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: colors.muted,
+                    textAlign: 'center',
+                    paddingVertical: 18
+                  }}
+                >
+                  No available tables
+                </Text>
+              ) : null}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   )
 }
 

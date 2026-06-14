@@ -43,6 +43,9 @@ export function CFDExternalDisplayProvider ({
     subtotalCash: s.subtotalCash,
     subtotalCard: s.subtotalCard,
     discountAmount: s.discountAmount,
+    serviceCharge: s.serviceCharge,
+    serviceChargeName: s.serviceChargeName,
+    serviceChargeRate: s.serviceChargeRate,
     taxAmount: s.taxAmount,
     taxCash: s.taxCash,
     taxCard: s.taxCard,
@@ -63,6 +66,7 @@ export function CFDExternalDisplayProvider ({
     loyaltyResult: s.loyaltyResult,
     paymentMethod: s.paymentMethod,
     merchantHasLoyalty: s.merchantHasLoyalty,
+    pricingDisplayMode: s.pricingDisplayMode,
     themeMode: s.themeMode
   })))
 
@@ -82,6 +86,9 @@ export function CFDExternalDisplayProvider ({
     subtotalCash: store.subtotalCash,
     subtotalCard: store.subtotalCard,
     discountAmount: store.discountAmount,
+    serviceCharge: store.serviceCharge,
+    serviceChargeName: store.serviceChargeName,
+    serviceChargeRate: store.serviceChargeRate,
     taxAmount: store.taxAmount,
     taxCash: store.taxCash,
     taxCard: store.taxCard,
@@ -102,6 +109,7 @@ export function CFDExternalDisplayProvider ({
     loyaltyResult: store.loyaltyResult ?? null,
     paymentMethod: store.paymentMethod ?? null,
     merchantHasLoyalty: store.merchantHasLoyalty,
+    pricingDisplayMode: store.pricingDisplayMode ?? 'dual',
     themeMode: store.themeMode
   }), [store])
 
@@ -132,6 +140,9 @@ export function CFDBuiltinDisplayProvider ({
     subtotalCash: s.subtotalCash,
     subtotalCard: s.subtotalCard,
     discountAmount: s.discountAmount,
+    serviceCharge: s.serviceCharge,
+    serviceChargeName: s.serviceChargeName,
+    serviceChargeRate: s.serviceChargeRate,
     taxAmount: s.taxAmount,
     taxCash: s.taxCash,
     taxCard: s.taxCard,
@@ -152,6 +163,7 @@ export function CFDBuiltinDisplayProvider ({
     loyaltyResult: s.loyaltyResult,
     paymentMethod: s.paymentMethod,
     merchantHasLoyalty: s.merchantHasLoyalty,
+    pricingDisplayMode: s.pricingDisplayMode,
     themeMode: s.themeMode
   })))
 
@@ -171,6 +183,9 @@ export function CFDBuiltinDisplayProvider ({
     subtotalCash: store.subtotalCash,
     subtotalCard: store.subtotalCard,
     discountAmount: store.discountAmount,
+    serviceCharge: store.serviceCharge,
+    serviceChargeName: store.serviceChargeName,
+    serviceChargeRate: store.serviceChargeRate,
     taxAmount: store.taxAmount,
     taxCash: store.taxCash,
     taxCard: store.taxCard,
@@ -191,6 +206,7 @@ export function CFDBuiltinDisplayProvider ({
     loyaltyResult: store.loyaltyResult ?? null,
     paymentMethod: store.paymentMethod ?? null,
     merchantHasLoyalty: store.merchantHasLoyalty,
+    pricingDisplayMode: store.pricingDisplayMode ?? 'dual',
     themeMode: store.themeMode
   }), [store])
 

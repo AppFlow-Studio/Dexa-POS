@@ -325,16 +325,17 @@ interface KDSTicketDisplaySettings {
 interface KDSTicketTimerProps {
   startTimeEpoch: number;
   textColor: string;
+  doneTimeEpoch?: number;
 }
 
 const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
-  ({ startTimeEpoch, textColor }) => {
-    // Single shared timestamp from store — 1 subscription per timer, no per-component Date.now()
-    const nowEpochMs = useKDSStore((s) => s.nowEpochMs);
+  ({ startTimeEpoch, textColor, doneTimeEpoch }) => {
+    // Skip live subscription when timer is frozen at doneTimeEpoch
+    const nowEpochMs = useKDSStore((s) => (doneTimeEpoch ? 0 : s.nowEpochMs));
     const timeElapsed = getBucketedElapsed(
       startTimeEpoch,
-      undefined,
-      nowEpochMs,
+      doneTimeEpoch,
+      doneTimeEpoch ? doneTimeEpoch : nowEpochMs,
     );
     return (
       <Text
@@ -366,6 +367,7 @@ interface KDSTicketCardProps {
     event: GestureResponderEvent,
   ) => void;
   onItemPress?: (ticketId: string, itemId: string) => void;
+  onAcknowledgeNotice?: (ticketId: string, itemId: string) => void;
   hideDoneItems: boolean;
   displaySettings: KDSTicketDisplaySettings;
   urgencyThresholds: UrgencyThresholds;
@@ -379,6 +381,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     onToggleSelect,
     onLongPress,
     onItemPress,
+    onAcknowledgeNotice,
     hideDoneItems,
     displaySettings,
     urgencyThresholds,
@@ -401,6 +404,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     );
     const hasUrgencyColor = urgencyLevel > 0;
 
+    const ticketItems = getTicketItems(ticket);
+    const hasUnacknowledgedNotices = ticketItems.some(
+      (i) => (i.is_voided || i.is_refunded) && !i.acknowledged,
+    );
+
     // Double-tap detection
     const lastTapRef = useRef(0);
     const firstTapStatusRef = useRef<KDSTicket["status"] | null>(null);
@@ -410,6 +418,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         onToggleSelect(ticket.ticket_id);
         return;
       }
+
+      // Block card advance until all void/refund notices are acknowledged
+      if (hasUnacknowledgedNotices) return;
 
       const now = Date.now();
       const isDoubleTap = now - lastTapRef.current < KDS_DOUBLE_TAP_MS;
@@ -432,14 +443,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       else if (capturedStatus === "ready") newStatus = "served";
 
       if (!newStatus) return;
-      if (__DEV__) {
-        console.log("[KDS Debug] ticket card advance trigger", {
-          ticketId: ticket.ticket_id,
-          capturedStatus,
-          newStatus,
-          itemIds: itemIds.length,
-        });
-      }
       onAdvance(ticket.ticket_id, itemIds, newStatus);
     };
 
@@ -464,7 +467,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     );
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
-    const ticketItems = getTicketItems(ticket);
     const hasRush = ticketItems.some((item) => item.rush);
     const hasRefire = ticketItems.some((item) => item.recalled);
     const orderNote = ticket.order_notes?.trim() ?? "";
@@ -648,11 +650,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             borderTopWidth: 1,
             borderBottomWidth: 1,
             borderRightWidth: 1,
-            borderLeftWidth: isDineIn ? 4 : 1,
-            borderTopColor: borderColor,
-            borderBottomColor: borderColor,
-            borderRightColor: borderColor,
-            borderLeftColor: isDineIn ? colors.teal : borderColor,
+            borderLeftWidth: hasUnacknowledgedNotices || isDineIn ? 4 : 1,
+            borderTopColor: hasUnacknowledgedNotices ? "#FECACA" : borderColor,
+            borderBottomColor: hasUnacknowledgedNotices ? "#FECACA" : borderColor,
+            borderRightColor: hasUnacknowledgedNotices ? "#FECACA" : borderColor,
+            borderLeftColor: hasUnacknowledgedNotices ? "#DC2626" : isDineIn ? colors.teal : borderColor,
             shadowColor: "#000",
             shadowOffset: { width: 0, height: 2 },
             shadowOpacity: 0.08,
@@ -832,6 +834,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             <KDSTicketTimer
               startTimeEpoch={ticket.start_time_epoch}
               textColor={headerPrimaryTextColor}
+              doneTimeEpoch={ticket.status === "ready" ? ticket.ready_time_epoch : undefined}
             />
           </View>
 
@@ -909,10 +912,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 const isRefunded = item._displayState === "refunded";
                 const isChanged = item._displayState === "changed";
                 const isInactive = isVoided || isRefunded;
-                const shouldStrike = isItemDone || isInactive;
-                const itemOpacity = isInactive ? 0.4 : isItemDone ? 0.5 : 1;
+                const isAcknowledged = isInactive && Boolean(item.acknowledged);
+                const needsAck = isInactive && !isAcknowledged;
+                const shouldStrike = isItemDone || isAcknowledged;
+                const itemOpacity = isAcknowledged ? 0.25 : isItemDone ? 0.5 : 1;
 
-                // Quantity badge color
+                // Quantity badge color — unacknowledged notices stay vivid
                 const qtyBg = isVoided
                   ? "#FCA5A5"
                   : isRefunded
@@ -934,10 +939,15 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   <Pressable
                     key={rowKey}
                     onPress={() => {
+                      if (isInactive && !item.acknowledged && onAcknowledgeNotice) {
+                        onAcknowledgeNotice(ticket.ticket_id, item.id);
+                        return;
+                      }
                       if (
                         !hasRefire &&
                         !isInactive &&
                         !isItemDone &&
+                        !hasUnacknowledgedNotices &&
                         onItemPress
                       ) {
                         const idsToMark =
@@ -988,12 +998,15 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       {isVoided && (
                         <View
                           style={{
-                            backgroundColor: "#FEE2E2",
+                            backgroundColor: needsAck ? "#FEE2E2" : "#FEE2E2",
                             paddingHorizontal: 5,
                             paddingVertical: 1,
                             borderRadius: 3,
                             marginRight: 5,
                             alignSelf: "center",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 3,
                           }}
                         >
                           <Text
@@ -1005,6 +1018,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                           >
                             VOIDED
                           </Text>
+                          {needsAck && (
+                            <Text style={{ color: "#DC2626", fontSize: 8, fontWeight: "600" }}>
+                              · TAP ✓
+                            </Text>
+                          )}
                         </View>
                       )}
                       {isRefunded && (
@@ -1016,6 +1034,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                             borderRadius: 3,
                             marginRight: 5,
                             alignSelf: "center",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 3,
                           }}
                         >
                           <Text
@@ -1027,6 +1048,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                           >
                             REFUNDED
                           </Text>
+                          {needsAck && (
+                            <Text style={{ color: "#D97706", fontSize: 8, fontWeight: "600" }}>
+                              · TAP ✓
+                            </Text>
+                          )}
                         </View>
                       )}
                       {isChanged && (
@@ -1202,6 +1228,26 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             )}
           </View>
 
+          {/* Acknowledge required banner */}
+          {hasUnacknowledgedNotices && (
+            <View
+              style={{
+                backgroundColor: "#FEF2F2",
+                borderTopWidth: 1,
+                borderTopColor: "#FECACA",
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <Text style={{ fontSize: 9, color: "#DC2626", fontWeight: "700", letterSpacing: 0.4 }}>
+                ACK REQUIRED — tap voided/refunded items before advancing
+              </Text>
+            </View>
+          )}
+
           {/* Progress bar at bottom */}
           <View
             style={{
@@ -1230,6 +1276,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       prev.onToggleSelect !== next.onToggleSelect ||
       prev.onLongPress !== next.onLongPress ||
       prev.onItemPress !== next.onItemPress ||
+      prev.onAcknowledgeNotice !== next.onAcknowledgeNotice ||
       prev.hideDoneItems !== next.hideDoneItems ||
       prev.displaySettings !== next.displaySettings ||
       prev.urgencyThresholds !== next.urgencyThresholds
@@ -1265,7 +1312,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         pi.kitchen_status !== ni.kitchen_status ||
         pi.quantity !== ni.quantity ||
         pi.rush !== ni.rush ||
-        pi.recalled !== ni.recalled
+        pi.recalled !== ni.recalled ||
+        Boolean(pi.acknowledged) !== Boolean(ni.acknowledged)
       )
         return false;
     }
@@ -1524,6 +1572,7 @@ const KitchenDisplayScreen = () => {
   const prioritizeTicket = useKDSStore((s) => s.prioritizeTicket);
   const toggleRush = useKDSStore((s) => s.toggleRush);
   const markItemDone = useKDSStore((s) => s.markItemDone);
+  const acknowledgeNoticeItem = useKDSStore((s) => s.acknowledgeNoticeItem);
   const isTicketRecalled = useKDSStore((s) => s.isTicketRecalled);
   const kdsCleanup = useKDSStore((s) => s._cleanup);
 
@@ -1895,6 +1944,7 @@ const KitchenDisplayScreen = () => {
     service.init();
 
     setOnNewOrderCallback((orderSource) => {
+      console.log("[KDS Sound] trigger", { orderSource });
       service.playForSource(orderSource);
     });
 
@@ -2167,6 +2217,13 @@ const KitchenDisplayScreen = () => {
     [markItemDone],
   );
 
+  const handleAcknowledgeNotice = useCallback(
+    (ticketId: string, itemId: string) => {
+      acknowledgeNoticeItem(ticketId, itemId);
+    },
+    [acknowledgeNoticeItem],
+  );
+
   // Wrap advanceTicketStatus with undo toast
   const advanceWithUndo = useCallback(
     (
@@ -2227,6 +2284,7 @@ const KitchenDisplayScreen = () => {
         onToggleSelect={toggleTicketSelection}
         onLongPress={handleTicketLongPress}
         onItemPress={workflowMode === "2-step" ? handleItemPress : undefined}
+        onAcknowledgeNotice={handleAcknowledgeNotice}
         hideDoneItems={kdsHideDoneItems}
         displaySettings={displaySettings}
         urgencyThresholds={urgencyThresholds}
@@ -2237,6 +2295,7 @@ const KitchenDisplayScreen = () => {
       toggleTicketSelection,
       handleTicketLongPress,
       handleItemPress,
+      handleAcknowledgeNotice,
       workflowMode,
       kdsHideDoneItems,
       displaySettings,

@@ -159,17 +159,24 @@ export class FloorPlanService {
         sessionsError = result.error;
       }
 
+      // FAIL CLOSED: if the junction or session sub-queries error, we cannot
+      // tell which tables are occupied. Returning the objects anyway would strip
+      // EVERY session (tables fall back to "available" → whole floor turns green)
+      // until the next good fetch. Return an error instead so callers keep the
+      // last known-good state rather than committing a false "all available".
       if (junctionError) {
-        console.warn(
-          "[getAllFloorPlanObjects] Warning: error fetching junctions:",
+        console.error(
+          "[getAllFloorPlanObjects] junction fetch failed — aborting to avoid wiping sessions:",
           junctionError,
         );
+        return { data: null, error: junctionError };
       }
       if (sessionsError) {
-        console.warn(
-          "[getAllFloorPlanObjects] Warning: error fetching sessions:",
+        console.error(
+          "[getAllFloorPlanObjects] session fetch failed — aborting to avoid wiping sessions:",
           sessionsError,
         );
+        return { data: null, error: sessionsError };
       }
 
       // 3. Build efficient lookups
@@ -428,8 +435,241 @@ export class FloorPlanService {
     client: SupabaseClient,
     params: TransferTableSessionParams,
   ): Promise<{ error: any }> {
-    const { error } = await client.rpc("transfer_table_session", params);
-    return { error };
+    const { error } = await client.rpc("transfer_table_session", {
+      ...params,
+      p_reason: null,
+    });
+    const message = String(error?.message || "");
+    const details = String(error?.details || "");
+    const hint = String(error?.hint || "");
+    const missingTransferRpc =
+      error?.code === "PGRST202" ||
+      error?.code === "PGRST203" ||
+      message.includes("transfer_table_session") ||
+      details.includes("transfer_table_session") ||
+      hint.includes("transfer_table_session");
+    const targetReportedOccupied =
+      error?.code === "P0001" &&
+      message.toLowerCase().includes("target") &&
+      message.toLowerCase().includes("occupied");
+
+    if (!missingTransferRpc && !targetReportedOccupied) {
+      if (error) {
+        console.error("[transferTableSession] RPC failed", {
+          error,
+          params,
+        });
+      }
+      return { error };
+    }
+
+    console.warn(
+      "[transferTableSession] RPC unavailable/ambiguous or reported stale occupancy; falling back to direct junction update",
+      error,
+    );
+
+    const { data: session, error: sessionError } = await client
+      .from("table_sessions")
+      .select("id, merchant_id, location_id, order_id, is_active")
+      .eq("id", params.p_session_id)
+      .maybeSingle();
+
+    if (sessionError) {
+      console.error("[transferTableSession] Session lookup failed", {
+        error: sessionError,
+        params,
+      });
+      return { error: sessionError };
+    }
+    if (!session || session.is_active === false) {
+      const notFoundError = { message: "Active table session not found" };
+      console.error("[transferTableSession] Session lookup returned empty", {
+        error: notFoundError,
+        params,
+      });
+      return { error: notFoundError };
+    }
+
+    const { data: targetTables, error: targetError } = await client
+      .from("floor_plan_objects")
+      .select("id, name, merchant_id, location_id, is_active")
+      .in("id", params.p_new_table_ids);
+
+    if (targetError) {
+      console.error("[transferTableSession] Target table lookup failed", {
+        error: targetError,
+        params,
+      });
+      return { error: targetError };
+    }
+    if ((targetTables?.length ?? 0) !== params.p_new_table_ids.length) {
+      const missingTargetError = {
+        message: "One or more target tables were not found",
+      };
+      console.error("[transferTableSession] Target table lookup incomplete", {
+        error: missingTargetError,
+        params,
+        targetTables,
+      });
+      return { error: missingTargetError };
+    }
+
+    const invalidTarget = targetTables?.find(
+      table =>
+        table.is_active === false ||
+        table.merchant_id !== session.merchant_id ||
+        table.location_id !== session.location_id,
+    );
+
+    if (invalidTarget) {
+      const invalidTargetError = {
+        message: "Target table is inactive or belongs to another location",
+      };
+      console.error("[transferTableSession] Invalid target table", {
+        error: invalidTargetError,
+        params,
+        invalidTarget,
+      });
+      return {
+        error: invalidTargetError,
+      };
+    }
+
+    const { data: occupiedRows, error: occupiedError } = await client
+      .from("table_session_tables")
+      .select("table_id, session_id")
+      .in("table_id", params.p_new_table_ids)
+      .eq("is_active", true);
+
+    if (occupiedError) {
+      console.error("[transferTableSession] Occupancy lookup failed", {
+        error: occupiedError,
+        params,
+      });
+      return { error: occupiedError };
+    }
+    const otherSessionIds = [
+      ...new Set(
+        (occupiedRows ?? [])
+          .map(row => row.session_id)
+          .filter(sessionId => sessionId && sessionId !== params.p_session_id),
+      ),
+    ];
+
+    let occupiedTarget:
+      | { table_id: string; session_id: string }
+      | undefined;
+
+    if (otherSessionIds.length > 0) {
+      const { data: activeOccupants, error: activeOccupantsError } =
+        await client
+          .from("table_sessions")
+          .select("id, is_active, status")
+          .in("id", otherSessionIds);
+
+      if (activeOccupantsError) {
+        console.error("[transferTableSession] Active occupant lookup failed", {
+          error: activeOccupantsError,
+          params,
+          otherSessionIds,
+        });
+        return { error: activeOccupantsError };
+      }
+
+      const activeOccupantIds = new Set(
+        (activeOccupants ?? [])
+          .filter(
+            activeSession =>
+              activeSession.is_active === true &&
+              activeSession.status !== "cleaning",
+          )
+          .map(activeSession => activeSession.id),
+      );
+
+      occupiedTarget = occupiedRows?.find(
+        row =>
+          row.session_id !== params.p_session_id &&
+          activeOccupantIds.has(row.session_id),
+      );
+    }
+
+    if (occupiedTarget) {
+      const occupiedTargetError = {
+        message: "Target table already has an active session",
+      };
+      console.error("[transferTableSession] Target occupied", {
+        error: occupiedTargetError,
+        params,
+        occupiedTarget,
+      });
+      return { error: occupiedTargetError };
+    }
+
+    if (otherSessionIds.length > 0) {
+      const { error: staleTargetLinksError } = await client
+        .from("table_session_tables")
+        .update({ is_active: false })
+        .in("table_id", params.p_new_table_ids)
+        .in("session_id", otherSessionIds);
+
+      if (staleTargetLinksError) {
+        console.error("[transferTableSession] Clear stale target links failed", {
+          error: staleTargetLinksError,
+          params,
+          otherSessionIds,
+        });
+        return { error: staleTargetLinksError };
+      }
+    }
+
+    const { error: deactivateError } = await client
+      .from("table_session_tables")
+      .update({ is_active: false })
+      .eq("session_id", params.p_session_id);
+
+    if (deactivateError) {
+      console.error("[transferTableSession] Deactivate old links failed", {
+        error: deactivateError,
+        params,
+      });
+      return { error: deactivateError };
+    }
+
+    const rows = params.p_new_table_ids.map((tableId, index) => ({
+      session_id: params.p_session_id,
+      table_id: tableId,
+      is_primary: index === 0,
+      seated_position: index,
+      is_active: true,
+    }));
+
+    const { error: insertError } = await client
+      .from("table_session_tables")
+      .insert(rows);
+
+    if (insertError) {
+      console.error("[transferTableSession] Insert new links failed", {
+        error: insertError,
+        params,
+        rows,
+      });
+      return { error: insertError };
+    }
+
+    if (session.order_id) {
+      const primaryTable = targetTables?.find(
+        target => target.id === params.p_new_table_ids[0],
+      );
+      await client
+        .from("orders")
+        .update({
+          table_number: primaryTable?.name ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", session.order_id);
+    }
+
+    return { error: null };
   }
 
   static async mergeTableToSession(
@@ -582,7 +822,14 @@ export class FloorPlanService {
 
   static async sendWaitlistSms(
     client: SupabaseClient,
-    params: { phone: string; message: string; waitlist_id: string },
+    params: {
+      waitlist_id: string;
+      template_key?: string;
+      message?: string;
+      // Legacy field kept for back-compat with older call sites — ignored by
+      // the edge function (phone is read from the waitlist row server-side).
+      phone?: string;
+    },
   ): Promise<{
     data: {
       success: boolean;
@@ -598,9 +845,42 @@ export class FloorPlanService {
       "notify-waitlist-guest",
       {
         body: {
-          phone: params.phone,
-          message: params.message,
           waitlist_id: params.waitlist_id,
+          template_key: params.template_key,
+          message: params.message,
+        },
+      },
+    );
+    return { data, error };
+  }
+
+  static async sendReservationSms(
+    client: SupabaseClient,
+    params: {
+      reservation_id: string;
+      template_key?: string;
+      message?: string;
+      // Legacy — ignored by the edge function (phone read server-side).
+      phone?: string;
+    },
+  ): Promise<{
+    data: {
+      success: boolean;
+      sms?: boolean;
+      error?: string;
+      message?: string;
+      reason?: string;
+      provider_error?: string;
+    } | null;
+    error: any;
+  }> {
+    const { data, error } = await client.functions.invoke(
+      "notify-reservation-guest",
+      {
+        body: {
+          reservation_id: params.reservation_id,
+          template_key: params.template_key,
+          message: params.message,
         },
       },
     );

@@ -479,7 +479,7 @@ export const useSettingsStore = create<SettingsState>()(
       setShowMenuItemPrices: (show) => set({ showMenuItemPrices: show }),
       showMenuImages: true,
       setShowMenuImages: (show) => set({ showMenuImages: show }),
-      posMenuNavigationMode: "popup",
+      posMenuNavigationMode: "classic",
       setPosMenuNavigationMode: (mode) => set({ posMenuNavigationMode: mode }),
 
       setDefaultSittingTimeMinutes: (minutes) =>

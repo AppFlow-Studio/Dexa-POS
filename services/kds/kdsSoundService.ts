@@ -73,8 +73,14 @@ class KDSSoundService {
     if (this.initialized) return;
 
     try {
-      // Enable playback in silent mode (kitchen environments)
-      await setAudioModeAsync({ playsInSilentMode: true });
+      // Kitchen environments: ring even on silent, survive brief backgrounding,
+      // and don't get ducked or paused by other apps' audio sessions.
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        shouldPlayInBackground: true,
+        interruptionMode: "mixWithOthers",
+        interruptionModeAndroid: "duckOthers",
+      });
 
       // Pre-load all sound players
       for (const [preset, asset] of Object.entries(SOUND_ASSETS)) {

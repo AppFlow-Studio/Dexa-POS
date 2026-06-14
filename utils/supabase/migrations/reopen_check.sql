@@ -14,7 +14,7 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_order RECORD;
-  v_result JSONB;
+  v_totals JSONB;
 BEGIN
   -- Lock and fetch order
   SELECT * INTO v_order
@@ -40,12 +40,19 @@ BEGIN
   -- Reopen the check
   UPDATE orders
   SET check_status = 'Opened',
+      payment_status = CASE
+        WHEN payment_status = 'paid'::payment_status
+          THEN 'partial'::payment_status
+        ELSE payment_status
+      END,
       updated_at = NOW(),
       sync_version = sync_version + 1
   WHERE id = p_order_id;
 
-  -- Recalculate amount_due so re-payment is possible
-  PERFORM calculate_order_totals_fast(p_order_id);
+  -- Recalculate after leaving the terminal paid state. The totals function
+  -- intentionally clamps paid orders to zero, which is correct until a check
+  -- is explicitly reopened for ordering.
+  SELECT calculate_order_totals_fast(p_order_id) INTO v_totals;
 
   -- Log the action with reason (audit_logs table expected to exist)
   INSERT INTO audit_logs (
@@ -62,6 +69,11 @@ BEGIN
     p_staff_id,
     jsonb_build_object(
       'check_status', 'Opened',
+      'payment_status', CASE
+        WHEN v_order.payment_status = 'paid'::payment_status
+          THEN 'partial'
+        ELSE v_order.payment_status::TEXT
+      END,
       'reason', COALESCE(p_reason, 'No reason provided')
     ),
     NOW()
@@ -71,7 +83,14 @@ BEGIN
   RETURN jsonb_build_object(
     'success', true,
     'order_id', p_order_id,
-    'check_status', 'Opened'
+    'check_status', 'Opened',
+    'payment_status', CASE
+      WHEN v_order.payment_status = 'paid'::payment_status
+        THEN 'partial'
+      ELSE v_order.payment_status::TEXT
+    END,
+    'amount_due', COALESCE((v_totals->>'amount_due')::NUMERIC, 0),
+    'cash_amount_due', COALESCE((v_totals->>'cash_amount_due')::NUMERIC, 0)
   );
 
 EXCEPTION WHEN OTHERS THEN

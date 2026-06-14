@@ -27,6 +27,7 @@ export interface SelectedLocation {
   kds_workflow_mode?: "2-step" | "3-step";
   pricing_strategy?: string | null;
   dual_pricing_percentage?: number | null;
+  cfd_pricing_display_mode?: 'dual' | 'card_only' | 'cash_only' | null;
   tip_surcharge_percentage?: number | null;
   use_merchant_pricing_defaults?: boolean;
   public_metadata?: Record<string, any> | null;

@@ -45,6 +45,9 @@ const initialState: CFDDisplayData = {
   subtotalCash: 0,
   subtotalCard: 0,
   discountAmount: 0,
+  serviceCharge: 0,
+  serviceChargeName: null,
+  serviceChargeRate: null,
   taxAmount: 0,
   taxCash: 0,
   taxCard: 0,
@@ -65,6 +68,7 @@ const initialState: CFDDisplayData = {
   loyaltyResult: null,
   paymentMethod: null,
   merchantHasLoyalty: false,
+  pricingDisplayMode: "dual",
   themeMode: "dark",
 };
 
@@ -114,6 +118,9 @@ export const useCFDWebDisplayStore = create<CFDWebDisplayStore>()((set) => ({
       subtotalCash: payload.subtotalCash ?? current.subtotalCash,
       subtotalCard: payload.subtotalCard ?? current.subtotalCard,
       discountAmount: payload.discountAmount ?? current.discountAmount,
+      serviceCharge: payload.serviceCharge ?? current.serviceCharge,
+      serviceChargeName: payload.serviceChargeName ?? current.serviceChargeName,
+      serviceChargeRate: payload.serviceChargeRate ?? current.serviceChargeRate,
       taxAmount: payload.taxAmount ?? current.taxAmount,
       taxCash: payload.taxCash ?? current.taxCash,
       taxCard: payload.taxCard ?? current.taxCard,
@@ -136,6 +143,8 @@ export const useCFDWebDisplayStore = create<CFDWebDisplayStore>()((set) => ({
       paymentMethod: payload.paymentMethod ?? current.paymentMethod,
       merchantHasLoyalty:
         payload.merchantHasLoyalty ?? current.merchantHasLoyalty,
+      pricingDisplayMode:
+        payload.pricingDisplayMode ?? current.pricingDisplayMode,
       themeMode: payload.themeMode ?? current.themeMode,
     }));
   },
@@ -174,6 +183,9 @@ export function CFDWebDisplayProvider({
       subtotalCash: s.subtotalCash,
       subtotalCard: s.subtotalCard,
       discountAmount: s.discountAmount,
+      serviceCharge: s.serviceCharge,
+      serviceChargeName: s.serviceChargeName,
+      serviceChargeRate: s.serviceChargeRate,
       taxAmount: s.taxAmount,
       taxCash: s.taxCash,
       taxCard: s.taxCard,
@@ -194,6 +206,7 @@ export function CFDWebDisplayProvider({
       loyaltyResult: s.loyaltyResult,
       paymentMethod: s.paymentMethod,
       merchantHasLoyalty: s.merchantHasLoyalty,
+      pricingDisplayMode: s.pricingDisplayMode,
       themeMode: s.themeMode,
     })),
   );

@@ -5,7 +5,7 @@ import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import type { OrderProfile } from '@/lib/types'
 import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useOrderStore } from '@/stores/useOrderStore'
-import { formatAddress } from '@/utils/addressUtils'
+import { formatAddress, serializeDeliveryAddress } from '@/utils/addressUtils'
 import { Edit3, MapPin, User } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
 import {
@@ -342,18 +342,20 @@ const OrderDetailsComponent: React.FC<{
           <View style={{ flex: 1 }}>
             <TouchableOpacity
               onPress={onOpenTableSelector}
+              disabled={!onOpenTableSelector}
+              activeOpacity={onOpenTableSelector ? 0.7 : 1}
               className='w-full rounded-lg h-12 px-2.5 flex-row items-center gap-2'
               style={{
-                backgroundColor: colors.panel,
+                backgroundColor: tableLabel ? `${colors.teal}12` : colors.panel,
                 borderWidth: 1,
-                borderColor: colors.border
+                borderColor: tableLabel ? `${colors.teal}55` : colors.border,
               }}
             >
-              <DiningTableIcon color={colors.label} size={14} />
+              <DiningTableIcon color={tableLabel ? colors.teal : colors.label} size={14} />
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
-                    color: colors.heading,
+                    color: tableLabel ? colors.teal : colors.heading,
                     fontSize: 12,
                     fontWeight: '600'
                   }}
@@ -391,13 +393,7 @@ const OrderDetailsComponent: React.FC<{
                     backgroundColor: colors.teal
                   }}
                 >
-                  <Text
-                    style={{
-                      color: colors.onSolid,
-                      fontSize: 10,
-                      fontWeight: '600'
-                    }}
-                  >
+                  <Text style={{ color: colors.onSolid, fontSize: 10, fontWeight: '600' }}>
                     View
                   </Text>
                 </TouchableOpacity>
@@ -427,7 +423,7 @@ const OrderDetailsComponent: React.FC<{
                   onChangeText={text => {
                     if (activeOrderId)
                       updateActiveOrderDetails({
-                        delivery_address: JSON.stringify({
+                        delivery_address: serializeDeliveryAddress({
                           street: text,
                           city: '',
                           state: '',
@@ -438,7 +434,7 @@ const OrderDetailsComponent: React.FC<{
                   onAddressSelected={addr => {
                     if (activeOrderId)
                       updateActiveOrderDetails({
-                        delivery_address: JSON.stringify(addr)
+                        delivery_address: serializeDeliveryAddress(addr)
                       })
                   }}
                   placeholder='Enter address'
@@ -446,9 +442,7 @@ const OrderDetailsComponent: React.FC<{
                     backgroundColor: 'transparent',
                     borderWidth: 0,
                     borderRadius: 0,
-                    height: 46,
-                    minHeight: 46,
-                    maxHeight: 46,
+                    minHeight: 54,
                     paddingHorizontal: 0,
                     fontWeight: '600',
                     fontSize: 12,

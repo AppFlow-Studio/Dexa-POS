@@ -10,6 +10,7 @@ import { useKDSStore } from "@/stores/useKDSStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useToast } from "@/contexts/ToastContext";
 import {
   ChevronDown,
   Minus,
@@ -435,6 +436,11 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
   const kdsDisplayId = useKDSStore((s) => s.kdsDisplayId);
   const kdsDisplayConfig = useKDSStore((s) => s.kdsDisplayConfig);
   const fetchKDSDisplay = useKDSStore((s) => s.fetchKDSDisplay);
+  const routingMode = useKDSStore((s) => s.routingMode);
+  const enrichedRules = useKDSStore((s) => s.enrichedRules);
+  const prepStations = useKDSStore((s) => s.prepStations);
+
+  const toast = useToast();
 
   // Sound state (local, synced from kdsDisplayConfig)
   const [soundOnNewOrder, setSoundOnNewOrder] = useState(false);
@@ -677,6 +683,66 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                     value={soundOnNewOrder}
                     onToggle={handleSoundToggle}
                   />
+                  <TouchableOpacity
+                    onPress={() => {
+                      const cb = useKDSStore.getState()._onNewOrderCallback;
+                      if (!cb) {
+                        toast.show({
+                          title: "KDS not ready",
+                          message:
+                            "Open the KDS screen first so the sound trigger is wired up.",
+                          type: "warning",
+                          duration: 3000,
+                        });
+                        return;
+                      }
+                      if (!soundOnNewOrder) {
+                        toast.show({
+                          title: "Sound is disabled",
+                          message:
+                            "Turn on 'Sound on New Order' first, then test again.",
+                          type: "warning",
+                          duration: 3000,
+                        });
+                        return;
+                      }
+                      cb("pos");
+                    }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      marginTop: 8,
+                      marginBottom: 4,
+                      backgroundColor: colors.teal,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Play size={14} color={colors.onSolid} />
+                    <Text
+                      style={{
+                        color: colors.onSolid,
+                        fontSize: 12,
+                        fontWeight: "600",
+                      }}
+                    >
+                      Test New-Order Sound
+                    </Text>
+                  </TouchableOpacity>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: 10,
+                      marginBottom: 4,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    Simulates a real broadcast — exercises the full trigger →
+                    audio path the kitchen hears for live orders.
+                  </Text>
                   {soundOnNewOrder && (
                     <View style={{ marginLeft: 8 }}>
                       <SoundPresetRow
@@ -720,6 +786,199 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                     </View>
                   )}
                 </>
+              )}
+
+              {/* ROUTING Section */}
+              <SectionHeader title="Routing" />
+
+              {!kdsDisplayId ? (
+                <Text style={{ color: colors.muted, fontSize: 12, fontStyle: "italic", marginBottom: 8 }}>
+                  No KDS display configured for this station.
+                </Text>
+              ) : (
+                <View style={{ paddingVertical: 8 }}>
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "600" }}>
+                      {kdsDisplayConfig?.displayName ?? "Kitchen Display"}
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.muted,
+                        fontSize: 10,
+                        marginTop: 2,
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {kdsDisplayId}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                    {(() => {
+                      const mode = routingMode ?? "unset";
+                      const isFiltered = routingMode === "filtered";
+                      const isAll = routingMode === "all";
+                      const fg = isFiltered ? colors.teal : isAll ? colors.warning : colors.muted;
+                      return (
+                        <View
+                          style={{
+                            backgroundColor: fg + "20",
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: fg + "55",
+                          }}
+                        >
+                          <Text style={{ color: fg, fontSize: 10, fontWeight: "700", letterSpacing: 0.5 }}>
+                            MODE: {mode.toUpperCase()}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                    {(() => {
+                      const orphanOn = kdsDisplayConfig?.showAllItems === true;
+                      const fg = orphanOn ? colors.warning : colors.teal;
+                      return (
+                        <View
+                          style={{
+                            backgroundColor: fg + "20",
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: fg + "55",
+                          }}
+                        >
+                          <Text style={{ color: fg, fontSize: 10, fontWeight: "700", letterSpacing: 0.5 }}>
+                            ORPHANED ITEMS: {orphanOn ? "ON" : "OFF"}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                  </View>
+
+                  {kdsDisplayConfig?.showAllItems === true && (
+                    <Text style={{ color: colors.warning, fontSize: 11, marginBottom: 12 }}>
+                      This display also receives items that didn&apos;t match any rule.
+                    </Text>
+                  )}
+
+                  <Text style={{ color: colors.label, fontSize: 11, fontWeight: "700", marginTop: 4, marginBottom: 6, letterSpacing: 0.5 }}>
+                    ACTIVE RULES
+                  </Text>
+                  {enrichedRules.length === 0 ? (
+                    <Text style={{ color: colors.muted, fontSize: 11, fontStyle: "italic", marginBottom: 12 }}>
+                      No rules configured.
+                    </Text>
+                  ) : (
+                    <View style={{ marginBottom: 12 }}>
+                      {(["prep_station", "category", "order_type"] as const).map((type) => {
+                        const group = enrichedRules.filter((r) => r.rule_type === type);
+                        if (group.length === 0) return null;
+                        const groupLabel =
+                          type === "prep_station"
+                            ? "Prep Stations"
+                            : type === "category"
+                              ? "Categories"
+                              : "Order Types";
+                        return (
+                          <View key={type} style={{ marginBottom: 8 }}>
+                            <Text style={{ color: colors.muted, fontSize: 10, marginBottom: 4 }}>{groupLabel}</Text>
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                              {group.map((rule) => {
+                                const swatch =
+                                  type === "prep_station" ? prepStations[rule.rule_value]?.color : null;
+                                return (
+                                  <View
+                                    key={`${rule.rule_type}-${rule.rule_value}`}
+                                    style={{
+                                      flexDirection: "row",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      backgroundColor: colors.skeleton,
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 4,
+                                      borderRadius: 6,
+                                      borderWidth: 1,
+                                      borderColor: colors.border,
+                                    }}
+                                  >
+                                    {swatch && (
+                                      <View
+                                        style={{
+                                          width: 8,
+                                          height: 8,
+                                          borderRadius: 4,
+                                          backgroundColor: swatch,
+                                        }}
+                                      />
+                                    )}
+                                    <Text style={{ color: colors.heading, fontSize: 11 }}>{rule.label}</Text>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {Object.keys(prepStations).length > 0 && (
+                    <>
+                      <Text
+                        style={{
+                          color: colors.label,
+                          fontSize: 11,
+                          fontWeight: "700",
+                          marginBottom: 6,
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        PREP STATIONS AT LOCATION
+                      </Text>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                        {Object.values(prepStations).map((ps) => {
+                          const isBound = enrichedRules.some(
+                            (r) => r.rule_type === "prep_station" && r.rule_value === ps.name,
+                          );
+                          return (
+                            <View
+                              key={ps.name}
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: 6,
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                                borderRadius: 6,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                backgroundColor: isBound ? colors.skeleton : "transparent",
+                                opacity: isBound ? 1 : 0.5,
+                              }}
+                            >
+                              <View
+                                style={{
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: 4,
+                                  backgroundColor: ps.color,
+                                }}
+                              />
+                              <Text style={{ color: colors.heading, fontSize: 11 }}>{ps.name}</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </>
+                  )}
+
+                  <Text style={{ color: colors.muted, fontSize: 10, fontStyle: "italic" }}>
+                    Routes & rules are configured in the admin website.
+                  </Text>
+                </View>
               )}
 
               {/* OTHER Section */}

@@ -32,6 +32,9 @@ interface CFDBuiltinState {
   subtotalCash: number
   subtotalCard: number
   discountAmount: number
+  serviceCharge: number
+  serviceChargeName: string | null
+  serviceChargeRate: number | null
   taxAmount: number
   taxCash: number
   taxCard: number
@@ -53,6 +56,7 @@ interface CFDBuiltinState {
   loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
   loyaltyResult: CFDPayload['loyaltyResult'] | null
   merchantHasLoyalty: boolean
+  pricingDisplayMode: 'dual' | 'card_only' | 'cash_only'
   themeMode: 'light' | 'dark'
 
   // Actions
@@ -74,6 +78,9 @@ const initialState: Omit<CFDBuiltinState, 'update' | 'reset'> = {
   subtotalCash: 0,
   subtotalCard: 0,
   discountAmount: 0,
+  serviceCharge: 0,
+  serviceChargeName: null,
+  serviceChargeRate: null,
   taxAmount: 0,
   taxCash: 0,
   taxCard: 0,
@@ -94,6 +101,7 @@ const initialState: Omit<CFDBuiltinState, 'update' | 'reset'> = {
   loyaltyPrompt: null,
   loyaltyResult: null,
   merchantHasLoyalty: false,
+  pricingDisplayMode: 'dual',
   themeMode: 'dark'
 }
 

@@ -54,6 +54,7 @@ export interface ModifierItem {
   id: string;
   name: string;
   price_modifier: number;
+  display_order?: number | null;
   is_active: boolean;
   is_default: boolean | null;
   stock_tracking_mode: StockTrackingMode;
@@ -63,6 +64,7 @@ export interface ModifierItem {
 export interface ModifierGroup {
   id: string;
   name: string;
+  display_order?: number | null;
   min_selections: number;
   max_selections: number;
   is_required: boolean;

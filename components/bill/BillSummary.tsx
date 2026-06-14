@@ -1,6 +1,6 @@
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
-import { CartItem } from "@/lib/types";
+import { useOrderItem } from "@/stores/selectors/orderSelectors";
 import React, { useEffect, useMemo, useRef } from "react";
 import { ScrollView, Text, View } from "react-native";
 import Animated, {
@@ -10,7 +10,8 @@ import Animated, {
 import BillItem from "./BillItem";
 
 interface BillSummaryProps {
-  cart: CartItem[];
+  orderId: string | null;
+  itemIds: string[];
   expandedItemId?: string | null;
   onToggleExpand?: (itemId: string) => void;
   currentCourse?: number;
@@ -22,7 +23,8 @@ interface BillSummaryProps {
 }
 
 const BillSummaryComponent: React.FC<BillSummaryProps> = ({
-  cart,
+  orderId,
+  itemIds,
   expandedItemId,
   onToggleExpand,
   currentCourse,
@@ -38,7 +40,7 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
   // 2. useEffect to scroll to bottom when cart items change
   useEffect(() => {
     let frameId: number | null = null;
-    if (cart.length > 0) {
+    if (itemIds.length > 0) {
       // OPTIMIZED: Use requestAnimationFrame instead of 100ms setTimeout
       // This waits for the next frame (16ms max) instead of fixed 100ms delay
       frameId = requestAnimationFrame(() => {
@@ -48,21 +50,21 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
     return () => {
       if (frameId != null) cancelAnimationFrame(frameId);
     };
-  }, [cart.length]);
+  }, [itemIds.length]);
 
   // OPTIMIZED: Pre-compute grouped courses outside render for O(1) lookup
   const groupedCourses = useMemo(() => {
-    const grouped: Record<number, CartItem[]> = {};
-    cart.forEach((item) => {
-      const course = itemCourseMap?.[item.id] ?? 1;
+    const grouped: Record<number, string[]> = {};
+    itemIds.forEach((itemId) => {
+      const course = itemCourseMap?.[itemId] ?? 1;
       if (!grouped[course]) grouped[course] = [];
-      grouped[course].push(item);
+      grouped[course].push(itemId);
     });
     return Object.keys(grouped)
       .map(Number)
       .sort((a, b) => a - b)
       .map((course) => ({ course, items: grouped[course] }));
-  }, [cart, itemCourseMap]);
+  }, [itemCourseMap, itemIds]);
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.screen }}>
@@ -76,34 +78,24 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
             contentContainerStyle={{ backgroundColor: colors.screen }}
             nestedScrollEnabled={true}
           >
-            {cart.length > 0 ? (
+            {itemIds.length > 0 ? (
               <View>
                 {groupedCourses.map(({ course, items }) => {
                   const isCourseActive =
                     currentCourse !== undefined && course === currentCourse;
                   return (
                     <View key={`course-${course}`} className="mb-3">
-                      {items.map((item, index) => {
-                        return (
-                          <Animated.View
-                            key={item.id}
-                            entering={iosOnly(FadeInDown.duration(200))}
-                            layout={iosOnly(LinearTransition.duration(200))}
-                            className={`rounded-xl mb-1 ${
-                              isCourseActive ? "border border-blue-500" : ""
-                            }`}
-                          >
-                            <BillItem
-                              item={item}
-                              isEditable={true}
-                              showPaidBadge={true}
-                              orderHasPayments={orderHasPayments}
-                              payments={payments}
-                              isNetworkDegraded={isNetworkDegraded}
-                            />
-                          </Animated.View>
-                        );
-                      })}
+                      {items.map((itemId) => (
+                        <BillSummaryRow
+                          key={itemId}
+                          orderId={orderId}
+                          itemId={itemId}
+                          isCourseActive={isCourseActive}
+                          orderHasPayments={orderHasPayments}
+                          payments={payments}
+                          isNetworkDegraded={isNetworkDegraded}
+                        />
+                      ))}
                     </View>
                   );
                 })}
@@ -122,11 +114,52 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
   );
 };
 
+const BillSummaryRow = React.memo(
+  function BillSummaryRow({
+    orderId,
+    itemId,
+    isCourseActive,
+    orderHasPayments,
+    payments,
+    isNetworkDegraded,
+  }: {
+    orderId: string | null;
+    itemId: string;
+    isCourseActive: boolean;
+    orderHasPayments?: boolean;
+    payments?: any[] | null;
+    isNetworkDegraded?: boolean;
+  }) {
+    const item = useOrderItem(orderId, itemId);
+    if (!item) return null;
+
+    return (
+      <Animated.View
+        entering={iosOnly(FadeInDown.duration(200))}
+        layout={iosOnly(LinearTransition.duration(200))}
+        className={`rounded-xl mb-1 ${
+          isCourseActive ? "border border-blue-500" : ""
+        }`}
+      >
+        <BillItem
+          item={item}
+          isEditable={true}
+          showPaidBadge={true}
+          orderHasPayments={orderHasPayments}
+          payments={payments}
+          isNetworkDegraded={isNetworkDegraded}
+        />
+      </Animated.View>
+    );
+  },
+);
+
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
 const BillSummary = React.memo(BillSummaryComponent, (prev, next) => {
   // Return true if props are equal (skip re-render)
   return (
-    prev.cart === next.cart &&
+    prev.orderId === next.orderId &&
+    prev.itemIds === next.itemIds &&
     prev.expandedItemId === next.expandedItemId &&
     prev.currentCourse === next.currentCourse &&
     prev.itemCourseMap === next.itemCourseMap &&

@@ -216,10 +216,12 @@ export const useSeatingStore = create<SeatingState>()(
     // ========================================================================
 
     setActiveSeat: (orderId: string, seatNumber: number | null) => {
+      const o = get().byOrderId[orderId];
+      if (!o || o.activeSeat === seatNumber) return;
       set((state) => {
-        const o = state.byOrderId[orderId];
-        if (!o) return;
-        o.activeSeat = seatNumber;
+        const next = state.byOrderId[orderId];
+        if (!next) return;
+        next.activeSeat = seatNumber;
       });
     },
 

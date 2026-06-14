@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import MenuSearchSheet from "@/components/menu/MenuSearchSheet";
 import PaymentDetailBottomSheet from "@/components/menu/PaymentDetailBottomSheet";
 import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
+import MyProfilePanel from "@/components/profile/MyProfilePanel";
 import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
 import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
@@ -22,10 +23,12 @@ import {
 } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useProfileOverlayStore } from "@/stores/useProfileOverlayStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { OrderPayload, PaymentPayload } from "@/types/real-time";
 import { useAuth } from "@clerk/clerk-expo";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { PortalHost } from "@rn-primitives/portal";
 import { Redirect, Slot, usePathname } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { StatusBar } from "expo-status-bar";
@@ -33,6 +36,7 @@ import React, { useCallback, useEffect, useRef } from "react";
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
+    Modal,
     Platform,
     unstable_batchedUpdates,
     View,
@@ -48,6 +52,8 @@ export default function MainLayout() {
   const { colorScheme } = useColorScheme();
   const pathname = usePathname();
   const { isSignedIn, isLoaded } = useAuth();
+  const isProfileOpen = useProfileOverlayStore((state) => state.isOpen);
+  const closeProfile = useProfileOverlayStore((state) => state.closeProfile);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const isKDS = selectedStation?.station_type === "kds";
@@ -117,7 +123,7 @@ export default function MainLayout() {
           return;
         }
 
-        const { orientation } = await ScreenOrientation.getOrientationAsync();
+        const orientation = await ScreenOrientation.getOrientationAsync();
         switch (orientation) {
           case ScreenOrientation.Orientation.PORTRAIT_UP:
             await ScreenOrientation.lockAsync(
@@ -347,7 +353,12 @@ export default function MainLayout() {
               >
                 <Header />
               </View>
-              <Slot />
+              <View
+                className='flex-1'
+                style={disableKeyboardAvoiding ? { zIndex: 100 } : undefined}
+              >
+                <Slot />
+              </View>
             </View>
           </View>
           <NotificationBottomSheet
@@ -385,8 +396,19 @@ export default function MainLayout() {
             }}
             pointerEvents="box-none"
           >
-            <MenuSearchSheet ref={menuSearchSheetRef} />
+          <MenuSearchSheet ref={menuSearchSheetRef} />
           </View>
+          <Modal
+            visible={isProfileOpen}
+            animationType='none'
+            presentationStyle='fullScreen'
+            onRequestClose={closeProfile}
+          >
+            <MyProfilePanel onClose={closeProfile} />
+            {/* Portal host so Dialog-based modals (PIN entry) render ABOVE this
+                fullScreen Modal rather than behind the app root PortalHost. */}
+            <PortalHost name='profile-overlay' />
+          </Modal>
         </SafeAreaView>
       </KeyboardAvoidingView>
     </LocationRealtimeProvider>

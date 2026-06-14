@@ -169,7 +169,9 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       return
     }
 
-    applyDiscountToCheck(activeOrderId, discount as any)
+    applyDiscountToCheck(activeOrderId, discount as any, (errorMsg) => {
+      show({ title: 'Discount not applied', message: errorMsg, type: 'error' })
+    })
   }
 
   const handleApplyCustomDiscount = () => {
@@ -215,7 +217,9 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       return
     }
 
-    applyDiscountToCheck(activeOrderId, customDiscount as any)
+    applyDiscountToCheck(activeOrderId, customDiscount as any, (errorMsg) => {
+      show({ title: 'Discount not applied', message: errorMsg, type: 'error' })
+    })
     setCustomDiscountValue('')
   }
 
@@ -279,7 +283,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       keyboardBehavior='interactive'
       keyboardBlurBehavior='restore'
       android_keyboardInputMode='adjustResize'
-      enableContentPanningGesture={false}
+      enableContentPanningGesture
       topInset={0}
     >
       <BottomSheetScrollView
@@ -287,6 +291,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
         contentContainerStyle={{ paddingBottom: 20 }}
         keyboardShouldPersistTaps='always'
         keyboardDismissMode='none'
+        nestedScrollEnabled
       >
         <View
           style={{
@@ -376,9 +381,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                   }}
                 >
                   {activeCheckDiscount.type === 'percentage'
-                    ? `${Math.round(
-                        (activeCheckDiscount.value || 0) * 100
-                      )}% off`
+                    ? `${+((activeCheckDiscount.value || 0) * 100).toFixed(4).replace(/\.?0+$/, '')}% off`
                     : `$${activeCheckDiscount.value?.toFixed(2)} off`}
                 </Text>
               </View>

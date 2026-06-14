@@ -5,13 +5,27 @@ import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import React, { useDeferredValue, useMemo } from 'react'
 import { Text, View } from 'react-native'
+import { useShallow } from 'zustand/react/shallow'
 
 const TotalsComponent: React.FC = () => {
   const totals = useDeferredValue(useActiveOrderTotals())
   const defaultTaxRate = useStoreSettingsStore(s => s.taxRatesMap.standard ?? 0)
-  const activeOrder = useOrderStore(s =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined
-  )
+  const activeOrder = useOrderStore(useShallow(s => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined
+    if (!order) return undefined
+    return {
+      order_source: order.order_source,
+      db_order_id: order.db_order_id,
+      payments: order.payments,
+      paid_status: order.paid_status,
+      amount_paid: order.amount_paid,
+      checkDiscount: order.checkDiscount,
+      applied_discounts: order.applied_discounts,
+      items: order.items,
+      order_refund_items: order.order_refund_items,
+      reversals: order.reversals
+    }
+  }))
   const isOnlineOrder = activeOrder?.order_source?.toLowerCase() === 'online'
   const {
     payments: hydratedPayments,
@@ -88,13 +102,13 @@ const TotalsComponent: React.FC = () => {
       const discount = activeOrder.checkDiscount
       discountLabel =
         discount.type === 'percentage'
-          ? `Discount (${Math.round(discount.value * 100)}% off)`
+          ? `Discount (${+((discount.value * 100).toFixed(4)).replace(/\.?0+$/, '')}% off)`
           : `Discount ($${discount.value.toFixed(2)} off)`
     } else if (activeOrder?.applied_discounts?.length) {
       const discount = activeOrder.applied_discounts[0]
       discountLabel =
         discount.discount_type === 'percentage'
-          ? `Discount (${Math.round(discount.discount_value * 100)}% off)`
+          ? `Discount (${+((discount.discount_value).toFixed(4)).replace(/\.?0+$/, '')}% off)`
           : `Discount ($${discount.discount_value.toFixed(2)} off)`
     }
 
@@ -185,6 +199,22 @@ const TotalsComponent: React.FC = () => {
           ${totals.tax.toFixed(2)}
         </Text>
       </View>
+
+      {totals.serviceCharge > 0.001 && (
+        <View className='flex-row justify-between items-center mb-1.5'>
+          <Text style={{ color: colors.label, fontSize: 11 }}>
+            {totals.serviceChargeName || 'Service Charge'}
+            {totals.serviceChargeRate != null
+              ? ` (${Number(totals.serviceChargeRate).toFixed(2)}%)`
+              : ''}
+          </Text>
+          <Text
+            style={{ color: colors.label, fontSize: 11, fontWeight: '600' }}
+          >
+            ${totals.serviceCharge.toFixed(2)}
+          </Text>
+        </View>
+      )}
 
       {paymentInfo.isPaymentsLoading ? (
         <View className='flex-row justify-between items-end mt-1.5'>

@@ -13,6 +13,7 @@ import { getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 
 export async function reopenCheckEffect(ctx: SideEffectContext): Promise<void> {
   if (ctx.action.type !== "REOPEN_CHECK") return;
+  if (ctx.action.backendAlreadySynced) return;
 
   const { dbOrderId, reason, orderId } = ctx.action;
   const supabase = getOrderStoreSupabaseClient();

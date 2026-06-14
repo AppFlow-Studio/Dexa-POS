@@ -41,6 +41,7 @@ const hookSrc = read(
 const orderProcessingSrc = read('app/(main)/order-processing.tsx')
 const billSectionSrc = read('components/bill/BillSection.tsx')
 const orderStoreSrc = read('stores/useOrderStore.ts')
+const ordersQuerySrc = read('hooks/pos/useOrdersQuery.ts')
 const transformersSrc = read('utils/orderTransformers.ts')
 const typesSrc = read('lib/types.ts')
 const bannerSrc = read('components/order/ReadOnlyBanner.tsx')
@@ -129,6 +130,29 @@ describe('Wave 2.7 — useActiveOrderOwnershipRecheck hook', () => {
 
   it('flippedAway requires a non-null currentStationId (no false positives on devices without a selected station)', () => {
     expect(hookSrc).toMatch(/currentStationId != null/)
+  })
+
+  it('only toasts for an explicit foreign owner, not when an order becomes unowned', () => {
+    expect(hookSrc).toMatch(
+      /wasMine && newStationId != null && !isMine && !orderIsTerminal/
+    )
+    expect(orderStoreSrc).toMatch(
+      /_priorStationId === currentStationId &&\s*_newStationId != null &&\s*_newStationId !== currentStationId/
+    )
+    expect(ordersQuerySrc).toMatch(
+      /next\?\.station_id != null && next\.station_id !== _myStationId/
+    )
+    expect(ordersQuerySrc).not.toMatch(
+      /!next \|\| \(next\.station_id != null && next\.station_id !== _myStationId\)/
+    )
+  })
+})
+
+describe('Wave 2.7 - table-session poll stability', () => {
+  it('refreshes the dine-in table-to-order index after a broadcast upsert', () => {
+    expect(orderStoreSrc).toMatch(
+      /state\.dbOrderIdIndex\[dbOrderId\] = dbOrderId;[\s\S]*syncTableOrderIdIndexForOrder\(state, dbOrderId, existing\);/
+    )
   })
 })
 

@@ -88,6 +88,18 @@ const BillTab: React.FC<BillTabProps> = ({ order }) => {
           {/* Tax */}
           <TotalRow label='Tax' value={displayTax} />
 
+          {/* Service Charge — snapshotted from when the order was billed. */}
+          {totals.serviceCharge > 0.001 && (
+            <TotalRow
+              label={`${totals.serviceChargeName}${
+                totals.serviceChargeRate != null
+                  ? ` (${Number(totals.serviceChargeRate).toFixed(2)}%)`
+                  : ''
+              }`}
+              value={totals.serviceCharge}
+            />
+          )}
+
           {/* Voided items note */}
           {totals.voidedCount > 0 && (
             <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>

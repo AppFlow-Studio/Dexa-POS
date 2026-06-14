@@ -1,33 +1,53 @@
 import { CartItem } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
+import { getPrinterReachability } from "@/stores/selectors/printerSelectors";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { PrinterConfig, PrinterRoutingConfig } from "@/types/printer";
 
 /**
  * Finds the receipt printer for this station.
  *
  * Priority order:
- *   1. Station's defaultReceiptPrinterId (from MMKV settings — per-device)
- *   2. Fallback: any active receipt-role printer at this location
- *
- * Printers are location-level resources. Each station stores its own
- * receipt printer assignment locally via useSettingsStore.
+ *   1. Station's DB-backed claim (`stations.current_receipt_printer_id`).
+ *      Soft sharing — multiple stations can claim the same printer; this
+ *      function returns the same id for each of them.
+ *   2. Legacy MMKV `defaultReceiptPrinterId` — boot-window fallback only,
+ *      kept until every device has run the reconciliation step in
+ *      PosSyncProvider.
+ *   3. Any active receipt-role printer at this location.
  */
 export function getReceiptPrinter(
   locationId: string,
-  _stationId?: string | null,
+  stationId?: string | null,
 ): PrinterConfig | null {
   const { printers } = usePrinterStore.getState();
-  const defaultId = useSettingsStore.getState().defaultReceiptPrinterId;
 
-  // Station's chosen receipt printer (stored in MMKV per-device)
-  if (defaultId) {
-    const chosen = printers.find((p) => p.id === defaultId && p.isActive);
+  // 1. DB-backed station claim. Reads the cached selectedStation row first
+  //    (fast path, no extra fetch) and falls back to selectedStore stations
+  //    if the cache doesn't carry it yet.
+  const selectedStation = useStoreSettingsStore.getState().selectedStation;
+  const effectiveStationId = stationId ?? selectedStation?.id ?? null;
+  const claimedId =
+    effectiveStationId && selectedStation?.id === effectiveStationId
+      ? selectedStation.current_receipt_printer_id ?? null
+      : null;
+  if (claimedId) {
+    const chosen = printers.find((p) => p.id === claimedId && p.isActive);
+    if (chosen) return chosen;
+    // Claim points to a deleted/deactivated printer — fall through.
+  }
+
+  // 2. Legacy MMKV cache, kept as a safety net during the rollout window.
+  //    PosSyncProvider's boot reconciler aligns this with the DB claim.
+  const mmkvId = useSettingsStore.getState().defaultReceiptPrinterId;
+  if (mmkvId) {
+    const chosen = printers.find((p) => p.id === mmkvId && p.isActive);
     if (chosen) return chosen;
   }
 
-  // Fallback: any active receipt printer at this location
+  // 3. Location-level fallback: any active receipt printer.
   const activePrinters = printers.filter(
     (p) =>
       p.isActive &&
@@ -36,11 +56,18 @@ export function getReceiptPrinter(
   );
 
   const isBuiltin = (p: PrinterConfig) => p.connectionType === "builtin";
+  // "Connectable" excludes in_use peers — picking an in_use printer for
+  // automatic fallback would queue against a peer device's lock and likely
+  // delay the print. The user's explicitly chosen printer (above) bypasses
+  // this filter.
+  const isConnectable = (p: PrinterConfig) =>
+    getPrinterReachability(p) === "connectable";
 
-  // Prefer connected non-builtin (Star) over builtin (Landi)
+  // Prefer connectable non-builtin (Star) over connectable builtin (Landi),
+  // then fall back to any active printer (including in_use) as a last resort.
   return (
-    activePrinters.find((p) => p.isConnected && !isBuiltin(p)) ??
-    activePrinters.find((p) => p.isConnected) ??
+    activePrinters.find((p) => isConnectable(p) && !isBuiltin(p)) ??
+    activePrinters.find((p) => isConnectable(p)) ??
     activePrinters.find((p) => !isBuiltin(p)) ??
     activePrinters[0] ??
     null

@@ -198,12 +198,12 @@ const CustomerSheet: React.FC = () => {
   };
 
   const handlePhoneChange = (text: string) => {
-    const cleaned = text.replace(/\D/g, "");
+    const cleaned = text.replace(/\D/g, "").slice(0, 10);
     let formatted = cleaned;
     if (cleaned.length > 6) {
-      formatted = `(${cleaned.slice(0, 3)}) - ${cleaned.slice(3, 6)} - ${cleaned.slice(6, 10)}`;
+      formatted = `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
     } else if (cleaned.length > 3) {
-      formatted = `(${cleaned.slice(0, 3)}) - ${cleaned.slice(3)}`;
+      formatted = `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;
     } else if (cleaned.length > 0) {
       formatted = `(${cleaned}`;
     }
@@ -212,10 +212,19 @@ const CustomerSheet: React.FC = () => {
 
   const handleSaveNewCustomer = async () => {
     const rawPhone = newPhone.replace(/\D/g, "");
-    if (!newName.trim() || rawPhone.length < 10) {
+    if (!newName.trim()) {
       show({
         title: "Missing Information",
-        message: "Please enter a valid name and a 10-digit phone number.",
+        message: "Please enter a customer name.",
+        type: "error",
+      });
+      return;
+    }
+    // Phone is optional, but if provided it must be a complete 10-digit number.
+    if (rawPhone.length > 0 && rawPhone.length < 10) {
+      show({
+        title: "Invalid Phone Number",
+        message: "Please enter a complete 10-digit phone number, or leave it blank.",
         type: "error",
       });
       return;
@@ -283,12 +292,12 @@ const CustomerSheet: React.FC = () => {
     setNewName(customer.name || "");
 
     // Format phone for read-only display
-    const rawPhone = (customer.phone ?? customer.phoneNumber ?? "").replace(/\D/g, "");
+    const rawPhone = (customer.phone ?? customer.phoneNumber ?? "").replace(/\D/g, "").slice(0, 10);
     let formatted = rawPhone;
     if (rawPhone.length > 6) {
-      formatted = `(${rawPhone.slice(0, 3)}) - ${rawPhone.slice(3, 6)} - ${rawPhone.slice(6, 10)}`;
+      formatted = `(${rawPhone.slice(0, 3)}) ${rawPhone.slice(3, 6)}-${rawPhone.slice(6)}`;
     } else if (rawPhone.length > 3) {
-      formatted = `(${rawPhone.slice(0, 3)}) - ${rawPhone.slice(3)}`;
+      formatted = `(${rawPhone.slice(0, 3)}) ${rawPhone.slice(3)}`;
     } else if (rawPhone.length > 0) {
       formatted = `(${rawPhone}`;
     }
@@ -498,7 +507,7 @@ const CustomerSheet: React.FC = () => {
                 </View>
               ) : (
                 <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-                  <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
+                  <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }} keyboardShouldPersistTaps="handled">
                     <Text style={{ color: colors.muted, fontSize: 11 }}>
                       {viewMode === "edit" ? "Update customer name or address. Phone number cannot be changed." : "Address fields are optional."}
                     </Text>
@@ -516,14 +525,14 @@ const CustomerSheet: React.FC = () => {
 
                     <View style={{ gap: 5 }}>
                       <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>
-                        Phone Number {viewMode === "add" ? "*" : "(read-only)"}
+                        Phone Number {viewMode === "add" ? "(optional)" : "(read-only)"}
                       </Text>
                       <TextInput
                         value={newPhone}
                         onChangeText={viewMode === "edit" ? undefined : handlePhoneChange}
                         editable={viewMode !== "edit"}
-                        placeholder="(555) - 555 - 5555"
-                        maxLength={20}
+                        placeholder="(555) 555-5555"
+                        maxLength={14}
                         keyboardType="phone-pad"
                         placeholderTextColor={colors.muted}
                         style={{

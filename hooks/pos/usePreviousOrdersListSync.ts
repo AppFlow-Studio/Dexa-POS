@@ -20,13 +20,22 @@ export function usePreviousOrdersListSync() {
     (s) => s.clearNewOrdersCount,
   );
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   // Initial bootstrap fires unconditionally at mount. This is the only path
   // that seeds `_orderLookup`, and the fallback primitive's mount-fire below
   // only handles deltas against an already-loaded lookup.
   useEffect(() => {
-    void refreshPreviousOrders();
+    let cancelled = false;
+    (async () => {
+      try {
+        await refreshPreviousOrders();
+      } finally {
+        if (!cancelled) setIsInitialLoading(false);
+      }
+    })();
     return () => {
+      cancelled = true;
       clearNewOrdersCount();
     };
   }, [refreshPreviousOrders, clearNewOrdersCount]);
@@ -48,5 +57,5 @@ export function usePreviousOrdersListSync() {
     }
   }, [refreshPreviousOrders]);
 
-  return { refresh, isRefreshing };
+  return { refresh, isRefreshing, isInitialLoading };
 }

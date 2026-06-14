@@ -39,6 +39,9 @@ export interface CFDDisplayData {
   subtotalCash: number;
   subtotalCard: number;
   discountAmount: number;
+  serviceCharge: number;
+  serviceChargeName: string | null;
+  serviceChargeRate: number | null;
   taxAmount: number;
   taxCash: number;
   taxCard: number;
@@ -67,6 +70,9 @@ export interface CFDDisplayData {
 
   // Loyalty program availability (gates the "Join Loyalty" CTA on result screen)
   merchantHasLoyalty: boolean;
+
+  // Controls which price totals the CFD ordering screen displays.
+  pricingDisplayMode: 'dual' | 'card_only' | 'cash_only';
 
   // Theme — propagated from POS so the CFD matches the operator's chosen mode.
   themeMode: "light" | "dark";

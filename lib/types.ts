@@ -177,6 +177,7 @@ export interface ModifierOption {
   id: string
   name: string
   price: number
+  displayOrder?: number
   isAvailable?: boolean // For items that are "86'd" (unavailable)
   isDefault?: boolean // For default selected options
   recipe?: RecipeItem[]
@@ -185,6 +186,7 @@ export interface ModifierOption {
 export interface ModifierCategory {
   id: string
   name: string
+  displayOrder?: number
   type: 'required' | 'optional'
   selectionType: 'single' | 'multiple'
   maxSelections?: number // For multiple selection with limits
@@ -419,6 +421,13 @@ export interface CartItem {
   sync_status?: 'pending' | 'syncing' | 'synced' | 'failed'
   sync_error?: string
   sync_retry_count?: number
+  // Optimistic-payment fingerprint. Stamped by addPaymentToOrder when the
+  // itemAllocations branch updates paidQuantity locally; cleared by the
+  // backend reconciliation path once `data.updated_items` arrives. The FIFO
+  // absorb in _handleOrderBroadcast / upsertOrder prefers stamped candidates
+  // over non-stamped ones so a same-composite-key broadcast clone arriving
+  // mid-race can't be claimed instead of the in-flight optimistic copy.
+  pendingPaymentSeq?: number
   // NEW: Context for price level tracking - which category/menu was this item added from
   addedFromCategoryId?: string | null
   addedFromMenuId?: string | null
@@ -480,6 +489,7 @@ export interface PreviousOrder {
   display_number: string
   paymentStatus: PaymentStatus
   customer: string
+  customer_phone?: string | null
   server: string
   opened_at: string
   closed_at: string
@@ -492,6 +502,11 @@ export interface PreviousOrder {
   type: OrderType
   total: number
   tax?: number // Tax amount for bill display
+  // Service charge snapshot — pinned when SC was applied on the live order
+  // so the historical receipt shows the same SC line the customer paid.
+  service_charge?: number
+  service_charge_name?: string | null
+  service_charge_rate?: number | null
   items: CartItem[] // The detailed list of items for the notes modal
   notes?: string // Order-level notes (customer requests, special instructions)
   payments?: OrderProfile['payments'] // Add payments array
@@ -782,6 +797,11 @@ export interface OrderProfilePayment {
   localId?: string // Local ID for offline/sync tracking
 
   // Payment basics
+  /** Captured payment amount in the pricing mode the payment was taken in.
+   *  Cash terms when isCashPriced=true (matches order_payments.amount on
+   *  the server post-process_payment_v14); card terms otherwise. Do NOT
+   *  subtract cashSavings to "recover the cash amount" — this value is
+   *  already the cash amount when isCashPriced. */
   amount: number
   method: PaymentType
   tip_amount: number
@@ -795,7 +815,10 @@ export interface OrderProfilePayment {
   amountTendered?: number
   changeGiven?: number
   isCashPriced?: boolean
-  cashSavings?: number // original_amount - amount (discount received)
+  /** Discount the customer received by paying cash (= original_amount −
+   *  amount). Informational only — used for receipt "you saved $X" lines.
+   *  amount is already cash-side; do not subtract cashSavings from it. */
+  cashSavings?: number
 
   // Portions (for detailed breakdown)
   subtotal_portion?: number
@@ -859,6 +882,15 @@ export interface OrderProfilePayment {
   original_tip_fee?: number | null
   dual_pricing_percentage_snapshot?: number
   tip_surcharge_percentage_snapshot?: number
+
+  // Service-charge tracking (process_payment_v13 onward).
+  // service_charge: snapshot of this payment's share of orders.service_charge
+  //   captured at insert time (last split-portion snaps to gross).
+  // service_charge_refunded: cumulative SC portion reversed by
+  //   apply_refund_to_payment_v4 (LEAST-clamped, full-refund snap).
+  // Pre-v13 rows default to 0.
+  service_charge?: number
+  service_charge_refunded?: number
 
   // Settlement tracking
   is_settled?: boolean
@@ -935,6 +967,44 @@ export interface OrderProfile {
   total_cash_amount?: number
   total_tax?: number
   total_discount?: number
+
+  // === SERVICE CHARGE ===
+  // Flat $ folded into both card and cash total_amount, matching
+  // calculate_order_totals_fast. Snapshot fields lock the rate/label/applies_on
+  // at first apply so mid-shift rule changes don't retroactively shift open orders.
+  service_charge?: number
+  service_charge_name?: string | null
+  service_charge_rate?: number | null
+  service_charge_applies_on?: 'pre_discount' | 'post_discount' | null
+  service_charge_rule_id?: string | null
+  /** Set true by the manager-PIN override flow (Part 3); Wave B never writes true. */
+  service_charge_is_manual?: boolean
+  /**
+   * Whether the service charge is taxable. Snapshotted on the order
+   * (orders.service_charge_is_taxable) so a manager override — which clears
+   * service_charge_rule_id — can still drive SC tax. Mirrored to the
+   * calculator as manualServiceChargeTaxable.
+   */
+  service_charge_is_taxable?: boolean | null
+  /**
+   * Last `service_charge` value confirmed by the server via the
+   * apply_service_charge_v1 RPC sync-back. The drift gate in
+   * recalculateOrder compares computed SC against this (NOT the locally
+   * cached `service_charge`), so a freshly-pinned client-side SC still
+   * fires the RPC even when the locally-computed value matches the
+   * prior local cache. Also seeded from server broadcasts / hydration
+   * so the next recalc detects server drift. Transient — not persisted
+   * to MMKV, not part of broadcast payload.
+  */
+  _serverConfirmedServiceCharge?: number
+  /**
+   * Local-only lifecycle hint set after a paid check is explicitly reopened.
+   * While true, frontend outstanding totals may lead a stale backend amount_due
+   * snapshot so existing unpaid items are immediately payable.
+   */
+  _reopenedForOrdering?: boolean
+  /** Tracks how many times this check has been reopened. Max 1 reopen allowed. */
+  reopen_count?: number
 
   // Payment tracking - synced from backend
   amount_paid?: number // Total amount paid so far

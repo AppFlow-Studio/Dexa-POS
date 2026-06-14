@@ -13,7 +13,6 @@ import {
     TableStatus,
     WaitlistEntry,
 } from "@/types/db-floor-plan-types";
-import type { TableSessionPayload } from "@/types/real-time";
 import { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { persist, subscribeWithSelector } from "zustand/middleware";
@@ -21,6 +20,19 @@ import { persist, subscribeWithSelector } from "zustand/middleware";
 const getTableSessionStore = () =>
   (require("./useTableSessionStore") as typeof import("./useTableSessionStore"))
     .useTableSessionStore;
+
+/**
+ * Reject session restores for sessions the session store CLEAR'd locally
+ * within the TTL window. Prevents a stale backend snapshot or delayed broadcast
+ * from re-stamping a paid session onto tables[].session after a Clear has
+ * already wiped useTableSessionStore.sessions[tableId].
+ */
+const wasRecentlyCleared = (sessionId: string | undefined | null): boolean => {
+  if (!sessionId) return false;
+  return (
+    require("./useTableSessionStore") as typeof import("./useTableSessionStore")
+  ).wasSessionRecentlyCleared(sessionId);
+};
 
 // Lazy accessor — breaks circular dependency with useReservationStore
 const getReservationStore = () =>
@@ -33,6 +45,9 @@ let _supabaseClient: SupabaseClient | null = null;
 // Dedup concurrent loadFloorPlanStatus calls (module-level to avoid re-renders)
 let _loadFloorPlanPromise: Promise<void> | null = null;
 let _loadFloorPlanId: string | null = null; // Track which plan is being loaded
+// Monotonic load sequence: lets a forced load supersede an in-flight stale one.
+// Only the latest-issued snapshot is allowed to commit to state.
+let _loadFloorPlanSeq = 0;
 const _prefetchFloorPlanPromises = new Map<string, Promise<void>>();
 
 export const setFloorPlanSupabaseClient = (client: SupabaseClient | null) => {
@@ -157,6 +172,16 @@ const fetchFloorPlanSnapshot = async (
         return { ...freshTable, session: undefined };
       }
 
+      // Drop a fresh session that the session store CLEAR'd locally within
+      // the TTL — backend lag can return a still-paid row after our Clear
+      // has wiped the local session, and we don't want to resurrect it.
+      if (
+        freshTable.session &&
+        wasRecentlyCleared(freshTable.session.id)
+      ) {
+        return { ...freshTable, session: undefined };
+      }
+
       return freshTable;
     });
 
@@ -218,7 +243,6 @@ interface FloorPlanState {
   _reconnectAttempts: number;
   _reconnectTimeout: ReturnType<typeof setTimeout> | null;
   _isCleaningUp: boolean;
-  _handleSessionChange: (payload: TableSessionPayload) => void;
   _handleReconnect: (locationId: string) => void;
   manualReconnect: () => void;
 
@@ -261,7 +285,7 @@ interface FloorPlanState {
   updateFloorPlan: (id: string, updates: Partial<FloorPlan>) => Promise<void>;
   deleteFloorPlan: (id: string) => Promise<void>;
   loadFloorPlans: () => Promise<void>;
-  loadFloorPlanStatus: () => Promise<void>;
+  loadFloorPlanStatus: (force?: boolean) => Promise<void>;
   loadFloorPlanStatusIfStale: (ttlMs?: number) => Promise<void>;
   refreshTableSessions: () => Promise<void>;
   getCachedFloorPlan: (
@@ -460,195 +484,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           set({ activeFloorPlanId: floorPlanId });
         },
 
-        // setupRealtimeSubscriptions with broadcast messages:
+        // DEPRECATED: the floor `location:{id}:tables` channel is owned entirely
+        // by the `useFloorRealtime` hook (in LocationRealtimeProvider). This
+        // store no longer opens its own duplicate channel — that caused two
+        // writers racing the same state. Kept as a no-op so legacy callers don't
+        // break; convergence is handled by the hook + loadFloorPlanStatus.
         setupRealtimeSubscriptions: async (locationId: string) => {
-          const supabase = getClient();
-          if (!supabase) return;
-
-          // Clean up existing
-          const existingChannel = get().realtimeChannel;
-          if (existingChannel) {
-            supabase.removeChannel(existingChannel);
-          }
-
-          // IMPORTANT: Set auth for private channels
-          await supabase.realtime.setAuth();
-
-          // NOTE: Realtime subscriptions are now handled ENTIRELY by useFloorRealtime hook
-          // (in LocationRealtimeProvider). Creating duplicate subscriptions here caused
-          // race conditions where multiple listeners tried to update the same state.
-          // The hook calls _handleSessionChange() and loadFloorPlanStatus() in the correct order.
-          const channel = supabase
-            .channel(`location:${locationId}:tables`, {
-              config: { private: true }, // Use private channel with RLS
-            })
-            .subscribe((status, err) => {
-              // console.log('[Realtime] Status:', status, err)
-
-              switch (status) {
-                case "SUBSCRIBED":
-                  set({
-                    realtimeStatus: "connected",
-                    realtimeError: null,
-                    isOnline: true,
-                    _reconnectAttempts: 0, // Reset counter on success
-                  });
-                  // THROTTLE (Phase 1.3): Only refresh if last refresh was > 2 seconds ago
-                  const lastSync = get().lastSyncAt;
-                  const now = Date.now();
-                  if (!lastSync || now - new Date(lastSync).getTime() > 2000) {
-                    get().loadFloorPlanStatus();
-                  } else {
-                    console.log(
-                      "[FloorPlanStore] Skipping refresh - last sync was < 2s ago",
-                    );
-                  }
-                  break;
-
-                case "CHANNEL_ERROR":
-                  set({
-                    realtimeStatus: "reconnecting",
-                    realtimeError: err?.message || "Connection error",
-                  });
-                  // Auto-reconnect with backoff
-                  get()._handleReconnect(locationId);
-                  break;
-
-                case "TIMED_OUT":
-                  set({ realtimeStatus: "reconnecting" });
-                  get()._handleReconnect(locationId);
-                  break;
-
-                case "CLOSED":
-                  set({ realtimeStatus: "disconnected", isOnline: false });
-                  // Auto-reconnect on close (unless cleanup was called intentionally)
-                  if (!get()._isCleaningUp) {
-                    get()._handleReconnect(locationId);
-                  }
-                  break;
-              }
-            });
-
-          set({ realtimeChannel: channel, locationId });
+          set({ locationId });
         },
 
-        // NEW: Smart session change handler (avoids full refresh when possible)
-        _handleSessionChange: (payload: TableSessionPayload) => {
-          const { operation, data } = payload;
-
-          if (operation === "DELETE" || !data?.session) {
-            // Full refresh for deletes (simpler)
-            // NOTE: Cancel pending load to prevent stale data from overwriting cleared state
-            _loadFloorPlanPromise = null;
-            _loadFloorPlanId = null;
-            get()._debouncedRefresh();
-            return;
-          }
-
-          // If session is no longer active, clear it from all tables
-          if (data.session.is_active === false) {
-            const sessionId = data.session.id;
-            set((state) => {
-              let changed = false;
-              const newTables = state.tables.map((t) => {
-                if (t.session?.id === sessionId) {
-                  changed = true;
-                  return { ...t, session: undefined };
-                }
-                return t;
-              });
-              if (!changed) return {};
-              return {
-                tables: newTables,
-                tablesById: buildTablesById(newTables),
-              };
-            });
-            // NOTE: Don't call _debouncedRefresh here - state is already cleared.
-            // The realtime UPDATE with is_active=false means the DB is already updated.
-            // If we refresh, we might re-fetch the session before it's marked inactive server-side,
-            // causing it to briefly re-appear. Instead, let the clear stand and any future
-            // updates will come via realtime.
-            return;
-          }
-
-          // For INSERT/UPDATE, try to patch local state
-          const sessionId = data.session.id;
-          const tableIds = data.tables?.map((t) => t.table_id) || [];
-
-          // Base session data from broadcast (server_staff_id is NOT in the payload;
-          // it's preserved per-table inside the set() callback below)
-          const newSessionData = {
-            id: sessionId,
-            status: data.session.status,
-            party_size: data.session.party_size,
-            guest_name: data.session.guest_name,
-            seated_at: data.session.seated_at || new Date().toISOString(),
-            current_course: data.session.current_course,
-            needs_attention: data.session.needs_attention,
-            is_vip: data.session.is_vip,
-            order_id: data.session.order_id,
-            reservation_id: (data.session as any).reservation_id ?? null,
-            session_number: data.session.session_number,
-            merged_tables: tableIds.length > 1 ? tableIds : undefined,
-          };
-
-          set((state) => {
-            let changed = false;
-            const newTables = state.tables.map((t) => {
-              // Check if this table is part of the updated session
-              if (tableIds.includes(t.id)) {
-                // Preserve local-only status: if current session matches
-                // and has a local-only status, don't overwrite
-                if (
-                  t.session?.id === sessionId &&
-                  isLocalOnlyStatus(t.session.status)
-                ) {
-                  return t;
-                }
-                // Build the final session with server_staff_id preserved from current table
-                const sessionWithPreservedFields = {
-                  ...newSessionData,
-                  server_staff_id:
-                    t.session?.id === sessionId
-                      ? t.session.server_staff_id
-                      : undefined,
-                };
-                // Only create new object if data actually differs
-                const s = t.session;
-                if (
-                  s?.id === sessionId &&
-                  s?.status === sessionWithPreservedFields.status &&
-                  s?.party_size === sessionWithPreservedFields.party_size &&
-                  s?.order_id === sessionWithPreservedFields.order_id &&
-                  s?.guest_name === sessionWithPreservedFields.guest_name &&
-                  s?.current_course ===
-                    sessionWithPreservedFields.current_course &&
-                  s?.needs_attention ===
-                    sessionWithPreservedFields.needs_attention &&
-                  s?.is_vip === sessionWithPreservedFields.is_vip &&
-                  s?.server_staff_id ===
-                    sessionWithPreservedFields.server_staff_id
-                ) {
-                  return t; // same reference — no change
-                }
-                changed = true;
-                return { ...t, session: sessionWithPreservedFields };
-              }
-              // Clear session if table was previously in this session but isn't anymore
-              if (t.session?.id === sessionId) {
-                changed = true;
-                return { ...t, session: undefined };
-              }
-              return t;
-            });
-
-            if (!changed) return {}; // no state update
-            return {
-              tables: newTables,
-              tablesById: buildTablesById(newTables),
-            };
-          });
-        },
 
         // NEW: Reconnection with exponential backoff
         _reconnectAttempts: 0,
@@ -959,16 +803,20 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           }
         },
 
-        loadFloorPlanStatus: async () => {
+        loadFloorPlanStatus: async (force?: boolean) => {
           const floorPlanId = get().activeFloorPlanId;
           if (!floorPlanId || !getClient()) return;
 
-          // Only reuse promise if loading same floor plan (avoid stale data on plan switch)
-          if (_loadFloorPlanPromise && _loadFloorPlanId === floorPlanId) {
+          // Only reuse promise if loading same floor plan (avoid stale data on plan switch).
+          // `force` skips the dedup so a caller that just mutated the backend
+          // (e.g. transferSession) gets a snapshot taken AFTER its write — an
+          // in-flight read started before the write would return stale state.
+          if (!force && _loadFloorPlanPromise && _loadFloorPlanId === floorPlanId) {
             return _loadFloorPlanPromise;
           }
 
           _loadFloorPlanId = floorPlanId;
+          const mySeq = ++_loadFloorPlanSeq;
           const loadPromise = (async () => {
             try {
               const snapshot = await fetchFloorPlanSnapshot(
@@ -978,6 +826,13 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
               if (!snapshot.data) {
                 set({ error: snapshot.error?.message || "Unknown error" });
+                return;
+              }
+
+              // A newer load (e.g. a forced post-transfer reconcile) was issued
+              // after this one started — its snapshot is fresher. Drop ours so a
+              // stale read can't clobber the newer authoritative state.
+              if (mySeq !== _loadFloorPlanSeq) {
                 return;
               }
 
@@ -1057,7 +912,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
               // Order prefetch is now handled by services/tableOrderPrefetch.ts subscriber
             } finally {
-              if (_loadFloorPlanId === floorPlanId) {
+              // Only clear the dedup slot if WE are still the latest load —
+              // a newer forced load may have superseded us.
+              if (mySeq === _loadFloorPlanSeq && _loadFloorPlanId === floorPlanId) {
                 _loadFloorPlanPromise = null;
                 _loadFloorPlanId = null;
               }
@@ -1216,6 +1073,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               currentSession.id === incomingSession.id
             ) {
               return { ...table, session: currentSession };
+            }
+
+            // Drop an incoming session that was CLEAR'd locally within TTL —
+            // see wasRecentlyCleared() comment for context. Treat as "no session".
+            if (incomingSession && wasRecentlyCleared(incomingSession.id)) {
+              return { ...table, session: undefined };
             }
 
             return {

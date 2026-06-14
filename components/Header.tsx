@@ -7,6 +7,7 @@ import {
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useInventoryStore } from '@/stores/useInventoryStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
+import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
 import {
   Href,
   useGlobalSearchParams,
@@ -18,11 +19,14 @@ import React, { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import { NetworkStatusBadge } from './NetworkStatusBadge'
 import SessionDock from './SessionDock'
+import { TerminalConnectionBadge } from './TerminalConnectionBadge'
 
 const Header = () => {
   const pathname = usePathname()
   const router = useRouter()
   const tablesById = useFloorPlanStore(s => s.tablesById)
+  const overlayTableId = usePendingTableOverlay(s => s.openTableId)
+  const closeTableOverlay = usePendingTableOverlay(s => s.closeTable)
   const vendors = useInventoryStore(s => s.vendors)
   const globalParams = useGlobalSearchParams()
   const instantVendorId = useSyncExternalStore(
@@ -76,6 +80,11 @@ const Header = () => {
   )
   const closeModifierSidebar = useModifierSidebarStore(state => state.close)
   const title = useMemo(() => {
+    // Table order overlay (rendered on top of the /tables floor plan)
+    if (overlayTableId) {
+      const table = tablesById[overlayTableId]
+      return table ? `Tables / ${table.name}` : 'Table Details'
+    }
     if (pathname === '/loyalty') return 'Loyalty'
     if (pathname === '/loyalty/program-form') return 'Loyalty Program'
     if (pathname === '/loyalty/enroll-customer') return 'Enroll Customer'
@@ -154,9 +163,15 @@ const Header = () => {
       .replace(/\b\w/g, char => char.toUpperCase())
 
     return title
-  }, [pathname, activeVendorId, tablesById, vendors])
+  }, [pathname, activeVendorId, tablesById, vendors, overlayTableId])
 
   const handleBackPress = useCallback(() => {
+    // Close the table order overlay instead of navigating away from /tables.
+    if (overlayTableId) {
+      closeTableOverlay()
+      return
+    }
+
     if (pathname === '/inventory/vendors' && activeVendorId) {
       requestVendorSidebarClose()
       return
@@ -175,6 +190,22 @@ const Header = () => {
       router.push(globalParams.returnTo as Href)
       return
     }
+
+    // Table detail is normally pushed over the already-mounted floor screen.
+    // Pop immediately so the preserved grid can paint before unmount cleanup.
+    if (
+      pathname.startsWith('/tables/') &&
+      pathname.split('/').length === 3 &&
+      !pathname.includes('edit-layout')
+    ) {
+      if (router.canGoBack()) {
+        router.back()
+      } else {
+        router.replace('/tables' as Href)
+      }
+      return
+    }
+
     cancelAndRemoveDraft()
     closeModifierSidebar()
 
@@ -197,17 +228,6 @@ const Header = () => {
       return
     }
 
-    // Handle table detail pages (/tables/[tableId]) -> always go to /tables
-    // Uses replace to avoid navigation loop issues
-    if (
-      pathname.startsWith('/tables/') &&
-      pathname.split('/').length === 3 &&
-      !pathname.includes('edit-layout')
-    ) {
-      router.replace('/tables' as Href)
-      return
-    }
-
     // Handle clean-table pages (/tables/clean-table/[tableId]) -> always go to /tables
     if (
       pathname.startsWith('/tables/clean-table/') &&
@@ -223,6 +243,28 @@ const Header = () => {
       return
     }
 
+    // Top-level sections have no back stack (navigated via replace) — go home
+    const TOP_LEVEL_SECTIONS = [
+      '/order-processing',
+      '/previous-orders',
+      '/kds',
+      '/online-orders',
+      '/loyalty',
+      '/scheduling',
+      '/analytics',
+      '/menu',
+      '/host-station',
+      '/customers-list',
+    ]
+    if (TOP_LEVEL_SECTIONS.includes(pathname) || TOP_LEVEL_SECTIONS.some(s => pathname.startsWith(s + '/'))) {
+      if (router.canGoBack()) {
+        router.back()
+      } else {
+        router.replace('/home')
+      }
+      return
+    }
+
     router.back()
   }, [
     activeVendorId,
@@ -230,7 +272,9 @@ const Header = () => {
     cancelAndRemoveDraft,
     closeModifierSidebar,
     pathname,
-    router
+    router,
+    overlayTableId,
+    closeTableOverlay
   ])
 
   return (
@@ -258,13 +302,14 @@ const Header = () => {
         </Text>
       </View>
 
-      {/* Center Section - Network Status Badge */}
+      {/* Center Section - Network + Terminal Connection Badges */}
       <View
         className='absolute left-0 right-0 items-center justify-center'
         pointerEvents='box-none'
       >
-        <View pointerEvents='auto'>
+        <View pointerEvents='auto' className='flex-row items-center gap-2'>
           <NetworkStatusBadge />
+          <TerminalConnectionBadge />
         </View>
       </View>
 

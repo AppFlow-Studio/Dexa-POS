@@ -3,12 +3,14 @@
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { PrinterService } from "@/services/printing/PrinterService";
+import { finalizeDineInPaymentClear } from "@/services/tables/finalizeDineInPaymentClear";
 import {
   findLatestReusableEmptyDraftId,
   getRefreshedReusableDraftNumbers,
 } from "@/lib/reusableEmptyDraft";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
+import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
@@ -96,9 +98,67 @@ const PaymentSuccessView = () => {
     //   } catch {}
     // }, 150);
 
-    // For dine-in orders on a table, we just want to close the sheet
-    // The payment is already processed and status is set optimistically
-    if (activeOrder?.order_type === "dine_in" && activeTableId) {
+    // Dine-in: detect via activeTableId (set when sheet opened, stable until
+    // close()) rather than activeOrder.order_type, because `auto_on_payment`
+    // archiving nulls out activeOrderId via queueMicrotask before the operator
+    // can tap Finalize Payment — especially visible on multi-check where the
+    // last paid check is archived. Run the auto-clear (per Auto-Clear Table on
+    // Payment setting). If the helper short-circuits (setting off, sibling
+    // checks still due, no session), preserve the legacy "just close, keep the
+    // paid order" behavior. When it does clear, hand the operator a fresh
+    // draft so the order-processing screen doesn't end up pointing at the
+    // archived order; TableOrderView's session-disappeared effect handles
+    // /tables navigation.
+    if (activeTableId) {
+      const { cleared } = finalizeDineInPaymentClear({ tableId: activeTableId });
+      if (!cleared) {
+        close();
+        return;
+      }
+      useDineInStore.getState().clearSelectedTable();
+
+      setTimeout(() => {
+        const { orderIds: latestOrderIds, ordersById: latestOrdersById } =
+          useOrderStore.getState();
+        const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
+          latestOrdersById,
+          latestOrderIds,
+          activeOrderId,
+          useStoreSettingsStore.getState().selectedStation?.id ?? null,
+        );
+
+        if (reusableEmptyDraftId) {
+          useOrderStore.setState((state) => {
+            const draft = state.ordersById[reusableEmptyDraftId];
+            if (!draft) return;
+            // Reset stale dine-in fields so the bill shows as a clean new order.
+            draft.order_type = "takeout";
+            draft.service_location_id = null;
+            draft.session_id = undefined;
+            draft.local_session_id = undefined;
+            if (selectedStore) {
+              const refreshedNumbers = getRefreshedReusableDraftNumbers({
+                draftId: reusableEmptyDraftId,
+                ordersById: latestOrdersById,
+                orderIds: latestOrderIds,
+                locationId: selectedStore.id,
+                stationNumber:
+                  useStoreSettingsStore.getState().selectedStation
+                    ?.station_number ?? null,
+              });
+              if (refreshedNumbers) {
+                draft.order_number = refreshedNumbers.orderNumber;
+                draft.display_number = refreshedNumbers.displayNumber;
+              }
+            }
+          });
+          setActiveOrder(reusableEmptyDraftId);
+        } else {
+          const fresh = startNewOrder();
+          setActiveOrder(fresh.id);
+        }
+      }, 100);
+
       close();
       return;
     }
@@ -233,15 +293,18 @@ const PaymentSuccessView = () => {
             // (shouldn't happen, but provides safety)
             let totalPaid = completedPaymentInfo?.totalPaid ?? 0;
             let totalTips = completedPaymentInfo?.totalTips ?? 0;
-            console.log('completedPaymentInfo', completedPaymentInfo);
             if (!completedPaymentInfo) {
               // Fallback: calculate from live payments (original behavior)
-              // Calculate effective total paid (subtract refunded amounts)
+              // For cash-priced payments, p.amount is the card-equivalent stored by the
+              // backend. Subtract cashSavings to recover the actual cash amount collected.
               const payments = activeOrder?.payments || [];
-              totalPaid = payments.reduce(
-                (sum, p) => sum + (p.amount || 0) - (p.refundedAmount || 0),
-                0
-              );
+              totalPaid = payments.reduce((sum, p) => {
+                const gross = (p.amount || 0) - (p.refundedAmount || 0);
+                const actual = p.isCashPriced && p.cashSavings
+                  ? gross - p.cashSavings
+                  : gross;
+                return sum + actual;
+              }, 0);
               totalTips = payments.reduce((sum, p) => {
                 const tip = (p as any)?.tipAmount || p?.tip_amount || 0;
                 return sum + tip;
@@ -250,13 +313,6 @@ const PaymentSuccessView = () => {
                 "[PaymentSuccessView] completedPaymentInfo not set, using fallback calculation"
               );
             }
-
-            console.log(
-              "[PaymentSuccessView] totalPaid:",
-              totalPaid,
-              "from completedPaymentInfo:",
-              !!completedPaymentInfo
-            );
 
             const grandTotal = totalPaid + totalTips;
 

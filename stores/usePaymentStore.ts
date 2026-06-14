@@ -18,10 +18,12 @@ import {
 } from "@/services/offlineSyncService";
 import { OrderService } from "@/services/orderService";
 import { trackCashPaymentInDrawer } from "@/services/paymentService";
+import { finalizeDineInPaymentClear } from "@/services/tables/finalizeDineInPaymentClear";
 import { useConflictStore } from "@/stores/useConflictStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
+import { calculateCustomSplitCashAmount } from "@/utils/custom-split-amounts";
 import { create } from "zustand";
 import {
   calculateItemEffectiveCashPrice,
@@ -450,7 +452,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     });
   },
 
-  // Called when success view is dismissed by dragging down
+  // Called when success view is dismissed (X button, drag-down, etc.).
+  // Mirrors PaymentSuccessView.handleDone for dine-in so that closing the
+  // sheet — by any means — runs the same auto-clear flow as the explicit
+  // Finalize Payment button. If the clear is ineligible (setting off, sibling
+  // checks still due, no session), the helper is a no-op and the active
+  // (paid) order is preserved so the operator can interact with it.
   handleSuccessClose: () => {
     const {
       activeOrderId,
@@ -463,17 +470,29 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
-    // Use order's service_location_id instead of cleared activeTableId
-    // This prevents race condition where close() clears activeTableId before sheet animation completes
-    const tableId = activeOrder?.service_location_id;
+    // Prefer payment store's activeTableId — it's captured at sheet open and
+    // stays set until close() runs, so it survives `auto_on_payment` archiving
+    // (which queueMicrotasks `archiveOrder` and nulls out activeOrderId before
+    // the operator can tap dismiss, especially on multi-check where the last
+    // check is archived). Fall back to the active order's service_location_id.
+    const tableId = get().activeTableId || activeOrder?.service_location_id;
 
-    // For dine-in orders on a table, just close (table keeps the paid order)
-    if (activeOrder?.order_type === "dine_in" && tableId) {
+    // If a table is associated, this was a dine-in payment. Try the auto-clear
+    // (per Auto-Clear Table on Payment setting). If ineligible (setting off,
+    // siblings due, no session), preserve the legacy "just close, keep the
+    // paid order" behavior. If it ran, fall through to the fresh-draft path so
+    // BillSection / order-processing isn't left pointing at the archived order;
+    // TableOrderView's session-disappeared effect handles the /tables nav.
+    const dineInCleared = tableId
+      ? finalizeDineInPaymentClear({ tableId }).cleared
+      : false;
+    if (tableId && !dineInCleared) {
       get().close();
       return;
     }
 
-    // For quick service / takeout, start a new order immediately
+    // For quick service / takeout (or a dine-in clear that just ran),
+    // start a new order immediately.
     setTimeout(() => {
       const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
         ordersById,
@@ -488,24 +507,31 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           useStoreSettingsStore.getState().selectedStation?.station_number ??
           null;
 
-        if (selectedStore) {
-          const refreshedNumbers = getRefreshedReusableDraftNumbers({
-            draftId: reusableEmptyDraftId,
-            ordersById,
-            orderIds,
-            locationId: selectedStore.id,
-            stationNumber,
-          });
-
-          if (refreshedNumbers) {
-            useOrderStore.setState((state) => {
-              const draft = state.ordersById[reusableEmptyDraftId];
-              if (!draft) return;
+        useOrderStore.setState((state) => {
+          const draft = state.ordersById[reusableEmptyDraftId];
+          if (!draft) return;
+          // After a dine-in auto-clear, reset stale dine-in fields so the
+          // bill shows as a clean new order on the order-processing screen.
+          if (dineInCleared) {
+            draft.order_type = "takeout";
+            draft.service_location_id = null;
+            draft.session_id = undefined;
+            draft.local_session_id = undefined;
+          }
+          if (selectedStore) {
+            const refreshedNumbers = getRefreshedReusableDraftNumbers({
+              draftId: reusableEmptyDraftId,
+              ordersById,
+              orderIds,
+              locationId: selectedStore.id,
+              stationNumber,
+            });
+            if (refreshedNumbers) {
               draft.order_number = refreshedNumbers.orderNumber;
               draft.display_number = refreshedNumbers.displayNumber;
-            });
+            }
           }
-        }
+        });
 
         setActiveOrder(reusableEmptyDraftId);
         return;
@@ -571,7 +597,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
   unassignItemFromSplit: (splitId, itemId) => {
     set((state) => {
-      let updatedSplits = state.splits.map((s) => {
+      const updatedSplits = state.splits.map((s) => {
         if (s.id !== splitId) return s;
 
         const existingItemIndex = s.items.findIndex((i) => i.id === itemId);
@@ -593,27 +619,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }
       });
 
-      // Auto-remove empty guests (but keep at least one guest)
-      if (updatedSplits.length > 1) {
-        updatedSplits = updatedSplits.filter(
-          (s) =>
-            s.items.length > 0 ||
-            updatedSplits.filter((sp) => sp.items.length > 0).length === 0,
-        );
-      }
-
-      // If active split was removed, switch to first available
-      const currentActiveSplitId = state.activeSplitId;
-      const activeStillExists = updatedSplits.some(
-        (s) => s.id === currentActiveSplitId,
-      );
-      const newActiveSplitId = activeStillExists
-        ? currentActiveSplitId
-        : updatedSplits[0]?.id || null;
-
       return {
         splits: updatedSplits,
-        activeSplitId: newActiveSplitId,
         isDirty: true,
       };
     });
@@ -682,7 +689,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     const { splits } = get();
 
     // Get order and tax rates for tax calculation
-    const { activeOrderId, ordersById } = useOrderStore.getState();
+    const {
+      activeOrderId,
+      ordersById,
+      activeOrderOutstandingTotal,
+      activeOrderOutstandingCash,
+    } = useOrderStore.getState();
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
     const taxRatesMap =
@@ -695,49 +707,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       (item) => !item.is_voided,
     );
 
-    // Card pricing subtotal
-    const orderSubtotal = masterItems.reduce(
-      (acc, item) => acc + item.price * item.quantity,
-      0,
-    );
-
-    // Cash pricing subtotal - uses calculateItemEffectiveCashPrice to include modifiers and add-ons
-    const orderCashSubtotal = masterItems.reduce(
-      (acc, item) =>
-        acc + calculateItemEffectiveCashPrice(item) * item.quantity,
-      0,
-    );
-
-    const itemDiscountsTotal = masterItems.reduce((acc, item) => {
-      if (item.appliedDiscount) {
-        return (
-          acc + item.originalPrice * item.appliedDiscount.value * item.quantity
-        );
-      }
-      return acc;
-    }, 0);
-    const subtotalAfterItemDiscounts = Math.max(
-      0,
-      orderSubtotal - itemDiscountsTotal,
-    );
-    let checkDiscountAmount = 0;
-    if (activeOrder?.checkDiscount) {
-      const discountValue = Number(activeOrder.checkDiscount.value);
-      if (Number.isFinite(discountValue) && discountValue > 0) {
-        if (activeOrder.checkDiscount.type === "fixed") {
-          checkDiscountAmount = Math.min(
-            discountValue,
-            subtotalAfterItemDiscounts,
-          );
-        } else {
-          checkDiscountAmount = subtotalAfterItemDiscounts * discountValue;
-        }
-      }
-    }
-    const orderDiscountAmount = Math.min(
-      orderSubtotal,
-      itemDiscountsTotal + checkDiscountAmount,
-    );
+    const originalItemsMap = new Map(masterItems.map((item) => [item.id, item]));
 
     // Helper function to calculate tax for split items using CARD pricing
     const calculateSplitCardAmount = (items: typeof masterItems): number => {
@@ -745,7 +715,16 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       let tax = 0;
 
       for (const item of items) {
-        const itemSubtotal = item.price * item.quantity;
+        const originalItem = originalItemsMap.get(item.id);
+        const originalQuantity = originalItem?.quantity ?? item.quantity;
+        const discountAmount =
+          originalQuantity > 0
+            ? round2(
+                ((originalItem?.discount_amount ?? 0) * item.quantity) /
+                  originalQuantity,
+              )
+            : 0;
+        const itemSubtotal = round2(item.price * item.quantity - discountAmount);
         subtotal += itemSubtotal;
 
         // Skip tax-exempt items
@@ -756,14 +735,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
         const taxRateDecimal = taxRatePercent / 100;
 
-        // Apply proportional discount to this item
-        const itemDiscountProportion =
-          orderSubtotal > 0 ? itemSubtotal / orderSubtotal : 0;
-        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
-        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
-
         // Calculate tax for this item
-        tax += itemTaxableAmount * taxRateDecimal;
+        tax += itemSubtotal * taxRateDecimal;
       }
 
       // Round to 2 decimal places
@@ -777,9 +750,20 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       let tax = 0;
 
       for (const item of items) {
+        const originalItem = originalItemsMap.get(item.id);
+        const originalQuantity = originalItem?.quantity ?? item.quantity;
         // Use the full effective cash price including modifiers and add-ons
         const itemCashPrice = calculateItemEffectiveCashPrice(item);
-        const itemSubtotal = itemCashPrice * item.quantity;
+        const discountAmount =
+          originalQuantity > 0
+            ? round2(
+                ((originalItem?.discount_cash_amount ?? 0) * item.quantity) /
+                  originalQuantity,
+              )
+            : 0;
+        const itemSubtotal = round2(
+          itemCashPrice * item.quantity - discountAmount,
+        );
         subtotal += itemSubtotal;
 
         // Skip tax-exempt items
@@ -790,14 +774,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
         const taxRateDecimal = taxRatePercent / 100;
 
-        // Apply proportional discount to this item (based on cash subtotal)
-        const itemDiscountProportion =
-          orderCashSubtotal > 0 ? itemSubtotal / orderCashSubtotal : 0;
-        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
-        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
-
         // Calculate tax for this item
-        tax += itemTaxableAmount * taxRateDecimal;
+        tax += itemSubtotal * taxRateDecimal;
       }
 
       // Round to 2 decimal places
@@ -805,7 +783,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     };
 
     // 1. Recalculate amounts if needed (Split by Item logic - now includes tax for both card and cash)
-    const updatedSplits = splits.map((split) => {
+    let updatedSplits = splits.map((split) => {
       // If we have items but 0 amount, calculate price from items (with tax) for both card and cash
       if (split.items.length > 0 && split.amount === 0) {
         const cardAmount = calculateSplitCardAmount(split.items);
@@ -814,6 +792,66 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       }
       return split;
     });
+
+    if (source === "split-by-item") {
+      const itemSplitIndexes = updatedSplits
+        .map((split, index) => (split.items.length > 0 ? index : -1))
+        .filter((index) => index >= 0);
+      const itemsOnlyCardTotal = itemSplitIndexes.reduce(
+        (sum, index) => sum + updatedSplits[index].amount,
+        0,
+      );
+      const itemsOnlyCashTotal = itemSplitIndexes.reduce(
+        (sum, index) => sum + (updatedSplits[index].cashAmount ?? 0),
+        0,
+      );
+      const cardRemainder = Math.max(
+        0,
+        activeOrderOutstandingTotal - itemsOnlyCardTotal,
+      );
+      const cashRemainder = Math.max(
+        0,
+        activeOrderOutstandingCash - itemsOnlyCashTotal,
+      );
+      let distributedCardRemainder = 0;
+      let distributedCashRemainder = 0;
+
+      // Single items-ratio (card items+tax share) applied to BOTH the card
+      // and the cash SC residual. Keeps cash ≤ card per-split when the
+      // order has a cash discount; the previous design used separate
+      // card-/cash-share ratios, which inverted that inequality at the
+      // per-split level (Bug 2 from 2026-05-30 trace).
+      updatedSplits = updatedSplits.map((split, index) => {
+        if (!itemSplitIndexes.includes(index)) return split;
+        const isLast = index === itemSplitIndexes[itemSplitIndexes.length - 1];
+        const splitRatio =
+          itemsOnlyCardTotal > 0 ? split.amount / itemsOnlyCardTotal : 0;
+        const cardShare = isLast
+          ? round2(cardRemainder - distributedCardRemainder)
+          : round2(cardRemainder * splitRatio);
+        const cashShare = isLast
+          ? round2(cashRemainder - distributedCashRemainder)
+          : round2(cashRemainder * splitRatio);
+        distributedCardRemainder = round2(distributedCardRemainder + cardShare);
+        distributedCashRemainder = round2(distributedCashRemainder + cashShare);
+        return {
+          ...split,
+          amount: round2(split.amount + cardShare),
+          cashAmount: round2((split.cashAmount ?? 0) + cashShare),
+        };
+      });
+    }
+
+    if (source === "split-custom-amount") {
+      updatedSplits = updatedSplits.map((split) => ({
+        ...split,
+        cashAmount: calculateCustomSplitCashAmount(
+          split.amount,
+          activeOrderOutstandingTotal,
+          activeOrderOutstandingCash,
+        ),
+      }));
+    }
 
     set({ splits: updatedSplits });
 
@@ -929,7 +967,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         transactionDetails: detailsWithSplitLabel,
         dejavooTransaction,
         itemAllocations, // Pass item allocations with quantities for per-item payment tracking
-        forceCardPricing: splitSourceView === "split-custom-amount", // Custom amounts always use card pricing
+        forceCardPricing: false,
+        // Even and custom splits are amount-based. A valid portion can be
+        // smaller than the next whole item, especially after a discount.
+        forceExplicitAmount:
+          splitSourceView === "split-custom-amount" ||
+          splitSourceView === "split-evenly",
         // Only pass split count/index for even splits - NOT for per-item or custom-amount payments
         // Per-item payments use itemAllocations to track what was paid
         // Custom-amount payments use p_amount through the FULL/PARTIAL SQL path
@@ -1029,10 +1072,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         // Emit order:paid event ONLY if order is actually fully paid
         // Custom amount splits may not cover the full bill
         // ================================================================
+        // Guard: a stale `amount_due === 0` left over from a prior
+        // payment-then-refund cycle is not enough on its own. We also require
+        // local payment evidence (sum minus refunds > 0) so an empty/refunded
+        // payments[] can never be misread as "paid".
         const isOrderFullyPaid =
           finalOrder?.paid_status === "Paid" ||
           (finalOrder?.amount_due !== undefined &&
-            finalOrder.amount_due <= 0.01);
+            finalOrder.amount_due <= 0.01 &&
+            paymentsTotal > 0);
 
         if (isOrderFullyPaid) {
           const eventPayload: OrderPaidEvent = {
@@ -1167,6 +1215,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Subscribers handle: archiving takeout orders, updating table status,
       // analytics, inventory deduction, etc.
       // Kitchen send is fire-and-forget inline (parallelized with payment RPC).
+      // Standard flow pays the entire outstanding amount, so emission is
+      // unconditional here. The split-payment branch above has its own
+      // fully-paid guard for partial splits. The eventSubscribers.ts:Table
+      // handler also guards against re-dispatching FULL_PAYMENT when the
+      // session is already paid.
       const orderPaymentsTotal = (finalOrder?.payments || []).reduce(
         (sum, p) => sum + (p.amount || 0) - (p.refundedAmount || 0),
         0,

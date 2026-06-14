@@ -1,5 +1,7 @@
 import { PaymentErrorModal } from '@/components/bill/paymentView/PaymentErrorModal'
+import { TerminalDetachedModal } from '@/components/payment/TerminalDetachedModal'
 import { TerminalStatusBanner } from '@/components/payment/TerminalStatusBanner'
+import { TerminalWedgedModal } from '@/components/payment/TerminalWedgedModal'
 import { useCFD } from '@/contexts/CFDProvider'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { useTerminalStatus } from '@/hooks/useTerminalStatus'
@@ -185,6 +187,8 @@ const CardPaymentView = () => {
     status: terminalStatus,
     isReady: terminalReady,
     errorMessage: terminalErrorMessage,
+    reason: terminalReason,
+    consecutiveFailures: terminalConsecutiveFailures,
     recheckStatus
   } = useTerminalStatus(
     selectedStation?.payment_terminal?.id,
@@ -281,12 +285,14 @@ const CardPaymentView = () => {
         try {
           // ============ CASTLES BRANCH ============
           if (terminal.terminal_type === 'castles') {
-            const host = terminal.ip_address
-            if (!host)
+            const isUsb = terminal.connection_type === 'usb'
+            const host = isUsb ? undefined : terminal.ip_address
+            if (!isUsb && !host)
               throw new Error('Castles terminal has no IP address configured')
-            const port = terminal.port ?? CASTLES_DEFAULT_PORT
+            const port = isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT)
 
             console.log('[CardPayment] Castles sale flow:', {
+              transport: isUsb ? 'usb' : 'local_socket',
               host,
               port,
               totalToPay,
@@ -297,6 +303,7 @@ const CardPaymentView = () => {
             // 1. Connect + reset (shared singleton — one socket to the terminal)
             const service = getSharedCastlesService()
             await service.connect({
+              connectionType: isUsb ? 'usb' : 'local_socket',
               host,
               port,
               timeout: 120_000,
@@ -769,10 +776,21 @@ const CardPaymentView = () => {
             <TerminalStatusBanner
               status={terminalStatus}
               errorMessage={terminalErrorMessage || undefined}
+              reason={terminalReason}
+              consecutiveFailures={terminalConsecutiveFailures}
               onRetry={recheckStatus}
             />
           </View>
         )}
+
+        {/* Wedge modal: visible only when the connection supervisor has
+            detected an app-layer freeze. Self-dismisses on recovery. */}
+        <TerminalWedgedModal />
+        {/* Detached modal: visible only when the active terminal is USB and
+            quality is 'lost' (cable yanked / terminal lost power). Polls
+            listDevices every 5s and auto-reconnects when the terminal
+            reappears. Self-dismisses on recovery. */}
+        <TerminalDetachedModal />
 
         {/* Top Section */}
         <View
@@ -910,30 +928,6 @@ const CardPaymentView = () => {
                     </View>
                   </>
                 )}
-
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    width: '100%',
-                    borderTopWidth: 1,
-                    borderTopColor: colors.border,
-                    paddingTop: 10
-                  }}
-                >
-                  <Text style={{ color: colors.muted, fontSize: 13 }}>
-                    Grand Total
-                  </Text>
-                  <Text
-                    style={{
-                      color: colors.heading,
-                      fontSize: 13,
-                      fontWeight: '700'
-                    }}
-                  >
-                    ${grandTotal.toFixed(2)}
-                  </Text>
-                </View>
               </View>
             </View>
           )}

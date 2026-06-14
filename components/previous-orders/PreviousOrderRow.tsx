@@ -1,9 +1,12 @@
+import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import {
     derivePaymentRefundState,
     getCashPricedOrderTotal,
 } from "@/lib/paymentStatus";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { formatPaymentStatus } from "@/utils/orderStatusHelpers";
 import {
     AlertTriangle,
     CheckCircle,
@@ -15,6 +18,7 @@ import {
     RotateCcw,
     ShoppingBag,
     Truck,
+    User,
     Utensils,
     XCircle,
 } from "lucide-react-native";
@@ -138,7 +142,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   const displayTotal =
     getCashPricedOrderTotal(order) ?? order.total_amount ?? 0;
 
-  const status = order.paid_status || "Unpaid";
+  const status = deriveEffectivePaidStatus(order) ?? order.paid_status ?? "Unpaid";
   const statusConfig = statusColorMap[status] ?? {
     color: colors.label,
     bgOpacity: "15",
@@ -151,8 +155,23 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   };
   const TypeIcon = typeConfig.icon;
   const displayType = displayTypeLabels[orderType] || orderType;
+  const tableName = useFloorPlanStore((s) => {
+    // Only show table name for dine-in orders.
+    if (order.order_type !== "dine_in" && order.order_type !== "Dine In") return null;
+    const explicitName = order.service_location_name?.trim();
+    const uuidLike =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (explicitName && !uuidLike.test(explicitName)) return explicitName;
+    if (order.service_location_id) {
+      return s.tablesById[order.service_location_id]?.name ?? null;
+    }
+    if (explicitName) {
+      return s.tablesById[explicitName]?.name ?? null;
+    }
+    return null;
+  });
 
-  const needsAttention = order.paid_status === "Pending";
+  const needsAttention = status === "Pending" || status === "Unpaid";
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -236,6 +255,22 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             <Text style={{ fontSize: 11, color: colors.muted }}>
               {orderTime}
             </Text>
+            {/* {order.customer_name ? (
+              <>
+                <Text style={{ fontSize: 11, color: colors.muted }}>·</Text>
+                <User size={11} color={colors.label} />
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: "600",
+                    color: colors.heading,
+                  }}
+                  numberOfLines={1}
+                >
+                  {order.customer_name}
+                </Text>
+              </>
+            ) : null} */}
             <DeliveryPlatformBadge
               deliveryPlatform={order.delivery_platform}
               orderSource={order.order_source}
@@ -263,42 +298,85 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             >
               {displayType}
             </Text>
-            {order.server_name ? (
+            {tableName ? (
               <>
-                <Text style={{ fontSize: 11, color: colors.muted }}>·</Text>
+                <Text style={{ fontSize: 11, color: colors.muted }}>-</Text>
                 <Text
                   style={{ fontSize: 11, color: colors.label }}
                   numberOfLines={1}
                 >
-                  {order.server_name}
+                  Table {tableName}
+                </Text>
+              </>
+            ) : null}
+            {order.server_name ? (
+              <>
+                <Text style={{ fontSize: 11, color: colors.muted }}>-</Text>
+                <Text
+                  style={{ fontSize: 11, color: colors.label }}
+                  numberOfLines={1}
+                >
+                  Server: {order.server_name}
                 </Text>
               </>
             ) : null}
           </View>
+          {order.customer_name?.trim() ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 5,
+                marginTop: 4,
+              }}
+            >
+              <User color={colors.teal} size={13} />
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: colors.heading,
+                }}
+                numberOfLines={1}
+              >
+                {order.customer_name.trim()}
+              </Text>
+              {order.customer_phone?.trim() ? (
+                <Text
+                  style={{ fontSize: 12, color: colors.muted, marginLeft: 4 }}
+                  numberOfLines={1}
+                >
+                  · {order.customer_phone.trim()}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         {/* Status badges */}
         <View style={{ alignItems: "flex-end", gap: 4 }}>
-          <View
-            style={{
-              paddingHorizontal: 8,
-              paddingVertical: 3,
-              borderRadius: 20,
-              backgroundColor: statusConfig.color + statusConfig.bgOpacity,
-              borderWidth: 1,
-              borderColor: statusConfig.color + "40",
-            }}
-          >
-            <Text
+          {!isVoided && (
+            <View
               style={{
-                fontSize: 11,
-                fontWeight: "600",
-                color: statusConfig.color,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 20,
+                backgroundColor: statusConfig.color + statusConfig.bgOpacity,
+                borderWidth: 1,
+                borderColor: statusConfig.color + "40",
               }}
             >
-              {status}
-            </Text>
-          </View>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "600",
+                  color: statusConfig.color,
+                }}
+              >
+                {formatPaymentStatus(status)}
+              </Text>
+            </View>
+          )}
           {refundBadge && (
             <View
               style={{
@@ -443,7 +521,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               elevation: 20,
             }}
           >
-            {order.paid_status === "Paid" &&
+            {status === "Paid" &&
               order.check_status !== "Closed" &&
               onCloseCheck && (
                 <MenuRow
@@ -586,6 +664,14 @@ const PreviousOrderRow = React.memo(PreviousOrderRowContent, (prev, next) => {
     prev.order.notes === next.order.notes &&
     prev.order.check_status === next.order.check_status &&
     prev.order.payments === next.order.payments &&
+    prev.order.service_location_id === next.order.service_location_id &&
+    prev.order.service_location_name === next.order.service_location_name &&
+    prev.order.customer_name === next.order.customer_name &&
+    prev.order.customer_phone === next.order.customer_phone &&
+    prev.order.customer_email === next.order.customer_email &&
+    prev.order.delivery_address === next.order.delivery_address &&
+    prev.order.customer_name === next.order.customer_name &&
+    prev.order.server_name === next.order.server_name &&
     prev.isExpanded === next.isExpanded &&
     prev.onContinue === next.onContinue
   );

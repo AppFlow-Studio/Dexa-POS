@@ -1,6 +1,7 @@
 import BillSection from "@/components/bill/BillSection";
 import DiscountBottomSheet from "@/components/bill/DiscountBottomSheet";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
+import { ServiceChargeOverrideSheet } from "@/components/bill/ServiceChargeOverrideSheet";
 import CashDrawerSheet from "@/components/cash-drawer/CashDrawerSheet";
 import NoSaleModal from "@/components/cash-drawer/NoSaleModal";
 import MenuSection from "@/components/menu/MenuSection";
@@ -9,7 +10,7 @@ import BulkCompleteModal from "@/components/order/BulkCompleteModal";
 import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
 import OrderLineMinimalCard from "@/components/order/OrderLineMinimalCard";
-import { useCFD } from "@/contexts/CFDProvider";
+import { useCFDOrderProcessingActivity } from "@/contexts/CFDProvider";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwnershipRecheck";
@@ -22,21 +23,17 @@ import {
     forceSetLocalSequence,
     parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
+import { formatOrderStatus, formatPaymentStatus } from "@/utils/orderStatusHelpers";
 import { getHeaderHeight } from "@/lib/headerHeight";
 import { iosOnly } from "@/lib/safeAnimations";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
-import { OrderService } from "@/services/orderService";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useSearchStore } from "@/stores/searchStore";
 import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
-import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import {
-    getOrderStoreSupabaseClient,
-    useOrderStore,
-} from "@/stores/useOrderStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -120,15 +117,13 @@ const getPaidStatusColor = (status?: string | null) => {
 };
 
 const formatOrderStatusLabel = (status?: string | null) =>
-  (status || "pending")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  formatOrderStatus(status || "pending");
 
 const OrderProcessing = () => {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
   const { colorScheme } = useColorScheme();
-  const { markOrderProcessingActivity } = useCFD();
+  const markOrderProcessingActivity = useCFDOrderProcessingActivity();
   const measuredHeaderHeight = getHeaderHeight();
   const overlayHeaderHeight = measuredHeaderHeight > 0 ? measuredHeaderHeight : 56;
   const customItemModalHeight = useMemo(() => {
@@ -184,6 +179,10 @@ const OrderProcessing = () => {
     useState(false);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
   const discountSheetRef = useRef<BottomSheetMethods>(null);
+  const serviceChargeSheetRef = useRef<BottomSheetMethods>(null);
+  const [moreOptionsOpenedOnce, setMoreOptionsOpenedOnce] = useState(false);
+  const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false);
+  const [serviceChargeOpenedOnce, setServiceChargeOpenedOnce] = useState(false);
   const orderBadgeListRef = useRef<Animated.FlatList<OrderProfile>>(null);
   const orderBadgeScrollXRef = useRef(0);
   const orderBadgeViewportWidthRef = useRef(0);
@@ -191,6 +190,50 @@ const OrderProcessing = () => {
   const didInitializeOrderRef = useRef(false);
   const [canScrollBadgesLeft, setCanScrollBadgesLeft] = useState(false);
   const [canScrollBadgesRight, setCanScrollBadgesRight] = useState(false);
+
+  const requestMoreOptionsOpen = useCallback(() => {
+    if (moreOptionsSheetRef.current) {
+      moreOptionsSheetRef.current.expand();
+      return;
+    }
+    setMoreOptionsOpenedOnce(true);
+  }, []);
+  const requestDiscountOpen = useCallback(() => {
+    if (discountSheetRef.current) {
+      discountSheetRef.current.expand();
+      return;
+    }
+    setDiscountOpenedOnce(true);
+  }, []);
+  const requestServiceChargeOpen = useCallback(() => {
+    if (serviceChargeSheetRef.current) {
+      serviceChargeSheetRef.current.expand();
+      return;
+    }
+    setServiceChargeOpenedOnce(true);
+  }, []);
+
+  const lazyMoreOptionsSheetRef = useMemo(
+    () =>
+      ({
+        current: { expand: requestMoreOptionsOpen } as BottomSheetMethods,
+      }) as React.RefObject<BottomSheetMethods>,
+    [requestMoreOptionsOpen],
+  );
+  const lazyDiscountSheetRef = useMemo(
+    () =>
+      ({
+        current: { expand: requestDiscountOpen } as BottomSheetMethods,
+      }) as React.RefObject<BottomSheetMethods>,
+    [requestDiscountOpen],
+  );
+  const lazyServiceChargeSheetRef = useMemo(
+    () =>
+      ({
+        current: { expand: requestServiceChargeOpen } as BottomSheetMethods,
+      }) as React.RefObject<BottomSheetMethods>,
+    [requestServiceChargeOpen],
+  );
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
@@ -238,6 +281,30 @@ const OrderProcessing = () => {
     const currentActiveOrder = state.activeOrderId
       ? state.ordersById[state.activeOrderId]
       : null;
+    const isInFinalState =
+      currentActiveOrder?.order_status === "completed" ||
+      currentActiveOrder?.order_status === "void" ||
+      currentActiveOrder?.order_status === "cancelled";
+    const shouldKeepActiveDineInOrder =
+      !!currentActiveOrder?.service_location_id &&
+      (currentActiveOrder.order_type === "dine_in" ||
+        currentActiveOrder.order_type === "Dine In") &&
+      !isInFinalState;
+    // Also resume any non-final, unpaid active order that has items
+    // (e.g. "Continue Order" from previous-orders for takeaway/delivery/online).
+    const shouldResumeActiveOrder =
+      !!currentActiveOrder &&
+      !isInFinalState &&
+      currentActiveOrder.paid_status !== "Paid" &&
+      (currentActiveOrder.items?.length ?? 0) > 0;
+    if (
+      currentActiveOrder &&
+      (shouldKeepActiveDineInOrder || shouldResumeActiveOrder)
+    ) {
+      setActiveOrder(currentActiveOrder.id);
+      return;
+    }
+
     if (currentActiveOrder && isReusableEmptyDraftOrder(currentActiveOrder)) {
       if (selectedStore) {
         const refreshedNumbers = getRefreshedReusableDraftNumbers({
@@ -362,6 +429,19 @@ const OrderProcessing = () => {
     const newOrder = startNewOrder();
     setActiveOrder(newOrder.id);
   }, [setActiveOrder, startNewOrder]);
+
+  // Eager backend create: whenever a local-only takeout order becomes active
+  // (fresh order, or a reused empty draft), create its backend row immediately
+  // so it behaves like dine-in — items stay blocked until db_order_id exists
+  // (see addItemToActiveOrder + BillSection's isCreatingOrder gate).
+  useEffect(() => {
+    if (!activeOrderId) return;
+    const order = useOrderStore.getState().ordersById[activeOrderId];
+    if (!order || order.db_order_id) return;
+    // Dine-in orders create at seating; only eager-create non-dine-in here.
+    if (order.order_type === "dine_in" || order.order_type === "Dine In") return;
+    void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+  }, [activeOrderId]);
 
   const handleViewItems = useCallback((orderId: string) => {
     setSelectedOrderId(orderId);
@@ -501,131 +581,10 @@ const OrderProcessing = () => {
     }
   }, [show, showLoading, hideLoading, updateActiveOrderDetails]);
 
-  const handleCloseSession = useCallback(async () => {
-    const state = useOrderStore.getState();
-    const currentActiveOrderId = state.activeOrderId;
-    const currentActiveOrder = currentActiveOrderId
-      ? state.ordersById[currentActiveOrderId]
-      : null;
-
-    if (!currentActiveOrderId || !currentActiveOrder) return;
-
-    const isDineInOrder =
-      currentActiveOrder.order_type === "dine_in" ||
-      currentActiveOrder.order_type === "Dine In";
-    const effectivePaidStatus =
-      deriveEffectivePaidStatus(currentActiveOrder) ??
-      currentActiveOrder.paid_status;
-
-    if (!isDineInOrder) {
-      show({
-        title: "Session Not Available",
-        message: "Only dine-in orders have table sessions.",
-        type: "warning",
-      });
-      return;
-    }
-
-    if (effectivePaidStatus !== "Paid") {
-      show({
-        title: "Cannot Close Session",
-        message: "Order must be fully paid before closing the table session.",
-        type: "error",
-      });
-      return;
-    }
-
-    const tableId = currentActiveOrder.service_location_id;
-    if (!tableId) {
-      show({
-        title: "No Table Linked",
-        message: "This order is not linked to an active table session.",
-        type: "warning",
-      });
-      return;
-    }
-
-    showLoading("Closing session...");
-    try {
-      if (currentActiveOrder.check_status !== "Closed") {
-        if (!currentActiveOrder.db_order_id) {
-          throw new Error(
-            "Order must be synced to close check before closing session",
-          );
-        }
-
-        const supabase = getOrderStoreSupabaseClient();
-        const { loggedInEmployee } = useEmployeeStore.getState();
-
-        if (!supabase) {
-          throw new Error("Database connection unavailable");
-        }
-
-        const closeCheckResult = await OrderService.closeCheck(
-          supabase,
-          currentActiveOrder.db_order_id,
-          loggedInEmployee?.profileId || null,
-        );
-
-        if (!closeCheckResult.success) {
-          throw new Error(closeCheckResult.error || "Failed to close check");
-        }
-
-        useOrderStore
-          .getState()
-          .updateActiveOrderDetails({ check_status: "Closed" });
-      }
-
-      const sessionStore = useTableSessionStore.getState();
-      const tableSession = sessionStore.getSession(tableId);
-      if (
-        tableSession &&
-        tableSession.status !== "paid" &&
-        tableSession.status !== "cleaning"
-      ) {
-        const paymentTransition = await sessionStore.dispatchAction({
-          type: "FULL_PAYMENT",
-          tableId,
-        });
-        if (!paymentTransition.success) {
-          throw new Error(
-            paymentTransition.error ||
-              "Failed to finalize table session before closing",
-          );
-        }
-      }
-
-      const result = await useTableSessionStore.getState().dispatchAction({
-        type: "CLEAR_TABLE",
-        tableId,
-        orderId: currentActiveOrderId,
-      });
-
-      hideLoading();
-
-      if (!result.success) {
-        throw new Error(result.error || "Failed to close session");
-      }
-
-      show({
-        title: "Session Closed",
-        message: "Table marked for cleaning.",
-        type: "success",
-      });
-    } catch (error: any) {
-      hideLoading();
-      show({
-        title: "Failed to Close Session",
-        message: error.message || "An unexpected error occurred.",
-        type: "error",
-      });
-    }
-  }, [show, showLoading, hideLoading]);
-
   // DEFERRED RENDERING: Progressive staged rendering via double-rAF
   // Stage 0: Skeleton placeholders (instant first paint)
   // Stage 1: BillSection (lighter — user sees their order first)
-  // Stage 2: MenuSection + MoreOptionsBottomSheet + FlatList data (heavier)
+  // Stage 2: MenuSection + FlatList data. Heavy bill sheets mount on first open.
   const [renderStage, setRenderStage] = useState(0);
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
@@ -638,6 +597,25 @@ const OrderProcessing = () => {
     });
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  useEffect(() => {
+    if (renderStage >= 2 && moreOptionsOpenedOnce) {
+      const id = setTimeout(() => moreOptionsSheetRef.current?.expand(), 80);
+      return () => clearTimeout(id);
+    }
+  }, [moreOptionsOpenedOnce, renderStage]);
+  useEffect(() => {
+    if (renderStage >= 2 && discountOpenedOnce) {
+      const id = setTimeout(() => discountSheetRef.current?.expand(), 80);
+      return () => clearTimeout(id);
+    }
+  }, [discountOpenedOnce, renderStage]);
+  useEffect(() => {
+    if (renderStage >= 2 && serviceChargeOpenedOnce) {
+      const id = setTimeout(() => serviceChargeSheetRef.current?.expand(), 80);
+      return () => clearTimeout(id);
+    }
+  }, [renderStage, serviceChargeOpenedOnce]);
 
   const displayOrders =
     renderStage >= 2 ? reversedFilteredOrders : EMPTY_ORDERS;
@@ -928,7 +906,7 @@ const OrderProcessing = () => {
                     fontWeight: "700",
                   }}
                 >
-                  {effectivePaidStatus ?? item.paid_status}
+                  {formatPaymentStatus(effectivePaidStatus ?? item.paid_status)}
                 </Text>
               </View>
             </View>
@@ -1149,12 +1127,8 @@ const OrderProcessing = () => {
         {renderStage >= 1 ? (
           <BillSection
             key={`bill-${colorScheme}`}
-            moreOptionsSheetRef={
-              moreOptionsSheetRef as React.RefObject<BottomSheetMethods>
-            }
-            discountSheetRef={
-              discountSheetRef as React.RefObject<BottomSheetMethods>
-            }
+            moreOptionsSheetRef={lazyMoreOptionsSheetRef}
+            discountSheetRef={lazyDiscountSheetRef}
           />
         ) : (
           // BillSection skeleton: matches the 380px sidebar layout
@@ -1274,7 +1248,7 @@ const OrderProcessing = () => {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    onPress={() => router.push("/tables")}
+                    onPress={() => router.replace("/tables")}
                     className="flex-row items-center rounded-lg p-3 justify-start"
                     style={{
                       borderWidth: 1,
@@ -1609,25 +1583,38 @@ const OrderProcessing = () => {
       </View>
 
       {/* Stage 2: Mount bottom sheets in a dedicated overlay layer above BillSection controls */}
-      {renderStage >= 2 && (
+      {renderStage >= 2 &&
+        (moreOptionsOpenedOnce ||
+          discountOpenedOnce ||
+          serviceChargeOpenedOnce) && (
         <View
           pointerEvents="box-none"
           style={[styles.sheetOverlayLayer, { top: -overlayHeaderHeight }]}
         >
-          <MoreOptionsBottomSheet
-            ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
-            discountSheetRef={
-              discountSheetRef as React.RefObject<BottomSheetMethods>
-            }
-            onCloseCheck={handleCloseCheck}
-            onCloseSession={handleCloseSession}
-            onNoSale={handleNoSale}
-            onManageDrawer={() => setCashDrawerSheetOpen(true)}
-          />
-          <DiscountBottomSheet
-            ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
-            onClose={() => discountSheetRef?.current?.close()}
-          />
+          {moreOptionsOpenedOnce && (
+            <MoreOptionsBottomSheet
+              ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+              discountSheetRef={lazyDiscountSheetRef}
+              serviceChargeSheetRef={lazyServiceChargeSheetRef}
+              onCloseCheck={handleCloseCheck}
+              onNoSale={handleNoSale}
+              onManageDrawer={() => setCashDrawerSheetOpen(true)}
+            />
+          )}
+          {discountOpenedOnce && (
+            <DiscountBottomSheet
+              ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
+              onClose={() => discountSheetRef?.current?.close()}
+            />
+          )}
+          {serviceChargeOpenedOnce && (
+            <ServiceChargeOverrideSheet
+              ref={
+                serviceChargeSheetRef as React.RefObject<BottomSheetMethods>
+              }
+              onClose={() => serviceChargeSheetRef?.current?.close()}
+            />
+          )}
         </View>
       )}
 

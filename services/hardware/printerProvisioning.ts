@@ -5,7 +5,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import type { DiscoveredStarPrinter } from "@/services/printing/discovery/StarPrinterDiscovery";
 import type { DeviceCapabilities } from "./deviceDetection";
 import type { StationPaymentTerminal } from "@/types/station";
-import type { PrinterConfig } from "@/types/printer";
+import { PRINTER_STATUS_IN_USE, type PrinterConfig } from "@/types/printer";
 import { printerRowToConfig } from "@/types/printer";
 import { DejavooDriver } from "@/services/printing/drivers/DejavooDriver";
 import {
@@ -57,6 +57,7 @@ export async function addStarPrinter(
         supports_auto_cut: caps.supportsAutoCut,
         supports_cash_drawer_kick: true,
         is_active: true,
+        serial_number: discovered.serialNumber,
         metadata: {
           starModel: discovered.model,
           macAddress: discovered.macAddress,
@@ -95,6 +96,7 @@ export async function addStarPrinter(
       location_id: locationId,
       merchant_id: merchantId,
       // Printers are location-level resources — no station binding
+      serial_number: discovered.serialNumber,
       metadata: {
         starModel: discovered.model,
         macAddress: discovered.macAddress,
@@ -110,6 +112,12 @@ export async function addStarPrinter(
   if (error) {
     console.error(`${TAG} Failed to insert Star printer:`, error.message);
     return null;
+  }
+
+  if (!discovered.macAddress && !discovered.serialNumber && __DEV__) {
+    console.warn(
+      `${TAG} Star printer ${inserted?.id} saved without MAC or serial — DHCP recovery unavailable for this row`,
+    );
   }
 
   console.log(`${TAG} Added Star printer:`, inserted?.id);
@@ -291,13 +299,17 @@ export async function addDejavooPrinter(
 export async function testPrinterConnection(
   supabase: SupabaseClient,
   printer: PrinterConfig,
-): Promise<{ online: boolean; error?: string }> {
+): Promise<{ online: boolean; inUse?: boolean; error?: string }> {
   let online = false;
+  let inUse = false;
   let error: string | undefined;
 
   try {
     if (printer.printerType === "star_micronics") {
-      ({ online, error } = await testStarConnection(printer));
+      const r = await testStarConnection(printer);
+      online = r.online;
+      inUse = !!r.inUse;
+      error = r.error;
     } else if (printer.printerType === "builtin_landi") {
       ({ online, error } = await testLandiConnection());
     } else if (printer.printerType === "dejavoo_spin_p") {
@@ -310,24 +322,29 @@ export async function testPrinterConnection(
     error = e.message;
   }
 
-  // Update DB status
+  // Update DB status. "in use" is reachable (online) but held by a peer — the
+  // sentinel lastStatus value drives the yellow badge on the printers screen.
   await supabase
     .from("printers")
     .update({
       is_connected: online,
-      last_status: online ? "verified" : `test_failed: ${error ?? "unknown"}`,
+      last_status: inUse
+        ? PRINTER_STATUS_IN_USE
+        : online
+          ? "verified"
+          : `test_failed: ${error ?? "unknown"}`,
       last_status_at: new Date().toISOString(),
     })
     .eq("id", printer.id);
 
-  return { online, error };
+  return { online, inUse, error };
 }
 
 // ---- Star Micronics ----
 
 async function testStarConnection(
   printer: PrinterConfig,
-): Promise<{ online: boolean; error?: string }> {
+): Promise<{ online: boolean; inUse?: boolean; error?: string }> {
   if (!printer.networkAddress) {
     return { online: false, error: "No network address configured" };
   }
@@ -350,7 +367,9 @@ async function testStarConnection(
       return { online: true };
     } catch (e: any) {
       try { await probe.close(); } catch { /* ignore */ }
-      if (e instanceof StarIO10InUseError) return { online: true };
+      // Reachable but held by a peer — propagate the in_use distinction so
+      // the test-connection UI can render the yellow badge.
+      if (e instanceof StarIO10InUseError) return { online: true, inUse: true };
       return { online: false, error: e.message };
     } finally {
       try { await probe.dispose(); } catch { /* ignore */ }
