@@ -3844,6 +3844,64 @@ function _cleanupOrderModuleState(
     delete throttleTimers[id];
     delete pendingThrottledBroadcast[id];
     delete lastBroadcastTime[id];
+    // Also release the other per-order-key module dicts so they don't leak
+    // across a shift when an order is removed/pruned. orderRefreshTimeouts
+    // holds a live setTimeout (clear it so it can't fire into a removed order);
+    // pendingItemsBlockStart + lastLocalMutationAt are plain timestamp dicts.
+    const refreshTimer = orderRefreshTimeouts[id];
+    if (refreshTimer) clearTimeout(refreshTimer);
+    delete orderRefreshTimeouts[id];
+    delete pendingItemsBlockStart[id];
+    delete lastLocalMutationAt[id];
+  }
+}
+
+// Release ALL per-order / per-item satellite state when an order leaves
+// ordersById. Covers what _cleanupOrderModuleState (string-keyed dicts) can't:
+// the item-keyed quantitySyncGenerations Map and the per-order coursing /
+// seating / sync-status stores, whose own clearOrder/clearAllForOrder were
+// never wired to any order-removal path (memory audit Group A — they grew
+// monotonically across a shift). Satellite stores re-init on re-open from
+// history (initializeForOrder), so clearing here loses nothing. Lazy require
+// mirrors the getTableSessionStore pattern to avoid store import cycles.
+function releaseOrderState(
+  order: OrderProfile | undefined,
+  storeKey?: string,
+): void {
+  if (!order) return;
+  const orderId = order.id;
+  const dbId = order.db_order_id;
+  // Clear the string-keyed module dicts under every id the order was keyed
+  // under (its own id, db UUID, and the store key it was removed under).
+  _cleanupOrderModuleState(orderId, dbId, storeKey);
+  const items = order.items ?? [];
+  for (const item of items) {
+    if (item?.id) quantitySyncGenerations.delete(item.id);
+  }
+  try {
+    const itemIds = items.map((i) => i.id).filter(Boolean) as string[];
+    // coursing/seating byOrderId are keyed by the local order id; clear under
+    // every id the order may have been keyed under (idempotent no-op misses).
+    const keys = Array.from(
+      new Set([orderId, dbId, storeKey].filter(Boolean) as string[]),
+    );
+    const coursing = (
+      require("@/stores/useCoursingStore") as typeof import("@/stores/useCoursingStore")
+    ).useCoursingStore.getState();
+    const seating = (
+      require("@/stores/useSeatingStore") as typeof import("@/stores/useSeatingStore")
+    ).useSeatingStore.getState();
+    for (const k of keys) {
+      coursing.clearOrder(k);
+      seating.clearOrder(k);
+    }
+    if (itemIds.length > 0) {
+      (
+        require("@/stores/useSyncStatusStore") as typeof import("@/stores/useSyncStatusStore")
+      ).useSyncStatusStore.getState().clearAllForOrder(itemIds);
+    }
+  } catch (e) {
+    if (__DEV__) console.warn("[releaseOrderState] satellite cleanup failed", e);
   }
 }
 
@@ -6456,13 +6514,13 @@ export const useOrderStore = create<OrderState>()(
               // Surgical dbOrderIdIndex maintenance
               delete state.dbOrderIdIndex[dbOrderId];
               delete state.persistableOrderIds[dbOrderId];
+              delete state.pendingBackendUpdates[dbOrderId];
             });
 
-            // Cleanup mutation window tracker
-            delete lastLocalMutationAt[dbOrderId];
-            // Cleanup per-order broadcast-throttle module state (keyed by both
-            // the store key and the db UUID) so these dicts don't leak.
-            _cleanupOrderModuleState(dbOrderId, existing.db_order_id);
+            // Release ALL per-order/item satellite state (module dicts keyed by
+            // both the store key and db UUID, item-keyed quantitySyncGenerations,
+            // and the coursing/seating/sync-status stores).
+            releaseOrderState(existing, dbOrderId);
 
             console.log("[RemoveOrder] Removed:", dbOrderId);
           },
@@ -11833,12 +11891,12 @@ export const useOrderStore = create<OrderState>()(
 
             // Remove abandoned drafts
             if (idsToRemove.length > 0) {
-              // Capture db UUIDs before deletion so the throttle-dict cleanup
-              // below can clear entries keyed by db_order_id (drafts that
-              // acquired a db id and broadcast before abandonment leaked these).
-              const dbIdsToCleanup = idsToRemove
-                .map((id) => get().ordersById[id]?.db_order_id)
-                .filter(Boolean) as string[];
+              // Capture the order objects (with their store key) before deletion
+              // so releaseOrderState can fan out per-order/item satellite cleanup
+              // (module dicts, quantitySyncGenerations, coursing/seating/sync).
+              const ordersToRelease = idsToRemove
+                .map((id) => ({ key: id, order: get().ordersById[id] }))
+                .filter((o) => !!o.order);
               set((state) => {
                 idsToRemove.forEach((id) => {
                   // Surgical dbOrderIdIndex cleanup
@@ -11854,6 +11912,7 @@ export const useOrderStore = create<OrderState>()(
                   );
                   delete state._workingSetLookup[id];
                   delete state.persistableOrderIds[id];
+                  delete state.pendingBackendUpdates[id];
                 });
                 state.orderIds = state.orderIds.filter(
                   (id) => !idsToRemove.includes(id),
@@ -11873,13 +11932,12 @@ export const useOrderStore = create<OrderState>()(
                 }
               });
 
-              // Module-level mutation tracker — also leaked previously.
-              idsToRemove.forEach((id) => {
-                delete lastLocalMutationAt[id];
-              });
-              // Per-order broadcast-throttle module state (keyed by local id
-              // AND db UUID) so these dicts don't leak across a shift.
-              _cleanupOrderModuleState(...idsToRemove, ...dbIdsToCleanup);
+              // Release all per-order/item satellite state for each removed
+              // draft (covers the module dicts via _cleanupOrderModuleState plus
+              // quantitySyncGenerations + coursing/seating/sync-status stores).
+              for (const { key, order } of ordersToRelease) {
+                releaseOrderState(order, key);
+              }
 
               console.log(
                 `[cleanupAbandonedDrafts] Removed ${idsToRemove.length} abandoned draft(s)`,
@@ -12003,6 +12061,15 @@ export const useOrderStore = create<OrderState>()(
               });
             }
 
+            // Capture the order objects being pruned BEFORE the set() so we can
+            // fan out per-order/item satellite cleanup after (this path never
+            // called any module cleanup before — the satellite stores +
+            // quantitySyncGenerations leaked every prune).
+            const ordersToRelease = state.orderIds
+              .filter((id) => !keepSet.has(id))
+              .map((id) => ({ key: id, order: state.ordersById[id] }))
+              .filter((o) => !!o.order);
+
             set((draft) => {
               for (const id of draft.orderIds) {
                 if (!keepSet.has(id)) {
@@ -12012,10 +12079,16 @@ export const useOrderStore = create<OrderState>()(
                   }
                   delete draft.ordersById[id];
                   delete draft.persistableOrderIds[id];
+                  delete draft.pendingBackendUpdates[id];
                 }
               }
               draft.orderIds = draft.orderIds.filter((id) => keepSet.has(id));
             });
+
+            for (const { key, order } of ordersToRelease) {
+              releaseOrderState(order, key);
+            }
+
             console.log(
               `[clearInactiveOrders] Removed ${removedCount}, kept ${keepSet.size}`,
             );

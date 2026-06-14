@@ -717,16 +717,24 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             });
           }
 
-          const refresh = get()
-            .loadFloorPlanStatus()
-            .finally(() => {
-              if (get().activeFloorPlanId === floorPlanId) {
-                set({ isLoading: false, loadingFloorPlanId: null });
-              }
-            });
-
-          if (!isFresh) {
-            await refresh;
+          if (isFresh) {
+            // Cache is <30s fresh — the instant paint above is authoritative and
+            // realtime (useFloorRealtime) keeps it live. Skip the redundant
+            // background loadFloorPlanStatus: on every fresh switch it re-fetched
+            // identical data, ran the diff, and re-wrote the PERSISTED
+            // floorPlanCache with a new lastSyncAt → a wasted RPC + MMKV write
+            // (serializing the whole multi-plan cache) + diff per switch, which
+            // compounds into GC/storage churn over a shift. A stale switch
+            // (>30s) or a realtime broadcast still reconciles.
+            set({ isLoading: false, loadingFloorPlanId: null });
+          } else {
+            await get()
+              .loadFloorPlanStatus()
+              .finally(() => {
+                if (get().activeFloorPlanId === floorPlanId) {
+                  set({ isLoading: false, loadingFloorPlanId: null });
+                }
+              });
           }
           void get().prefetchFloorPlans();
         },

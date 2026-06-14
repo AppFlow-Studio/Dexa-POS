@@ -40,3 +40,16 @@ export function shouldAutoBump(
   if (!isStarted(startTimeEpoch)) return false;
   return nowMs - startTimeEpoch >= delayMs;
 }
+
+/**
+ * A recall is expired once it's older than the TTL. Used to evict stale recalls
+ * (incomplete recalls that would otherwise linger in the KDS Sets all shift /
+ * across restarts). The TTL is far past any live ticket's lifetime.
+ */
+export function isRecallExpired(
+  recalledAtMs: number,
+  nowMs: number,
+  ttlMs: number,
+): boolean {
+  return nowMs - recalledAtMs > ttlMs;
+}

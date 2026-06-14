@@ -11,6 +11,7 @@ import {
     toBulkUpdateStatusKey,
     toIdempotencyKey,
 } from "@/lib/network/idempotencyKey";
+import { isRecallExpired } from "@/lib/kdsAutomation";
 import { normalizePlatform } from "@/lib/platformAliases";
 import { createLazyPersistStorage, getJSON, setJSON } from "@/lib/storage";
 import { OrderService } from "@/services/orderService";
@@ -242,8 +243,12 @@ function restoreKdsRetryState(): void {
   }
 
   _recalledTicketIds.clear();
+  _recalledTicketAt.clear();
   for (const ticketId of persisted.recalledTicketIds ?? []) {
     _recalledTicketIds.add(ticketId);
+    // Restart the TTL clock on boot (persisted shape is id-only) — a stale
+    // recall persists at most RECALLED_TICKET_TTL after a restart.
+    _recalledTicketAt.set(ticketId, Date.now());
   }
 
   // Retry handles are not executable across app restarts because callbacks are ephemeral.
@@ -274,13 +279,30 @@ function deletePendingAction(ticketId: string): void {
 function addRecalledTicketId(ticketId: string): void {
   _recalledTicketIds.add(ticketId);
   _recalledCycleTicketIds.add(ticketId);
+  _recalledTicketAt.set(ticketId, Date.now());
   persistKdsRetryState();
 }
 
 function deleteRecalledTicketId(ticketId: string): void {
+  _recalledTicketAt.delete(ticketId);
   if (_recalledTicketIds.delete(ticketId)) {
     persistKdsRetryState();
   }
+}
+
+// Evict recalls older than RECALLED_TICKET_TTL from both Sets + the timestamp
+// map so an unfinished recall can't accumulate over a shift / across restarts.
+function cullExpiredRecalls(now: number): void {
+  if (_recalledTicketAt.size === 0) return;
+  let changed = false;
+  for (const [ticketId, at] of _recalledTicketAt) {
+    if (isRecallExpired(at, now, RECALLED_TICKET_TTL)) {
+      _recalledTicketAt.delete(ticketId);
+      _recalledCycleTicketIds.delete(ticketId);
+      if (_recalledTicketIds.delete(ticketId)) changed = true;
+    }
+  }
+  if (changed) persistKdsRetryState();
 }
 
 function scheduleRetry(
@@ -386,6 +408,12 @@ function getTicketMutationVersion(ticketId: string): number {
 /** Track ticket IDs that have been recalled — survives server refetches */
 const _recalledTicketIds = new Set<string>();
 const _recalledCycleTicketIds = new Set<string>();
+// Recall timestamps for TTL eviction. Recalls are removed on ticket completion,
+// but an incomplete recall (customer leaves, ticket never served) would otherwise
+// linger in the Sets forever — and across restarts, since they persist to MMKV.
+// TTL-cull them in overlayPendingActions (mirrors _pendingActions' TTL prune).
+const _recalledTicketAt = new Map<string, number>();
+const RECALLED_TICKET_TTL = 4 * 60 * 60 * 1000; // 4h — far past any live ticket
 
 /** Track order item IDs whose void/refund notice has been acknowledged locally.
  *  Persisted to MMKV so acknowledgements survive app restarts when there is no
@@ -450,6 +478,9 @@ function overlayPendingActions(tickets: KDSTicket[]): KDSTicket[] {
       deletePendingAction(ticketId);
     }
   }
+
+  // Evict long-stale recalls (4h TTL) so unfinished recalls don't accumulate.
+  cullExpiredRecalls(now);
 
   // Some bulk-done flows can regenerate ticket IDs from broadcast/refetch before
   // backend state fully settles. Keep those tickets hidden if all incoming items
@@ -3510,6 +3541,9 @@ export const useKDSStore = create<KDSState>()(
         cancelAllRetries();
         _pendingActions.clear();
         _queuedAdvanceActions.clear();
+        _recalledTicketIds.clear();
+        _recalledCycleTicketIds.clear();
+        _recalledTicketAt.clear();
         _acknowledgedNoticeItemIds.clear();
         persistAcknowledgedNoticeItems();
         if (_refetchTimeout) {
