@@ -706,6 +706,18 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               merged_tables: preservedMergedTables,
             };
 
+            // Never downgrade a live, SAME-SESSION local-only status on a full
+            // backend poll — same guard as _patchSessionsFromTables. The backend
+            // doesn't know about seating/ordering/paying/closing; a poll must
+            // not SYNC them away. Different-id sessions still replace.
+            if (
+              existingSession &&
+              isLocalOnlyStatus(existingSession.status) &&
+              existingSession.id === row.session_id
+            ) {
+              continue;
+            }
+
             actions.push({
               tableId: row.table_id,
               action: { type: "SYNC", session },
@@ -761,6 +773,21 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             snapshotTableIds.add(table.id);
             if (!table.session) continue;
             incomingTableIds.add(table.id);
+
+            // Never downgrade a live, SAME-SESSION local-only status. The SYNC
+            // branch of _applyAction intentionally overwrites local-only with
+            // the backend status; a plan snapshot must NOT do that (the backend
+            // doesn't know about seating/ordering/paying/closing). Mirrors the
+            // CLEAR-sweep local-only guard below. Same-id only — a genuinely new
+            // session (different id) still replaces.
+            const existing = currentSessions[table.id];
+            if (
+              existing &&
+              isLocalOnlyStatus(existing.status) &&
+              existing.id === table.session.id
+            ) {
+              continue;
+            }
 
             // Use SYNC action — applies backend status updates
             actions.push({

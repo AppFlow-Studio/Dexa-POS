@@ -11,6 +11,7 @@ import {
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
+import { shouldAutoBump, shouldAutoFire } from "@/lib/kdsAutomation";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { clearStationData } from "@/services/cacheService";
@@ -354,7 +355,14 @@ const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
 // ─── Ticket Card ──────────────────────────────────────────────────
 interface KDSTicketCardProps {
   ticket: KDSTicket;
-  nowEpochMs: number;
+  // D6: a pre-bucketed urgency level (0-3) computed at the page level instead
+  // of the raw per-second nowEpochMs. The visible MM:SS timer lives in the
+  // isolated KDSTicketTimer leaf (subscribes to nowEpochMs itself), so the card
+  // body's only time-dependent output is the header urgency color — which only
+  // changes at minute thresholds. Bucketing collapses the per-second prop churn
+  // to a 0-3 value so the memo comparator skips the card body render between
+  // threshold crossings (~3 over a ticket's life vs ~60/min).
+  urgencyLevel: number;
   onAdvance: (
     ticketId: string,
     itemIds: string[],
@@ -370,13 +378,12 @@ interface KDSTicketCardProps {
   onAcknowledgeNotice?: (ticketId: string, itemId: string) => void;
   hideDoneItems: boolean;
   displaySettings: KDSTicketDisplaySettings;
-  urgencyThresholds: UrgencyThresholds;
 }
 
 const KDSTicketCard = React.memo<KDSTicketCardProps>(
   ({
     ticket,
-    nowEpochMs,
+    urgencyLevel,
     onAdvance,
     onToggleSelect,
     onLongPress,
@@ -384,23 +391,19 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     onAcknowledgeNotice,
     hideDoneItems,
     displaySettings,
-    urgencyThresholds,
   }) => {
+    // D6 profile gate (TEMP — remove before merge): count card-body renders.
+    // On a 50-card board, BEFORE the urgencyLevel bucketing this fires ~50x/sec
+    // (raw nowEpochMs prop); AFTER it fires only on ticket data change + the ~3
+    // urgency threshold crossings. Commit D6 only if this BEFORE number is a
+    // measured cost (under React Compiler the body render may already be cheap).
+    if (__DEV__) console.count("KDSTicketCard.render");
     const bulkMode = useKDSStore((s) => s.bulkMode);
     const isSelected = useKDSStore(
       useCallback(
         (s) => s.selectedTicketIds.has(ticket.ticket_id),
         [ticket.ticket_id],
       ),
-    );
-    const timeElapsed = useMemo(
-      () => getBucketedElapsed(ticket.start_time_epoch, undefined, nowEpochMs),
-      [ticket.start_time_epoch, nowEpochMs],
-    );
-    const urgencyLevel = useMemo(
-      () =>
-        getUrgencyLevel(ticket.start_time_epoch, urgencyThresholds, nowEpochMs),
-      [ticket.start_time_epoch, urgencyThresholds, nowEpochMs],
     );
     const hasUrgencyColor = urgencyLevel > 0;
 
@@ -1271,15 +1274,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
   (prev, next) => {
     // Skip re-render if callbacks and config are unchanged
     if (
-      prev.nowEpochMs !== next.nowEpochMs ||
+      prev.urgencyLevel !== next.urgencyLevel ||
       prev.onAdvance !== next.onAdvance ||
       prev.onToggleSelect !== next.onToggleSelect ||
       prev.onLongPress !== next.onLongPress ||
       prev.onItemPress !== next.onItemPress ||
       prev.onAcknowledgeNotice !== next.onAcknowledgeNotice ||
       prev.hideDoneItems !== next.hideDoneItems ||
-      prev.displaySettings !== next.displaySettings ||
-      prev.urgencyThresholds !== next.urgencyThresholds
+      prev.displaySettings !== next.displaySettings
     )
       return false;
 
@@ -1857,32 +1859,36 @@ const KitchenDisplayScreen = () => {
       const now = Date.now();
       const delayMs = kdsAutoFireDelayMinutes * 60 * 1000;
 
+      // Read the live pending bucket at fire time. Subscribing to it via the
+      // identity-selected `pendingTickets` and listing it in deps re-armed this
+      // 30s interval on every bucket change — and on a busy board where the
+      // bucket changes faster than 30s, the timer reset starved auto-fire.
+      const pendingTickets = useKDSStore.getState().ticketsByStatus.pending;
       pendingTickets.forEach((ticket) => {
-        if (ticket.start_time_epoch === 0) return;
-        const elapsed = now - ticket.start_time_epoch;
-        if (elapsed >= delayMs) {
-          const displayNum =
-            ticket.display_number ?? ticket.order_number?.slice(-4) ?? "?";
-          toast.show({
-            title: `${displayNum} auto-fired`,
-            message: `Started preparing after ${kdsAutoFireDelayMinutes}m`,
-            type: "success",
-            duration: 3000,
-          });
-          advanceTicketStatus(
-            ticket.ticket_id,
-            getTicketItems(ticket).map((i) => i.id),
-            "preparing",
-          );
-        }
+        if (!shouldAutoFire(ticket.start_time_epoch, now, delayMs)) return;
+        const displayNum =
+          ticket.display_number ?? ticket.order_number?.slice(-4) ?? "?";
+        toast.show({
+          title: `${displayNum} auto-fired`,
+          message: `Started preparing after ${kdsAutoFireDelayMinutes}m`,
+          type: "success",
+          duration: 3000,
+        });
+        advanceTicketStatus(
+          ticket.ticket_id,
+          getTicketItems(ticket).map((i) => i.id),
+          "preparing",
+        );
       });
     }, KDS_AUTOMATION_CHECK_MS);
 
     return () => clearInterval(intervalId);
+    // pendingTickets intentionally NOT a dep — read via getState() inside the
+    // interval so a bucket change doesn't re-arm (and reset) the 30s timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     kdsAutoFireEnabled,
     kdsAutoFireDelayMinutes,
-    pendingTickets,
     isReady,
     advanceTicketStatus,
     toast,
@@ -1897,37 +1903,39 @@ const KitchenDisplayScreen = () => {
       const now = Date.now();
       const delayMs = autoBumpMinutes * 60 * 1000;
 
+      // Read the live ready bucket at fire time (see auto-fire above) so a
+      // bucket change doesn't re-arm/reset this 30s interval and starve it.
+      const readyTickets = useKDSStore.getState().ticketsByStatus.ready;
       readyTickets.forEach((ticket) => {
-        if (ticket.start_time_epoch === 0) return;
         // Skip recalled tickets — check item-level flag (persisted in MMKV, survives
         // hot-reloads) + module-level Set (fast path) as belt-and-suspenders
-        if (
+        const recalled =
           getTicketItems(ticket).some((i) => i.recalled) ||
-          isTicketRecalled(ticket.ticket_id)
-        )
+          isTicketRecalled(ticket.ticket_id);
+        if (!shouldAutoBump(ticket.start_time_epoch, now, delayMs, recalled))
           return;
-        if (now - ticket.start_time_epoch >= delayMs) {
-          const displayNum =
-            ticket.display_number ?? ticket.order_number?.slice(-4) ?? "?";
-          toast.show({
-            title: `${displayNum} auto-bumped`,
-            message: `Ticket served after ${autoBumpMinutes}m`,
-            type: "success",
-            duration: 3000,
-          });
-          advanceTicketStatus(
-            ticket.ticket_id,
-            getTicketItems(ticket).map((i) => i.id),
-            "served",
-          );
-        }
+        const displayNum =
+          ticket.display_number ?? ticket.order_number?.slice(-4) ?? "?";
+        toast.show({
+          title: `${displayNum} auto-bumped`,
+          message: `Ticket served after ${autoBumpMinutes}m`,
+          type: "success",
+          duration: 3000,
+        });
+        advanceTicketStatus(
+          ticket.ticket_id,
+          getTicketItems(ticket).map((i) => i.id),
+          "served",
+        );
       });
     }, KDS_AUTOMATION_CHECK_MS);
 
     return () => clearInterval(intervalId);
+    // readyTickets intentionally NOT a dep — read via getState() inside the
+    // interval so a bucket change doesn't re-arm (and reset) the 30s timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     autoBumpMinutes,
-    readyTickets,
     isReady,
     advanceTicketStatus,
     isTicketRecalled,
@@ -2279,7 +2287,13 @@ const KitchenDisplayScreen = () => {
     (item: KDSTicket) => (
       <KDSTicketCard
         ticket={item}
-        nowEpochMs={nowEpochMs}
+        // D6: bucket the per-second nowEpochMs into a 0-3 urgency level here so
+        // the card only re-renders its body when a ticket crosses a threshold.
+        urgencyLevel={getUrgencyLevel(
+          item.start_time_epoch,
+          urgencyThresholds,
+          nowEpochMs,
+        )}
         onAdvance={advanceWithUndo}
         onToggleSelect={toggleTicketSelection}
         onLongPress={handleTicketLongPress}
@@ -2287,7 +2301,6 @@ const KitchenDisplayScreen = () => {
         onAcknowledgeNotice={handleAcknowledgeNotice}
         hideDoneItems={kdsHideDoneItems}
         displaySettings={displaySettings}
-        urgencyThresholds={urgencyThresholds}
       />
     ),
     [

@@ -173,7 +173,8 @@ const shallowValueEqual = (a: unknown, b: unknown, depth: number): boolean => {
   return false;
 };
 
-const fetchFloorPlanSnapshot = async (
+// Exported for unit testing of the local-only preserve guard.
+export const fetchFloorPlanSnapshot = async (
   floorPlanId: string,
   currentTablesById: Record<string, FloorPlanObject> = {},
 ): Promise<{ data: FloorPlanCacheEntry | null; error: Error | null }> => {
@@ -192,6 +193,13 @@ const fetchFloorPlanSnapshot = async (
 
     const freshTables = freshObjects || [];
 
+    // The session store holds ALL plans' live sessions keyed by tableId,
+    // independent of which plan's currentTablesById is in scope. Consult it so
+    // the local-only preserve fires even when currentTablesById is empty — i.e.
+    // the prefetch path (no currentTablesById) and the cache-miss reload path
+    // (tablesById was reset to {} before this fetch). Read once, not per-table.
+    const liveSessions = getTableSessionStore().getState().sessions;
+
     const mergedTables = freshTables.map((freshTable) => {
       const currentTable = currentTablesById[freshTable.id];
       const freshSessionIsInactive =
@@ -200,6 +208,20 @@ const fetchFloorPlanSnapshot = async (
             | { is_active?: boolean }
             | undefined
         )?.is_active === false;
+
+      // Preserve a live, SAME-SESSION local-only status (seating/ordering/
+      // paying/closing) — the backend snapshot never knows about these
+      // optimistic sub-states. Prefer the session-store view (global, survives
+      // empty currentTablesById); fall back to currentTablesById.
+      const liveSession = liveSessions[freshTable.id];
+      if (
+        liveSession &&
+        isLocalOnlyStatus(liveSession.status) &&
+        freshTable.session &&
+        liveSession.id === freshTable.session.id
+      ) {
+        return { ...freshTable, session: liveSession };
+      }
 
       if (
         currentTable?.session &&
@@ -674,8 +696,11 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             // active plan's sessions, so without this every switch flashed
             // ALL tables as "available" until the background
             // loadFloorPlanStatus patched sessions in (~0.5-2s). The cache is
-            // ≤30s fresh (prefetch re-warm) and SYNC respects local-only
-            // statuses; the authoritative load still reconciles right after.
+            // ≤30s fresh (prefetch re-warm); _patchSessionsFromTables preserves
+            // live same-session local-only statuses (seating/ordering/paying/
+            // closing) against the snapshot's backend status, so a stale cache
+            // can't downgrade an in-progress table; the authoritative load still
+            // reconciles right after.
             getTableSessionStore()
               .getState()
               ._patchSessionsFromTables(cached.tables);

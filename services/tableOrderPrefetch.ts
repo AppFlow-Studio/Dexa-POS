@@ -262,4 +262,12 @@ export function setupTableOrderPrefetch() {
 export function teardownTableOrderPrefetch() {
   _unsubscribe?.();
   _unsubscribe = null;
+  // Clear module-level state so a re-setup starts clean. Without this, a stale
+  // entry in _inFlightPrefetches could outlive teardown and, if its promise
+  // resolves later, apply old order data to a freshly-seated table that reused
+  // the same id. Teardown only fires when ALL table-session mounts unmount, so
+  // no active seat flow is in flight at this point.
+  _inFlightOrderIds.clear();
+  _inFlightPrefetches.clear();
+  _recentlyHydrated.clear();
 }
