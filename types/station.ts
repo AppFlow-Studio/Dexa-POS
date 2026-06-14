@@ -85,6 +85,10 @@ export interface Station {
 
   // Payment terminal linked to this station (non-sensitive metadata only)
   payment_terminal?: StationPaymentTerminal | null;
+
+  // Kiosk profile linked to this (self_service) station. Drives the kiosk
+  // appearance/behavior config — see hooks/kiosk/useKioskProfile.ts.
+  kiosk_profile_id?: string | null;
 }
 
 export interface StationCurrentSession {
@@ -113,6 +117,8 @@ export interface SelectedStation {
   current_receipt_printer_id?: string | null;
   // Payment terminal linked to this station (safe to persist - non-sensitive metadata only)
   payment_terminal?: StationPaymentTerminal | null;
+  // Kiosk profile linked to this (self_service) station — drives kiosk config.
+  kiosk_profile_id?: string | null;
 }
 
 // Response from pos_staff_login RPC

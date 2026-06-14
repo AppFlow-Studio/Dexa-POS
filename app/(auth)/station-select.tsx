@@ -298,7 +298,8 @@ const StationSelectScreen = () => {
         can_void_orders: station.can_void_orders,
         can_apply_discounts: station.can_apply_discounts,
         can_update_kitchen_status: station.can_update_kitchen_status,
-        payment_terminal: station.payment_terminal || null
+        payment_terminal: station.payment_terminal || null,
+        kiosk_profile_id: station.kiosk_profile_id ?? null
       }
       setSelectedStation(stationData)
       router.push({
@@ -321,7 +322,8 @@ const StationSelectScreen = () => {
         can_void_orders: stationToTakeover.can_void_orders,
         can_apply_discounts: stationToTakeover.can_apply_discounts,
         can_update_kitchen_status: stationToTakeover.can_update_kitchen_status,
-        payment_terminal: stationToTakeover.payment_terminal || null
+        payment_terminal: stationToTakeover.payment_terminal || null,
+        kiosk_profile_id: stationToTakeover.kiosk_profile_id ?? null
       }
       setSelectedStation(stationData)
       setShowTakeoverConfirm(false)
