@@ -227,11 +227,13 @@ const fetchFloorPlanSnapshot = async (
       return freshTable;
     });
 
-    const getUpcomingForTable =
-      getReservationStore().getState().getUpcomingForTable;
+    // Use the O(1) nextReservationByTableId index (rebuilt on every reservation
+    // fetch with the same active+future filter and soonest-first sort as
+    // getUpcomingForTable) instead of re-filtering all reservations per table.
+    const nextReservationByTableId =
+      getReservationStore().getState().nextReservationByTableId;
     const enrichedTables = mergedTables.map((table) => {
-      const upcoming = getUpcomingForTable(table.id);
-      const next = upcoming[0];
+      const next = nextReservationByTableId[table.id];
       if (!next) return { ...table, next_reservation: null };
       return {
         ...table,

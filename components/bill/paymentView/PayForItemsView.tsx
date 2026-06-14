@@ -6,6 +6,7 @@ import {
   calculateItemEffectiveCashPrice,
   useOrderStore
 } from '@/stores/useOrderStore'
+import { useActiveOrder } from '@/stores/selectors/orderSelectors'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
@@ -326,8 +327,10 @@ const PayForItemsView: React.FC = () => {
   useRefreshActiveOrder()
 
   // --- STORE STATE ---
-  const activeOrderId = useOrderStore(state => state.activeOrderId)
-  const ordersById = useOrderStore(state => state.ordersById)
+  // useActiveOrder() subscribes to only the active order object (immer keeps it
+  // referentially stable), so this view no longer re-renders when an unrelated
+  // order mutates — previously the full ordersById subscription did.
+  const activeOrder = useActiveOrder()
   const activeOrderTotal = useOrderStore(state => state.activeOrderTotal)
   const activeOrderOutstandingCash = useOrderStore(
     state => state.activeOrderOutstandingCash
@@ -347,10 +350,6 @@ const PayForItemsView: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false)
 
   // --- DERIVED VALUES ---
-  const activeOrder = useMemo(
-    () => (activeOrderId ? ordersById[activeOrderId] : null),
-    [activeOrderId, ordersById]
-  )
   // console.log('[activeOrder | SplitByItemView] activeOrder', activeOrder?.items[0]);
 
   const payments = activeOrder?.payments || []

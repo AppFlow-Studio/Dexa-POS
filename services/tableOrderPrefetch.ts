@@ -83,7 +83,7 @@ function isFreshlySeatedOrder(orderId: string): boolean {
 }
 
 function getCachedOrderId(orderId: string): string | null {
-  const { ordersById, dbOrderIdIndex } = useOrderStore.getState();
+  const { ordersById, dbOrderIdIndex, orderIds } = useOrderStore.getState();
   if (ordersById[orderId]) return orderId;
 
   const localId = dbOrderIdIndex[orderId];
@@ -92,9 +92,12 @@ function getCachedOrderId(orderId: string): string | null {
   // Defensive scan: if hydrateOrderFromSeat set db_order_id on a local order
   // but the dbOrderIdIndex repair hasn't committed yet (rare reorder during
   // a SESSION_CREATED → subscriber → microtask chain), still treat the order
-  // as cached so we don't race-fetch a duplicate shell.
-  for (const [key, o] of Object.entries(ordersById)) {
-    if (o.db_order_id === orderId) return key;
+  // as cached so we don't race-fetch a duplicate shell. Iterate the
+  // pre-maintained orderIds array instead of allocating Object.entries.
+  for (let i = 0; i < orderIds.length; i++) {
+    const key = orderIds[i];
+    const o = ordersById[key];
+    if (o && o.db_order_id === orderId) return key;
   }
   return null;
 }

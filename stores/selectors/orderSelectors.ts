@@ -200,12 +200,16 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
     enabled ? s.resolveRule(scLocationId) : null,
   );
   const sessionPartySize = useTableSessionStore((s) => {
+    // O(1) lookup: useTableSessionStore.sessions is keyed by tableId, and an
+    // order's service_location_id IS its tableId. The `sx.id === sessionId`
+    // guard preserves the previous full-scan semantics exactly (including the
+    // reseat/stale-session miss → null). Assumes tableId === service_location_id.
     const sessionId = activeOrder?.session_id;
     if (!enabled || !sessionId) return null;
-    for (const sess of Object.values(s.sessions)) {
-      if (sess.id === sessionId) return sess.party_size ?? null;
-    }
-    return null;
+    const locationId = activeOrder?.service_location_id;
+    if (!locationId) return null;
+    const sx = s.sessions[locationId];
+    return sx && sx.id === sessionId ? sx.party_size ?? null : null;
   });
   // seatCount is the local UI truth (SeatSelector stepper), session.party_size
   // is the backend-authoritative fallback. order.guest_count intentionally not
@@ -375,12 +379,14 @@ export function useOrderTotals(
     s.resolveRule(scLocationId),
   );
   const sessionPartySize = useTableSessionStore((s) => {
+    // O(1) lookup keyed by tableId (= order.service_location_id); the
+    // `sx.id === sessionId` guard preserves the old full-scan semantics.
     const sessionId = order?.session_id;
     if (!sessionId) return null;
-    for (const sess of Object.values(s.sessions)) {
-      if (sess.id === sessionId) return sess.party_size ?? null;
-    }
-    return null;
+    const locationId = order?.service_location_id;
+    if (!locationId) return null;
+    const sx = s.sessions[locationId];
+    return sx && sx.id === sessionId ? sx.party_size ?? null : null;
   });
   const seatCount = useSeatingStore((s) =>
     orderId ? (s.byOrderId[orderId]?.seatCount ?? null) : null,
@@ -529,6 +535,7 @@ export function useWorkingSetOrders(): OrderProfile[] {
 const INACTIVE_STATUSES = new Set(["completed", "voided", "cancelled", "void"]);
 export function useStationOrders(): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
   const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
@@ -546,9 +553,11 @@ export function useStationOrders(): OrderProfile[] {
     const workingSet = new Set(workingSetOrderIds);
 
     const result: OrderProfile[] = [];
-    const keys = Object.keys(ordersById);
-    for (let i = 0; i < keys.length; i++) {
-      const order = ordersById[keys[i]];
+    // Iterate the pre-maintained orderIds array instead of allocating a fresh
+    // Object.keys(ordersById) on every evaluation.
+    for (let i = 0; i < orderIds.length; i++) {
+      const order = ordersById[orderIds[i]];
+      if (!order) continue;
       if (INACTIVE_STATUSES.has(order.order_status ?? "")) continue;
       if (!order.items || order.items.length === 0) continue;
 
@@ -574,7 +583,7 @@ export function useStationOrders(): OrderProfile[] {
       return bTime - aTime;
     });
     return result;
-  }, [ordersById, currentStationId, workingSetOrderIds, cutoffTime]);
+  }, [ordersById, orderIds, currentStationId, workingSetOrderIds, cutoffTime]);
 
   return useStableOrderList(filtered);
 }
@@ -596,6 +605,7 @@ export function useStationOrderCount(): number {
 
 export function useOtherStationOrders(): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
 
@@ -604,10 +614,11 @@ export function useOtherStationOrders(): OrderProfile[] {
 
     const workingSet = new Set(workingSetOrderIds);
     const result: OrderProfile[] = [];
-    const keys = Object.keys(ordersById);
 
-    for (let i = 0; i < keys.length; i++) {
-      const order = ordersById[keys[i]];
+    // Iterate the pre-maintained orderIds array instead of Object.keys(ordersById).
+    for (let i = 0; i < orderIds.length; i++) {
+      const order = ordersById[orderIds[i]];
+      if (!order) continue;
       if (order.station_id === currentStationId) continue;
       if (order.db_order_id && workingSet.has(order.db_order_id)) continue;
       if (INACTIVE_STATUSES.has(order.order_status ?? "")) continue;
@@ -620,7 +631,7 @@ export function useOtherStationOrders(): OrderProfile[] {
       return bTime - aTime;
     });
     return result;
-  }, [ordersById, currentStationId, workingSetOrderIds]);
+  }, [ordersById, orderIds, currentStationId, workingSetOrderIds]);
 
   return useStableOrderList(filtered);
 }
@@ -661,6 +672,7 @@ export interface OrdersFilterState {
 
 export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const currentStation = useOrderStore((s) => s.currentStation);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
@@ -681,7 +693,12 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
     // Optimize: Single pass to build exclusion set
     const stationOrderIds = new Set<string>();
 
-    const allOrders = Object.values(ordersById);
+    // Build from the pre-maintained orderIds array instead of Object.values.
+    const allOrders: OrderProfile[] = [];
+    for (let i = 0; i < orderIds.length; i++) {
+      const o = ordersById[orderIds[i]];
+      if (o) allOrders.push(o);
+    }
 
     // First pass mainly to identify station orders for exclusion
     for (const o of allOrders) {
@@ -761,6 +778,7 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
     return result;
   }, [
     ordersById,
+    orderIds,
     currentStationId,
     currentStation,
     workingSetOrderIds,

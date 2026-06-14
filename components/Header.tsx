@@ -24,10 +24,30 @@ import { TerminalConnectionBadge } from './TerminalConnectionBadge'
 const Header = () => {
   const pathname = usePathname()
   const router = useRouter()
-  const tablesById = useFloorPlanStore(s => s.tablesById)
   const overlayTableId = usePendingTableOverlay(s => s.openTableId)
   const closeTableOverlay = usePendingTableOverlay(s => s.closeTable)
   const vendors = useInventoryStore(s => s.vendors)
+  // Header is mounted app-wide and never unmounts, so subscribing to the whole
+  // tablesById map re-rendered it on every table mutation across all screens.
+  // The title only ever needs the ONE table referenced by the current route or
+  // overlay — resolve that id, then subscribe to just its name string.
+  const relevantTableId = useMemo(() => {
+    if (overlayTableId) return overlayTableId
+    const parts = pathname.split('/')
+    if (pathname.startsWith('/tables/clean-table/') && parts.length === 4)
+      return parts[3]
+    if (
+      pathname.startsWith('/tables/') &&
+      parts.length === 3 &&
+      !pathname.startsWith('/tables/edit-layout') &&
+      !pathname.startsWith('/tables/floor-plan')
+    )
+      return parts[2]
+    return null
+  }, [pathname, overlayTableId])
+  const relevantTableName = useFloorPlanStore(s =>
+    relevantTableId ? s.tablesById[relevantTableId]?.name ?? null : null
+  )
   const globalParams = useGlobalSearchParams()
   const instantVendorId = useSyncExternalStore(
     subscribeActiveVendorSidebarId,
@@ -82,8 +102,9 @@ const Header = () => {
   const title = useMemo(() => {
     // Table order overlay (rendered on top of the /tables floor plan)
     if (overlayTableId) {
-      const table = tablesById[overlayTableId]
-      return table ? `Tables / ${table.name}` : 'Table Details'
+      return relevantTableName
+        ? `Tables / ${relevantTableName}`
+        : 'Table Details'
     }
     if (pathname === '/loyalty') return 'Loyalty'
     if (pathname === '/loyalty/program-form') return 'Loyalty Program'
@@ -136,20 +157,16 @@ const Header = () => {
       pathname.startsWith('/tables/') &&
       pathname.split('/').length === 3
     ) {
-      const tableId = pathname.split('/')[2]
-      const table = tablesById[tableId]
-      if (table) {
-        return `Tables / ${table.name}`
+      if (relevantTableName) {
+        return `Tables / ${relevantTableName}`
       }
       return 'Table Details'
     } else if (
       pathname.startsWith('/tables/clean-table/') &&
       pathname.split('/').length === 4
     ) {
-      const tableId = pathname.split('/')[3]
-      const table = tablesById[tableId]
-      if (table) {
-        return `Clean / ${table.name}`
+      if (relevantTableName) {
+        return `Clean / ${relevantTableName}`
       }
       return 'Clean Table'
     }
@@ -163,7 +180,7 @@ const Header = () => {
       .replace(/\b\w/g, char => char.toUpperCase())
 
     return title
-  }, [pathname, activeVendorId, tablesById, vendors, overlayTableId])
+  }, [pathname, activeVendorId, relevantTableName, vendors, overlayTableId])
 
   const handleBackPress = useCallback(() => {
     // Close the table order overlay instead of navigating away from /tables.

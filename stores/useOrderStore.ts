@@ -3828,6 +3828,25 @@ const nextPendingPaymentSeq = () => ++_pendingPaymentSeqCounter;
 const lastLocalMutationAt: Record<string, number> = {};
 const OWN_STATION_MUTATION_WINDOW_MS = 3000;
 
+// Clear per-order broadcast-throttle module state when an order leaves
+// ordersById, so these dicts don't grow unbounded across a long shift (an
+// order is created+archived many times per day). The throttle dicts are keyed
+// by dbOrderId at the write sites, so callers must pass every id the order was
+// keyed under (its store key AND its db_order_id). clearTimeout first so a
+// pending timer can't fire into a removed order.
+function _cleanupOrderModuleState(
+  ...ids: (string | null | undefined)[]
+): void {
+  for (const id of ids) {
+    if (!id) continue;
+    const timer = throttleTimers[id];
+    if (timer) clearTimeout(timer);
+    delete throttleTimers[id];
+    delete pendingThrottledBroadcast[id];
+    delete lastBroadcastTime[id];
+  }
+}
+
 // Wave 2.1: per-order toast dedup helper lives in `lib/takeoverToast.ts` so
 // the dedup contract is unit-testable without loading the full order store.
 
@@ -6441,6 +6460,9 @@ export const useOrderStore = create<OrderState>()(
 
             // Cleanup mutation window tracker
             delete lastLocalMutationAt[dbOrderId];
+            // Cleanup per-order broadcast-throttle module state (keyed by both
+            // the store key and the db UUID) so these dicts don't leak.
+            _cleanupOrderModuleState(dbOrderId, existing.db_order_id);
 
             console.log("[RemoveOrder] Removed:", dbOrderId);
           },
@@ -11811,6 +11833,12 @@ export const useOrderStore = create<OrderState>()(
 
             // Remove abandoned drafts
             if (idsToRemove.length > 0) {
+              // Capture db UUIDs before deletion so the throttle-dict cleanup
+              // below can clear entries keyed by db_order_id (drafts that
+              // acquired a db id and broadcast before abandonment leaked these).
+              const dbIdsToCleanup = idsToRemove
+                .map((id) => get().ordersById[id]?.db_order_id)
+                .filter(Boolean) as string[];
               set((state) => {
                 idsToRemove.forEach((id) => {
                   // Surgical dbOrderIdIndex cleanup
@@ -11849,6 +11877,9 @@ export const useOrderStore = create<OrderState>()(
               idsToRemove.forEach((id) => {
                 delete lastLocalMutationAt[id];
               });
+              // Per-order broadcast-throttle module state (keyed by local id
+              // AND db UUID) so these dicts don't leak across a shift.
+              _cleanupOrderModuleState(...idsToRemove, ...dbIdsToCleanup);
 
               console.log(
                 `[cleanupAbandonedDrafts] Removed ${idsToRemove.length} abandoned draft(s)`,

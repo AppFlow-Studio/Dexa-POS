@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import { useLocationConfigStore } from './useLocationConfigStore'
 import { useMenuStore } from './useMenuStore'
 import { useSeatingStore } from './useSeatingStore'
+import { useSettingsStore } from './useSettingsStore'
 
 /**
  * Fire-and-forget prefetch for a single menu item's remote image. Used by
@@ -298,8 +299,15 @@ function precomputeModifierData (
             initialSelections[category.id][option.id] = true
           })
         }
-      } else if (category.type === 'required') {
-        // No defaults set on required category - select first available option with price $0
+      } else if (
+        category.type === 'required' &&
+        useSettingsStore.getState().autoSelectFirstRequiredOption
+      ) {
+        // No defaults set on required category, and the local
+        // "auto-select first required option" setting is on. When off, we
+        // leave the group unselected so the cashier must pick manually
+        // (submit-time validation in ModifierScreen enforces the pick).
+        // Select first available option with price $0.
         const freeOption = category.options.find(
           option => option.isAvailable !== false && option.price === 0
         )

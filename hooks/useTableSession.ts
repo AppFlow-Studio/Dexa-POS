@@ -191,14 +191,13 @@ export function useTableSession (
     // ordersById can't be returned for a freshly-seated session on the same table.
     // Perf T3: this O(n) scan runs per selector evaluation until the order
     // resolves — frequent hits mean dbOrderIdIndex/tableOrderIdIndex misses.
-    if (__DEV__) {
-      console.log(
-        `[useTableSession] Priority-3 O(n) order scan for table ${tableId} (index miss)`
-      )
-    }
-    const entries = Object.values(state.ordersById)
-    for (let i = 0; i < entries.length; i++) {
-      const o = entries[i]
+    // Priority 3 fallback (true index-miss only): iterate the pre-maintained
+    // orderIds array instead of allocating Object.values(ordersById) on every
+    // selector evaluation. (Dropped the per-eval __DEV__ log — it ran on every
+    // store change while a table view was open, interpolating a string each time.)
+    for (let i = 0; i < state.orderIds.length; i++) {
+      const o = state.ordersById[state.orderIds[i]]
+      if (!o) continue
       if (
         o.service_location_id === tableId &&
         !TERMINAL_ORDER_STATUSES.has(o.order_status ?? '')
