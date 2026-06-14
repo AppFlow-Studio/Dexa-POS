@@ -1,8 +1,10 @@
 import { KioskAttractScreen } from "@/components/kiosk/KioskAttractScreen";
+import { KioskTemplateRouter } from "@/components/kiosk/KioskTemplateRouter";
 import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
 import { useKioskProfile } from "@/hooks/kiosk/useKioskProfile";
+import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 
 /**
  * Kiosk entry point.
@@ -24,6 +26,7 @@ export default function KioskScreen() {
   const { config, status, error } = useKioskProfile();
   const isIdle = useKioskProfileStore((s) => s.isIdle);
   const setIdle = useKioskProfileStore((s) => s.setIdle);
+  const clearCart = useKioskCartStore((s) => s.clear);
 
   // Lock the device to the configured orientation. Re-locks when the config's
   // orientation changes (e.g. a committed edit).
@@ -58,29 +61,15 @@ export default function KioskScreen() {
     );
   }
 
-  // Active session placeholder — the ordering flow gets built here. Returning
-  // to idle commits any config change that arrived during the session.
+  // Active session — Template A ordering flow. Returning to idle clears the
+  // cart and commits any config change that arrived during the session.
   return (
-    <View
-      className="flex-1 items-center justify-center"
-      style={{ backgroundColor: config.backgroundColor }}
-    >
-      <Text
-        className="text-3xl font-bold"
-        style={{ color: config.headerTextColor }}
-      >
-        Ordering — {config.templateId}
-      </Text>
-      <Text className="mt-2" style={{ color: config.textColor }}>
-        {config.profileName} · {config.orientation}
-      </Text>
-      <Pressable
-        onPress={() => setIdle(true)}
-        className="mt-8 px-6 py-3 rounded-full"
-        style={{ backgroundColor: config.primaryColor }}
-      >
-        <Text className="text-white font-semibold">Cancel / Done</Text>
-      </Pressable>
-    </View>
+    <KioskTemplateRouter
+      config={config}
+      onExit={() => {
+        clearCart();
+        setIdle(true);
+      }}
+    />
   );
 }
