@@ -52,6 +52,8 @@ ios/*.xcworkspace
 ios/*.xcodeproj/xcuserdata/
 
 android/app/build/
+# Generated Gradle/Kotlin output for local Expo modules (never commit build artifacts)
+modules/*/android/build/
 android/.gradle/
 android/local.properties
 android/*.iml

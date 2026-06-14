@@ -27,10 +27,7 @@ import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import {
-  selectIsOpen as selectModifierIsOpen,
-  useModifierSidebarStore,
-} from "@/stores/useModifierSidebarStore";
+import { SendToKitchenButton } from "@/components/bill/SendToKitchenButton";
 import { useOrderSyncCounts } from "@/stores/useSyncStatusStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -51,7 +48,6 @@ import {
     MoreHorizontal,
     NotebookPen,
     Plus,
-    Printer,
     RefreshCw,
     Trash2,
     Users,
@@ -283,7 +279,7 @@ const BillItemsAndTotals = React.memo(
                   </Text>
                   <Text
                     style={{
-                      color: colors.label,
+                      color: colors.heading,
                       fontSize: 13,
                       lineHeight: 18,
                     }}
@@ -473,10 +469,6 @@ const BillSectionContent = ({
     (s) => s.config.printing.autoPrintKitchenTickets,
   );
   const deviceId = useMemo(() => getDeviceId(), []);
-  // Disable Send-to-Kitchen while the modifier screen is open — the order's
-  // items are mid-edit (drafts/selections not yet committed), so sending now
-  // would push an incomplete state to the kitchen.
-  const isModifierScreenOpen = useModifierSidebarStore(selectModifierIsOpen);
 
   // Memoize computed values to prevent unnecessary recalculations
   const cart = useMemo(() => activeOrderItems || [], [activeOrderItems]);
@@ -1856,35 +1848,12 @@ const BillSectionContent = ({
                 ? `Order ${activeOrderDisplayNumber}`
                 : "New Order"}
             </Text>
-            <TouchableOpacity
-              className={`h-8 px-3 rounded-lg flex-row items-center justify-center gap-1 ${
-                newItemsCount === 0 ||
-                hasDraftItems ||
-                isReadOnly ||
-                isModifierScreenOpen
-                  ? "opacity-50"
-                  : ""
-              }`}
-              style={{ backgroundColor: colors.teal }}
-              disabled={
-                newItemsCount === 0 ||
-                hasDraftItems ||
-                isReadOnly ||
-                isModifierScreenOpen
-              }
+            <SendToKitchenButton
               onPress={handleSendToKitchen}
-            >
-              <Printer size={12} color={colors.onSolid} />
-              <Text
-                style={{
-                  color: colors.onSolid,
-                  fontSize: 12,
-                  fontWeight: "500",
-                }}
-              >
-                Send
-              </Text>
-            </TouchableOpacity>
+              extraDisabled={
+                newItemsCount === 0 || hasDraftItems || isReadOnly
+              }
+            />
             {activeOrderType === "dine_in" && linkedTableId ? (
               (() => {
                 const sessionAlreadyClosed =

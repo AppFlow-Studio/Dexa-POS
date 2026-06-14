@@ -5,9 +5,9 @@ import { CartItem, OrderProfile } from '@/lib/types'
 import { useOrderItem } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
 import {
-  selectIsOpen as selectModifierIsOpen,
-  useModifierSidebarStore
-} from '@/stores/useModifierSidebarStore'
+  SendAllButton,
+  SendCourseButton
+} from '@/components/bill/SendToKitchenButton'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import {
   ArrowUpToLine,
@@ -15,7 +15,6 @@ import {
   ChevronRight,
   Flame,
   Plus,
-  Printer,
   Send,
   Users,
   X
@@ -246,7 +245,6 @@ const CourseSubHeader = React.memo(
     sentAt,
     onPress,
     onSend,
-    sendDisabled = false,
     onLongPress,
     onRemove
   }: {
@@ -260,7 +258,6 @@ const CourseSubHeader = React.memo(
     sentAt?: number
     onPress?: () => void
     onSend?: () => void
-    sendDisabled?: boolean
     onLongPress?: () => void
     onRemove?: () => void
   }) => (
@@ -316,33 +313,7 @@ const CourseSubHeader = React.memo(
             <X size={11} color={colors.muted} />
           </TouchableOpacity>
         )}
-        {hasUnsentItems && onSend && (
-          <TouchableOpacity
-            disabled={sendDisabled}
-            onPress={e => {
-              e.stopPropagation()
-              onSend()
-            }}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-              paddingHorizontal: 10,
-              height: 24,
-              borderRadius: 6,
-              backgroundColor: colors.teal,
-              opacity: sendDisabled ? 0.4 : 1
-            }}
-            activeOpacity={0.8}
-          >
-            <Printer size={11} color={colors.onSolid} />
-            <Text
-              style={{ color: colors.onSolid, fontSize: 11, fontWeight: '600' }}
-            >
-              Send
-            </Text>
-          </TouchableOpacity>
-        )}
+        {hasUnsentItems && onSend && <SendCourseButton onPress={onSend} />}
         {expanded ? (
           <ChevronDown size={12} color={colors.label} />
         ) : (
@@ -416,7 +387,6 @@ const DenseSeatView = React.memo(
     onRemoveCourse,
     onPressSendAllToKitchen,
     enableCoursing = false,
-    sendDisabled = false,
     isOvertime,
     overtimeMinutes
   }: {
@@ -438,7 +408,6 @@ const DenseSeatView = React.memo(
     onRemoveCourse?: (courseId: number) => void
     onPressSendAllToKitchen?: () => void
     enableCoursing?: boolean
-    sendDisabled?: boolean
     isOvertime?: boolean
     overtimeMinutes?: number
   }) => {
@@ -702,8 +671,7 @@ const DenseSeatView = React.memo(
       onDoubleTapCourse,
       setActionCourse,
       courseSentAtMap,
-      onRemoveCourse,
-      sendDisabled
+      onRemoveCourse
     })
     renderDataRef.current = {
       enableCoursing,
@@ -716,8 +684,7 @@ const DenseSeatView = React.memo(
       onDoubleTapCourse,
       setActionCourse,
       courseSentAtMap,
-      onRemoveCourse,
-      sendDisabled
+      onRemoveCourse
     }
 
     // Stable renderRow — reads volatile data from ref, no deps to invalidate
@@ -774,7 +741,6 @@ const DenseSeatView = React.memo(
                   ? () => d.onDoubleTapCourse!(row.course)
                   : undefined
               }
-              sendDisabled={d.sendDisabled}
               onLongPress={
                 row.isSent ? () => d.setActionCourse(row.course) : undefined
               }
@@ -920,32 +886,10 @@ const DenseSeatView = React.memo(
                     0
                   ) ?? 0
                 return (
-                  <TouchableOpacity
-                    onPress={onPressSendAllToKitchen}
-                    disabled={unsent === 0 || sendDisabled}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4,
-                      paddingHorizontal: 9,
-                      paddingVertical: 5,
-                      borderRadius: 6,
-                      backgroundColor: colors.teal,
-                      opacity: unsent === 0 || sendDisabled ? 0.4 : 1
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Printer size={12} color={colors.onSolid} />
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        fontWeight: '600',
-                        color: colors.onSolid
-                      }}
-                    >
-                      Send All{unsent > 0 ? ` (${unsent})` : ''}
-                    </Text>
-                  </TouchableOpacity>
+                  <SendAllButton
+                    onPress={onPressSendAllToKitchen!}
+                    unsentCount={unsent}
+                  />
                 )
               })()}
           </View>
@@ -1172,9 +1116,6 @@ const TableBillSection = ({
 }) => {
   const removeCheckDiscount = useOrderStore(state => state.removeCheckDiscount)
   const currentStationId = useOrderStore(s => s.currentStationId)
-  // While the modifier screen is open, items are mid-edit — disable all
-  // send-to-kitchen actions so an incomplete order isn't pushed.
-  const isModifierScreenOpen = useModifierSidebarStore(selectModifierIsOpen)
   const claimActiveOrder = useOrderStore(s => s.claimActiveOrder)
   const discountSheetRef = useRef<BottomSheetMethods>(null)
   const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false)
@@ -1241,7 +1182,6 @@ const TableBillSection = ({
           onRemoveCourse={onRemoveCourse}
           onPressSendAllToKitchen={onPressSendAllToKitchen}
           enableCoursing={enableCoursing}
-          sendDisabled={isModifierScreenOpen}
           isOvertime={isOvertime}
           overtimeMinutes={overtimeMinutes}
         />
@@ -1265,7 +1205,6 @@ const TableBillSection = ({
         onRemoveCourse={onRemoveCourse}
         onPressSendAllToKitchen={onPressSendAllToKitchen}
         enableCoursing={enableCoursing}
-        sendDisabled={isModifierScreenOpen}
         isOvertime={isOvertime}
         overtimeMinutes={overtimeMinutes}
       />
