@@ -4739,8 +4739,22 @@ export const useOrderStore = create<OrderState>()(
                   indexHas: dbOrderId in state.dbOrderIdIndex,
                 },
               );
+              // Self-heal: the stale index entry routed this broadcast to the
+              // wrong order and would do so again for every future broadcast
+              // of this dbOrderId, permanently desyncing the table until
+              // restart. Drop it so the next broadcast falls back to dbOrderId
+              // (or re-resolves via _debouncedOrderRefresh below).
+              if (state.dbOrderIdIndex[dbOrderId] === localOrderKey) {
+                set((draft) => {
+                  delete draft.dbOrderIdIndex[dbOrderId];
+                });
+              }
               localOrder = null;
               localOrderKey = dbOrderId;
+              // The order this table/dbOrderId actually refers to is no
+              // longer resolvable from local state — force a full refetch so
+              // it doesn't stay stale until app restart.
+              get()._debouncedOrderRefresh(dbOrderId);
             }
 
             const currentLocationId =

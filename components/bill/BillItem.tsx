@@ -90,7 +90,7 @@ const ModifiersList = React.memo<{
                 <Text
                   style={{
                     fontSize: 10,
-                    color: option.isNo ? colors.danger : colors.muted,
+                    color: option.isNo ? colors.danger : colors.heading,
                     flex: 1,
                   }}
                 >
@@ -711,7 +711,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     minWidth: 18,
                     fontSize: 13,
                     fontWeight: "700",
-                    color: isVoided ? colors.muted : colors.label,
+                    color: isVoided ? colors.muted : colors.heading,
                     textAlign: "left",
                   }}
                 >
