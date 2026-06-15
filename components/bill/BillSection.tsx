@@ -279,7 +279,7 @@ const BillItemsAndTotals = React.memo(
                   </Text>
                   <Text
                     style={{
-                      color: colors.label,
+                      color: colors.heading,
                       fontSize: 13,
                       lineHeight: 18,
                     }}
