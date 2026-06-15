@@ -134,4 +134,34 @@ describe('castlesUsbAutoConnect', () => {
 
     expect(service.connect).not.toHaveBeenCalled();
   });
+
+  it('connects on startup with near-zero debounce (does not wait for the attach debounce)', () => {
+    setStation(USB_CASTLES);
+    const service = makeService();
+    captureAttachCb();
+
+    // Well under ATTACH_DEBOUNCE_MS (750ms): proves the startup path is zero-debounce.
+    jest.advanceTimersByTime(10);
+
+    expect(service.connect).toHaveBeenCalledTimes(1);
+    expect(service.connect).toHaveBeenCalledWith(
+      expect.objectContaining({ connectionType: 'usb', terminalId: 't1' }),
+    );
+  });
+
+  it('retries the startup connect on a bounded backoff when it fails', async () => {
+    setStation(USB_CASTLES);
+    const service = makeService({
+      connect: jest.fn().mockRejectedValue(new Error('terminal not ready')),
+    });
+    captureAttachCb();
+
+    // Attempt #1 (zero debounce) fails.
+    await jest.advanceTimersByTimeAsync(10);
+    expect(service.connect).toHaveBeenCalledTimes(1);
+
+    // First bounded retry fires at 3000ms.
+    await jest.advanceTimersByTimeAsync(3000);
+    expect(service.connect).toHaveBeenCalledTimes(2);
+  });
 });

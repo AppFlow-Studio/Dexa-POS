@@ -2943,41 +2943,52 @@ const DevicesConnectionsScreen = ({
                           ) : null}
                         </View>
                       </View>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 4,
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                          borderRadius: 6,
-                          backgroundColor: currentTerminal.is_connected
-                            ? colors.success + '15'
-                            : colors.danger + '15'
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: 3,
-                            backgroundColor: currentTerminal.is_connected
-                              ? colors.success
-                              : colors.danger
-                          }}
-                        />
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            fontWeight: '600',
-                            color: currentTerminal.is_connected
-                              ? colors.success
-                              : colors.danger
-                          }}
-                        >
-                          {currentTerminal.is_connected ? 'Online' : 'Offline'}
-                        </Text>
-                      </View>
+                      {(() => {
+                        // While the singleton is mid-connect (auto-connect on
+                        // plug/boot, pre-warm, or a test), show the live phase in
+                        // teal; otherwise fall back to Online/Offline.
+                        const statusColor = terminalConnectActivity
+                          ? colors.teal
+                          : currentTerminal.is_connected
+                            ? colors.success
+                            : colors.danger
+                        return (
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
+                              borderRadius: 6,
+                              maxWidth: 200,
+                              backgroundColor: statusColor + '15'
+                            }}
+                          >
+                            <View
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: 3,
+                                backgroundColor: statusColor
+                              }}
+                            />
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: '600',
+                                color: statusColor
+                              }}
+                              numberOfLines={1}
+                            >
+                              {terminalConnectActivity ??
+                                (currentTerminal.is_connected
+                                  ? 'Online'
+                                  : 'Offline')}
+                            </Text>
+                          </View>
+                        )
+                      })()}
                     </View>
                   </View>
 
