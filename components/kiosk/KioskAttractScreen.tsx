@@ -6,13 +6,18 @@ import { Image, Pressable, Text, View } from "react-native";
  * starts a session. This is the only screen where a pending config change is
  * allowed to take effect (the entry screen flushes pending → config on idle),
  * so the customer-facing theme never changes during an order.
+ *
+ * Holding the logo opens the manager-PIN-gated diagnostics/settings screen
+ * via `onLogoLongPress`, without starting a customer session.
  */
 export function KioskAttractScreen({
   config,
   onStart,
+  onLogoLongPress,
 }: {
   config: KioskConfig;
   onStart: () => void;
+  onLogoLongPress?: () => void;
 }) {
   return (
     <Pressable
@@ -30,11 +35,17 @@ export function KioskAttractScreen({
 
       <View className="items-center px-8">
         {config.logoUrl ? (
-          <Image
-            source={{ uri: config.logoUrl }}
-            className="w-40 h-40 mb-8"
-            resizeMode="contain"
-          />
+          <Pressable
+            onLongPress={onLogoLongPress}
+            delayLongPress={2000}
+            className="mb-8"
+          >
+            <Image
+              source={{ uri: config.logoUrl }}
+              className="w-40 h-40"
+              resizeMode="contain"
+            />
+          </Pressable>
         ) : null}
 
         <Text

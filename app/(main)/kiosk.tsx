@@ -1,9 +1,12 @@
 import { KioskAttractScreen } from "@/components/kiosk/KioskAttractScreen";
 import { KioskTemplateRouter } from "@/components/kiosk/KioskTemplateRouter";
+import { KioskAdminPinModal } from "@/components/kiosk/shared/KioskAdminPinModal";
+import { KioskDiagnosticsScreen } from "@/components/kiosk/shared/KioskDiagnosticsScreen";
 import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
 import { useKioskProfile } from "@/hooks/kiosk/useKioskProfile";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
+import { useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 
 /**
@@ -27,6 +30,9 @@ export default function KioskScreen() {
   const isIdle = useKioskProfileStore((s) => s.isIdle);
   const setIdle = useKioskProfileStore((s) => s.setIdle);
   const clearCart = useKioskCartStore((s) => s.clear);
+
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   // Lock the device to the configured orientation. Re-locks when the config's
   // orientation changes (e.g. a committed edit).
@@ -55,9 +61,32 @@ export default function KioskScreen() {
     );
   }
 
+  if (showDiagnostics) {
+    return (
+      <KioskDiagnosticsScreen
+        config={config}
+        onClose={() => setShowDiagnostics(false)}
+      />
+    );
+  }
+
   if (isIdle) {
     return (
-      <KioskAttractScreen config={config} onStart={() => setIdle(false)} />
+      <>
+        <KioskAttractScreen
+          config={config}
+          onStart={() => setIdle(false)}
+          onLogoLongPress={() => setShowPinModal(true)}
+        />
+        <KioskAdminPinModal
+          visible={showPinModal}
+          onClose={() => setShowPinModal(false)}
+          onVerified={() => {
+            setShowPinModal(false);
+            setShowDiagnostics(true);
+          }}
+        />
+      </>
     );
   }
 
