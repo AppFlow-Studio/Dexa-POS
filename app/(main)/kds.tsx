@@ -1684,7 +1684,7 @@ const KitchenDisplayScreen = () => {
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingBulkAction, setPendingBulkAction] = useState<
-    "selected" | "all" | "done-selected" | "done-all" | null
+    "selected" | "all" | "done-selected" | "done-all" | "settings" | null
   >(null);
 
   // Action menu state (long-press)
@@ -2127,14 +2127,24 @@ const KitchenDisplayScreen = () => {
       if (!MANAGER_ROLES.includes(employee.role)) {
         toast.show({
           title: "Unauthorized",
-          message: "Only managers can perform bulk operations.",
+          message:
+            pendingBulkAction === "settings"
+              ? "Only managers can open Settings."
+              : "Only managers can perform bulk operations.",
           type: "error",
         });
         return;
       }
 
-      // PIN is valid and employee is a manager — execute bulk action
+      // PIN is valid and employee is a manager.
       setShowPinModal(false);
+
+      // Settings navigation is gated by the same manager PIN as bulk ops.
+      if (pendingBulkAction === "settings") {
+        setPendingBulkAction(null);
+        router.push("/settings");
+        return;
+      }
 
       const ticketIdsToAdvance =
         pendingBulkAction === "all" || pendingBulkAction === "done-all"
@@ -2177,6 +2187,7 @@ const KitchenDisplayScreen = () => {
       bulkAdvanceTickets,
       locationId,
       toast,
+      router,
     ],
   );
 
@@ -2628,9 +2639,13 @@ const KitchenDisplayScreen = () => {
               />
             </TouchableOpacity>
 
-            {/* Settings Button — opens the real app Settings page */}
+            {/* Settings Button — opens the real app Settings page,
+                gated behind a manager PIN (see handlePinConfirm). */}
             <TouchableOpacity
-              onPress={() => router.push("/settings")}
+              onPress={() => {
+                setPendingBulkAction("settings");
+                setShowPinModal(true);
+              }}
               accessibilityLabel="Open Settings"
               style={{
                 padding: 6,
@@ -3313,7 +3328,11 @@ const KitchenDisplayScreen = () => {
       <PinInputModal
         isOpen={showPinModal}
         title="Manager PIN Required"
-        subtitle="Enter a manager PIN to perform bulk operations"
+        subtitle={
+          pendingBulkAction === "settings"
+            ? "Enter a manager PIN to open Settings"
+            : "Enter a manager PIN to perform bulk operations"
+        }
         onConfirm={handlePinConfirm}
         onCancel={handlePinCancel}
       />
