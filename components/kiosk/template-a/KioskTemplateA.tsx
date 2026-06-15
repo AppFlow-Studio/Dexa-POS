@@ -54,12 +54,16 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
 
   return (
     <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
-      <KioskHeader
-        config={config}
-        orderType={orderType}
-        onChangeOrderType={setOrderType}
-        onExit={onExit}
-      />
+      {/* Header hidden during checkout — that flow has created a real order, so
+          the only exit is its in-screen Back, which voids the order. */}
+      {screen !== "checkout" && (
+        <KioskHeader
+          config={config}
+          orderType={orderType}
+          onChangeOrderType={setOrderType}
+          onExit={onExit}
+        />
+      )}
 
       {/* Body */}
       {screen === "menu" && (

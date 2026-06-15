@@ -120,6 +120,22 @@ export function useKioskCheckout() {
   }, []);
 
   /**
+   * Abandon a prepared-but-unpaid order. `prepareOrder` creates a real backend
+   * order eagerly, so if the customer backs out before paying we must void it —
+   * otherwise it lingers as an orphaned draft. Safe to call anytime: no-ops if
+   * no order was created or it's already been paid (success).
+   */
+  const abandon = useCallback(() => {
+    if (!orderId || status === "success") return;
+    try {
+      useOrderStore.getState().voidOrder(orderId);
+    } catch (err) {
+      console.error("[kioskCheckout] abandon/void failed:", err);
+    }
+    reset();
+  }, [orderId, status, reset]);
+
+  /**
    * Create the takeout order, add the cart items, sync them, and compute real
    * totals (subtotal + tax + total from the order store). Call this when
    * entering checkout so the tip/summary screens can show exact tax. Returns the
@@ -291,5 +307,5 @@ export function useKioskCheckout() {
     [orderId, dbOrderId, totals],
   );
 
-  return { status, error, result, totals, prepareOrder, payOrder, reset };
+  return { status, error, result, totals, prepareOrder, payOrder, reset, abandon };
 }

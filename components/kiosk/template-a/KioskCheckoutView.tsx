@@ -26,8 +26,15 @@ export function KioskCheckoutView({
   onDone: () => void;
 }) {
   const clearCart = useKioskCartStore((s) => s.clear);
-  const { status, error, totals, prepareOrder, payOrder, reset } =
+  const { status, error, totals, prepareOrder, payOrder, reset, abandon } =
     useKioskCheckout();
+
+  // Backing out of checkout voids the eagerly-created order so it doesn't
+  // linger as an orphaned draft, then returns to the cart.
+  const handleBack = () => {
+    abandon();
+    onBack();
+  };
 
   const tipEnabled = config.tipScreenEnabled;
   const [step, setStep] = useState<Step>(tipEnabled ? "tip" : "processing");
@@ -71,7 +78,7 @@ export function KioskCheckoutView({
         config={config}
         totals={totals}
         loading={status === "creating" || status === "idle" || !totals}
-        onBack={onBack}
+        onBack={handleBack}
         onConfirm={(tip) => runPayment(tip)}
       />
     );
@@ -144,10 +151,7 @@ export function KioskCheckoutView({
           </Text>
           <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
             <Pressable
-              onPress={() => {
-                reset();
-                onBack();
-              }}
+              onPress={handleBack}
               style={{
                 paddingHorizontal: 28,
                 paddingVertical: 14,
