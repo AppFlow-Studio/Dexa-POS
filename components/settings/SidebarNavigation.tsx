@@ -358,8 +358,10 @@ const SidebarNavigation = () => {
         paddingTop: 12
       }}
     >
-      {/* Header — back/exit. The KDS runs without a route header, so this is the
-          only way back to the kitchen display (and a convenience for POS too). */}
+      {/* Header — title + (KDS only) exit. The KDS opens Settings from a
+          headerless screen, so it needs this "Back to KDS" control. POS already
+          has the route header's back arrow, so we omit it here to avoid a
+          double back. */}
       <View
         style={{
           flexDirection: 'row',
@@ -372,22 +374,24 @@ const SidebarNavigation = () => {
           borderBottomColor: colors.border
         }}
       >
-        <TouchableOpacity
-          onPress={handleExitSettings}
-          accessibilityLabel={isKDSStation ? 'Back to KDS' : 'Back'}
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor: colors.card
-          }}
-        >
-          <ChevronLeft size={18} color={colors.label} />
-        </TouchableOpacity>
+        {isKDSStation && (
+          <TouchableOpacity
+            onPress={handleExitSettings}
+            accessibilityLabel='Back to KDS'
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card
+            }}
+          >
+            <ChevronLeft size={18} color={colors.label} />
+          </TouchableOpacity>
+        )}
         <Text style={{ fontSize: 15, fontWeight: '700', color: colors.label }}>
           {isKDSStation ? 'Back to KDS' : 'Settings'}
         </Text>

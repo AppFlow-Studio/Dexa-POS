@@ -4,7 +4,7 @@ import {
   calculateOrderTotals
 } from '@/lib/order-calculator'
 import { toastService } from '@/lib/toastService'
-import { CartItem, OrderProfile } from '@/lib/types'
+import { CartItem, OrderProfile, OrderProfilePayment } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { usePrintQueueStore } from '@/stores/usePrintQueueStore'
@@ -1055,6 +1055,22 @@ function createDocumentJob (
 // TEMPLATE DATA BUILDERS
 // ============================================================================
 
+// Resolve which pricing a receipt should display when "match pricing to
+// payment method" is enabled. 'dual' = keep the existing Card/Cash breakdown
+// (toggle off, mixed/split tender, or unpaid). Uses the authoritative
+// per-payment `isCashPriced` flag, falling back to the method name.
+function resolveReceiptPricingMode (
+  payments: OrderProfilePayment[]
+): 'cash' | 'card' | 'dual' {
+  const active = (payments ?? []).filter(p => !p.isVoided)
+  if (active.length === 0) return 'dual'
+  const usedCash = (p: OrderProfilePayment) =>
+    p.isCashPriced ?? getPaymentMethodName(p.method) === 'Cash'
+  if (active.every(usedCash)) return 'cash'
+  if (active.every(p => !usedCash(p))) return 'card'
+  return 'dual'
+}
+
 function buildReceiptTemplateData (
   order: OrderProfile,
   location: SelectedLocation,
@@ -1230,6 +1246,57 @@ function buildReceiptTemplateData (
     `${location.city}, ${location.state} ${location.postal_code}`
   ].filter(Boolean)
 
+  // ── Match pricing to payment method (optional) ────────────────────────
+  // When enabled, collapse the dual Card/Cash display down to only the
+  // pricing the guest actually used so the printed receipt reconciles to a
+  // single Total. Defaults to 'dual' (existing behavior) for split tenders,
+  // unpaid orders, and when the toggle is off.
+  const matchPricing = useLocationConfigStore.getState().config.printing
+    .matchReceiptPricingToPaymentMethod
+  const pricingMode = matchPricing
+    ? resolveReceiptPricingMode(order.payments ?? [])
+    : 'dual'
+
+  let displayItems = items
+  let displaySubtotal = subtotal
+  let displayTax = tax
+  let displayDiscount = discount
+  let displayTotal = total
+  let displayServiceCharge = orderTotals.service_charge
+  let displayCashServiceCharge: number | undefined =
+    orderTotals.cash_service_charge
+  let displayCashSubtotal = cashTotal !== total ? cashSubtotal : undefined
+  let displayCashTax = cashTotal !== total ? cashTax : undefined
+  let displayCashTotal = cashTotal !== total ? cashTotal : undefined
+  let displayTaxRate = weightedTaxRate
+
+  if (pricingMode === 'card') {
+    // Card pricing only — strip all cash data so the template shows one Total.
+    displayItems = items.map(it => ({ ...it, cashPrice: undefined }))
+    displayCashSubtotal = undefined
+    displayCashTax = undefined
+    displayCashTotal = undefined
+    displayCashServiceCharge = undefined
+  } else if (pricingMode === 'cash') {
+    // Cash pricing only — swap every card-priced field to its cash counterpart
+    // so the line items + tax reconcile to the printed cash Total.
+    displayItems = items.map(it => ({
+      ...it,
+      price: it.cashPrice ?? it.price,
+      cashPrice: undefined
+    }))
+    displaySubtotal = cashSubtotal
+    displayTax = cashTax
+    displayDiscount = orderTotals.cash_discount_amount
+    displayTotal = cashTotal
+    displayServiceCharge = orderTotals.cash_service_charge
+    displayCashSubtotal = undefined
+    displayCashTax = undefined
+    displayCashTotal = undefined
+    displayCashServiceCharge = undefined
+    displayTaxRate = cashSubtotal > 0 ? (cashTax / cashSubtotal) * 100 : 0
+  }
+
   return {
     storeName: location.name,
     storeAddress: addressParts.join(', '),
@@ -1244,17 +1311,17 @@ function buildReceiptTemplateData (
     customerPhone: order.customer_phone ?? undefined,
     serverName: order.server_name,
     backendOrderNumber: order.order_number ?? undefined,
-    items,
-    subtotal,
-    tax,
-    discount,
+    items: displayItems,
+    subtotal: displaySubtotal,
+    tax: displayTax,
+    discount: displayDiscount,
     tip,
-    total,
-    cashSubtotal: cashTotal !== total ? cashSubtotal : undefined,
-    cashTax: cashTotal !== total ? cashTax : undefined,
-    cashTotal: cashTotal !== total ? cashTotal : undefined,
-    serviceCharge: orderTotals.service_charge,
-    cashServiceCharge: orderTotals.cash_service_charge,
+    total: displayTotal,
+    cashSubtotal: displayCashSubtotal,
+    cashTax: displayCashTax,
+    cashTotal: displayCashTotal,
+    serviceCharge: displayServiceCharge,
+    cashServiceCharge: displayCashServiceCharge,
     serviceChargeName: orderTotals.service_charge_name || undefined,
     payments,
     amountPaid: order.amount_paid,
@@ -1268,7 +1335,7 @@ function buildReceiptTemplateData (
       ? // ? Math.min(printer.maxCharsPerLine, 32)
         48
       : printer.maxCharsPerLine,
-    taxRate: weightedTaxRate / 100, // Convert from 8.875 to 0.08875
+    taxRate: displayTaxRate / 100, // Convert from 8.875 to 0.08875
     templateConfig: template,
     logoBase64: template.showLogo
       ? useReceiptTemplateStore.getState().cachedLogoBase64 ?? undefined

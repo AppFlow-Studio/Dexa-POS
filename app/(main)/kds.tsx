@@ -1197,10 +1197,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       <Text
                         style={{
                           color: displaySettings.highlightNotes
-                            ? colors.warning
+                            ? colors.heading
                             : colors.muted,
                           fontSize: 10,
                           fontStyle: "italic",
+                          fontWeight: displaySettings.highlightNotes
+                            ? "700"
+                            : "400",
                           marginLeft: 30,
                           marginTop: 3,
                           opacity: shouldStrike ? 0.4 : 1,
@@ -1506,11 +1509,11 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                 {item.special_instructions && (
                   <Text
                     style={{
-                      color: colors.warning,
+                      color: colors.heading,
                       fontSize: 11,
                       fontStyle: "italic",
                       marginLeft: 28,
-                      fontWeight: "600",
+                      fontWeight: "700",
                     }}
                     numberOfLines={2}
                   >
