@@ -3,12 +3,13 @@ import { KioskCartButton } from "@/components/kiosk/shared/KioskCartButton";
 import { KioskHeader } from "@/components/kiosk/shared/KioskHeader";
 import { KioskOrderTypeScreen } from "@/components/kiosk/shared/KioskOrderTypeScreen";
 import { KioskCartView } from "@/components/kiosk/shared/KioskCartView";
+import { KioskCheckoutView } from "@/components/kiosk/template-a/KioskCheckoutView";
 import { KioskItemDetail } from "@/components/kiosk/template-a/KioskItemDetail";
 import { KioskMenuView } from "@/components/kiosk/template-a/KioskMenuView";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { View } from "react-native";
 
 /**
  * Template A — its own ordering flow and layout.
@@ -96,22 +97,12 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
         />
       )}
 
-      {(screen === "checkout" || screen === "confirmation") && (
-        <View className="flex-1 items-center justify-center px-8">
-          <Text
-            className="text-3xl font-bold"
-            style={{ color: config.headerTextColor }}
-          >
-            {screen}
-          </Text>
-          <Pressable
-            onPress={() => setScreen("menu")}
-            className="mt-10 px-6 py-3 rounded-full"
-            style={{ backgroundColor: config.primaryColor }}
-          >
-            <Text className="text-white font-semibold">Back to menu</Text>
-          </Pressable>
-        </View>
+      {screen === "checkout" && (
+        <KioskCheckoutView
+          config={config}
+          onBack={() => setScreen("cart")}
+          onDone={onExit}
+        />
       )}
     </View>
   );

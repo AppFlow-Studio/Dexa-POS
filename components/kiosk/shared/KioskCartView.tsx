@@ -7,6 +7,7 @@ import {
   useKioskCartStore,
   type KioskCartLine,
 } from "@/stores/useKioskCartStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { ChevronLeft, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react-native";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
@@ -31,6 +32,16 @@ export function KioskCartView({
   const incQuantity = useKioskCartStore((s) => s.incQuantity);
   const decQuantity = useKioskCartStore((s) => s.decQuantity);
   const removeLine = useKioskCartStore((s) => s.removeLine);
+
+  // Estimated tax from the location's standard rate (the exact figure is
+  // computed by the order store at checkout). Falls back to the first rate in
+  // the map when there's no explicit "standard" category. Percentage → fraction.
+  const taxRatePct = useStoreSettingsStore((s) => {
+    const map = s.taxRatesMap ?? {};
+    return map.standard ?? Object.values(map)[0] ?? 0;
+  });
+  const estTax = subtotal * (taxRatePct / 100);
+  const estTotal = subtotal + estTax;
 
   const muted = `${config.textColor}99`;
   const faint = `${config.textColor}12`;
@@ -100,24 +111,17 @@ export function KioskCartView({
               gap: 14,
             }}
           >
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ fontSize: 18, color: muted }}>Subtotal</Text>
-              <Text
-                style={{
-                  fontSize: 24,
-                  fontWeight: "800",
-                  color: config.textColor,
-                }}
-              >
-                ${subtotal.toFixed(2)}
-              </Text>
-            </View>
+            <SummaryRow label="Subtotal" value={subtotal} muted={muted} color={config.textColor} />
+            {taxRatePct > 0 && (
+              <SummaryRow
+                label={`Tax (${taxRatePct}%)`}
+                value={estTax}
+                muted={muted}
+                color={config.textColor}
+              />
+            )}
+            <View style={{ height: 1, backgroundColor: faint }} />
+            <SummaryRow label="Total" value={estTotal} muted={muted} color={config.textColor} emphasize />
 
             <Pressable
               onPress={onCheckout}
@@ -126,13 +130,14 @@ export function KioskCartView({
                 borderRadius: 18,
                 alignItems: "center",
                 justifyContent: "center",
+                marginTop: 4,
                 backgroundColor: config.primaryColor,
               }}
             >
               <Text
                 style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "800" }}
               >
-                Checkout · ${subtotal.toFixed(2)}
+                Checkout · ${estTotal.toFixed(2)}
               </Text>
             </Pressable>
           </View>
@@ -330,6 +335,31 @@ function EmptyCart({
           Browse Menu
         </Text>
       </Pressable>
+    </View>
+  );
+}
+
+function SummaryRow({
+  label,
+  value,
+  muted,
+  color,
+  emphasize,
+}: {
+  label: string;
+  value: number;
+  muted: string;
+  color: string;
+  emphasize?: boolean;
+}) {
+  return (
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+      <Text style={{ fontSize: emphasize ? 18 : 15, color: emphasize ? color : muted, fontWeight: emphasize ? "800" : "400" }}>
+        {label}
+      </Text>
+      <Text style={{ fontSize: emphasize ? 22 : 15, fontWeight: emphasize ? "800" : "600", color }}>
+        ${value.toFixed(2)}
+      </Text>
     </View>
   );
 }
