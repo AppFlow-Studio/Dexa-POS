@@ -28,6 +28,8 @@ import {
   type UsbDeviceInfo,
 } from '@/modules/castles-usb'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
+import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
+import { withDeadline, DeadlineExceededError } from '@/lib/network/withDeadline'
 import {
   AlertCircle,
   CheckCircle2,
@@ -35,10 +37,17 @@ import {
   Usb,
   X,
 } from 'lucide-react-native'
-import { useState } from 'react'
-import { Modal, Text, TouchableOpacity, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { Animated, Easing, Modal, Text, TouchableOpacity, View } from 'react-native'
 
 const CASTLES_VENDOR_ID = 0x0ca6
+
+// Hard ceilings so the wizard's progress spinner can never appear to hang on a
+// stuck native call. Exempt `_probe_` opNames keep terminal reachability out of
+// the global connection-quality signal. Permission is intentionally NOT bounded
+// here — it legitimately waits on the user tapping the Android dialog.
+const USB_DETECT_DEADLINE_MS = 10_000
+const USB_HANDSHAKE_DEADLINE_MS = 25_000
 
 type Stage = 'idle' | 'detecting' | 'permission' | 'handshake' | 'success' | 'failed'
 
@@ -66,6 +75,8 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
   const [error, setError] = useState<string | null>(null)
   const [errorHint, setErrorHint] = useState<string | null>(null)
   const [found, setFound] = useState<UsbDeviceInfo | null>(null)
+  // Live connect sub-step published by CastlesService (Connecting/Waking/Verifying…).
+  const connectActivity = useTerminalConnectionStore((s) => s.connectActivity)
 
   const reset = () => {
     setStage('idle')
@@ -87,7 +98,11 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
     // ── Step 1: Detect ──
     let devices: UsbDeviceInfo[]
     try {
-      devices = await listDevices()
+      devices = await withDeadline(
+        () => listDevices(),
+        USB_DETECT_DEADLINE_MS,
+        '_probe_usb_detect',
+      )
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       fail(
@@ -145,30 +160,36 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
     const service = getSharedCastlesService()
     let firmwareVersion: string | undefined
     let terminalSerial: string | undefined
+    // The singleton may have been suspended by the AppState background handler
+    // (or never woken if the user navigated here before PosSyncProvider's resume
+    // effect ran). resume() is a no-op when not suspended, so safe to call.
+    if (service.isSuspended()) {
+      service.resume()
+    }
+    const usbConfig = {
+      connectionType: 'usb',
+      timeout: 10_000,
+      terminalId: `usb-setup-${castles.deviceId}`,
+    } as Parameters<typeof service.connect>[0]
     try {
-      // The singleton may have been suspended by the AppState background
-      // handler (or never woken up if the user navigated here before
-      // PosSyncProvider's resume effect ran). resume() is a no-op if not
-      // suspended, so it's safe to call unconditionally.
-      if (service.isSuspended()) {
-        service.resume()
-      }
-      await service.connect({
-        connectionType: 'usb',
-        timeout: 10_000,
-        terminalId: `usb-setup-${castles.deviceId}`,
-      } as Parameters<typeof service.connect>[0])
-      // CastlesService reserves '000000' for housekeeping (internal handshake
-      // inside _connectInner, return2Idle, watchdog ping). Stricter firmwares
-      // (e.g., S1P2 Pro) reject our wizard's getData with "duplicate
-      // transaction ID" because connect() already consumed '000000' on this
-      // session. Use a time-derived ID in [1..999999] for the wizard probe —
-      // collision-resistant for one-shot setup and never overlaps with
-      // housekeeping or the live counter's monotonic progression.
-      const probeTxnId = ((Date.now() % 999_998) + 1)
-        .toString()
-        .padStart(6, '0')
-      const result = await service.getTerminalData(probeTxnId)
+      // Bound the connect + getData chain so the wizard's spinner can never hang
+      // on a wedged USB session. On timeout we force-recover (suspend tears the
+      // transport down; resume re-warms) so the next "Try Again" isn't starved.
+      const result = await withDeadline(
+        async () => {
+          await service.connect(usbConfig)
+          // CastlesService reserves '000000' for housekeeping (handshake inside
+          // _connectInner, return2Idle, watchdog ping). Stricter firmwares
+          // (e.g., S1P2 Pro) reject a duplicate getData on '000000', so use a
+          // time-derived ID in [1..999999] for the wizard probe.
+          const probeTxnId = ((Date.now() % 999_998) + 1)
+            .toString()
+            .padStart(6, '0')
+          return service.getTerminalData(probeTxnId)
+        },
+        USB_HANDSHAKE_DEADLINE_MS,
+        '_probe_usb_setup',
+      )
       if (result.success) {
         firmwareVersion = result.data?.infAppVersion as string | undefined
         terminalSerial = result.data?.infSN as string | undefined
@@ -180,6 +201,16 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
         return
       }
     } catch (err) {
+      if (err instanceof DeadlineExceededError) {
+        // Force-recover the wedged singleton so a retry isn't starved.
+        try { await service.suspend() } catch { /* best-effort */ }
+        service.resume(usbConfig)
+        fail(
+          'Verification timed out — the terminal didn’t respond in time.',
+          'Power-cycle the Saturn1000, re-seat the USB cable, then tap Try Again.',
+        )
+        return
+      }
       const msg = err instanceof Error ? err.message : String(err)
       fail(
         `Handshake failed: ${msg}`,
@@ -265,7 +296,7 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
             </View>
           )}
           {(stage === 'detecting' || stage === 'permission' || stage === 'handshake') && (
-            <StageProgress stage={stage} />
+            <StageProgress stage={stage} liveDetail={connectActivity} />
           )}
           {stage === 'success' && found && (
             <View style={{ gap: 10 }}>
@@ -362,16 +393,91 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
   )
 }
 
-function StageProgress ({ stage }: { stage: 'detecting' | 'permission' | 'handshake' }) {
-  const labels: Record<typeof stage, string> = {
-    detecting: 'Scanning USB devices…',
-    permission: 'Waiting for USB permission…',
-    handshake: 'Verifying terminal app is responsive…',
-  }
+/** Loader2 icon with a continuous rotation so progress never looks frozen. */
+function Spinner ({ size = 28, color }: { size?: number; color: string }) {
+  const spin = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 900,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [spin])
+  const rotate = spin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  })
   return (
-    <View style={{ alignItems: 'center', gap: 12, paddingVertical: 16 }}>
-      <Loader2 size={28} color={colors.teal} />
-      <Text style={{ color: colors.label, fontSize: 13 }}>{labels[stage]}</Text>
+    <Animated.View style={{ transform: [{ rotate }] }}>
+      <Loader2 size={size} color={color} />
+    </Animated.View>
+  )
+}
+
+function StageProgress ({
+  stage,
+  liveDetail,
+}: {
+  stage: 'detecting' | 'permission' | 'handshake'
+  liveDetail?: string | null
+}) {
+  const meta: Record<
+    typeof stage,
+    { step: number; label: string; detail: string }
+  > = {
+    detecting: {
+      step: 1,
+      label: 'Scanning for the terminal…',
+      detail: 'Looking for a Castles device (vendor 0x0CA6) on the USB bus.',
+    },
+    permission: {
+      step: 2,
+      label: 'Waiting for USB permission…',
+      detail: 'Tap “Allow” on the Android dialog so the app can reach the terminal.',
+    },
+    handshake: {
+      step: 3,
+      label: 'Verifying the terminal app…',
+      detail: 'Opening the connection and sending a getData handshake.',
+    },
+  }
+  const m = meta[stage]
+  // During the handshake the service streams live sub-steps ("Connecting…",
+  // "Waking terminal…", "Verifying…", "Reconnecting (2/3)…") — show those as the
+  // headline so the user sees real progress instead of one frozen label.
+  const label = stage === 'handshake' && liveDetail ? liveDetail : m.label
+  return (
+    <View style={{ alignItems: 'center', gap: 8, paddingVertical: 16 }}>
+      <Spinner size={28} color={colors.teal} />
+      <Text
+        style={{
+          color: colors.muted,
+          fontSize: 11,
+          fontWeight: '700',
+          letterSpacing: 0.6,
+        }}
+      >
+        STEP {m.step} OF 3
+      </Text>
+      <Text style={{ color: colors.heading, fontSize: 14, fontWeight: '600' }}>
+        {label}
+      </Text>
+      <Text
+        style={{
+          color: colors.muted,
+          fontSize: 12,
+          lineHeight: 18,
+          textAlign: 'center',
+          maxWidth: 320,
+        }}
+      >
+        {m.detail}
+      </Text>
     </View>
   )
 }

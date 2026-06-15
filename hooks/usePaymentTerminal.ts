@@ -11,6 +11,15 @@ import { getOrCreateCounter } from '@/services/terminals/castles-txn-counter';
 import { extractLast4 } from '@/services/terminals/castles-response-mapper';
 import { CASTLES_DEFAULT_PORT, CASTLES_SOCKET_TIMEOUT_MS } from '@/types/castles';
 import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore';
+import { withDeadline, DeadlineExceededError } from '@/lib/network/withDeadline';
+
+// Hard ceiling for an interactive "Test Connection" so the spinner can never
+// spin forever. A healthy terminal responds in <2s; a wedged one will never
+// respond, so 30s is a generous upper bound before we force-recover and report
+// offline. Uses an exempt `_probe_` opName so terminal reachability doesn't
+// pollute the global WiFi connection-quality signal.
+const CASTLES_TEST_DEADLINE_MS = 30_000;
+const CASTLES_TEST_OP_NAME = '_probe_terminal_test';
 
 export function usePaymentTerminal() {
   const supabase = useSupabaseClient();
@@ -104,20 +113,51 @@ export function usePaymentTerminal() {
           service.resume();
         }
 
-        // 1. Establish / reuse connection (TCP or USB)
-        await service.connect({
-          connectionType: isUsb ? 'usb' : 'local_socket',
+        const config = {
+          connectionType: isUsb ? ('usb' as const) : ('local_socket' as const),
           host: isUsb ? undefined : host,
           port: isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT),
           timeout: CASTLES_SOCKET_TIMEOUT_MS,
           terminalId: targetId,
-        });
-        await service.resetTerminalState();
+        };
 
-        // 2. Initialize counter and send getData command
-        const counter = getOrCreateCounter({ terminalId: targetId, supabaseClient: supabase });
-        if (!counter.isInitialized) await counter.initialize();
-        const result = await service.getTerminalData(counter.next());
+        // The whole connect → reset → getData chain runs through the Castles
+        // command mutex. If a prior op left the mutex wedged, these awaits would
+        // queue forever and the spinner would never clear. Bound the chain with
+        // a hard deadline; on timeout, force-recover (suspend tears the transport
+        // down regardless of mutex state, releasing the stuck lock) so the
+        // terminal becomes usable again and we report a clean offline state.
+        let result: Awaited<ReturnType<typeof service.getTerminalData>>;
+        try {
+          result = await withDeadline(
+            async () => {
+              // 1. Establish / reuse connection (TCP or USB)
+              await service.connect(config);
+              await service.resetTerminalState();
+
+              // 2. Initialize counter and send getData command
+              const counter = getOrCreateCounter({ terminalId: targetId, supabaseClient: supabase });
+              if (!counter.isInitialized) await counter.initialize();
+              return service.getTerminalData(counter.next());
+            },
+            CASTLES_TEST_DEADLINE_MS,
+            CASTLES_TEST_OP_NAME,
+          );
+        } catch (deadlineErr) {
+          if (deadlineErr instanceof DeadlineExceededError) {
+            console.warn('[usePaymentTerminal] Terminal test deadline exceeded — force-recovering service');
+            try { await service.suspend(); } catch { /* best-effort */ }
+            service.resume(config);
+            updateTerminalStatus(targetId, {
+              isConnected: false,
+              lastConnectionStatus: 'Offline',
+              lastConnectionTest: new Date().toISOString(),
+            });
+            setError('Terminal not responding — check that it is powered on and on the same network.');
+            return false;
+          }
+          throw deadlineErr;
+        }
 
         if (result.success) {
           // 3a. Success — update store + DB with firmware info
@@ -537,18 +577,39 @@ export function usePaymentTerminal() {
         // TCP path — USB has its own wizard flow (CastlesUsbSetupSheet). Be
         // explicit about local_socket so the factory doesn't rely on its
         // default and so future readers see the intent.
-        await service.connect({
-          connectionType: 'local_socket',
+        const config = {
+          connectionType: 'local_socket' as const,
           host,
           port: params.port ?? CASTLES_DEFAULT_PORT,
           timeout: CASTLES_SOCKET_TIMEOUT_MS,
           terminalId: params.terminalId,
-        });
-        await service.resetTerminalState();
+        };
 
-        const counter = getOrCreateCounter({ terminalId: params.terminalId, supabaseClient: supabase });
-        if (!counter.isInitialized) await counter.initialize();
-        const result = await service.getTerminalData(counter.next());
+        // Bound the mutex-serialized connect → reset → getData chain so the
+        // "Test" button can never hang forever. On deadline, force-recover the
+        // wedged service (see testConnection for rationale) and report offline.
+        let result: Awaited<ReturnType<typeof service.getTerminalData>>;
+        try {
+          result = await withDeadline(
+            async () => {
+              await service.connect(config);
+              await service.resetTerminalState();
+              const counter = getOrCreateCounter({ terminalId: params.terminalId, supabaseClient: supabase });
+              if (!counter.isInitialized) await counter.initialize();
+              return service.getTerminalData(counter.next());
+            },
+            CASTLES_TEST_DEADLINE_MS,
+            CASTLES_TEST_OP_NAME,
+          );
+        } catch (deadlineErr) {
+          if (deadlineErr instanceof DeadlineExceededError) {
+            console.warn('[usePaymentTerminal] Terminal test (config) deadline exceeded — force-recovering service');
+            try { await service.suspend(); } catch { /* best-effort */ }
+            service.resume(config);
+            return { success: false, error: 'Terminal not responding — check power and network.' };
+          }
+          throw deadlineErr;
+        }
 
         return result.success
           ? { success: true, serialNumber: result.data?.infSN ?? undefined }

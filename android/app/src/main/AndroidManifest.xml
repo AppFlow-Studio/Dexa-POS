@@ -39,6 +39,10 @@
         <data android:scheme="dexapos"/>
         <data android:scheme="exp+dexa-pos"/>
       </intent-filter>
+      <intent-filter>
+        <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"/>
+      </intent-filter>
+      <meta-data android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" android:resource="@xml/device_filter"/>
     </activity>
     <service android:name=".tcpserver.CfdForegroundService" android:foregroundServiceType="connectedDevice" android:exported="false"/>
   </application>

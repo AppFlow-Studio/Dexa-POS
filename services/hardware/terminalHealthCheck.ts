@@ -93,7 +93,18 @@ async function performCastlesHealthCheck(): Promise<void> {
     return;
   }
 
-  // TCP/WiFi probe
+  // TCP/WiFi: the shared singleton holds the one TCP session CastlesPay
+  // accepts. If it's already connected, opening a *second* probe socket here
+  // competes with it and can wedge the terminal — the same failure mode we
+  // fixed for USB above. The 30s CastlesService watchdog already verifies
+  // liveness by pinging getData on the open socket, so trust that and skip the
+  // probe. Only probe when the singleton is down, to detect a terminal that
+  // has come back online.
+  if (getSharedCastlesService().isConnected()) {
+    handleSuccess();
+    return;
+  }
+
   const host = currentPaymentTerminal?.ip_address;
   if (!host) {
     handleFailure("Castles terminal IP address not configured");

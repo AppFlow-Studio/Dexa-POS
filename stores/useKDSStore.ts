@@ -957,6 +957,12 @@ function arraysShallowEqual(a: KDSTicket[], b: KDSTicket[]): boolean {
 /** Deep-compare two tickets by value, reusing unchanged references */
 function ticketDeepEqual(a: KDSTicket, b: KDSTicket): boolean {
   if (a.status !== b.status || a.prioritized !== b.prioritized) return false;
+  // Track the freeze epochs: when a ticket flips to "ready" the only field that
+  // changes can be ready_time_epoch (server completed_at). Without this the merge
+  // treats the ticket as unchanged, keeps the old (un-frozen / per-device) ref,
+  // and the "Served" timer keeps ticking. done_time_epoch tracked for parity.
+  if (a.ready_time_epoch !== b.ready_time_epoch) return false;
+  if (a.done_time_epoch !== b.done_time_epoch) return false;
   if (a.item_count !== b.item_count || a.order_number !== b.order_number)
     return false;
   if (a.display_number !== b.display_number || a.table_name !== b.table_name)
@@ -1464,6 +1470,19 @@ export const useKDSStore = create<KDSState>()(
             normalizeKdsTicket({
               ...t,
               start_time_epoch: safeParseUtcTimestamp(t.start_time),
+              // Server-authoritative freeze for the "Served" (ready) column.
+              // get_kds_tickets_v2 returns ready_time = MAX(completed_at) across the
+              // round's active items — uniform across stations and stable across
+              // refetches, unlike the old per-device Date.now() stamp. Only set it
+              // for ready tickets; 0 (missing/unparseable) collapses to undefined so
+              // we never freeze a still-cooking ticket at epoch 0.
+              ready_time_epoch:
+                t.status === "ready"
+                  ? safeParseUtcTimestamp(
+                      (t as KDSTicket & { ready_time?: string | null })
+                        .ready_time,
+                    ) || undefined
+                  : undefined,
             }),
           );
           const stabilizedIncoming = stabilizeTicketsByLogicalSignature(
@@ -1604,6 +1623,19 @@ export const useKDSStore = create<KDSState>()(
             normalizeKdsTicket({
               ...t,
               start_time_epoch: safeParseUtcTimestamp(t.start_time),
+              // Server-authoritative freeze for the "Served" (ready) column.
+              // get_kds_tickets_v2 returns ready_time = MAX(completed_at) across the
+              // round's active items — uniform across stations and stable across
+              // refetches, unlike the old per-device Date.now() stamp. Only set it
+              // for ready tickets; 0 (missing/unparseable) collapses to undefined so
+              // we never freeze a still-cooking ticket at epoch 0.
+              ready_time_epoch:
+                t.status === "ready"
+                  ? safeParseUtcTimestamp(
+                      (t as KDSTicket & { ready_time?: string | null })
+                        .ready_time,
+                    ) || undefined
+                  : undefined,
             }),
           );
           const stabilizedIncoming = stabilizeTicketsByLogicalSignature(

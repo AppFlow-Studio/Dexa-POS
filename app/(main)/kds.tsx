@@ -30,6 +30,7 @@ import {
   CheckSquare,
   Flame,
   RotateCcw,
+  Settings,
   ShoppingBag,
   Square,
   Star,
@@ -1302,6 +1303,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       pt.order_notes !== nt.order_notes ||
       pt.order_type !== nt.order_type ||
       pt.start_time_epoch !== nt.start_time_epoch ||
+      // Re-render when the frozen "Served" time lands/changes (optimistic
+      // Date.now() → server completed_at) so the timer snaps to the shared value.
+      pt.ready_time_epoch !== nt.ready_time_epoch ||
       pt.items.length !== nt.items.length
     )
       return false;
@@ -2292,7 +2296,12 @@ const KitchenDisplayScreen = () => {
         urgencyLevel={getUrgencyLevel(
           item.start_time_epoch,
           urgencyThresholds,
-          nowEpochMs,
+          // Freeze urgency at the server completion time for ready ("Served")
+          // tickets so the header color stops escalating in lockstep with the
+          // frozen timer, instead of drifting per-device on live nowEpochMs.
+          item.status === "ready" && item.ready_time_epoch
+            ? item.ready_time_epoch
+            : nowEpochMs,
         )}
         onAdvance={advanceWithUndo}
         onToggleSelect={toggleTicketSelection}
@@ -2596,11 +2605,13 @@ const KitchenDisplayScreen = () => {
               style={{ width: 1, height: 20, backgroundColor: colors.border }}
             />
 
-            {/* Refresh Button (tap = refresh, long-press = settings) */}
+            {/* Refresh Button — tap = fetch latest tickets + config.
+                Long-press = KDS display settings (columns/sounds/fonts). */}
             <TouchableOpacity
               onPress={handleRefresh}
               onLongPress={() => setSettingsVisible(true)}
               delayLongPress={400}
+              accessibilityLabel="Refresh KDS"
               style={{
                 padding: 6,
                 borderRadius: 8,
@@ -2615,6 +2626,21 @@ const KitchenDisplayScreen = () => {
                 size={14}
                 color={refreshing ? colors.teal : colors.label}
               />
+            </TouchableOpacity>
+
+            {/* Settings Button — opens the real app Settings page */}
+            <TouchableOpacity
+              onPress={() => router.push("/settings")}
+              accessibilityLabel="Open Settings"
+              style={{
+                padding: 6,
+                borderRadius: 8,
+                backgroundColor: "transparent",
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            >
+              <Settings size={14} color={colors.label} />
             </TouchableOpacity>
 
             {/* Auto-fire badge */}

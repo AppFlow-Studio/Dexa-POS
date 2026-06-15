@@ -36,6 +36,10 @@ import {
 } from "@/services/printing/discovery/StarPrinterDiscoveryService";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import {
+    startCastlesUsbAutoConnect,
+    stopCastlesUsbAutoConnect,
+} from "@/services/terminals/castlesUsbAutoConnect";
+import {
     startTimeclockSyncProcessor,
     stopTimeclockSyncProcessor,
 } from "@/services/timeclockSyncProcessor";
@@ -261,6 +265,28 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         .catch(() => {});
     };
   }, [supabase, selectedStation?.payment_terminal?.id]);
+
+  // Zero-touch Castles USB auto-connect: plug in a USB pin pad (or have it
+  // already attached at app/station load) and the shared singleton connects
+  // automatically. No-op unless the station's terminal is a USB Castles, and
+  // skipped in KDS mode (no POS hardware there).
+  useEffect(() => {
+    const terminal = selectedStation?.payment_terminal;
+    const isUsbCastles =
+      terminal?.terminal_type === "castles" &&
+      terminal?.connection_type === "usb";
+    if (!isKDS && isUsbCastles) {
+      startCastlesUsbAutoConnect();
+    }
+    return () => {
+      stopCastlesUsbAutoConnect();
+    };
+  }, [
+    isKDS,
+    selectedStation?.payment_terminal?.id,
+    selectedStation?.payment_terminal?.terminal_type,
+    selectedStation?.payment_terminal?.connection_type,
+  ]);
 
   // Star printer health check + background discovery lifecycle
   useEffect(() => {

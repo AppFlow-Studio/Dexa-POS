@@ -101,13 +101,32 @@ class CastlesUsbModule : Module() {
     }
   }
 
+  private val attachReceiver = object : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+      if (intent.action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
+        val device = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE) ?: return
+        // Emit for every attach; the JS coordinator filters by Castles VID and
+        // decides whether to auto-connect. Keeping the native side dumb avoids
+        // baking connection policy into the driver.
+        sendEvent(
+          "onCastlesUsbAttached",
+          mapOf(
+            "deviceId" to device.deviceId,
+            "vendorId" to device.vendorId,
+            "productId" to device.productId
+          )
+        )
+      }
+    }
+  }
+
   private var receiversRegistered = false
 
   // ── Module definition ──
   override fun definition() = ModuleDefinition {
     Name("CastlesUsbModule")
 
-    Events("onCastlesUsbData", "onCastlesUsbError", "onCastlesUsbDetached")
+    Events("onCastlesUsbData", "onCastlesUsbError", "onCastlesUsbDetached", "onCastlesUsbAttached")
 
     OnCreate {
       registerReceivers()
@@ -308,15 +327,19 @@ class CastlesUsbModule : Module() {
 
     val permFilter = IntentFilter(ACTION_USB_PERMISSION)
     val detachFilter = IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED)
+    val attachFilter = IntentFilter(UsbManager.ACTION_USB_DEVICE_ATTACHED)
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
       // Permission receiver: app-internal broadcast via PendingIntent → NOT_EXPORTED
       context.registerReceiver(permissionReceiver, permFilter, Context.RECEIVER_NOT_EXPORTED)
-      // Detach receiver: system broadcast → EXPORTED (required to receive USB_DEVICE_DETACHED on LANDI/Android 13+)
+      // Attach/detach receivers: system broadcasts → EXPORTED (required to receive
+      // USB_DEVICE_ATTACHED/DETACHED on LANDI/Android 13+)
       context.registerReceiver(detachReceiver, detachFilter, Context.RECEIVER_EXPORTED)
+      context.registerReceiver(attachReceiver, attachFilter, Context.RECEIVER_EXPORTED)
     } else {
       context.registerReceiver(permissionReceiver, permFilter)
       context.registerReceiver(detachReceiver, detachFilter)
+      context.registerReceiver(attachReceiver, attachFilter)
     }
 
     receiversRegistered = true
@@ -326,6 +349,7 @@ class CastlesUsbModule : Module() {
     if (!receiversRegistered) return
     try { context.unregisterReceiver(permissionReceiver) } catch (_: Exception) {}
     try { context.unregisterReceiver(detachReceiver) } catch (_: Exception) {}
+    try { context.unregisterReceiver(attachReceiver) } catch (_: Exception) {}
     receiversRegistered = false
   }
 }
