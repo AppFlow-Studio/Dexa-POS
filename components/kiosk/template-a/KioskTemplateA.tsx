@@ -2,6 +2,7 @@ import { KioskTemplateProps } from "@/components/kiosk/KioskTemplateRouter";
 import { KioskCartButton } from "@/components/kiosk/shared/KioskCartButton";
 import { KioskHeader } from "@/components/kiosk/shared/KioskHeader";
 import { KioskOrderTypeScreen } from "@/components/kiosk/shared/KioskOrderTypeScreen";
+import { KioskCartView } from "@/components/kiosk/shared/KioskCartView";
 import { KioskItemDetail } from "@/components/kiosk/template-a/KioskItemDetail";
 import { KioskMenuView } from "@/components/kiosk/template-a/KioskMenuView";
 import type { MenuItemType } from "@/lib/types";
@@ -87,9 +88,15 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
         />
       )}
 
-      {(screen === "cart" ||
-        screen === "checkout" ||
-        screen === "confirmation") && (
+      {screen === "cart" && (
+        <KioskCartView
+          config={config}
+          onBack={() => setScreen("menu")}
+          onCheckout={() => setScreen("checkout")}
+        />
+      )}
+
+      {(screen === "checkout" || screen === "confirmation") && (
         <View className="flex-1 items-center justify-center px-8">
           <Text
             className="text-3xl font-bold"
