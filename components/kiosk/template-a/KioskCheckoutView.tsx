@@ -4,7 +4,7 @@ import {
 } from "@/components/kiosk/shared/useKioskCheckout";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { CheckCircle2, ChevronLeft } from "lucide-react-native";
+import { CheckCircle2, ChevronLeft, Heart } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
@@ -210,27 +210,65 @@ function TipStep({
     selected != null && selected > 0 ? (subtotal * selected) / 100 : 0;
   const grandTotal = baseTotal + tipAmount;
 
+  const noTip = selected === -1;
+  const disabled = selected == null || loading || !totals;
+
   return (
     <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
-      <View
+      {/* Back */}
+      <Pressable
+        onPress={onBack}
+        hitSlop={8}
         style={{
-          flexDirection: "row",
+          position: "absolute",
+          top: 20,
+          left: 20,
+          zIndex: 10,
+          width: 48,
+          height: 48,
+          borderRadius: 24,
           alignItems: "center",
-          gap: 12,
-          paddingHorizontal: 24,
-          paddingVertical: 18,
+          justifyContent: "center",
+          backgroundColor: faint,
         }}
       >
-        <Pressable onPress={onBack} hitSlop={8}>
-          <ChevronLeft size={28} color={config.textColor} />
-        </Pressable>
-        <Text style={{ fontSize: 26, fontWeight: "800", color: config.textColor }}>
-          Add a tip?
-        </Text>
-      </View>
+        <ChevronLeft size={26} color={config.textColor} />
+      </Pressable>
 
-      <View className="flex-1 items-center justify-center px-10" style={{ gap: 20 }}>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 14 }}>
+      <View className="flex-1 items-center justify-center px-8" style={{ gap: 28 }}>
+        {/* Heading */}
+        <View style={{ alignItems: "center", gap: 12 }}>
+          <View
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: 36,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: `${config.primaryColor}14`,
+            }}
+          >
+            <Heart size={34} color={config.primaryColor} fill={config.primaryColor} />
+          </View>
+          <Text style={{ fontSize: 30, fontWeight: "800", color: config.textColor }}>
+            Add a tip?
+          </Text>
+          
+        </View>
+
+        {/* Tip preview */}
+        <Text
+          style={{
+            fontSize: 44,
+            fontWeight: "900",
+            color: tipAmount > 0 ? config.primaryColor : `${config.textColor}40`,
+          }}
+        >
+          {tipAmount > 0 ? `$${tipAmount.toFixed(2)}` : "$0.00"}
+        </Text>
+
+        {/* Preset row — equal width */}
+        <View style={{ flexDirection: "row", gap: 12, width: "100%", maxWidth: 560 }}>
           {presets.map((pct) => {
             const active = selected === pct;
             return (
@@ -238,21 +276,20 @@ function TipStep({
                 key={pct}
                 onPress={() => setSelected(pct)}
                 style={{
-                  width: 130,
-                  height: 110,
-                  borderRadius: 18,
+                  flex: 1,
+                  paddingVertical: 22,
+                  borderRadius: 20,
                   alignItems: "center",
-                  justifyContent: "center",
                   gap: 4,
                   borderWidth: 2,
-                  borderColor: active ? config.primaryColor : `${config.textColor}20`,
+                  borderColor: active ? config.primaryColor : faint,
                   backgroundColor: active ? config.primaryColor : "transparent",
                 }}
               >
-                <Text style={{ fontSize: 26, fontWeight: "800", color: active ? "#FFFFFF" : config.textColor }}>
+                <Text style={{ fontSize: 28, fontWeight: "800", color: active ? "#FFFFFF" : config.textColor }}>
                   {pct}%
                 </Text>
-                <Text style={{ fontSize: 14, color: active ? "#FFFFFF" : muted }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: active ? "rgba(255,255,255,0.85)" : muted }}>
                   ${((subtotal * pct) / 100).toFixed(2)}
                 </Text>
               </Pressable>
@@ -260,12 +297,23 @@ function TipStep({
           })}
         </View>
 
-        <Pressable onPress={() => setSelected(-1)} style={{ padding: 10 }}>
+        {/* No tip pill */}
+        <Pressable
+          onPress={() => setSelected(-1)}
+          style={{
+            paddingHorizontal: 28,
+            paddingVertical: 12,
+            borderRadius: 999,
+            borderWidth: 2,
+            borderColor: noTip ? config.primaryColor : faint,
+            backgroundColor: noTip ? `${config.primaryColor}10` : "transparent",
+          }}
+        >
           <Text
             style={{
               fontSize: 16,
-              fontWeight: "600",
-              color: selected === -1 ? config.primaryColor : muted,
+              fontWeight: "700",
+              color: noTip ? config.primaryColor : muted,
             }}
           >
             No tip
@@ -273,55 +321,54 @@ function TipStep({
         </Pressable>
       </View>
 
-      {/* Footer — order summary + pay */}
+      {/* Footer — summary card + pay */}
       <View
         style={{
           paddingHorizontal: 24,
-          paddingTop: 16,
-          paddingBottom: 22,
-          borderTopWidth: 1,
-          borderTopColor: faint,
-          gap: 12,
+          paddingTop: 18,
+          paddingBottom: 24,
+          gap: 14,
         }}
       >
-        <SummaryRow label="Subtotal" value={subtotal} muted={muted} color={config.textColor} />
-        <SummaryRow
-          label={
-            subtotal > 0
-              ? `Tax (${((tax / subtotal) * 100).toFixed(3).replace(/\.?0+$/, "")}%)`
-              : "Tax"
-          }
-          value={tax}
-          muted={muted}
-          color={config.textColor}
-        />
-        {tipAmount > 0 && (
+        <View
+          style={{
+            padding: 16,
+            borderRadius: 18,
+            backgroundColor: faint,
+            gap: 10,
+          }}
+        >
+          <SummaryRow label="Subtotal" value={subtotal} muted={muted} color={config.textColor} />
+          <SummaryRow
+            label={
+              subtotal > 0
+                ? `Tax (${((tax / subtotal) * 100).toFixed(3).replace(/\.?0+$/, "")}%)`
+                : "Tax"
+            }
+            value={tax}
+            muted={muted}
+            color={config.textColor}
+          />
           <SummaryRow label="Tip" value={tipAmount} muted={muted} color={config.textColor} />
-        )}
-        <View style={{ height: 1, backgroundColor: faint }} />
-        <SummaryRow label="Total" value={grandTotal} muted={muted} color={config.textColor} emphasize />
+          <View style={{ height: 1, backgroundColor: `${config.textColor}15` }} />
+          <SummaryRow label="Total" value={grandTotal} muted={muted} color={config.textColor} emphasize />
+        </View>
 
         <Pressable
-          disabled={selected == null || loading || !totals}
+          disabled={disabled}
           onPress={() => onConfirm(tipAmount)}
           style={{
             flexDirection: "row",
             gap: 10,
-            height: 60,
-            borderRadius: 18,
+            height: 64,
+            borderRadius: 20,
             alignItems: "center",
             justifyContent: "center",
-            marginTop: 4,
-            backgroundColor:
-              selected == null || loading || !totals
-                ? `${config.primaryColor}40`
-                : config.primaryColor,
+            backgroundColor: disabled ? `${config.primaryColor}40` : config.primaryColor,
           }}
         >
-          {(loading || !totals) && (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          )}
-          <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "800" }}>
+          {(loading || !totals) && <ActivityIndicator size="small" color="#FFFFFF" />}
+          <Text style={{ color: "#FFFFFF", fontSize: 19, fontWeight: "800" }}>
             {loading || !totals ? "Preparing your order…" : `Pay $${grandTotal.toFixed(2)}`}
           </Text>
         </Pressable>
