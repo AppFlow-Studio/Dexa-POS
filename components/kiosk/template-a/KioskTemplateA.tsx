@@ -11,7 +11,6 @@ import { KioskItemDetail } from "@/components/kiosk/template-a/KioskItemDetail";
 import { KioskMenuView } from "@/components/kiosk/template-a/KioskMenuView";
 import type { MenuItemType } from "@/lib/types";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
-import { useOrderStore } from "@/stores/useOrderStore";
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 
@@ -39,7 +38,8 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
   const [screen, setScreen] = useState<TemplateAScreen>("orderType");
   const [selectedItem, setSelectedItem] = useState<MenuItemType | null>(null);
   // Set once the checkout reaches the paid/success screen. The order is settled,
-  // so the idle timer must NOT treat it as an active cart (which would void it).
+  // so the idle timer must NOT treat it as an active cart (which would reset
+  // under a customer reading their pickup number).
   const [paid, setPaid] = useState(false);
   const itemCount = useKioskCartStore((s) => s.itemCount());
   const subtotal = useKioskCartStore((s) => s.subtotal());
@@ -61,18 +61,9 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
     onExit();
   }, [clearCart, onExit]);
 
-  const handleIdleReset = useCallback(() => {
-    // Only void an unpaid order. A paid order must never be voided on idle.
-    const activeOrderId = useOrderStore.getState().activeOrderId;
-    if (activeOrderId && !paid) {
-      try {
-        useOrderStore.getState().voidOrder(activeOrderId);
-      } catch (err) {
-        console.error("[kiosk] idle reset: void order failed:", err);
-      }
-    }
-    resetToIdle();
-  }, [paid, resetToIdle]);
+  // Idle/walk-away. No backend order exists until the customer pays (creation is
+  // deferred to payOrder), so there's nothing to void here — just reset.
+  const handleIdleReset = resetToIdle;
 
   const { registerActivity, showWarning, secondsLeft } = useKioskIdleTimer({
     idleTimeoutSeconds: config.idleTimeoutSeconds,
@@ -104,8 +95,7 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
       style={{ backgroundColor: config.backgroundColor }}
       onTouchStart={registerActivity}
     >
-      {/* Header hidden during checkout — that flow has created a real order, so
-          the only exit is its in-screen Back, which voids the order. */}
+      {/* Header hidden during checkout — that flow owns its own in-screen Back. */}
       {screen !== "checkout" && (
         <KioskHeader
           config={config}

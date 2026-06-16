@@ -5,7 +5,7 @@ import {
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { CheckCircle2, ChevronLeft, Heart } from "lucide-react-native";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 /**
@@ -30,13 +30,11 @@ export function KioskCheckoutView({
   onDone: () => void;
 }) {
   const clearCart = useKioskCartStore((s) => s.clear);
-  const { status, error, totals, prepareOrder, payOrder, reset, abandon } =
-    useKioskCheckout();
+  const { status, error, totals, computeTotals, payOrder } = useKioskCheckout();
 
-  // Backing out of checkout voids the eagerly-created order so it doesn't
-  // linger as an orphaned draft, then returns to the cart.
+  // No backend order exists until the customer pays, so backing out is a plain
+  // navigation — nothing to void or clean up.
   const handleBack = () => {
-    abandon();
     onBack();
   };
 
@@ -46,14 +44,11 @@ export function KioskCheckoutView({
 
   const muted = `${config.textColor}99`;
 
-  // Create the order up-front so we have real tax/total to show. Guard against
-  // double-invocation (re-renders / strict mode) so we don't create duplicate
-  // orders.
-  const preparedRef = useRef(false);
+  // Compute totals LOCALLY from the current cart — instant, no backend order.
+  // Recomputed on every mount, so re-entering after a cart edit always shows
+  // the correct amount.
   useEffect(() => {
-    if (preparedRef.current) return;
-    preparedRef.current = true;
-    void prepareOrder();
+    computeTotals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -65,10 +60,13 @@ export function KioskCheckoutView({
       setPickupNumber(res.displayNumber);
       clearCart();
       setStep("success");
+    } else {
+      // payOrder failed — surface the error on the processing screen.
+      setStep("processing");
     }
   };
 
-  // If tipping is disabled, pay as soon as the order is ready.
+  // If tipping is disabled, pay as soon as totals are ready.
   useEffect(() => {
     if (!tipEnabled && status === "ready") {
       void runPayment(0);
@@ -76,10 +74,9 @@ export function KioskCheckoutView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipEnabled, status]);
 
-  // ---- PREPARING ----
-  // While the order is being created/synced we show a clean full-screen loader
-  // rather than a half-disabled tip screen the customer might tap at. Prep
-  // errors fall through to the error UI below.
+  // ---- COMPUTING (brief) / ERROR before tip ----
+  // Totals compute synchronously and locally, so this is essentially instant;
+  // it only shows if the cart was empty or computation errored.
   if (step === "tip" && status === "error") {
     return (
       <PreparingScreen
@@ -89,11 +86,10 @@ export function KioskCheckoutView({
       />
     );
   }
-  if (step === "tip" && (!totals || status === "creating" || status === "idle")) {
-    return <PreparingScreen config={config} onBack={handleBack} />;
-  }
 
   // ---- TIP STEP ----
+  // Totals are computed locally and synchronously, so the tip screen shows
+  // immediately on entry — no loading step between cart and checkout.
   if (step === "tip") {
     return (
       <TipStep
@@ -258,24 +254,28 @@ function PreparingScreen({
       className="flex-1 items-center justify-center px-10"
       style={{ backgroundColor: config.backgroundColor, gap: 20 }}
     >
-      {/* Back */}
-      <Pressable
-        onPress={onBack}
-        hitSlop={8}
-        style={{
-          position: "absolute",
-          top: 20,
-          left: 20,
-          width: 48,
-          height: 48,
-          borderRadius: 24,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: `${config.textColor}12`,
-        }}
-      >
-        <ChevronLeft size={26} color={config.textColor} />
-      </Pressable>
+      {/* Back — hidden while loading so the customer can't bail mid-creation
+          and orphan an in-flight order. Shown only in the error state, where
+          Back is the intended escape (alongside the Back-to-cart button). */}
+      {isError && (
+        <Pressable
+          onPress={onBack}
+          hitSlop={8}
+          style={{
+            position: "absolute",
+            top: 20,
+            left: 20,
+            width: 48,
+            height: 48,
+            borderRadius: 24,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: `${config.textColor}12`,
+          }}
+        >
+          <ChevronLeft size={26} color={config.textColor} />
+        </Pressable>
+      )}
 
       {isError ? (
         <>

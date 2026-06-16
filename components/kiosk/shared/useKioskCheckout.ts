@@ -1,3 +1,4 @@
+import { calculateOrderTotals } from "@/lib/order-calculator";
 import { payFullCard } from "@/services/paymentService";
 import {
   lineCashUnitPrice,
@@ -114,174 +115,154 @@ export function useKioskCheckout() {
   const [status, setStatus] = useState<KioskCheckoutStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<KioskCheckoutResult | null>(null);
-
-  // The local order id created during prepare, so payOrder can act on it.
-  const [orderId, setOrderId] = useState<string | null>(null);
-  const [dbOrderId, setDbOrderId] = useState<string | null>(null);
   const [totals, setTotals] = useState<KioskCheckoutTotals | null>(null);
 
   const reset = useCallback(() => {
     setStatus("idle");
     setError(null);
     setResult(null);
-    setOrderId(null);
-    setDbOrderId(null);
     setTotals(null);
   }, []);
 
   /**
-   * Abandon a prepared-but-unpaid order. `prepareOrder` creates a real backend
-   * order eagerly, so if the customer backs out before paying we must void it —
-   * otherwise it lingers as an orphaned draft. Safe to call anytime: no-ops if
-   * no order was created or it's already been paid (success).
+   * Compute the order totals LOCALLY from the current cart — no backend order is
+   * created. Uses the same `calculateOrderTotals` the order store uses, with the
+   * location tax rates, so the figure shown on the tip/summary screen is exactly
+   * what will be charged. Safe to call repeatedly (e.g. on every checkout entry
+   * after the customer edits the cart). Returns null if the cart is empty.
+   *
+   * No backend order exists until `payOrder` runs, so backing out / editing the
+   * cart / re-entering checkout never leaves an orphaned or zeroed order.
    */
-  const abandon = useCallback(() => {
-    if (!orderId || status === "success") return;
-    try {
-      useOrderStore.getState().voidOrder(orderId);
-    } catch (err) {
-      console.error("[kioskCheckout] abandon/void failed:", err);
-    }
-    reset();
-  }, [orderId, status, reset]);
-
-  /**
-   * Create the takeout order, add the cart items, sync them, and compute real
-   * totals (subtotal + tax + total from the order store). Call this when
-   * entering checkout so the tip/summary screens can show exact tax. Returns the
-   * totals, or null on failure (status/error set).
-   */
-  const prepareOrder = useCallback(async (): Promise<KioskCheckoutTotals | null> => {
+  const computeTotals = useCallback((): KioskCheckoutTotals | null => {
     const cart = useKioskCartStore.getState();
-    const orderStore = useOrderStore.getState();
-
     if (cart.lines.length === 0) {
       setStatus("error");
       setError("Your cart is empty.");
       return null;
     }
 
+    const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap ?? {};
+    const items = cart.lines.map(toCartItem);
+    const t = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap,
+      payments: [],
+    });
+
+    const next: KioskCheckoutTotals = {
+      subtotal: t.subtotal,
+      tax: t.tax_amount,
+      total: t.total_amount,
+    };
     setError(null);
-    setStatus("creating");
-
-    try {
-      const order = orderStore.startNewOrder({ tableId: null });
-      orderStore.setActiveOrder(order.id);
-
-      const createdDbId = await orderStore.ensureActiveOrderCreated(order.id);
-      if (!createdDbId) {
-        setStatus("error");
-        setError("Could not create the order. Please try again.");
-        return null;
-      }
-
-      // The order may be re-keyed (local id → db_order_id) during creation, so
-      // the original `order.id` can become stale. Track the live key via the
-      // active order / db index instead.
-      const liveOrderId =
-        useOrderStore.getState().activeOrderId ??
-        useOrderStore.getState().dbOrderIdIndex?.[createdDbId] ??
-        order.id;
-
-      const expectedItemCount = cart.lines.length;
-      for (const line of cart.lines) {
-        orderStore.addItemToActiveOrder(toCartItem(line));
-      }
-
-      // Items must land on the backend before payment, else process_payment
-      // sees no unpaid items. waitForPendingSyncs resolves on timeout too, so we
-      // verify completion explicitly below rather than trusting it.
-      await orderStore.waitForPendingSyncs(liveOrderId, { maxMs: 15000 });
-
-      // GUARD 1 — no lost items. Every line must be on the order AND have a
-      // backend id. If sync didn't fully complete, refuse to proceed so we
-      // never charge for an order that's missing items.
-      const synced = useOrderStore.getState().ordersById[liveOrderId];
-      const nonDraft = (synced?.items ?? []).filter((i) => !i.isDraft);
-      const allHaveBackendId = nonDraft.every((i) => !!i.db_order_item_id);
-      if (nonDraft.length < expectedItemCount || !allHaveBackendId) {
-        setStatus("error");
-        setError(
-          "We couldn't confirm all your items. Please check your connection and try again.",
-        );
-        return null;
-      }
-
-      // Force a synchronous recompute (returns totals AND writes them to the
-      // order).
-      const t = orderStore.recalculateOrder(liveOrderId);
-
-      // GUARD 2 — never charge less than the order is worth. The order total
-      // must be positive and at least the sum of item prices the customer saw.
-      const cartSubtotal = cart.subtotal();
-      if (t.total_amount <= 0 || t.subtotal + 0.01 < cartSubtotal) {
-        setStatus("error");
-        setError("The order total looks wrong. Please try again.");
-        return null;
-      }
-
-      const next: KioskCheckoutTotals = {
-        subtotal: t.subtotal,
-        tax: t.tax_amount,
-        total: t.total_amount,
-      };
-
-      setOrderId(liveOrderId);
-      setDbOrderId(createdDbId);
-      setTotals(next);
-      setStatus("ready");
-      return next;
-    } catch (err) {
-      console.error("[kioskCheckout] prepareOrder failed:", err);
-      setStatus("error");
-      setError("Something went wrong. Please try again.");
-      return null;
-    }
+    setTotals(next);
+    setStatus("ready");
+    return next;
   }, []);
 
   /**
-   * Charge + send to kitchen + record payment for the order created by
-   * prepareOrder. `tipAmount` is absolute dollars (0 if none).
+   * Create the order, add the cart items, sync, charge, send to kitchen, and
+   * record the payment — all at once, only when the customer commits to paying.
+   * `tipAmount` is absolute dollars (0 if none). Returns the result or null on
+   * failure (status/error set).
    */
   const payOrder = useCallback(
     async (tipAmount: number): Promise<KioskCheckoutResult | null> => {
+      const cart = useKioskCartStore.getState();
       const orderStore = useOrderStore.getState();
-      if (!orderId || !dbOrderId || !totals) {
+
+      if (cart.lines.length === 0) {
         setStatus("error");
-        setError("Order not ready. Please go back and try again.");
+        setError("Your cart is empty.");
         return null;
       }
 
-      try {
-        // Re-read the authoritative total from the order right before charging,
-        // so we never charge a stale/lower figure than the order is worth.
-        const liveTotal =
-          useOrderStore.getState().ordersById[orderId]?.total_amount ??
-          totals.total;
-        const chargeTotal = Math.max(liveTotal, totals.total);
-        const amountToCharge = chargeTotal + tipAmount;
+      setError(null);
+      setStatus("creating");
 
+      try {
+        // 1. Create the backend order now (deferred until pay).
+        const order = orderStore.startNewOrder({ tableId: null });
+        orderStore.setActiveOrder(order.id);
+        const createdDbId = await orderStore.ensureActiveOrderCreated(order.id);
+        if (!createdDbId) {
+          setStatus("error");
+          setError("Could not create the order. Please try again.");
+          return null;
+        }
+
+        // The order may be re-keyed (local id → db_order_id) during creation.
+        const liveOrderId =
+          useOrderStore.getState().activeOrderId ??
+          useOrderStore.getState().dbOrderIdIndex?.[createdDbId] ??
+          order.id;
+
+        // 2. Add items and wait for them to land on the backend.
+        const expectedItemCount = cart.lines.length;
+        for (const line of cart.lines) {
+          orderStore.addItemToActiveOrder(toCartItem(line));
+        }
+        await orderStore.waitForPendingSyncs(liveOrderId, { maxMs: 15000 });
+
+        // GUARD — never charge an order missing items. Every line must be on
+        // the order AND have a backend id.
+        const synced = useOrderStore.getState().ordersById[liveOrderId];
+        const nonDraft = (synced?.items ?? []).filter((i) => !i.isDraft);
+        const allHaveBackendId = nonDraft.every((i) => !!i.db_order_item_id);
+        if (nonDraft.length < expectedItemCount || !allHaveBackendId) {
+          // Items didn't fully sync — void the half-built order so it doesn't
+          // linger, and surface the error.
+          try {
+            orderStore.voidOrder(liveOrderId);
+          } catch {
+            /* best-effort */
+          }
+          setStatus("error");
+          setError(
+            "We couldn't confirm all your items. Please check your connection and try again.",
+          );
+          return null;
+        }
+
+        // 3. Authoritative total from the synced order.
+        const t = orderStore.recalculateOrder(liveOrderId);
+        const chargeTotal = t.total_amount;
+        const amountToCharge = chargeTotal + tipAmount;
         if (chargeTotal <= 0) {
+          try {
+            orderStore.voidOrder(liveOrderId);
+          } catch {
+            /* best-effort */
+          }
           setStatus("error");
           setError("The order total looks wrong. Please try again.");
           return null;
         }
 
+        // 4. Charge the card (mock for now).
         setStatus("charging");
         const charge = await chargeCard(amountToCharge);
         if (!charge.ok) {
+          // No charge happened — void the unpaid order so it doesn't linger.
+          try {
+            orderStore.voidOrder(liveOrderId);
+          } catch {
+            /* best-effort */
+          }
           setStatus("error");
           setError(charge.message);
           return null;
         }
 
-        // Send to kitchen before recording payment (matches the POS).
+        // 5. Send to kitchen before recording payment (matches the POS).
         setStatus("finalizing");
-        await orderStore.sendNewItemsToKitchenForOrder(orderId);
+        await orderStore.sendNewItemsToKitchenForOrder(liveOrderId);
 
         const idempotencyKey = uuidv4(); // must be a valid UUID
         const payment = await payFullCard(
-          dbOrderId,
+          createdDbId,
           chargeTotal,
           idempotencyKey,
           tipAmount,
@@ -299,9 +280,9 @@ export function useKioskCheckout() {
           return null;
         }
 
-        const finalOrder = useOrderStore.getState().ordersById[orderId];
+        const finalOrder = useOrderStore.getState().ordersById[liveOrderId];
         const res: KioskCheckoutResult = {
-          orderId,
+          orderId: liveOrderId,
           displayNumber: finalOrder?.display_number,
         };
         setResult(res);
@@ -314,8 +295,16 @@ export function useKioskCheckout() {
         return null;
       }
     },
-    [orderId, dbOrderId, totals],
+    [],
   );
 
-  return { status, error, result, totals, prepareOrder, payOrder, reset, abandon };
+  return {
+    status,
+    error,
+    result,
+    totals,
+    computeTotals,
+    payOrder,
+    reset,
+  };
 }
