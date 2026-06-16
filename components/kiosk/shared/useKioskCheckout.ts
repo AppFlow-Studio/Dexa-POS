@@ -183,8 +183,15 @@ export function useKioskCheckout() {
       setStatus("creating");
 
       try {
-        // 1. Create the backend order now (deferred until pay).
+        // 1. Create the backend order now (deferred until pay). Apply the
+        // customer's chosen order type (dine_in / takeout) BEFORE the backend
+        // row is created, so it's sent on creation rather than defaulting to
+        // takeout. startNewOrder({ tableId: null }) always yields takeout, so we
+        // patch it from the cart selection.
         const order = orderStore.startNewOrder({ tableId: null });
+        if (cart.orderType) {
+          orderStore.patchOrder(order.id, { order_type: cart.orderType });
+        }
         orderStore.setActiveOrder(order.id);
         const createdDbId = await orderStore.ensureActiveOrderCreated(order.id);
         if (!createdDbId) {
