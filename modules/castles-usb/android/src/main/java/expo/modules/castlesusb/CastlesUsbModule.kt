@@ -29,6 +29,20 @@ private val CASTLES_PRODUCT_IDS = intArrayOf(0x0070)
 /** Read buffer size — 16 KB handles large JSON payment responses */
 private const val READ_BUFFER_SIZE = 16 * 1024
 
+/**
+ * Per-read timeout for the background read thread (ms). MUST be > 0.
+ *
+ * With the library default of 0 the read blocks indefinitely, so on a cable
+ * detach the read thread never notices stop() and keeps occupying the single
+ * ioExecutor thread. The next open()'s read manager then queues behind that
+ * stuck thread and never runs — the port opens and writes succeed, but no
+ * responses are ever read (return2Idle/getData time out → "Offline"), until
+ * the OS eventually errors the dead read minutes later. A finite timeout makes
+ * the read loop wake periodically, observe stop(), and exit promptly so a
+ * replug reconnects immediately.
+ */
+private const val READ_TIMEOUT_MS = 200
+
 class CastlesUsbModule : Module() {
 
   // ── State (guarded by `lock`) ──
@@ -209,8 +223,13 @@ class CastlesUsbModule : Module() {
     // Sets DTR + RTS to signal terminal readiness (required by CDC ACM devices).
     AsyncFunction("open") { deviceId: Int, baudRate: Int ->
       synchronized(lock) {
+        // Defensive: if a port is still registered (e.g. a stale handle that
+        // survived a cable yank where the detach broadcast was missed), recycle
+        // it cleanly instead of failing the reconnect. Reopening on a fresh
+        // cable insertion must never be blocked by leftover state.
         if (serialPort != null) {
-          throw Exception("A port is already open. Call close() first.")
+          android.util.Log.w("CastlesUsbModule", "open(): a port was still registered — recycling before reopen")
+          closeInternal()
         }
 
         val drivers = findAllDrivers()
@@ -257,6 +276,10 @@ class CastlesUsbModule : Module() {
           }
         })
         manager.readBufferSize = READ_BUFFER_SIZE
+        // Finite read timeout so the loop wakes periodically and exits promptly
+        // on stop() — without this a cable detach leaves the read thread blocked
+        // forever, starving the next connection's reads (see READ_TIMEOUT_MS).
+        manager.readTimeout = READ_TIMEOUT_MS
         ioManager = manager
         ioExecutor.submit(manager)
       }
