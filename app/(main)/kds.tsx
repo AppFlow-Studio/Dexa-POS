@@ -1093,6 +1093,28 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                           [S{item.seat_number}]
                         </Text>
                       )}
+                      {item.is_to_go && (
+                        <View
+                          style={{
+                            backgroundColor: "#CCFBF1",
+                            paddingHorizontal: 5,
+                            paddingVertical: 1,
+                            borderRadius: 3,
+                            marginRight: 5,
+                            alignSelf: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: "#0D9488",
+                              fontSize: 8,
+                              fontWeight: "800",
+                            }}
+                          >
+                            TO GO
+                          </Text>
+                        </View>
+                      )}
                       <Text
                         style={{
                           color: isInactive
@@ -1321,6 +1343,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         pi.kitchen_status !== ni.kitchen_status ||
         pi.quantity !== ni.quantity ||
         pi.rush !== ni.rush ||
+        Boolean(pi.is_to_go) !== Boolean(ni.is_to_go) ||
         pi.recalled !== ni.recalled ||
         Boolean(pi.acknowledged) !== Boolean(ni.acknowledged)
       )

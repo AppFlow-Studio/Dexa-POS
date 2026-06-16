@@ -1588,6 +1588,32 @@ export class OrderService {
   }
 
   /**
+   * Toggle the per-item "TO GO" flag on order items.
+   */
+  static async toggleToGoOnItems(
+    client: SupabaseClient,
+    orderItemIds: string[],
+    isToGo: boolean,
+  ): Promise<{ data: any; error: any }> {
+    if (orderItemIds.length === 0) {
+      return { data: null, error: null };
+    }
+    return _runWithDeadline<any>(
+      "toggle_to_go_order_items",
+      DEADLINES.hotMutation,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("toggle_to_go_order_items", {
+            p_order_item_ids: orderItemIds,
+            p_is_to_go: isToGo,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
+  }
+
+  /**
    * Fetch pre-grouped KDS tickets from the server (denormalized)
    */
   static async getKDSTickets(

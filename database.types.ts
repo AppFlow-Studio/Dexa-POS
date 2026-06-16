@@ -10785,6 +10785,7 @@ export type Database = {
           is_open_item: boolean | null
           is_prioritized: boolean | null
           is_tax_exempt: boolean | null
+          is_to_go: boolean | null
           is_voided: boolean | null
           item_description: string | null
           item_name: string
@@ -10856,6 +10857,7 @@ export type Database = {
           is_open_item?: boolean | null
           is_prioritized?: boolean | null
           is_tax_exempt?: boolean | null
+          is_to_go?: boolean | null
           is_voided?: boolean | null
           item_description?: string | null
           item_name: string
@@ -10927,6 +10929,7 @@ export type Database = {
           is_open_item?: boolean | null
           is_prioritized?: boolean | null
           is_tax_exempt?: boolean | null
+          is_to_go?: boolean | null
           is_voided?: boolean | null
           item_description?: string | null
           item_name?: string
@@ -24192,6 +24195,10 @@ export type Database = {
       }
       toggle_priority_order_items: {
         Args: { p_is_prioritized: boolean; p_order_item_ids: string[] }
+        Returns: undefined
+      }
+      toggle_to_go_order_items: {
+        Args: { p_is_to_go: boolean; p_order_item_ids: string[] }
         Returns: undefined
       }
       toggle_rush_order_items: {

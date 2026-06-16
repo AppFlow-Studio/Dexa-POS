@@ -55,6 +55,7 @@ export interface BroadcastOrderItemData {
   prep_station?: string | null
   rush?: boolean
   is_prioritized?: boolean
+  is_to_go?: boolean
   fire_time?: string | null
   // Modifiers (Phase 2.5: Order Item Sync with Modifiers)
   modifiers?: BroadcastModifierData[]

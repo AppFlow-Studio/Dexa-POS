@@ -907,6 +907,7 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
       prep_station: item.prep_station,
       rush: item.rush,
       is_prioritized: item.is_prioritized,
+      is_to_go: item.is_to_go,
       seat_number: item.seat_number ?? null,
       is_voided: item.is_voided,
       is_refunded: (item.refunded_quantity ?? 0) > 0,

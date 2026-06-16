@@ -165,6 +165,7 @@ export interface BackendItemInput {
 
   // Flags
   is_voided?: boolean | null
+  is_to_go?: boolean | null
   is_open_item?: boolean | null
   open_item_name?: string | null
   open_item_price?: number | null
@@ -261,6 +262,7 @@ export function mapBackendItemToCartItem (
 
     // Item flags
     is_voided: item.is_voided || false,
+    is_to_go: item.is_to_go || false,
     is_open_item: isOpenItem,
     open_item_name: item.open_item_name || undefined,
     open_item_price: item.open_item_price || undefined,
@@ -895,6 +897,7 @@ export interface FetchedOrderItem {
   refunded_amount?: number | null
   course_number?: number | null
   is_voided?: boolean | null
+  is_to_go?: boolean | null
   is_open_item?: boolean | null
   open_item_name?: string | null
   open_item_price?: number | null
@@ -1080,6 +1083,7 @@ function normalizeFetchedItems (
     refunded_amount: item.refunded_amount ?? 0,
     course_number: item.course_number ?? null,
     is_voided: item.is_voided ?? false,
+    is_to_go: item.is_to_go ?? false,
     is_open_item: item.is_open_item ?? false,
     open_item_name: item.open_item_name ?? null,
     open_item_price: item.open_item_price ?? null,

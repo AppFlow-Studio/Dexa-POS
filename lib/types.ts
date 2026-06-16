@@ -417,6 +417,9 @@ export interface CartItem {
   // Voided item tracking
   is_voided?: boolean
   void_reason?: string
+  // Per-item "TO GO" flag (e.g. one item to-go inside a dine-in check).
+  // Mirrors the per-item is_prioritized/rush pattern.
+  is_to_go?: boolean
   // Sync status tracking for resilient backend sync
   sync_status?: 'pending' | 'syncing' | 'synced' | 'failed'
   sync_error?: string

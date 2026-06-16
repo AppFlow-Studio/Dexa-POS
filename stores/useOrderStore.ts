@@ -2248,6 +2248,20 @@ const addItemToBackend = async (
       // Phase 7D: Set sync status in dedicated store (not on item)
       useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
 
+      // Reconcile per-item "TO GO": if the item was flagged to-go before it had
+      // a backend row (e.g. toggled during the initial add), persist it now that
+      // order_item_id exists. No-op in the common case (is_to_go falsy).
+      if (item.is_to_go) {
+        OrderService.toggleToGoOnItems(
+          supabase,
+          [addResult.order_item_id],
+          true,
+        ).catch((err) => {
+          if (__DEV__)
+            console.warn("[addItemToBackend] to-go reconcile failed:", err);
+        });
+      }
+
       // Invalidate calculation cache after new item added (coalesced)
       scheduleCalculationCacheInvalidation();
 
@@ -4301,6 +4315,12 @@ export const useOrderStore = create<OrderState>()(
           );
 
           if (leftKey !== rightKey) {
+            return false;
+          }
+
+          // A to-go item and an identical for-here item must stay separate lines
+          // so they can be fulfilled (and shown) differently.
+          if (Boolean(leftItem.is_to_go) !== Boolean(rightItem.is_to_go)) {
             return false;
           }
 
@@ -14569,6 +14589,7 @@ export const useOrderStore = create<OrderState>()(
                             price: dbItem.unit_price,
                             cashPrice: dbItem.cash_price,
                             is_voided: dbItem.is_voided,
+                            is_to_go: dbItem.is_to_go ?? localItem.is_to_go,
                             // Preserve course number from backend to prevent items being grouped into course 1
                             courseNumber:
                               dbItem.course_number ||
@@ -14659,6 +14680,7 @@ export const useOrderStore = create<OrderState>()(
                         seatNumber: dbItem.seat_number ?? null,
                         category_name: dbItem.category_name || "Uncategorized",
                         is_voided: dbItem.is_voided || false,
+                        is_to_go: dbItem.is_to_go || false,
                         sync_status: "synced" as const,
                         customizations: {
                           notes: dbItem.special_instructions || undefined,

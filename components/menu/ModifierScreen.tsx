@@ -1,6 +1,8 @@
 import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
 import { CartItem, ModifierCategory } from "@/lib/types";
+import { OrderService } from "@/services/orderService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
     getLastModifierOpenStartedAt,
@@ -22,6 +24,7 @@ import {
     Modal,
     Platform,
     ScrollView,
+    Switch,
     Text,
     TextInput,
     TouchableOpacity,
@@ -298,6 +301,7 @@ type State = {
   modifierSelections: ModifierSelection;
   selectionCounts: Record<string, number>;
   notes: string;
+  isToGo: boolean;
   activeCategory: string | null;
   isQuantityModalOpen: boolean;
   quantityInput: string;
@@ -312,6 +316,7 @@ type Action =
   | { type: "SET_QUANTITY"; payload: number }
   | { type: "SET_MODIFIER_SELECTIONS"; payload: ModifierSelection }
   | { type: "SET_NOTES"; payload: string }
+  | { type: "SET_TOGO"; payload: boolean }
   | { type: "SET_ACTIVE_CATEGORY"; payload: string | null }
   | { type: "OPEN_QUANTITY_MODAL"; payload: string }
   | { type: "CLOSE_QUANTITY_MODAL" }
@@ -370,6 +375,9 @@ const immerReducer = (state: State, action: Action): void => {
       return;
     case "SET_NOTES":
       state.notes = action.payload;
+      return;
+    case "SET_TOGO":
+      state.isToGo = action.payload;
       return;
     case "SET_ACTIVE_CATEGORY":
       state.activeCategory = action.payload;
@@ -666,6 +674,11 @@ const ModifierScreenContent = ({
   );
 
   const { show } = useToast();
+  const supabase = useSupabaseClient();
+  // Latest-ref so the []-dep handleSave callback can reach the current client
+  // without capturing it in its closure.
+  const supabaseRef = useRef(supabase);
+  supabaseRef.current = supabase;
 
   const [state, dispatch] = useImmerReducer<State, Action, void>(
     immerReducer,
@@ -675,6 +688,7 @@ const ModifierScreenContent = ({
       return {
         quantity: cartItem?.quantity ?? 1,
         notes: cartItem?.customizations?.notes ?? "",
+        isToGo: cartItem?.is_to_go ?? false,
         modifierSelections: selections,
         selectionCounts: computeSelectionCounts(selections),
         activeCategory: precomputedActiveCategory ?? null,
@@ -746,6 +760,7 @@ const ModifierScreenContent = ({
       payload: {
         quantity: cartItem?.quantity ?? 1,
         notes: cartItem?.customizations?.notes ?? "",
+        isToGo: cartItem?.is_to_go ?? false,
         modifierSelections: selections,
         activeCategory: precomputedActiveCategory ?? null,
         isQuantityModalOpen: false,
@@ -1455,6 +1470,7 @@ const ModifierScreenContent = ({
         price: currentTotal / Math.max(1, currentState.quantity),
         customizations: finalCustomizations,
         isDraft: false,
+        is_to_go: currentState.isToGo,
         seatNumber:
           shouldApplySeat && seatVal !== undefined
             ? seatVal
@@ -1465,6 +1481,24 @@ const ModifierScreenContent = ({
         cashTaxAmount: undefined,
       };
       updateItemInActiveOrder(updatedItem);
+
+      // Persist the per-item TO GO flag to the backend when it changed on an
+      // already-synced item. New/unsynced items persist via the add reconcile
+      // hook in addItemToBackend, so we only fire here when a db row exists.
+      if (
+        Boolean(currentCartItem.is_to_go) !== Boolean(currentState.isToGo) &&
+        currentCartItem.db_order_item_id &&
+        supabaseRef.current
+      ) {
+        OrderService.toggleToGoOnItems(
+          supabaseRef.current,
+          [currentCartItem.db_order_item_id],
+          currentState.isToGo,
+        ).catch(() => {
+          // Fire-and-forget: local flag is persisted; a later broadcast
+          // re-fetch reconciles the server state.
+        });
+      }
 
       // Ensure manual sync matches the updated seat
       if (shouldApplySeat) {
@@ -1509,6 +1543,7 @@ const ModifierScreenContent = ({
         appliedDiscount: null,
         paidQuantity: 0,
         isDraft: false,
+        is_to_go: currentState.isToGo,
         seatNumber:
           shouldApplySeat && seatVal !== undefined ? seatVal : undefined,
         addedFromCategoryId: catId || null,
@@ -2101,6 +2136,31 @@ const ModifierScreenContent = ({
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+
+        {/* ── TO GO ────────────────────────────────────────────────────────── */}
+        <View
+          className="px-4 py-3 border-t flex-row items-center justify-between"
+          style={{ borderColor: colors.border }}
+        >
+          <View className="flex-1 pr-3">
+            <Text
+              className="text-sm font-semibold"
+              style={{ color: colors.heading }}
+            >
+              TO GO
+            </Text>
+            <Text className="text-xs mt-0.5" style={{ color: colors.muted }}>
+              Package this item to-go
+            </Text>
+          </View>
+          <Switch
+            value={state.isToGo}
+            disabled={isReadOnly}
+            onValueChange={(v) => dispatch({ type: "SET_TOGO", payload: v })}
+            trackColor={{ false: colors.border, true: colors.teal }}
+            thumbColor={colors.onSolid}
+          />
         </View>
 
         {/* ── Special Instructions ─────────────────────────────────────────── */}

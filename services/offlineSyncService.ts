@@ -2842,6 +2842,7 @@ export async function reconcileOrderWithBackend(
         seatNumber: backendItem.seat_number ?? null,
         category_name: backendItem.category_name || "Uncategorized",
         is_voided: backendItem.is_voided || false,
+        is_to_go: backendItem.is_to_go || false,
         sync_status: "synced" as const,
         customizations: {
           notes: backendItem.special_instructions || undefined,
