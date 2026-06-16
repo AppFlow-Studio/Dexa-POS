@@ -1785,8 +1785,15 @@ const ModifierScreenContent = ({
               </Text>
             </View>
             <Switch
-              value={Boolean(cartItem.is_to_go)}
+              // Drive the Switch from fast local reducer state, NOT the frozen
+              // useModifierSidebarStore snapshot — `cartItem` is captured when
+              // the sheet opens and never updates, so binding `value` to it made
+              // the thumb animate forward then snap back (the "jolt") because the
+              // controlled value re-read the stale snapshot. state.isToGo flips
+              // instantly on dispatch. Mirrors the not-yet-sent toggle below.
+              value={state.isToGo}
               onValueChange={(v) => {
+                dispatch({ type: "SET_TOGO", payload: v });
                 updateItemInActiveOrder({ ...cartItem, is_to_go: v });
                 if (cartItem.db_order_item_id && supabaseRef.current) {
                   OrderService.toggleToGoOnItems(
