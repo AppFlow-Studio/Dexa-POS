@@ -1,5 +1,6 @@
 import { payFullCard } from "@/services/paymentService";
 import {
+  lineCashUnitPrice,
   lineUnitPrice,
   useKioskCartStore,
   type KioskCartLine,
@@ -52,6 +53,7 @@ export interface KioskCheckoutResult {
  * recomputed by the order store on add, so we only supply prices + modifiers. */
 function toCartItem(line: KioskCartLine): CartItem {
   const unit = lineUnitPrice(line); // base + modifiers, card
+  const cashUnit = lineCashUnitPrice(line); // base + modifiers, cash
   const modifiers = line.modifiers.map((g) => ({
     categoryId: g.categoryId,
     categoryName: g.categoryName,
@@ -62,6 +64,12 @@ function toCartItem(line: KioskCartLine): CartItem {
     })),
   }));
 
+  // The order calculator derives the effective price from baseCardPrice/
+  // baseCashPrice PLUS the modifiers in `customizations` — it does NOT read
+  // `price`/`cashPrice`. So we MUST supply the per-unit *base* (pre-modifier)
+  // prices here, exactly like the POS does (see ModifierScreen/OrderDetails).
+  // Omitting them made the cash side fall back to the card unitPrice and the
+  // card side ignore modifiers, undercharging modified items.
   return {
     id: `${line.menuItemId}_${line.lineId}`,
     menuItemId: line.menuItemId,
@@ -69,7 +77,9 @@ function toCartItem(line: KioskCartLine): CartItem {
     quantity: line.quantity,
     price: unit,
     unitPrice: line.unitPrice,
-    cashPrice: line.cashUnitPrice,
+    baseCardPrice: line.unitPrice,
+    cashPrice: cashUnit,
+    baseCashPrice: line.cashUnitPrice,
     originalPrice: unit,
     image: line.image,
     paidQuantity: 0,

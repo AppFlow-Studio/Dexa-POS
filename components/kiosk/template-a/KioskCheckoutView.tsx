@@ -205,9 +205,10 @@ function TipStep({
   const tax = totals?.tax ?? 0;
   const baseTotal = totals?.total ?? 0;
 
-  // Tip is a % of subtotal (pre-tax), the common convention.
+  // Tip is a % of the post-tax total, matching the POS card flow
+  // (CardPaymentView computes presets off totalToPay, not subtotal).
   const tipAmount =
-    selected != null && selected > 0 ? (subtotal * selected) / 100 : 0;
+    selected != null && selected > 0 ? (baseTotal * selected) / 100 : 0;
   const grandTotal = baseTotal + tipAmount;
 
   const noTip = selected === -1;
@@ -290,7 +291,7 @@ function TipStep({
                   {pct}%
                 </Text>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: active ? "rgba(255,255,255,0.85)" : muted }}>
-                  ${((subtotal * pct) / 100).toFixed(2)}
+                  ${((baseTotal * pct) / 100).toFixed(2)}
                 </Text>
               </Pressable>
             );
