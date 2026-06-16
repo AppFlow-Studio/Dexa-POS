@@ -858,10 +858,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 </DialogTrigger>
               )}
               <DialogContent
-                className="w-[480px] max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden"
+                className="max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden"
                 style={{
                   backgroundColor: colors.screen,
                   borderColor: colors.border,
+                  maxWidth: 480,
+                  alignSelf: 'center',
+                  width: '90%',
                 }}
               >
                 <DialogHeader
