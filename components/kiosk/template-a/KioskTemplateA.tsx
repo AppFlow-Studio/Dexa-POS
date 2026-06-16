@@ -38,30 +38,41 @@ export type TemplateAScreen =
 export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
   const [screen, setScreen] = useState<TemplateAScreen>("orderType");
   const [selectedItem, setSelectedItem] = useState<MenuItemType | null>(null);
+  // Set once the checkout reaches the paid/success screen. The order is settled,
+  // so the idle timer must NOT treat it as an active cart (which would void it).
+  const [paid, setPaid] = useState(false);
   const itemCount = useKioskCartStore((s) => s.itemCount());
   const subtotal = useKioskCartStore((s) => s.subtotal());
   const orderType = useKioskCartStore((s) => s.orderType);
   const setOrderType = useKioskCartStore((s) => s.setOrderType);
   const clearCart = useKioskCartStore((s) => s.clear);
 
-  // Anything to lose? Items in the cart, or already mid-checkout (a real
-  // order has been created and needs voiding on reset).
-  const hasActiveCart = itemCount > 0 || screen === "checkout";
+  // Anything to lose? Items in the cart, or mid-checkout with an unpaid order.
+  // Once paid, there's nothing to void — the success screen owns its own 10s
+  // auto-return, so we drop out of "active cart" to stop the idle timer voiding
+  // a settled order.
+  const hasActiveCart = !paid && (itemCount > 0 || screen === "checkout");
+
+  const resetToIdle = useCallback(() => {
+    clearCart();
+    setPaid(false);
+    setScreen("orderType");
+    setSelectedItem(null);
+    onExit();
+  }, [clearCart, onExit]);
 
   const handleIdleReset = useCallback(() => {
+    // Only void an unpaid order. A paid order must never be voided on idle.
     const activeOrderId = useOrderStore.getState().activeOrderId;
-    if (activeOrderId) {
+    if (activeOrderId && !paid) {
       try {
         useOrderStore.getState().voidOrder(activeOrderId);
       } catch (err) {
         console.error("[kiosk] idle reset: void order failed:", err);
       }
     }
-    clearCart();
-    setScreen("orderType");
-    setSelectedItem(null);
-    onExit();
-  }, [clearCart, onExit]);
+    resetToIdle();
+  }, [paid, resetToIdle]);
 
   const { registerActivity, showWarning, secondsLeft } = useKioskIdleTimer({
     idleTimeoutSeconds: config.idleTimeoutSeconds,
@@ -157,7 +168,8 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
           <KioskCheckoutView
             config={config}
             onBack={() => setScreen("cart")}
-            onDone={onExit}
+            onPaid={() => setPaid(true)}
+            onDone={resetToIdle}
           />
         </KioskScreenTransition>
       )}

@@ -19,10 +19,14 @@ type Step = "tip" | "processing" | "success";
 export function KioskCheckoutView({
   config,
   onBack,
+  onPaid,
   onDone,
 }: {
   config: KioskConfig;
   onBack: () => void;
+  /** Fired the instant payment succeeds, before the success screen shows. Lets
+   * the parent stop treating this as an active (voidable) cart. */
+  onPaid: () => void;
   onDone: () => void;
 }) {
   const clearCart = useKioskCartStore((s) => s.clear);
@@ -57,6 +61,7 @@ export function KioskCheckoutView({
     setStep("processing");
     const res = await payOrder(tipAmount);
     if (res) {
+      onPaid(); // settled — parent stops treating this as a voidable cart
       setPickupNumber(res.displayNumber);
       clearCart();
       setStep("success");
@@ -87,49 +92,11 @@ export function KioskCheckoutView({
   // ---- SUCCESS ----
   if (step === "success") {
     return (
-      <View
-        className="flex-1 items-center justify-center px-10"
-        style={{ backgroundColor: config.backgroundColor, gap: 20 }}
-      >
-        <CheckCircle2 size={96} color={config.primaryColor} />
-        <Text
-          style={{ fontSize: 30, fontWeight: "800", color: config.textColor }}
-        >
-          Thank you!
-        </Text>
-        <Text style={{ fontSize: 18, color: muted, textAlign: "center" }}>
-          Your order has been sent to the kitchen.
-        </Text>
-        {pickupNumber ? (
-          <View style={{ alignItems: "center", marginTop: 8 }}>
-            <Text style={{ fontSize: 16, color: muted }}>Your number</Text>
-            <Text
-              style={{
-                fontSize: 56,
-                fontWeight: "900",
-                color: config.primaryColor,
-              }}
-            >
-              {config.pickupNumberPrefix}
-              {pickupNumber}
-            </Text>
-          </View>
-        ) : null}
-        <Pressable
-          onPress={onDone}
-          style={{
-            marginTop: 16,
-            paddingHorizontal: 36,
-            paddingVertical: 16,
-            borderRadius: 16,
-            backgroundColor: config.primaryColor,
-          }}
-        >
-          <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "700" }}>
-            Done
-          </Text>
-        </Pressable>
-      </View>
+      <SuccessScreen
+        config={config}
+        pickupNumber={pickupNumber}
+        onDone={onDone}
+      />
     );
   }
 
@@ -181,6 +148,75 @@ export function KioskCheckoutView({
       )}
     </View>
   );
+}
+
+/**
+ * Post-payment confirmation. The order is already PAID — there is nothing to
+ * void here. Auto-returns to idle after 10s if the customer walks away without
+ * pressing Done (the parent's idle timer is suppressed once payment succeeds,
+ * so this is the only thing that resets the kiosk).
+ */
+function SuccessScreen({
+  config,
+  pickupNumber,
+  onDone,
+}: {
+  config: KioskConfig;
+  pickupNumber?: string;
+  onDone: () => void;
+}) {
+  const muted = `${config.textColor}99`;
+
+  useEffect(() => {
+    const t = setTimeout(onDone, 10_000);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  return (
+    <View
+      className="flex-1 items-center justify-center px-10"
+      style={{ backgroundColor: config.backgroundColor, gap: 20 }}
+    >
+        <CheckCircle2 size={96} color={config.primaryColor} />
+        <Text
+          style={{ fontSize: 30, fontWeight: "800", color: config.textColor }}
+        >
+          Thank you!
+        </Text>
+        <Text style={{ fontSize: 18, color: muted, textAlign: "center" }}>
+          Your order has been sent to the kitchen.
+        </Text>
+        {pickupNumber ? (
+          <View style={{ alignItems: "center", marginTop: 8 }}>
+            <Text style={{ fontSize: 16, color: muted }}>Your number</Text>
+            <Text
+              style={{
+                fontSize: 56,
+                fontWeight: "900",
+                color: config.primaryColor,
+              }}
+            >
+              {config.pickupNumberPrefix}
+              {pickupNumber}
+            </Text>
+          </View>
+        ) : null}
+        <Pressable
+          onPress={onDone}
+          style={{
+            marginTop: 16,
+            paddingHorizontal: 36,
+            paddingVertical: 16,
+            borderRadius: 16,
+            backgroundColor: config.primaryColor,
+          }}
+        >
+          <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "700" }}>
+            Done
+          </Text>
+        </Pressable>
+      </View>
+    );
 }
 
 function TipStep({
