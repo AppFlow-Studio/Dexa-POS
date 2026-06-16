@@ -256,10 +256,8 @@ export function useKioskCheckout() {
           return null;
         }
 
-        // 5. Send to kitchen before recording payment (matches the POS).
+        // 5. Record the payment.
         setStatus("finalizing");
-        await orderStore.sendNewItemsToKitchenForOrder(liveOrderId);
-
         const idempotencyKey = uuidv4(); // must be a valid UUID
         const payment = await payFullCard(
           createdDbId,
@@ -279,6 +277,11 @@ export function useKioskCheckout() {
           );
           return null;
         }
+
+        // 6. Only AFTER payment succeeds, send the ticket to the kitchen. On a
+        // self-service kiosk there's no staff to catch a ticket for an order
+        // that never paid, so the KDS send must follow a confirmed payment.
+        await orderStore.sendNewItemsToKitchenForOrder(liveOrderId);
 
         const finalOrder = useOrderStore.getState().ordersById[liveOrderId];
         const res: KioskCheckoutResult = {
