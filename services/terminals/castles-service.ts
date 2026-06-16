@@ -257,12 +257,15 @@ export class CastlesService {
     this.config = config;
     let lastError: Error | null = null;
 
-    // Cold connect (background auto-connect after a plug/power-cycle): make a
-    // single light attempt and let the auto-connect coordinator's retry ladder
-    // own the cadence. The terminal may still be rebooting (0 bytes back), and
-    // stacking the escalated multi-return2Idle inner retries here would make
-    // each attempt tens of seconds — too slow to feel instant once the app boots.
-    const maxAttempts = config.coldConnect ? 1 : CASTLES_CONNECT_MAX_RETRIES;
+    // Cold connect (background auto-connect after a plug/power-cycle) uses the
+    // SAME escalated retry loop as a manual Test — the escalation (attempts 2+
+    // send return2Idle 3× with gaps, "the in-app equivalent of toggling WiFi on
+    // the terminal") is exactly what wakes a freshly-replugged, just-booted
+    // terminal; a single light attempt does not. coldConnect's ONLY difference
+    // is that a boot-window empty buffer is NOT treated as a firmware wedge
+    // (see the CastlesEmptyResponseError handling below) so it retries quietly
+    // instead of popping the power-cycle modal.
+    const maxAttempts = CASTLES_CONNECT_MAX_RETRIES;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       // Escalation: attempts 2+ assume the terminal is in a stuck app-layer
@@ -406,7 +409,7 @@ export class CastlesService {
 
     this._emitConnectProgress(null);
     const connectErr = new Error(
-      `[CastlesService] Failed to connect after ${maxAttempts} attempt${maxAttempts === 1 ? "" : "s"}: ${lastError?.message}`,
+      `[CastlesService] Failed to connect after ${maxAttempts} attempts: ${lastError?.message}`,
     );
     Sentry.captureException(connectErr, {
       tags: {

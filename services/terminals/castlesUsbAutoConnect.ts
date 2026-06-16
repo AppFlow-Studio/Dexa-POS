@@ -36,14 +36,15 @@ const CASTLES_VENDOR_ID = 0x0ca6;
  *  the *first* attempt by this much. Subsequent retries use RETRY_DELAYS_MS. */
 const ATTACH_DEBOUNCE_MS = 750;
 
-/** Bounded backoff covering the terminal's ~5-10s CastlesPay boot window with
- *  snappy early rungs, so the connect lands within a second or two of the app
- *  coming up instead of waiting for the next sale or a manual Test. Each connect
- *  attempt is a single light `coldConnect` pass (fast fail), so this ladder —
- *  not the service's inner retry loop — owns the recovery cadence. If it
- *  exhausts, the hook's 5s USB offline-poll keeps trying as a long-tail
+/** Backstop retries between full connect attempts. Each `ensureUsbConnected`
+ *  now runs the SAME escalated connect a manual Test does (3 inner attempts
+ *  with return2Idle escalation), which on its own spans and covers the
+ *  terminal's ~5-10s CastlesPay boot window — so usually the first attempt
+ *  succeeds. These few extra retries only cover the edge case where the first
+ *  attempt fired before the USB interface had finished enumerating. If they
+ *  exhaust, the hook's 5s USB offline-poll keeps trying as a long-tail
  *  fallback. */
-const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 12_000];
+const RETRY_DELAYS_MS = [2_000, 5_000];
 
 let attachSub: EventSubscription | null = null;
 let connectInFlight = false;

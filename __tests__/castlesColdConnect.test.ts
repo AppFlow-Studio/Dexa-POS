@@ -150,16 +150,19 @@ describe('Castles cold-connect boot tolerance (replug recovery)', () => {
     mockNotifySuccess.mockClear();
   });
 
-  it('cold connect: a boot-window empty buffer fails plainly WITHOUT flagging a wedge', async () => {
+  it('cold connect: runs the full escalated retry loop but NEVER flags a wedge', async () => {
     const svc = new CastlesService();
 
+    // Cold connect uses the same escalated retry loop as a manual Test (so it
+    // can actually wake a booting terminal); it just fails plainly instead of
+    // wedging when the terminal never responds.
     await expect(
       svc.connect({ ...baseConfig, coldConnect: true }),
-    ).rejects.toThrow(/Failed to connect after 1 attempt/i);
+    ).rejects.toThrow(/Failed to connect after 3 attempts/i);
 
     // The whole point: never hand off to the wedge supervisor on a cold connect.
     expect(mockNotifyEmptyBuffer).not.toHaveBeenCalled();
-  }, 20_000);
+  }, 40_000);
 
   it('warm connect: the same empty buffer IS classified as a wedge', async () => {
     const svc = new CastlesService();
