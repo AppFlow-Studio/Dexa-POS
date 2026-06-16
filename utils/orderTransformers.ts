@@ -11,6 +11,7 @@ import type {
   BroadcastOrderItemData,
   BroadcastOrderPaymentData
 } from '@/hooks/realtime/useOrdersRealtime'
+import { resolveInboundToGo } from '@/lib/pendingToGo'
 import { normalizePlatform } from '@/lib/platformAliases'
 import type {
   CartItem,
@@ -262,7 +263,9 @@ export function mapBackendItemToCartItem (
 
     // Item flags
     is_voided: item.is_voided || false,
-    is_to_go: item.is_to_go || false,
+    // Prefer an in-flight optimistic to-go toggle over a stale backend value so a
+    // concurrent fetch/broadcast can't clobber the user's change mid-persist.
+    is_to_go: resolveInboundToGo(item.id, item.is_to_go || false),
     is_open_item: isOpenItem,
     open_item_name: item.open_item_name || undefined,
     open_item_price: item.open_item_price || undefined,

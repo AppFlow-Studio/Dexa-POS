@@ -1464,8 +1464,24 @@ const ModifierScreenContent = ({
       if (!currentCartItem) {
         return;
       }
+      // The modifier's cartItem is a snapshot captured when the sheet opened;
+      // for a freshly-added item it can predate the backend sync and therefore
+      // lack db_order_item_id even though the item has since synced. Re-read the
+      // LIVE order-store item so we (a) don't wipe the linked db_order_item_id by
+      // writing the stale snapshot back, and (b) can actually persist the TO GO
+      // change instead of silently dropping it (the bug where an item shows
+      // [TO GO] locally but is_to_go stays false on the server).
+      const liveStoreItem = useOrderStore
+        .getState()
+        .ordersById[useOrderStore.getState().activeOrderId ?? ""]?.items.find(
+          (i) => i.id === currentCartItem.id,
+        );
+      const resolvedDbItemId =
+        liveStoreItem?.db_order_item_id ?? currentCartItem.db_order_item_id;
+
       const updatedItem = {
         ...currentCartItem,
+        db_order_item_id: resolvedDbItemId,
         quantity: currentState.quantity,
         price: currentTotal / Math.max(1, currentState.quantity),
         customizations: finalCustomizations,
@@ -1482,17 +1498,18 @@ const ModifierScreenContent = ({
       };
       updateItemInActiveOrder(updatedItem);
 
-      // Persist the per-item TO GO flag to the backend when it changed on an
-      // already-synced item. New/unsynced items persist via the add reconcile
-      // hook in addItemToBackend, so we only fire here when a db row exists.
+      // Persist the per-item TO GO flag whenever it changed and the item has a
+      // backend row (resolved fresh above). If it still has no db id (truly not
+      // synced yet), addItemToBackend's reconcile fires the toggle when the id
+      // lands, so the change is never lost.
       if (
         Boolean(currentCartItem.is_to_go) !== Boolean(currentState.isToGo) &&
-        currentCartItem.db_order_item_id &&
+        resolvedDbItemId &&
         supabaseRef.current
       ) {
         OrderService.toggleToGoOnItems(
           supabaseRef.current,
-          [currentCartItem.db_order_item_id],
+          [resolvedDbItemId],
           currentState.isToGo,
         ).catch(() => {
           // Fire-and-forget: local flag is persisted; a later broadcast
@@ -1688,7 +1705,8 @@ const ModifierScreenContent = ({
             className="text-sm text-center mb-4"
             style={{ color: colors.label }}
           >
-            This item has been sent to the kitchen and cannot be modified.
+            This item is in the kitchen. Prep is locked, but you can still mark
+            it to-go.
           </Text>
           <View
             className="rounded-xl p-3 w-full border flex-row items-center gap-3"
@@ -1709,6 +1727,45 @@ const ModifierScreenContent = ({
               </Text>
             </View>
           </View>
+
+          {/* TO GO — still editable after the item has been sent. Persists via
+              toggle_to_go_order_items, which bumps the order so the KDS re-fetches
+              and shows/hides the TO GO pill. */}
+          <View
+            className="rounded-xl p-3 mt-3 w-full border flex-row items-center justify-between"
+            style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+          >
+            <View className="flex-1 pr-3">
+              <Text
+                className="text-sm font-semibold"
+                style={{ color: colors.heading }}
+              >
+                TO GO
+              </Text>
+              <Text className="text-xs mt-0.5" style={{ color: colors.muted }}>
+                Package this item to-go
+              </Text>
+            </View>
+            <Switch
+              value={Boolean(cartItem.is_to_go)}
+              onValueChange={(v) => {
+                updateItemInActiveOrder({ ...cartItem, is_to_go: v });
+                if (cartItem.db_order_item_id && supabaseRef.current) {
+                  OrderService.toggleToGoOnItems(
+                    supabaseRef.current,
+                    [cartItem.db_order_item_id],
+                    v,
+                  ).catch(() => {
+                    // Fire-and-forget: local flag is set; a later broadcast
+                    // re-fetch reconciles the server state.
+                  });
+                }
+              }}
+              trackColor={{ false: colors.border, true: colors.teal }}
+              thumbColor={colors.onSolid}
+            />
+          </View>
+
           <TouchableOpacity
             onPressIn={close}
             className="mt-4 px-6 py-2.5 rounded-full"

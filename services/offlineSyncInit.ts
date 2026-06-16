@@ -2100,6 +2100,23 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           const latestItem = latestOrder?.items.find(
             (i: any) => i.id === localItemId,
           );
+
+          // Persist per-item TO GO if set — the add RPC doesn't carry is_to_go
+          // (column defaults false), so mirror the online addItemToBackend
+          // reconcile here or an offline-added to-go item silently loses its tag.
+          if (latestItem?.is_to_go && data.order_item_id) {
+            OrderService.toggleToGoOnItems(
+              _supabaseClient,
+              [data.order_item_id],
+              true,
+            ).catch((err) => {
+              console.warn(
+                "[OfflineSync:add_item] to-go reconcile failed:",
+                err,
+              );
+            });
+          }
+
           if (
             latestItem?.kitchen_status === getKitchenSentStatus() &&
             data.order_item_id

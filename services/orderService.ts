@@ -1,5 +1,6 @@
 import { getDeviceId } from "@/lib/deviceId";
 import { DEADLINES } from "@/lib/network/deadlines";
+import { clearPendingToGo, markPendingToGo } from "@/lib/pendingToGo";
 import {
     rpcWithIdempotency,
     withIdempotency,
@@ -1598,19 +1599,33 @@ export class OrderService {
     if (orderItemIds.length === 0) {
       return { data: null, error: null };
     }
-    return _runWithDeadline<any>(
-      "toggle_to_go_order_items",
-      DEADLINES.hotMutation,
-      async (signal) => {
-        const { data, error } = await client
-          .rpc("toggle_to_go_order_items", {
-            p_order_item_ids: orderItemIds,
-            p_is_to_go: isToGo,
-          })
-          .abortSignal(signal);
-        return { data, error };
-      },
-    );
+    // Protect the optimistic local flag from a stale concurrent fetch/broadcast
+    // until this persist commits (see lib/pendingToGo). On failure we clear the
+    // markers so the next fetch reconciles local state back to the DB value.
+    markPendingToGo(orderItemIds, isToGo);
+    let result: { data: any; error: any };
+    try {
+      result = await _runWithDeadline<any>(
+        "toggle_to_go_order_items",
+        DEADLINES.hotMutation,
+        async (signal) => {
+          const { data, error } = await client
+            .rpc("toggle_to_go_order_items", {
+              p_order_item_ids: orderItemIds,
+              p_is_to_go: isToGo,
+            })
+            .abortSignal(signal);
+          return { data, error };
+        },
+      );
+    } catch (err) {
+      clearPendingToGo(orderItemIds);
+      throw err;
+    }
+    if (result?.error) {
+      clearPendingToGo(orderItemIds);
+    }
+    return result;
   }
 
   /**
