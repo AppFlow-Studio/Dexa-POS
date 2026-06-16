@@ -257,7 +257,14 @@ export class CastlesService {
     this.config = config;
     let lastError: Error | null = null;
 
-    for (let attempt = 1; attempt <= CASTLES_CONNECT_MAX_RETRIES; attempt++) {
+    // Cold connect (background auto-connect after a plug/power-cycle): make a
+    // single light attempt and let the auto-connect coordinator's retry ladder
+    // own the cadence. The terminal may still be rebooting (0 bytes back), and
+    // stacking the escalated multi-return2Idle inner retries here would make
+    // each attempt tens of seconds — too slow to feel instant once the app boots.
+    const maxAttempts = config.coldConnect ? 1 : CASTLES_CONNECT_MAX_RETRIES;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       // Escalation: attempts 2+ assume the terminal is in a stuck app-layer
       // state (the empty-buffer / response-timeout symptom). One return2Idle
       // and a fresh socket weren't enough — we send return2Idle multiple
@@ -269,7 +276,7 @@ export class CastlesService {
       this._emitConnectProgress(
         attempt === 1
           ? "Connecting to terminal…"
-          : `Reconnecting (attempt ${attempt} of ${CASTLES_CONNECT_MAX_RETRIES})…`,
+          : `Reconnecting (attempt ${attempt} of ${maxAttempts})…`,
       );
 
       try {
@@ -347,7 +354,7 @@ export class CastlesService {
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         console.warn(
-          `[CastlesService] Attempt ${attempt}/${CASTLES_CONNECT_MAX_RETRIES} failed:`,
+          `[CastlesService] Attempt ${attempt}/${maxAttempts} failed:`,
           lastError.message,
         );
         // NOTE: react-native-tcp-socket does NOT expose setLinger, so this is
@@ -362,7 +369,15 @@ export class CastlesService {
         // recovery via background probe loop, and throw a typed error so
         // callers (testConnection / processSale / etc.) can render the
         // power-cycle modal instead of a cryptic timeout string.
-        if (err instanceof CastlesEmptyResponseError) {
+        //
+        // EXCEPTION — cold connect: a freshly plugged/power-cycled terminal
+        // also returns 0 bytes while CastlesPay is still booting (~5-10s).
+        // That's indistinguishable from a wedge here, so on the background
+        // auto-connect path we DON'T flip to "wedged" (which would pop the
+        // power-cycle modal and hand off to the slow 15s probe loop). We let
+        // it surface as a plain failure and the coordinator's retry ladder
+        // tries again once the app is up.
+        if (err instanceof CastlesEmptyResponseError && !config.coldConnect) {
           this._emitConnectProgress(null);
           getCastlesConnectionSupervisor().notifyEmptyBuffer({
             connectionType: config.connectionType ?? "local_socket",
@@ -374,7 +389,7 @@ export class CastlesService {
           );
         }
 
-        if (attempt < CASTLES_CONNECT_MAX_RETRIES) {
+        if (attempt < maxAttempts) {
           // Give the terminal at least 3s before reconnecting so CastlesPay
           // has some chance to time out its own session state internally.
           // This is best-effort — the app-layer freeze symptom (empty buffer
@@ -391,7 +406,7 @@ export class CastlesService {
 
     this._emitConnectProgress(null);
     const connectErr = new Error(
-      `[CastlesService] Failed to connect after ${CASTLES_CONNECT_MAX_RETRIES} attempts: ${lastError?.message}`,
+      `[CastlesService] Failed to connect after ${maxAttempts} attempt${maxAttempts === 1 ? "" : "s"}: ${lastError?.message}`,
     );
     Sentry.captureException(connectErr, {
       tags: {

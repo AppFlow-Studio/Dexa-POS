@@ -11,6 +11,16 @@
 //
 // Detach is already handled by CastlesUsbTransport, which fires the service's
 // close path; the next attach re-triggers this coordinator.
+//
+// Why a retry ladder: plugging the cable in *power-cycles* the terminal, and
+// CastlesPay takes ~5-10s to reboot. During that window the USB serial port
+// enumerates and the socket opens, but the terminal returns 0 bytes to our wake
+// (return2Idle) / verify (getData) commands. A single connect attempt therefore
+// (almost) always lands mid-boot and fails. So both the hotplug and the startup
+// paths retry on a short bounded backoff that covers the boot window, and the
+// connect runs in `coldConnect` mode so a boot-window empty buffer is treated as
+// "not ready yet, retry" rather than a firmware wedge (which would pop the
+// power-cycle modal and hand off to the slow 15s supervisor probe loop).
 
 import type { EventSubscription } from 'expo-modules-core';
 import { addAttachedListener } from '@/modules/castles-usb';
@@ -22,20 +32,23 @@ import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
 const CASTLES_VENDOR_ID = 0x0ca6;
 
 /** Hotplug: a single physical plug emits several attach broadcasts and the
- *  device needs a beat to enumerate before listDevices() sees it — so debounce. */
+ *  device needs a beat to enumerate before listDevices() sees it — so debounce
+ *  the *first* attempt by this much. Subsequent retries use RETRY_DELAYS_MS. */
 const ATTACH_DEBOUNCE_MS = 750;
 
-/** Startup: the device is already enumerated, so connect with zero debounce. If
- *  the terminal app isn't ready yet (e.g. both the POS and the terminal just
- *  powered on together), retry on a bounded backoff instead of waiting for the
- *  next sale. */
-const STARTUP_RETRY_DELAYS_MS = [3_000, 6_000, 12_000];
+/** Bounded backoff covering the terminal's ~5-10s CastlesPay boot window with
+ *  snappy early rungs, so the connect lands within a second or two of the app
+ *  coming up instead of waiting for the next sale or a manual Test. Each connect
+ *  attempt is a single light `coldConnect` pass (fast fail), so this ladder —
+ *  not the service's inner retry loop — owns the recovery cadence. If it
+ *  exhausts, the hook's 5s USB offline-poll keeps trying as a long-tail
+ *  fallback. */
+const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 12_000];
 
 let attachSub: EventSubscription | null = null;
 let connectInFlight = false;
-let attachTimer: ReturnType<typeof setTimeout> | null = null;
-let startupTimer: ReturnType<typeof setTimeout> | null = null;
-let startupRetryIndex = 0;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryIndex = 0;
 
 /** Returns the configured terminal id iff the station's terminal is USB Castles. */
 function getUsbCastlesTerminalId(): string | null {
@@ -64,7 +77,7 @@ function clearActivity(): void {
 
 /**
  * @returns true if connected or there was nothing to do (benign skip); false if
- * a connect was attempted but failed — the startup caller uses this to retry.
+ * a connect was attempted but failed — the caller's retry ladder uses this.
  */
 async function ensureUsbConnected(reason: string): Promise<boolean> {
   if (connectInFlight) return true;
@@ -88,12 +101,15 @@ async function ensureUsbConnected(reason: string): Promise<boolean> {
       connectionType: 'usb',
       timeout: 10_000,
       terminalId,
+      // Boot-tolerant: a 0-byte reply while CastlesPay is still rebooting must
+      // not be treated as a firmware wedge — this ladder retries instead.
+      coldConnect: true,
     });
     console.log(`[CastlesUsbAutoConnect] Connected (${reason})`);
     return true;
   } catch (e) {
     // Non-fatal: the on-demand sale path and the manual setup wizard can still
-    // connect, and a later attach event (or startup retry) will try again.
+    // connect, and the retry ladder (or a later attach event) will try again.
     console.log(
       `[CastlesUsbAutoConnect] Connect failed (${reason}, non-fatal):`,
       e instanceof Error ? e.message : String(e),
@@ -104,32 +120,48 @@ async function ensureUsbConnected(reason: string): Promise<boolean> {
   }
 }
 
-/** Hotplug attach — debounced so the device can enumerate. */
-function scheduleAttachConnect(): void {
-  showConnecting();
-  if (attachTimer) clearTimeout(attachTimer);
-  attachTimer = setTimeout(() => {
-    attachTimer = null;
-    void ensureUsbConnected('usb-attach');
-  }, ATTACH_DEBOUNCE_MS);
-}
-
-/** Startup — zero debounce, with a bounded retry for a not-yet-ready terminal. */
-async function runStartupConnect(): Promise<void> {
-  startupTimer = null;
-  const ok = await ensureUsbConnected('startup');
+/** One attempt + bounded backoff retry for a not-yet-ready (booting) terminal.
+ *  Shared by the hotplug and startup paths. */
+async function runConnectWithRetry(reason: string): Promise<void> {
+  retryTimer = null;
+  const ok = await ensureUsbConnected(reason);
   if (ok) {
-    startupRetryIndex = 0;
+    retryIndex = 0;
     return;
   }
-  if (startupRetryIndex < STARTUP_RETRY_DELAYS_MS.length) {
-    const delay = STARTUP_RETRY_DELAYS_MS[startupRetryIndex++];
-    console.log(`[CastlesUsbAutoConnect] Startup retry in ${delay}ms`);
-    startupTimer = setTimeout(() => {
+  if (retryIndex < RETRY_DELAYS_MS.length) {
+    const delay = RETRY_DELAYS_MS[retryIndex++];
+    console.log(`[CastlesUsbAutoConnect] Retry in ${delay}ms (${reason})`);
+    retryTimer = setTimeout(() => {
       showConnecting();
-      void runStartupConnect();
+      void runConnectWithRetry(reason);
     }, delay);
+  } else {
+    console.log(
+      `[CastlesUsbAutoConnect] Retry ladder exhausted (${reason}); ` +
+        `the USB offline-poll fallback will keep trying`,
+    );
   }
+}
+
+/** Kick off a fresh connect ladder. `initialDelayMs` lets the hotplug path wait
+ *  for USB enumeration before the first attempt while startup goes immediately.
+ *  Resets the ladder so each physical plug/boot starts clean. */
+function scheduleConnect(reason: string, initialDelayMs: number): void {
+  showConnecting();
+  retryIndex = 0;
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => void runConnectWithRetry(reason), initialDelayMs);
+}
+
+/**
+ * True while the coordinator is actively connecting or has a retry pending.
+ * The hook's USB offline-poll checks this so it doesn't contend with the
+ * coordinator (which is the primary, event-driven USB reconnect driver) and
+ * stack on the shared command mutex.
+ */
+export function isCastlesUsbConnectInFlight(): boolean {
+  return connectInFlight || retryTimer !== null;
 }
 
 /**
@@ -142,30 +174,26 @@ export function startCastlesUsbAutoConnect(): void {
 
   attachSub = addAttachedListener((event) => {
     if (event.vendorId !== CASTLES_VENDOR_ID) return;
-    scheduleAttachConnect();
+    // Hotplug: debounce the first attempt for enumeration, then retry through
+    // the terminal's reboot window.
+    scheduleConnect('usb-attach', ATTACH_DEBOUNCE_MS);
   });
 
   // Already-plugged-in / cold-boot path: instant feedback + zero-debounce
-  // connect (the device is already enumerated), with a bounded retry so a
-  // terminal that's still booting recovers without waiting for the next sale.
-  startupRetryIndex = 0;
-  showConnecting();
-  startupTimer = setTimeout(() => void runStartupConnect(), 0);
+  // first attempt (the device is already enumerated), with the bounded retry
+  // ladder so a terminal that's still booting recovers without a manual Test.
+  scheduleConnect('startup', 0);
 
   console.log('[CastlesUsbAutoConnect] Started');
 }
 
 /** Stop listening and cancel any pending connect. Idempotent. */
 export function stopCastlesUsbAutoConnect(): void {
-  if (attachTimer) {
-    clearTimeout(attachTimer);
-    attachTimer = null;
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
   }
-  if (startupTimer) {
-    clearTimeout(startupTimer);
-    startupTimer = null;
-  }
-  startupRetryIndex = 0;
+  retryIndex = 0;
   // Drop a pending "Connecting…" label if we're tearing down before it resolved.
   if (!connectInFlight) clearActivity();
   if (attachSub) {

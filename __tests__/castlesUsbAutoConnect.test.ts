@@ -160,8 +160,12 @@ describe('castlesUsbAutoConnect', () => {
     await jest.advanceTimersByTimeAsync(10);
     expect(service.connect).toHaveBeenCalledTimes(1);
 
-    // First bounded retry fires at 3000ms.
-    await jest.advanceTimersByTimeAsync(3000);
+    // First bounded retry fires at RETRY_DELAYS_MS[0] = 1000ms.
+    await jest.advanceTimersByTimeAsync(1000);
     expect(service.connect).toHaveBeenCalledTimes(2);
+
+    // Second retry fires at RETRY_DELAYS_MS[1] = 2000ms later.
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(service.connect).toHaveBeenCalledTimes(3);
   });
 });
