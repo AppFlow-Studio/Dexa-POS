@@ -578,6 +578,29 @@ const SeatPill = memo(function SeatPill({
   );
 });
 
+// Persist a per-item TO GO change to the backend when it actually changed and
+// the item has a synced backend row. Fire-and-forget: the caller has already
+// set the local flag; OrderService.toggleToGoOnItems marks the toggle pending
+// so an in-flight broadcast re-fetch won't clobber the optimistic value, and a
+// later re-fetch reconciles the server state. If the item has no db id yet, the
+// add-time reconcile in useOrderStore.addItemToBackend fires the toggle once the
+// id lands, so the change is never lost. Shared by the normal-item AND open-item
+// save branches so they can't drift — that drift is exactly how open items ended
+// up showing [TO GO] locally while is_to_go stayed false on the server.
+const persistToGoIfChanged = (
+  client: Parameters<typeof OrderService.toggleToGoOnItems>[0] | null,
+  dbItemId: string | undefined | null,
+  prevIsToGo: boolean | undefined,
+  nextIsToGo: boolean,
+) => {
+  if (Boolean(prevIsToGo) === Boolean(nextIsToGo)) return;
+  if (!dbItemId || !client) return;
+  OrderService.toggleToGoOnItems(client, [dbItemId], nextIsToGo).catch(() => {
+    // Fire-and-forget: local flag is persisted; a later broadcast re-fetch
+    // reconciles the server state.
+  });
+};
+
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -1342,8 +1365,20 @@ const ModifierScreenContent = ({
       (currentMode === "edit" || currentMode === "fullscreen") &&
       currentCartItem
     ) {
+      // Re-read the LIVE store item so we resolve a fresh db_order_item_id —
+      // the sheet snapshot can predate the backend sync (same reason as the
+      // regular-item branch below) — and so we don't write a stale null id back.
+      const liveStoreItem = useOrderStore
+        .getState()
+        .ordersById[useOrderStore.getState().activeOrderId ?? ""]?.items.find(
+          (i) => i.id === currentCartItem.id,
+        );
+      const resolvedDbItemId =
+        liveStoreItem?.db_order_item_id ?? currentCartItem.db_order_item_id;
+
       const updatedOpenItem = {
         ...currentCartItem,
+        db_order_item_id: resolvedDbItemId,
         quantity: currentState.quantity,
         unitPrice:
           currentCartItem.unitPrice ||
@@ -1358,8 +1393,19 @@ const ModifierScreenContent = ({
           notes: currentState.notes || "Open Item",
         },
         isDraft: false,
+        is_to_go: currentState.isToGo,
       };
       updateItemInActiveOrder(updatedOpenItem);
+
+      // Persist the per-item TO GO flag (mirrors the regular-item branch). If
+      // the item has no db id yet, addItemToBackend's reconcile fires the toggle
+      // when the id lands, so the change is never lost.
+      persistToGoIfChanged(
+        supabaseRef.current,
+        resolvedDbItemId,
+        currentCartItem.is_to_go,
+        currentState.isToGo,
+      );
 
       // Apply seat override for open items
       if (shouldApplySeat && currentCartItem) {
@@ -1502,20 +1548,12 @@ const ModifierScreenContent = ({
       // backend row (resolved fresh above). If it still has no db id (truly not
       // synced yet), addItemToBackend's reconcile fires the toggle when the id
       // lands, so the change is never lost.
-      if (
-        Boolean(currentCartItem.is_to_go) !== Boolean(currentState.isToGo) &&
-        resolvedDbItemId &&
-        supabaseRef.current
-      ) {
-        OrderService.toggleToGoOnItems(
-          supabaseRef.current,
-          [resolvedDbItemId],
-          currentState.isToGo,
-        ).catch(() => {
-          // Fire-and-forget: local flag is persisted; a later broadcast
-          // re-fetch reconciles the server state.
-        });
-      }
+      persistToGoIfChanged(
+        supabaseRef.current,
+        resolvedDbItemId,
+        currentCartItem.is_to_go,
+        currentState.isToGo,
+      );
 
       // Ensure manual sync matches the updated seat
       if (shouldApplySeat) {

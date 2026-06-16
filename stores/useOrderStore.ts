@@ -66,6 +66,7 @@ import { useTableSessionStore } from "./useTableSessionStore";
 // } from "@/lib/offlineIdRegistry";
 // Import pure calculation functions from order-calculator module
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
+import { resolveInboundToGo } from "@/lib/pendingToGo";
 import { snapshotTableName } from "@/lib/orderDisplay";
 import {
   forceSetLocalSequence,
@@ -1869,6 +1870,31 @@ const addItemToBackend = async (
 
         // Phase 7D: Set sync status in dedicated store (not on item)
         useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
+
+        // Reconcile per-item "TO GO": add_open_item_v2 does NOT persist
+        // is_to_go (the column defaults false), so an open item created/edited
+        // with TO GO on must be pushed now that the backend row exists. Mirrors
+        // the regular-item reconcile below (~2380). Read the FRESH store item
+        // (not the stale add-time snapshot) so a to-go set during the sync
+        // window isn't dropped. Fire BEFORE the retroactive kitchen-send below
+        // so the toggle's sync_version bump precedes the KDS broadcast. Toggling
+        // OFF needs no action here — the new DB row is already false.
+        const reconcileOpenItemForToGo = useOrderStore
+          .getState()
+          .ordersById[resolveOrderKey()]?.items.find((i) => i.id === item.id);
+        if (reconcileOpenItemForToGo?.is_to_go) {
+          OrderService.toggleToGoOnItems(
+            supabase,
+            [addResult.order_item_id],
+            true,
+          ).catch((err) => {
+            if (__DEV__)
+              console.warn(
+                "[addItemToBackend] open-item to-go reconcile failed:",
+                err,
+              );
+          });
+        }
 
         // Invalidate calculation cache after item sync (coalesced)
         scheduleCalculationCacheInvalidation();
@@ -14390,7 +14416,14 @@ export const useOrderStore = create<OrderState>()(
                             price: dbItem.unit_price,
                             cashPrice: dbItem.cash_price,
                             is_voided: dbItem.is_voided,
-                            is_to_go: dbItem.is_to_go ?? localItem.is_to_go,
+                            // Route through resolveInboundToGo so an in-flight
+                            // optimistic toggle isn't clobbered by a stale
+                            // backend `false` (the `??` only guards an ABSENT
+                            // column, not a legitimate false landing mid-flight).
+                            is_to_go: resolveInboundToGo(
+                              dbItem.id,
+                              dbItem.is_to_go ?? false,
+                            ),
                             // Preserve course number from backend to prevent items being grouped into course 1
                             courseNumber:
                               dbItem.course_number ||
@@ -14481,7 +14514,12 @@ export const useOrderStore = create<OrderState>()(
                         seatNumber: dbItem.seat_number ?? null,
                         category_name: dbItem.category_name || "Uncategorized",
                         is_voided: dbItem.is_voided || false,
-                        is_to_go: dbItem.is_to_go || false,
+                        // Consistent with the merge branch above — honor any
+                        // in-flight optimistic toggle over a stale backend value.
+                        is_to_go: resolveInboundToGo(
+                          dbItem.id,
+                          dbItem.is_to_go ?? false,
+                        ),
                         sync_status: "synced" as const,
                         customizations: {
                           notes: dbItem.special_instructions || undefined,
