@@ -76,13 +76,30 @@ export function KioskCheckoutView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipEnabled, status]);
 
+  // ---- PREPARING ----
+  // While the order is being created/synced we show a clean full-screen loader
+  // rather than a half-disabled tip screen the customer might tap at. Prep
+  // errors fall through to the error UI below.
+  if (step === "tip" && status === "error") {
+    return (
+      <PreparingScreen
+        config={config}
+        error={error}
+        onBack={handleBack}
+      />
+    );
+  }
+  if (step === "tip" && (!totals || status === "creating" || status === "idle")) {
+    return <PreparingScreen config={config} onBack={handleBack} />;
+  }
+
   // ---- TIP STEP ----
   if (step === "tip") {
     return (
       <TipStep
         config={config}
         totals={totals}
-        loading={status === "creating" || status === "idle" || !totals}
+        loading={false}
         onBack={handleBack}
         onConfirm={(tip) => runPayment(tip)}
       />
@@ -217,6 +234,85 @@ function SuccessScreen({
         </Pressable>
       </View>
     );
+}
+
+/**
+ * Full-screen loader shown while the order is being created/synced, so the
+ * customer never lands on a half-disabled tip screen. Doubles as the prep-error
+ * surface (with a Back-to-cart action) when order creation fails.
+ */
+function PreparingScreen({
+  config,
+  error,
+  onBack,
+}: {
+  config: KioskConfig;
+  error?: string | null;
+  onBack: () => void;
+}) {
+  const muted = `${config.textColor}99`;
+  const isError = !!error;
+
+  return (
+    <View
+      className="flex-1 items-center justify-center px-10"
+      style={{ backgroundColor: config.backgroundColor, gap: 20 }}
+    >
+      {/* Back */}
+      <Pressable
+        onPress={onBack}
+        hitSlop={8}
+        style={{
+          position: "absolute",
+          top: 20,
+          left: 20,
+          width: 48,
+          height: 48,
+          borderRadius: 24,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: `${config.textColor}12`,
+        }}
+      >
+        <ChevronLeft size={26} color={config.textColor} />
+      </Pressable>
+
+      {isError ? (
+        <>
+          <Text style={{ fontSize: 24, fontWeight: "800", color: config.textColor }}>
+            We couldn’t start your order
+          </Text>
+          <Text style={{ fontSize: 16, color: muted, textAlign: "center" }}>
+            {error}
+          </Text>
+          <Pressable
+            onPress={onBack}
+            style={{
+              marginTop: 8,
+              paddingHorizontal: 36,
+              paddingVertical: 16,
+              borderRadius: 16,
+              backgroundColor: config.primaryColor,
+            }}
+          >
+            <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "700" }}>
+              Back to cart
+            </Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <ActivityIndicator size="large" color={config.primaryColor} />
+          <Text style={{ fontSize: 20, fontWeight: "700", color: config.textColor }}>
+            Getting your order ready…
+          </Text>
+          <Text style={{ fontSize: 15, color: muted }}>
+            Just a moment.
+          </Text>
+        </>
+      )}
+    </View>
+  );
 }
 
 function TipStep({
