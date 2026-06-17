@@ -56,7 +56,36 @@ const createStyles = () =>
     },
     containerNoImage: {
       aspectRatio: undefined,
-      height: 64,
+      height: 80,
+      backgroundColor: colors.card,
+      borderColor: `${colors.teal}24`,
+    },
+    contentContainerNoImage: {
+      flex: 1,
+      justifyContent: "space-between",
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      gap: 4,
+    },
+    nameTextNoImage: {
+      fontSize: 13,
+      lineHeight: 16,
+      fontWeight: "700",
+      letterSpacing: 0.2,
+      color: colors.heading,
+    },
+    priceRowNoImage: {
+      marginTop: 0,
+    },
+    cardPriceNoImage: {
+      fontSize: 14,
+      letterSpacing: 0.2,
+    },
+    cashPillNoImage: {
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      borderRadius: 999,
+      gap: 4,
     },
     // Modifier corner triangle
     modifierCorner: {
@@ -339,25 +368,44 @@ const MenuItem: React.FC<MenuItemProps> = ({
       {showMenuImages && <View style={styles.divider} />}
 
       {/* Content */}
-      <View style={styles.contentContainer}>
-        <Text style={styles.nameText} numberOfLines={2}>
+      <View
+        style={[
+          styles.contentContainer,
+          !showMenuImages && styles.contentContainerNoImage,
+        ]}
+      >
+        <Text
+          style={[styles.nameText, !showMenuImages && styles.nameTextNoImage]}
+          numberOfLines={2}
+        >
           {item.name}
         </Text>
 
         {showMenuItemPrices && (
-          <View style={styles.priceRow}>
+          <View
+            style={[
+              styles.priceRow,
+              !showMenuImages && styles.priceRowNoImage,
+            ]}
+          >
             <Text
-              style={
+              style={[
                 priceData.hasCustomPricing
                   ? styles.cardPriceCustom
-                  : styles.cardPrice
-              }
+                  : styles.cardPrice,
+                !showMenuImages && styles.cardPriceNoImage,
+              ]}
             >
               ${priceData.displayPrice?.toFixed(2)}
             </Text>
 
             {item.cashPrice && (
-              <View style={styles.cashPill}>
+              <View
+                style={[
+                  styles.cashPill,
+                  !showMenuImages && styles.cashPillNoImage,
+                ]}
+              >
                 <Text style={styles.cashAmount}>
                   ${item.cashPrice.toFixed(2)}
                 </Text>
