@@ -19,6 +19,7 @@ import {
 } from "@/lib/authFlow";
 import { getDeviceId } from "@/lib/deviceId";
 import { getDeviceName } from "@/lib/deviceName";
+import { markStart } from "@/lib/perf";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors } from "@/lib/theme";
 import { MerchantRole } from "@/lib/types";
@@ -538,6 +539,11 @@ const PinLoginScreen = () => {
 
       hideLoading();
       setPin("");
+      // Perf Phase 0: PIN success → order screen interactive. Ended by
+      // order-processing at renderStage 2; auto-cancelled (TTL) on KDS routes.
+      markStart("pos.boot_to_order", {
+        station_type: selectedStation?.station_type ?? "unknown",
+      });
       replaceRoute(
         "(main)",
         resolvePostLoginRoute(selectedStation?.station_type),

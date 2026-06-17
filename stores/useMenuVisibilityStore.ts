@@ -1,6 +1,6 @@
-import { mmkvStorage } from '@/lib/storage'
+import { createLazyPersistStorage } from '@/lib/storage'
 import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
 
 type MenuVisibilityState = {
   hiddenMenuIdsByLocation: Record<string, string[]>
@@ -41,7 +41,7 @@ export const useMenuVisibilityStore = create<MenuVisibilityState>()(
     }),
     {
       name: 'menu-visibility-store',
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
       partialize: state => ({
         hiddenMenuIdsByLocation: state.hiddenMenuIdsByLocation
       })

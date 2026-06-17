@@ -610,6 +610,14 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   // surfaces it as a brief Android system crash dialog on Landi devices.
   const cfdItems: CFDCartItem[] = useMemo(() => {
     try {
+      // Idle gate: skip the O(n) dual-pricing transform entirely when there is
+      // no CFD surface to render it. `isConnected` (external paired CFD) is in
+      // deps; the built-in CFD is read via getCachedCapabilities() (cache-first,
+      // same source used at mount detection) to avoid a TDZ ReferenceError —
+      // `hasBuiltinCfd` state is declared far below this memo. Downstream push
+      // effects + displayItems already gate on isConnected/hasBuiltinCfd, so an
+      // empty result while idle changes nothing the CFD surface renders.
+      if (!isConnected && !getCachedCapabilities()?.hasBuiltinCfd) return []
       if (!activeOrder?.items) return []
       const hideCourseNumbersOnCfd = pathname.includes('order-processing')
 
@@ -695,7 +703,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       return []
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsFingerprint, activeOrderSeating, pathname])
+  }, [itemsFingerprint, activeOrderSeating, pathname, isConnected])
 
   // Initialize CFD controller
   useEffect(() => {

@@ -57,6 +57,10 @@ export interface PrintingConfig {
   printRefundTickets: boolean
   printMerchantCopy: boolean
   printCustomerCopy: boolean
+  // When true, receipts show only the pricing for how the guest paid
+  // (card payment → card pricing only; cash payment → cash pricing only)
+  // instead of the dual Card Total / Cash Total breakdown.
+  matchReceiptPricingToPaymentMethod: boolean
 }
 
 export interface CashDrawerConfig {
@@ -226,6 +230,7 @@ export const DEFAULT_PRINTING_CONFIG: PrintingConfig = {
   printRefundTickets: true,
   printMerchantCopy: false,
   printCustomerCopy: true,
+  matchReceiptPricingToPaymentMethod: false,
 }
 
 export const DEFAULT_CASH_DRAWER_CONFIG: CashDrawerConfig = {

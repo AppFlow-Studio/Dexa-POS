@@ -11,6 +11,9 @@ import {
     toBulkUpdateStatusKey,
     toIdempotencyKey,
 } from "@/lib/network/idempotencyKey";
+import { isRecallExpired } from "@/lib/kdsAutomation";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { normalizePlatform } from "@/lib/platformAliases";
 import { createLazyPersistStorage, getJSON, setJSON } from "@/lib/storage";
 import { OrderService } from "@/services/orderService";
@@ -242,8 +245,12 @@ function restoreKdsRetryState(): void {
   }
 
   _recalledTicketIds.clear();
+  _recalledTicketAt.clear();
   for (const ticketId of persisted.recalledTicketIds ?? []) {
     _recalledTicketIds.add(ticketId);
+    // Restart the TTL clock on boot (persisted shape is id-only) — a stale
+    // recall persists at most RECALLED_TICKET_TTL after a restart.
+    _recalledTicketAt.set(ticketId, Date.now());
   }
 
   // Retry handles are not executable across app restarts because callbacks are ephemeral.
@@ -274,13 +281,30 @@ function deletePendingAction(ticketId: string): void {
 function addRecalledTicketId(ticketId: string): void {
   _recalledTicketIds.add(ticketId);
   _recalledCycleTicketIds.add(ticketId);
+  _recalledTicketAt.set(ticketId, Date.now());
   persistKdsRetryState();
 }
 
 function deleteRecalledTicketId(ticketId: string): void {
+  _recalledTicketAt.delete(ticketId);
   if (_recalledTicketIds.delete(ticketId)) {
     persistKdsRetryState();
   }
+}
+
+// Evict recalls older than RECALLED_TICKET_TTL from both Sets + the timestamp
+// map so an unfinished recall can't accumulate over a shift / across restarts.
+function cullExpiredRecalls(now: number): void {
+  if (_recalledTicketAt.size === 0) return;
+  let changed = false;
+  for (const [ticketId, at] of _recalledTicketAt) {
+    if (isRecallExpired(at, now, RECALLED_TICKET_TTL)) {
+      _recalledTicketAt.delete(ticketId);
+      _recalledCycleTicketIds.delete(ticketId);
+      if (_recalledTicketIds.delete(ticketId)) changed = true;
+    }
+  }
+  if (changed) persistKdsRetryState();
 }
 
 function scheduleRetry(
@@ -386,6 +410,12 @@ function getTicketMutationVersion(ticketId: string): number {
 /** Track ticket IDs that have been recalled — survives server refetches */
 const _recalledTicketIds = new Set<string>();
 const _recalledCycleTicketIds = new Set<string>();
+// Recall timestamps for TTL eviction. Recalls are removed on ticket completion,
+// but an incomplete recall (customer leaves, ticket never served) would otherwise
+// linger in the Sets forever — and across restarts, since they persist to MMKV.
+// TTL-cull them in overlayPendingActions (mirrors _pendingActions' TTL prune).
+const _recalledTicketAt = new Map<string, number>();
+const RECALLED_TICKET_TTL = 4 * 60 * 60 * 1000; // 4h — far past any live ticket
 
 /** Track order item IDs whose void/refund notice has been acknowledged locally.
  *  Persisted to MMKV so acknowledgements survive app restarts when there is no
@@ -450,6 +480,9 @@ function overlayPendingActions(tickets: KDSTicket[]): KDSTicket[] {
       deletePendingAction(ticketId);
     }
   }
+
+  // Evict long-stale recalls (4h TTL) so unfinished recalls don't accumulate.
+  cullExpiredRecalls(now);
 
   // Some bulk-done flows can regenerate ticket IDs from broadcast/refetch before
   // backend state fully settles. Keep those tickets hidden if all incoming items
@@ -874,6 +907,7 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
       prep_station: item.prep_station,
       rush: item.rush,
       is_prioritized: item.is_prioritized,
+      is_to_go: item.is_to_go,
       seat_number: item.seat_number ?? null,
       is_voided: item.is_voided,
       is_refunded: (item.refunded_quantity ?? 0) > 0,
@@ -924,6 +958,12 @@ function arraysShallowEqual(a: KDSTicket[], b: KDSTicket[]): boolean {
 /** Deep-compare two tickets by value, reusing unchanged references */
 function ticketDeepEqual(a: KDSTicket, b: KDSTicket): boolean {
   if (a.status !== b.status || a.prioritized !== b.prioritized) return false;
+  // Track the freeze epochs: when a ticket flips to "ready" the only field that
+  // changes can be ready_time_epoch (server completed_at). Without this the merge
+  // treats the ticket as unchanged, keeps the old (un-frozen / per-device) ref,
+  // and the "Served" timer keeps ticking. done_time_epoch tracked for parity.
+  if (a.ready_time_epoch !== b.ready_time_epoch) return false;
+  if (a.done_time_epoch !== b.done_time_epoch) return false;
   if (a.item_count !== b.item_count || a.order_number !== b.order_number)
     return false;
   if (a.display_number !== b.display_number || a.table_name !== b.table_name)
@@ -1399,9 +1439,19 @@ export const useKDSStore = create<KDSState>()(
             params.p_kds_display_id = kdsDisplayId;
           }
 
-          const { data, error } = await client.rpc(
-            "get_kds_tickets_v2",
-            params,
+          // Bad-WiFi: bound the KDS poll so it can't hang 30s+ on a slow link
+          // (this is the live hot-path fetch). On DEADLINE_EXCEEDED it returns
+          // { error } and the branch below resets isFetching; the next poll
+          // (15-30s, connection-quality-aware) recovers.
+          const { data, error } = await runWithDeadline<KDSTicket[]>(
+            "get_kds_tickets",
+            DEADLINES.read,
+            async (signal) => {
+              const res = await client
+                .rpc("get_kds_tickets_v2", params)
+                .abortSignal(signal);
+              return { data: res.data as KDSTicket[] | null, error: res.error };
+            },
           );
 
           // Discard stale response (but still reset isFetching)
@@ -1421,6 +1471,19 @@ export const useKDSStore = create<KDSState>()(
             normalizeKdsTicket({
               ...t,
               start_time_epoch: safeParseUtcTimestamp(t.start_time),
+              // Server-authoritative freeze for the "Served" (ready) column.
+              // get_kds_tickets_v2 returns ready_time = MAX(completed_at) across the
+              // round's active items — uniform across stations and stable across
+              // refetches, unlike the old per-device Date.now() stamp. Only set it
+              // for ready tickets; 0 (missing/unparseable) collapses to undefined so
+              // we never freeze a still-cooking ticket at epoch 0.
+              ready_time_epoch:
+                t.status === "ready"
+                  ? safeParseUtcTimestamp(
+                      (t as KDSTicket & { ready_time?: string | null })
+                        .ready_time,
+                    ) || undefined
+                  : undefined,
             }),
           );
           const stabilizedIncoming = stabilizeTicketsByLogicalSignature(
@@ -1523,9 +1586,16 @@ export const useKDSStore = create<KDSState>()(
             params.p_kds_display_id = kdsDisplayId;
           }
 
-          const { data, error } = await client.rpc(
-            "get_kds_tickets_v2",
-            params,
+          // Bad-WiFi: bound the background KDS poll (same as fetchTickets).
+          const { data, error } = await runWithDeadline<KDSTicket[]>(
+            "get_kds_tickets",
+            DEADLINES.read,
+            async (signal) => {
+              const res = await client
+                .rpc("get_kds_tickets_v2", params)
+                .abortSignal(signal);
+              return { data: res.data as KDSTicket[] | null, error: res.error };
+            },
           );
 
           // Discard stale response
@@ -1554,6 +1624,19 @@ export const useKDSStore = create<KDSState>()(
             normalizeKdsTicket({
               ...t,
               start_time_epoch: safeParseUtcTimestamp(t.start_time),
+              // Server-authoritative freeze for the "Served" (ready) column.
+              // get_kds_tickets_v2 returns ready_time = MAX(completed_at) across the
+              // round's active items — uniform across stations and stable across
+              // refetches, unlike the old per-device Date.now() stamp. Only set it
+              // for ready tickets; 0 (missing/unparseable) collapses to undefined so
+              // we never freeze a still-cooking ticket at epoch 0.
+              ready_time_epoch:
+                t.status === "ready"
+                  ? safeParseUtcTimestamp(
+                      (t as KDSTicket & { ready_time?: string | null })
+                        .ready_time,
+                    ) || undefined
+                  : undefined,
             }),
           );
           const stabilizedIncoming = stabilizeTicketsByLogicalSignature(
@@ -3510,6 +3593,9 @@ export const useKDSStore = create<KDSState>()(
         cancelAllRetries();
         _pendingActions.clear();
         _queuedAdvanceActions.clear();
+        _recalledTicketIds.clear();
+        _recalledCycleTicketIds.clear();
+        _recalledTicketAt.clear();
         _acknowledgedNoticeItemIds.clear();
         persistAcknowledgedNoticeItems();
         if (_refetchTimeout) {

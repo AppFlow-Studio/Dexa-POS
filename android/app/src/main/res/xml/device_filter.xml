@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Castles Technology Co., Ltd. — USB vendor ID 0x0CA6 (3238 decimal).
+      Saturn1000 USB pin pad. Declaring the device here makes Android:
+        1. grant the app persistent USB permission (no per-plug dialog), and
+        2. deliver USB_DEVICE_ATTACHED to MainActivity on plug-in,
+      which drives the zero-touch auto-connect flow.
+      Matched by vendor only so all Castles models are covered.
+    -->
+    <usb-device vendor-id="3238" />
+</resources>

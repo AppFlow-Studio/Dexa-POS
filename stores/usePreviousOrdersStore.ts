@@ -104,6 +104,32 @@ function _isFinalState(profile: OrderProfile): boolean {
   );
 }
 
+/**
+ * An "empty draft" shell: a still-open order with no line items and a zero
+ * total. These are created when a station opens an order (which assigns a
+ * display number) but never adds any items — common with cross-station order
+ * creation, where another terminal's abandoned draft surfaces here because the
+ * history fetch is location-scoped, not station-scoped. They carry no business
+ * meaning and only clutter the Previous Orders list (rendering as
+ * "$0.00 / Awaiting Payment"), so they're filtered out of the history feed
+ * entirely. They reappear the moment items are added — a subsequent fetch or
+ * broadcast carries a non-empty payload and this guard no longer matches.
+ *
+ * Conservative on purpose: requires BOTH zero items AND a zero total, and only
+ * applies to non-final orders, so a fully-voided-items order (non-zero stored
+ * total) or any paid/closed/refunded historical order is never hidden.
+ */
+function isEmptyDraftOrder(po: PreviousOrder): boolean {
+  return (
+    (po.items?.length ?? 0) === 0 &&
+    (po.total ?? 0) === 0 &&
+    !po.voided &&
+    !po.refunded &&
+    !po.closed_at &&
+    po.paymentStatus !== "Paid"
+  );
+}
+
 const HISTORY_REFRESH_COALESCE_MS = 4000;
 const SET_DATE_WINDOW_DEBOUNCE_MS = 200;
 let refreshPreviousOrdersInFlight: Promise<void> | null = null;
@@ -746,8 +772,14 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             ordersMap.set(key, order);
           });
 
-          // Convert map values back to an array
-          let mergedPreviousOrders = Array.from(ordersMap.values());
+          // Convert map values back to an array, dropping empty-draft shells
+          // (e.g. cross-station abandoned drafts) so they never render in the
+          // history list. Pagination state below is derived from the raw
+          // `fetchedOrders` count/cursor, so client-side filtering here does
+          // not skew keyset paging.
+          let mergedPreviousOrders = Array.from(ordersMap.values()).filter(
+            (po) => !isEmptyDraftOrder(po),
+          );
 
           // Sort by timestamp descending (newest first)
           mergedPreviousOrders.sort(
@@ -847,6 +879,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           const existing = lookup[id];
 
           if (!existing) {
+            // Empty-draft shells are filtered from the rendered history, so they
+            // must not inflate the "new orders" badge either (otherwise the count
+            // promises orders that a refresh won't surface). Non-final + no items
+            // + zero total mirrors isEmptyDraftOrder on the OrderProfile shape.
+            const isEmptyDraft =
+              !_isFinalState(profile) &&
+              (profile.items?.length ?? 0) === 0 &&
+              (profile.total_amount ?? 0) === 0;
+            if (isEmptyDraft) continue;
             const known = get().previousOrders.some(
               (po) => po.db_order_id === id || po.orderId === id,
             );
@@ -935,10 +976,14 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           if (po.orderId) existingKeys.add(po.orderId);
         }
 
-        const uniqueNewOrders = newOrders.filter((o) => {
-          const key = o.db_order_id || o.orderId;
-          return !existingKeys.has(key);
-        });
+        const uniqueNewOrders = newOrders
+          .filter((o) => {
+            const key = o.db_order_id || o.orderId;
+            return !existingKeys.has(key);
+          })
+          // Drop empty-draft shells (e.g. cross-station abandoned drafts).
+          // Cursor/hasMore below come from the raw page, so paging is unaffected.
+          .filter((o) => !isEmptyDraftOrder(o));
 
         if (uniqueNewOrders.length === 0) {
           set({

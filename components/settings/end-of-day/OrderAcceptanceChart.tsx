@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { View } from "react-native";
-import { LineChart } from "react-native-gifted-charts";
+import { LineChart } from "@/components/charts/LazyGiftedCharts";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,

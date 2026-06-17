@@ -10,6 +10,7 @@ import {
 } from "@/lib/menuItemPlaceholderIcon";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { cancelMenuModifierPreWarm } from "@/lib/menuModifierPreWarmControl";
+import { startInteraction } from "@/lib/perf";
 import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -38,7 +39,10 @@ const menuItemStylesByScheme = new Map<string, MenuItemStyles>();
 const createStyles = () =>
   StyleSheet.create({
     container: {
-      width: "19%",
+      // Perf F8: fills its FlashList grid cell (1/numColumns of the grid);
+      // gutters come from MenuSection's gridCell wrapper. Was "19%" of the
+      // FlatList row.
+      width: "100%",
       aspectRatio: 1,
       borderRadius: 12,
       marginBottom: 4,
@@ -278,11 +282,17 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const handlePress = useCallback(() => {
     if (!isMenuBlockedSync()) return;
+    const perf = startInteraction("pos.open_modifier_sheet", {
+      item_id: item.id,
+      has_modifiers: !!hasModifiers,
+      prewarmed: isModifierPreWarmed(item.id),
+    });
     const { activeOrderId } = useOrderStore.getState();
     useModifierSidebarStore
       .getState()
       .openToAdd(item, activeOrderId, categoryId, menuId);
-  }, [item, categoryId, menuId]);
+    perf.endAfterPaint();
+  }, [item, categoryId, menuId, hasModifiers]);
 
   const resolvedImageSource =
     imageSource ?? resolveMenuItemImageSource(item.image);

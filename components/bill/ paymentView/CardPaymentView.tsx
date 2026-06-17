@@ -35,6 +35,7 @@ import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
 import { useTipAdjustStore } from '@/stores/useTipAdjustStore'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
 import { generateRefId } from '@/types/dejavoo-spin-api'
@@ -71,6 +72,10 @@ const CardPaymentView = () => {
   const expandSheetToFull = usePaymentStore(s => s.expandSheetToFull)
   const setTransactionProcessing = usePaymentStore(
     s => s.setTransactionProcessing
+  )
+  // Live connect sub-step ("Connecting…", "Verifying…") during a cold-start sale.
+  const terminalConnectActivity = useTerminalConnectionStore(
+    s => s.connectActivity
   )
 
   // Expand bottom sheet to full height when entering card payment view
@@ -977,8 +982,9 @@ const CardPaymentView = () => {
                         fontWeight: '600',
                         fontSize: 12
                       }}
+                      numberOfLines={1}
                     >
-                      Terminal Connected
+                      {terminalConnectActivity ?? 'Terminal Connected'}
                     </Text>
                   </View>
                 </Animated.View>

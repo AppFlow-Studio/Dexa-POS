@@ -11,10 +11,12 @@ import { usePreviousOrdersListSync } from '@/hooks/pos/usePreviousOrdersListSync
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
+import { useShallow } from 'zustand/react/shallow'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { FlashList } from '@shopify/flash-list'
 import {
   AlertTriangle,
   ArrowDown,
@@ -32,7 +34,6 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
@@ -294,12 +295,44 @@ const PreviousOrdersScreen = () => {
   )
 
   // ─── Store-based data layer (mirrors PreviousOrdersSection pattern) ───
-  const ordersById = useOrderStore(s => s.ordersById)
-  const orderIds = useOrderStore(s => s.orderIds)
-  const currentStationId = useOrderStore(s => s.currentStationId)
-  const activeOrderId = useOrderStore(s => s.activeOrderId)
-  const workingSetOrderIds = useOrderStore(s => s.workingSetOrderIds)
-  const dbOrderIdIndex = useOrderStore(s => s.dbOrderIdIndex)
+  // Derive the live (active + working-set + own-station non-final) order set
+  // inside a useShallow store read instead of subscribing to the whole
+  // ordersById map. This screen only cares about those orders + DB-fetched
+  // history, so it re-renders only when a live order's reference changes or the
+  // live set changes — not on every mutation to any of the 800+ stale orders.
+  const liveActiveOrders = useOrderStore(
+    useShallow(s => {
+      const finalStatuses = new Set([
+        'completed',
+        'void',
+        'cancelled',
+        'voided'
+      ])
+      const liveIds = new Set<string>()
+      if (s.activeOrderId) liveIds.add(s.activeOrderId)
+      for (const wsId of s.workingSetOrderIds || []) {
+        liveIds.add(s.dbOrderIdIndex[wsId] || wsId)
+      }
+      for (const id of s.orderIds) {
+        if (liveIds.has(id)) continue
+        const o = s.ordersById[id]
+        if (!o) continue
+        if (o.station_id !== s.currentStationId) continue // own station only
+        if (finalStatuses.has(o.order_status ?? '')) continue
+        if (o.order_status === 'draft') continue
+        liveIds.add(id)
+      }
+      const result: OrderProfile[] = []
+      for (const id of liveIds) {
+        const o = s.ordersById[id]
+        if (!o) continue
+        // Hide empty drafts (active/working-set are added unconditionally above).
+        if (o.order_status === 'draft' && o.items.length === 0) continue
+        result.push(o)
+      }
+      return result
+    })
+  )
   const { previousOrders, newOrdersCount } = usePreviousOrdersStore()
   const loadMoreOrders = usePreviousOrdersStore(s => s.loadMoreOrders)
   const isLoadingMore = usePreviousOrdersStore(s => s._isLoadingMore)
@@ -325,24 +358,8 @@ const PreviousOrdersScreen = () => {
 
   // Combine active orders + history orders with dedup (same as PreviousOrdersSection)
   const allOrders: OrderProfile[] = useMemo(() => {
-    // Only include active + working set + own-station non-final orders.
-    // Do NOT scan all orderIds — useOrderStore has 800+ stale "ready" orders.
-    const finalStatuses = new Set(['completed', 'void', 'cancelled', 'voided'])
-    const liveIds = new Set<string>()
-    if (activeOrderId) liveIds.add(activeOrderId)
-    for (const wsId of workingSetOrderIds || []) {
-      const localId = dbOrderIdIndex[wsId] || wsId
-      liveIds.add(localId)
-    }
-    for (const id of orderIds) {
-      if (liveIds.has(id)) continue
-      const o = ordersById[id]
-      if (!o) continue
-      if (o.station_id !== currentStationId) continue // own station only
-      if (finalStatuses.has(o.order_status ?? '')) continue
-      if (o.order_status === 'draft') continue
-      liveIds.add(id)
-    }
+    // liveActiveOrders (selector above) already holds the active + working-set +
+    // own-station non-final orders with empty drafts filtered out.
     // Build lookup from DB-fetched previous orders to patch stale active order statuses.
     // usePreviousOrdersStore re-fetches from DB on screen focus, so this data is fresh.
     const poByDbId = new Map<string, typeof previousOrders[number]>()
@@ -351,9 +368,7 @@ const PreviousOrdersScreen = () => {
     }
 
     const activeOrders: OrderProfile[] = []
-    for (const id of liveIds) {
-      const o = ordersById[id]
-      if (!o) continue
+    for (const o of liveActiveOrders) {
       // Patch stale paid_status using fresh DB data from previous orders store
       if (o.db_order_id && o.paid_status === 'Refunded') {
         const po = poByDbId.get(o.db_order_id)
@@ -417,7 +432,7 @@ const PreviousOrdersScreen = () => {
       )
 
     return [...activeOrders, ...mappedHistoryOrders]
-  }, [ordersById, previousOrders])
+  }, [liveActiveOrders, previousOrders])
 
   // ─── Compute filter counts from allOrders ──────────────
   const filterCounts = useMemo(() => {
@@ -636,7 +651,7 @@ const PreviousOrdersScreen = () => {
     [setActiveOrder, router]
   )
 
-  // ─── FlatList render ────────────────────────────────────
+  // ─── FlashList render ───────────────────────────────────
   const renderItem = useCallback(
     ({ item }: { item: OrderProfile }) => {
       const canContinue =
@@ -806,10 +821,19 @@ const PreviousOrdersScreen = () => {
             backgroundColor: colors.screen
           }}
         >
-          <FlatList
+          {/* FlashList recycles row cells for smoother fling scrolling. Rows
+              expand on tap, so `extraData={expandedOrderId}` is REQUIRED to
+              re-render recycled cells when the expanded row changes, and
+              `disableAutoLayout` is intentionally NOT set (variable-height rows
+              need auto-layout correction). FlatList batching props have no
+              FlashList equivalent. */}
+          <FlashList
             data={filteredOrders}
             keyExtractor={item => item.id}
             renderItem={renderItem}
+            extraData={expandedOrderId}
+            estimatedItemSize={90}
+            drawDistance={500}
             ListEmptyComponent={
               isInitialLoading ? (
                 <View style={{ paddingTop: 4 }}>
@@ -849,10 +873,6 @@ const PreviousOrdersScreen = () => {
               paddingBottom: 16,
               backgroundColor: colors.screen
             }}
-            initialNumToRender={10}
-            maxToRenderPerBatch={10}
-            windowSize={5}
-            removeClippedSubviews={true}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.3}
             ListFooterComponent={

@@ -452,13 +452,18 @@ const BillSectionContent = ({
 
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const setSelectedTable = useDineInStore((s) => s.setSelectedTable);
-  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
-  const tables = useFloorPlanStore((s) => s.tables);
-  const sections = useFloorPlanStore((s) => s.sections);
+  // useShallow on the array/map selectors: a single table/session mutation
+  // produces a new top-level array/map ref but shallow-equal contents (Phase-3
+  // Wave T stabilizes per-table identities), so this stops ref churn from
+  // cascading re-renders into BillSummary/Totals. activeFloorPlanId is a
+  // primitive (zustand already compares with Object.is) — no useShallow.
+  const floorPlans = useFloorPlanStore(useShallow((s) => s.floorPlans));
+  const tables = useFloorPlanStore(useShallow((s) => s.tables));
+  const sections = useFloorPlanStore(useShallow((s) => s.sections));
   const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
   const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
   const refreshTableSessions = useFloorPlanStore((s) => s.refreshTableSessions);
-  const liveSessions = useTableSessionStore((s) => s.sessions);
+  const liveSessions = useTableSessionStore(useShallow((s) => s.sessions));
   const { activeEmployeeId } = useEmployeeStore();
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
   const { hideLoading, showLoading } = useLoading();

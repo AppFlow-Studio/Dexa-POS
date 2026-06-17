@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/card";
 import { colors } from "@/lib/theme";
 import React from "react";
 import { Dimensions, Text, View } from "react-native";
-import { BarChart } from "react-native-gifted-charts";
+import { BarChart } from "@/components/charts/LazyGiftedCharts";
 
 const LegendItem = ({ color, text }: { color: string; text: string }) => (
   <View className="flex-row items-center gap-2">

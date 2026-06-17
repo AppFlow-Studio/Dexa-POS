@@ -25,7 +25,7 @@ import {
   X,
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useState } from 'react'
-import { BarChart, PieChart } from 'react-native-gifted-charts'
+import { BarChart, PieChart } from '@/components/charts/LazyGiftedCharts'
 import {
   ActivityIndicator,
   Modal,

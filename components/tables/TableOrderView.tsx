@@ -19,6 +19,7 @@ import {
   getKitchenSentStatus,
   isItemReadyOrServed
 } from '@/lib/kitchenStatusUtils'
+import { markEnd } from '@/lib/perf'
 import { isActiveSession } from '@/lib/tableStateMachine'
 import { colors } from '@/lib/theme'
 import { OrderService } from '@/services/orderService'
@@ -171,6 +172,18 @@ const TableOrderView = React.forwardRef<
   })
   const initialRenderStageRef = useRef(renderStage)
   const prevRenderStageRef = useRef(renderStage)
+
+  // Perf T0: close the pos.table_open span (opened in usePendingTableOverlay)
+  // once the bill/header stage is interactive. prefetch_hit=true means the
+  // order was already local at mount (no skeleton, no blocking fetch).
+  const tableOpenSpanEndedRef = useRef(false)
+  useEffect(() => {
+    if (tableOpenSpanEndedRef.current || renderStage < 1) return
+    tableOpenSpanEndedRef.current = true
+    markEnd('pos.table_open', {
+      prefetch_hit: initialRenderStageRef.current >= 1
+    })
+  }, [renderStage])
 
   // --- 2. Standard Hooks & Context ---
   const router = useRouter()

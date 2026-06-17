@@ -18,6 +18,7 @@ import { debounce } from "lodash";
 import { createMMKV } from "react-native-mmkv";
 import type { PersistStorage, StorageValue } from "zustand/middleware";
 import { StateStorage } from "zustand/middleware";
+import { computeEnvSignature, ENV_SIGNATURE_KEY } from "@/lib/envSignature";
 
 // ============================================================================
 // MMKV INSTANCES
@@ -49,6 +50,104 @@ export const secureStorage = createMMKV({
 export const syncStorage = createMMKV({
   id: "dexa-pos-sync",
 });
+
+// ============================================================================
+// ENVIRONMENT GUARD (staging <-> production isolation)
+// ============================================================================
+
+/**
+ * Secure-storage keys that survive an environment switch. Only hardware /
+ * device identity belongs here — it is env-agnostic. Everything else in secure
+ * storage (Clerk session JWT, staff PIN hashes) is scoped to a specific
+ * backend + Clerk instance and must be dropped on a switch.
+ *
+ * Kept in sync with lib/deviceId.ts (DEVICE_ID_KEY). Duplicated as a literal
+ * here to avoid an import cycle (lib/deviceId imports from lib/storage).
+ */
+const ENV_SWITCH_PRESERVED_SECURE_KEYS = ["dexa-pos-device-id"] as const;
+
+export interface EnvReconcileResult {
+  /** True only when the signature actually changed (a real staging<->prod switch). */
+  switched: boolean;
+  from: string | null;
+  to: string;
+}
+
+let lastEnvReconcile: EnvReconcileResult | null = null;
+
+/** Result of the boot-time environment reconciliation (for logging / breadcrumbs). */
+export function getEnvReconcileResult(): EnvReconcileResult | null {
+  return lastEnvReconcile;
+}
+
+/**
+ * Detect a staging<->production switch and purge persisted state belonging to
+ * the previous environment.
+ *
+ * Runs at module init — BEFORE any zustand persist store hydrates — because
+ * stores import this module, so its body executes first. That ordering means
+ * cleared MMKV keys are gone before any store reads them, avoiding in-memory
+ * desync (no need to reset live store state).
+ *
+ * Safety: a MISSING signature (fresh install, or first upgrade to a build that
+ * has this guard) records the current signature and clears NOTHING. Only an
+ * actual change in signature triggers a purge — existing devices are never
+ * wiped by simply shipping this code.
+ *
+ * See lib/envSignature.ts for why the un-namespaced persistence causes the
+ * "Cannot coerce the result to a single JSON object" RLS error after a switch.
+ */
+function reconcileEnvironmentOnBoot(): EnvReconcileResult {
+  const current = computeEnvSignature();
+  const stored = storage.getString(ENV_SIGNATURE_KEY) ?? null;
+
+  if (stored === null) {
+    // First run with the guard present — record baseline, clear nothing.
+    storage.set(ENV_SIGNATURE_KEY, current);
+    return (lastEnvReconcile = { switched: false, from: null, to: current });
+  }
+
+  if (stored === current) {
+    return (lastEnvReconcile = { switched: false, from: stored, to: current });
+  }
+
+  // Real environment switch — wipe state from the previous backend.
+  console.warn(
+    `[EnvGuard] Backend environment changed (${stored} -> ${current}). ` +
+      `Clearing persisted state from the previous environment.`,
+  );
+
+  // General + sync stores are entirely env-specific — wipe wholesale. Every
+  // persisted zustand store (orders, settings, floor plan, employees, KDS,
+  // table sessions, etc.) lives in `storage`; offline queues/caches in `syncStorage`.
+  storage.clearAll();
+  syncStorage.clearAll();
+
+  // Secure store: keep hardware identity, drop the rest (Clerk session forces a
+  // re-login against the new instance; stale staff PIN hashes belong to the
+  // other DB and get re-synced after login).
+  try {
+    const preserved: Record<string, string> = {};
+    for (const key of ENV_SWITCH_PRESERVED_SECURE_KEYS) {
+      const v = secureStorage.getString(key);
+      if (v != null) preserved[key] = v;
+    }
+    secureStorage.clearAll();
+    for (const [key, value] of Object.entries(preserved)) {
+      secureStorage.set(key, value);
+    }
+  } catch (e) {
+    console.error("[EnvGuard] Failed to reset secure storage:", e);
+  }
+
+  // clearAll() above removed the old signature from general storage — re-stamp.
+  storage.set(ENV_SIGNATURE_KEY, current);
+
+  return (lastEnvReconcile = { switched: true, from: stored, to: current });
+}
+
+// Run once at module load, before any persisted store hydrates.
+reconcileEnvironmentOnBoot();
 
 // ============================================================================
 // ZUSTAND STORAGE ADAPTERS

@@ -36,11 +36,19 @@ interface TerminalConnectionState {
   lastUpdateAt: number;
   /** Timestamp when the current wedge was first detected, null when not wedged. */
   wedgedSince: number | null;
+  /**
+   * Human-readable connect sub-step ("Connecting to terminal…", "Waking
+   * terminal…", "Verifying terminal…"), or null when no connect is in flight.
+   * Lets progress UIs (Test Connection button, payment sheet, USB wizard) show
+   * what's happening instead of an opaque spinner. Written by CastlesService.
+   */
+  connectActivity: string | null;
   setQuality: (quality: TerminalConnectionQuality) => void;
   /** Mark wedged and stamp wedgedSince. Idempotent — repeated calls don't reset the timestamp. */
   markWedged: () => void;
   /** Clear wedge state back to healthy (called by supervisor on probe success). */
   clearWedge: () => void;
+  setConnectActivity: (activity: string | null) => void;
   reset: () => void;
 }
 
@@ -49,6 +57,7 @@ export const useTerminalConnectionStore = create<TerminalConnectionState>(
     quality: 'unknown',
     lastUpdateAt: 0,
     wedgedSince: null,
+    connectActivity: null,
     setQuality: (quality) => {
       // Don't let watchdog/sale-path writes overwrite a wedged state — only
       // the supervisor's clearWedge() can transition out of wedged.
@@ -65,7 +74,13 @@ export const useTerminalConnectionStore = create<TerminalConnectionState>(
     },
     clearWedge: () =>
       set({ quality: 'ok', lastUpdateAt: Date.now(), wedgedSince: null }),
+    setConnectActivity: (activity) => set({ connectActivity: activity }),
     reset: () =>
-      set({ quality: 'unknown', lastUpdateAt: 0, wedgedSince: null }),
+      set({
+        quality: 'unknown',
+        lastUpdateAt: 0,
+        wedgedSince: null,
+        connectActivity: null,
+      }),
   })
 );

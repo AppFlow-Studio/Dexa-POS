@@ -5,6 +5,7 @@ import {
   calculateItemEffectiveCashPrice,
   useOrderStore,
 } from "@/stores/useOrderStore";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -164,7 +165,6 @@ function calculateSplitCashTax(
 
 const SplitByItemView = () => {
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
-  const ordersById = useOrderStore((state) => state.ordersById);
   const activeOrderOutstandingTotal = useOrderStore(
     (state) => state.activeOrderOutstandingTotal,
   );
@@ -276,10 +276,9 @@ const SplitByItemView = () => {
     }
   }, [splits, activeSplitId]);
 
-  const activeOrder = useMemo(
-    () => (activeOrderId ? ordersById[activeOrderId] : null),
-    [ordersById, activeOrderId],
-  );
+  // useActiveOrder() subscribes to only the active order object (immer-stable),
+  // so this view no longer re-renders on unrelated order mutations.
+  const activeOrder = useActiveOrder();
 
   // Filter out voided and fully-paid items - they should not be included in splits
   const masterItems = useMemo(

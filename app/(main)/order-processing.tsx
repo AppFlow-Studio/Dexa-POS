@@ -25,6 +25,7 @@ import {
 } from "@/lib/localOrderSequence";
 import { formatOrderStatus, formatPaymentStatus } from "@/utils/orderStatusHelpers";
 import { getHeaderHeight } from "@/lib/headerHeight";
+import { markEnd } from "@/lib/perf";
 import { iosOnly } from "@/lib/safeAnimations";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { colors } from "@/lib/theme";
@@ -64,6 +65,7 @@ import React, {
 } from "react";
 import {
     Dimensions,
+    InteractionManager,
     Keyboard,
     Modal,
     PanResponder,
@@ -440,7 +442,15 @@ const OrderProcessing = () => {
     if (!order || order.db_order_id) return;
     // Dine-in orders create at seating; only eager-create non-dine-in here.
     if (order.order_type === "dine_in" || order.order_type === "Dine In") return;
-    void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+    // Defer the eager backend create off the screen-entry frame: it's an RPC
+    // whose broadcast/re-render can land mid-first-interaction. The local draft
+    // is already usable; this just pre-persists it so the first item-add is
+    // faster. ensureActiveOrderCreated is idempotent + single-flight, so the
+    // add-item path still creates on demand if this hasn't run yet.
+    const task = InteractionManager.runAfterInteractions(() => {
+      void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+    });
+    return () => task.cancel();
   }, [activeOrderId]);
 
   const handleViewItems = useCallback((orderId: string) => {
@@ -592,6 +602,9 @@ const OrderProcessing = () => {
         setRenderStage(1);
         requestAnimationFrame(() => {
           setRenderStage(2);
+          // Perf Phase 0: closes pos.boot_to_order (started at PIN success).
+          // No-op when no mark is pending (e.g. plain navigation here).
+          markEnd("pos.boot_to_order");
         });
       });
     });

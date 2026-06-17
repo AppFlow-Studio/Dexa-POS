@@ -42,6 +42,21 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// Snappy expand/collapse — shorter than the 300ms easeInEaseOut preset so the
+// panel feels instant. Content fades in/out on create/delete.
+const EXPAND_ANIM = {
+  duration: 160,
+  create: {
+    type: LayoutAnimation.Types.easeInEaseOut,
+    property: LayoutAnimation.Properties.opacity,
+  },
+  update: { type: LayoutAnimation.Types.easeInEaseOut },
+  delete: {
+    type: LayoutAnimation.Types.easeInEaseOut,
+    property: LayoutAnimation.Properties.opacity,
+  },
+} as const;
+
 interface PreviousOrderRowProps {
   order: OrderProfile;
   isExpanded: boolean;
@@ -108,21 +123,24 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
 
   const handlePress = () => {
     const now = Date.now();
-    if (
-      now - lastPressRef.current < DOUBLE_PRESS_DELAY &&
-      lastPressRef.current !== 0
-    ) {
-      onDoublePress(order);
+    const isDoubleTap =
+      lastPressRef.current !== 0 &&
+      now - lastPressRef.current < DOUBLE_PRESS_DELAY;
+
+    if (isDoubleTap) {
+      // Second tap inside the window → open the payment detail sheet.
       lastPressRef.current = 0;
-    } else {
-      lastPressRef.current = now;
-      setTimeout(() => {
-        if (lastPressRef.current !== 0) {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          onPress(order);
-        }
-      }, DOUBLE_PRESS_DELAY);
+      onDoublePress(order);
+      return;
     }
+
+    // First tap → expand/collapse INSTANTLY (no setTimeout deferral, which was
+    // the ~400ms "tap and nothing happens" delay). A following second tap is
+    // still caught by the isDoubleTap check above; the brief expand is hidden
+    // behind the payment sheet that slides over it.
+    lastPressRef.current = now;
+    LayoutAnimation.configureNext(EXPAND_ANIM);
+    onPress(order);
   };
 
   const orderTime = order.opened_at

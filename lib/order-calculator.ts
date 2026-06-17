@@ -861,11 +861,17 @@ export function calculateOrderTotals (
       new Decimal(0)
     )
 
-    // Custom refund balance = payment-based due NOT covered by item-level unpaid (upward adjustment)
-    const customRefundBalance = Decimal.max(
-      paymentBasedOutstanding.minus(outstandingCardTotal),
-      new Decimal(0)
-    )
+    // Custom refund balance = payment-based due NOT covered by item-level unpaid (upward adjustment).
+    // Skip when preserveItemLevelOutstanding: for a reopened order the item-level outstanding is
+    // authoritative, and the card-equivalent payment reconstruction (amount + cashSavings) under-counts
+    // mixed cash/card payments, manufacturing a phantom residual (ORD-S2-0001). This mirrors the
+    // downward clamp below, which is already disabled under preserveItemLevelOutstanding.
+    const customRefundBalance = preserveItemLevelOutstanding
+      ? new Decimal(0)
+      : Decimal.max(
+          paymentBasedOutstanding.minus(outstandingCardTotal),
+          new Decimal(0)
+        )
     outstandingCardTotal = outstandingCardTotal.plus(customRefundBalance)
     // This balance is the shared order-level SC (and its tax). Cash and card
     // carry the same flat remainder, so do not dual-price it.

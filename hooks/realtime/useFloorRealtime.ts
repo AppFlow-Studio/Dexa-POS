@@ -37,6 +37,13 @@ import type {
 
 // Coalesce bursts of broadcasts into a single authoritative reload.
 const RECONCILE_DEBOUNCE_MS = 300;
+// Perf T1b: skip a broadcast-driven reconcile when an authoritative snapshot
+// just landed (e.g. a floor-plan switch ran loadFloorPlanStatus moments ago).
+// Staleness exposure is the same class the in-flight load dedupe already
+// accepts (a change committed between our snapshot read and the broadcast),
+// and is bounded by the next broadcast/heartbeat. (Re)subscribe catch-up and
+// the fallback poll are deliberately NOT suppressed.
+const JUST_LOADED_SUPPRESS_MS = 1_200;
 // Heartbeat: converge even if every broadcast is dropped.
 const HEARTBEAT_MS = 45_000;
 const HEARTBEAT_STALE_MS = 30_000;
@@ -88,6 +95,17 @@ export function useFloorRealtime({
     if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
     reconcileTimer.current = setTimeout(() => {
       reconcileTimer.current = null;
+      const { lastSyncAt } = useFloorPlanStore.getState();
+      const snapshotAgeMs = lastSyncAt
+        ? Date.now() - Date.parse(lastSyncAt)
+        : Number.POSITIVE_INFINITY;
+      if (snapshotAgeMs < JUST_LOADED_SUPPRESS_MS) {
+        if (__DEV__)
+          console.log(
+            `[FloorRealtime] reconcile suppressed — snapshot ${Math.round(snapshotAgeMs)}ms old`
+          );
+        return;
+      }
       reconcileNow();
     }, RECONCILE_DEBOUNCE_MS);
   }, [reconcileNow]);

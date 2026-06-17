@@ -232,6 +232,12 @@ const GeneralSettingsScreen = () => {
   const setPosMenuNavigationMode = useSettingsStore(
     (s) => s.setPosMenuNavigationMode,
   );
+  const autoSelectFirstRequiredOption = useSettingsStore(
+    (s) => s.autoSelectFirstRequiredOption,
+  );
+  const setAutoSelectFirstRequiredOption = useSettingsStore(
+    (s) => s.setAutoSelectFirstRequiredOption,
+  );
   const { colorScheme, setColorScheme } = useColorScheme();
 
   // ── Derived display values ──────────────────────────────────────────────
@@ -1009,6 +1015,41 @@ const GeneralSettingsScreen = () => {
                 <Switch
                   checked={showMenuImages}
                   onCheckedChange={setShowMenuImages}
+                />
+              </View>
+
+              {/* Auto-select first required option */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: 10,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: colors.heading,
+                      fontWeight: "500",
+                    }}
+                  >
+                    Auto-select first required option
+                  </Text>
+                  <Text
+                    style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                  >
+                    When a required modifier group has no preset default,
+                    automatically pick the first free option. Turn off to
+                    require manual selection.
+                  </Text>
+                </View>
+                <Switch
+                  checked={autoSelectFirstRequiredOption}
+                  onCheckedChange={setAutoSelectFirstRequiredOption}
                 />
               </View>
 

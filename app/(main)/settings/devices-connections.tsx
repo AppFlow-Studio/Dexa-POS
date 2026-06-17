@@ -32,6 +32,9 @@ import { PrinterService } from '@/services/printing/PrinterService'
 import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
+import { getSharedCastlesService } from '@/services/terminals/castles-service'
+import { CASTLES_DEFAULT_PORT } from '@/types/castles'
 import type {
   PrinterConfig,
   PrinterDriverType,
@@ -237,6 +240,32 @@ const DevicesConnectionsScreen = ({
     diagnoseCastlesConnection,
     registerTerminal
   } = usePaymentTerminal()
+
+  // Live connect sub-step ("Connecting…", "Verifying…") shown while testing.
+  const terminalConnectActivity = useTerminalConnectionStore(
+    s => s.connectActivity
+  )
+
+  // Pre-warm the Castles singleton when this screen opens so the first "Test"
+  // (or the next sale) skips the cold-connect cost. Fire-and-forget; no-op when
+  // already connected, suspended, or no Castles terminal is configured.
+  useEffect(() => {
+    const terminal = selectedStation?.payment_terminal
+    if (terminal?.terminal_type !== 'castles') return
+    const service = getSharedCastlesService()
+    if (service.isSuspended() || service.isConnected()) return
+    const isUsb = terminal.connection_type === 'usb'
+    service
+      .connect({
+        connectionType: isUsb ? ('usb' as const) : ('local_socket' as const),
+        host: isUsb ? undefined : terminal.ip_address,
+        port: isUsb ? undefined : terminal.port ?? CASTLES_DEFAULT_PORT,
+        timeout: 10_000,
+        terminalId: terminal.id
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStation?.payment_terminal?.id])
 
   // Printer store
   const storedPrinters = usePrinterStore(s => s.printers)
@@ -533,6 +562,29 @@ const DevicesConnectionsScreen = ({
 
   const handleAssignTerminal = async (terminal: typeof terminals[number]) => {
     if (!selectedStation || !selectedStore) return
+
+    // Loosened binding: a terminal that's connected/active at another station
+    // can still be claimed here. Confirm the move first so we don't silently
+    // steal another station's reader. (The body below already unbinds the old
+    // station and rebinds to this one.)
+    const boundElsewhere =
+      terminal.isActive &&
+      !!terminal.stationId &&
+      terminal.stationId !== selectedStation.id
+    if (boundElsewhere) {
+      const confirmed = await new Promise<boolean>(resolve => {
+        Alert.alert(
+          'Move terminal to this station?',
+          `${terminal.name} is currently in use at another station. Moving it here disconnects it from that station.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Move here', onPress: () => resolve(true) }
+          ]
+        )
+      })
+      if (!confirmed) return
+    }
+
     setIsAssigning(true)
     try {
       await supabase
@@ -2080,13 +2132,9 @@ const DevicesConnectionsScreen = ({
                         <TouchableOpacity
                           key={t.id}
                           onPress={() =>
-                            !isCurrent &&
-                            !isOtherStation &&
-                            handleAssignTerminal(t)
+                            !isCurrent && handleAssignTerminal(t)
                           }
-                          disabled={
-                            isCurrent || isAssigning || !!isOtherStation
-                          }
+                          disabled={isCurrent || isAssigning}
                           style={{
                             backgroundColor: isCurrent
                               ? colors.teal + '10'
@@ -2102,7 +2150,7 @@ const DevicesConnectionsScreen = ({
                             borderColor: isCurrent
                               ? colors.teal + '50'
                               : colors.border,
-                            opacity: isOtherStation ? 0.5 : 1
+                            opacity: 1
                           }}
                         >
                           <View
@@ -2324,7 +2372,7 @@ const DevicesConnectionsScreen = ({
                           {isOtherStation && (
                             <View
                               style={{
-                                backgroundColor: colors.border,
+                                backgroundColor: colors.warning + '20',
                                 paddingHorizontal: 8,
                                 paddingVertical: 3,
                                 borderRadius: 4
@@ -2332,12 +2380,12 @@ const DevicesConnectionsScreen = ({
                             >
                               <Text
                                 style={{
-                                  color: colors.label,
+                                  color: colors.warning,
                                   fontSize: 10,
                                   fontWeight: 'bold'
                                 }}
                               >
-                                In Use
+                                Tap to move here
                               </Text>
                             </View>
                           )}
@@ -2895,41 +2943,52 @@ const DevicesConnectionsScreen = ({
                           ) : null}
                         </View>
                       </View>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 4,
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                          borderRadius: 6,
-                          backgroundColor: currentTerminal.is_connected
-                            ? colors.success + '15'
-                            : colors.danger + '15'
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: 3,
-                            backgroundColor: currentTerminal.is_connected
-                              ? colors.success
-                              : colors.danger
-                          }}
-                        />
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            fontWeight: '600',
-                            color: currentTerminal.is_connected
-                              ? colors.success
-                              : colors.danger
-                          }}
-                        >
-                          {currentTerminal.is_connected ? 'Online' : 'Offline'}
-                        </Text>
-                      </View>
+                      {(() => {
+                        // While the singleton is mid-connect (auto-connect on
+                        // plug/boot, pre-warm, or a test), show the live phase in
+                        // teal; otherwise fall back to Online/Offline.
+                        const statusColor = terminalConnectActivity
+                          ? colors.teal
+                          : currentTerminal.is_connected
+                            ? colors.success
+                            : colors.danger
+                        return (
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
+                              borderRadius: 6,
+                              maxWidth: 200,
+                              backgroundColor: statusColor + '15'
+                            }}
+                          >
+                            <View
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: 3,
+                                backgroundColor: statusColor
+                              }}
+                            />
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: '600',
+                                color: statusColor
+                              }}
+                              numberOfLines={1}
+                            >
+                              {terminalConnectActivity ??
+                                (currentTerminal.is_connected
+                                  ? 'Online'
+                                  : 'Offline')}
+                            </Text>
+                          </View>
+                        )
+                      })()}
                     </View>
                   </View>
 
@@ -2950,7 +3009,20 @@ const DevicesConnectionsScreen = ({
                       }}
                     >
                       {isTestingConnection ? (
-                        <ActivityIndicator size='small' color={colors.teal} />
+                        <>
+                          <ActivityIndicator size='small' color={colors.teal} />
+                          <Text
+                            style={{
+                              fontWeight: '600',
+                              marginLeft: 6,
+                              fontSize: 11,
+                              color: colors.teal
+                            }}
+                            numberOfLines={1}
+                          >
+                            {terminalConnectActivity ?? 'Testing…'}
+                          </Text>
+                        </>
                       ) : (
                         <>
                           <RefreshCw size={13} color={colors.teal} />

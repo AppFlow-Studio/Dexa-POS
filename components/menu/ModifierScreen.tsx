@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
 import { CartItem, ModifierCategory } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
@@ -7,10 +8,7 @@ import {
     getLastModifierOpenStartedAt,
     useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
-import {
-    getOrderStoreSupabaseClient,
-    useOrderStore,
-} from "@/stores/useOrderStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
 
 import OptimizedListImage from "@/components/ui/OptimizedListImage";
@@ -26,6 +24,7 @@ import {
     Modal,
     Platform,
     ScrollView,
+    Switch,
     Text,
     TextInput,
     TouchableOpacity,
@@ -302,6 +301,7 @@ type State = {
   modifierSelections: ModifierSelection;
   selectionCounts: Record<string, number>;
   notes: string;
+  isToGo: boolean;
   activeCategory: string | null;
   isQuantityModalOpen: boolean;
   quantityInput: string;
@@ -316,6 +316,7 @@ type Action =
   | { type: "SET_QUANTITY"; payload: number }
   | { type: "SET_MODIFIER_SELECTIONS"; payload: ModifierSelection }
   | { type: "SET_NOTES"; payload: string }
+  | { type: "SET_TOGO"; payload: boolean }
   | { type: "SET_ACTIVE_CATEGORY"; payload: string | null }
   | { type: "OPEN_QUANTITY_MODAL"; payload: string }
   | { type: "CLOSE_QUANTITY_MODAL" }
@@ -374,6 +375,9 @@ const immerReducer = (state: State, action: Action): void => {
       return;
     case "SET_NOTES":
       state.notes = action.payload;
+      return;
+    case "SET_TOGO":
+      state.isToGo = action.payload;
       return;
     case "SET_ACTIVE_CATEGORY":
       state.activeCategory = action.payload;
@@ -574,6 +578,29 @@ const SeatPill = memo(function SeatPill({
   );
 });
 
+// Persist a per-item TO GO change to the backend when it actually changed and
+// the item has a synced backend row. Fire-and-forget: the caller has already
+// set the local flag; OrderService.toggleToGoOnItems marks the toggle pending
+// so an in-flight broadcast re-fetch won't clobber the optimistic value, and a
+// later re-fetch reconciles the server state. If the item has no db id yet, the
+// add-time reconcile in useOrderStore.addItemToBackend fires the toggle once the
+// id lands, so the change is never lost. Shared by the normal-item AND open-item
+// save branches so they can't drift — that drift is exactly how open items ended
+// up showing [TO GO] locally while is_to_go stayed false on the server.
+const persistToGoIfChanged = (
+  client: Parameters<typeof OrderService.toggleToGoOnItems>[0] | null,
+  dbItemId: string | undefined | null,
+  prevIsToGo: boolean | undefined,
+  nextIsToGo: boolean,
+) => {
+  if (Boolean(prevIsToGo) === Boolean(nextIsToGo)) return;
+  if (!dbItemId || !client) return;
+  OrderService.toggleToGoOnItems(client, [dbItemId], nextIsToGo).catch(() => {
+    // Fire-and-forget: local flag is persisted; a later broadcast re-fetch
+    // reconciles the server state.
+  });
+};
+
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -670,6 +697,11 @@ const ModifierScreenContent = ({
   );
 
   const { show } = useToast();
+  const supabase = useSupabaseClient();
+  // Latest-ref so the []-dep handleSave callback can reach the current client
+  // without capturing it in its closure.
+  const supabaseRef = useRef(supabase);
+  supabaseRef.current = supabase;
 
   const [state, dispatch] = useImmerReducer<State, Action, void>(
     immerReducer,
@@ -679,6 +711,7 @@ const ModifierScreenContent = ({
       return {
         quantity: cartItem?.quantity ?? 1,
         notes: cartItem?.customizations?.notes ?? "",
+        isToGo: cartItem?.is_to_go ?? false,
         modifierSelections: selections,
         selectionCounts: computeSelectionCounts(selections),
         activeCategory: precomputedActiveCategory ?? null,
@@ -750,6 +783,7 @@ const ModifierScreenContent = ({
       payload: {
         quantity: cartItem?.quantity ?? 1,
         notes: cartItem?.customizations?.notes ?? "",
+        isToGo: cartItem?.is_to_go ?? false,
         modifierSelections: selections,
         activeCategory: precomputedActiveCategory ?? null,
         isQuantityModalOpen: false,
@@ -1331,8 +1365,20 @@ const ModifierScreenContent = ({
       (currentMode === "edit" || currentMode === "fullscreen") &&
       currentCartItem
     ) {
+      // Re-read the LIVE store item so we resolve a fresh db_order_item_id —
+      // the sheet snapshot can predate the backend sync (same reason as the
+      // regular-item branch below) — and so we don't write a stale null id back.
+      const liveStoreItem = useOrderStore
+        .getState()
+        .ordersById[useOrderStore.getState().activeOrderId ?? ""]?.items.find(
+          (i) => i.id === currentCartItem.id,
+        );
+      const resolvedDbItemId =
+        liveStoreItem?.db_order_item_id ?? currentCartItem.db_order_item_id;
+
       const updatedOpenItem = {
         ...currentCartItem,
+        db_order_item_id: resolvedDbItemId,
         quantity: currentState.quantity,
         unitPrice:
           currentCartItem.unitPrice ||
@@ -1347,8 +1393,19 @@ const ModifierScreenContent = ({
           notes: currentState.notes || "Open Item",
         },
         isDraft: false,
+        is_to_go: currentState.isToGo,
       };
       updateItemInActiveOrder(updatedOpenItem);
+
+      // Persist the per-item TO GO flag (mirrors the regular-item branch). If
+      // the item has no db id yet, addItemToBackend's reconcile fires the toggle
+      // when the id lands, so the change is never lost.
+      persistToGoIfChanged(
+        supabaseRef.current,
+        resolvedDbItemId,
+        currentCartItem.is_to_go,
+        currentState.isToGo,
+      );
 
       // Apply seat override for open items
       if (shouldApplySeat && currentCartItem) {
@@ -1366,35 +1423,15 @@ const ModifierScreenContent = ({
         }
       }
 
-      // Sync open item changes to backend
-      if (currentCartItem.db_order_item_id) {
-        const client = getOrderStoreSupabaseClient();
-        if (client) {
-          const params: Record<string, any> = {
-            p_order_item_id: currentCartItem.db_order_item_id,
-          };
-          if (currentState.quantity !== currentCartItem.quantity) {
-            params.p_quantity = currentState.quantity;
-          }
-          if (
-            currentState.notes &&
-            currentState.notes !== currentCartItem.customizations?.notes
-          ) {
-            params.p_special_instructions = currentState.notes;
-          }
-          if (shouldApplySeat && seatVal !== undefined) {
-            params.p_seat_number = seatVal;
-          }
-          if (Object.keys(params).length > 1) {
-            OrderService.updateOpenItem(client, params as any).catch((err) => {
-              console.error(
-                "[ModifierScreen] Failed to sync open item update:",
-                err,
-              );
-            });
-          }
-        }
-      }
+      // Backend sync is already handled above: updateItemInActiveOrder syncs
+      // quantity + instructions (each deadline-wrapped via
+      // updateOrderItemQuantity / updateOrderItem with toUpdateItemKey, and
+      // queued on failure — useOrderStore.ts ~8243-8367), and setItemSeat syncs
+      // the seat. The previous raw OrderService.updateOpenItem call here was a
+      // REDUNDANT second sync of the same edit (keyless update_order_item_v2,
+      // no deadline, fire-and-forget) — it double-wrote on good WiFi and hung
+      // 30s+ on bad WiFi with no recovery. Removed: the path above is the
+      // single, deadline-wrapped, offline-queue-backed writer.
 
       showToast({
         title: "Item Updated",
@@ -1473,12 +1510,29 @@ const ModifierScreenContent = ({
       if (!currentCartItem) {
         return;
       }
+      // The modifier's cartItem is a snapshot captured when the sheet opened;
+      // for a freshly-added item it can predate the backend sync and therefore
+      // lack db_order_item_id even though the item has since synced. Re-read the
+      // LIVE order-store item so we (a) don't wipe the linked db_order_item_id by
+      // writing the stale snapshot back, and (b) can actually persist the TO GO
+      // change instead of silently dropping it (the bug where an item shows
+      // [TO GO] locally but is_to_go stays false on the server).
+      const liveStoreItem = useOrderStore
+        .getState()
+        .ordersById[useOrderStore.getState().activeOrderId ?? ""]?.items.find(
+          (i) => i.id === currentCartItem.id,
+        );
+      const resolvedDbItemId =
+        liveStoreItem?.db_order_item_id ?? currentCartItem.db_order_item_id;
+
       const updatedItem = {
         ...currentCartItem,
+        db_order_item_id: resolvedDbItemId,
         quantity: currentState.quantity,
         price: currentTotal / Math.max(1, currentState.quantity),
         customizations: finalCustomizations,
         isDraft: false,
+        is_to_go: currentState.isToGo,
         seatNumber:
           shouldApplySeat && seatVal !== undefined
             ? seatVal
@@ -1489,6 +1543,17 @@ const ModifierScreenContent = ({
         cashTaxAmount: undefined,
       };
       updateItemInActiveOrder(updatedItem);
+
+      // Persist the per-item TO GO flag whenever it changed and the item has a
+      // backend row (resolved fresh above). If it still has no db id (truly not
+      // synced yet), addItemToBackend's reconcile fires the toggle when the id
+      // lands, so the change is never lost.
+      persistToGoIfChanged(
+        supabaseRef.current,
+        resolvedDbItemId,
+        currentCartItem.is_to_go,
+        currentState.isToGo,
+      );
 
       // Ensure manual sync matches the updated seat
       if (shouldApplySeat) {
@@ -1533,6 +1598,7 @@ const ModifierScreenContent = ({
         appliedDiscount: null,
         paidQuantity: 0,
         isDraft: false,
+        is_to_go: currentState.isToGo,
         seatNumber:
           shouldApplySeat && seatVal !== undefined ? seatVal : undefined,
         addedFromCategoryId: catId || null,
@@ -1677,7 +1743,8 @@ const ModifierScreenContent = ({
             className="text-sm text-center mb-4"
             style={{ color: colors.label }}
           >
-            This item has been sent to the kitchen and cannot be modified.
+            This item is in the kitchen. Prep is locked, but you can still mark
+            it to-go.
           </Text>
           <View
             className="rounded-xl p-3 w-full border flex-row items-center gap-3"
@@ -1698,6 +1765,52 @@ const ModifierScreenContent = ({
               </Text>
             </View>
           </View>
+
+          {/* TO GO — still editable after the item has been sent. Persists via
+              toggle_to_go_order_items, which bumps the order so the KDS re-fetches
+              and shows/hides the TO GO pill. */}
+          <View
+            className="rounded-xl p-3 mt-3 w-full border flex-row items-center justify-between"
+            style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+          >
+            <View className="flex-1 pr-3">
+              <Text
+                className="text-sm font-semibold"
+                style={{ color: colors.heading }}
+              >
+                TO GO
+              </Text>
+              <Text className="text-xs mt-0.5" style={{ color: colors.muted }}>
+                Package this item to-go
+              </Text>
+            </View>
+            <Switch
+              // Drive the Switch from fast local reducer state, NOT the frozen
+              // useModifierSidebarStore snapshot — `cartItem` is captured when
+              // the sheet opens and never updates, so binding `value` to it made
+              // the thumb animate forward then snap back (the "jolt") because the
+              // controlled value re-read the stale snapshot. state.isToGo flips
+              // instantly on dispatch. Mirrors the not-yet-sent toggle below.
+              value={state.isToGo}
+              onValueChange={(v) => {
+                dispatch({ type: "SET_TOGO", payload: v });
+                updateItemInActiveOrder({ ...cartItem, is_to_go: v });
+                if (cartItem.db_order_item_id && supabaseRef.current) {
+                  OrderService.toggleToGoOnItems(
+                    supabaseRef.current,
+                    [cartItem.db_order_item_id],
+                    v,
+                  ).catch(() => {
+                    // Fire-and-forget: local flag is set; a later broadcast
+                    // re-fetch reconciles the server state.
+                  });
+                }
+              }}
+              trackColor={{ false: colors.border, true: colors.teal }}
+              thumbColor={colors.onSolid}
+            />
+          </View>
+
           <TouchableOpacity
             onPressIn={close}
             className="mt-4 px-6 py-2.5 rounded-full"
@@ -2125,6 +2238,31 @@ const ModifierScreenContent = ({
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+
+        {/* ── TO GO ────────────────────────────────────────────────────────── */}
+        <View
+          className="px-4 py-3 border-t flex-row items-center justify-between"
+          style={{ borderColor: colors.border }}
+        >
+          <View className="flex-1 pr-3">
+            <Text
+              className="text-sm font-semibold"
+              style={{ color: colors.heading }}
+            >
+              TO GO
+            </Text>
+            <Text className="text-xs mt-0.5" style={{ color: colors.muted }}>
+              Package this item to-go
+            </Text>
+          </View>
+          <Switch
+            value={state.isToGo}
+            disabled={isReadOnly}
+            onValueChange={(v) => dispatch({ type: "SET_TOGO", payload: v })}
+            trackColor={{ false: colors.border, true: colors.teal }}
+            thumbColor={colors.onSolid}
+          />
         </View>
 
         {/* ── Special Instructions ─────────────────────────────────────────── */}
