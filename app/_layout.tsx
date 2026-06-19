@@ -75,6 +75,7 @@ import * as React from "react";
 import {
     ActivityIndicator,
     AppState,
+    InteractionManager,
     Platform,
     Pressable,
     Text,
@@ -447,6 +448,12 @@ export default Sentry.wrap(function RootLayout() {
 
     // Skip POS-only initialization for KDS stations and CFD client mode
     if (!isKDS && !isCFDMode) {
+      // Perf F2: deferred past first paint. This used to run synchronously
+      // inside the layout effect and blocked the first frame —
+      // cleanupDraftDuplicates iterates ordersById and the journal scans hit
+      // MMKV. Nothing here needs to beat the first paint; the payment
+      // recovery sheet opening a beat later is fine.
+      const bootTask = InteractionManager.runAfterInteractions(() => {
       // NOTE: Timeclock hydration now happens in PosSyncProvider after employees sync.
       // PTO history is calculated from real shift data, not mock data.
       // Start draft order cleanup
@@ -649,6 +656,8 @@ export default Sentry.wrap(function RootLayout() {
       } catch (err) {
         console.error("[refundJournal] Recovery hydration failed:", err);
       }
+      });
+      return () => bootTask.cancel();
     }
   }, []);
 

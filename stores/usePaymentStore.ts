@@ -1,5 +1,6 @@
 import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
 import { isOrderReadOnly } from "@/lib/orderAccessControl";
+import { startInteraction } from "@/lib/perf";
 import {
   findLatestReusableEmptyDraftId,
   getRefreshedReusableDraftNumbers,
@@ -384,6 +385,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       return;
     }
 
+    // Perf Phase 0: tap → payment sheet state committed + painted
+    const perfPay = startInteraction("pos.open_payment", {
+      method: String(method),
+      view: initialView || "payment-method-selection",
+    });
+
     // Flush any pending totals recompute so the sheet reads fresh totals on
     // its first frame. No-op when nothing is queued.
     if (orderState.activeOrderId) {
@@ -407,6 +414,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         totalSteps: totalSteps,
       },
     });
+    perfPay.endAfterPaint();
   },
 
   close: () => {

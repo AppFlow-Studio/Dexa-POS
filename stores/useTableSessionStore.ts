@@ -365,8 +365,16 @@ interface TableSessionStoreState {
   /** Hydrate sessions from backend via get_location_table_status_v2 */
   hydrateFromBackend: (locationId: string) => Promise<void>;
 
-  /** Hydrate sessions from FloorPlanObject[] (called after loadFloorPlanStatus) */
-  _patchSessionsFromTables: (tables: FloorPlanObject[]) => void;
+  /**
+   * Hydrate sessions from FloorPlanObject[] (called after loadFloorPlanStatus).
+   * `clearMissing` controls the CLEAR sweep: only pass `true` from an
+   * AUTHORITATIVE (network) snapshot. A rehydrated/cached snapshot has its
+   * sessions stripped and must NOT be allowed to clear the persisted store.
+   */
+  _patchSessionsFromTables: (
+    tables: FloorPlanObject[],
+    opts?: { clearMissing?: boolean },
+  ) => void;
 
   /** Bridge: write session data back into useFloorPlanStore (removed in Phase 3) */
   _syncToFloorPlanStore: (changedTableId?: string | string[]) => void;
@@ -706,6 +714,18 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               merged_tables: preservedMergedTables,
             };
 
+            // Never downgrade a live, SAME-SESSION local-only status on a full
+            // backend poll — same guard as _patchSessionsFromTables. The backend
+            // doesn't know about seating/ordering/paying/closing; a poll must
+            // not SYNC them away. Different-id sessions still replace.
+            if (
+              existingSession &&
+              isLocalOnlyStatus(existingSession.status) &&
+              existingSession.id === row.session_id
+            ) {
+              continue;
+            }
+
             actions.push({
               tableId: row.table_id,
               action: { type: "SYNC", session },
@@ -746,16 +766,39 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         // _patchSessionsFromTables — hydrate sessions from FloorPlanObject[]
         // ------------------------------------------------------------------
 
-        _patchSessionsFromTables: (tables: FloorPlanObject[]) => {
+        _patchSessionsFromTables: (
+          tables: FloorPlanObject[],
+          opts?: { clearMissing?: boolean },
+        ) => {
           const currentSessions = get().sessions;
           const actions: Array<{ tableId: string; action: SessionAction }> = [];
 
+          // Snapshots are PLAN-SCOPED (loadFloorPlanStatus / the floor cache
+          // fetch one plan's tables). They can only make claims about their
+          // own tables — sessions for OTHER plans' tables must be preserved.
+          const snapshotTableIds = new Set<string>();
           // Collect table IDs that have sessions in the incoming data
           const incomingTableIds = new Set<string>();
 
           for (const table of tables) {
+            snapshotTableIds.add(table.id);
             if (!table.session) continue;
             incomingTableIds.add(table.id);
+
+            // Never downgrade a live, SAME-SESSION local-only status. The SYNC
+            // branch of _applyAction intentionally overwrites local-only with
+            // the backend status; a plan snapshot must NOT do that (the backend
+            // doesn't know about seating/ordering/paying/closing). Mirrors the
+            // CLEAR-sweep local-only guard below. Same-id only — a genuinely new
+            // session (different id) still replaces.
+            const existing = currentSessions[table.id];
+            if (
+              existing &&
+              isLocalOnlyStatus(existing.status) &&
+              existing.id === table.session.id
+            ) {
+              continue;
+            }
 
             // Use SYNC action — applies backend status updates
             actions.push({
@@ -764,19 +807,32 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             });
           }
 
-          // Clear sessions for tables that no longer have sessions
-          // but preserve optimistic local-only sessions (seating, ordering, etc.)
-          for (const tableId of Object.keys(currentSessions)) {
-            if (!incomingTableIds.has(tableId)) {
+          // Clear sessions ONLY for tables that are IN this snapshot but came
+          // back without a session (genuinely freed). Tables from other floor
+          // plans are out of scope — clearing them (the old behavior) both
+          // lost their state on every plan switch AND poisoned the
+          // recently-cleared TTL map, which then made fetchFloorPlanSnapshot
+          // strip those sessions from fresh snapshots for 30s — the
+          // "all tables show available after switching plans" bug.
+          // Local-only optimistic sessions (seating, ordering, …) stay.
+          //
+          // Gated on opts.clearMissing: only an AUTHORITATIVE (network) snapshot
+          // may treat "table present, no session" as "freed". A rehydrated/cached
+          // snapshot has its sessions STRIPPED, so running this sweep against it
+          // wipes the whole persisted session store on cold start (all tables
+          // flash "available") and poisons the recently-cleared TTL so the
+          // following fresh fetch gets stripped too. Cache-paint and mount
+          // callers omit the flag → add-only, never clear.
+          if (opts?.clearMissing) {
+            for (const tableId of Object.keys(currentSessions)) {
+              if (incomingTableIds.has(tableId)) continue;
+              if (!snapshotTableIds.has(tableId)) continue;
               const existing = currentSessions[tableId];
               if (existing && isLocalOnlyStatus(existing.status)) {
                 continue;
               }
-              // This path is only ever fed by loadFloorPlanStatus's authoritative
-              // snapshot (the single writer of backend-owned state). A table
-              // missing the session here genuinely lost it — clear it. No TTL
-              // guard needed: broadcasts are never applied to state anymore, so
-              // there's no stale-broadcast race to defend against.
+              // A table in the authoritative snapshot missing its session
+              // genuinely lost it.
               actions.push({ tableId, action: { type: "CLEAR" } });
             }
           }

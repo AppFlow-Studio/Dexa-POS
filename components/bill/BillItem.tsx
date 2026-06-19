@@ -90,7 +90,7 @@ const ModifiersList = React.memo<{
                 <Text
                   style={{
                     fontSize: 10,
-                    color: option.isNo ? colors.danger : colors.muted,
+                    color: option.isNo ? colors.danger : colors.heading,
                     flex: 1,
                   }}
                 >
@@ -711,7 +711,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     minWidth: 18,
                     fontSize: 13,
                     fontWeight: "700",
-                    color: isVoided ? colors.muted : colors.label,
+                    color: isVoided ? colors.muted : colors.heading,
                     textAlign: "left",
                   }}
                 >
@@ -731,6 +731,13 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       }}
                       numberOfLines={1}
                     >
+                      {item.is_to_go ? (
+                        <Text
+                          style={{ color: colors.teal, fontWeight: "700" }}
+                        >
+                          [TO GO]{" "}
+                        </Text>
+                      ) : null}
                       {item.name}
                     </Text>
                     {/* Wave 2.8c + PR D.1: failed chip — tappable retry, with
@@ -1101,6 +1108,7 @@ const BillItem = React.memo(BillItemComponent, (prev, next) => {
     prev.item.discount_amount !== next.item.discount_amount ||
     prev.item.discount_cash_amount !== next.item.discount_cash_amount ||
     prev.item.is_voided !== next.item.is_voided ||
+    prev.item.is_to_go !== next.item.is_to_go ||
     prev.item.void_reason !== next.item.void_reason ||
     prev.item.paidQuantity !== next.item.paidQuantity ||
     prev.item.refundedQuantity !== next.item.refundedQuantity ||

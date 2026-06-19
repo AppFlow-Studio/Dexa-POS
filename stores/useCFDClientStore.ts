@@ -1,13 +1,13 @@
 // stores/useCFDClientStore.ts
 // CFD client-mode Zustand store (when this device acts as a customer-facing display)
-import { flushPendingWrite, mmkvStorage } from "@/lib/storage";
+import { createLazyPersistStorage, flushPendingWrite } from "@/lib/storage";
 import type {
     CFDPairingData,
     CFDPayload,
     CFDScreenState,
 } from "@/types/cfd.types";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 
 interface CFDClientStore {
   // Connection
@@ -217,7 +217,11 @@ export const useCFDClientStore = create<CFDClientStore>()(
     }),
     {
       name: "cfd-client-store",
-      storage: createJSONStorage(() => mmkvStorage),
+      // Lazy persist: defer JSON.stringify into the 300ms debounce window (and
+      // skip it entirely when the partialized slice ref is unchanged) instead of
+      // stringifying on every payment-flow mutation. flushPendingWrite covers
+      // the lazy writer for durability before navigations/app kill.
+      storage: createLazyPersistStorage(),
       version: 1,
       migrate: (persistedState) => persistedState as any,
       partialize: (state) => ({

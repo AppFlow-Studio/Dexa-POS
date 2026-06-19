@@ -131,7 +131,50 @@ const buildFloorPlanCacheEntry = (
   lastSyncAt,
 });
 
-const fetchFloorPlanSnapshot = async (
+// Perf T2a: value-compare two snapshot values a few levels deep. Used to
+// decide whether a freshly fetched table can keep its PREVIOUS object
+// identity — unknown/new fields are compared too (conservative: any
+// difference forces the fresh object, never loses an update). Depth 3 covers
+// table → session/next_reservation → merged_tables[] → primitives.
+const shallowValueEqual = (a: unknown, b: unknown, depth: number): boolean => {
+  if (Object.is(a, b)) return true;
+  if (depth <= 0) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!shallowValueEqual(a[i], b[i], depth - 1)) return false;
+    }
+    return true;
+  }
+  if (
+    a !== null &&
+    b !== null &&
+    typeof a === "object" &&
+    typeof b === "object" &&
+    !Array.isArray(a) &&
+    !Array.isArray(b)
+  ) {
+    const keysA = Object.keys(a as Record<string, unknown>);
+    const keysB = Object.keys(b as Record<string, unknown>);
+    if (keysA.length !== keysB.length) return false;
+    for (const key of keysA) {
+      if (
+        !shallowValueEqual(
+          (a as Record<string, unknown>)[key],
+          (b as Record<string, unknown>)[key],
+          depth - 1,
+        )
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+};
+
+// Exported for unit testing of the local-only preserve guard.
+export const fetchFloorPlanSnapshot = async (
   floorPlanId: string,
   currentTablesById: Record<string, FloorPlanObject> = {},
 ): Promise<{ data: FloorPlanCacheEntry | null; error: Error | null }> => {
@@ -150,6 +193,13 @@ const fetchFloorPlanSnapshot = async (
 
     const freshTables = freshObjects || [];
 
+    // The session store holds ALL plans' live sessions keyed by tableId,
+    // independent of which plan's currentTablesById is in scope. Consult it so
+    // the local-only preserve fires even when currentTablesById is empty — i.e.
+    // the prefetch path (no currentTablesById) and the cache-miss reload path
+    // (tablesById was reset to {} before this fetch). Read once, not per-table.
+    const liveSessions = getTableSessionStore().getState().sessions;
+
     const mergedTables = freshTables.map((freshTable) => {
       const currentTable = currentTablesById[freshTable.id];
       const freshSessionIsInactive =
@@ -158,6 +208,20 @@ const fetchFloorPlanSnapshot = async (
             | { is_active?: boolean }
             | undefined
         )?.is_active === false;
+
+      // Preserve a live, SAME-SESSION local-only status (seating/ordering/
+      // paying/closing) — the backend snapshot never knows about these
+      // optimistic sub-states. Prefer the session-store view (global, survives
+      // empty currentTablesById); fall back to currentTablesById.
+      const liveSession = liveSessions[freshTable.id];
+      if (
+        liveSession &&
+        isLocalOnlyStatus(liveSession.status) &&
+        freshTable.session &&
+        liveSession.id === freshTable.session.id
+      ) {
+        return { ...freshTable, session: liveSession };
+      }
 
       if (
         currentTable?.session &&
@@ -185,11 +249,13 @@ const fetchFloorPlanSnapshot = async (
       return freshTable;
     });
 
-    const getUpcomingForTable =
-      getReservationStore().getState().getUpcomingForTable;
+    // Use the O(1) nextReservationByTableId index (rebuilt on every reservation
+    // fetch with the same active+future filter and soonest-first sort as
+    // getUpcomingForTable) instead of re-filtering all reservations per table.
+    const nextReservationByTableId =
+      getReservationStore().getState().nextReservationByTableId;
     const enrichedTables = mergedTables.map((table) => {
-      const upcoming = getUpcomingForTable(table.id);
-      const next = upcoming[0];
+      const next = nextReservationByTableId[table.id];
       if (!next) return { ...table, next_reservation: null };
       return {
         ...table,
@@ -623,6 +689,27 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               loadingFloorPlanId: null,
               error: null,
             });
+            // Hydrate the session store from the cached snapshot in the SAME
+            // frame as the cached table paint. DraggableTable reads sessions
+            // from useTableSessionStore (authoritative once initialized — no
+            // table.session fallback), and the store only ever holds the
+            // active plan's sessions, so without this every switch flashed
+            // ALL tables as "available" until the background
+            // loadFloorPlanStatus patched sessions in (~0.5-2s). The cache is
+            // ≤30s fresh (prefetch re-warm); _patchSessionsFromTables preserves
+            // live same-session local-only statuses (seating/ordering/paying/
+            // closing) against the snapshot's backend status, so a stale cache
+            // can't downgrade an in-progress table; the authoritative load still
+            // reconciles right after.
+            // NOT authoritative: a rehydrated (cold-start) cache has its sessions
+            // STRIPPED, so we must NOT pass clearMissing here. add-only — present
+            // sessions are synced, persisted sessions are left intact, and the
+            // background loadFloorPlanStatus below (stale cache) reconciles
+            // authoritatively. Without this guard a stripped cache wiped the
+            // whole session store on launch (all tables flashed "available").
+            getTableSessionStore()
+              .getState()
+              ._patchSessionsFromTables(cached.tables);
           } else {
             set({
               activeFloorPlanId: floorPlanId,
@@ -636,16 +723,24 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             });
           }
 
-          const refresh = get()
-            .loadFloorPlanStatus()
-            .finally(() => {
-              if (get().activeFloorPlanId === floorPlanId) {
-                set({ isLoading: false, loadingFloorPlanId: null });
-              }
-            });
-
-          if (!isFresh) {
-            await refresh;
+          if (isFresh) {
+            // Cache is <30s fresh — the instant paint above is authoritative and
+            // realtime (useFloorRealtime) keeps it live. Skip the redundant
+            // background loadFloorPlanStatus: on every fresh switch it re-fetched
+            // identical data, ran the diff, and re-wrote the PERSISTED
+            // floorPlanCache with a new lastSyncAt → a wasted RPC + MMKV write
+            // (serializing the whole multi-plan cache) + diff per switch, which
+            // compounds into GC/storage churn over a shift. A stale switch
+            // (>30s) or a realtime broadcast still reconciles.
+            set({ isLoading: false, loadingFloorPlanId: null });
+          } else {
+            await get()
+              .loadFloorPlanStatus()
+              .finally(() => {
+                if (get().activeFloorPlanId === floorPlanId) {
+                  set({ isLoading: false, loadingFloorPlanId: null });
+                }
+              });
           }
           void get().prefetchFloorPlans();
         },
@@ -653,8 +748,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         prefetchFloorPlan: async (floorPlanId: string) => {
           if (!floorPlanId) return;
 
+          // Perf T1a: re-warm STALE cache entries instead of skipping forever.
+          // The old `if (cached) return` meant a plan's cache went permanently
+          // stale after first fill — every later switch painted stale session
+          // states and then paid a full background refresh + table re-render.
+          // prefetchFloorPlans runs after every switch, so this keeps inactive
+          // plans ≤30s old and switches land on already-fresh data.
           const cached = get().floorPlanCache[floorPlanId];
-          if (cached) return;
+          const cachedSyncMs = cached?.lastSyncAt
+            ? Date.parse(cached.lastSyncAt)
+            : 0;
+          const isFresh =
+            !!cached &&
+            Number.isFinite(cachedSyncMs) &&
+            Date.now() - cachedSyncMs < 30_000;
+          if (isFresh) return;
 
           const existingPromise = _prefetchFloorPlanPromises.get(floorPlanId);
           if (existingPromise) {
@@ -844,28 +952,26 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
               const prev = get();
               const prevTables = prev.tables;
-              const nextTables = snapshot.data.tables;
+              const prevById = prev.tablesById;
               const prevSections = prev.sections;
               const nextSections = snapshot.data.sections;
 
+              // Perf T2a: reuse the PREVIOUS object identity for every table
+              // that is value-equal to its fresh counterpart. Downstream this
+              // means: useShallow(s => s.tables) subscribers (TablesScreen)
+              // skip re-rendering entirely when elements are identical, and
+              // DraggableTable.memo comparators hit the prev===next fast path
+              // for the ~49 tables a 1-table session change didn't touch.
+              // (The old field-subset equality replaced ALL identities on any
+              // single change, re-diffing every table on every realtime tick.)
+              const nextTables = snapshot.data.tables.map((n) => {
+                const p = prevById[n.id];
+                return p && shallowValueEqual(p, n, 3) ? p : n;
+              });
+
               const tablesEqual =
                 prevTables.length === nextTables.length &&
-                prevTables.every((t, i) => {
-                  const n = nextTables[i];
-                  return (
-                    !!n &&
-                    t.id === n.id &&
-                    t.x === n.x &&
-                    t.y === n.y &&
-                    t.width === n.width &&
-                    t.height === n.height &&
-                    t.name === n.name &&
-                    (t.session?.id ?? null) === (n.session?.id ?? null) &&
-                    (t.session?.order_id ?? null) ===
-                      (n.session?.order_id ?? null) &&
-                    (t.session?.status ?? null) === (n.session?.status ?? null)
-                  );
-                });
+                nextTables.every((t, i) => t === prevTables[i]);
 
               const sectionsEqual =
                 prevSections.length === nextSections.length &&
@@ -905,10 +1011,14 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 });
               }
 
-              // Hydrate session store from fresh table data
+              // Hydrate session store from fresh table data. Authoritative
+              // network snapshot — clearMissing lets it clear genuinely-freed
+              // tables (table present, no session).
               getTableSessionStore()
                 .getState()
-                ._patchSessionsFromTables(snapshot.data.tables);
+                ._patchSessionsFromTables(snapshot.data.tables, {
+                  clearMissing: true,
+                });
 
               // Order prefetch is now handled by services/tableOrderPrefetch.ts subscriber
             } finally {
@@ -1104,10 +1214,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             },
           });
 
-          // Hydrate session store from merged tables
+          // Hydrate session store from merged tables. Authoritative network
+          // snapshot (getLocationTableStatus) — clearMissing lets it clear
+          // genuinely-freed tables.
           getTableSessionStore()
             .getState()
-            ._patchSessionsFromTables(mergedTables);
+            ._patchSessionsFromTables(mergedTables, { clearMissing: true });
         },
 
         getCachedFloorPlan: (floorPlanId: string) => {

@@ -1,4 +1,5 @@
 import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { rpcWithIdempotency } from "@/lib/network/idempotencyKey";
 import {
   AddFloorPlanObjectParams,
@@ -344,10 +345,19 @@ export class FloorPlanService {
         hint.includes("Perhaps you meant to call"));
 
     if (missingIdempotencyArg) {
-      const retry = await client.rpc(
-        "seat_guests_v3",
-        params as Record<string, any>,
-      );
+      // Bad-WiFi: bound the legacy fallback too (the MAIN path above is already
+      // deadline-wrapped via rpcWithIdempotency). On timeout this returns
+      // { error: DEADLINE_EXCEEDED } which flows to the seatGuests caller and
+      // queues 'seat_guests' (replays the idempotency-keyed MAIN path). PGRST202
+      // is a deterministic signature mismatch, not a timeout, so no retry loop.
+      const retry = await runWithDeadline<
+        SeatGuestsResponse & { success?: boolean; error?: string }
+      >("seat_guests_legacy", DEADLINES.closeCheck, async (signal) => {
+        const res = await client
+          .rpc("seat_guests_v3", params as Record<string, any>)
+          .abortSignal(signal);
+        return { data: res.data, error: res.error };
+      });
       data = retry.data as SeatGuestsResponse & {
         success?: boolean;
         error?: string;

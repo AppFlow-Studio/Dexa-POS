@@ -10,10 +10,7 @@ import { router } from 'expo-router'
 import { ChevronLeft, ChevronRight } from 'lucide-react-native'
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
-import Animated, {
-  LinearTransition,
-  SlideInLeft
-} from 'react-native-reanimated'
+import Animated, { SlideInLeft } from 'react-native-reanimated'
 import OrderCard from './OrderCard'
 import OrderLineItemsModal from './OrderLineItemsModal'
 import OrderTabs from './OrderTabs'
@@ -215,9 +212,10 @@ const OrderLineSectionContent: React.FC = () => {
         horizontal
         showsHorizontalScrollIndicator={false}
         className='mt-4'
-        itemLayoutAnimation={LinearTransition.springify()
-          .damping(18)
-          .stiffness(120)}
+        // Perf F4: itemLayoutAnimation (LinearTransition.springify) removed.
+        // It re-sprang every visible card on ANY data change (realtime status
+        // flips, sorts), not just insert/remove — sustained jank on mid-tier
+        // Android during rush. Insert feedback is covered by `entering` (iOS).
         // OPTIMIZED: FlatList performance props
         initialNumToRender={4}
         maxToRenderPerBatch={4}

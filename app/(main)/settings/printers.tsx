@@ -624,6 +624,14 @@ function SalesSettingTab() {
         value={receipt.showTips}
         onToggle={() => setReceipt((p) => ({ ...p, showTips: !p.showTips }))}
       />
+      <ToggleRow
+        label="Match Pricing to Payment Method"
+        subtitle="Card payments show card pricing; cash payments show cash pricing"
+        value={printingConfig.matchReceiptPricingToPaymentMethod}
+        onToggle={(v) =>
+          updateConfig("printing", { matchReceiptPricingToPaymentMethod: v })
+        }
+      />
 
       <SectionHeader title="Footer" />
       <View style={{

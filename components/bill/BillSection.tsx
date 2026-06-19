@@ -27,6 +27,7 @@ import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { SendToKitchenButton } from "@/components/bill/SendToKitchenButton";
 import { useOrderSyncCounts } from "@/stores/useSyncStatusStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -47,7 +48,6 @@ import {
     MoreHorizontal,
     NotebookPen,
     Plus,
-    Printer,
     RefreshCw,
     Trash2,
     Users,
@@ -279,7 +279,7 @@ const BillItemsAndTotals = React.memo(
                   </Text>
                   <Text
                     style={{
-                      color: colors.label,
+                      color: colors.heading,
                       fontSize: 13,
                       lineHeight: 18,
                     }}
@@ -452,13 +452,18 @@ const BillSectionContent = ({
 
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const setSelectedTable = useDineInStore((s) => s.setSelectedTable);
-  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
-  const tables = useFloorPlanStore((s) => s.tables);
-  const sections = useFloorPlanStore((s) => s.sections);
+  // useShallow on the array/map selectors: a single table/session mutation
+  // produces a new top-level array/map ref but shallow-equal contents (Phase-3
+  // Wave T stabilizes per-table identities), so this stops ref churn from
+  // cascading re-renders into BillSummary/Totals. activeFloorPlanId is a
+  // primitive (zustand already compares with Object.is) — no useShallow.
+  const floorPlans = useFloorPlanStore(useShallow((s) => s.floorPlans));
+  const tables = useFloorPlanStore(useShallow((s) => s.tables));
+  const sections = useFloorPlanStore(useShallow((s) => s.sections));
   const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
   const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
   const refreshTableSessions = useFloorPlanStore((s) => s.refreshTableSessions);
-  const liveSessions = useTableSessionStore((s) => s.sessions);
+  const liveSessions = useTableSessionStore(useShallow((s) => s.sessions));
   const { activeEmployeeId } = useEmployeeStore();
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
   const { hideLoading, showLoading } = useLoading();
@@ -1848,27 +1853,12 @@ const BillSectionContent = ({
                 ? `Order ${activeOrderDisplayNumber}`
                 : "New Order"}
             </Text>
-            <TouchableOpacity
-              className={`h-8 px-3 rounded-lg flex-row items-center justify-center gap-1 ${
-                newItemsCount === 0 || hasDraftItems || isReadOnly
-                  ? "opacity-50"
-                  : ""
-              }`}
-              style={{ backgroundColor: colors.teal }}
-              disabled={newItemsCount === 0 || hasDraftItems || isReadOnly}
+            <SendToKitchenButton
               onPress={handleSendToKitchen}
-            >
-              <Printer size={12} color={colors.onSolid} />
-              <Text
-                style={{
-                  color: colors.onSolid,
-                  fontSize: 12,
-                  fontWeight: "500",
-                }}
-              >
-                Send
-              </Text>
-            </TouchableOpacity>
+              extraDisabled={
+                newItemsCount === 0 || hasDraftItems || isReadOnly
+              }
+            />
             {activeOrderType === "dine_in" && linkedTableId ? (
               (() => {
                 const sessionAlreadyClosed =

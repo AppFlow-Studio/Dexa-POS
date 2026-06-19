@@ -11,9 +11,11 @@ import { useOrderStore } from '@/stores/useOrderStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
+import type { OrderProfile } from '@/lib/types'
 import { ChevronDown, ChevronRight } from 'lucide-react-native'
 import React, { useCallback, useMemo, useState } from 'react'
 import { FlatList, Text, TouchableOpacity, View } from 'react-native'
+import { useShallow } from 'zustand/react/shallow'
 
 type SortOption = 'time' | 'name' | 'guests' | 'total'
 type SortDirection = 'asc' | 'desc'
@@ -143,9 +145,8 @@ function InlineSelect<T extends string> ({
 }
 
 const SeatedPanel: React.FC = () => {
-  const tables = useFloorPlanStore(s => s.tables)
-  const ordersById = useOrderStore(s => s.ordersById)
-  const liveSessions = useTableSessionStore(s => s.sessions)
+  const tables = useFloorPlanStore(useShallow(s => s.tables))
+  const liveSessions = useTableSessionStore(useShallow(s => s.sessions))
   const { activeEmployeeId } = useTimeclockStore()
   const { employees } = useEmployeeStore()
 
@@ -164,15 +165,24 @@ const SeatedPanel: React.FC = () => {
     setExpandedTableIds(prev => ({ ...prev, [tableId]: !prev[tableId] }))
   }, [])
 
-  const ordersByLocationId = useMemo(() => {
-    const map: Record<string, typeof ordersById[string]> = {}
-    for (const order of Object.values(ordersById)) {
-      if (order.service_location_id && order.order_status !== 'void') {
-        map[order.service_location_id] = order
+  // Build the per-location order map inside a useShallow store read instead of
+  // subscribing to the whole ordersById map. This re-renders SeatedPanel only
+  // when a *kept* (seated, non-void) order's reference changes (immer keeps
+  // untouched orders referentially stable) or the location→order set changes —
+  // not on every mutation to any unrelated order. Iterating orderIds avoids the
+  // Object.values allocation on each store change. Predicate is unchanged.
+  const ordersByLocationId = useOrderStore(
+    useShallow(s => {
+      const map: Record<string, OrderProfile> = {}
+      for (let i = 0; i < s.orderIds.length; i++) {
+        const order = s.ordersById[s.orderIds[i]]
+        if (order && order.service_location_id && order.order_status !== 'void') {
+          map[order.service_location_id] = order
+        }
       }
-    }
-    return map
-  }, [ordersById])
+      return map
+    })
+  )
 
   const getTableOrderData = useCallback(
     (table: FloorPlanObject) => {

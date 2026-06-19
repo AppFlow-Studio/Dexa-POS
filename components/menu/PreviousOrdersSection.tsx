@@ -194,6 +194,11 @@ const PreviousOrdersSection = () => {
       for (const id of ids) {
         const o = s.ordersById[id]
         if (!o) continue
+        // Hide empty drafts — including the active order / working set, which
+        // were added to `ids` unconditionally above and so bypass the
+        // empty-draft skip in the scan loop. A draft with no items is nothing
+        // the cashier needs to see in the history list.
+        if (o.order_status === 'draft' && o.items.length === 0) continue
         const canonicalId = o.db_order_id ?? o.id
         if (seenOrderIds.has(canonicalId)) continue
         seenOrderIds.add(canonicalId)

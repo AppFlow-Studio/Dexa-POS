@@ -226,7 +226,7 @@ const PaymentBottomSheet: React.FC = () => {
                     textAlign: 'center'
                   }}
                 >
-                  Discard Changes?
+                  Close Payment Sheet?
                 </Text>
                 <Text
                   style={{
@@ -261,7 +261,7 @@ const PaymentBottomSheet: React.FC = () => {
                       fontWeight: '700'
                     }}
                   >
-                    Keep Changes
+                    Cancel
                   </Text>
                 </TouchableOpacity>
 
@@ -284,7 +284,7 @@ const PaymentBottomSheet: React.FC = () => {
                       fontWeight: '700'
                     }}
                   >
-                    Discard
+                    Close Sheet
                   </Text>
                 </TouchableOpacity>
               </View>

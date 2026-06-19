@@ -156,6 +156,10 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   setShowMenuImages: (show: boolean) => void;
   posMenuNavigationMode: PosMenuNavigationMode;
   setPosMenuNavigationMode: (mode: PosMenuNavigationMode) => void;
+  // When a required modifier group has no preset default, auto-select the
+  // first free (then first available) option. Off = require manual selection.
+  autoSelectFirstRequiredOption: boolean;
+  setAutoSelectFirstRequiredOption: (value: boolean) => void;
 
   // Actions
   setDefaultSittingTimeMinutes: (minutes: number) => void;
@@ -481,6 +485,9 @@ export const useSettingsStore = create<SettingsState>()(
       setShowMenuImages: (show) => set({ showMenuImages: show }),
       posMenuNavigationMode: "classic",
       setPosMenuNavigationMode: (mode) => set({ posMenuNavigationMode: mode }),
+      autoSelectFirstRequiredOption: true,
+      setAutoSelectFirstRequiredOption: (value) =>
+        set({ autoSelectFirstRequiredOption: value }),
 
       setDefaultSittingTimeMinutes: (minutes) =>
         set({ defaultSittingTimeMinutes: minutes }),
@@ -573,6 +580,7 @@ export const useSettingsStore = create<SettingsState>()(
         showMenuItemPrices: state.showMenuItemPrices,
         showMenuImages: state.showMenuImages,
         posMenuNavigationMode: state.posMenuNavigationMode,
+        autoSelectFirstRequiredOption: state.autoSelectFirstRequiredOption,
         // Order Line
         orderLineSettings: state.orderLineSettings,
         // Printer Assignment

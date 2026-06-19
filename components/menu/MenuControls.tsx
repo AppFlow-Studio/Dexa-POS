@@ -15,6 +15,7 @@ import {
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Dimensions,
   Modal,
   Pressable,
   ScrollView,
@@ -187,8 +188,6 @@ const createStyles = () =>
     },
     popupCard: {
       position: 'absolute',
-      width: 460,
-      maxWidth: '92%',
       borderRadius: 8,
       borderWidth: 1,
       padding: 14,
@@ -785,10 +784,16 @@ const MenuControls: React.FC<MenuControlsProps> = ({
             onPress={() => {}}
             style={[
               styles.popupCard,
-              {
-                top: popupAnchor.y + popupAnchor.height + 6,
-                left: Math.max(12, Math.min(popupAnchor.x, 760))
-              }
+              (() => {
+                const screenWidth = Dimensions.get('window').width
+                const cardWidth = Math.min(460, screenWidth * 0.92)
+                const left = Math.max(12, Math.min(popupAnchor.x, screenWidth - cardWidth - 12))
+                return {
+                  top: popupAnchor.y + popupAnchor.height + 6,
+                  left,
+                  width: cardWidth,
+                }
+              })()
             ]}
           >
             <View style={styles.popupHeader}>

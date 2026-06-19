@@ -15,7 +15,7 @@ import {
     probeCastlesTerminal,
 } from "@/services/terminals/castles-service";
 import type { CastlesTransportType } from "@/services/terminals/castles-transport.types";
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
     Alert,
@@ -98,7 +98,18 @@ const STATUS_DISPLAY: Record<string, string> = {
 
 // ── Component ──
 
+// Debug-only diagnostic screen. The default export is a thin guard so the
+// screen is unreachable in production builds (the file header asks for it to be
+// removed before release); the implementation lives in the Impl component so
+// all hooks stay unconditional.
 export default function CastlesTerminalTestScreen() {
+  if (!__DEV__) {
+    return <Redirect href="/(main)/settings" />;
+  }
+  return <CastlesTerminalTestScreenImpl />;
+}
+
+function CastlesTerminalTestScreenImpl() {
   // Config
   const [connectionMode, setConnectionMode] = useState<CastlesTransportType>("local_socket");
   const [host, setHost] = useState("192.168.1.");

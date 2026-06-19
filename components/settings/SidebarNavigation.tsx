@@ -5,6 +5,7 @@ import {
   getDeadLetterCount,
   getPendingCount
 } from '@/services/offlineSyncService'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import Constants from 'expo-constants'
 import { usePathname, useRouter } from 'expo-router'
 import * as Updates from 'expo-updates'
@@ -13,6 +14,7 @@ import {
   Banknote,
   Bell,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Clover,
@@ -228,6 +230,19 @@ const SidebarNavigation = () => {
   const router = useRouter()
   const pathname = usePathname()
 
+  // KDS stations open Settings via a PIN-gated push from the headerless KDS
+  // screen. For them the back control must be a single "exit to KDS", not a
+  // step back through the settings sub-pages they navigated. router.navigate
+  // reuses the existing KDS screen in the nav state (pops settings off).
+  const isKDSStation = useStoreSettingsStore(
+    s => s.selectedStation?.station_type === 'kds'
+  )
+  const handleExitSettings = () => {
+    if (isKDSStation) router.navigate('/kds')
+    else if (router.canGoBack()) router.back()
+    else router.replace('/')
+  }
+
   // Track dead-letter + pending queue counts for badge on General Settings
   const [deadLetterCount, setDeadLetterCount] = useState(0)
   const [pendingQueueCount, setPendingQueueCount] = useState(0)
@@ -343,6 +358,45 @@ const SidebarNavigation = () => {
         paddingTop: 12
       }}
     >
+      {/* Header — title + (KDS only) exit. The KDS opens Settings from a
+          headerless screen, so it needs this "Back to KDS" control. POS already
+          has the route header's back arrow, so we omit it here to avoid a
+          double back. */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          paddingHorizontal: 12,
+          paddingBottom: 12,
+          marginBottom: 4,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border
+        }}
+      >
+        {isKDSStation && (
+          <TouchableOpacity
+            onPress={handleExitSettings}
+            accessibilityLabel='Back to KDS'
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card
+            }}
+          >
+            <ChevronLeft size={18} color={colors.label} />
+          </TouchableOpacity>
+        )}
+        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.label }}>
+          {isKDSStation ? 'Back to KDS' : 'Settings'}
+        </Text>
+      </View>
+
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
         <View style={{ paddingHorizontal: 10, paddingBottom: 16 }}>
           {SETTINGS_SECTIONS.map(section => {

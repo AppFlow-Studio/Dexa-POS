@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import {
   Keyboard,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -89,6 +90,28 @@ const createStyles = (modalLayout: boolean) =>
     },
     summarySubtext: {
       fontSize: 10,
+      color: colors.muted,
+      marginTop: 2,
+    },
+    toGoRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      backgroundColor: colors.panel,
+      borderWidth: 1,
+      borderColor: `${colors.teal}30`,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 9,
+    },
+    toGoTitle: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.heading,
+    },
+    toGoSubtitle: {
+      fontSize: 11,
       color: colors.muted,
       marginTop: 2,
     },
@@ -253,6 +276,7 @@ const OpenItemAdder = ({
   const [customModifiers, setCustomModifiers] = useState<CustomModifierDraft[]>(
     [],
   );
+  const [toGo, setToGo] = useState(false);
 
   const modifierTotal = useMemo(
     () => round2(customModifiers.reduce((sum, mod) => sum + mod.price, 0)),
@@ -271,6 +295,7 @@ const OpenItemAdder = ({
     setModifierName("");
     setModifierPrice("");
     setCustomModifiers([]);
+    setToGo(false);
   };
 
   const validateBasePrice = (): boolean => {
@@ -435,6 +460,7 @@ const OpenItemAdder = ({
       is_open_item: true,
       open_item_name: itemName,
       open_item_price: cardPrice,
+      is_to_go: toGo,
       category_name: "Open Items",
       is_tax_exempt: false,
       paidQuantity: 0,
@@ -655,6 +681,21 @@ const OpenItemAdder = ({
                       : "Ready to create"}
                   </Text>
                 </View>
+              </View>
+
+              <View style={styles.toGoRow}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={styles.toGoTitle}>TO GO</Text>
+                  <Text style={styles.toGoSubtitle}>
+                    Package this item to-go
+                  </Text>
+                </View>
+                <Switch
+                  value={toGo}
+                  onValueChange={setToGo}
+                  trackColor={{ false: colors.border, true: colors.teal }}
+                  thumbColor={colors.onSolid}
+                />
               </View>
 
               <View style={styles.modifierSection}>

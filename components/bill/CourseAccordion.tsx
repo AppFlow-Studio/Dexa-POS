@@ -4,6 +4,10 @@ import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
+import {
+  SendAllButton,
+  SendCourseButton
+} from '@/components/bill/SendToKitchenButton'
 import { useCoursingStore } from '@/stores/useCoursingStore'
 import { useOrderItem } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -13,7 +17,6 @@ import {
   ChevronRight,
   Flame,
   Plus,
-  Printer,
   Send,
   X
 } from 'lucide-react-native'
@@ -248,30 +251,7 @@ function CourseGroupInner ({
             </TouchableOpacity>
           )}
           {hasUnsentItems && (
-            <TouchableOpacity
-              onPress={() => onDoubleTap(courseId)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 8,
-                height: 26,
-                borderRadius: 6,
-                backgroundColor: colors.teal
-              }}
-              activeOpacity={0.8}
-            >
-              <Printer size={11} color={colors.onSolid} />
-              <Text
-                style={{
-                  color: colors.onSolid,
-                  fontSize: 11,
-                  fontWeight: '600'
-                }}
-              >
-                Send
-              </Text>
-            </TouchableOpacity>
+            <SendCourseButton onPress={() => onDoubleTap(courseId)} />
           )}
           <TouchableOpacity
             onPress={() => onToggle(courseId)}
@@ -489,9 +469,17 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   isOvertime,
   overtimeMinutes
 }) => {
-  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(
-    new Set()
-  )
+  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(() => {
+    const initial = new Set<number>()
+    activeOrder?.items?.forEach(item => {
+      if (item.is_voided) return
+      initial.add(item.courseNumber ?? itemCourseMap?.[item.id] ?? 1)
+    })
+    if (currentCourse !== undefined && currentCourse !== null) {
+      initial.add(currentCourse)
+    }
+    return initial
+  })
   const prevItemCount = useRef<number>(0)
   // Narrow selectors — subscribe only to the specific fields we display, not the whole order
   const orderMeta = useOrderStore(
@@ -809,32 +797,10 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
             </TouchableOpacity>
           )}
           {onPressSendAllToKitchen && (
-            <TouchableOpacity
+            <SendAllButton
               onPress={onPressSendAllToKitchen}
-              disabled={unsentItemCount === 0}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 13,
-                paddingVertical: 7,
-                borderRadius: 8,
-                backgroundColor: colors.teal,
-                opacity: unsentItemCount === 0 ? 0.4 : 1
-              }}
-              activeOpacity={0.8}
-            >
-              <Printer size={14} color={colors.onSolid} />
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '600',
-                  color: colors.onSolid
-                }}
-              >
-                Send All{unsentItemCount > 0 ? ` (${unsentItemCount})` : ''}
-              </Text>
-            </TouchableOpacity>
+              unsentCount={unsentItemCount}
+            />
           )}
         </View>
       </View>

@@ -8,6 +8,9 @@
  * Initialize once in root layout after both stores hydrate.
  */
 
+import { InteractionManager } from "react-native";
+import { useCoursingStore } from "@/stores/useCoursingStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 
@@ -81,7 +84,7 @@ function isFreshlySeatedOrder(orderId: string): boolean {
 }
 
 function getCachedOrderId(orderId: string): string | null {
-  const { ordersById, dbOrderIdIndex } = useOrderStore.getState();
+  const { ordersById, dbOrderIdIndex, orderIds } = useOrderStore.getState();
   if (ordersById[orderId]) return orderId;
 
   const localId = dbOrderIdIndex[orderId];
@@ -90,16 +93,58 @@ function getCachedOrderId(orderId: string): string | null {
   // Defensive scan: if hydrateOrderFromSeat set db_order_id on a local order
   // but the dbOrderIdIndex repair hasn't committed yet (rare reorder during
   // a SESSION_CREATED → subscriber → microtask chain), still treat the order
-  // as cached so we don't race-fetch a duplicate shell.
-  for (const [key, o] of Object.entries(ordersById)) {
-    if (o.db_order_id === orderId) return key;
+  // as cached so we don't race-fetch a duplicate shell. Iterate the
+  // pre-maintained orderIds array instead of allocating Object.entries.
+  for (let i = 0; i < orderIds.length; i++) {
+    const key = orderIds[i];
+    const o = ordersById[key];
+    if (o && o.db_order_id === orderId) return key;
   }
   return null;
 }
 
+/**
+ * Perf T3b: warm the coursing data for an order alongside the order itself.
+ * Mirrors useTableCoursing's mount guards (10s lastSyncAt window, in-flight
+ * skip) so the hook's own load becomes a no-op when this ran first. Coursing
+ * RPC only fires for dine-in orders with a db_order_id and only when the
+ * merchant has coursing enabled.
+ */
+function prefetchCoursing(localOrderId: string): void {
+  try {
+    if (!useLocationConfigStore.getState().config.dining.enableCoursing) return;
+    const order = useOrderStore.getState().ordersById[localOrderId];
+    const dbOrderId = order?.db_order_id;
+    if (!dbOrderId) return;
+
+    const coursing = useCoursingStore.getState();
+    const existing = coursing.byOrderId[localOrderId];
+    if (existing?.syncing) return;
+    if (
+      existing?.lastSyncAt &&
+      Date.now() - existing.lastSyncAt.getTime() < 10_000
+    ) {
+      return;
+    }
+
+    if (!existing) {
+      // Fresh init auto-loads from server when a dbOrderId is present.
+      coursing.initializeForOrder(localOrderId, dbOrderId);
+      return;
+    }
+    if (!existing.dbOrderId) coursing.setDbOrderId(localOrderId, dbOrderId);
+    void coursing.loadFromServer(localOrderId).catch(() => {});
+  } catch {
+    // Prefetch is best-effort — never let it break the tap path.
+  }
+}
+
 export function ensureOrderPrefetched(orderId: string): Promise<string | null> {
   const cachedOrderId = getCachedOrderId(orderId);
-  if (cachedOrderId) return Promise.resolve(cachedOrderId);
+  if (cachedOrderId) {
+    prefetchCoursing(cachedOrderId);
+    return Promise.resolve(cachedOrderId);
+  }
 
   const inFlightPrefetch = _inFlightPrefetches.get(orderId);
   if (inFlightPrefetch) return inFlightPrefetch;
@@ -108,6 +153,10 @@ export function ensureOrderPrefetched(orderId: string): Promise<string | null> {
   const prefetch = useOrderStore
     .getState()
     .syncOrderFromDatabase(orderId)
+    .then((localOrderId) => {
+      if (localOrderId) prefetchCoursing(localOrderId);
+      return localOrderId;
+    })
     .finally(() => {
       _inFlightOrderIds.delete(orderId);
       _inFlightPrefetches.delete(orderId);
@@ -184,8 +233,16 @@ export function setupTableOrderPrefetch() {
       return ids;
     },
     (orderIds) => {
-      // Defer to avoid blocking UI
-      queueMicrotask(() => {
+      // Defer the speculative warm to AFTER interactions/animations settle.
+      // queueMicrotask drains before the next paint, so a broadcast landing
+      // mid-navigation ran this fetch's synchronous prelude (the getCachedOrderId
+      // O(n) scans) in the same frame as a screen mount — and FIFO microtask
+      // order could run it before a user's tap handler. runAfterInteractions
+      // yields to touches/transitions first. This is best-effort warming, not
+      // needed for first paint/interaction: opening a table still prefetches
+      // its order on tap (ensureOrderPrefetched) and useTableSession single-
+      // flight-hydrates a miss, so usability is unchanged.
+      InteractionManager.runAfterInteractions(() => {
         prefetchUncachedOrders(orderIds).catch((err) => {
           console.error("[prefetch] Failed:", err);
         });
@@ -201,10 +258,10 @@ export function setupTableOrderPrefetch() {
     },
   );
 
-  // Run immediately for sessions already loaded before this subscriber was set up.
-  // Without this, tables that were occupied at startup never get their orders
-  // fetched until a session change occurs (e.g. long-press triggers a manual sync).
-  queueMicrotask(() => {
+  // Run for sessions already loaded before this subscriber was set up (tables
+  // occupied at startup). Deferred past interactions so this boot-time warm
+  // batch doesn't contend with the first screen's paint/first-interaction.
+  InteractionManager.runAfterInteractions(() => {
     prefetchUncachedOrders(getSessionOrderIds()).catch((err) => {
       console.error("[prefetch] Initial fetch failed:", err);
     });
@@ -214,4 +271,12 @@ export function setupTableOrderPrefetch() {
 export function teardownTableOrderPrefetch() {
   _unsubscribe?.();
   _unsubscribe = null;
+  // Clear module-level state so a re-setup starts clean. Without this, a stale
+  // entry in _inFlightPrefetches could outlive teardown and, if its promise
+  // resolves later, apply old order data to a freshly-seated table that reused
+  // the same id. Teardown only fires when ALL table-session mounts unmount, so
+  // no active seat flow is in flight at this point.
+  _inFlightOrderIds.clear();
+  _inFlightPrefetches.clear();
+  _recentlyHydrated.clear();
 }

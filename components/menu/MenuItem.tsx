@@ -10,6 +10,7 @@ import {
 } from "@/lib/menuItemPlaceholderIcon";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { cancelMenuModifierPreWarm } from "@/lib/menuModifierPreWarmControl";
+import { startInteraction } from "@/lib/perf";
 import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -38,7 +39,10 @@ const menuItemStylesByScheme = new Map<string, MenuItemStyles>();
 const createStyles = () =>
   StyleSheet.create({
     container: {
-      width: "19%",
+      // Perf F8: fills its FlashList grid cell (1/numColumns of the grid);
+      // gutters come from MenuSection's gridCell wrapper. Was "19%" of the
+      // FlatList row.
+      width: "100%",
       aspectRatio: 1,
       borderRadius: 12,
       marginBottom: 4,
@@ -52,7 +56,36 @@ const createStyles = () =>
     },
     containerNoImage: {
       aspectRatio: undefined,
-      height: 64,
+      height: 80,
+      backgroundColor: colors.card,
+      borderColor: `${colors.teal}24`,
+    },
+    contentContainerNoImage: {
+      flex: 1,
+      justifyContent: "space-between",
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      gap: 4,
+    },
+    nameTextNoImage: {
+      fontSize: 13,
+      lineHeight: 16,
+      fontWeight: "700",
+      letterSpacing: 0.2,
+      color: colors.heading,
+    },
+    priceRowNoImage: {
+      marginTop: 0,
+    },
+    cardPriceNoImage: {
+      fontSize: 14,
+      letterSpacing: 0.2,
+    },
+    cashPillNoImage: {
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      borderRadius: 999,
+      gap: 4,
     },
     // Modifier corner triangle
     modifierCorner: {
@@ -278,11 +311,17 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const handlePress = useCallback(() => {
     if (!isMenuBlockedSync()) return;
+    const perf = startInteraction("pos.open_modifier_sheet", {
+      item_id: item.id,
+      has_modifiers: !!hasModifiers,
+      prewarmed: isModifierPreWarmed(item.id),
+    });
     const { activeOrderId } = useOrderStore.getState();
     useModifierSidebarStore
       .getState()
       .openToAdd(item, activeOrderId, categoryId, menuId);
-  }, [item, categoryId, menuId]);
+    perf.endAfterPaint();
+  }, [item, categoryId, menuId, hasModifiers]);
 
   const resolvedImageSource =
     imageSource ?? resolveMenuItemImageSource(item.image);
@@ -329,25 +368,44 @@ const MenuItem: React.FC<MenuItemProps> = ({
       {showMenuImages && <View style={styles.divider} />}
 
       {/* Content */}
-      <View style={styles.contentContainer}>
-        <Text style={styles.nameText} numberOfLines={2}>
+      <View
+        style={[
+          styles.contentContainer,
+          !showMenuImages && styles.contentContainerNoImage,
+        ]}
+      >
+        <Text
+          style={[styles.nameText, !showMenuImages && styles.nameTextNoImage]}
+          numberOfLines={2}
+        >
           {item.name}
         </Text>
 
         {showMenuItemPrices && (
-          <View style={styles.priceRow}>
+          <View
+            style={[
+              styles.priceRow,
+              !showMenuImages && styles.priceRowNoImage,
+            ]}
+          >
             <Text
-              style={
+              style={[
                 priceData.hasCustomPricing
                   ? styles.cardPriceCustom
-                  : styles.cardPrice
-              }
+                  : styles.cardPrice,
+                !showMenuImages && styles.cardPriceNoImage,
+              ]}
             >
               ${priceData.displayPrice?.toFixed(2)}
             </Text>
 
             {item.cashPrice && (
-              <View style={styles.cashPill}>
+              <View
+                style={[
+                  styles.cashPill,
+                  !showMenuImages && styles.cashPillNoImage,
+                ]}
+              >
                 <Text style={styles.cashAmount}>
                   ${item.cashPrice.toFixed(2)}
                 </Text>

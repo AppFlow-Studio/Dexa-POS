@@ -478,13 +478,16 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
       refreshSelectedStore: async (supabase: SupabaseClient) => {
         const current = get().selectedStore;
         if (!current?.id) return;
+        // maybeSingle: if the selected store isn't visible to the current
+        // session (RLS / wrong environment / stale persisted store id) we get
+        // null instead of the cryptic PGRST116 "cannot coerce" error.
         const { data } = await supabase
           .from("locations")
           .select(
             "*, merchants!merchant_id(pricing_strategy, dual_pricing_percentage)",
           )
           .eq("id", current.id)
-          .single();
+          .maybeSingle();
         if (data) {
           const merchant = (data as any).merchants;
           const resolved = { ...data } as any;

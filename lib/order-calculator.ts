@@ -689,11 +689,21 @@ export function calculateOrderTotals (
     partySize >= serviceChargeRule.min_party_size
 
   if (manualServiceCharge != null) {
-    // Manager override — bypass rule eligibility entirely. The server is
-    // authoritative; we just mirror its flat dollar value locally so totals
-    // stay consistent before the next sync. is_manual=true is the gate, NOT
-    // a non-null rate, so both amount-mode and percent-mode overrides land here.
-    serviceCharge = new Decimal(manualServiceCharge)
+    // Manager override — bypass rule eligibility entirely. Percent-mode
+    // overrides (snapshottedRate != null) recompute dynamically from
+    // rate × current base, mirroring calculate_order_totals_fast v3.
+    // Amount-mode overrides (rate null) stay frozen at the flat dollar
+    // amount the manager set.
+    if (snapshottedRate != null && snapshottedRate > 0) {
+      const cardBase =
+        effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
+      serviceCharge = Decimal.max(cardBase, 0)
+        .times(snapshottedRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    } else {
+      serviceCharge = new Decimal(manualServiceCharge)
+    }
     cashServiceCharge = serviceCharge
     serviceChargeName = snapshottedName ?? (effectiveName || 'Service Charge')
   } else if (ruleEligible) {
@@ -851,11 +861,17 @@ export function calculateOrderTotals (
       new Decimal(0)
     )
 
-    // Custom refund balance = payment-based due NOT covered by item-level unpaid (upward adjustment)
-    const customRefundBalance = Decimal.max(
-      paymentBasedOutstanding.minus(outstandingCardTotal),
-      new Decimal(0)
-    )
+    // Custom refund balance = payment-based due NOT covered by item-level unpaid (upward adjustment).
+    // Skip when preserveItemLevelOutstanding: for a reopened order the item-level outstanding is
+    // authoritative, and the card-equivalent payment reconstruction (amount + cashSavings) under-counts
+    // mixed cash/card payments, manufacturing a phantom residual (ORD-S2-0001). This mirrors the
+    // downward clamp below, which is already disabled under preserveItemLevelOutstanding.
+    const customRefundBalance = preserveItemLevelOutstanding
+      ? new Decimal(0)
+      : Decimal.max(
+          paymentBasedOutstanding.minus(outstandingCardTotal),
+          new Decimal(0)
+        )
     outstandingCardTotal = outstandingCardTotal.plus(customRefundBalance)
     // This balance is the shared order-level SC (and its tax). Cash and card
     // carry the same flat remainder, so do not dual-price it.

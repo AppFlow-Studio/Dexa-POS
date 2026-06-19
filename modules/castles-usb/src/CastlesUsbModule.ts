@@ -29,6 +29,12 @@ export interface CastlesUsbDetachedEvent {
   deviceId: number;
 }
 
+export interface CastlesUsbAttachedEvent {
+  deviceId: number;
+  vendorId: number;
+  productId: number;
+}
+
 export interface UsbDiagnosticInfo {
   hasUsbHostFeature: boolean;
   hasUsbAccessoryFeature: boolean;
@@ -99,4 +105,11 @@ export function addDetachedListener(
   callback: (event: CastlesUsbDetachedEvent) => void
 ): EventSubscription {
   return CastlesUsb.addListener('onCastlesUsbDetached', callback);
+}
+
+/** Fires when any USB device is attached (hotplug). Filter by vendorId in JS. */
+export function addAttachedListener(
+  callback: (event: CastlesUsbAttachedEvent) => void
+): EventSubscription {
+  return CastlesUsb.addListener('onCastlesUsbAttached', callback);
 }

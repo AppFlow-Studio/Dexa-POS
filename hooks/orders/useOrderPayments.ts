@@ -172,7 +172,11 @@ export const getOrderPaymentsQueryOptions = (
     return (data as OrderPaymentRow[] | null) ?? []
   },
   enabled: !!supabase && !!orderId,
-  staleTime: 0
+  // 60s instead of 0: reopening the payment sheet within a minute serves
+  // cache instead of refetching. Cross-station freshness is covered by the
+  // realtime broadcast handler (useOrdersRealtime), which invalidates this
+  // key for ANY order's INSERT/UPDATE — an open sheet refetches immediately.
+  staleTime: 60_000
 })
 
 const toPaymentType = (paymentMethod: OrderPaymentRow['payment_method']): PaymentType => {

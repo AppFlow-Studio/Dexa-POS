@@ -4,6 +4,10 @@ import { colors } from '@/lib/theme'
 import { CartItem, OrderProfile } from '@/lib/types'
 import { useOrderItem } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
+import {
+  SendAllButton,
+  SendCourseButton
+} from '@/components/bill/SendToKitchenButton'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import {
   ArrowUpToLine,
@@ -11,7 +15,6 @@ import {
   ChevronRight,
   Flame,
   Plus,
-  Printer,
   Send,
   Users,
   X
@@ -310,31 +313,7 @@ const CourseSubHeader = React.memo(
             <X size={11} color={colors.muted} />
           </TouchableOpacity>
         )}
-        {hasUnsentItems && onSend && (
-          <TouchableOpacity
-            onPress={e => {
-              e.stopPropagation()
-              onSend()
-            }}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-              paddingHorizontal: 10,
-              height: 24,
-              borderRadius: 6,
-              backgroundColor: colors.teal
-            }}
-            activeOpacity={0.8}
-          >
-            <Printer size={11} color={colors.onSolid} />
-            <Text
-              style={{ color: colors.onSolid, fontSize: 11, fontWeight: '600' }}
-            >
-              Send
-            </Text>
-          </TouchableOpacity>
-        )}
+        {hasUnsentItems && onSend && <SendCourseButton onPress={onSend} />}
         {expanded ? (
           <ChevronDown size={12} color={colors.label} />
         ) : (
@@ -907,32 +886,10 @@ const DenseSeatView = React.memo(
                     0
                   ) ?? 0
                 return (
-                  <TouchableOpacity
-                    onPress={onPressSendAllToKitchen}
-                    disabled={unsent === 0}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4,
-                      paddingHorizontal: 9,
-                      paddingVertical: 5,
-                      borderRadius: 6,
-                      backgroundColor: colors.teal,
-                      opacity: unsent === 0 ? 0.4 : 1
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Printer size={12} color={colors.onSolid} />
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        fontWeight: '600',
-                        color: colors.onSolid
-                      }}
-                    >
-                      Send All{unsent > 0 ? ` (${unsent})` : ''}
-                    </Text>
-                  </TouchableOpacity>
+                  <SendAllButton
+                    onPress={onPressSendAllToKitchen!}
+                    unsentCount={unsent}
+                  />
                 )
               })()}
           </View>

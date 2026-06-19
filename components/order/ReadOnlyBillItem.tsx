@@ -60,6 +60,11 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({ item, isLast }) => 
                 textDecorationLine: isVoided ? "line-through" : "none",
               }}
             >
+              {item.is_to_go ? (
+                <Text style={{ color: colors.teal, fontWeight: "700" }}>
+                  [TO GO]{" "}
+                </Text>
+              ) : null}
               {item.name}
             </Text>
             {isVoided && (

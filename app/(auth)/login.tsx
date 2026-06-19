@@ -1,5 +1,5 @@
 import { colors, spinnerColor } from "@/lib/theme";
-import { useSSO, useSignIn } from "@clerk/clerk-expo";
+import { useClerk, useSSO, useSignIn } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
@@ -51,6 +51,7 @@ const KEYBOARD_SCROLL_PADDING = Platform.OS === "android" ? 96 : 16;
 
 const MerchantLoginScreen = () => {
   const { signIn, setActive, isLoaded } = useSignIn();
+  const { signOut } = useClerk();
   const router = useRouter();
   const LinkRedirectUrl = Linking.createURL("oauth-native-callback", {
     scheme: "dexapos",
@@ -176,6 +177,68 @@ const MerchantLoginScreen = () => {
     setNeedsSecondFactor(true);
   };
 
+  /** Run the create + first/second factor flow. Throws Clerk errors to caller. */
+  const attemptSignIn = async (trimmedEmail: string) => {
+    if (!signIn) return;
+    // Step 1: Create sign-in attempt
+    const attempt = await signIn.create({ identifier: trimmedEmail });
+
+    // Some configs complete immediately (e.g. SSO redirect resolved)
+    if (attempt.status === "complete") {
+      await completeSignIn(attempt.createdSessionId);
+      return;
+    }
+
+    // Step 2: Verify password as first factor
+    if (attempt.status === "needs_first_factor") {
+      const result = await signIn.attemptFirstFactor({
+        strategy: "password",
+        password,
+      });
+
+      if (result.status === "complete") {
+        await completeSignIn(result.createdSessionId);
+        return;
+      }
+
+      // Step 3: Device not trusted — second factor required
+      if (result.status === "needs_second_factor") {
+        await initiateSecondFactor();
+        return;
+      }
+
+      setError(`Unexpected status: ${result.status}`);
+      return;
+    }
+
+    setError("Sign-in incomplete. Please try again.");
+  };
+
+  /** Map a Clerk error to a user-facing message. */
+  const showLoginError = (err: any) => {
+    if (err.errors?.length > 0) {
+      const code = err.errors[0].code;
+      if (code === "form_identifier_not_found") {
+        setError("No account found with this email.");
+      } else if (code === "form_password_incorrect") {
+        setError("Incorrect password. Please try again.");
+      } else if (code === "form_param_format_invalid") {
+        setError("Please enter a valid email address.");
+      } else {
+        setError(
+          err.errors[0].longMessage ||
+            err.errors[0].message ||
+            "Invalid email or password",
+        );
+      }
+    } else {
+      Sentry.captureException(err, {
+        tags: { source: "login", step: "handleLogin" },
+      });
+      setError("An error occurred. Please try again.");
+    }
+  };
+
   const handleLogin = async () => {
     if (!isLoaded) return;
 
@@ -199,60 +262,23 @@ const MerchantLoginScreen = () => {
 
     try {
       if (!signIn) return;
-      // Step 1: Create sign-in attempt
-      const attempt = await signIn.create({ identifier: trimmedEmail });
-
-      // Some configs complete immediately (e.g. SSO redirect resolved)
-      if (attempt.status === "complete") {
-        await completeSignIn(attempt.createdSessionId);
-        return;
-      }
-
-      // Step 2: Verify password as first factor
-      if (attempt.status === "needs_first_factor") {
-        const result = await signIn.attemptFirstFactor({
-          strategy: "password",
-          password,
-        });
-
-        if (result.status === "complete") {
-          await completeSignIn(result.createdSessionId);
-          return;
-        }
-
-        // Step 3: Device not trusted — second factor required
-        if (result.status === "needs_second_factor") {
-          await initiateSecondFactor();
-          return;
-        }
-
-        setError(`Unexpected status: ${result.status}`);
-        return;
-      }
-
-      setError("Sign-in incomplete. Please try again.");
+      await attemptSignIn(trimmedEmail);
     } catch (err: any) {
-      if (err.errors?.length > 0) {
-        const code = err.errors[0].code;
-        if (code === "form_identifier_not_found") {
-          setError("No account found with this email.");
-        } else if (code === "form_password_incorrect") {
-          setError("Incorrect password. Please try again.");
-        } else if (code === "form_param_format_invalid") {
-          setError("Please enter a valid email address.");
-        } else {
-          setError(
-            err.errors[0].longMessage ||
-              err.errors[0].message ||
-              "Invalid email or password",
-          );
+      // A stale Clerk session — e.g. a previous sign-out whose network call
+      // failed on bad WiFi — makes Clerk reject new sign-ins with
+      // `session_exists` ("You're already signed in."). Clear the lingering
+      // session and retry once so the merchant isn't stranded on this screen.
+      if (err?.errors?.[0]?.code === "session_exists") {
+        try {
+          await signOut();
+          await attemptSignIn(trimmedEmail);
+          return;
+        } catch (retryErr: any) {
+          showLoginError(retryErr);
+          return;
         }
-      } else {
-        Sentry.captureException(err, {
-          tags: { source: "login", step: "handleLogin" },
-        });
-        setError("An error occurred. Please try again.");
       }
+      showLoginError(err);
     } finally {
       setIsLoading(false);
     }

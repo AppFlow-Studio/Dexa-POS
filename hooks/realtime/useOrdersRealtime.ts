@@ -55,6 +55,7 @@ export interface BroadcastOrderItemData {
   prep_station?: string | null
   rush?: boolean
   is_prioritized?: boolean
+  is_to_go?: boolean
   fire_time?: string | null
   // Modifiers (Phase 2.5: Order Item Sync with Modifiers)
   modifiers?: BroadcastModifierData[]
@@ -344,18 +345,22 @@ export function useOrdersRealtime ({
         const orderId = broadcastOrder?.id
         const orderSource = broadcastOrder?.order_source?.toLowerCase()
 
-        if (
-          orderId &&
-          orderSource === 'online' &&
-          (event === 'INSERT' || event === 'UPDATE')
-        ) {
+        if (orderId && (event === 'INSERT' || event === 'UPDATE')) {
+          // Invalidate for ALL orders: unmounted queries are merely marked
+          // stale (no network), while an open payment sheet refetches right
+          // away. This is what lets useOrderPayments run staleTime 60s
+          // without a cross-station payment-freshness gap.
           void queryClient.invalidateQueries({
             queryKey: orderPaymentsQueryKey(orderId)
           })
 
-          void queryClient.prefetchQuery(
-            getOrderPaymentsQueryOptions(supabase, orderId)
-          )
+          // Prefetch stays online-only — eagerly fetching payments for every
+          // POS broadcast would add a round trip per order mutation.
+          if (orderSource === 'online') {
+            void queryClient.prefetchQuery(
+              getOrderPaymentsQueryOptions(supabase, orderId)
+            )
+          }
         }
 
         if (onOrderChange) {

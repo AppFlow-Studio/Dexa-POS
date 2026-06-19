@@ -48,11 +48,12 @@ import React, {
     useState,
 } from "react";
 import {
-    FlatList,
+  FlashList,
+  type ListRenderItemInfo,
+} from "@shopify/flash-list";
+import {
     ActivityIndicator,
     InteractionManager,
-    ListRenderItemInfo,
-    Platform,
     Pressable,
     Text,
     TouchableOpacity,
@@ -92,7 +93,27 @@ import { StyleSheet, ViewStyle } from "react-native";
 
 const menuSectionStyles = StyleSheet.create({
   spacer: {
-    width: "23%",
+    flex: 1,
+  },
+  // Perf F8 (FlashList): each grid cell is width/numColumns; gutters live on
+  // the cell wrapper (3+3 horizontal between columns, 6 vertical between
+  // rows) since FlashList has no columnWrapperStyle.
+  gridCell: {
+    // FlashList lays each row of `numColumns` cells out in a flex row; flex:1
+    // makes every cell take an equal share of the row width. Static (no onLayout
+    // measurement race that left the first category cramped until a switch).
+    flex: 1,
+    paddingHorizontal: 3,
+    paddingBottom: 6,
+  },
+  gridContainer: {
+    flex: 1,
+    marginTop: 8,
+    // NOTE: backgroundColor is applied inline at the render site, NOT here.
+    // `colors` is a theme Proxy that defaults to dark; StyleSheet.create runs
+    // at module load (before setThemeMode('light')), so a themed color frozen
+    // here would lock to the dark value (#1E2340) and show as a dark rectangle
+    // below short lists. Inline styles read the live (light) value.
   },
 });
 const EMPTY_HIDDEN_MENU_IDS: string[] = [];
@@ -122,7 +143,7 @@ const getImageSource = (item: MenuItemType) => {
   return source;
 };
 
-// OPTIMIZED: Memoized spacer component
+// OPTIMIZED: Memoized spacer component — 20% width matches a real grid cell.
 const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
 SpacerItem.displayName = "SpacerItem";
 
@@ -654,6 +675,12 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   useEffect(() => {
     if (!filteredMenuItems.length || !currentCategoryId || !activeMenuId)
       return;
+    // Perf F5: warm the WHOLE category, not just the first 6/12 — items past
+    // the old window paid the full modifier-tree computation on tap (latency
+    // cliff at index 12). The rAF-chunked loop below keeps each batch small,
+    // and the cursor runs in list order so above-the-fold items still warm
+    // first. Image prefetch stays capped to the visible window.
+    const itemsToWarm = filteredMenuItems;
     const visibleItems = filteredMenuItems.slice(0, isTableOrder ? 6 : 12);
     let cancelled = false;
     let pendingRaf: number | null = null;
@@ -674,7 +701,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         let cursor = 0;
         const step = () => {
           if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
-          const slice = visibleItems.slice(cursor, cursor + chunkSize);
+          const slice = itemsToWarm.slice(cursor, cursor + chunkSize);
           if (slice.length === 0) {
             pendingRaf = null;
             return;
@@ -710,15 +737,17 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       const imagePriority =
         index < highThrough ? "high" : index < normalThrough ? "normal" : "low";
       return (
-        <MenuItem
-          item={item}
-          imageSource={getImageSource(item)}
-          imagePriority={imagePriority}
-          onOrderClosedCheck={onOrderClosedCheck}
-          categoryId={currentCategoryId}
-          menuId={activeMenuId}
-          disabled={isMenuAddDisabled}
-        />
+        <View style={menuSectionStyles.gridCell}>
+          <MenuItem
+            item={item}
+            imageSource={getImageSource(item)}
+            imagePriority={imagePriority}
+            onOrderClosedCheck={onOrderClosedCheck}
+            categoryId={currentCategoryId}
+            menuId={activeMenuId}
+            disabled={isMenuAddDisabled}
+          />
+        </View>
       );
     },
     [
@@ -729,6 +758,17 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       isMenuAddDisabled,
     ],
   );
+
+  // FlashList recycles by type — keep spacer cells out of the MenuItem pool.
+  const getItemType = useCallback(
+    (item: MenuItemType) => ((item as any).name === "spacer" ? "spacer" : "item"),
+    [],
+  );
+
+  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
+  // Row-height estimate. Image tiles are square at ~1/5 of the grid width;
+  // text-only tiles are a fixed 80 (+6 gridCell paddingBottom).
+  const estimatedItemSize = showMenuImages ? 240 : 86;
 
   const formatTime = (d?: Date | null) =>
     d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
@@ -858,10 +898,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 </DialogTrigger>
               )}
               <DialogContent
-                className="w-[480px] max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden"
+                className="max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden"
                 style={{
                   backgroundColor: colors.screen,
                   borderColor: colors.border,
+                  maxWidth: 480,
+                  alignSelf: 'center',
+                  width: '90%',
                 }}
               >
                 <DialogHeader
@@ -1148,52 +1191,53 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 key={"Menu"}
                 className={`flex-1 ${isTableOrder ? "px-3" : ""}`}
               >
-                <FlatList
-                  data={dataWithSpacers}
-                  keyExtractor={keyExtractor}
-                  numColumns={numColumns}
-                  style={{
-                    flex: 1,
-                    marginTop: 8,
-                    backgroundColor: colors.card,
-                  }}
-                  contentContainerStyle={{
-                    backgroundColor: colors.card,
-                    paddingBottom: 128,
-                  }}
-                  ItemSeparatorComponent={SpacerItem}
-                  getItemLayout={(_item, index) => {
-                    const ROW_HEIGHT = 80 + 12;
-                    const row = Math.floor(index / numColumns);
-                    return { length: 80, offset: row * ROW_HEIGHT, index };
-                  }}
-                  showsVerticalScrollIndicator={false}
-                  columnWrapperStyle={{
-                    justifyContent: "flex-start",
-                    gap: 6,
-                    marginBottom: 6,
-                  }}
-                  removeClippedSubviews={Platform.OS === "android"}
-                  maxToRenderPerBatch={10}
-                  updateCellsBatchingPeriod={32}
-                  windowSize={2}
-                  initialNumToRender={15}
-                  ListEmptyComponent={
-                    <View
-                      style={{
-                        flex: 1,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        height: 192,
-                      }}
-                    >
-                      <Text style={{ color: colors.muted, fontSize: 18 }}>
-                        No items match the current filters.
-                      </Text>
-                    </View>
-                  }
-                  renderItem={renderMenuItem}
-                />
+                {/* Perf F8: FlashList replaces the tuned FlatList — cell
+                    recycling instead of mount/unmount during fling scrolls.
+                    Column gutters moved into renderItem's gridCell wrapper
+                    (no columnWrapperStyle in FlashList); the old batching
+                    props (windowSize etc.) have no FlashList equivalent. */}
+                <View
+                  style={[
+                    menuSectionStyles.gridContainer,
+                    { backgroundColor: colors.card },
+                  ]}
+                >
+                  <FlashList
+                    data={dataWithSpacers}
+                    keyExtractor={keyExtractor}
+                    numColumns={numColumns}
+                    estimatedItemSize={estimatedItemSize}
+                    getItemType={getItemType}
+                    disableAutoLayout
+                    drawDistance={500}
+                    contentContainerStyle={{
+                      backgroundColor: colors.card,
+                      paddingBottom: 128,
+                    }}
+                    showsVerticalScrollIndicator={false}
+                    // Re-render visible cells when the add-disabled state flips
+                    // (e.g. first order's db_order_id arrives → isMenuAddDisabled
+                    // false). Without this, dataWithSpacers keeps the same item
+                    // references so FlashList leaves the first category's cells
+                    // grayed out until a category switch rebuilds the data.
+                    extraData={isMenuAddDisabled}
+                    ListEmptyComponent={
+                      <View
+                        style={{
+                          flex: 1,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: 192,
+                        }}
+                      >
+                        <Text style={{ color: colors.muted, fontSize: 18 }}>
+                          No items match the current filters.
+                        </Text>
+                      </View>
+                    }
+                    renderItem={renderMenuItem}
+                  />
+                </View>
               </View>
             ) : null
           ) : activeTab === "Open Item" ? (

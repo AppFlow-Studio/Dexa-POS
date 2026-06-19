@@ -1,6 +1,7 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient';
 import { DejavooSpinAPI } from '@/lib/payments/dejavoo-spin-api';
 import { listDevices } from '@/modules/castles-usb';
+import { isCastlesUsbConnectInFlight } from '@/services/terminals/castlesUsbAutoConnect';
 import {
   getSharedCastlesService,
   probeCastlesTerminal,
@@ -263,6 +264,12 @@ export function useTerminalStatus(
 
     const attempt = async () => {
       if (cancelled || isAutoReconnectingRef.current) return;
+      // The event-driven USB auto-connect coordinator is the primary reconnect
+      // driver and runs its own retry ladder. Yield to it while it's connecting
+      // or has a retry pending so we don't disconnect its socket mid-attempt or
+      // stack a competing connect on the shared command mutex. This poll is the
+      // long-tail fallback for when the coordinator's ladder has exhausted.
+      if (isCastlesUsbConnectInFlight()) return;
       let foundCastles = false;
       try {
         const devices = await listDevices();
