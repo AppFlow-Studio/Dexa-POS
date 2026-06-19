@@ -3762,6 +3762,12 @@ interface OrderState {
     forceCardPricing?: boolean; // Force card pricing for custom amount payments (no cash discount)
     forceExplicitAmount?: boolean; // Preserve p_amount for allocation-free partial payments
   }) => Promise<boolean>; // Returns true if sync succeeded, false if failed (state reverted)
+  // Roll back optimistic, never-backend-confirmed payments when a user cancels
+  // an in-progress (split) payment. Removes pending payments lacking a
+  // db_payment_id, restores paidQuantity/item status from their coverage,
+  // clears the stale optimistic amount_due so it isn't treated as authoritative,
+  // and recomputes from item coverage. Returns true if anything was rolled back.
+  discardUnsyncedPayments: (orderId: string) => boolean;
   setOrders: (orders: OrderProfile[]) => void;
 
   markOrderAsPaid: (orderId: string) => void;
@@ -11235,6 +11241,97 @@ export const useOrderStore = create<OrderState>()(
             get().recalculateOrder(storeKey);
           },
 
+          discardUnsyncedPayments: (orderId) => {
+            const storeKey = get().dbOrderIdIndex[orderId] ?? orderId;
+            const order = get().ordersById[storeKey];
+            if (!order) return false;
+
+            // Only roll back payments that never reached the backend. A payment
+            // with a db_payment_id is the server's responsibility (void/refund),
+            // never a silent client-side discard. Pre-auths are excluded — they
+            // have their own release path.
+            const toDiscard = (order.payments ?? []).filter(
+              (p) =>
+                !p.db_payment_id &&
+                p.sync_status === "pending" &&
+                !p.isPreAuth &&
+                !p.isVoided,
+            );
+            if (toDiscard.length === 0) return false;
+
+            const discardIds = new Set(toDiscard.map((p) => p.id));
+
+            // Aggregate the paid quantity each discarded payment claimed, keyed
+            // by the same id the coverage was written under (db_order_item_id
+            // when present, else the local item id).
+            const restoreQtyByItemKey = new Map<string, number>();
+            for (const p of toDiscard) {
+              for (const cov of p.itemsCovered ?? []) {
+                restoreQtyByItemKey.set(
+                  cov.itemId,
+                  (restoreQtyByItemKey.get(cov.itemId) ?? 0) + cov.quantity,
+                );
+              }
+            }
+
+            set((state) => {
+              const o = state.ordersById[storeKey];
+              if (!o) return;
+
+              // Restore paidQuantity / kitchen status for items the discarded
+              // payments had marked paid.
+              o.items = o.items.map((item) => {
+                const restore =
+                  restoreQtyByItemKey.get(item.db_order_item_id || "") ??
+                  restoreQtyByItemKey.get(item.id);
+                if (!restore || restore <= 0) return item;
+                const newPaidQty = Math.max(
+                  0,
+                  (item.paidQuantity || 0) - restore,
+                );
+                const next: typeof item = {
+                  ...item,
+                  paidQuantity: newPaidQty,
+                };
+                // Drop the optimistic-payment fingerprint so a late broadcast
+                // can no longer prefer this now-unpaid copy.
+                if (next.pendingPaymentSeq !== undefined) {
+                  delete next.pendingPaymentSeq;
+                }
+                return next;
+              });
+
+              // Remove the never-confirmed payments.
+              o.payments = (o.payments ?? []).filter(
+                (p) => !discardIds.has(p.id),
+              );
+
+              // Reverse the optimistic amount_paid bump from addPaymentToOrder.
+              const discardedAmount = toDiscard.reduce(
+                (sum, p) => sum + (p.amount || 0),
+                0,
+              );
+              o.amount_paid = Math.max(
+                0,
+                (o.amount_paid || 0) - discardedAmount,
+              );
+
+              // Critical: clear the stale optimistic amount_due / cash_amount_due.
+              // recalculateOrder treats a defined amount_due as backend-
+              // authoritative; leaving the optimistic value here is exactly what
+              // manufactures the phantom residual on the next attempt. Setting
+              // them to undefined forces recalculateOrder to derive outstanding
+              // from item coverage, and the next backend sync to defer to the
+              // server's authoritative value.
+              o.amount_due = undefined as unknown as number;
+              o.cash_amount_due = undefined as unknown as number;
+            });
+
+            // Recompute totals / outstanding from the restored item coverage.
+            get().recalculateOrder(storeKey);
+            return true;
+          },
+
           addPaymentToOrder: async ({
             orderId,
             amount,
@@ -16569,6 +16666,27 @@ export const useOrderStore = create<OrderState>()(
                     (p) => !p.db_payment_id && p.sync_status === "pending",
                   );
 
+                  // Financial-residue guard (Task 4): a bare optimistic split
+                  // payment that never reached the backend (no db_payment_id,
+                  // not a pre-auth) must NOT pin amount_due/amount_paid to the
+                  // stale local value — the backend is authoritative for the
+                  // money. Only pre-auths (a real authorization awaiting capture)
+                  // legitimately keep local financials ahead of the server.
+                  // Without this, a cancelled/lost split leaves the optimistic
+                  // amount_due in place, which recalculateOrder then treats as
+                  // backend-authoritative and the SC/refund clamp re-fires on the
+                  // corrupted balance.
+                  const hasUnsettledPreAuth = (
+                    currentOrder.payments ?? []
+                  ).some(
+                    (p) =>
+                      !p.db_payment_id &&
+                      p.sync_status === "pending" &&
+                      p.isPreAuth,
+                  );
+                  const keepLocalFinancials =
+                    hasLocalAdvancedPayments || hasUnsettledPreAuth;
+
                   // Rank-based upgrade: always accept server's paid_status if it's higher
                   // Refund transitions bypass rank check — both Paid→Refunded and
                   // Refunded→Paid must be accepted to reflect the full lifecycle.
@@ -16651,12 +16769,12 @@ export const useOrderStore = create<OrderState>()(
                     total_discount: orderData.discount_amount,
                     amount_paid: isServerPaidUpgrade
                       ? orderData.amount_paid
-                      : hasLocalAdvancedPayments || hasLocalPendingPayments
+                      : keepLocalFinancials
                         ? currentOrder.amount_paid
                         : orderData.amount_paid,
                     amount_due: isServerPaidUpgrade
                       ? orderData.amount_due
-                      : hasLocalAdvancedPayments || hasLocalPendingPayments
+                      : keepLocalFinancials
                         ? currentOrder.amount_due
                         : orderData.amount_due,
                     cash_amount_due: orderData.cash_amount_due,
@@ -16689,7 +16807,7 @@ export const useOrderStore = create<OrderState>()(
                     // BUT always accept server upgrade (e.g. Partial → Paid)
                     paid_status: isServerPaidUpgrade
                       ? paidStatus
-                      : hasLocalAdvancedPayments || hasLocalPendingPayments
+                      : keepLocalFinancials
                         ? currentOrder.paid_status
                         : hasLocalPending
                           ? currentOrder.paid_status

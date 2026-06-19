@@ -183,6 +183,12 @@ interface PaymentState {
    */
   openForVerification: (journal: PaymentJournalEntryLike) => void;
   close: () => void;
+  // User-cancel of an in-progress (split) payment. Rolls back optimistic,
+  // never-backend-confirmed payments on the active order, routes through the
+  // formal reopen so the order reads `partial` from the backend, then closes.
+  // Use this — not close() — whenever the user abandons the sheet with captured
+  // portions, so no phantom residual survives.
+  cancelInProgressPayment: () => void;
   setView: (view: PaymentView) => void;
   setActiveTableId: (tableId: string | null) => void;
   clearActiveTableId: () => void;
@@ -418,6 +424,47 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   },
 
   close: () => {
+    get().resetPaymentState();
+    set({ isOpen: false });
+  },
+
+  cancelInProgressPayment: () => {
+    const orderState = useOrderStore.getState();
+    const activeOrderId = orderState.activeOrderId;
+
+    if (activeOrderId) {
+      const order = orderState.ordersById[activeOrderId];
+      // A split is "in progress" once a portion has been captured (which locks
+      // split_payment_path) or any payment exists on the order.
+      const inSplit =
+        !!order?.split_payment_path ||
+        (order?.payments?.length ?? 0) > 0;
+
+      if (inSplit) {
+        // Abandon the WHOLE split. voidAllPayments fires void_payment on every
+        // backend-confirmed portion (reversing the real charge) AND removes any
+        // never-synced locals, restores paidQuantity, and clears the split lock.
+        // This is what makes Discard wipe an already-charged first portion — a
+        // plain local rollback can't, since that portion is real money on the
+        // server. Fire-and-forget: the sheet closes immediately; voidAllPayments
+        // rolls itself back and toasts if any RPC fails.
+        void orderState.voidAllPayments(activeOrderId).catch(() => {
+          // Errors are surfaced + rolled back inside voidPayment; nothing to do.
+        });
+      } else {
+        // No captured portion yet — just drop optimistic, never-confirmed
+        // payments and defer amount_due to the backend.
+        const rolledBack =
+          orderState.discardUnsyncedPayments(activeOrderId);
+        if (rolledBack) {
+          void orderState
+            .syncOrderFromBackendComplete(activeOrderId, { force: true })
+            .catch(() => {});
+        }
+      }
+    }
+
+    // Tear down the sheet UI.
     get().resetPaymentState();
     set({ isOpen: false });
   },
