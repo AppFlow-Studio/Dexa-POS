@@ -113,7 +113,13 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // For EAS "unsigned*" profiles, skip the debug-keystore fallback so the
+            // artifact is a TRULY unsigned APK to be signed with the prod key downstream.
+            // EAS-credentialed builds inject their own signing via eas-build.gradle, so
+            // real signed builds are unaffected.
+            if (!(System.getenv("EAS_BUILD_PROFILE") ?: "").contains("unsigned")) {
+                signingConfig signingConfigs.debug
+            }
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
