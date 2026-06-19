@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useActiveOrder } from '@/stores/selectors/orderSelectors'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { AlertTriangle } from 'lucide-react-native'
 import React, { useState } from 'react'
@@ -38,6 +39,17 @@ const PaymentBottomSheet: React.FC = () => {
   const isTransactionProcessing = usePaymentStore(
     s => s.isTransactionProcessing
   )
+
+  // A split is "in progress" once a portion has been captured — even though the
+  // sheet is no longer `isDirty` (advancing to the next portion clears the dirty
+  // flag, see usePaymentStore.startSplitPaymentFlow). Closing here must still
+  // prompt Keep/Discard so an abandoned split gets voided rather than silently
+  // left on the order (which double-charged on the next re-split).
+  const activeOrder = useActiveOrder()
+  const hasInProgressSplit =
+    !!activeOrder?.split_payment_path ||
+    (activeOrder?.payments?.length ?? 0) > 0
+
   const [showConfirmation, setShowConfirmation] = useState(false)
 
   // "Discard": abandon the whole split. Roll back any captured-but-unconfirmed
@@ -65,10 +77,14 @@ const PaymentBottomSheet: React.FC = () => {
 
   const handleAttemptClose = () => {
     if (isTransactionProcessing) return
-    if (isDirty) {
-      setShowConfirmation(true)
-    } else if (view === 'success') {
+    // `success` = a completed payment, not an abandon — take the clean finalize
+    // path even if captured portions exist.
+    if (view === 'success') {
       handleSuccessClose()
+    } else if (isDirty || hasInProgressSplit) {
+      // Dirty edits OR a partially-captured split → prompt Keep/Discard so the
+      // abandoned portions are explicitly voided, never silently left behind.
+      setShowConfirmation(true)
     } else {
       close()
     }
