@@ -159,6 +159,8 @@ export default function EodStepOverview ({
               description={item.description}
               status={item.status}
               detail={item.detail}
+              actionLabel={item.id === 'shifts_reviewed' ? 'Review' : undefined}
+              onPress={item.id === 'shifts_reviewed' ? onOpenStaff : undefined}
             />
           ))}
         </View>
