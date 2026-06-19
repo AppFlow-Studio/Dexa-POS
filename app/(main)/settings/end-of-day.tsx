@@ -146,6 +146,14 @@ export default function EndOfDayScreen () {
         employeeId !== activeEmployeeId && knownEmployeeIds.has(employeeId)
     )
   }, [activeEmployeeId, employees, timeclockSessions])
+  const unresolvedReviewStaffProfileIds = useMemo(
+    () =>
+      employees
+        .filter(employee => unresolvedReviewEmployeeIds.includes(employee.id))
+        .map(employee => employee.profileId)
+        .filter(Boolean),
+    [employees, unresolvedReviewEmployeeIds]
+  )
   const timeclockReviewHref = useMemo(() => {
     if (unresolvedReviewEmployeeIds.length === 0) {
       return '/(profiles-and-timeclock)/timeclock'
@@ -155,10 +163,11 @@ export default function EndOfDayScreen () {
       pathname: '/(profiles-and-timeclock)/timeclock',
       params: {
         reviewMode: 'unresolved',
-        focusEmployeeIds: unresolvedReviewEmployeeIds.join(',')
+        focusEmployeeIds: unresolvedReviewEmployeeIds.join(','),
+        focusStaffProfileIds: unresolvedReviewStaffProfileIds.join(',')
       }
     }
-  }, [unresolvedReviewEmployeeIds])
+  }, [unresolvedReviewEmployeeIds, unresolvedReviewStaffProfileIds])
   const onOpenTimeclock = useCallback(
     () => onSafeNavigate(timeclockReviewHref as any),
     [onSafeNavigate, timeclockReviewHref]
