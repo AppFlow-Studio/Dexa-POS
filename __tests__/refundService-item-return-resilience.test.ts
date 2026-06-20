@@ -64,6 +64,7 @@ import {
   isTerminalTransportDead,
 } from "@/services/terminals/castles-service";
 import { CastlesEmptyResponseError } from "@/services/terminals/castlesConnectionSupervisor";
+import { resolveRefundToast } from "@/components/previous-orders/refundOutcome";
 
 const mocked = OrderService as unknown as {
   createReversal: jest.Mock;
@@ -248,6 +249,80 @@ describe("processItemReturn — crash resilience", () => {
     expect(result.data.error).toMatch(/Declined by issuer/);
     expect(result.data.error).not.toMatch(/Terminal went offline/);
   }, 20000);
+
+  it("returns kind:'error' (not success) when the terminal dies and nothing is refunded", async () => {
+    const service = new RefundService({} as any);
+    (service as any).buildItemRefundAllocation = jest.fn().mockResolvedValue({
+      totalRefund: 33.97,
+      items: [makeAllocationItem("i1", 33.97), makeAllocationItem("i2", 13.96)],
+    });
+    // First (and only attempted) terminal call dies → 0 reversals.
+    (service as any).processTerminalRefund = jest
+      .fn()
+      .mockResolvedValue({ success: false, error: "USB get_status request failed" });
+
+    const result = await (service as any).processItemReturn(
+      makeRequest(),
+      makeContext(),
+      [],
+      "batch-key",
+    );
+
+    // Must be a FAILURE so every consumer shows "Refund Failed", not success.
+    expect(result.kind).toBe("error");
+    expect(result.error).toMatch(/Terminal offline/);
+    // Nothing was applied/recorded since nothing was refunded.
+    expect(mocked.applyRefundToPayment).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveRefundToast", () => {
+  const opts = { successTitle: "Refund Successful", successMessage: "ok" };
+
+  it("kind:error → failed (red), ok=false", () => {
+    const r = resolveRefundToast({ kind: "error", error: "boom" } as any, opts);
+    expect(r.ok).toBe(false);
+    expect(r.toast.type).toBe("error");
+    expect(r.toast.message).toBe("boom");
+  });
+
+  it("success with data.success===false → failed (red), ok=false", () => {
+    const r = resolveRefundToast(
+      { kind: "success", data: { success: false, error: "no items", reversals: [] } } as any,
+      opts,
+    );
+    expect(r.ok).toBe(false);
+    expect(r.toast.type).toBe("error");
+    expect(r.toast.message).toBe("no items");
+  });
+
+  it("success with data.error (partial) → warning (yellow), ok=true", () => {
+    const r = resolveRefundToast(
+      { kind: "success", data: { success: true, error: "1 of 2 refunded", reversals: [{}] } } as any,
+      opts,
+    );
+    expect(r.ok).toBe(true);
+    expect(r.partial).toBe(true);
+    expect(r.toast.type).toBe("warning");
+    expect(r.toast.message).toBe("1 of 2 refunded");
+  });
+
+  it("clean success → success (green)", () => {
+    const r = resolveRefundToast(
+      { kind: "success", data: { success: true, reversals: [{}] } } as any,
+      opts,
+    );
+    expect(r.ok).toBe(true);
+    expect(r.partial).toBe(false);
+    expect(r.toast.type).toBe("success");
+    expect(r.toast.title).toBe("Refund Successful");
+  });
+
+  it("verifying → treated as success (terminal already approved)", () => {
+    const r = resolveRefundToast({ kind: "verifying", journalId: "j" } as any, opts);
+    expect(r.ok).toBe(true);
+    expect(r.toast.type).toBe("success");
+  });
 });
 
 describe("isTerminalTransportDead", () => {

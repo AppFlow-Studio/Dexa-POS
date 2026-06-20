@@ -1222,6 +1222,21 @@ export class RefundService {
       }
     }
 
+    // Nothing refunded → this is a FAILURE, not a success. Route it through the
+    // error path so every consumer (modals + store) shows "Refund Failed" and the
+    // store bails before marking anything refunded or running applyRefundRecovery.
+    // (processFullPaymentRefund already returns kind:"error" on terminal failure;
+    // item-return previously returned kind:"success" with success:false, which the
+    // UI rendered as a green "Refund Successful" — the reported unplug bug.)
+    if (reversals.length === 0) {
+      const message = terminalDead
+        ? "Terminal offline — no items were refunded. Reconnect the terminal and try again."
+        : errors.length > 0
+          ? errors.join("; ")
+          : "No items were refunded.";
+      return { kind: "error", error: message };
+    }
+
     const orderStatusResult =
       await OrderService.updateOrderPaymentStatusAfterRefund(
         this.supabase,
@@ -1240,8 +1255,8 @@ export class RefundService {
       );
     }
 
-    // Surface an early stop clearly so the caller/UI can tell the operator that
-    // some items were refunded and the rest were not attempted (terminal died).
+    // ≥1 item refunded. If the terminal died partway, surface a partial-success
+    // message so the UI can warn (not green-success) that the rest were skipped.
     const errorParts = [...errors];
     if (terminalDead) {
       errorParts.unshift(
@@ -1252,7 +1267,7 @@ export class RefundService {
     return {
       kind: "success",
       data: {
-        success: reversals.length > 0,
+        success: true,
         reversals,
         error: errorParts.length > 0 ? errorParts.join("; ") : undefined,
       },
