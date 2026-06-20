@@ -30,7 +30,12 @@ import {
     setRootNavigationRef,
 } from "@/lib/rootNavigation";
 import { POS_SCREEN_OPTIONS } from "@/lib/screenConfig";
-import { flushAllPendingWrites, secureStorage } from "@/lib/storage";
+import {
+  didSecureStorageProbeFail,
+  flushAllPendingWrites,
+  getEnvReconcileResult,
+  secureStorage,
+} from "@/lib/storage";
 import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { DEADLINES } from "@/lib/network/deadlines";
@@ -41,6 +46,7 @@ import {
     pruneOldJournals,
 } from "@/services/paymentJournal";
 import type { PaymentJournalEntry } from "@/services/paymentJournal";
+import { getRawIsOnline } from "@/services/offlineSyncService";
 import { PrinterService } from "@/services/printing/PrinterService";
 import {
     getIncompleteRefundJournals,
@@ -59,7 +65,12 @@ import { useRefundRecoveryStore } from "@/stores/useRefundRecoveryStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Toasts } from "@backpackapp-io/react-native-toast";
-import { ClerkProvider, TokenCache, useAuth } from "@clerk/clerk-expo";
+import {
+  ClerkProvider,
+  isClerkRuntimeError,
+  TokenCache,
+  useAuth,
+} from "@clerk/clerk-expo";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import {
     DarkTheme,
@@ -146,6 +157,55 @@ logger.onLog = (level, category, message, data) => {
   },
 );
 
+// Report boot-time storage health now that Sentry is live. Both checks run at
+// lib/storage.ts import (before Sentry.init), so we surface their results here.
+try {
+  const envReconcile = getEnvReconcileResult();
+  if (envReconcile?.refusedUnknownSignature) {
+    // Refused to purge on a malformed env — a near-miss for a fleet-wide logout.
+    Sentry.captureMessage("env_guard.refused_purge_unknown_signature", {
+      level: "error",
+      tags: {
+        source: "env_guard",
+        from: envReconcile.from ?? "none",
+        to: envReconcile.to,
+      },
+    });
+  } else if (envReconcile?.switched) {
+    // A real backend switch DID purge — expected once per migration, but worth
+    // a breadcrumb so a field logout-storm can be correlated to a signature flip.
+    Sentry.captureMessage("env_guard.purged_on_switch", {
+      level: "warning",
+      tags: {
+        source: "env_guard",
+        from: envReconcile.from ?? "none",
+        to: envReconcile.to,
+      },
+    });
+  } else if (envReconcile) {
+    Sentry.addBreadcrumb({
+      category: "env_guard",
+      level: "info",
+      message: "env signature reconciled",
+      data: {
+        from: envReconcile.from,
+        to: envReconcile.to,
+        switched: envReconcile.switched,
+      },
+    });
+  }
+
+  if (didSecureStorageProbeFail()) {
+    // Encrypted MMKV bucket unreadable this boot → Clerk tokens effectively gone.
+    Sentry.captureMessage("secure_storage.decrypt_probe_failed", {
+      level: "error",
+      tags: { source: "secure_storage" },
+    });
+  }
+} catch {
+  // Reporting must never break boot.
+}
+
 async function checkForUpdate() {
   try {
     const update = await Updates.checkForUpdateAsync();
@@ -171,6 +231,20 @@ initLogCollector();
 // Optimize Immer array iteration in producers
 initImmer();
 
+/**
+ * Coarse bucket for a token-cache key — used only for Sentry tagging so we can
+ * tell WHICH kind of token failed to persist without ever logging the token
+ * value itself.
+ */
+function classifyTokenKey(key: string): string {
+  const k = key.toLowerCase();
+  if (k.includes("jwt")) return "jwt";
+  if (k.includes("client")) return "client";
+  if (k.includes("session")) return "session";
+  if (k.includes("refresh")) return "refresh";
+  return "other";
+}
+
 export const tokenCache: TokenCache = {
   async getToken(key: string) {
     try {
@@ -179,8 +253,16 @@ export const tokenCache: TokenCache = {
         console.log(`[TokenCache] getToken key="${key}" hit=${!!result}`);
       return result;
     } catch (error) {
+      // A THROW here (vs a clean null) means the encrypted bucket couldn't be
+      // read for a key that may well be present — distinct from "no token". Tag
+      // it so silent token loss is distinguishable from a legitimate logout.
+      // Contract: Clerk only accepts a string|null return, so we still return null.
       Sentry.captureException(error, {
-        tags: { source: "token_cache", op: "getToken" },
+        tags: {
+          source: "token_cache",
+          op: "getToken_read_failed",
+          key_kind: classifyTokenKey(key),
+        },
       });
       console.error("[TokenCache] getToken error:", error);
       return null;
@@ -189,10 +271,27 @@ export const tokenCache: TokenCache = {
   async saveToken(key: string, value: string) {
     try {
       secureStorage.set(key, value);
-      if (__DEV__) console.log(`[TokenCache] saveToken key="${key}"`);
+      // Read-back verify: an MMKV write that silently doesn't stick means the
+      // next refresh reads null and the merchant is logged out with no error.
+      // Surface it so field token-loss is observable (never log the value).
+      if (secureStorage.getString(key) !== value) {
+        Sentry.captureMessage("token_cache.write_verify_failed", {
+          level: "error",
+          tags: { source: "token_cache", key_kind: classifyTokenKey(key) },
+        });
+        console.error(
+          `[TokenCache] saveToken read-back MISMATCH key="${key}" — token may not persist.`,
+        );
+      } else if (__DEV__) {
+        console.log(`[TokenCache] saveToken key="${key}"`);
+      }
     } catch (error) {
       Sentry.captureException(error, {
-        tags: { source: "token_cache", op: "saveToken" },
+        tags: {
+          source: "token_cache",
+          op: "saveToken",
+          key_kind: classifyTokenKey(key),
+        },
       });
       console.error("[TokenCache] saveToken error:", error);
     }
@@ -223,7 +322,12 @@ export {
 } from "expo-router";
 
 const CLERK_WAS_SIGNED_IN_KEY = "clerk_was_signed_in";
-const SESSION_RECOVERY_TIMEOUT_MS = 10_000;
+// While ONLINE: generous window for a slow refresh-token round-trip on bad
+// restaurant WiFi / cold boot (was a blind 10s, which false-logged-out on slow
+// networks). While OFFLINE we never expire into a /login redirect at all.
+const GRACE_TIMEOUT_ONLINE_MS = 30_000;
+// How often to re-check connectivity while holding an offline session.
+const GRACE_OFFLINE_POLL_MS = 3_000;
 
 /**
  * Syncs the authenticated Clerk user + selected station into Sentry so every
@@ -272,20 +376,26 @@ function ClerkGate({ children }: { children: React.ReactNode }) {
   const wasSignedIn =
     secureStorage.getString(CLERK_WAS_SIGNED_IN_KEY) === "true";
 
-  // Persist the flag when signed in
+  // Persist the flag when signed in. A successful (re)sign-in also clears any
+  // prior in-memory grace expiry, so a LATER wake gets a fresh recovery window
+  // and a slow refresh that finally lands rescues the merchant off /login.
   React.useEffect(() => {
     if (isLoaded && isSignedIn) {
       secureStorage.set(CLERK_WAS_SIGNED_IN_KEY, "true");
+      if (graceExpired) setGraceExpired(false);
     }
-  }, [isLoaded, isSignedIn]);
+  }, [isLoaded, isSignedIn, graceExpired]);
 
-  // Grace period: when Clerk reports signed-out but we were previously signed in,
-  // give Clerk up to 10 seconds to complete its token refresh before routing to login.
+  // Grace period: when Clerk reports signed-out but we were previously signed
+  // in, give Clerk time to refresh before routing to /login. Two hard rules:
+  //   1. OFFLINE → never expire into /login. The merchant can't sign in offline
+  //      anyway, so we hold the cached app indefinitely and keep the flag.
+  //   2. ONLINE → force a real refresh and allow expiry only after a generous
+  //      window, and NEVER delete the wasSignedIn flag (so a later wake retries).
   const needsGrace = isLoaded && !isSignedIn && wasSignedIn && !graceExpired;
 
   React.useEffect(() => {
     if (!needsGrace) {
-      // Clear any pending timer if we no longer need grace
       if (graceTimerRef.current) {
         clearTimeout(graceTimerRef.current);
         graceTimerRef.current = null;
@@ -293,21 +403,73 @@ function ClerkGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    console.log("[ClerkGate] Session refresh grace period started (10s)");
+    let cancelled = false;
+    let expiryArmed = false;
 
-    // Actively trigger Clerk's internal token refresh
-    getToken().catch(() => {});
+    // TRUE forced refresh (skipCache) — do NOT accept a stale/expired cached
+    // token. With __experimental_resourceCache set this still returns the cached
+    // token OFFLINE instead of throwing, so isSignedIn can flip back true with
+    // no network. A network_error is transient and must never end the session.
+    const attemptRefresh = () => {
+      getToken({ skipCache: true }).catch((err) => {
+        if (isClerkRuntimeError(err) && err.code === "network_error") {
+          Sentry.addBreadcrumb({
+            category: "auth.recovery",
+            level: "info",
+            message: "ClerkGate refresh hit network_error — holding grace",
+          });
+        } else {
+          Sentry.captureException(err, {
+            tags: { source: "clerk_gate", op: "recovery_refresh" },
+          });
+        }
+      });
+    };
 
-    graceTimerRef.current = setTimeout(() => {
-      console.warn(
-        "[ClerkGate] Grace period expired — session could not be recovered",
-      );
-      secureStorage.remove(CLERK_WAS_SIGNED_IN_KEY);
-      setGraceExpired(true);
-      graceTimerRef.current = null;
-    }, SESSION_RECOVERY_TIMEOUT_MS);
+    const tick = () => {
+      if (cancelled) return;
+
+      // OFFLINE: hold the spinner, re-poll, never expire, keep the flag.
+      if (!getRawIsOnline()) {
+        graceTimerRef.current = setTimeout(tick, GRACE_OFFLINE_POLL_MS);
+        return;
+      }
+
+      // ONLINE: force a refresh, then arm a one-shot expiry. If the refresh
+      // succeeds, isSignedIn flips true and this effect tears down first.
+      attemptRefresh();
+      if (!expiryArmed) {
+        expiryArmed = true;
+        graceTimerRef.current = setTimeout(() => {
+          if (cancelled) return;
+          // Network may have dropped during the window — if so, resume the
+          // offline hold rather than bouncing a merchant who's now offline.
+          if (!getRawIsOnline()) {
+            expiryArmed = false;
+            tick();
+            return;
+          }
+          console.warn(
+            "[ClerkGate] Online grace expired — treating as a real session end.",
+          );
+          Sentry.captureMessage("auth.recovery.grace_expired_online", {
+            level: "warning",
+            tags: { source: "clerk_gate" },
+          });
+          // Keep CLERK_WAS_SIGNED_IN_KEY: only mark expired in memory (per
+          // app-session) so the next wake re-attempts recovery instead of
+          // permanently demoting a still-recoverable session.
+          setGraceExpired(true);
+          graceTimerRef.current = null;
+        }, GRACE_TIMEOUT_ONLINE_MS);
+      }
+    };
+
+    console.log("[ClerkGate] Session refresh grace period started");
+    tick();
 
     return () => {
+      cancelled = true;
       if (graceTimerRef.current) {
         clearTimeout(graceTimerRef.current);
         graceTimerRef.current = null;

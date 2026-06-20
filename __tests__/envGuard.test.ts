@@ -146,4 +146,43 @@ describe("reconcileEnvironmentOnBoot (via lib/storage import)", () => {
     // New signature stamped.
     expect(mock.inst(GENERAL).get(SIG_KEY)).toBe("prodref|live");
   });
+
+  it("REFUSES to purge on a malformed (unknown) current signature even with a well-formed prior", () => {
+    // Simulate a half-injected env at boot: Supabase URL missing → ref "unknown",
+    // Clerk key still present. A blind guard would read this as a switch away from
+    // the stored prod signature and wipe every Clerk token fleet-wide.
+    delete process.env.EXPO_PUBLIC_SUPABASE_URL;
+    process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_test_x";
+    const mock = makeMmkvMock();
+    mock.inst(GENERAL).set(SIG_KEY, "prodref|live");
+    mock.inst(GENERAL).set("store-settings-storage", "keepme");
+    mock.inst(SECURE).set("__clerk_client_jwt", "healthy-token");
+
+    loadStorageWith(mock);
+
+    // Nothing cleared; healthy session and stored baseline survive.
+    expect(mock.clearAllCalls).toHaveLength(0);
+    expect(mock.inst(GENERAL).get("store-settings-storage")).toBe("keepme");
+    expect(mock.inst(SECURE).get("__clerk_client_jwt")).toBe("healthy-token");
+    // Stored baseline left untouched so the next resolved boot reconciles.
+    expect(mock.inst(GENERAL).get(SIG_KEY)).toBe("prodref|live");
+  });
+
+  it("re-baselines without purging when the STORED signature is malformed", () => {
+    process.env.EXPO_PUBLIC_SUPABASE_URL = "https://ref1.supabase.co";
+    process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_test_x";
+    const mock = makeMmkvMock();
+    // A corrupted / pre-guard baseline must not be mistaken for a real prior env.
+    mock.inst(GENERAL).set(SIG_KEY, "unknown|unknown");
+    mock.inst(GENERAL).set("store-settings-storage", "keepme");
+    mock.inst(SECURE).set("__clerk_client_jwt", "healthy-token");
+
+    loadStorageWith(mock);
+
+    // No purge; just a quiet re-stamp to the resolved signature.
+    expect(mock.clearAllCalls).toHaveLength(0);
+    expect(mock.inst(GENERAL).get("store-settings-storage")).toBe("keepme");
+    expect(mock.inst(SECURE).get("__clerk_client_jwt")).toBe("healthy-token");
+    expect(mock.inst(GENERAL).get(SIG_KEY)).toBe("ref1|test");
+  });
 });
