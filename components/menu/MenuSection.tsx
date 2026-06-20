@@ -93,12 +93,16 @@ import { StyleSheet, ViewStyle } from "react-native";
 
 const menuSectionStyles = StyleSheet.create({
   spacer: {
-    width: "23%",
+    flex: 1,
   },
   // Perf F8 (FlashList): each grid cell is width/numColumns; gutters live on
   // the cell wrapper (3+3 horizontal between columns, 6 vertical between
   // rows) since FlashList has no columnWrapperStyle.
   gridCell: {
+    // FlashList lays each row of `numColumns` cells out in a flex row; flex:1
+    // makes every cell take an equal share of the row width. Static (no onLayout
+    // measurement race that left the first category cramped until a switch).
+    flex: 1,
     paddingHorizontal: 3,
     paddingBottom: 6,
   },
@@ -139,7 +143,7 @@ const getImageSource = (item: MenuItemType) => {
   return source;
 };
 
-// OPTIMIZED: Memoized spacer component
+// OPTIMIZED: Memoized spacer component — 20% width matches a real grid cell.
 const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
 SpacerItem.displayName = "SpacerItem";
 
@@ -762,9 +766,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   );
 
   const showMenuImages = useSettingsStore((s) => s.showMenuImages);
-  // Estimate only (FlashList v1 self-corrects after first layout): image
-  // tiles are square at ~1/5 of the grid width; text-only tiles are 64 high.
-  const estimatedItemSize = showMenuImages ? 240 : 78;
+  // Row-height estimate. Image tiles are square at ~1/5 of the grid width;
+  // text-only tiles are a fixed 80 (+6 gridCell paddingBottom).
+  const estimatedItemSize = showMenuImages ? 240 : 86;
 
   const formatTime = (d?: Date | null) =>
     d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
@@ -894,10 +898,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 </DialogTrigger>
               )}
               <DialogContent
-                className="w-[480px] max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden"
+                className="max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden"
                 style={{
                   backgroundColor: colors.screen,
                   borderColor: colors.border,
+                  maxWidth: 480,
+                  alignSelf: 'center',
+                  width: '90%',
                 }}
               >
                 <DialogHeader

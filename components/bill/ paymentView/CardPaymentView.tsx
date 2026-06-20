@@ -1312,6 +1312,9 @@ const CardPaymentView = () => {
                   }
                   setIsCancelling(false)
                   setStatus('ready')
+                  // Release the CFD from the frozen "Processing payment"
+                  // screen — the abort above leaves it stuck otherwise.
+                  showIdle()
                 } else {
                   close()
                 }
