@@ -37,6 +37,7 @@ import React, {
     useState,
 } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { resolveRefundToast } from "./refundOutcome";
 import RefundApprovalModal from "./RefundApprovalModal";
 
 interface AdvancedRefundModalProps {
@@ -252,16 +253,18 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
       return;
     }
 
-    if (outcome?.kind === "error") {
-      show({
-        title: "Refund Failed",
-        message: outcome.error || "The refund could not be processed.",
-        type: "error",
-      });
+    // Map the outcome → toast. A failed terminal refund (kind:"error", or
+    // success with data.success===false) shows "Refund Failed" and stops here;
+    // a partial batch shows a yellow warning; a clean win shows green.
+    const result = resolveRefundToast(outcome, {
+      successTitle: "Refund Successful",
+      successMessage: "The full refund has been processed successfully.",
+    });
+    if (!result.ok) {
+      show(result.toast);
       return;
     }
 
-    // Success (kind === 'success' or undefined for backward-compat)
     if (guard?.isSelfRefund && guard?.isCashRefund) {
       const velocity = recordAndNotify({
         orderId,
@@ -269,25 +272,17 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
         approvedByManagerId: managerId,
         approvedByManagerName: managerName,
       });
-      if (velocity?.shouldAlert) {
-        show({
-          title: "Refund Flagged",
-          message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`,
-          type: "warning",
-        });
-      } else {
-        show({
-          title: "Refund Successful",
-          message: "The full refund has been processed successfully.",
-          type: "success",
-        });
-      }
+      show(
+        velocity?.shouldAlert
+          ? {
+              title: "Refund Flagged",
+              message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`,
+              type: "warning",
+            }
+          : result.toast,
+      );
     } else {
-      show({
-        title: "Refund Successful",
-        message: "The full refund has been processed successfully.",
-        type: "success",
-      });
+      show(result.toast);
     }
 
     queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all });
@@ -329,12 +324,15 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
       return;
     }
 
-    if (outcome?.kind === "error") {
-      show({
-        title: "Refund Failed",
-        message: outcome.error || "The refund could not be processed.",
-        type: "error",
-      });
+    // Map the outcome → toast. Terminal failure (no items refunded) shows
+    // "Refund Failed" and stops; a partial batch (terminal died after ≥1 item)
+    // shows a yellow warning naming what completed; a clean win shows green.
+    const result = resolveRefundToast(outcome, {
+      successTitle: "Refund Successful",
+      successMessage: "The partial refund has been processed successfully.",
+    });
+    if (!result.ok) {
+      show(result.toast);
       return;
     }
 
@@ -346,25 +344,17 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
         approvedByManagerId: managerId,
         approvedByManagerName: managerName,
       });
-      if (velocity?.shouldAlert) {
-        show({
-          title: "Refund Flagged",
-          message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`,
-          type: "warning",
-        });
-      } else {
-        show({
-          title: "Refund Successful",
-          message: "The partial refund has been processed successfully.",
-          type: "success",
-        });
-      }
+      show(
+        velocity?.shouldAlert
+          ? {
+              title: "Refund Flagged",
+              message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`,
+              type: "warning",
+            }
+          : result.toast,
+      );
     } else {
-      show({
-        title: "Refund Successful",
-        message: "The partial refund has been processed successfully.",
-        type: "success",
-      });
+      show(result.toast);
     }
 
     queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all });

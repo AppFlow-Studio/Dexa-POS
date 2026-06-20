@@ -1,4 +1,5 @@
 import { useRefreshActiveOrder } from '@/hooks/pos/useRefreshActiveOrder'
+import { payableQuantity } from '@/lib/payableQuantity'
 import { colors } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
 import { round2 } from '@/utils/money'
@@ -410,7 +411,7 @@ const PayForItemsView: React.FC = () => {
   const unpaidItems = useMemo(() => {
     if (!activeOrder) return []
     return activeOrder.items.filter(
-      item => !item.is_voided && item.quantity > (item.paidQuantity || 0)
+      item => !item.is_voided && payableQuantity(item) > 0
     )
   }, [activeOrder])
 
@@ -440,7 +441,7 @@ const PayForItemsView: React.FC = () => {
     () =>
       unpaidItems.map(item => ({
         item,
-        quantityToPay: item.quantity - (item.paidQuantity || 0)
+        quantityToPay: payableQuantity(item)
       })),
     [unpaidItems]
   )
@@ -490,7 +491,7 @@ const PayForItemsView: React.FC = () => {
   // --- HANDLERS ---
   const handleAddItem = useCallback(
     (item: CartItem) => {
-      const unpaidQty = item.quantity - (item.paidQuantity || 0)
+      const unpaidQty = payableQuantity(item)
       const current = selectedItems.get(item.id)
       const currentQty = current?.quantityToPay || 0
 
@@ -533,7 +534,7 @@ const PayForItemsView: React.FC = () => {
   const handleSelectAll = useCallback(() => {
     const newMap = new Map<string, { item: CartItem; quantityToPay: number }>()
     for (const item of unpaidItems) {
-      const unpaidQty = item.quantity - (item.paidQuantity || 0)
+      const unpaidQty = payableQuantity(item)
       newMap.set(item.id, { item, quantityToPay: unpaidQty })
     }
     setSelectedItems(newMap)
@@ -749,7 +750,7 @@ const PayForItemsView: React.FC = () => {
               </View>
             ) : (
               unpaidItems.map(item => {
-                const unpaidQty = item.quantity - (item.paidQuantity || 0)
+                const unpaidQty = payableQuantity(item)
                 const selected = selectedItems.get(item.id)
                 const selectedQty = selected?.quantityToPay || 0
                 const isSelected = selectedQty > 0

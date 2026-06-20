@@ -107,6 +107,19 @@ async function ensureUsbConnected(reason: string): Promise<boolean> {
       coldConnect: true,
     });
     console.log(`[CastlesUsbAutoConnect] Connected (${reason})`);
+
+    // Return the terminal to idle after re-establishing the link. If the cable
+    // was pulled mid-transaction, the terminal is left sitting on its old
+    // transaction screen — we can't signal it while it's unplugged, but now that
+    // we've reconnected on a fresh socket this return2Idle (Castles spec
+    // situation 2) dismisses that abandoned state. Safe here because we only
+    // reach this branch when the service was NOT already connected, so there is
+    // no in-flight transaction on this socket to disrupt.
+    try {
+      await service.resetTerminalState();
+    } catch {
+      /* non-fatal — the terminal also idles on its own session timeout */
+    }
     return true;
   } catch (e) {
     // Non-fatal: the on-demand sale path and the manual setup wizard can still

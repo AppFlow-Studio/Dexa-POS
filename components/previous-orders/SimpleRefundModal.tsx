@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { resolveRefundToast } from "./refundOutcome";
 import RefundApprovalModal from "./RefundApprovalModal";
 
 interface SimpleRefundModalProps {
@@ -60,16 +61,21 @@ const SimpleRefundModal: React.FC<SimpleRefundModalProps> = ({
     }
     const guard = lastGuardRef.current;
     const metadata = guard ? buildFraudMetadata(guard, managerId, managerName) : undefined;
-    await refundFullOrder(order.orderId, reason, staffId, name, paymentMethod, metadata);
+    const outcome = await refundFullOrder(order.orderId, reason, staffId, name, paymentMethod, metadata);
+    const result = resolveRefundToast(outcome, {
+      successTitle: "Refund Processed",
+      successMessage: `The refund for order #${order.orderId} has been successfully processed.`,
+    });
+    if (!result.ok) {
+      // Terminal/refund failed — show the failure and do NOT close as if done.
+      show(result.toast);
+      return;
+    }
     if (guard?.isSelfRefund && guard?.isCashRefund) {
       const velocity = recordAndNotify({ orderId: order.orderId, amount: order.total, approvedByManagerId: managerId, approvedByManagerName: managerName });
-      if (velocity?.shouldAlert) {
-        show({ title: "Refund Flagged", message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`, type: "warning" });
-      } else {
-        show({ title: "Refund Processed", message: `The refund for order #${order.orderId} has been successfully processed.`, type: "success" });
-      }
+      show(velocity?.shouldAlert ? { title: "Refund Flagged", message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`, type: "warning" } : result.toast);
     } else {
-      show({ title: "Refund Processed", message: `The refund for order #${order.orderId} has been successfully processed.`, type: "success" });
+      show(result.toast);
     }
     onClose();
   };

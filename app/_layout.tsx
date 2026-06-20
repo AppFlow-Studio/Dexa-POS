@@ -127,6 +127,16 @@ Sentry.init({
   // 100% in dev for debugging, 30% in production to reduce overhead
   tracesSampleRate: __DEV__ ? 1.0 : 0.3,
 
+  // Native crash + hang capture. Android ANRs are captured by the native SDK by
+  // default; we additionally enable iOS app-hang tracking and are explicit about
+  // native/NDK crash handling so a terminal-driven freeze (e.g. a wedged USB card
+  // reader holding the JS/UI thread, as in the S1-0002 refund crash) is reported
+  // instead of vanishing as a silent process death.
+  enableNativeCrashHandling: true,
+  enableNdk: true,
+  enableAppHangTracking: true,
+  appHangTimeoutInterval: 2,
+
   integrations: [navigationIntegration],
   enableNativeFramesTracking: !isRunningInExpoGo(),
 

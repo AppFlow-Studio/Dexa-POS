@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { resolveRefundToast } from "./refundOutcome";
 import RefundApprovalModal from "./RefundApprovalModal";
 
 interface RefundModalProps {
@@ -66,16 +67,20 @@ const RefundModal: React.FC<RefundModalProps> = ({
     }
     const guard = lastGuardRef.current;
     const metadata = guard ? buildFraudMetadata(guard, managerId, managerName) : undefined;
-    await refundFullOrder(order.orderId, reason, staffId, name, paymentMethod, metadata);
+    const outcome = await refundFullOrder(order.orderId, reason, staffId, name, paymentMethod, metadata);
+    const result = resolveRefundToast(outcome, {
+      successTitle: "Refund Successful",
+      successMessage: "The full refund has been processed successfully.",
+    });
+    if (!result.ok) {
+      show(result.toast);
+      return;
+    }
     if (guard?.isSelfRefund && guard?.isCashRefund) {
       const velocity = recordAndNotify({ orderId: order.orderId, amount: order.total, approvedByManagerId: managerId, approvedByManagerName: managerName });
-      if (velocity?.shouldAlert) {
-        show({ title: "Refund Flagged", message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`, type: "warning" });
-      } else {
-        show({ title: "Refund Successful", message: "The full refund has been processed successfully.", type: "success" });
-      }
+      show(velocity?.shouldAlert ? { title: "Refund Flagged", message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`, type: "warning" } : result.toast);
     } else {
-      show({ title: "Refund Successful", message: "The full refund has been processed successfully.", type: "success" });
+      show(result.toast);
     }
     onClose();
   };
@@ -88,16 +93,20 @@ const RefundModal: React.FC<RefundModalProps> = ({
     }
     const guard = lastGuardRef.current;
     const metadata = guard ? buildFraudMetadata(guard, managerId, managerName) : undefined;
-    await refundItems(order.orderId, selectedItems, staffId, name, paymentMethod, metadata);
+    const outcome = await refundItems(order.orderId, selectedItems, staffId, name, paymentMethod, metadata);
+    const result = resolveRefundToast(outcome, {
+      successTitle: "Refund Successful",
+      successMessage: "The partial refund has been processed successfully.",
+    });
+    if (!result.ok) {
+      show(result.toast);
+      return;
+    }
     if (guard?.isSelfRefund && guard?.isCashRefund) {
       const velocity = recordAndNotify({ orderId: order.orderId, amount: calculateRefundAmount(), approvedByManagerId: managerId, approvedByManagerName: managerName });
-      if (velocity?.shouldAlert) {
-        show({ title: "Refund Flagged", message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`, type: "warning" });
-      } else {
-        show({ title: "Refund Successful", message: "The partial refund has been processed successfully.", type: "success" });
-      }
+      show(velocity?.shouldAlert ? { title: "Refund Flagged", message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. This has been flagged for review.`, type: "warning" } : result.toast);
     } else {
-      show({ title: "Refund Successful", message: "The partial refund has been processed successfully.", type: "success" });
+      show(result.toast);
     }
     onClose();
   };

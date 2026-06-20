@@ -1,4 +1,5 @@
 import { getDeviceId } from "@/lib/deviceId";
+import { payableQuantity } from "@/lib/payableQuantity";
 import {
   getKitchenSentStatus,
   getOrderSentStatus,
@@ -11499,7 +11500,10 @@ export const useOrderStore = create<OrderState>()(
                 if (quantityToPay !== undefined && quantityToPay > 0) {
                   const newPaidQty = Math.min(
                     (item.paidQuantity || 0) + quantityToPay,
-                    item.quantity, // Don't exceed total quantity
+                    // Allow re-paying refunded units: a refund makes a paid unit
+                    // payable again, so paid_quantity may exceed quantity by the
+                    // refunded count (net paid = paid - refunded stays <= quantity).
+                    item.quantity + (item.refundedQuantity || 0),
                   );
                   const isFullyPaid = newPaidQty >= item.quantity;
                   // Update this item's status to preparing if it's currently "new"
@@ -11536,7 +11540,7 @@ export const useOrderStore = create<OrderState>()(
                   method === "Cash"
                     ? (item.cashPrice ?? item.baseCashPrice ?? item.price)
                     : item.price;
-                const unpaidQty = item.quantity - (item.paidQuantity || 0);
+                const unpaidQty = payableQuantity(item);
                 if (remaining <= 0 || unpaidQty <= 0) return item;
 
                 const maxCoverQty = Math.min(
