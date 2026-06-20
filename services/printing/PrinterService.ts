@@ -1247,15 +1247,10 @@ function buildReceiptTemplateData (
   ].filter(Boolean)
 
   // ── Match pricing to payment method (optional) ────────────────────────
-  // When enabled, collapse the dual Card/Cash display down to only the
-  // pricing the guest actually used so the printed receipt reconciles to a
-  // single Total. Defaults to 'dual' (existing behavior) for split tenders,
-  // unpaid orders, and when the toggle is off.
-  const matchPricing = useLocationConfigStore.getState().config.printing
-    .matchReceiptPricingToPaymentMethod
-  const pricingMode = matchPricing
-    ? resolveReceiptPricingMode(order.payments ?? [])
-    : 'dual'
+  // Finalized printed receipts should reconcile to the pricing the guest
+  // actually used. Split tenders and unpaid orders stay in dual mode because
+  // there is no single charged pricing to display.
+  const pricingMode = resolveReceiptPricingMode(order.payments ?? [])
 
   let displayItems = items
   let displaySubtotal = subtotal
@@ -1317,6 +1312,7 @@ function buildReceiptTemplateData (
     discount: displayDiscount,
     tip,
     total: displayTotal,
+    pricingMode,
     cashSubtotal: displayCashSubtotal,
     cashTax: displayCashTax,
     cashTotal: displayCashTotal,

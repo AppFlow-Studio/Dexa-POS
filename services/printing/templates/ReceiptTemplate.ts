@@ -128,9 +128,16 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
 
   b.solidLine(w);
   // Card Total / Cash Total in normal weight — no bold, no doubleHeight.
-  b.twoColumnRow("Card Total", formatCurrency(data.total), w);
+  const totalLabel =
+    data.pricingMode === "cash"
+      ? "TOTAL (CASH)"
+      : data.pricingMode === "card"
+        ? "TOTAL (CARD)"
+        : "TOTAL";
+  b.twoColumnRow(totalLabel, formatCurrency(data.total), w);
 
   if (
+    data.pricingMode === "dual" &&
     data.cashTotal !== undefined &&
     data.cashTotal !== data.total
   ) {
