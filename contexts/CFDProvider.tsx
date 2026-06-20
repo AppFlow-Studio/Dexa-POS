@@ -1570,9 +1570,22 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
       // A sale just finished (Done/Skip) but the operator hasn't closed the
       // payment sheet yet. Stay idle and clear the latch once they actually
-      // move on (order cleared or order-processing returned to idle).
+      // move on. "Moved on" = payment sheet closed, OR they left the sales
+      // screen / cleared the order / order-processing went idle.
+      //
+      // Closing the sheet is the key signal: the latch only exists to avoid
+      // flashing order data BEHIND the still-open sheet. Once it's closed, a
+      // still-active order on the sales screen should repaint as `ordering`
+      // rather than be stranded on branding idle — previously the latch only
+      // cleared when the order was emptied (isOrderProcessingIdle requires an
+      // empty order), so a live, non-empty order kept the CFD stuck idle.
       if (saleCompletedAwaitingCloseRef.current) {
-        if (!isSalesScreen || !activeOrder || isOrderProcessingIdle) {
+        if (
+          !paymentIsOpen ||
+          !isSalesScreen ||
+          !activeOrder ||
+          isOrderProcessingIdle
+        ) {
           saleCompletedAwaitingCloseRef.current = false
         }
       }
@@ -1904,7 +1917,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     organizationLogoUrl,
     showCFDOrderingRightPanel,
     cfdOrderingRightPanelMode,
-    paymentActiveSplit
+    paymentActiveSplit,
+    paymentIsOpen
   ])
 
   useEffect(() => {
