@@ -110,6 +110,42 @@ function isConnectionError(err: unknown): boolean {
 }
 
 /**
+ * Broader classifier for "the terminal link is dead / wedged" — i.e. the next
+ * command on this terminal will almost certainly fail too. This is a SUPERSET
+ * of isConnectionError that also covers the symptoms seen in the S1-0002 USB
+ * refund crash that isConnectionError intentionally does NOT match:
+ *   - "USB get_status request failed" (native usb-serial GET_STATUS probe died)
+ *   - "Response timed out ..." (terminal hung mid-transaction)
+ *   - "controlTransfer failed" (native CDC-ACM DTR/RTS failure)
+ *   - "Reconnect failed" / "command queue is busy" (wedge + mutex starvation)
+ *   - CastlesEmptyResponseError / CastlesWedgedError (app-layer wedge)
+ *
+ * Used by the refund-by-item loop to STOP firing further refunds into a
+ * terminal that just died, instead of compounding onto a dead device. It is
+ * deliberately NOT wired into _withRetry's auto-reconnect (that would risk
+ * re-sending a payment/refund); it is a read-only "should I keep going?" gate.
+ */
+export function isTerminalTransportDead(err: unknown): boolean {
+  if (
+    err instanceof CastlesEmptyResponseError ||
+    err instanceof CastlesWedgedError
+  ) {
+    return true;
+  }
+  if (isConnectionError(err)) return true;
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes("get_status request failed") ||
+    msg.includes("response timed out") ||
+    msg.includes("controltransfer failed") ||
+    msg.includes("reconnect failed") ||
+    msg.includes("command queue is busy") ||
+    msg.includes("transport closed") ||
+    msg.includes("port is not open")
+  );
+}
+
+/**
  * Discriminated reason for probeCastlesTerminal outcomes. Lets the banner
  * render specific recovery copy instead of dumping the raw error string.
  */
@@ -735,13 +771,43 @@ export class CastlesService {
     return undefined;
   }
 
+  /**
+   * Acquire the command mutex with a bounded wait, then run `fn` exclusively.
+   *
+   * Transaction entry points (sale/void/refund/tip-adjust/settlement) previously
+   * used a BARE `_mutex.runExclusive`, so if a prior command wedged and held the
+   * lock for the full in-flight socket timeout (CASTLES_SOCKET_TIMEOUT_MS=120s),
+   * every other terminal command queued behind it for up to 2 minutes — the
+   * "whole system / card machine froze" symptom in the S1-0002 USB refund crash.
+   *
+   * Bounding the ACQUIRE (mirrors connect() at CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS)
+   * makes a concurrent command fail fast with a clear, classifiable error instead
+   * of freezing. It does NOT shorten the in-flight command itself (that keeps its
+   * own per-command timeout, so legitimate card-present refunds aren't aborted).
+   * The "command queue is busy" message is matched by isTerminalTransportDead so
+   * the refund loop treats it as a stop signal, and does NOT match isConnectionError
+   * so _withRetry will not auto-reconnect/re-send on it.
+   */
+  private _runTxnExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    return withTimeout(this._mutex, CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS)
+      .runExclusive(fn)
+      .catch((e) => {
+        if (e === E_TIMEOUT) {
+          throw new Error(
+            "Castles command queue is busy — a previous operation appears stuck. Reset the connection and try again.",
+          );
+        }
+        throw e;
+      });
+  }
+
   async processSale(params: {
     amount: number;
     tipAmount?: number;
     referenceId: string;
   }): Promise<CastlesSaleResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -819,7 +885,7 @@ export class CastlesService {
     referenceId: string;
   }): Promise<CastlesTipAdjustResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -899,7 +965,7 @@ export class CastlesService {
     }
 
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -988,7 +1054,7 @@ export class CastlesService {
     journalId?: string;
   }): Promise<CastlesRefundResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -1074,7 +1140,7 @@ export class CastlesService {
     referenceId: string;
   }): Promise<CastlesSettlementResult> {
     // No _withRetry — settlement is not idempotent
-    return this._mutex.runExclusive(async () => {
+    return this._runTxnExclusive(async () => {
       await this._ensureConnected();
 
       try {
@@ -1147,7 +1213,7 @@ export class CastlesService {
     referenceId: string;
   }): Promise<CastlesPreAuthResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -1210,7 +1276,7 @@ export class CastlesService {
     }
 
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -1278,7 +1344,7 @@ export class CastlesService {
     }
 
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -1331,7 +1397,7 @@ export class CastlesService {
 
   async getTerminalData(referenceId: string): Promise<CastlesGetDataResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
