@@ -8,6 +8,7 @@ import Animated, {
   withTiming
 } from 'react-native-reanimated'
 import { colors } from '~/lib/theme'
+import { useUiScale } from '~/lib/uiScale'
 import { cn } from '~/lib/utils'
 
 // Dexa design system — matches the availability toggle in ItemForm
@@ -58,6 +59,8 @@ function SwitchNative ({
 }: SwitchPrimitives.RootProps & {
   ref?: React.RefObject<SwitchPrimitives.RootRef>
 }) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   // Calculate colors dynamically so they update with theme changes
   const TEAL_TRACK = `${colors.teal}26` // teal + ~15% opacity (38/255)
   const TEAL_THUMB = colors.teal // solid teal
@@ -66,17 +69,17 @@ function SwitchNative ({
   const OFF_THUMB = colors.muted // colors.muted
   const OFF_BORDER = colors.border // use theme border color
 
-  const translateX = useDerivedValue(() => (props.checked ? 16 : 0))
+  const translateX = useDerivedValue(() => (props.checked ? s(16) : 0))
 
   const animatedTrackStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
       translateX.value,
-      [0, 16],
+      [0, s(16)],
       [OFF_TRACK, TEAL_TRACK]
     ),
     borderColor: interpolateColor(
       translateX.value,
-      [0, 16],
+      [0, s(16)],
       [OFF_BORDER, TEAL_BORDER]
     )
   }))
@@ -87,7 +90,7 @@ function SwitchNative ({
     ],
     backgroundColor: interpolateColor(
       translateX.value,
-      [0, 16],
+      [0, s(16)],
       [OFF_THUMB, TEAL_THUMB]
     )
   }))
@@ -97,9 +100,9 @@ function SwitchNative ({
       style={[
         animatedTrackStyle,
         {
-          width: 42,
-          height: 24,
-          borderRadius: 12,
+          width: s(42),
+          height: s(24),
+          borderRadius: s(12),
           borderWidth: 1,
           justifyContent: 'center'
         },
@@ -108,9 +111,9 @@ function SwitchNative ({
     >
       <SwitchPrimitives.Root
         style={{
-          width: 42,
-          height: 24,
-          borderRadius: 12,
+          width: s(42),
+          height: s(24),
+          borderRadius: s(12),
           flexDirection: 'row',
           alignItems: 'center'
         }}
@@ -121,20 +124,20 @@ function SwitchNative ({
           style={[
             animatedThumbStyle,
             {
-              marginLeft: 3,
-              width: 18,
-              height: 18,
-              borderRadius: 9,
+              marginLeft: s(3),
+              width: s(18),
+              height: s(18),
+              borderRadius: s(9),
               shadowColor: '#000',
               shadowOpacity: 0.25,
-              shadowRadius: 2,
-              shadowOffset: { width: 0, height: 1 },
+              shadowRadius: s(2),
+              shadowOffset: { width: 0, height: s(1) },
               elevation: 2
             }
           ]}
         >
           <SwitchPrimitives.Thumb
-            style={{ width: 18, height: 18, borderRadius: 9 }}
+            style={{ width: s(18), height: s(18), borderRadius: s(9) }}
           />
         </Animated.View>
       </SwitchPrimitives.Root>
