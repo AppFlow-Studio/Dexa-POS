@@ -393,8 +393,12 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                     {employee.fullName}
                   </Text>
                   <View
-                    className="mt-1 self-start px-2 py-0.5 rounded-full"
                     style={{
+                      marginTop: s(4),
+                      alignSelf: "flex-start",
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(2),
+                      borderRadius: 999,
                       backgroundColor: isOnBreak
                         ? `${colors.warning}20`
                         : `${colors.teal}20`,
@@ -404,17 +408,18 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        gap: 4,
+                        gap: s(3),
                       }}
                     >
                       {isOnBreak ? (
-                        <Pause size={s(10)} color={colors.warning} />
+                        <Pause size={s(9)} color={colors.warning} />
                       ) : (
-                        <Clock size={s(10)} color={colors.teal} />
+                        <Clock size={s(9)} color={colors.teal} />
                       )}
                       <Text
-                        className="text-xs font-semibold"
                         style={{
+                          fontSize: s(9),
+                          fontWeight: "600",
                           color: isOnBreak ? colors.warning : colors.teal,
                         }}
                       >
@@ -491,12 +496,19 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 </Text>
                 {unreadCount > 0 && (
                   <View
-                    className="px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: `${colors.teal}20` }}
+                    style={{
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(2),
+                      borderRadius: 999,
+                      backgroundColor: `${colors.teal}20`,
+                    }}
                   >
                     <Text
-                      className="text-xs font-bold"
-                      style={{ color: colors.teal }}
+                      style={{
+                        fontSize: s(10),
+                        fontWeight: "bold",
+                        color: colors.teal,
+                      }}
                     >
                       {unreadCount}
                     </Text>

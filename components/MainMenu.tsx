@@ -438,21 +438,21 @@ const MainMenu: React.FC = () => {
             backgroundColor: colors.panel,
             borderWidth: 1,
             borderColor: colors.card,
-            borderRadius: 14,
+            borderRadius: s(14),
           }}
           className="w-fit h-fit p-0"
         >
           <View
             style={{
-              padding: 24,
-              minWidth: 320,
+              padding: s(24),
+              minWidth: s(320),
             }}
           >
             <DialogHeader>
               <DialogTitle>
                 <Text
                   style={{
-                    fontSize: 15,
+                    fontSize: s(15),
                     fontWeight: "700",
                     color: colors.heading,
                     textAlign: "center",
@@ -465,11 +465,11 @@ const MainMenu: React.FC = () => {
 
             <Text
               style={{
-                fontSize: 12,
+                fontSize: s(12),
                 color: colors.muted,
                 textAlign: "center",
-                marginTop: 6,
-                marginBottom: 16,
+                marginTop: s(6),
+                marginBottom: s(16),
               }}
             >
               Enter your manager PIN to continue
@@ -479,16 +479,16 @@ const MainMenu: React.FC = () => {
 
             <View
               style={{
-                minHeight: 18,
-                marginTop: 8,
-                marginBottom: 2,
+                minHeight: s(18),
+                marginTop: s(8),
+                marginBottom: s(2),
                 justifyContent: "center",
               }}
             >
               {pinError && (
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     color: colors.danger,
                     textAlign: "center",
                   }}
@@ -498,7 +498,7 @@ const MainMenu: React.FC = () => {
               )}
             </View>
 
-            <View style={{ marginTop: 8 }}>
+            <View style={{ marginTop: s(8) }}>
               <PinNumpad
                 onKeyPress={(input) => {
                   // Clear error when user starts typing
@@ -523,17 +523,17 @@ const MainMenu: React.FC = () => {
               onPress={handlePinSubmit}
               disabled={currentPin.length < 4}
               style={{
-                marginTop: 14,
-                paddingVertical: 11,
+                marginTop: s(14),
+                paddingVertical: s(11),
                 backgroundColor:
                   currentPin.length === 4 ? colors.teal : colors.teal + "30",
-                borderRadius: 10,
+                borderRadius: s(10),
                 alignItems: "center",
               }}
             >
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: "700",
                   color:
                     currentPin.length === 4 ? colors.onSolid : colors.muted,
