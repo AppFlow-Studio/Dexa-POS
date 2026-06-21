@@ -28,6 +28,7 @@ import {
   Percent,
   Printer,
   Receipt,
+  RefreshCw,
   Settings,
   Shield,
   Smartphone,
@@ -64,6 +65,12 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
     id: 'operations',
     title: 'Operations & Hardware',
     items: [
+      {
+        id: 'syncing',
+        label: 'Syncing',
+        icon: RefreshCw,
+        route: '/settings/syncing'
+      },
       {
         id: 'devices-connections',
         label: 'Devices & Connections',
@@ -515,8 +522,8 @@ const SidebarNavigation = () => {
                             {item.label}
                           </Text>
 
-                          {/* Sync badge on General Settings: red for dead-letter, amber for pending queue */}
-                          {item.id === 'general' &&
+                          {/* Sync badge on Syncing tab: red for dead-letter, amber for pending queue */}
+                          {item.id === 'syncing' &&
                             deadLetterCount + pendingQueueCount > 0 && (
                               <View
                                 style={{
