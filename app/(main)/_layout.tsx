@@ -40,7 +40,7 @@ import {
   unstable_batchedUpdates,
   View
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 /** Side-effect component: keeps POS orders in sync when realtime drops */
 function OrderSyncRecoveryBridge ({ locationId }: { locationId: string }) {
   useOrderSyncRecovery(locationId)
@@ -58,6 +58,7 @@ export default function MainLayout () {
   const isKDS = selectedStation?.station_type === 'kds'
   const disableKeyboardAvoiding =
     pathname === '/order-processing' || pathname.endsWith('/order-processing')
+  const insets = useSafeAreaInsets()
 
   const notificationSheetRef = useRef<BottomSheetMethods>(null)
   const paymentDetailSheetRef = useRef<BottomSheetMethods>(null)
@@ -288,10 +289,12 @@ export default function MainLayout () {
               style={{ backgroundColor: colors.screen }}
             >
               <View
-                className='px-4 z-50'
+                className='z-50'
                 style={{
                   backgroundColor: 'transparent',
-                  borderBottomWidth: 0
+                  borderBottomWidth: 0,
+                  paddingLeft: Math.max(16, insets.left + 8),
+                  paddingRight: Math.max(16, insets.right + 8)
                 }}
                 onLayout={event =>
                   setHeaderHeight(event.nativeEvent.layout.height)

@@ -22,6 +22,7 @@ import { TanstackProvider } from "@/contexts/TanstackProvider";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
 import { initImmer } from "@/lib/initImmer";
+import { computeUiScale } from "@/lib/uiScale";
 import { initLogCollector } from "@/lib/logCollector";
 import { logger } from "@/lib/logger";
 import { isRefundRecoveryUIEnabled } from "@/lib/network/featureFlags";
@@ -79,8 +80,10 @@ import {
     Platform,
     Pressable,
     Text,
+    useWindowDimensions,
     View,
 } from "react-native";
+import { vars } from "nativewind";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -216,6 +219,21 @@ const DARK_THEME: Theme = {
   ...DarkTheme,
   colors: NAV_THEME.dark,
 };
+
+/**
+ * Injects the automatic UI scale as the `--ui-scale` CSS variable for the
+ * whole app. Every scale-driven Tailwind utility (spacing/font/radius) reads
+ * it via tailwind.config.js. Re-computes if window dimensions change.
+ */
+function UiScaleProvider({ children }: { children: React.ReactNode }) {
+  const { width, height } = useWindowDimensions();
+  const scale = computeUiScale(width, height);
+  return (
+    <View style={[{ flex: 1 }, vars({ "--ui-scale": scale })]}>
+      {children}
+    </View>
+  );
+}
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -721,6 +739,7 @@ export default Sentry.wrap(function RootLayout() {
             <TanstackProvider>
               <PosSyncProvider>
                 <GestureHandlerRootView>
+                  <UiScaleProvider>
                   <SafeAreaProvider>
                     <ThemeProvider
                       key={colorScheme}
@@ -815,6 +834,7 @@ export default Sentry.wrap(function RootLayout() {
                       </BottomSheetModalProvider>
                     </ThemeProvider>
                   </SafeAreaProvider>
+                  </UiScaleProvider>
                 </GestureHandlerRootView>
               </PosSyncProvider>
             </TanstackProvider>

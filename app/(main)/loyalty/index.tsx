@@ -1,5 +1,6 @@
 import { useToast } from '@/contexts/ToastContext'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import {
   useLoyaltyDataStore,
   type LoyaltyEnrollment,
@@ -92,15 +93,18 @@ const StatCard: React.FC<{
   label: string
   value: string
   sub?: string
-}> = ({ icon, label, value, sub }) => (
+}> = ({ icon, label, value, sub }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <View
     style={{
       flex: 1,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 12,
-      padding: 12,
+      borderRadius: s(12),
+      padding: s(12),
       borderTopWidth: 2,
       borderTopColor: colors.teal
     }}
@@ -115,73 +119,77 @@ const StatCard: React.FC<{
       <View style={{ flex: 1 }}>
         <Text
           style={{
-            fontSize: 10,
+            fontSize: s(10),
             fontWeight: '600',
             color: colors.label,
             textTransform: 'uppercase',
             letterSpacing: 0.5,
-            marginBottom: 5
+            marginBottom: s(5)
           }}
         >
           {label}
         </Text>
         <Text
           style={{
-            fontSize: 20,
+            fontSize: s(20),
             fontWeight: '700',
             color: colors.heading,
-            lineHeight: 24
+            lineHeight: s(24)
           }}
           numberOfLines={1}
         >
           {value}
         </Text>
         {sub ? (
-          <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+          <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>
             {sub}
           </Text>
         ) : null}
       </View>
       <View
         style={{
-          width: 30,
-          height: 30,
-          borderRadius: 8,
+          width: s(30),
+          height: s(30),
+          borderRadius: s(8),
           backgroundColor: colors.teal + '15',
           alignItems: 'center',
           justifyContent: 'center',
-          marginLeft: 8
+          marginLeft: s(8)
         }}
       >
         {icon}
       </View>
     </View>
   </View>
-)
+  )
+}
 
 const SectionHeader: React.FC<{
   icon: React.ReactNode
   title: string
   action?: React.ReactNode
-}> = ({ icon, title, action }) => (
+}> = ({ icon, title, action }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <View
     style={{
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 14,
-      paddingVertical: 10,
+      paddingHorizontal: s(14),
+      paddingVertical: s(10),
       backgroundColor: colors.panel,
       borderBottomWidth: 1,
       borderBottomColor: colors.border
     }}
   >
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
       <View
         style={{
-          width: 26,
-          height: 26,
-          borderRadius: 7,
+          width: s(26),
+          height: s(26),
+          borderRadius: s(7),
           backgroundColor: colors.teal + '18',
           alignItems: 'center',
           justifyContent: 'center'
@@ -189,59 +197,71 @@ const SectionHeader: React.FC<{
       >
         {icon}
       </View>
-      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+      <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
         {title}
       </Text>
     </View>
     {action}
   </View>
-)
+  )
+}
 
 const SectionCard: React.FC<{
   icon: React.ReactNode
   title: string
   children: React.ReactNode
   action?: React.ReactNode
-}> = ({ icon, title, children, action }) => (
+}> = ({ icon, title, children, action }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <View
     style={{
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 14,
+      borderRadius: s(14),
       overflow: 'hidden',
-      marginBottom: 12
+      marginBottom: s(12)
     }}
   >
     <SectionHeader icon={icon} title={title} action={action} />
-    <View style={{ padding: 12 }}>{children}</View>
+    <View style={{ padding: s(12) }}>{children}</View>
   </View>
-)
+  )
+}
 
 // Fix #5 — TypeBadge is teal
-const TypeBadge: React.FC<{ type: string }> = ({ type }) => (
+const TypeBadge: React.FC<{ type: string }> = ({ type }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <View
     style={{
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 20,
+      paddingHorizontal: s(8),
+      paddingVertical: s(3),
+      borderRadius: 999,
       backgroundColor: colors.teal + '15',
       borderWidth: 1,
       borderColor: colors.teal + '30'
     }}
   >
-    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}>
+    <Text style={{ fontSize: s(11), fontWeight: '600', color: colors.teal }}>
       {PROGRAM_TYPE_LABELS[type] ?? type}
     </Text>
   </View>
-)
+  )
+}
 
-const StatusBadge: React.FC<{ active: boolean }> = ({ active }) => (
+const StatusBadge: React.FC<{ active: boolean }> = ({ active }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <View
     style={{
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 20,
+      paddingHorizontal: s(8),
+      paddingVertical: s(3),
+      borderRadius: 999,
       backgroundColor: active ? colors.teal + '20' : colors.muted + '20',
       borderWidth: 1,
       borderColor: active ? colors.teal + '50' : colors.muted + '40'
@@ -249,7 +269,7 @@ const StatusBadge: React.FC<{ active: boolean }> = ({ active }) => (
   >
     <Text
       style={{
-        fontSize: 11,
+        fontSize: s(11),
         fontWeight: '600',
         color: active ? colors.teal : colors.muted
       }}
@@ -257,7 +277,8 @@ const StatusBadge: React.FC<{ active: boolean }> = ({ active }) => (
       {active ? 'Active' : 'Inactive'}
     </Text>
   </View>
-)
+  )
+}
 
 const ProgramIcon: React.FC<{
   type: string
@@ -273,39 +294,49 @@ const EmptyState: React.FC<{
   icon: React.ReactNode
   text: string
   action?: React.ReactNode
-}> = ({ icon, text, action }) => (
-  <View style={{ alignItems: 'center', paddingVertical: 32, gap: 10 }}>
+}> = ({ icon, text, action }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+  <View style={{ alignItems: 'center', paddingVertical: s(32), gap: s(10) }}>
     {icon}
-    <Text style={{ fontSize: 13, color: colors.muted }}>{text}</Text>
+    <Text style={{ fontSize: s(13), color: colors.muted }}>{text}</Text>
     {action}
   </View>
-)
+  )
+}
 
-const Loader = () => (
-  <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+const Loader = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+  <View style={{ alignItems: 'center', paddingVertical: s(40) }}>
     <ActivityIndicator color={colors.teal} size='small' />
   </View>
-)
+  )
+}
 
 const ProgressBar: React.FC<{
   current: number
   target: number
   color?: string
 }> = ({ current, target, color = colors.teal }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const pct = target > 0 ? Math.min((current / target) * 100, 100) : 0
   return (
     <View
       style={{
-        height: 5,
+        height: s(5),
         backgroundColor: colors.border,
-        borderRadius: 4,
+        borderRadius: s(4),
         overflow: 'hidden'
       }}
     >
       <View
         style={{
           height: '100%',
-          borderRadius: 4,
+          borderRadius: s(4),
           backgroundColor: color,
           width: `${pct}%`
         }}
@@ -318,27 +349,31 @@ const TealButton: React.FC<{
   label: string
   icon?: React.ReactNode
   onPress: () => void
-}> = ({ label, icon, onPress }) => (
+}> = ({ label, icon, onPress }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <TouchableOpacity
     onPress={onPress}
     style={{
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
+      gap: s(6),
+      paddingHorizontal: s(12),
+      paddingVertical: s(7),
       backgroundColor: colors.teal + '20',
       borderWidth: 1,
       borderColor: colors.teal + '50',
-      borderRadius: 8
+      borderRadius: s(8)
     }}
   >
     {icon}
-    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>
+    <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.teal }}>
       {label}
     </Text>
   </TouchableOpacity>
-)
+  )
+}
 
 // ─── Tab: Overview ────────────────────────────────────────────────────────────
 
@@ -347,6 +382,8 @@ const OverviewTab: React.FC<{
   enrollments: LoyaltyEnrollment[]
   loading: boolean
 }> = ({ programs, enrollments, loading }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   if (loading) return <Loader />
 
   const totalEnrolled = enrollments.length
@@ -383,21 +420,21 @@ const OverviewTab: React.FC<{
       contentContainerStyle={{ paddingBottom: 20, gap: 12 }}
     >
       {/* Fix #2 — removed "Active Programs" card, replaced with Avg Spend */}
-      <View style={{ flexDirection: 'row', gap: 10 }}>
+      <View style={{ flexDirection: 'row', gap: s(10) }}>
         <StatCard
-          icon={<Users size={14} color={colors.teal} />}
+          icon={<Users size={s(14)} color={colors.teal} />}
           label='Total Enrolled'
           value={totalEnrolled.toLocaleString()}
           sub={activeProgram ? activeProgram.name : undefined}
         />
         <StatCard
-          icon={<DollarSign size={14} color={colors.teal} />}
+          icon={<DollarSign size={s(14)} color={colors.teal} />}
           label='Avg Lifetime Spend'
           value={`$${avgSpend.toFixed(0)}`}
           sub='per member'
         />
         <StatCard
-          icon={<Clock size={14} color={colors.teal} />}
+          icon={<Clock size={s(14)} color={colors.teal} />}
           label='Active Since'
           value={activeProgram ? relativeDate(activeProgram.created_at) : '—'}
           sub={
@@ -407,7 +444,7 @@ const OverviewTab: React.FC<{
           }
         />
         <StatCard
-          icon={<Gift size={14} color={colors.teal} />}
+          icon={<Gift size={s(14)} color={colors.teal} />}
           label='Total Rewards'
           value={enrollments
             .reduce((s, e) => s + (e.total_rewards_earned ?? 0), 0)
@@ -417,29 +454,29 @@ const OverviewTab: React.FC<{
       </View>
 
       {topMembers.length > 0 && (
-        <View style={{ gap: 6, marginBottom: 12 }}>
+        <View style={{ gap: s(6), marginBottom: s(12) }}>
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 8,
-              marginBottom: 2
+              gap: s(8),
+              marginBottom: s(2)
             }}
           >
             <View
               style={{
-                width: 26,
-                height: 26,
-                borderRadius: 7,
+                width: s(26),
+                height: s(26),
+                borderRadius: s(7),
                 backgroundColor: colors.teal + '18',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <Star size={13} color={colors.teal} />
+              <Star size={s(13)} color={colors.teal} />
             </View>
             <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
             >
               Top Members
             </Text>
@@ -475,23 +512,23 @@ const OverviewTab: React.FC<{
                   backgroundColor: colors.card,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 10,
-                  paddingHorizontal: 12,
-                  paddingVertical: 9,
-                  gap: 6
+                  borderRadius: s(10),
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(9),
+                  gap: s(6)
                 }}
               >
                 {/* Main row */}
                 <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}
                 >
                   {/* Rank */}
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: '700',
                       color: colors.muted,
-                      width: 22,
+                      width: s(22),
                       textAlign: 'center'
                     }}
                   >
@@ -501,9 +538,9 @@ const OverviewTab: React.FC<{
                   {/* Avatar */}
                   <View
                     style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 14,
+                      width: s(28),
+                      height: s(28),
+                      borderRadius: s(14),
                       backgroundColor: colors.teal + '18',
                       alignItems: 'center',
                       justifyContent: 'center'
@@ -511,7 +548,7 @@ const OverviewTab: React.FC<{
                   >
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         fontWeight: '700',
                         color: colors.teal
                       }}
@@ -524,14 +561,14 @@ const OverviewTab: React.FC<{
                   <View style={{ flex: 1 }}>
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '600',
                         color: colors.heading
                       }}
                     >
                       {cust?.name ?? 'Unknown'}
                     </Text>
-                    <Text style={{ fontSize: 10, color: colors.muted }}>
+                    <Text style={{ fontSize: s(10), color: colors.muted }}>
                       {stats.join(' · ')}
                     </Text>
                   </View>
@@ -541,7 +578,7 @@ const OverviewTab: React.FC<{
                     {e.current_points > 0 && (
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: s(12),
                           fontWeight: '700',
                           color: colors.heading
                         }}
@@ -552,7 +589,7 @@ const OverviewTab: React.FC<{
                     {e.current_visits > 0 && (
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: s(12),
                           fontWeight: '700',
                           color: colors.heading
                         }}
@@ -563,7 +600,7 @@ const OverviewTab: React.FC<{
                     {e.current_punches > 0 && (
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: s(12),
                           fontWeight: '700',
                           color: colors.heading
                         }}
@@ -574,7 +611,7 @@ const OverviewTab: React.FC<{
                     {rewardReady && (
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: s(10),
                           fontWeight: '600',
                           color: colors.success
                         }}
@@ -587,19 +624,19 @@ const OverviewTab: React.FC<{
 
                 {/* Progress bar — only if meaningful */}
                 {progress && (
-                  <View style={{ gap: 3, paddingLeft: 30 }}>
+                  <View style={{ gap: s(3), paddingLeft: s(30) }}>
                     <View
                       style={{
                         flexDirection: 'row',
                         justifyContent: 'space-between'
                       }}
                     >
-                      <Text style={{ fontSize: 10, color: colors.muted }}>
+                      <Text style={{ fontSize: s(10), color: colors.muted }}>
                         {progress.current}/{progress.target} {progress.label}
                       </Text>
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: s(10),
                           fontWeight: '600',
                           color: rewardReady ? colors.success : accent
                         }}
@@ -622,7 +659,7 @@ const OverviewTab: React.FC<{
 
       {programs.length === 0 && enrollments.length === 0 && (
         <EmptyState
-          icon={<Award size={28} color={colors.muted} />}
+          icon={<Award size={s(28)} color={colors.muted} />}
           text='No loyalty data yet'
         />
       )}
@@ -639,6 +676,8 @@ const ProgramsTab: React.FC<{
   onAdd: () => void
   onEdit: (prog: LoyaltyProgram) => void
 }> = ({ programs, enrollments, loading, onAdd, onEdit }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   if (loading) return <Loader />
 
   return (
@@ -649,14 +688,14 @@ const ProgramsTab: React.FC<{
       <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
         <TealButton
           label='New Program'
-          icon={<Plus size={13} color={colors.teal} />}
+          icon={<Plus size={s(13)} color={colors.teal} />}
           onPress={onAdd}
         />
       </View>
 
       {programs.length === 0 && (
         <EmptyState
-          icon={<Star size={28} color={colors.muted} />}
+          icon={<Star size={s(28)} color={colors.muted} />}
           text='No loyalty programs yet'
           action={<TealButton label='Create First Program' onPress={onAdd} />}
         />
@@ -679,11 +718,11 @@ const ProgramsTab: React.FC<{
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 14,
+              borderRadius: s(14),
               overflow: 'hidden'
             }}
           >
-            <View style={{ height: 3, backgroundColor: accent }} />
+            <View style={{ height: s(3), backgroundColor: accent }} />
 
             {/* Header */}
             <View
@@ -691,21 +730,21 @@ const ProgramsTab: React.FC<{
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                paddingHorizontal: 14,
-                paddingVertical: 10,
+                paddingHorizontal: s(14),
+                paddingVertical: s(10),
                 backgroundColor: colors.panel,
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border
               }}
             >
               <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}
               >
                 <View
                   style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 9,
+                    width: s(32),
+                    height: s(32),
+                    borderRadius: s(9),
                     backgroundColor: accent + '20',
                     alignItems: 'center',
                     justifyContent: 'center'
@@ -713,14 +752,14 @@ const ProgramsTab: React.FC<{
                 >
                   <ProgramIcon
                     type={prog.program_type}
-                    size={15}
+                    size={s(15)}
                     color={accent}
                   />
                 </View>
                 <View>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '700',
                       color: colors.heading
                     }}
@@ -732,8 +771,8 @@ const ProgramsTab: React.FC<{
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 6,
-                      marginTop: 3
+                      gap: s(6),
+                      marginTop: s(3)
                     }}
                   >
                     <TypeBadge type={prog.program_type} />
@@ -744,9 +783,9 @@ const ProgramsTab: React.FC<{
               <TouchableOpacity
                 onPress={() => onEdit(prog)}
                 style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 8,
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(6),
+                  borderRadius: s(8),
                   backgroundColor: colors.teal + '15',
                   borderWidth: 1,
                   borderColor: colors.teal + '30'
@@ -754,7 +793,7 @@ const ProgramsTab: React.FC<{
               >
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '600',
                     color: colors.teal
                   }}
@@ -764,9 +803,9 @@ const ProgramsTab: React.FC<{
               </TouchableOpacity>
             </View>
 
-            <View style={{ padding: 14, gap: 12 }}>
+            <View style={{ padding: s(14), gap: s(12) }}>
               {prog.description ? (
-                <Text style={{ fontSize: 12, color: colors.muted }}>
+                <Text style={{ fontSize: s(12), color: colors.muted }}>
                   {prog.description}
                 </Text>
               ) : null}
@@ -776,18 +815,18 @@ const ProgramsTab: React.FC<{
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 8,
+                  gap: s(8),
                   backgroundColor: accent + '10',
                   borderWidth: 1,
                   borderColor: accent + '30',
-                  borderRadius: 10,
-                  padding: 10
+                  borderRadius: s(10),
+                  padding: s(10)
                 }}
               >
-                <Gift size={14} color={accent} />
+                <Gift size={s(14)} color={accent} />
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '600',
                     color: accent,
                     flex: 1
@@ -797,7 +836,7 @@ const ProgramsTab: React.FC<{
                 </Text>
                 {prog.reward_value != null && (
                   <Text
-                    style={{ fontSize: 12, fontWeight: '700', color: accent }}
+                    style={{ fontSize: s(12), fontWeight: '700', color: accent }}
                   >
                     {prog.reward_type === 'discount_percent'
                       ? `${prog.reward_value}% off`
@@ -809,7 +848,7 @@ const ProgramsTab: React.FC<{
               </View>
 
               {/* Fix #5 — rule pills are teal */}
-              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              <View style={{ flexDirection: 'row', gap: s(8), flexWrap: 'wrap' }}>
                 {prog.program_type === 'points' &&
                   prog.points_per_dollar != null && (
                     <View
@@ -817,14 +856,14 @@ const ProgramsTab: React.FC<{
                         backgroundColor: colors.teal + '10',
                         borderWidth: 1,
                         borderColor: colors.teal + '30',
-                        borderRadius: 8,
-                        paddingHorizontal: 10,
-                        paddingVertical: 5
+                        borderRadius: s(8),
+                        paddingHorizontal: s(10),
+                        paddingVertical: s(5)
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.teal,
                           fontWeight: '600'
                         }}
@@ -840,14 +879,14 @@ const ProgramsTab: React.FC<{
                         backgroundColor: colors.teal + '10',
                         borderWidth: 1,
                         borderColor: colors.teal + '30',
-                        borderRadius: 8,
-                        paddingHorizontal: 10,
-                        paddingVertical: 5
+                        borderRadius: s(8),
+                        paddingHorizontal: s(10),
+                        paddingVertical: s(5)
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.teal,
                           fontWeight: '600'
                         }}
@@ -863,14 +902,14 @@ const ProgramsTab: React.FC<{
                         backgroundColor: colors.teal + '10',
                         borderWidth: 1,
                         borderColor: colors.teal + '30',
-                        borderRadius: 8,
-                        paddingHorizontal: 10,
-                        paddingVertical: 5
+                        borderRadius: s(8),
+                        paddingHorizontal: s(10),
+                        paddingVertical: s(5)
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.teal,
                           fontWeight: '600'
                         }}
@@ -886,14 +925,14 @@ const ProgramsTab: React.FC<{
                         backgroundColor: colors.teal + '10',
                         borderWidth: 1,
                         borderColor: colors.teal + '30',
-                        borderRadius: 8,
-                        paddingHorizontal: 10,
-                        paddingVertical: 5
+                        borderRadius: s(8),
+                        paddingHorizontal: s(10),
+                        paddingVertical: s(5)
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.teal,
                           fontWeight: '600'
                         }}
@@ -908,14 +947,14 @@ const ProgramsTab: React.FC<{
                       backgroundColor: colors.teal + '10',
                       borderWidth: 1,
                       borderColor: colors.teal + '30',
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5
+                      borderRadius: s(8),
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(5)
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.teal,
                         fontWeight: '600'
                       }}
@@ -930,14 +969,14 @@ const ProgramsTab: React.FC<{
                       backgroundColor: colors.teal + '10',
                       borderWidth: 1,
                       borderColor: colors.teal + '30',
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5
+                      borderRadius: s(8),
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(5)
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.teal,
                         fontWeight: '600'
                       }}
@@ -952,14 +991,14 @@ const ProgramsTab: React.FC<{
                       backgroundColor: colors.success + '15',
                       borderWidth: 1,
                       borderColor: colors.success + '30',
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5
+                      borderRadius: s(8),
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(5)
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.success,
                         fontWeight: '600'
                       }}
@@ -971,45 +1010,45 @@ const ProgramsTab: React.FC<{
               </View>
 
               {/* Stats */}
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: s(8) }}>
                 {[
                   {
                     label: 'Enrolled',
                     value: progEnrollments.length.toString()
                   },
                   { label: 'Rewards Earned', value: progEarned.toString() }
-                ].map(s => (
+                ].map(stat => (
                   <View
-                    key={s.label}
+                    key={stat.label}
                     style={{
                       flex: 1,
                       backgroundColor: colors.panel,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      borderRadius: 10,
-                      padding: 10
+                      borderRadius: s(10),
+                      padding: s(10)
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         fontWeight: '600',
                         color: colors.muted,
                         textTransform: 'uppercase',
                         letterSpacing: 0.5,
-                        marginBottom: 3
+                        marginBottom: s(3)
                       }}
                     >
-                      {s.label}
+                      {stat.label}
                     </Text>
                     <Text
                       style={{
-                        fontSize: 16,
+                        fontSize: s(16),
                         fontWeight: '700',
                         color: colors.heading
                       }}
                     >
-                      {s.value}
+                      {stat.value}
                     </Text>
                   </View>
                 ))}
@@ -1027,6 +1066,8 @@ const ProgramsTab: React.FC<{
 // Memoized row so FlatList can recycle off-screen items instead of keeping
 // every customer's view tree mounted (the old ScrollView+.map leaked Views).
 const CustomerRow: React.FC<{ e: LoyaltyEnrollment }> = React.memo(({ e }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const cust = e.customer
   const prog = e.program
   const accent = colors.teal
@@ -1049,26 +1090,26 @@ const CustomerRow: React.FC<{ e: LoyaltyEnrollment }> = React.memo(({ e }) => {
         backgroundColor: colors.card,
         borderWidth: 1,
         borderColor: colors.border,
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        paddingVertical: 9,
-        gap: 6
+        borderRadius: s(10),
+        paddingHorizontal: s(12),
+        paddingVertical: s(9),
+        gap: s(6)
       }}
     >
       {/* Main row */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
         {/* Avatar */}
         <View
           style={{
-            width: 28,
-            height: 28,
-            borderRadius: 14,
+            width: s(28),
+            height: s(28),
+            borderRadius: s(14),
             backgroundColor: accent + '18',
             alignItems: 'center',
             justifyContent: 'center'
           }}
         >
-          <Text style={{ fontSize: 11, fontWeight: '700', color: accent }}>
+          <Text style={{ fontSize: s(11), fontWeight: '700', color: accent }}>
             {(cust?.name ?? '?')[0].toUpperCase()}
           </Text>
         </View>
@@ -1076,11 +1117,11 @@ const CustomerRow: React.FC<{ e: LoyaltyEnrollment }> = React.memo(({ e }) => {
         {/* Name + meta */}
         <View style={{ flex: 1 }}>
           <Text
-            style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}
+            style={{ fontSize: s(13), fontWeight: '600', color: colors.heading }}
           >
             {cust?.name ?? 'Unknown'}
           </Text>
-          <Text style={{ fontSize: 10, color: colors.muted }}>
+          <Text style={{ fontSize: s(10), color: colors.muted }}>
             {stats.join(' · ')}
           </Text>
         </View>
@@ -1088,7 +1129,7 @@ const CustomerRow: React.FC<{ e: LoyaltyEnrollment }> = React.memo(({ e }) => {
         {/* Right side */}
         {rewardReady ? (
           <Text
-            style={{ fontSize: 10, fontWeight: '600', color: colors.success }}
+            style={{ fontSize: s(10), fontWeight: '600', color: colors.success }}
           >
             🎉 Ready
           </Text>
@@ -1097,7 +1138,7 @@ const CustomerRow: React.FC<{ e: LoyaltyEnrollment }> = React.memo(({ e }) => {
             {progress && (
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: '700',
                   color: colors.heading
                 }}
@@ -1106,7 +1147,7 @@ const CustomerRow: React.FC<{ e: LoyaltyEnrollment }> = React.memo(({ e }) => {
               </Text>
             )}
             {progress && (
-              <Text style={{ fontSize: 10, color: colors.muted }}>
+              <Text style={{ fontSize: s(10), color: colors.muted }}>
                 {progress.label}
               </Text>
             )}
@@ -1116,7 +1157,7 @@ const CustomerRow: React.FC<{ e: LoyaltyEnrollment }> = React.memo(({ e }) => {
 
       {/* Progress bar */}
       {progress && (
-        <View style={{ paddingLeft: 36 }}>
+        <View style={{ paddingLeft: s(36) }}>
           <ProgressBar
             current={progress.current}
             target={progress.target}
@@ -1135,6 +1176,8 @@ const CustomersTab: React.FC<{
   loading: boolean
   onEnroll: () => void
 }> = ({ enrollments, programs, loading, onEnroll }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [search, setSearch] = useState('')
   const [progFilter, setProgFilter] = useState<string | null>(null)
 
@@ -1158,26 +1201,26 @@ const CustomersTab: React.FC<{
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 8,
+          gap: s(8),
           backgroundColor: colors.screen,
           borderWidth: 1,
           borderColor: colors.border,
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 9
+          borderRadius: s(10),
+          paddingHorizontal: s(12),
+          paddingVertical: s(9)
         }}
       >
-        <Search size={14} color={colors.muted} />
+        <Search size={s(14)} color={colors.muted} />
         <TextInput
           value={search}
           onChangeText={setSearch}
           placeholder='Search name or phone…'
           placeholderTextColor={colors.muted}
-          style={{ flex: 1, fontSize: 13, color: colors.heading }}
+          style={{ flex: 1, fontSize: s(13), color: colors.heading }}
         />
         {search ? (
           <TouchableOpacity onPress={() => setSearch('')}>
-            <X size={14} color={colors.muted} />
+            <X size={s(14)} color={colors.muted} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -1189,14 +1232,14 @@ const CustomersTab: React.FC<{
             backgroundColor: colors.panel,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 10,
-            padding: 3
+            borderRadius: s(10),
+            padding: s(3)
           }}
         >
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 3 }}
+            contentContainerStyle={{ gap: s(3) }}
           >
             {[
               { id: null as string | null, name: 'All' },
@@ -1214,16 +1257,16 @@ const CustomersTab: React.FC<{
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 6,
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                    borderRadius: 8,
+                    gap: s(6),
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(7),
+                    borderRadius: s(8),
                     backgroundColor: active ? colors.teal : 'transparent'
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: '600',
                       color: active ? colors.onSolid : colors.label
                     }}
@@ -1232,10 +1275,10 @@ const CustomersTab: React.FC<{
                   </Text>
                   <View
                     style={{
-                      minWidth: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      paddingHorizontal: 4,
+                      minWidth: s(18),
+                      height: s(18),
+                      borderRadius: s(9),
+                      paddingHorizontal: s(4),
                       backgroundColor: active
                         ? colors.onSolid + '25'
                         : colors.border,
@@ -1245,7 +1288,7 @@ const CustomersTab: React.FC<{
                   >
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         fontWeight: '700',
                         color: active ? colors.onSolid : colors.muted
                       }}
@@ -1277,35 +1320,35 @@ const CustomersTab: React.FC<{
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 10,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
+              gap: s(10),
+              paddingHorizontal: s(14),
+              paddingVertical: s(12),
               backgroundColor: colors.teal + '10',
               borderWidth: 1,
               borderColor: colors.teal + '30',
-              borderRadius: 12,
-              marginBottom: 8
+              borderRadius: s(12),
+              marginBottom: s(8)
             }}
           >
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 9,
+                width: s(32),
+                height: s(32),
+                borderRadius: s(9),
                 backgroundColor: colors.teal + '25',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <Plus size={15} color={colors.teal} />
+              <Plus size={s(15)} color={colors.teal} />
             </View>
             <View>
               <Text
-                style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}
+                style={{ fontSize: s(13), fontWeight: '600', color: colors.teal }}
               >
                 Enroll New Customer
               </Text>
-              <Text style={{ fontSize: 11, color: colors.teal + 'AA' }}>
+              <Text style={{ fontSize: s(11), color: colors.teal + 'AA' }}>
                 Add a customer to a loyalty program
               </Text>
             </View>
@@ -1313,7 +1356,7 @@ const CustomersTab: React.FC<{
         }
         ListEmptyComponent={
           <EmptyState
-            icon={<Users size={28} color={colors.muted} />}
+            icon={<Users size={s(28)} color={colors.muted} />}
             text='No enrolled customers found'
           />
         }
@@ -1325,9 +1368,11 @@ const CustomersTab: React.FC<{
 // ─── Tab: Redeem ──────────────────────────────────────────────────────────────
 
 const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const { show } = useToast()
 
-  const phone = useLoyaltyDataStore(s => s.redeemPhone)
+  const phone = useLoyaltyDataStore(storeState => storeState.redeemPhone)
   const searching = useLoyaltyDataStore(s => s.redeemSearching)
   const searched = useLoyaltyDataStore(s => s.redeemSearched)
   const customer = useLoyaltyDataStore(s => s.redeemCustomer)
@@ -1394,8 +1439,8 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
           backgroundColor: colors.card,
           borderWidth: 1,
           borderColor: customer ? colors.teal + '40' : colors.border,
-          borderRadius: 12,
-          marginBottom: 12,
+          borderRadius: s(12),
+          marginBottom: s(12),
           overflow: 'hidden'
         }}
       >
@@ -1403,22 +1448,22 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            gap: 10
+            paddingHorizontal: s(14),
+            paddingVertical: s(12),
+            gap: s(10)
           }}
         >
           <View
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 9,
+              width: s(36),
+              height: s(36),
+              borderRadius: s(9),
               backgroundColor: colors.teal + '15',
               alignItems: 'center',
               justifyContent: 'center'
             }}
           >
-            <Search size={16} color={colors.teal} />
+            <Search size={s(16)} color={colors.teal} />
           </View>
           <TextInput
             value={phone}
@@ -1428,7 +1473,7 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
             keyboardType='phone-pad'
             style={{
               flex: 1,
-              fontSize: 15,
+              fontSize: s(15),
               color: colors.heading,
               fontWeight: '500'
             }}
@@ -1436,14 +1481,14 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
           />
           {searching && <ActivityIndicator color={colors.teal} size='small' />}
           {!searching && phone.length > 0 && (
-            <TouchableOpacity onPress={handleReset} style={{ padding: 4 }}>
-              <X size={15} color={colors.muted} />
+            <TouchableOpacity onPress={handleReset} style={{ padding: s(4) }}>
+              <X size={s(15)} color={colors.muted} />
             </TouchableOpacity>
           )}
         </View>
         {phone.length > 0 && phone.length < 4 && (
-          <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}>
-            <Text style={{ fontSize: 11, color: colors.muted }}>
+          <View style={{ paddingHorizontal: s(14), paddingBottom: s(10) }}>
+            <Text style={{ fontSize: s(11), color: colors.muted }}>
               Keep typing to search…
             </Text>
           </View>
@@ -1461,18 +1506,18 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 12,
-              padding: 20,
+              borderRadius: s(12),
+              padding: s(20),
               alignItems: 'center',
-              gap: 8
+              gap: s(8)
             }}
           >
-            <AlertCircle size={22} color={colors.muted} />
-            <Text style={{ fontSize: 13, color: colors.muted }}>
+            <AlertCircle size={s(22)} color={colors.muted} />
+            <Text style={{ fontSize: s(13), color: colors.muted }}>
               No loyalty account found
             </Text>
             <Text
-              style={{ fontSize: 11, color: colors.muted, textAlign: 'center' }}
+              style={{ fontSize: s(11), color: colors.muted, textAlign: 'center' }}
             >
               Try a different number or enroll this customer first
             </Text>
@@ -1486,36 +1531,36 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
               backgroundColor: colors.success + '10',
               borderWidth: 1,
               borderColor: colors.success + '40',
-              borderRadius: 12,
-              padding: 16,
+              borderRadius: s(12),
+              padding: s(16),
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 12
+              gap: s(12)
             }}
           >
             <View
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
+                width: s(40),
+                height: s(40),
+                borderRadius: s(20),
                 backgroundColor: colors.success + '20',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <Check size={18} color={colors.success} />
+              <Check size={s(18)} color={colors.success} />
             </View>
             <View style={{ flex: 1 }}>
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '700',
                   color: colors.success
                 }}
               >
                 Reward Redeemed!
               </Text>
-              <Text style={{ fontSize: 12, color: colors.label, marginTop: 1 }}>
+              <Text style={{ fontSize: s(12), color: colors.label, marginTop: s(1) }}>
                 <Text style={{ fontWeight: '600', color: colors.heading }}>
                   {redeemed.reward_description}
                 </Text>{' '}
@@ -1524,9 +1569,9 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
             </View>
             <TouchableOpacity
               onPress={clearLastRedeemed}
-              style={{ padding: 6 }}
+              style={{ padding: s(6) }}
             >
-              <X size={13} color={colors.muted} />
+              <X size={s(13)} color={colors.muted} />
             </TouchableOpacity>
           </View>
         )}
@@ -1538,18 +1583,18 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.teal + '30',
-              borderRadius: 12,
-              padding: 14
+              borderRadius: s(12),
+              padding: s(14)
             }}
           >
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(12) }}
             >
               <View
                 style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
+                  width: s(44),
+                  height: s(44),
+                  borderRadius: s(22),
                   backgroundColor: colors.teal + '20',
                   alignItems: 'center',
                   justifyContent: 'center'
@@ -1557,7 +1602,7 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
               >
                 <Text
                   style={{
-                    fontSize: 18,
+                    fontSize: s(18),
                     fontWeight: '700',
                     color: colors.teal
                   }}
@@ -1568,7 +1613,7 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
-                    fontSize: 15,
+                    fontSize: s(15),
                     fontWeight: '700',
                     color: colors.heading
                   }}
@@ -1576,7 +1621,7 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
                   {customer.name ?? 'Unknown'}
                 </Text>
                 <Text
-                  style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}
+                  style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }}
                 >
                   {customer.phone} · {customer.visits ?? 0} visits · $
                   {(customer.lifetime_spend ?? 0).toFixed(0)} lifetime
@@ -1586,32 +1631,32 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
 
             {/* Balances */}
             {(totalPoints > 0 || totalVisits > 0 || totalPunches > 0) && (
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+              <View style={{ flexDirection: 'row', gap: s(8), marginTop: s(12) }}>
                 {totalPoints > 0 && (
                   <View
                     style={{
                       flex: 1,
                       backgroundColor: colors.panel,
-                      borderRadius: 9,
-                      padding: 10,
+                      borderRadius: s(9),
+                      padding: s(10),
                       borderWidth: 1,
                       borderColor: colors.border
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         color: colors.muted,
                         textTransform: 'uppercase',
                         letterSpacing: 0.5,
-                        marginBottom: 3
+                        marginBottom: s(3)
                       }}
                     >
                       Points
                     </Text>
                     <Text
                       style={{
-                        fontSize: 18,
+                        fontSize: s(18),
                         fontWeight: '700',
                         color: colors.teal
                       }}
@@ -1625,26 +1670,26 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
                     style={{
                       flex: 1,
                       backgroundColor: colors.panel,
-                      borderRadius: 9,
-                      padding: 10,
+                      borderRadius: s(9),
+                      padding: s(10),
                       borderWidth: 1,
                       borderColor: colors.border
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         color: colors.muted,
                         textTransform: 'uppercase',
                         letterSpacing: 0.5,
-                        marginBottom: 3
+                        marginBottom: s(3)
                       }}
                     >
                       Visits
                     </Text>
                     <Text
                       style={{
-                        fontSize: 18,
+                        fontSize: s(18),
                         fontWeight: '700',
                         color: colors.teal
                       }}
@@ -1658,26 +1703,26 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
                     style={{
                       flex: 1,
                       backgroundColor: colors.panel,
-                      borderRadius: 9,
-                      padding: 10,
+                      borderRadius: s(9),
+                      padding: s(10),
                       borderWidth: 1,
                       borderColor: colors.border
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         color: colors.muted,
                         textTransform: 'uppercase',
                         letterSpacing: 0.5,
-                        marginBottom: 3
+                        marginBottom: s(3)
                       }}
                     >
                       Punches
                     </Text>
                     <Text
                       style={{
-                        fontSize: 18,
+                        fontSize: s(18),
                         fontWeight: '700',
                         color: colors.teal
                       }}
@@ -1699,17 +1744,17 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
                 100
               )
               return (
-                <View key={e.id} style={{ marginTop: 10 }}>
+                <View key={e.id} style={{ marginTop: s(10) }}>
                   <View
                     style={{
                       flexDirection: 'row',
                       justifyContent: 'space-between',
-                      marginBottom: 4
+                      marginBottom: s(4)
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         fontWeight: '600',
                         color: colors.heading
                       }}
@@ -1718,7 +1763,7 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
                     </Text>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         fontWeight: '600',
                         color: pct === 100 ? colors.success : accent
                       }}
@@ -1743,19 +1788,19 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
         {customer && (
           <SectionCard
             title='Available Rewards'
-            icon={<Gift size={13} color={colors.teal} />}
+            icon={<Gift size={s(13)} color={colors.teal} />}
           >
             {rewards.length === 0 ? (
               <View
-                style={{ alignItems: 'center', paddingVertical: 20, gap: 6 }}
+                style={{ alignItems: 'center', paddingVertical: s(20), gap: s(6) }}
               >
-                <Gift size={22} color={colors.muted} />
-                <Text style={{ fontSize: 12, color: colors.muted }}>
+                <Gift size={s(22)} color={colors.muted} />
+                <Text style={{ fontSize: s(12), color: colors.muted }}>
                   No pending rewards to redeem
                 </Text>
               </View>
             ) : (
-              <View style={{ gap: 8 }}>
+              <View style={{ gap: s(8) }}>
                 {rewards.map(reward => {
                   const valueLabel =
                     reward.reward_type === 'discount_percent'
@@ -1772,27 +1817,27 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
                         backgroundColor: colors.panel,
                         borderWidth: 1,
                         borderColor: colors.teal + '30',
-                        borderRadius: 10,
-                        padding: 12,
-                        gap: 10
+                        borderRadius: s(10),
+                        padding: s(12),
+                        gap: s(10)
                       }}
                     >
                       <View
                         style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 9,
+                          width: s(34),
+                          height: s(34),
+                          borderRadius: s(9),
                           backgroundColor: colors.teal + '15',
                           alignItems: 'center',
                           justifyContent: 'center'
                         }}
                       >
-                        <Tag size={15} color={colors.teal} />
+                        <Tag size={s(15)} color={colors.teal} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: '600',
                             color: colors.heading
                           }}
@@ -1801,9 +1846,9 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
                         </Text>
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: s(11),
                             color: colors.muted,
-                            marginTop: 1
+                            marginTop: s(1)
                           }}
                         >
                           {valueLabel}
@@ -1819,11 +1864,11 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
                         onPress={() => handleRedeem(reward)}
                         disabled={redeeming === reward.id}
                         style={{
-                          paddingHorizontal: 14,
-                          paddingVertical: 8,
-                          borderRadius: 8,
+                          paddingHorizontal: s(14),
+                          paddingVertical: s(8),
+                          borderRadius: s(8),
                           backgroundColor: colors.teal,
-                          minWidth: 80,
+                          minWidth: s(80),
                           alignItems: 'center'
                         }}
                       >
@@ -1835,7 +1880,7 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
                         ) : (
                           <Text
                             style={{
-                              fontSize: 12,
+                              fontSize: s(12),
                               fontWeight: '700',
                               color: colors.onSolid
                             }}
@@ -1871,14 +1916,16 @@ const TABS: { id: TabId; label: string }[] = [
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function LoyaltyScreen () {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const router = useRouter()
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const selectedStore = useStoreSettingsStore(storeState => storeState.selectedStore)
   const merchantId = selectedStore?.merchant_id ?? ''
 
-  const programs = useLoyaltyDataStore(s => s.programs)
-  const enrollments = useLoyaltyDataStore(s => s.enrollments)
-  const loading = useLoyaltyDataStore(s => s.loading)
-  const fetchData = useLoyaltyDataStore(s => s.fetchData)
+  const programs = useLoyaltyDataStore(storeState => storeState.programs)
+  const enrollments = useLoyaltyDataStore(storeState => storeState.enrollments)
+  const loading = useLoyaltyDataStore(storeState => storeState.loading)
+  const fetchData = useLoyaltyDataStore(storeState => storeState.fetchData)
 
   const [activeTab, setActiveTab] = useState<TabId>(_persistedTab)
 
@@ -1900,7 +1947,7 @@ export default function LoyaltyScreen () {
           backgroundColor: colors.panel,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
-          paddingHorizontal: 10
+          paddingHorizontal: s(10)
         }}
       >
         <View style={{ flex: 1, flexDirection: 'row' }}>
@@ -1914,16 +1961,16 @@ export default function LoyaltyScreen () {
                   setActiveTab(tab.id)
                 }}
                 style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
+                  paddingHorizontal: s(14),
+                  paddingVertical: s(10),
                   borderBottomWidth: 2,
                   borderBottomColor: active ? colors.teal : 'transparent',
-                  marginRight: 2
+                  marginRight: s(2)
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: '600',
                     color: active ? colors.teal : colors.label
                   }}
@@ -1937,18 +1984,18 @@ export default function LoyaltyScreen () {
         <TouchableOpacity
           onPress={loadData}
           style={{
-            padding: 7,
+            padding: s(7),
             backgroundColor: colors.teal + '10',
-            borderRadius: 10,
-            marginLeft: 6
+            borderRadius: s(10),
+            marginLeft: s(6)
           }}
         >
-          <RefreshCw size={14} color={colors.teal} />
+          <RefreshCw size={s(14)} color={colors.teal} />
         </TouchableOpacity>
       </View>
 
       {/* Content */}
-      <View style={{ flex: 1, paddingHorizontal: 14, paddingTop: 12 }}>
+      <View style={{ flex: 1, paddingHorizontal: s(14), paddingTop: s(12) }}>
         {activeTab === 'overview' && (
           <OverviewTab
             programs={programs}

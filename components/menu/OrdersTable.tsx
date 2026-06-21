@@ -1,6 +1,7 @@
 import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
+import { useUiScale } from '@/lib/uiScale'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { formatPaymentStatus } from '@/utils/orderStatusHelpers'
 import { FlashList } from '@shopify/flash-list'
@@ -181,6 +182,8 @@ interface OrderRowProps {
 }
 
 const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const buttonRef = React.useRef<View | null>(null)
 
   // Time + order type display
@@ -261,11 +264,11 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
         />
 
         {/* ORDER cell */}
-        <View style={{ flex: 2, paddingVertical: 10, paddingHorizontal: 14 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={{ flex: 2, paddingVertical: s(10), paddingHorizontal: s(14) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '700',
                 color: colors.heading,
                 letterSpacing: 0.2
@@ -280,7 +283,7 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
             />
           </View>
           <Text
-            style={{ fontSize: 11, marginTop: 2, color: colors.muted }}
+            style={{ fontSize: s(11), marginTop: s(2), color: colors.muted }}
             numberOfLines={1}
           >
             {customerName !== '' ? customerName : 'Walk-in'}
@@ -288,10 +291,10 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
         </View>
 
         {/* TIME + TYPE cell */}
-        <View style={{ flex: 2.5, paddingVertical: 10, paddingHorizontal: 14 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={{ flex: 2.5, paddingVertical: s(10), paddingHorizontal: s(14) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
             <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}
+              style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}
             >
               {timeDisplay}
             </Text>
@@ -302,13 +305,13 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
                   borderWidth: 1,
                   borderColor: colors.border,
                   borderRadius: 20,
-                  paddingHorizontal: 7,
-                  paddingVertical: 2
+                  paddingHorizontal: s(7),
+                  paddingVertical: s(2)
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 10,
+                    fontSize: s(10),
                     fontWeight: '600',
                     color: colors.muted
                   }}
@@ -318,14 +321,14 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
               </View>
             )}
           </View>
-          <Text style={{ fontSize: 11, marginTop: 2, color: colors.muted }}>
+          <Text style={{ fontSize: s(11), marginTop: s(2), color: colors.muted }}>
             {dateDisplay}
           </Text>
         </View>
 
         {/* STAFF cell */}
-        <View style={{ flex: 1.5, paddingVertical: 10, paddingHorizontal: 14 }}>
-          <Text style={{ fontSize: 12, color: colors.muted }} numberOfLines={1}>
+        <View style={{ flex: 1.5, paddingVertical: s(10), paddingHorizontal: s(14) }}>
+          <Text style={{ fontSize: s(12), color: colors.muted }} numberOfLines={1}>
             {order?.order_source == 'online'
               ? 'Online'
               : order.server_name || order._sourceStationName || '—'}
@@ -336,18 +339,18 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
         <View
           style={{
             flex: 1.5,
-            paddingVertical: 10,
-            paddingHorizontal: 14,
+            paddingVertical: s(10),
+            paddingHorizontal: s(14),
             alignItems: 'flex-end'
           }}
         >
           <Text
-            style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
           >
             ${(order.total_amount || 0).toFixed(2)}
           </Text>
           {hasCashTotal && (
-            <Text style={{ fontSize: 11, marginTop: 2, color: colors.success }}>
+            <Text style={{ fontSize: s(11), marginTop: s(2), color: colors.success }}>
               cash ${order.total_cash_amount!.toFixed(2)}
             </Text>
           )}
@@ -357,10 +360,10 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
         <View
           style={{
             flex: 1.2,
-            paddingVertical: 10,
-            paddingHorizontal: 14,
+            paddingVertical: s(10),
+            paddingHorizontal: s(14),
             alignItems: 'center',
-            gap: 4
+            gap: s(4)
           }}
         >
           <View
@@ -368,24 +371,24 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
               backgroundColor: pill.bg,
               borderWidth: 1,
               borderColor: pill.border,
-              paddingHorizontal: 10,
-              paddingVertical: 3,
+              paddingHorizontal: s(10),
+              paddingVertical: s(3),
               borderRadius: 20
             }}
           >
-            <Text style={{ color: pill.text, fontSize: 11, fontWeight: '700' }}>
+            <Text style={{ color: pill.text, fontSize: s(11), fontWeight: '700' }}>
               {pill.label}
             </Text>
           </View>
           {isVoided && (
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(3) }}
             >
-              <XCircle size={9} color={colors.danger} />
+              <XCircle size={s(9)} color={colors.danger} />
               <Text
                 style={{
                   color: colors.danger,
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '600'
                 }}
               >
@@ -395,11 +398,11 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
           )}
           {isOrderFullySettled(order) && (
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(3) }}
             >
-              <Lock size={9} color={colors.muted} />
+              <Lock size={s(9)} color={colors.muted} />
               <Text
-                style={{ color: colors.muted, fontSize: 10, fontWeight: '600' }}
+                style={{ color: colors.muted, fontSize: s(10), fontWeight: '600' }}
               >
                 Settled
               </Text>
@@ -410,9 +413,9 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
         {/* ACTIONS cell */}
         <View
           style={{
-            width: 48,
-            paddingVertical: 10,
-            paddingHorizontal: 8,
+            width: s(48),
+            paddingVertical: s(10),
+            paddingHorizontal: s(8),
             alignItems: 'center'
           }}
         >
@@ -420,9 +423,9 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
             ref={buttonRef}
             onPress={handleMorePress}
             style={{
-              width: 30,
-              height: 30,
-              borderRadius: 8,
+              width: s(30),
+              height: s(30),
+              borderRadius: s(8),
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
@@ -430,7 +433,7 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
               justifyContent: 'center'
             }}
           >
-            <MoreVertical size={13} color={colors.muted} />
+            <MoreVertical size={s(13)} color={colors.muted} />
           </TouchableOpacity>
         </View>
       </View>
@@ -451,6 +454,8 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   onEndReached,
   isLoadingMore
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   // Sort orders based on current sort column and direction
   const sortedOrders = useMemo(() => {
     return [...orders].sort((a, b) => {
@@ -535,7 +540,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 fontWeight: '700',
                 letterSpacing: 0.6,
                 textTransform: 'uppercase',
@@ -547,9 +552,9 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
             {column.sortable &&
               sortColumn === column.key &&
               (sortDirection === 'asc' ? (
-                <ArrowUp size={10} color={colors.teal} />
+                <ArrowUp size={s(10)} color={colors.teal} />
               ) : (
-                <ArrowDown size={10} color={colors.teal} />
+                <ArrowDown size={s(10)} color={colors.teal} />
               ))}
           </TouchableOpacity>
         ))}

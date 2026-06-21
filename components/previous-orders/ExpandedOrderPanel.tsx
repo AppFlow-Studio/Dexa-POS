@@ -5,6 +5,7 @@ import {
 } from "@/lib/paymentStatus";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { formatAddress } from "@/utils/addressUtils";
 import {
     Banknote,
@@ -39,6 +40,9 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
   onRefund,
   onContinue,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
   const paymentSummary = useMemo(() => {
     const isCashPricing = usesCashPricing(order.payments);
     const subtotal = order.items.reduce((sum, item) => {
@@ -127,7 +131,7 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
       style={{
         backgroundColor: colors.card,
         borderTopColor: colors.border,
-        borderLeftWidth: 4,
+        borderLeftWidth: s(4),
         borderLeftColor: colors.teal,
       }}
     >
@@ -137,31 +141,31 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
             flexDirection: "row",
             alignItems: "center",
             flexWrap: "wrap",
-            gap: 12,
-            marginBottom: 10,
-            paddingBottom: 10,
+            gap: s(12),
+            marginBottom: s(10),
+            paddingBottom: s(10),
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
           }}
         >
           <View
-            style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
           >
             <View
               style={{
-                width: 3,
-                height: 16,
+                width: s(3),
+                height: s(16),
                 backgroundColor: colors.teal,
-                borderRadius: 1.5,
+                borderRadius: s(1.5),
               }}
             />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.teal,
                 textTransform: "uppercase",
-                letterSpacing: 0.5,
+                letterSpacing: s(0.5),
               }}
             >
               Customer
@@ -172,19 +176,19 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 6,
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 8,
+                gap: s(6),
+                paddingHorizontal: s(10),
+                paddingVertical: s(5),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + "18",
                 borderWidth: 1,
                 borderColor: colors.teal + "40",
               }}
             >
-              <User color={colors.teal} size={14} />
+              <User color={colors.teal} size={s(14)} />
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: "700",
                   color: colors.teal,
                 }}
@@ -214,32 +218,32 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
           ) : null}
         </View>
       )}
-      <View className="flex-row gap-6">
+      <View className="flex-row" style={{ gap: s(6) }}>
         {/* Column 1: Items (~50%) */}
         <View style={{ flex: 5 }}>
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 6,
-              marginBottom: 8,
+              gap: s(6),
+              marginBottom: s(8),
             }}
           >
             <View
               style={{
-                width: 3,
-                height: 16,
+                width: s(3),
+                height: s(16),
                 backgroundColor: colors.teal,
-                borderRadius: 1.5,
+                borderRadius: s(1.5),
               }}
             />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.teal,
                 textTransform: "uppercase",
-                letterSpacing: 0.5,
+                letterSpacing: s(0.5),
               }}
             >
               Items
@@ -248,21 +252,22 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
           {order.items.slice(0, 3).map((item, idx) => (
             <View
               key={item.id || idx}
-              className="flex-row justify-between mb-0.5"
+              className="flex-row justify-between"
+              style={{ marginBottom: s(2) }}
             >
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   color: colors.label,
                   flex: 1,
-                  marginRight: 8,
+                  marginRight: s(8),
                 }}
                 numberOfLines={1}
               >
                 {item.quantity > 1 ? `${item.quantity}x ` : "1x "}
                 {item.name}
               </Text>
-              <Text style={{ fontSize: 13, color: colors.label }}>
+              <Text style={{ fontSize: s(13), color: colors.label }}>
                 $
                 {(paymentSummary.isCashPricing
                   ? (item.cashSubtotal ??
@@ -274,7 +279,7 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
             </View>
           ))}
           {order.items.length > 3 && (
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
+            <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(4) }}>
               ...and {order.items.length - 3} more items
             </Text>
           )}
@@ -289,25 +294,25 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 6,
-              marginBottom: 8,
+              gap: s(6),
+              marginBottom: s(8),
             }}
           >
             <View
               style={{
-                width: 3,
-                height: 16,
+                width: s(3),
+                height: s(16),
                 backgroundColor: colors.teal,
-                borderRadius: 1.5,
+                borderRadius: s(1.5),
               }}
             />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.teal,
                 textTransform: "uppercase",
-                letterSpacing: 0.5,
+                letterSpacing: s(0.5),
               }}
             >
               Payment
@@ -329,28 +334,28 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
               colorValue={colors.danger}
             />
           )}
-          <View className="border-t border-border my-1.5" />
-          <View className="flex-row justify-between mb-0.5">
+          <View className="border-t border-border" style={{ marginVertical: s(6) }} />
+          <View className="flex-row justify-between" style={{ marginBottom: s(2) }}>
             <Text
-              style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}
+              style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
             >
               Net Total
             </Text>
             <Text
-              style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}
+              style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
             >
               ${paymentSummary.net.toFixed(2)}
             </Text>
           </View>
           {paymentSummary.paymentMethodLabel ? (
-            <View className="flex-row items-center gap-2 mt-3">
+            <View className="flex-row items-center" style={{ gap: s(2), marginTop: s(3) }}>
               {paymentSummary.isCashPayment ? (
-                <Banknote color={colors.teal} size={14} />
+                <Banknote color={colors.teal} size={s(14)} />
               ) : (
-                <CreditCard color={colors.teal} size={14} />
+                <CreditCard color={colors.teal} size={s(14)} />
               )}
               <Text
-                style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}
+                style={{ fontSize: s(12), fontWeight: "700", color: colors.teal }}
               >
                 {paymentSummary.paymentMethodLabel}
               </Text>
@@ -367,58 +372,58 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 6,
-              marginBottom: 8,
+              gap: s(6),
+              marginBottom: s(8),
             }}
           >
             <View
               style={{
-                width: 3,
-                height: 16,
+                width: s(3),
+                height: s(16),
                 backgroundColor: colors.teal,
-                borderRadius: 1.5,
+                borderRadius: s(1.5),
               }}
             />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.teal,
                 textTransform: "uppercase",
-                letterSpacing: 0.5,
+                letterSpacing: s(0.5),
               }}
             >
               Actions
             </Text>
           </View>
-          <View className="gap-2">
+          <View style={{ gap: s(2) }}>
             {onContinue && (
               <QuickActionButton
-                icon={<Play color={colors.teal} size={14} />}
+                icon={<Play color={colors.teal} size={s(14)} />}
                 label="Continue Order"
                 onPress={() => onContinue(order)}
               />
             )}
             <QuickActionButton
-              icon={<Printer color={colors.teal} size={14} />}
+              icon={<Printer color={colors.teal} size={s(14)} />}
               label="Print Receipt"
               onPress={() => onPrint(order)}
             />
             <QuickActionButton
-              icon={<Clock color={colors.teal} size={14} />}
+              icon={<Clock color={colors.teal} size={s(14)} />}
               label="View Timeline"
               onPress={() => onViewTimeline(order)}
             />
             {hasCardPayments && (
               <QuickActionButton
-                icon={<DollarSign color={colors.teal} size={14} />}
+                icon={<DollarSign color={colors.teal} size={s(14)} />}
                 label="Adjust Tip"
                 onPress={() => onTipAdjust(order)}
               />
             )}
-            {canRefund && (
+            {canRefund && onRefund && (
               <QuickActionButton
-                icon={<RotateCcw color={colors.teal} size={14} />}
+                icon={<RotateCcw color={colors.teal} size={s(14)} />}
                 label="Process Refund"
                 onPress={() => onRefund(order)}
               />
@@ -436,27 +441,31 @@ const CustomerChip = ({
 }: {
   icon: React.ReactNode;
   text: string;
-}) => (
-  <View
-    style={{
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 6,
-      backgroundColor: colors.muted + "12",
-    }}
-  >
-    {icon}
-    <Text
-      style={{ fontSize: 12, fontWeight: "500", color: colors.label }}
-      numberOfLines={1}
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: s(5),
+        paddingHorizontal: s(8),
+        paddingVertical: s(4),
+        borderRadius: s(6),
+        backgroundColor: colors.muted + "12",
+      }}
     >
-      {text}
-    </Text>
-  </View>
-);
+      {icon}
+      <Text
+        style={{ fontSize: s(12), fontWeight: "500", color: colors.label }}
+        numberOfLines={1}
+      >
+        {text}
+      </Text>
+    </View>
+  );
+};
 
 const PaymentLine = ({
   label,
@@ -468,28 +477,32 @@ const PaymentLine = ({
   amount: number;
   colorValue?: string;
   bold?: boolean;
-}) => (
-  <View className="flex-row justify-between mb-0.5">
-    <Text
-      style={{
-        fontSize: 12,
-        fontWeight: bold ? "700" : "400",
-        color: bold ? colors.heading : colors.label,
-      }}
-    >
-      {label}
-    </Text>
-    <Text
-      style={{
-        fontSize: 12,
-        fontWeight: bold ? "700" : "400",
-        color: bold ? colors.heading : colorValue || colors.label,
-      }}
-    >
-      {amount < 0 ? "-" : ""}${Math.abs(amount).toFixed(2)}
-    </Text>
-  </View>
-);
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return (
+    <View className="flex-row justify-between" style={{ marginBottom: s(2) }}>
+      <Text
+        style={{
+          fontSize: s(12),
+          fontWeight: bold ? "700" : "400",
+          color: bold ? colors.heading : colors.label,
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{
+          fontSize: s(12),
+          fontWeight: bold ? "700" : "400",
+          color: bold ? colors.heading : colorValue || colors.label,
+        }}
+      >
+        {amount < 0 ? "-" : ""}${Math.abs(amount).toFixed(2)}
+      </Text>
+    </View>
+  );
+};
 
 const QuickActionButton = ({
   icon,
@@ -499,28 +512,32 @@ const QuickActionButton = ({
   icon: React.ReactNode;
   label: string;
   onPress: () => void;
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.8}
-    style={{
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-      borderRadius: 8,
-      paddingHorizontal: 10,
-      paddingVertical: 9,
-      backgroundColor: colors.teal + "20",
-      borderWidth: 1.5,
-      borderColor: colors.teal + "40",
-    }}
-  >
-    {icon}
-    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: s(6),
+        borderRadius: s(8),
+        paddingHorizontal: s(10),
+        paddingVertical: s(9),
+        backgroundColor: colors.teal + "20",
+        borderWidth: 1,
+        borderColor: colors.teal + "40",
+      }}
+    >
+      {icon}
+      <Text style={{ fontSize: s(11), fontWeight: "700", color: colors.teal }}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+};
 
 export default React.memo(ExpandedOrderPanel);

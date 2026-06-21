@@ -1,6 +1,7 @@
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { CartItem, ModifierCategory } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -555,6 +556,8 @@ const SeatPill = memo(function SeatPill({
   isSelected: boolean;
   onSelect: (seat: number | null) => void;
 }) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const handlePress = useCallback(() => onSelect(seat), [seat, onSelect]);
   return (
     <TouchableOpacity
@@ -567,7 +570,7 @@ const SeatPill = memo(function SeatPill({
     >
       <Text
         style={{
-          fontSize: 12,
+          fontSize: s(12),
           fontWeight: "600",
           color: isSelected ? colors.teal : colors.label,
         }}
@@ -612,6 +615,8 @@ interface ModifierScreenContentProps {
 const ModifierScreenContent = ({
   keepMountedDuringClose = false,
 }: ModifierScreenContentProps) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const store = useModifierSidebarStore(
     useShallow((s) => ({
       isOpen: s.isOpen,
@@ -1723,7 +1728,7 @@ const ModifierScreenContent = ({
             onPressIn={close}
             className="flex-row items-center gap-1.5"
           >
-            <ArrowLeft color={colors.label} size={16} />
+            <ArrowLeft color={colors.label} size={s(16)} />
             <Text
               className="text-sm font-medium"
               style={{ color: colors.label }}
@@ -1857,7 +1862,7 @@ const ModifierScreenContent = ({
           onPressIn={handleCancel}
           className="flex-row items-center gap-1.5"
         >
-          <ArrowLeft color={colors.label} size={16} />
+          <ArrowLeft color={colors.label} size={s(16)} />
           <Text className="text-sm font-medium" style={{ color: colors.label }}>
             {mode === "edit" || (mode === "fullscreen" && cartItem)
               ? "Bill"
@@ -1870,30 +1875,30 @@ const ModifierScreenContent = ({
             <TouchableOpacity
               onPressIn={() => dispatch({ type: "TOGGLE_SEAT_PICKER" })}
               style={{
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: 12,
+                paddingHorizontal: s(10),
+                paddingVertical: s(4),
+                borderRadius: s(12),
                 backgroundColor: colors.teal + "20",
                 borderWidth: 1,
                 borderColor: colors.teal + "50",
               }}
             >
               <Text
-                style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}
+                style={{ fontSize: s(11), fontWeight: "600", color: colors.teal }}
               >
                 {seatOverride === null ? "Shared" : `Seat ${seatOverride}`}
               </Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity onPressIn={handleCancel} className="p-1.5">
-            <X color={colors.label} size={16} />
+            <X color={colors.label} size={s(16)} />
           </TouchableOpacity>
           <TouchableOpacity
             onPressIn={handleSave}
             className="flex-row items-center gap-1.5 px-4 py-2 rounded-full"
             style={{ backgroundColor: colors.teal }}
           >
-            <Check color={colors.onSolid} size={13} strokeWidth={2.5} />
+            <Check color={colors.onSolid} size={s(13)} strokeWidth={2.5} />
             <Text
               className="text-sm font-semibold"
               style={{ color: colors.onSolid }}
@@ -1921,9 +1926,9 @@ const ModifierScreenContent = ({
           {showMenuImages ? (
             <View
               style={{
-                width: 48,
-                height: 48,
-                borderRadius: 8,
+                width: s(48),
+                height: s(48),
+                borderRadius: s(8),
                 overflow: "hidden",
                 backgroundColor: colors.panel,
                 borderWidth: 1,
@@ -1933,7 +1938,7 @@ const ModifierScreenContent = ({
               {showSecondarySections && resolvedImageSource ? (
                 <OptimizedListImage
                   source={resolvedImageSource}
-                  style={{ width: 48, height: 48 }}
+                  style={{ width: s(48), height: s(48) }}
                   contentFit="cover"
                 />
               ) : null}
@@ -1980,7 +1985,7 @@ const ModifierScreenContent = ({
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 6 }}
+              contentContainerStyle={{ gap: s(6) }}
             >
               <SeatPill
                 seat={null}
@@ -2009,9 +2014,9 @@ const ModifierScreenContent = ({
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-              gap: 6,
+              paddingHorizontal: s(16),
+              paddingVertical: s(10),
+              gap: s(6),
             }}
             style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
           >
@@ -2034,13 +2039,13 @@ const ModifierScreenContent = ({
               <TouchableOpacity
                 onPressIn={handleOpenCustomModifierModal}
                 className="flex-row items-center gap-x-1 px-3 py-1.5 rounded-full border"
-                style={{
-                  backgroundColor: "transparent",
-                  borderColor: colors.teal,
-                  borderStyle: "dashed",
-                }}
-              >
-                <Plus color={colors.teal} size={11} strokeWidth={3} />
+              style={{
+                backgroundColor: "transparent",
+                borderColor: colors.teal,
+                borderStyle: "dashed",
+              }}
+            >
+                <Plus color={colors.teal} size={s(11)} strokeWidth={3} />
                 <Text
                   className="text-xs font-semibold"
                   style={{ color: colors.teal }}
@@ -2095,7 +2100,7 @@ const ModifierScreenContent = ({
                   nestedScrollEnabled
                   showsVerticalScrollIndicator={visibleOptions.length > 9}
                   contentContainerStyle={{
-                    paddingBottom: 2,
+                    paddingBottom: s(2),
                   }}
                 >
                   {visibleOptionRows.map((row, rowIndex) => (
@@ -2103,9 +2108,9 @@ const ModifierScreenContent = ({
                       key={`modifier-row-${rowIndex}`}
                       style={{
                         flexDirection: "row",
-                        gap: 8,
+                        gap: s(8),
                         justifyContent: "flex-start",
-                        marginBottom: 8,
+                        marginBottom: s(8),
                       }}
                     >
                       {row.map((option) => {
@@ -2153,7 +2158,7 @@ const ModifierScreenContent = ({
             </Text>
             <View className="flex-row flex-wrap gap-2">
               {state.customModifiers.map((mod) => (
-                <View
+                  <View
                   key={mod.id}
                   className="flex-row items-center gap-x-1.5 pl-3 pr-1.5 py-1 rounded-full border"
                   style={{
@@ -2183,7 +2188,7 @@ const ModifierScreenContent = ({
                       className="w-5 h-5 rounded-full items-center justify-center"
                       style={{ backgroundColor: colors.teal }}
                     >
-                      <X color={colors.onSolid} size={10} strokeWidth={3} />
+                      <X color={colors.onSolid} size={s(10)} strokeWidth={3} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -2214,8 +2219,8 @@ const ModifierScreenContent = ({
                   borderWidth: 1,
                   borderColor: colors.border,
                 }}
-              >
-                <Minus color={colors.heading} size={14} />
+                >
+                <Minus color={colors.heading} size={s(14)} />
               </TouchableOpacity>
               <TouchableOpacity
                 disabled={isReadOnly}
@@ -2234,7 +2239,7 @@ const ModifierScreenContent = ({
                 className="w-8 h-8 rounded-full items-center justify-center"
                 style={{ backgroundColor: colors.teal }}
               >
-                <Plus color={colors.onSolid} size={14} />
+                <Plus color={colors.onSolid} size={s(14)} />
               </TouchableOpacity>
             </View>
           </View>
@@ -2415,7 +2420,7 @@ const ModifierScreenContent = ({
                   borderColor: colors.border,
                 }}
               >
-                <X color={colors.label} size={14} />
+                <X color={colors.label} size={s(14)} />
               </TouchableOpacity>
             </View>
 

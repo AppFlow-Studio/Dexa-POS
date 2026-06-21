@@ -1,5 +1,6 @@
 import { useOrderPayments } from '@/hooks/orders/useOrderPayments'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -8,6 +9,8 @@ import { Text, View } from 'react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 const TotalsComponent: React.FC = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const totals = useDeferredValue(useActiveOrderTotals())
   const defaultTaxRate = useStoreSettingsStore(s => s.taxRatesMap.standard ?? 0)
   const activeOrder = useOrderStore(useShallow(s => {
@@ -168,9 +171,9 @@ const TotalsComponent: React.FC = () => {
   return (
     <View className='px-5 pt-4 pb-1.5'>
       <View className='flex-row justify-between items-center mb-1'>
-        <Text style={{ color: colors.heading, fontSize: 11 }}>Subtotal</Text>
+        <Text style={{ color: colors.heading, fontSize: s(11) }}>Subtotal</Text>
         <Text
-          style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
+          style={{ color: colors.heading, fontSize: s(11), fontWeight: '600' }}
         >
           ${totals.subtotal.toFixed(2)}
         </Text>
@@ -178,11 +181,11 @@ const TotalsComponent: React.FC = () => {
 
       {totals.discount > 0.001 && (
         <View className='flex-row justify-between items-center mb-1'>
-          <Text style={{ color: colors.heading, fontSize: 11 }}>
+          <Text style={{ color: colors.heading, fontSize: s(11) }}>
             {paymentInfo.discountLabel}
           </Text>
           <Text
-            style={{ color: colors.success, fontSize: 11, fontWeight: '600' }}
+            style={{ color: colors.success, fontSize: s(11), fontWeight: '600' }}
           >
             -${totals.discount.toFixed(2)}
           </Text>
@@ -190,11 +193,11 @@ const TotalsComponent: React.FC = () => {
       )}
 
       <View className='flex-row justify-between items-center mb-1.5'>
-        <Text style={{ color: colors.heading, fontSize: 11 }}>
+        <Text style={{ color: colors.heading, fontSize: s(11) }}>
           Tax ({defaultTaxRate.toFixed(2)}%)
         </Text>
         <Text
-          style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
+          style={{ color: colors.heading, fontSize: s(11), fontWeight: '600' }}
         >
           ${totals.tax.toFixed(2)}
         </Text>
@@ -202,14 +205,14 @@ const TotalsComponent: React.FC = () => {
 
       {totals.serviceCharge > 0.001 && (
         <View className='flex-row justify-between items-center mb-1.5'>
-          <Text style={{ color: colors.heading, fontSize: 11 }}>
+          <Text style={{ color: colors.heading, fontSize: s(11) }}>
             {totals.serviceChargeName || 'Service Charge'}
             {totals.serviceChargeRate != null
               ? ` (${Number(totals.serviceChargeRate).toFixed(2)}%)`
               : ''}
           </Text>
           <Text
-            style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
+            style={{ color: colors.heading, fontSize: s(11), fontWeight: '600' }}
           >
             ${totals.serviceCharge.toFixed(2)}
           </Text>
@@ -218,14 +221,14 @@ const TotalsComponent: React.FC = () => {
 
       {paymentInfo.isPaymentsLoading ? (
         <View className='flex-row justify-between items-end mt-1.5'>
-          <Text style={{ color: colors.heading, fontSize: 11, fontWeight: '700' }}>
+          <Text style={{ color: colors.heading, fontSize: s(11), fontWeight: '700' }}>
             Loading payment...
           </Text>
           <Text
             style={{
               color: colors.teal,
-              fontSize: 16,
-              lineHeight: 18,
+              fontSize: s(16),
+              lineHeight: s(18),
               fontWeight: '800'
             }}
           >
@@ -236,14 +239,14 @@ const TotalsComponent: React.FC = () => {
         paymentInfo.paymentMethods.length === 0 ? (
         <>
           <View className='flex-row justify-between items-end mt-1.5'>
-            <Text style={{ color: colors.heading, fontSize: 11, fontWeight: '700' }}>
+            <Text style={{ color: colors.heading, fontSize: s(11), fontWeight: '700' }}>
               Card total
             </Text>
             <Text
               style={{
                 color: colors.teal,
-                fontSize: 16,
-                lineHeight: 18,
+                fontSize: s(16),
+                lineHeight: s(18),
                 fontWeight: '800'
               }}
             >
@@ -251,14 +254,14 @@ const TotalsComponent: React.FC = () => {
             </Text>
           </View>
           <View className='flex-row justify-between items-end mt-2'>
-            <Text style={{ color: colors.heading, fontSize: 11, fontWeight: '700' }}>
+            <Text style={{ color: colors.heading, fontSize: s(11), fontWeight: '700' }}>
               Cash total
             </Text>
             <Text
               style={{
                 color: colors.heading,
-                fontSize: 16,
-                lineHeight: 18,
+                fontSize: s(16),
+                lineHeight: s(18),
                 fontWeight: '800'
               }}
             >
@@ -268,14 +271,14 @@ const TotalsComponent: React.FC = () => {
         </>
       ) : paymentInfo.paymentMethods[0] === 'Cash' ? (
         <View className='flex-row justify-between items-end mt-1.5'>
-          <Text style={{ color: colors.heading, fontSize: 11, fontWeight: '700' }}>
+          <Text style={{ color: colors.heading, fontSize: s(11), fontWeight: '700' }}>
             Cash total
           </Text>
           <Text
             style={{
               color: colors.heading,
-              fontSize: 16,
-              lineHeight: 18,
+              fontSize: s(16),
+              lineHeight: s(18),
               fontWeight: '800'
             }}
           >
@@ -284,14 +287,14 @@ const TotalsComponent: React.FC = () => {
         </View>
       ) : (
         <View className='flex-row justify-between items-end mt-1.5'>
-          <Text style={{ color: colors.heading, fontSize: 11, fontWeight: '700' }}>
+          <Text style={{ color: colors.heading, fontSize: s(11), fontWeight: '700' }}>
             Card total
           </Text>
           <Text
             style={{
               color: colors.teal,
-              fontSize: 16,
-              lineHeight: 18,
+              fontSize: s(16),
+              lineHeight: s(18),
               fontWeight: '800'
             }}
           >
@@ -308,17 +311,17 @@ const TotalsComponent: React.FC = () => {
             borderBottomWidth: 1,
             borderStyle: 'dashed',
             borderColor: colors.border,
-            marginTop: 8,
-            marginBottom: 4
+            marginTop: s(8),
+            marginBottom: s(4)
           }}
         />
       )}
 
       {paymentInfo.hasPayments && paymentInfo.balanceDue > 0.01 && (
         <View className='flex-row justify-between items-center mt-1'>
-          <Text style={{ color: colors.heading, fontSize: 11 }}>Balance Due</Text>
+          <Text style={{ color: colors.heading, fontSize: s(11) }}>Balance Due</Text>
           <Text
-            style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
+            style={{ color: colors.heading, fontSize: s(11), fontWeight: '600' }}
           >
             ${paymentInfo.balanceDue.toFixed(2)}
           </Text>
@@ -327,11 +330,11 @@ const TotalsComponent: React.FC = () => {
 
       {paymentInfo.hasPayments && paymentInfo.amountPaid > 0 && (
         <View className='flex-row justify-between items-center mt-2'>
-          <Text style={{ color: colors.heading, fontSize: 11 }}>
+          <Text style={{ color: colors.heading, fontSize: s(11) }}>
             {paymentInfo.paidMethodLabel}
           </Text>
           <Text
-            style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
+            style={{ color: colors.heading, fontSize: s(11), fontWeight: '600' }}
           >
             ${paymentInfo.amountPaid.toFixed(2)}
           </Text>
@@ -344,13 +347,13 @@ const TotalsComponent: React.FC = () => {
               key={index}
               className='flex-row justify-between items-center mt-0.5'
             >
-              <Text style={{ color: colors.heading, fontSize: 11 }}>
+              <Text style={{ color: colors.heading, fontSize: s(11) }}>
                 Refund · {refundItem.name}
               </Text>
               <Text
                 style={{
                   color: colors.heading,
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '600'
                 }}
               >
@@ -362,9 +365,9 @@ const TotalsComponent: React.FC = () => {
 
       {paymentInfo.totalRefunded > 0 && paymentInfo.refundItems.length === 0 && (
         <View className='flex-row justify-between items-center mt-0.5'>
-          <Text style={{ color: colors.heading, fontSize: 11 }}>Refunded</Text>
+          <Text style={{ color: colors.heading, fontSize: s(11) }}>Refunded</Text>
           <Text
-            style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }}
+            style={{ color: colors.heading, fontSize: s(11), fontWeight: '600' }}
           >
             ${paymentInfo.totalRefunded.toFixed(2)}
           </Text>
@@ -373,9 +376,9 @@ const TotalsComponent: React.FC = () => {
 
       {paymentInfo.refundOwed > 0.01 && (
         <View className='flex-row justify-between items-center mt-0.5'>
-          <Text style={{ color: colors.heading, fontSize: 11 }}>Refund Owed</Text>
+          <Text style={{ color: colors.heading, fontSize: s(11) }}>Refund Owed</Text>
           <Text
-            style={{ color: colors.danger, fontSize: 11, fontWeight: '700' }}
+            style={{ color: colors.danger, fontSize: s(11), fontWeight: '700' }}
           >
             ${paymentInfo.refundOwed.toFixed(2)}
           </Text>

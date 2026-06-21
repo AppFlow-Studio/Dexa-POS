@@ -1,6 +1,7 @@
 import { getCurrentBusinessDay, type BusinessDayConfig } from "@/lib/businessDay";
 import { colors } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
+import { useUiScale } from "@/lib/uiScale";
 import type { DateWindowLabel } from "@/stores/usePreviousOrdersStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -166,6 +167,8 @@ const CustomDatePillContent: React.FC<{
   onSelect: (pill: DatePillDef) => void;
 }> = ({ isActive, currentStart, currentEnd, onSelect }) => {
   const { colorScheme } = useColorScheme();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const triggerRef = useRef<PopoverPrimitive.TriggerRef>(null);
   const [pickingFrom, setPickingFrom] = useState<string | null>(
     isActive ? currentStart : null,
@@ -223,10 +226,11 @@ const CustomDatePillContent: React.FC<{
     () => [
       PILL_BASE_STYLE,
       isActive ? buildPillActiveStyle() : PILL_INACTIVE_STYLE,
+      { paddingHorizontal: s(12), borderRadius: s(6) },
     ],
     // colorScheme included so the active-pill teal/border tint follows theme.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isActive, colorScheme],
+    [isActive, colorScheme, uiScale],
   );
 
   const triggerIconColor = isActive ? colors.teal : colors.label;
@@ -253,7 +257,7 @@ const CustomDatePillContent: React.FC<{
         className="flex-row items-center rounded-md gap-x-1"
         style={triggerStyle}
       >
-        <CalendarIcon size={10} color={triggerIconColor} />
+        <CalendarIcon size={s(10)} color={triggerIconColor} />
         <Text className="text-xs font-semibold" style={triggerTextStyle}>
           {labelText}
         </Text>
@@ -273,9 +277,9 @@ const CustomDatePillContent: React.FC<{
           {pickingFrom && (
             <Text
               style={{
-                paddingTop: 6,
-                paddingHorizontal: 8,
-                fontSize: 12,
+                paddingTop: s(6),
+                paddingHorizontal: s(8),
+                fontSize: s(12),
                 color: colors.label,
               }}
             >
@@ -298,19 +302,22 @@ const PresetPill: React.FC<{
   onSelect: (pill: DatePillDef) => void;
 }> = React.memo(({ pill, isActive, onSelect }) => {
   const { colorScheme } = useColorScheme();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const handlePress = useCallback(() => onSelect(pill), [pill, onSelect]);
   const pillStyle = useMemo(
     () => [
       PILL_BASE_STYLE,
       isActive ? buildPillActiveStyle() : PILL_INACTIVE_STYLE,
+      { paddingHorizontal: s(12), borderRadius: s(6) },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isActive, colorScheme],
+    [isActive, colorScheme, uiScale],
   );
   const textStyle = useMemo(
-    () => ({ color: isActive ? colors.teal : colors.label }),
+    () => ({ color: isActive ? colors.teal : colors.label, fontSize: s(12) }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isActive, colorScheme],
+    [isActive, colorScheme, uiScale],
   );
   return (
     <Pressable
@@ -319,9 +326,9 @@ const PresetPill: React.FC<{
       style={pillStyle}
     >
       {pill.windowLabel !== "today" && pill.windowLabel !== "yesterday" && (
-        <CalendarIcon size={10} color={isActive ? colors.teal : colors.label} />
+        <CalendarIcon size={s(10)} color={isActive ? colors.teal : colors.label} />
       )}
-      <Text className="text-xs font-semibold" style={textStyle}>
+      <Text style={textStyle}>
         {pill.label}
       </Text>
     </Pressable>
@@ -339,19 +346,21 @@ const DatePillRowContent: React.FC<{
   onSelect: (pill: DatePillDef) => void;
 }> = ({ activeLabel, onSelect }) => {
   const { colorScheme } = useColorScheme();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const customStart = usePreviousOrdersStore(selectCustomStart);
   const customEnd = usePreviousOrdersStore(selectCustomEnd);
 
   const rowStyle = useMemo(
     () => ({
-      height: 34,
+      height: s(34),
       backgroundColor: colors.panel,
       borderWidth: 1,
       borderColor: colors.border,
-      gap: 2,
+      gap: s(2),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [colorScheme],
+    [colorScheme, uiScale],
   );
 
   return (

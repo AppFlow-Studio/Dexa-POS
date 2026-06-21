@@ -1,5 +1,6 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { toastService } from '@/lib/toastService'
 import type { MerchantRole } from '@/lib/types'
 import { OrderService } from '@/services/orderService'
@@ -35,18 +36,20 @@ const PIN_LENGTH = 4
 // ─── PIN dots ────────────────────────────────────────────────────────────────
 
 const PinDots = ({ length, shake }: { length: number; shake: Animated.SharedValue<number> }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shake.value }],
   }))
 
   return (
-    <Animated.View style={[{ flexDirection: 'row', gap: 18, justifyContent: 'center', marginBottom: 28 }, animStyle]}>
+    <Animated.View style={[{ flexDirection: 'row', gap: s(18), justifyContent: 'center', marginBottom: s(28) }, animStyle]}>
       {Array.from({ length: PIN_LENGTH }).map((_, i) => (
         <View
           key={i}
           style={{
-            width: i < length ? 18 : 14,
-            height: i < length ? 18 : 14,
+            width: i < length ? s(18) : s(14),
+            height: i < length ? s(18) : s(14),
             borderRadius: 999,
             backgroundColor: i < length ? colors.teal : colors.border,
             // Align centres so filled/empty dots don't jump
@@ -68,15 +71,18 @@ const KeyButton = ({
   label: React.ReactNode
   onPress: () => void
   variant?: 'digit' | 'action' | 'empty'
-}) => (
+}) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={variant === 'empty' ? 1 : 0.6}
     disabled={variant === 'empty'}
     style={{
-      width: 80,
-      height: 64,
-      borderRadius: 14,
+      width: s(80),
+      height: s(64),
+      borderRadius: s(14),
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor:
@@ -88,12 +94,13 @@ const KeyButton = ({
     }}
   >
     {typeof label === 'string' ? (
-      <Text style={{ fontSize: 22, fontWeight: '600', color: colors.heading }}>{label}</Text>
+      <Text style={{ fontSize: s(22), fontWeight: '600', color: colors.heading }}>{label}</Text>
     ) : (
       label
     )}
   </TouchableOpacity>
-)
+  )
+}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -103,6 +110,8 @@ const ManagerPinModal = () => {
   const addTemporaryCategoryAccess = useMenuStore(s => s.addTemporaryCategoryAccess)
   const timeoutMinutes = useStoreSettingsStore(s => s.managerOverrideTimeoutMinutes)
   const supabase = useSupabaseClient()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   const [pin, setPin] = useState('')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -315,9 +324,9 @@ const ManagerPinModal = () => {
         <Pressable
           onPress={() => {}}
           style={{
-            width: 340,
+            width: s(340),
             backgroundColor: colors.panel,
-            borderRadius: 20,
+            borderRadius: s(20),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden',
@@ -331,31 +340,31 @@ const ManagerPinModal = () => {
           {/* Teal accent bar */}
           <View style={{ height: 3, backgroundColor: colors.teal }} />
 
-          <View style={{ padding: 24, alignItems: 'center' }}>
+          <View style={{ padding: s(24), alignItems: 'center' }}>
             {/* Close button */}
             <TouchableOpacity
               onPress={closePinModal}
-              style={{ position: 'absolute', top: 14, right: 14, padding: 4 }}
+              style={{ position: 'absolute', top: s(14), right: s(14), padding: s(4) }}
             >
-              <X size={18} color={colors.muted} />
+              <X size={s(18)} color={colors.muted} />
             </TouchableOpacity>
 
             {/* Lock icon */}
             <View style={{
-              width: 52, height: 52, borderRadius: 14,
+              width: s(52), height: s(52), borderRadius: s(14),
               backgroundColor: colors.teal + '18',
               borderWidth: 1, borderColor: colors.teal + '40',
               alignItems: 'center', justifyContent: 'center',
-              marginBottom: 12,
+              marginBottom: s(12),
             }}>
-              <Lock size={24} color={colors.teal} />
+              <Lock size={s(24)} color={colors.teal} />
             </View>
 
             {/* Context label */}
-            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading, textAlign: 'center', marginBottom: 4 }}>
+            <Text style={{ fontSize: s(15), fontWeight: '700', color: colors.heading, textAlign: 'center', marginBottom: s(4) }}>
               {contextLabel}
             </Text>
-            <Text style={{ fontSize: 12, color: colors.label, textAlign: 'center', marginBottom: 20 }}>
+            <Text style={{ fontSize: s(12), color: colors.label, textAlign: 'center', marginBottom: s(20) }}>
               Enter manager PIN to continue
             </Text>
 
@@ -364,31 +373,31 @@ const ManagerPinModal = () => {
 
             {/* Error */}
             {errorMsg && (
-              <Text style={{ fontSize: 11, color: colors.danger, textAlign: 'center', marginBottom: 12, marginTop: -16 }}>
+              <Text style={{ fontSize: s(11), color: colors.danger, textAlign: 'center', marginBottom: s(12), marginTop: s(-16) }}>
                 {errorMsg}
               </Text>
             )}
 
             {/* Numpad */}
-            <View style={{ gap: 10 }}>
+            <View style={{ gap: s(10) }}>
               {rows.map((row, ri) => (
-                <View key={ri} style={{ flexDirection: 'row', gap: 10 }}>
+                <View key={ri} style={{ flexDirection: 'row', gap: s(10) }}>
                   {row.map(d => (
                     <KeyButton key={d} label={d} onPress={() => handleKey(d)} />
                   ))}
                 </View>
               ))}
               {/* Bottom row: clear | 0 | backspace */}
-              <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flexDirection: 'row', gap: s(10) }}>
                 <KeyButton
                   variant='action'
-                  label={<X size={18} color={colors.muted} />}
+                  label={<X size={s(18)} color={colors.muted} />}
                   onPress={handleClear}
                 />
                 <KeyButton label='0' onPress={() => handleKey('0')} />
                 <KeyButton
                   variant='action'
-                  label={<Delete size={18} color={colors.label} />}
+                  label={<Delete size={s(18)} color={colors.label} />}
                   onPress={handleBackspace}
                 />
               </View>
@@ -400,10 +409,10 @@ const ManagerPinModal = () => {
               disabled={pin.length === 0}
               activeOpacity={0.7}
               style={{
-                marginTop: 16,
+                marginTop: s(16),
                 width: '100%',
-                height: 48,
-                borderRadius: 14,
+                height: s(48),
+                borderRadius: s(14),
                 backgroundColor: pin.length === 0 ? colors.teal + '15' : colors.teal + '20',
                 borderWidth: 1,
                 borderColor: pin.length === 0 ? colors.teal + '20' : colors.teal + '60',
@@ -411,14 +420,14 @@ const ManagerPinModal = () => {
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ fontSize: 14, fontWeight: '700', color: pin.length === 0 ? colors.muted : colors.teal }}>
+              <Text style={{ fontSize: s(14), fontWeight: '700', color: pin.length === 0 ? colors.muted : colors.teal }}>
                 Submit
               </Text>
             </TouchableOpacity>
 
             {/* Timeout hint */}
             {timeoutMinutes > 0 && (
-              <Text style={{ fontSize: 10, color: colors.muted, textAlign: 'center', marginTop: 12 }}>
+              <Text style={{ fontSize: s(10), color: colors.muted, textAlign: 'center', marginTop: s(12) }}>
                 Access stays unlocked for {timeoutMinutes} min after verification
               </Text>
             )}

@@ -1,4 +1,5 @@
 import { colors, spinnerColor } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useClerk, useSSO, useSignIn } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
 import * as Linking from "expo-linking";
@@ -58,6 +59,8 @@ const MerchantLoginScreen = () => {
   });
 
   const { startSSOFlow } = useSSO();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   const [emailAddress, setEmailAddress] = useState("");
   const [password, setPassword] = useState("");
@@ -345,7 +348,7 @@ const MerchantLoginScreen = () => {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={
-          Platform.OS === "ios" ? 24 : ANDROID_KEYBOARD_LIFT_OFFSET
+          Platform.OS === "ios" ? s(24) : ANDROID_KEYBOARD_LIFT_OFFSET
         }
         style={{ width: "100%", maxHeight: "100%" }}
       >
@@ -358,16 +361,16 @@ const MerchantLoginScreen = () => {
           <View style={{ width: "100%" }}>
             <Text
               style={{
-                fontSize: 15,
+                fontSize: s(15),
                 fontWeight: "700",
                 color: colors.heading,
-                marginBottom: 4,
+                marginBottom: s(4),
               }}
             >
               Verify Your Identity
             </Text>
             <Text
-              style={{ fontSize: 11, color: colors.muted, marginBottom: 20 }}
+              style={{ fontSize: s(11), color: colors.muted, marginBottom: s(20) }}
             >
               {secondFactorHint ?? "Enter your verification code"}
             </Text>
@@ -379,15 +382,15 @@ const MerchantLoginScreen = () => {
                   backgroundColor: colors.danger + "15",
                   borderWidth: 1,
                   borderColor: colors.danger + "40",
-                  borderRadius: 8,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  marginBottom: 14,
+                  borderRadius: s(8),
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(8),
+                  marginBottom: s(14),
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     color: colors.danger,
                     textAlign: "center",
                   }}
@@ -400,10 +403,10 @@ const MerchantLoginScreen = () => {
             {/* Code input */}
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "600",
                 color: colors.label,
-                marginBottom: 5,
+                marginBottom: s(5),
               }}
             >
               Verification Code
@@ -411,14 +414,14 @@ const MerchantLoginScreen = () => {
             <TextInput
               style={{
                 width: "100%",
-                paddingHorizontal: 12,
-                paddingVertical: 10,
+                paddingHorizontal: s(12),
+                paddingVertical: s(10),
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 8,
+                borderRadius: s(8),
                 backgroundColor: colors.screen,
                 color: colors.heading,
-                fontSize: 18,
+                fontSize: s(18),
                 letterSpacing: 4,
                 textAlign: "center",
               }}
@@ -440,13 +443,13 @@ const MerchantLoginScreen = () => {
               disabled={!canSubmitCode}
               style={{
                 width: "100%",
-                paddingVertical: 11,
-                borderRadius: 10,
+                paddingVertical: s(11),
+                borderRadius: s(10),
                 alignItems: "center",
                 backgroundColor: canSubmitCode
                   ? colors.teal
                   : colors.teal + "30",
-                marginTop: 16,
+                marginTop: s(16),
               }}
             >
               {isLoading ? (
@@ -454,7 +457,7 @@ const MerchantLoginScreen = () => {
               ) : (
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "700",
                     color: canSubmitCode ? colors.onSolid : colors.muted,
                   }}
@@ -467,10 +470,10 @@ const MerchantLoginScreen = () => {
             {/* Back to login */}
             <TouchableOpacity
               onPress={resetSecondFactor}
-              style={{ alignSelf: "center", marginTop: 16 }}
+              style={{ alignSelf: "center", marginTop: s(16) }}
             >
               <Text
-                style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}
+                style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}
               >
                 Back to Sign In
               </Text>
@@ -500,15 +503,15 @@ const MerchantLoginScreen = () => {
           {/* Title */}
           <Text
             style={{
-              fontSize: 15,
+              fontSize: s(15),
               fontWeight: "700",
               color: colors.heading,
-              marginBottom: 4,
+              marginBottom: s(4),
             }}
           >
             Merchant Login
           </Text>
-          <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 20 }}>
+          <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(20) }}>
             Sign in to your account to continue
           </Text>
 
@@ -594,13 +597,13 @@ const MerchantLoginScreen = () => {
           </View> */}
 
           {/* Email */}
-          <View style={{ marginBottom: 10 }}>
+          <View style={{ marginBottom: s(10) }}>
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "600",
                 color: colors.label,
-                marginBottom: 5,
+                marginBottom: s(5),
               }}
             >
               Email
@@ -608,14 +611,14 @@ const MerchantLoginScreen = () => {
             <TextInput
               style={{
                 width: "100%",
-                paddingHorizontal: 12,
-                paddingVertical: 10,
+                paddingHorizontal: s(12),
+                paddingVertical: s(10),
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 8,
+                borderRadius: s(8),
                 backgroundColor: colors.screen,
                 color: colors.heading,
-                fontSize: 13,
+                fontSize: s(13),
               }}
               placeholder="john@example.com"
               placeholderTextColor={colors.muted}
@@ -628,13 +631,13 @@ const MerchantLoginScreen = () => {
           </View>
 
           {/* Password */}
-          <View style={{ marginBottom: 8 }}>
+          <View style={{ marginBottom: s(8) }}>
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "600",
                 color: colors.label,
-                marginBottom: 5,
+                marginBottom: s(5),
               }}
             >
               Password
@@ -643,15 +646,15 @@ const MerchantLoginScreen = () => {
               <TextInput
                 style={{
                   width: "100%",
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  paddingRight: 40,
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(10),
+                  paddingRight: s(40),
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 8,
+                  borderRadius: s(8),
                   backgroundColor: colors.screen,
                   color: colors.heading,
-                  fontSize: 13,
+                  fontSize: s(13),
                 }}
                 placeholder="••••••••"
                 placeholderTextColor={colors.muted}
@@ -665,17 +668,17 @@ const MerchantLoginScreen = () => {
                 onPress={() => setShowPassword((v) => !v)}
                 style={{
                   position: "absolute",
-                  right: 10,
+                  right: s(10),
                   top: 0,
                   bottom: 0,
                   justifyContent: "center",
                 }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                hitSlop={{ top: s(8), bottom: s(8), left: s(8), right: s(8) }}
               >
                 {showPassword ? (
-                  <EyeOff size={16} color={colors.muted} />
+                  <EyeOff size={s(16)} color={colors.muted} />
                 ) : (
-                  <Eye size={16} color={colors.muted} />
+                  <Eye size={s(16)} color={colors.muted} />
                 )}
               </TouchableOpacity>
             </View>
@@ -683,11 +686,11 @@ const MerchantLoginScreen = () => {
 
           {/* Forgot password */}
           <TouchableOpacity
-            style={{ alignSelf: "flex-end", marginBottom: 16 }}
+            style={{ alignSelf: "flex-end", marginBottom: s(16) }}
             onPress={() => router.push("/forgot-password" as any)}
           >
             <Text
-              style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}
+              style={{ fontSize: s(11), fontWeight: "600", color: colors.teal }}
             >
               Forgot Password?
             </Text>
@@ -699,8 +702,8 @@ const MerchantLoginScreen = () => {
             disabled={!canSubmit}
             style={{
               width: "100%",
-              paddingVertical: 11,
-              borderRadius: 10,
+              paddingVertical: s(11),
+              borderRadius: s(10),
               alignItems: "center",
               backgroundColor: canSubmit ? colors.teal : colors.teal + "30",
             }}
@@ -710,7 +713,7 @@ const MerchantLoginScreen = () => {
             ) : (
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: "700",
                   color: canSubmit ? colors.onSolid : colors.muted,
                 }}

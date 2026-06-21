@@ -3,6 +3,7 @@ import { calculatePaidStatus } from '@/lib/order-calculator'
 import { useIsActiveOrderReadOnly } from '@/lib/orderAccessControlHooks'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import type { OrderProfile } from '@/lib/types'
+import { useUiScale } from '@/lib/uiScale'
 import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { formatAddress, serializeDeliveryAddress } from '@/utils/addressUtils'
@@ -122,6 +123,8 @@ const OrderDetailsComponent: React.FC<{
   onViewTable?: () => void
 }> = ({ tableLabel, tableStatus, onOpenTableSelector, onViewTable }) => {
   const { show } = useToast()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   // PERF: Single useShallow selector - runs 1 function instead of 11
   // useShallow compares values shallowly, so primitive returns prevent unnecessary re-renders
@@ -309,20 +312,20 @@ const OrderDetailsComponent: React.FC<{
           >
             <View
               style={{
-                width: 24,
-                height: 24,
-                borderRadius: 7,
+                width: s(24),
+                height: s(24),
+                borderRadius: s(7),
                 backgroundColor: colors.card,
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <User color={colors.label} size={13} />
+              <User color={colors.label} size={s(13)} />
             </View>
             <View className='ml-2 flex-1'>
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: '600',
                   color: colors.heading
                 }}
@@ -330,11 +333,11 @@ const OrderDetailsComponent: React.FC<{
               >
                 {customerName || 'Add Customer'}
               </Text>
-              <Text style={{ fontSize: 10, color: colors.muted }}>
+              <Text style={{ fontSize: s(10), color: colors.muted }}>
                 {customerPhone || 'Optional'}
               </Text>
             </View>
-            <Edit3 color={colors.label} size={12} />
+            <Edit3 color={colors.label} size={s(12)} />
           </TouchableOpacity>
         </View>
 
@@ -351,12 +354,12 @@ const OrderDetailsComponent: React.FC<{
                 borderColor: tableLabel ? `${colors.teal}55` : colors.border,
               }}
             >
-              <DiningTableIcon color={tableLabel ? colors.teal : colors.label} size={14} />
+              <DiningTableIcon color={tableLabel ? colors.teal : colors.label} size={s(14)} />
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
                     color: tableLabel ? colors.teal : colors.heading,
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '600'
                   }}
                   numberOfLines={1}
@@ -366,12 +369,12 @@ const OrderDetailsComponent: React.FC<{
                 {!!tableStatus && tableStatus !== 'available' && (
                   <Text
                     style={{
-                      fontSize: 9,
+                      fontSize: s(9),
                       fontWeight: '600',
                       textTransform: 'uppercase',
                       letterSpacing: 0.4,
                       color: TABLE_STATUS_COLORS[tableStatus] || colors.muted,
-                      marginTop: 1
+                      marginTop: s(1)
                     }}
                     numberOfLines={1}
                   >
@@ -387,13 +390,13 @@ const OrderDetailsComponent: React.FC<{
                   }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{
-                    paddingHorizontal: 7,
-                    paddingVertical: 3,
-                    borderRadius: 6,
+                    paddingHorizontal: s(7),
+                    paddingVertical: s(3),
+                    borderRadius: s(6),
                     backgroundColor: colors.teal
                   }}
                 >
-                  <Text style={{ color: colors.onSolid, fontSize: 10, fontWeight: '600' }}>
+                  <Text style={{ color: colors.onSolid, fontSize: s(10), fontWeight: '600' }}>
                     View
                   </Text>
                 </TouchableOpacity>
@@ -414,8 +417,8 @@ const OrderDetailsComponent: React.FC<{
             >
               <MapPin
                 color={colors.label}
-                size={13}
-                style={{ marginRight: 6 }}
+                size={s(13)}
+                style={{ marginRight: s(6) }}
               />
               <View style={{ flex: 1 }}>
                 <AddressAutocomplete
@@ -442,10 +445,10 @@ const OrderDetailsComponent: React.FC<{
                     backgroundColor: 'transparent',
                     borderWidth: 0,
                     borderRadius: 0,
-                    minHeight: 54,
+                    minHeight: s(54),
                     paddingHorizontal: 0,
                     fontWeight: '600',
-                    fontSize: 12,
+                    fontSize: s(12),
                     color: colors.heading
                   }}
                   dropdownPosition='below'
@@ -493,7 +496,7 @@ const OrderDetailsComponent: React.FC<{
                     : isOrderTypeLocked
                     ? colors.muted
                     : colors.label,
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '600'
                 }}
               >
@@ -508,8 +511,8 @@ const OrderDetailsComponent: React.FC<{
         <Text
           style={{
             color: colors.muted,
-            fontSize: 10,
-            marginTop: 4,
+            fontSize: s(10),
+            marginTop: s(4),
             paddingHorizontal: 2
           }}
         >
@@ -526,8 +529,8 @@ const OrderDetailsComponent: React.FC<{
             flexDirection: 'row',
             alignItems: 'center',
             flexWrap: 'wrap',
-            gap: 10,
-            marginTop: 5
+            gap: s(10),
+            marginTop: s(5)
           }}
         >
           {orderStatus &&
@@ -562,7 +565,7 @@ const OrderDetailsComponent: React.FC<{
                   color: '#EF4444'
                 }
               }
-              const s = cfg[orderStatus] ?? {
+              const cfg_s = cfg[orderStatus] ?? {
                 label: orderStatus,
                 color: '#9CA3AF'
               }
@@ -570,7 +573,7 @@ const OrderDetailsComponent: React.FC<{
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       fontWeight: '500',
                       color: colors.muted
                     }}
@@ -578,9 +581,9 @@ const OrderDetailsComponent: React.FC<{
                     Order Status:{' '}
                   </Text>
                   <Text
-                    style={{ fontSize: 10, fontWeight: '600', color: s.color }}
+                    style={{ fontSize: s(10), fontWeight: '600', color: cfg_s.color }}
                   >
-                    {s.label}
+                    {cfg_s.label}
                   </Text>
                 </View>
               )
@@ -611,7 +614,7 @@ const OrderDetailsComponent: React.FC<{
                   color: '#EF4444'
                 }
               }
-              const s = cfg[paymentStatus] ?? {
+              const cfg_s = cfg[paymentStatus] ?? {
                 label: paymentStatus,
                 color: '#9CA3AF'
               }
@@ -619,7 +622,7 @@ const OrderDetailsComponent: React.FC<{
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       fontWeight: '500',
                       color: colors.muted
                     }}
@@ -627,9 +630,9 @@ const OrderDetailsComponent: React.FC<{
                     Payment Status:{' '}
                   </Text>
                   <Text
-                    style={{ fontSize: 10, fontWeight: '600', color: s.color }}
+                    style={{ fontSize: s(10), fontWeight: '600', color: cfg_s.color }}
                   >
-                    {s.label}
+                    {cfg_s.label}
                   </Text>
                 </View>
               )
@@ -637,12 +640,12 @@ const OrderDetailsComponent: React.FC<{
           {checkStatus === 'Closed' && (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text
-                style={{ fontSize: 10, fontWeight: '500', color: colors.muted }}
+                style={{ fontSize: s(10), fontWeight: '500', color: colors.muted }}
               >
                 Check Status:{' '}
               </Text>
               <Text
-                style={{ fontSize: 10, fontWeight: '600', color: '#3B82F6' }}
+                style={{ fontSize: s(10), fontWeight: '600', color: '#3B82F6' }}
               >
                 Closed
               </Text>

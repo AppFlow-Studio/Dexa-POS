@@ -14,6 +14,7 @@ import { getDeviceId } from "@/lib/deviceId";
 import { shouldAutoBump, shouldAutoFire } from "@/lib/kdsAutomation";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors, URGENCY_COLORS } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { clearStationData } from "@/services/cacheService";
 import { refreshLocationConfig } from "@/services/locationConfigSync";
 import KDSSoundService, {
@@ -97,6 +98,8 @@ const DONE_TICKETS_TIME_WINDOW_MS = 60 * 60 * 1000;
 
 // ─── Pulsing Dot (for connection status) ─────────────────────────
 const PulsingDot = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const opacity = useRef(new RNAnimated.Value(0.4)).current;
 
   useEffect(() => {
@@ -121,12 +124,12 @@ const PulsingDot = () => {
   return (
     <RNAnimated.View
       style={{
-        width: 8,
-        height: 8,
-        borderRadius: 4,
+        width: s(8),
+        height: s(8),
+        borderRadius: s(4),
         backgroundColor: colors.teal,
         opacity,
-        marginLeft: 8,
+        marginLeft: s(8),
       }}
     />
   );
@@ -142,6 +145,8 @@ const SkeletonBar = ({
   height: number;
   style?: any;
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const opacity = useRef(new RNAnimated.Value(0.3)).current;
 
   useEffect(() => {
@@ -167,10 +172,10 @@ const SkeletonBar = ({
     <RNAnimated.View
       style={[
         {
-          width: typeof width === "number" ? width : undefined,
-          height,
+          width: typeof width === "number" ? s(width) : undefined,
+          height: s(height),
           backgroundColor: colors.muted,
-          borderRadius: 4,
+          borderRadius: s(4),
           opacity,
         },
         style,
@@ -179,70 +184,75 @@ const SkeletonBar = ({
   );
 };
 
-const KDSSkeletonCard = () => (
-  <View
-    style={{
-      margin: 4,
-      borderRadius: 10,
-      overflow: "hidden",
-      backgroundColor: colors.skeleton,
-      borderWidth: 2,
-      borderColor: colors.border,
-      height: 180,
-    }}
-  >
+const KDSSkeletonCard = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
+  return (
     <View
       style={{
-        backgroundColor: colors.skeletonHighlight,
-        paddingHorizontal: 10,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-        flexDirection: "row",
-        justifyContent: "space-between",
+        margin: s(4),
+        borderRadius: s(10),
+        overflow: "hidden",
+        backgroundColor: colors.skeleton,
+        borderWidth: 2,
+        borderColor: colors.border,
+        height: s(180),
       }}
     >
-      <View>
-        <SkeletonBar width={80} height={18} style={{ marginBottom: 6 }} />
-        <SkeletonBar width={60} height={12} />
+      <View
+        style={{
+          backgroundColor: colors.skeletonHighlight,
+          paddingHorizontal: s(10),
+          paddingVertical: s(12),
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          flexDirection: "row",
+          justifyContent: "space-between",
+        }}
+      >
+        <View>
+          <SkeletonBar width={80} height={18} style={{ marginBottom: s(6) }} />
+          <SkeletonBar width={60} height={12} />
+        </View>
+        <View style={{ alignItems: "flex-end" }}>
+          <SkeletonBar width={40} height={14} style={{ marginBottom: s(6) }} />
+          <SkeletonBar width={50} height={14} />
+        </View>
       </View>
-      <View style={{ alignItems: "flex-end" }}>
-        <SkeletonBar width={40} height={14} style={{ marginBottom: 6 }} />
-        <SkeletonBar width={50} height={14} />
+      <View style={{ padding: s(12), flex: 1 }}>
+        <View
+          style={{ flexDirection: "row", alignItems: "center", marginBottom: s(12) }}
+        >
+          <SkeletonBar
+            width={24}
+            height={24}
+            style={{ marginRight: s(8), borderRadius: s(4) }}
+          />
+          <SkeletonBar width={120} height={16} />
+        </View>
+        <View
+          style={{ flexDirection: "row", alignItems: "center", marginBottom: s(12) }}
+        >
+          <SkeletonBar
+            width={24}
+            height={24}
+            style={{ marginRight: s(8), borderRadius: s(4) }}
+          />
+          <SkeletonBar width={100} height={16} />
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <SkeletonBar
+            width={24}
+            height={24}
+            style={{ marginRight: s(8), borderRadius: s(4) }}
+          />
+          <SkeletonBar width={140} height={16} />
+        </View>
       </View>
     </View>
-    <View style={{ padding: 12, flex: 1 }}>
-      <View
-        style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
-      >
-        <SkeletonBar
-          width={24}
-          height={24}
-          style={{ marginRight: 8, borderRadius: 4 }}
-        />
-        <SkeletonBar width={120} height={16} />
-      </View>
-      <View
-        style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
-      >
-        <SkeletonBar
-          width={24}
-          height={24}
-          style={{ marginRight: 8, borderRadius: 4 }}
-        />
-        <SkeletonBar width={100} height={16} />
-      </View>
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <SkeletonBar
-          width={24}
-          height={24}
-          style={{ marginRight: 8, borderRadius: 4 }}
-        />
-        <SkeletonBar width={140} height={16} />
-      </View>
-    </View>
-  </View>
-);
+  );
+};
 
 // ─── Order Type Helpers ───────────────────────────────────────────
 function getOrderTypeLabel(type: string | null): string {
@@ -332,6 +342,8 @@ interface KDSTicketTimerProps {
 
 const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
   ({ startTimeEpoch, textColor, doneTimeEpoch }) => {
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
     // Skip live subscription when timer is frozen at doneTimeEpoch
     const nowEpochMs = useKDSStore((s) => (doneTimeEpoch ? 0 : s.nowEpochMs));
     const timeElapsed = getBucketedElapsed(
@@ -343,7 +355,7 @@ const KDSTicketTimer = React.memo<KDSTicketTimerProps>(
       <Text
         style={{
           color: textColor,
-          fontSize: 18,
+          fontSize: s(18),
           fontWeight: "800",
         }}
       >
@@ -393,6 +405,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     hideDoneItems,
     displaySettings,
   }) => {
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
     // D6 profile gate (TEMP — remove before merge): count card-body renders.
     // On a 50-card board, BEFORE the urgencyLevel bucketing this fires ~50x/sec
     // (raw nowEpochMs prop); AFTER it fires only on ticket data change + the ~3
@@ -648,21 +662,21 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         <View
           style={{
             margin: 0,
-            borderRadius: 10,
+            borderRadius: s(10),
             overflow: "hidden",
             backgroundColor: "#FFFFFF",
             borderTopWidth: 1,
             borderBottomWidth: 1,
             borderRightWidth: 1,
-            borderLeftWidth: hasUnacknowledgedNotices || isDineIn ? 4 : 1,
+            borderLeftWidth: hasUnacknowledgedNotices || isDineIn ? s(4) : 1,
             borderTopColor: hasUnacknowledgedNotices ? "#FECACA" : borderColor,
             borderBottomColor: hasUnacknowledgedNotices ? "#FECACA" : borderColor,
             borderRightColor: hasUnacknowledgedNotices ? "#FECACA" : borderColor,
             borderLeftColor: hasUnacknowledgedNotices ? "#DC2626" : isDineIn ? colors.teal : borderColor,
             shadowColor: "#000",
-            shadowOffset: { width: 0, height: 2 },
+            shadowOffset: { width: 0, height: s(2) },
             shadowOpacity: 0.08,
-            shadowRadius: 4,
+            shadowRadius: s(4),
             elevation: 2,
           }}
         >
@@ -671,15 +685,15 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             <View
               style={{
                 position: "absolute",
-                top: 6,
-                right: 6,
+                top: s(6),
+                right: s(6),
                 zIndex: 10,
               }}
             >
               {isSelected ? (
-                <CheckSquare size={20} color={colors.info} fill={colors.info} />
+                <CheckSquare size={s(20)} color={colors.info} fill={colors.info} />
               ) : (
-                <Square size={20} color={colors.label} />
+                <Square size={s(20)} color={colors.label} />
               )}
             </View>
           )}
@@ -689,24 +703,24 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             <View
               style={{
                 position: "absolute",
-                top: 34,
-                right: 12,
+                top: s(34),
+                right: s(12),
                 zIndex: 10,
                 backgroundColor: "#FEF08A",
                 borderWidth: 1,
                 borderColor: colors.warning + "50",
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                borderRadius: 12,
+                paddingHorizontal: s(8),
+                paddingVertical: s(3),
+                borderRadius: s(12),
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 4,
+                gap: s(4),
               }}
             >
               <Text
                 style={{
                   color: "#78350F",
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: "800",
                   letterSpacing: 0.5,
                 }}
@@ -720,21 +734,21 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             <View
               style={{
                 position: "absolute",
-                top: hasRush ? 66 : 34,
-                right: 12,
+                top: hasRush ? s(66) : s(34),
+                right: s(12),
                 zIndex: 10,
                 backgroundColor: "#FEF3C7",
                 borderWidth: 1,
                 borderColor: "#F59E0B66",
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                borderRadius: 12,
+                paddingHorizontal: s(8),
+                paddingVertical: s(3),
+                borderRadius: s(12),
               }}
             >
               <Text
                 style={{
                   color: "#92400E",
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: "800",
                   letterSpacing: 0.5,
                 }}
@@ -748,25 +762,25 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           <View
             style={{
               backgroundColor: headerBackgroundColor,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
+              paddingHorizontal: s(12),
+              paddingVertical: s(10),
               borderBottomWidth: 1,
               borderBottomColor: headerBorderColor,
               flexDirection: "row",
               justifyContent: "space-between",
               alignItems: "flex-start",
-              gap: 12,
+              gap: s(12),
             }}
           >
-            <View style={{ flex: 1, gap: 4 }}>
+            <View style={{ flex: 1, gap: s(4) }}>
               {/* Order Number */}
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
               >
                 <Text
                   style={{
                     color: headerPrimaryTextColor,
-                    fontSize: 16,
+                    fontSize: s(16),
                     fontWeight: "700",
                   }}
                   numberOfLines={1}
@@ -777,7 +791,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 </Text>
                 {ticket.prioritized && (
                   <Star
-                    size={16}
+                    size={s(16)}
                     color={colors.warning}
                     fill={colors.warning}
                   />
@@ -791,14 +805,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
               {/* Order Type */}
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                style={{ flexDirection: "row", alignItems: "center", gap: s(4) }}
               >
                 {ticket.order_type?.toLowerCase() === "delivery" ? (
                   <View
                     style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
+                      width: s(6),
+                      height: s(6),
+                      borderRadius: s(3),
                       backgroundColor: headerDotColor ?? "#EF4444",
                     }}
                   />
@@ -806,18 +820,18 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   ticket.order_type?.toLowerCase() === "to_go" ? (
                   <View
                     style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
+                      width: s(6),
+                      height: s(6),
+                      borderRadius: s(3),
                       backgroundColor: headerDotColor ?? "#3B82F6",
                     }}
                   />
                 ) : (
                   <View
                     style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
+                      width: s(6),
+                      height: s(6),
+                      borderRadius: s(3),
                       backgroundColor: headerDotColor ?? "#22C55E",
                     }}
                   />
@@ -825,7 +839,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 <Text
                   style={{
                     color: headerSecondaryTextColor,
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: "600",
                   }}
                 >
@@ -847,14 +861,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             <View
               style={{
                 backgroundColor: "#FFFFFF",
-                paddingHorizontal: 12,
-                paddingVertical: 5,
+                paddingHorizontal: s(12),
+                paddingVertical: s(5),
                 borderBottomWidth: 1,
                 borderBottomColor: "#E5E7EB",
               }}
             >
               <Text
-                style={{ color: "#6B7280", fontSize: 11, fontWeight: "500" }}
+                style={{ color: "#6B7280", fontSize: s(11), fontWeight: "500" }}
                 numberOfLines={1}
               >
                 {ticket.customer_name ? ticket.customer_name : ""}
@@ -870,8 +884,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           {displaySettings.showOrderNotes && orderNote.length > 0 && (
             <View
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 8,
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
                 backgroundColor: displaySettings.highlightNotes
                   ? colors.warning + "14"
                   : "#F9FAFB",
@@ -882,10 +896,10 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               <Text
                 style={{
                   color: displaySettings.highlightNotes ? "#92400E" : "#6B7280",
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: "800",
                   letterSpacing: 0.6,
-                  marginBottom: 2,
+                  marginBottom: s(2),
                 }}
               >
                 ORDER NOTE
@@ -893,8 +907,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               <Text
                 style={{
                   color: "#111827",
-                  fontSize: 11,
-                  lineHeight: 16,
+                  fontSize: s(11),
+                  lineHeight: s(16),
                   fontWeight: "600",
                 }}
                 numberOfLines={3}
@@ -905,7 +919,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           )}
 
           {/* Items list */}
-          <View style={{ padding: 10, backgroundColor: "#FFFFFF" }}>
+          <View style={{ padding: s(10), backgroundColor: "#FFFFFF" }}>
             {visibleItems.map(
               ({ item, sortedModifiers, representedItemIds }, index) => {
                 const rowKey = `${item.id}_${item._displayState}_${index}`;
@@ -965,7 +979,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                     }}
                     style={
                       index < visibleItems.length - 1
-                        ? { marginBottom: 6 }
+                        ? { marginBottom: s(6) }
                         : undefined
                     }
                   >
@@ -979,19 +993,19 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       <View
                         style={{
                           backgroundColor: qtyBg,
-                          width: 22,
-                          height: 22,
-                          borderRadius: 4,
+                          width: s(22),
+                          height: s(22),
+                          borderRadius: s(4),
                           alignItems: "center",
                           justifyContent: "center",
-                          marginRight: 8,
-                          minWidth: 22,
+                          marginRight: s(8),
+                          minWidth: s(22),
                         }}
                       >
                         <Text
                           style={{
                             color: qtyColor,
-                            fontSize: 12,
+                            fontSize: s(12),
                             fontWeight: "700",
                           }}
                         >
@@ -1003,27 +1017,27 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         <View
                           style={{
                             backgroundColor: needsAck ? "#FEE2E2" : "#FEE2E2",
-                            paddingHorizontal: 5,
-                            paddingVertical: 1,
-                            borderRadius: 3,
-                            marginRight: 5,
+                            paddingHorizontal: s(5),
+                            paddingVertical: s(1),
+                            borderRadius: s(3),
+                            marginRight: s(5),
                             alignSelf: "center",
                             flexDirection: "row",
                             alignItems: "center",
-                            gap: 3,
+                            gap: s(3),
                           }}
                         >
                           <Text
                             style={{
                               color: "#DC2626",
-                              fontSize: 8,
+                              fontSize: s(8),
                               fontWeight: "800",
                             }}
                           >
                             VOIDED
                           </Text>
                           {needsAck && (
-                            <Text style={{ color: "#DC2626", fontSize: 8, fontWeight: "600" }}>
+                            <Text style={{ color: "#DC2626", fontSize: s(8), fontWeight: "600" }}>
                               · TAP ✓
                             </Text>
                           )}
@@ -1033,27 +1047,27 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         <View
                           style={{
                             backgroundColor: "#FEF3C7",
-                            paddingHorizontal: 5,
-                            paddingVertical: 1,
-                            borderRadius: 3,
-                            marginRight: 5,
+                            paddingHorizontal: s(5),
+                            paddingVertical: s(1),
+                            borderRadius: s(3),
+                            marginRight: s(5),
                             alignSelf: "center",
                             flexDirection: "row",
                             alignItems: "center",
-                            gap: 3,
+                            gap: s(3),
                           }}
                         >
                           <Text
                             style={{
                               color: "#D97706",
-                              fontSize: 8,
+                              fontSize: s(8),
                               fontWeight: "800",
                             }}
                           >
                             REFUNDED
                           </Text>
                           {needsAck && (
-                            <Text style={{ color: "#D97706", fontSize: 8, fontWeight: "600" }}>
+                            <Text style={{ color: "#D97706", fontSize: s(8), fontWeight: "600" }}>
                               · TAP ✓
                             </Text>
                           )}
@@ -1063,17 +1077,17 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         <View
                           style={{
                             backgroundColor: "#FEF9C3",
-                            paddingHorizontal: 5,
-                            paddingVertical: 1,
-                            borderRadius: 3,
-                            marginRight: 5,
+                            paddingHorizontal: s(5),
+                            paddingVertical: s(1),
+                            borderRadius: s(3),
+                            marginRight: s(5),
                             alignSelf: "center",
                           }}
                         >
                           <Text
                             style={{
                               color: "#92400E",
-                              fontSize: 8,
+                              fontSize: s(8),
                               fontWeight: "800",
                             }}
                           >
@@ -1085,9 +1099,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         <Text
                           style={{
                             color: "#0D9488",
-                            fontSize: 11,
+                            fontSize: s(11),
                             fontWeight: "700",
-                            marginRight: 6,
+                            marginRight: s(6),
                           }}
                         >
                           [S{item.seat_number}]
@@ -1097,17 +1111,17 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         <View
                           style={{
                             backgroundColor: "#CCFBF1",
-                            paddingHorizontal: 5,
-                            paddingVertical: 1,
-                            borderRadius: 3,
-                            marginRight: 5,
+                            paddingHorizontal: s(5),
+                            paddingVertical: s(1),
+                            borderRadius: s(3),
+                            marginRight: s(5),
                             alignSelf: "center",
                           }}
                         >
                           <Text
                             style={{
                               color: "#0D9488",
-                              fontSize: 8,
+                              fontSize: s(8),
                               fontWeight: "800",
                             }}
                           >
@@ -1122,7 +1136,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                             : isItemDone
                               ? "#9CA3AF"
                               : "#111827",
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: "600",
                           flex: 1,
                           textDecorationLine: shouldStrike
@@ -1164,10 +1178,10 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                           <View
                             key={`${rowKey}_m${mi}`}
                             style={{
-                              marginTop: 2,
+                              marginTop: s(2),
                               flexDirection: "row",
                               alignItems: "flex-start",
-                              gap: 6,
+                              gap: s(6),
                             }}
                           >
                             <Text
@@ -1175,10 +1189,10 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                                 color: isRemoval
                                   ? colors.danger
                                   : MODIFIER_ADD_COLOR,
-                                fontSize: 12,
+                                fontSize: s(12),
                                 fontWeight: "600",
-                                lineHeight: 16,
-                                marginLeft: 30,
+                                lineHeight: s(16),
+                                marginLeft: s(30),
                                 opacity: shouldStrike ? 0.4 : 1,
                                 textDecorationLine: shouldStrike
                                   ? "line-through"
@@ -1193,9 +1207,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                               <View
                                 style={{
                                   backgroundColor: allergen.color + "20",
-                                  paddingHorizontal: 6,
-                                  paddingVertical: 2,
-                                  borderRadius: 4,
+                                  paddingHorizontal: s(6),
+                                  paddingVertical: s(2),
+                                  borderRadius: s(4),
                                   borderWidth: 1,
                                   borderColor: allergen.color,
                                 }}
@@ -1203,7 +1217,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                                 <Text
                                   style={{
                                     color: allergen.color,
-                                    fontSize: 8,
+                                    fontSize: s(8),
                                     fontWeight: "700",
                                   }}
                                 >
@@ -1221,13 +1235,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                           color: displaySettings.highlightNotes
                             ? colors.heading
                             : colors.muted,
-                          fontSize: 10,
+                          fontSize: s(10),
                           fontStyle: "italic",
                           fontWeight: displaySettings.highlightNotes
                             ? "700"
                             : "400",
-                          marginLeft: 30,
-                          marginTop: 3,
+                          marginLeft: s(30),
+                          marginTop: s(3),
                           opacity: shouldStrike ? 0.4 : 1,
                           textDecorationLine: shouldStrike
                             ? "line-through"
@@ -1247,8 +1261,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               <Text
                 style={{
                   color: "#9CA3AF",
-                  fontSize: 11,
-                  marginTop: 6,
+                  fontSize: s(11),
+                  marginTop: s(6),
                   textAlign: "center",
                 }}
               >
@@ -1264,14 +1278,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 backgroundColor: "#FEF2F2",
                 borderTopWidth: 1,
                 borderTopColor: "#FECACA",
-                paddingHorizontal: 10,
-                paddingVertical: 5,
+                paddingHorizontal: s(10),
+                paddingVertical: s(5),
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 5,
+                gap: s(5),
               }}
             >
-              <Text style={{ fontSize: 9, color: "#DC2626", fontWeight: "700", letterSpacing: 0.4 }}>
+              <Text style={{ fontSize: s(9), color: "#DC2626", fontWeight: "700", letterSpacing: 0.4 }}>
                 ACK REQUIRED — tap voided/refunded items before advancing
               </Text>
             </View>
@@ -1280,7 +1294,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           {/* Progress bar at bottom */}
           <View
             style={{
-              height: 4,
+              height: s(4),
               backgroundColor: "#E5E7EB",
               overflow: "hidden",
             }}
@@ -1362,6 +1376,8 @@ interface KDSDoneTicketCardProps {
 
 const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
   ({ ticket, onRecall }) => {
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
     const timeElapsed = useMemo(
       () => getBucketedElapsed(ticket.start_time_epoch, ticket.done_time_epoch),
       [ticket.start_time_epoch, ticket.done_time_epoch],
@@ -1379,15 +1395,15 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
         <View
           style={{
             margin: 0,
-            borderRadius: 10,
+            borderRadius: s(10),
             overflow: "hidden",
             backgroundColor: "#FFFFFF",
             borderWidth: 1,
             borderColor: "#E5E7EB",
             shadowColor: "#000",
-            shadowOffset: { width: 0, height: 1 },
+            shadowOffset: { width: 0, height: s(1) },
             shadowOpacity: 0.05,
-            shadowRadius: 2,
+            shadowRadius: s(2),
             elevation: 1,
           }}
         >
@@ -1395,23 +1411,23 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
           <View
             style={{
               backgroundColor: "#F3F4F6",
-              paddingHorizontal: 12,
-              paddingVertical: 10,
+              paddingHorizontal: s(12),
+              paddingVertical: s(10),
               borderBottomWidth: 1,
               borderBottomColor: "#D1D5DB",
               flexDirection: "row",
               justifyContent: "space-between",
               alignItems: "flex-start",
-              gap: 12,
+              gap: s(12),
             }}
           >
-            <View style={{ flex: 1, gap: 4 }}>
+            <View style={{ flex: 1, gap: s(4) }}>
               {/* Order Number */}
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
               >
                 <Text
-                  style={{ color: "#6B7280", fontSize: 16, fontWeight: "700" }}
+                  style={{ color: "#6B7280", fontSize: s(16), fontWeight: "700" }}
                   numberOfLines={1}
                 >
                   #
@@ -1428,18 +1444,18 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
 
               {/* Order Type */}
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                style={{ flexDirection: "row", alignItems: "center", gap: s(4) }}
               >
                 <View
                   style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: 3,
+                    width: s(6),
+                    height: s(6),
+                    borderRadius: s(3),
                     backgroundColor: "#D1D5DB",
                   }}
                 />
                 <Text
-                  style={{ color: "#9CA3AF", fontSize: 11, fontWeight: "600" }}
+                  style={{ color: "#9CA3AF", fontSize: s(11), fontWeight: "600" }}
                 >
                   {orderTypeLabel}
                 </Text>
@@ -1447,7 +1463,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
             </View>
 
             {/* Timer */}
-            <Text style={{ color: "#9CA3AF", fontSize: 16, fontWeight: "800" }}>
+            <Text style={{ color: "#9CA3AF", fontSize: s(16), fontWeight: "800" }}>
               {timeElapsed}
             </Text>
           </View>
@@ -1456,14 +1472,14 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
           {hasMetaInfo && (
             <View
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 5,
+                paddingHorizontal: s(12),
+                paddingVertical: s(5),
                 borderBottomWidth: 1,
                 borderBottomColor: "#D1D5DB",
               }}
             >
               <Text
-                style={{ color: "#6B7280", fontSize: 11, fontWeight: "500" }}
+                style={{ color: "#6B7280", fontSize: s(11), fontWeight: "500" }}
                 numberOfLines={1}
               >
                 {ticket.customer_name ? ticket.customer_name : ""}
@@ -1477,39 +1493,39 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
           )}
 
           {/* Items list */}
-          <View style={{ padding: 12, gap: 6 }}>
+          <View style={{ padding: s(12), gap: s(6) }}>
             {getTicketItems(ticket).map((item: KDSTicketItem, index) => (
               <View
                 key={`${item.id}_${index}`}
                 style={{
                   flexDirection: "column",
                   alignItems: "flex-start",
-                  gap: 2,
+                  gap: s(2),
                 }}
               >
                 <View
                   style={{
                     flexDirection: "row",
                     alignItems: "flex-start",
-                    gap: 6,
+                    gap: s(6),
                     width: "100%",
                   }}
                 >
                   <View
                     style={{
                       backgroundColor: "#E5E7EB",
-                      width: 22,
-                      height: 22,
-                      borderRadius: 4,
+                      width: s(22),
+                      height: s(22),
+                      borderRadius: s(4),
                       alignItems: "center",
                       justifyContent: "center",
-                      minWidth: 22,
+                      minWidth: s(22),
                     }}
                   >
                     <Text
                       style={{
                         color: "#9CA3AF",
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "700",
                       }}
                     >
@@ -1519,7 +1535,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                   <Text
                     style={{
                       color: "#9CA3AF",
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: "500",
                       flex: 1,
                     }}
@@ -1533,9 +1549,9 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                   <Text
                     style={{
                       color: colors.heading,
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontStyle: "italic",
-                      marginLeft: 28,
+                      marginLeft: s(28),
                       fontWeight: "700",
                     }}
                     numberOfLines={2}
@@ -1556,6 +1572,8 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
 
 // ─── Main Screen ──────────────────────────────────────────────────
 const KitchenDisplayScreen = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const router = useRouter();
   const supabase = useSupabaseClient();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
@@ -2403,7 +2421,7 @@ const KitchenDisplayScreen = () => {
   // Skeleton grid for loading state
   const renderSkeletons = () => (
     <View
-      style={{ flex: 1, flexDirection: "row", flexWrap: "wrap", padding: 4 }}
+      style={{ flex: 1, flexDirection: "row", flexWrap: "wrap", padding: s(4) }}
     >
       {Array.from({ length: columnCount * 4 }).map((_, i) => (
         <View
@@ -2411,7 +2429,7 @@ const KitchenDisplayScreen = () => {
           style={{
             flex: 1,
             minWidth: `${100 / columnCount}%`,
-            paddingHorizontal: 2,
+            paddingHorizontal: s(2),
           }}
         >
           <KDSSkeletonCard />
@@ -2428,8 +2446,8 @@ const KitchenDisplayScreen = () => {
           backgroundColor: colors.panel,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
-          paddingHorizontal: 16,
-          paddingVertical: 10,
+          paddingHorizontal: s(16),
+          paddingVertical: s(10),
         }}
       >
         {/* Single row: status tabs (left) — order types + station info (right) */}
@@ -2441,7 +2459,7 @@ const KitchenDisplayScreen = () => {
           }}
         >
           {/* LEFT: Status tabs */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
             {visibleStatusTabs.map((tab) => {
               const isActive = activeStatus === tab.key;
               return (
@@ -2449,9 +2467,9 @@ const KitchenDisplayScreen = () => {
                   <TouchableOpacity
                     onPress={() => handleSetActiveStatus(tab.key)}
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 16,
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(6),
+                      borderRadius: s(16),
                       backgroundColor: isActive
                         ? colors.teal + "20"
                         : "transparent",
@@ -2461,13 +2479,13 @@ const KitchenDisplayScreen = () => {
                         : colors.border,
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 6,
+                      gap: s(6),
                     }}
                   >
                     <Text
                       style={{
                         color: isActive ? colors.teal : colors.label,
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: isActive ? "700" : "500",
                       }}
                     >
@@ -2478,17 +2496,17 @@ const KitchenDisplayScreen = () => {
                         backgroundColor: isActive
                           ? colors.teal + "50"
                           : colors.border,
-                        paddingHorizontal: 6,
-                        paddingVertical: 1,
-                        borderRadius: 8,
-                        minWidth: 22,
+                        paddingHorizontal: s(6),
+                        paddingVertical: s(1),
+                        borderRadius: s(8),
+                        minWidth: s(22),
                         alignItems: "center",
                       }}
                     >
                       <Text
                         style={{
                           color: isActive ? colors.teal : colors.label,
-                          fontSize: 11,
+                          fontSize: s(11),
                           fontWeight: "700",
                           opacity: isFetching ? 0.7 : 1,
                         }}
@@ -2509,7 +2527,7 @@ const KitchenDisplayScreen = () => {
           </View>
 
           {/* RIGHT: Order types + display badge + station/time */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
             {/* Order type filters */}
             {TYPE_TABS.map((tab) => {
               const isActive = activeType === tab.key;
@@ -2519,9 +2537,9 @@ const KitchenDisplayScreen = () => {
                   key={tab.key}
                   onPress={() => setActiveType(tab.key)}
                   style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 14,
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(6),
+                    borderRadius: s(14),
                     backgroundColor: isActive
                       ? colors.teal + "20"
                       : "transparent",
@@ -2529,13 +2547,13 @@ const KitchenDisplayScreen = () => {
                     borderColor: isActive ? colors.teal + "50" : colors.border,
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 4,
+                    gap: s(4),
                   }}
                 >
                   <Text
                     style={{
                       color: isActive ? colors.teal : colors.label,
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: isActive ? "600" : "500",
                     }}
                   >
@@ -2547,15 +2565,15 @@ const KitchenDisplayScreen = () => {
                         backgroundColor: isActive
                           ? colors.teal + "50"
                           : colors.border,
-                        paddingHorizontal: 5,
-                        paddingVertical: 1,
-                        borderRadius: 6,
+                        paddingHorizontal: s(5),
+                        paddingVertical: s(1),
+                        borderRadius: s(6),
                       }}
                     >
                       <Text
                         style={{
                           color: isActive ? colors.teal : colors.label,
-                          fontSize: 10,
+                          fontSize: s(10),
                           fontWeight: "600",
                         }}
                       >
@@ -2572,16 +2590,16 @@ const KitchenDisplayScreen = () => {
                 <View
                   style={{
                     width: 1,
-                    height: 20,
+                    height: s(20),
                     backgroundColor: colors.border,
                   }}
                 />
                 <TouchableOpacity
                   onPress={toggleBulkMode}
                   style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 14,
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(6),
+                    borderRadius: s(14),
                     backgroundColor: bulkMode
                       ? colors.info + "20"
                       : "transparent",
@@ -2589,13 +2607,13 @@ const KitchenDisplayScreen = () => {
                     borderColor: bulkMode ? colors.info + "50" : colors.border,
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 4,
+                    gap: s(4),
                   }}
                 >
                   <Text
                     style={{
                       color: bulkMode ? colors.info : colors.label,
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: bulkMode ? "700" : "600",
                     }}
                   >
@@ -2606,9 +2624,9 @@ const KitchenDisplayScreen = () => {
                   onPress={() => handleBulkAction("done-all")}
                   disabled={activeFilteredTickets.length === 0}
                   style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 14,
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(6),
+                    borderRadius: s(14),
                     backgroundColor:
                       activeFilteredTickets.length > 0
                         ? colors.warning + "18"
@@ -2627,7 +2645,7 @@ const KitchenDisplayScreen = () => {
                         activeFilteredTickets.length > 0
                           ? colors.warning
                           : colors.label,
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: "700",
                     }}
                   >
@@ -2639,7 +2657,7 @@ const KitchenDisplayScreen = () => {
 
             {/* Divider */}
             <View
-              style={{ width: 1, height: 20, backgroundColor: colors.border }}
+              style={{ width: 1, height: s(20), backgroundColor: colors.border }}
             />
 
             {/* Refresh Button — tap = fetch latest tickets + config.
@@ -2650,8 +2668,8 @@ const KitchenDisplayScreen = () => {
               delayLongPress={400}
               accessibilityLabel="Refresh KDS"
               style={{
-                padding: 6,
-                borderRadius: 8,
+                padding: s(6),
+                borderRadius: s(8),
                 backgroundColor: refreshing
                   ? colors.teal + "15"
                   : "transparent",
@@ -2660,7 +2678,7 @@ const KitchenDisplayScreen = () => {
               }}
             >
               <RotateCcw
-                size={14}
+                size={s(14)}
                 color={refreshing ? colors.teal : colors.label}
               />
             </TouchableOpacity>
@@ -2674,14 +2692,14 @@ const KitchenDisplayScreen = () => {
               }}
               accessibilityLabel="Open Settings"
               style={{
-                padding: 6,
-                borderRadius: 8,
+                padding: s(6),
+                borderRadius: s(8),
                 backgroundColor: "transparent",
                 borderWidth: 1,
                 borderColor: colors.border,
               }}
             >
-              <Settings size={14} color={colors.label} />
+              <Settings size={s(14)} color={colors.label} />
             </TouchableOpacity>
 
             {/* Auto-fire badge */}
@@ -2690,7 +2708,7 @@ const KitchenDisplayScreen = () => {
                 <View
                   style={{
                     width: 1,
-                    height: 20,
+                    height: s(20),
                     backgroundColor: colors.border,
                   }}
                 />
@@ -2699,19 +2717,19 @@ const KitchenDisplayScreen = () => {
                     flexDirection: "row",
                     alignItems: "center",
                     backgroundColor: colors.info + "15",
-                    paddingHorizontal: 8,
-                    paddingVertical: 4,
-                    borderRadius: 10,
+                    paddingHorizontal: s(8),
+                    paddingVertical: s(4),
+                    borderRadius: s(10),
                     borderWidth: 1,
                     borderColor: colors.info + "30",
-                    gap: 4,
+                    gap: s(4),
                   }}
                 >
-                  <Flame size={11} color={colors.info} />
+                  <Flame size={s(11)} color={colors.info} />
                   <Text
                     style={{
                       color: colors.info,
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: "600",
                     }}
                   >
@@ -2727,7 +2745,7 @@ const KitchenDisplayScreen = () => {
                 <View
                   style={{
                     width: 1,
-                    height: 20,
+                    height: s(20),
                     backgroundColor: colors.border,
                   }}
                 />
@@ -2736,19 +2754,19 @@ const KitchenDisplayScreen = () => {
                     flexDirection: "row",
                     alignItems: "center",
                     backgroundColor: colors.warning + "15",
-                    paddingHorizontal: 8,
-                    paddingVertical: 4,
-                    borderRadius: 10,
+                    paddingHorizontal: s(8),
+                    paddingVertical: s(4),
+                    borderRadius: s(10),
                     borderWidth: 1,
                     borderColor: colors.warning + "30",
-                    gap: 4,
+                    gap: s(4),
                   }}
                 >
-                  <ArrowUpToLine size={11} color={colors.warning} />
+                  <ArrowUpToLine size={s(11)} color={colors.warning} />
                   <Text
                     style={{
                       color: colors.warning,
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: "600",
                     }}
                   >
@@ -2760,23 +2778,23 @@ const KitchenDisplayScreen = () => {
 
             {/* Divider */}
             <View
-              style={{ width: 1, height: 20, backgroundColor: colors.border }}
+              style={{ width: 1, height: s(20), backgroundColor: colors.border }}
             />
 
             {/* Station Name + EXPO tag | Time + Dot */}
             <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+              style={{ flexDirection: "row", alignItems: "center", gap: s(4) }}
             >
               {selectedStation?.station_name && (
                 <TouchableOpacity
                   onPress={handleStationTripleTap}
                   activeOpacity={1}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: s(4) }}
                 >
                   <Text
                     style={{
                       color: colors.label,
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: "500",
                     }}
                   >
@@ -2786,7 +2804,7 @@ const KitchenDisplayScreen = () => {
                     <Text
                       style={{
                         color: colors.success,
-                        fontSize: 11,
+                        fontSize: s(11),
                         fontWeight: "700",
                       }}
                     >
@@ -2796,21 +2814,21 @@ const KitchenDisplayScreen = () => {
                 </TouchableOpacity>
               )}
               {selectedStation?.station_name && (
-                <Text style={{ color: colors.muted, fontSize: 12 }}>|</Text>
+                <Text style={{ color: colors.muted, fontSize: s(12) }}>|</Text>
               )}
               <Text
-                style={{ color: colors.label, fontSize: 12, fontWeight: "500" }}
+                style={{ color: colors.label, fontSize: s(12), fontWeight: "500" }}
               >
                 {currentTime}
               </Text>
               {showDisconnected ? (
                 <View
                   style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
+                    width: s(8),
+                    height: s(8),
+                    borderRadius: s(4),
                     backgroundColor: colors.danger,
-                    marginLeft: 4,
+                    marginLeft: s(4),
                   }}
                 />
               ) : (
@@ -2828,30 +2846,30 @@ const KitchenDisplayScreen = () => {
             backgroundColor: colors.panel,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
-            paddingHorizontal: 16,
-            paddingVertical: 8,
+            paddingHorizontal: s(16),
+            paddingVertical: s(8),
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <Text style={{ color: colors.label, fontSize: 13 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: s(12) }}>
+            <Text style={{ color: colors.label, fontSize: s(13) }}>
               {selectionCount} selected
             </Text>
             <TouchableOpacity
               onPress={handleSelectAll}
               style={{
-                paddingHorizontal: 10,
-                paddingVertical: 4,
+                paddingHorizontal: s(10),
+                paddingVertical: s(4),
                 backgroundColor: colors.teal + "20",
                 borderWidth: 1,
                 borderColor: colors.teal + "50",
-                borderRadius: 6,
+                borderRadius: s(6),
               }}
             >
               <Text
-                style={{ color: colors.teal, fontSize: 12, fontWeight: "600" }}
+                style={{ color: colors.teal, fontSize: s(12), fontWeight: "600" }}
               >
                 Select All
               </Text>
@@ -2859,41 +2877,41 @@ const KitchenDisplayScreen = () => {
             <TouchableOpacity
               onPress={clearSelection}
               style={{
-                paddingHorizontal: 10,
-                paddingVertical: 4,
+                paddingHorizontal: s(10),
+                paddingVertical: s(4),
                 backgroundColor: "transparent",
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 6,
+                borderRadius: s(6),
               }}
             >
               <Text
-                style={{ color: colors.label, fontSize: 12, fontWeight: "600" }}
+                style={{ color: colors.label, fontSize: s(12), fontWeight: "600" }}
               >
                 Clear
               </Text>
             </TouchableOpacity>
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
             <TouchableOpacity
               onPress={() => handleBulkAction("selected")}
               disabled={selectionCount === 0}
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 6,
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
                 backgroundColor:
                   selectionCount > 0 ? colors.teal + "20" : "transparent",
                 borderWidth: 1,
                 borderColor:
                   selectionCount > 0 ? colors.teal + "50" : colors.border,
-                borderRadius: 6,
+                borderRadius: s(6),
                 opacity: selectionCount > 0 ? 1 : 0.5,
               }}
             >
               <Text
                 style={{
                   color: selectionCount > 0 ? colors.teal : colors.label,
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: "700",
                 }}
               >
@@ -2904,21 +2922,21 @@ const KitchenDisplayScreen = () => {
               onPress={() => handleBulkAction("done-selected")}
               disabled={selectionCount === 0}
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 6,
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
                 backgroundColor:
                   selectionCount > 0 ? colors.warning + "18" : "transparent",
                 borderWidth: 1,
                 borderColor:
                   selectionCount > 0 ? colors.warning + "45" : colors.border,
-                borderRadius: 6,
+                borderRadius: s(6),
                 opacity: selectionCount > 0 ? 1 : 0.5,
               }}
             >
               <Text
                 style={{
                   color: selectionCount > 0 ? colors.warning : colors.label,
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: "700",
                 }}
               >
@@ -2929,8 +2947,8 @@ const KitchenDisplayScreen = () => {
               onPress={() => handleBulkAction("all")}
               disabled={activeFilteredTickets.length === 0}
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 6,
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
                 backgroundColor:
                   activeFilteredTickets.length > 0
                     ? colors.danger + "20"
@@ -2940,7 +2958,7 @@ const KitchenDisplayScreen = () => {
                   activeFilteredTickets.length > 0
                     ? colors.danger + "50"
                     : colors.border,
-                borderRadius: 6,
+                borderRadius: s(6),
                 opacity: activeFilteredTickets.length > 0 ? 1 : 0.5,
               }}
             >
@@ -2950,7 +2968,7 @@ const KitchenDisplayScreen = () => {
                     activeFilteredTickets.length > 0
                       ? colors.danger
                       : colors.label,
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: "700",
                 }}
               >
@@ -2961,8 +2979,8 @@ const KitchenDisplayScreen = () => {
               onPress={() => handleBulkAction("done-all")}
               disabled={activeFilteredTickets.length === 0}
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 6,
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
                 backgroundColor:
                   activeFilteredTickets.length > 0
                     ? colors.warning + "18"
@@ -2972,7 +2990,7 @@ const KitchenDisplayScreen = () => {
                   activeFilteredTickets.length > 0
                     ? colors.warning + "45"
                     : colors.border,
-                borderRadius: 6,
+                borderRadius: s(6),
                 opacity: activeFilteredTickets.length > 0 ? 1 : 0.5,
               }}
             >
@@ -2982,7 +3000,7 @@ const KitchenDisplayScreen = () => {
                     activeFilteredTickets.length > 0
                       ? colors.warning
                       : colors.label,
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: "700",
                 }}
               >
@@ -3002,10 +3020,10 @@ const KitchenDisplayScreen = () => {
             flex: 1,
             alignItems: "center",
             justifyContent: "center",
-            paddingVertical: 60,
+            paddingVertical: s(60),
           }}
         >
-          <Text style={{ color: colors.muted, fontSize: 14 }}>
+          <Text style={{ color: colors.muted, fontSize: s(14) }}>
             {isDoneTab ? "No done tickets" : `No ${activeStatus} tickets`}
           </Text>
         </View>
@@ -3013,8 +3031,8 @@ const KitchenDisplayScreen = () => {
         <ScrollView
           key={`kds-${activeStatus}-${columnCount}`}
           contentContainerStyle={{
-            padding: 4,
-            paddingBottom: 20,
+            padding: s(4),
+            paddingBottom: s(20),
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={true}
@@ -3023,7 +3041,7 @@ const KitchenDisplayScreen = () => {
             {columnizedTickets.map((colTickets, col) => (
               <View
                 key={`col-${activeStatus}-${col}`}
-                style={{ flex: 1, paddingHorizontal: 2 }}
+                style={{ flex: 1, paddingHorizontal: s(2) }}
               >
                 {colTickets.map((ticket) => (
                   <View key={ticket.ticket_id}>
@@ -3093,16 +3111,16 @@ const KitchenDisplayScreen = () => {
                   position: "absolute",
                   top,
                   left,
-                  width: menuWidth,
+                  width: s(menuWidth),
                   backgroundColor: "#FFFFFF",
-                  borderRadius: 12,
+                  borderRadius: s(12),
                   borderWidth: 1,
                   borderColor: "#E5E7EB",
-                  padding: 8,
+                  padding: s(8),
                   shadowColor: "#000",
-                  shadowOffset: { width: 0, height: 8 },
+                  shadowOffset: { width: 0, height: s(8) },
                   shadowOpacity: 0.14,
-                  shadowRadius: 16,
+                  shadowRadius: s(16),
                   elevation: 12,
                   zIndex: 101,
                 }}
@@ -3112,13 +3130,13 @@ const KitchenDisplayScreen = () => {
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    marginBottom: 6,
+                    marginBottom: s(6),
                   }}
                 >
                   <Text
                     style={{
                       color: "#111827",
-                      fontSize: 14,
+                      fontSize: s(14),
                       fontWeight: "800",
                     }}
                   >
@@ -3130,14 +3148,14 @@ const KitchenDisplayScreen = () => {
                       borderWidth: 1,
                       borderColor: statusColor + "55",
                       borderRadius: 999,
-                      paddingHorizontal: 8,
-                      paddingVertical: 2,
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(2),
                     }}
                   >
                     <Text
                       style={{
                         color: statusColor,
-                        fontSize: 10,
+                        fontSize: s(10),
                         fontWeight: "700",
                       }}
                     >
@@ -3147,7 +3165,7 @@ const KitchenDisplayScreen = () => {
                 </View>
 
                 <Text
-                  style={{ color: "#6B7280", fontSize: 10, marginBottom: 8 }}
+                  style={{ color: "#6B7280", fontSize: s(10), marginBottom: s(8) }}
                   numberOfLines={1}
                 >
                   {getOrderTypeLabel(actionMenu.ticket.order_type)}
@@ -3169,27 +3187,27 @@ const KitchenDisplayScreen = () => {
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderRadius: 8,
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(8),
+                      borderRadius: s(8),
                       borderWidth: 1,
                       borderColor: colors.teal + "66",
                       backgroundColor: colors.teal + "16",
-                      marginBottom: 6,
+                      marginBottom: s(6),
                     }}
                   >
                     <View
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        gap: 8,
+                        gap: s(8),
                       }}
                     >
-                      <RotateCcw size={15} color={colors.teal} />
+                      <RotateCcw size={s(15)} color={colors.teal} />
                       <Text
                         style={{
                           color: "#111827",
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: "700",
                         }}
                       >
@@ -3207,27 +3225,27 @@ const KitchenDisplayScreen = () => {
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 8,
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     borderColor: colors.teal + "66",
                     backgroundColor: colors.teal + "16",
-                    marginBottom: 6,
+                    marginBottom: s(6),
                   }}
                 >
                   <View
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 8,
+                      gap: s(8),
                     }}
                   >
-                    <ArrowUpToLine size={15} color={colors.teal} />
+                    <ArrowUpToLine size={s(15)} color={colors.teal} />
                     <Text
                       style={{
                         color: "#111827",
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: "700",
                       }}
                     >
@@ -3245,27 +3263,27 @@ const KitchenDisplayScreen = () => {
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 8,
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     borderColor: colors.teal + "66",
                     backgroundColor: colors.teal + "16",
-                    marginBottom: 6,
+                    marginBottom: s(6),
                   }}
                 >
                   <View
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 8,
+                      gap: s(8),
                     }}
                   >
-                    <Flame size={15} color={colors.teal} />
+                    <Flame size={s(15)} color={colors.teal} />
                     <Text
                       style={{
                         color: "#111827",
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: "700",
                       }}
                     >
@@ -3309,9 +3327,9 @@ const KitchenDisplayScreen = () => {
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 8,
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     borderColor: colors.success + "66",
                     backgroundColor: colors.success + "16",
@@ -3321,14 +3339,14 @@ const KitchenDisplayScreen = () => {
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 8,
+                      gap: s(8),
                     }}
                   >
-                    <CheckSquare size={15} color={colors.success} />
+                    <CheckSquare size={s(15)} color={colors.success} />
                     <Text
                       style={{
                         color: "#111827",
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: "700",
                       }}
                     >

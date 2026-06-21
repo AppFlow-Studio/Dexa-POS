@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import {
   selectIsOpen as selectModifierIsOpen,
   useModifierSidebarStore
@@ -19,6 +20,8 @@ export const SendToKitchenButton = React.memo(function SendToKitchenButton ({
   onPress: () => void
   extraDisabled: boolean
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const isModifierScreenOpen = useModifierSidebarStore(selectModifierIsOpen)
   const disabled = extraDisabled || isModifierScreenOpen
 
@@ -31,11 +34,11 @@ export const SendToKitchenButton = React.memo(function SendToKitchenButton ({
       disabled={disabled}
       onPress={onPress}
     >
-      <Printer size={12} color={colors.onSolid} />
+      <Printer size={s(12)} color={colors.onSolid} />
       <Text
         style={{
           color: colors.onSolid,
-          fontSize: 12,
+          fontSize: s(12),
           fontWeight: '500'
         }}
       >
@@ -55,6 +58,8 @@ export const SendCourseButton = React.memo(function SendCourseButton ({
 }: {
   onPress: () => void
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const isModifierScreenOpen = useModifierSidebarStore(selectModifierIsOpen)
 
   return (
@@ -67,17 +72,17 @@ export const SendCourseButton = React.memo(function SendCourseButton ({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 10,
-        height: 24,
-        borderRadius: 6,
+        gap: s(4),
+        paddingHorizontal: s(10),
+        height: s(24),
+        borderRadius: s(6),
         backgroundColor: colors.teal,
         opacity: isModifierScreenOpen ? 0.4 : 1
       }}
       activeOpacity={0.8}
     >
-      <Printer size={11} color={colors.onSolid} />
-      <Text style={{ color: colors.onSolid, fontSize: 11, fontWeight: '600' }}>
+      <Printer size={s(11)} color={colors.onSolid} />
+      <Text style={{ color: colors.onSolid, fontSize: s(11), fontWeight: '600' }}>
         Send
       </Text>
     </TouchableOpacity>
@@ -95,6 +100,8 @@ export const SendAllButton = React.memo(function SendAllButton ({
   onPress: () => void
   unsentCount: number
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const isModifierScreenOpen = useModifierSidebarStore(selectModifierIsOpen)
   const disabled = unsentCount === 0 || isModifierScreenOpen
 
@@ -105,19 +112,19 @@ export const SendAllButton = React.memo(function SendAllButton ({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 9,
-        paddingVertical: 5,
-        borderRadius: 6,
+        gap: s(4),
+        paddingHorizontal: s(9),
+        paddingVertical: s(5),
+        borderRadius: s(6),
         backgroundColor: colors.teal,
         opacity: disabled ? 0.4 : 1
       }}
       activeOpacity={0.8}
     >
-      <Printer size={12} color={colors.onSolid} />
+      <Printer size={s(12)} color={colors.onSolid} />
       <Text
         style={{
-          fontSize: 10,
+          fontSize: s(10),
           fontWeight: '600',
           color: colors.onSolid
         }}

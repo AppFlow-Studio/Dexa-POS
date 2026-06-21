@@ -3,6 +3,7 @@ import { SyncQueuePanel } from "@/components/settings/sync-status/SyncQueuePanel
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors, spinnerColor } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
+import { useUiScale } from "@/lib/uiScale";
 import { FloorPlanService } from "@/services/floorPlanService";
 import { syncNow } from "@/services/offlineSyncService";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -19,6 +20,8 @@ import {
 } from "react-native";
 
 const SyncingScreen: React.FC = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const queryClient = useQueryClient();
   const supabase = useSupabaseClient();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
@@ -96,24 +99,24 @@ const SyncingScreen: React.FC = () => {
       style={{
         flexDirection: "row",
         alignItems: "center",
-        paddingHorizontal: 12,
-        paddingVertical: 9,
+        paddingHorizontal: s(12),
+        paddingVertical: s(9),
         backgroundColor: colors.screen,
         borderWidth: 1,
         borderColor: colors.border,
-        borderRadius: 10,
-        marginBottom: 8,
+        borderRadius: s(10),
+        marginBottom: s(8),
       }}
     >
       <View
         style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
+          width: s(32),
+          height: s(32),
+          borderRadius: s(8),
           backgroundColor: colors.teal + "15",
           alignItems: "center",
           justifyContent: "center",
-          marginRight: 12,
+          marginRight: s(12),
         }}
       >
         {syncingKey === key ? (
@@ -124,15 +127,15 @@ const SyncingScreen: React.FC = () => {
       </View>
       <View style={{ flex: 1 }}>
         <Text
-          style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}
+          style={{ fontSize: s(13), fontWeight: "600", color: colors.heading }}
         >
           {label}
         </Text>
-        <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+        <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
           {subtitle}
         </Text>
       </View>
-      {syncingKey !== key && <RefreshCw size={14} color={colors.label} />}
+      {syncingKey !== key && <RefreshCw size={s(14)} color={colors.label} />}
     </TouchableOpacity>
   );
 
@@ -141,34 +144,34 @@ const SyncingScreen: React.FC = () => {
       style={{
         flex: 1,
         backgroundColor: colors.screen,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
+        paddingHorizontal: s(14),
+        paddingVertical: s(10),
       }}
     >
       {/* Header */}
-      <View style={{ marginBottom: 10 }}>
+      <View style={{ marginBottom: s(10) }}>
         <Text
-          style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}
+          style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}
         >
           Syncing
         </Text>
-        <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
+        <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
           Sync queue, failed operations, and manual POS sync.
         </Text>
       </View>
 
       <View
-        style={{ height: 1, backgroundColor: colors.border, marginBottom: 10 }}
+        style={{ height: 1, backgroundColor: colors.border, marginBottom: s(10) }}
       />
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Sync Queue */}
-        <View style={{ marginBottom: 12 }}>
+        <View style={{ marginBottom: s(12) }}>
           <SyncQueuePanel />
         </View>
 
         {/* Failed Sync Operations */}
-        <View style={{ marginBottom: 12 }}>
+        <View style={{ marginBottom: s(12) }}>
           <FailedSyncsPanel />
         </View>
 
@@ -176,17 +179,17 @@ const SyncingScreen: React.FC = () => {
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 12,
-            padding: 12,
+            marginBottom: s(12),
+            padding: s(12),
           }}
         >
           {renderSyncButton(
             "Sync POS",
             "Flush pending changes and re-fetch orders, menus, settings, and floor plan",
-            <RefreshCw size={16} color={colors.teal} />,
+            <RefreshCw size={s(16)} color={colors.teal} />,
             "all",
             handleSyncAll,
           )}

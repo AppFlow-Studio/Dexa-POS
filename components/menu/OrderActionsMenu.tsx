@@ -1,5 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
@@ -49,6 +50,8 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   onViewDetails,
   position,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
@@ -259,7 +262,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
 
   const menuItems: MenuItem[] = [
     {
-      icon: <Eye size={18} color={colors.muted} />,
+      icon: <Eye size={s(18)} color={colors.muted} />,
       label: "View Details",
       onPress: () => {
         onClose();
@@ -269,38 +272,38 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     ...(isForeign
       ? [
           {
-            icon: <LogIn size={18} color={colors.warning} />,
+            icon: <LogIn size={s(18)} color={colors.warning} />,
             label: "Take Over Order",
             onPress: handleTakeOver,
           },
         ]
       : []),
     {
-      icon: <Plus size={18} color={colors.muted} />,
+      icon: <Plus size={s(18)} color={colors.muted} />,
       label: "Add to Bill",
       onPress: handleAddToBill,
       disabled: !activeOrderId || !order.items || order.items.length === 0,
     },
     {
-      icon: <DollarSign size={18} color={colors.muted} />,
+      icon: <DollarSign size={s(18)} color={colors.muted} />,
       label: "Pay Outstanding",
       onPress: handlePayOutstanding,
       disabled: !hasOutstanding,
     },
     {
-      icon: <Printer size={18} color={colors.muted} />,
+      icon: <Printer size={s(18)} color={colors.muted} />,
       label: "Print Receipt",
       onPress: handlePrintReceipt,
     },
     {
-      icon: <ChefHat size={18} color={colors.muted} />,
+      icon: <ChefHat size={s(18)} color={colors.muted} />,
       label: "Print Kitchen Ticket",
       onPress: handlePrintKitchenTicket,
       disabled:
         !order.items || order.items.filter((i) => !i.is_voided).length === 0,
     },
     {
-      icon: <Trash2 size={18} color={colors.danger} />,
+      icon: <Trash2 size={s(18)} color={colors.danger} />,
       label: canTerminalRefund ? "Void Order" : "Void — wrong terminal",
       onPress: handleVoidOrder,
       destructive: true,
@@ -351,7 +354,8 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
                     // Estimate menu height: header (~44) + items (46 each) + padding
                     // Flip above the button if too close to bottom of screen
                     ...(() => {
-                      const MENU_HEIGHT = 44 + menuItems.length * 46 + 16;
+                      const ROW_H = s(46);
+                      const MENU_HEIGHT = s(44) + menuItems.length * ROW_H + s(16);
                       const spaceBelow = screenHeight - position.y;
                       if (spaceBelow < MENU_HEIGHT) {
                         return {
@@ -360,7 +364,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
                       }
                       return { top: position.y };
                     })(),
-                    left: position.x - 210,
+                    left: position.x - s(210),
                   }
                 : {
                     backgroundColor: colors.panel,
@@ -407,8 +411,8 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
                     className="flex-row items-center px-4"
                     style={{
                       opacity: item.disabled ? disabledOpacity : 1,
-                      height: 46,
-                      marginTop: isFirstDestructive ? 4 : 0,
+                      height: s(46),
+                      marginTop: isFirstDestructive ? s(4) : 0,
                       borderTopWidth: isFirstDestructive ? 1 : 0,
                       borderTopColor: item.destructive
                         ? colors.danger + "25"
@@ -420,15 +424,15 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
                   >
                     <View
                       style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 8,
+                        width: s(32),
+                        height: s(32),
+                        borderRadius: s(8),
                         backgroundColor: item.destructive
                           ? colors.danger + "15"
                           : colors.muted + "12",
                         alignItems: "center",
                         justifyContent: "center",
-                        marginRight: 12,
+                        marginRight: s(12),
                       }}
                     >
                       {item.icon}
