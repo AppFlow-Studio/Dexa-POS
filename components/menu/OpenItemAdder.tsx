@@ -316,54 +316,45 @@ const OpenItemAdder = ({
     setCurrentStep(2);
   };
 
+  // The raw typed string is the source of truth. "" means nothing has been
+  // entered yet, in which case we show the "0.00" placeholder. We never store
+  // "0.00" as the actual value — that conflated "empty" with "zero dollars" and
+  // made it impossible to type a leading-zero price like 0.50 (the placeholder
+  // already contained a ".", so the "." key was a no-op).
+  const setPrice = (raw: string) => {
+    setOpenItemPrice(raw);
+    setPriceDisplay(raw === "" ? "0.00" : raw);
+  };
+
   const handlePriceInput = (value: string) => {
+    const current = openItemPrice;
     if (value === "clear") {
-      setPriceDisplay("0.00");
-      setOpenItemPrice("0.00");
+      setPrice("");
       return;
     }
     if (value === "backspace") {
-      let current = priceDisplay;
-      if (current === "0.00") return;
-      if (current.length <= 1) {
-        setPriceDisplay("0.00");
-        setOpenItemPrice("0.00");
-        return;
-      }
-      const newDisplay = current.slice(0, -1);
-      if (newDisplay === "" || newDisplay === "0" || newDisplay === "-") {
-        setPriceDisplay("0.00");
-        setOpenItemPrice("0.00");
-      } else {
-        setPriceDisplay(newDisplay);
-        setOpenItemPrice(newDisplay);
-      }
+      setPrice(current.slice(0, -1));
       return;
     }
     if (value === ".") {
-      if (!priceDisplay.includes(".")) {
-        const base = priceDisplay === "0.00" ? "0" : priceDisplay;
-        const newDisplay = base + ".";
-        setPriceDisplay(newDisplay);
-        setOpenItemPrice(newDisplay);
+      if (!current.includes(".")) {
+        setPrice(current === "" ? "0." : current + ".");
       }
       return;
     }
     const isDigit = /^[0-9]$/.test(value);
     if (!isDigit) return;
-    if (priceDisplay === "0.00" || priceDisplay === "0") {
-      const newDisplay = value === "0" ? "0" : value;
-      setPriceDisplay(newDisplay);
-      setOpenItemPrice(newDisplay);
-      return;
-    }
-    if (priceDisplay.includes(".")) {
-      const [, decimals = ""] = priceDisplay.split(".");
+    if (current.includes(".")) {
+      const [, decimals = ""] = current.split(".");
       if (decimals.length >= 2) return;
     }
-    const newDisplay = priceDisplay + value;
-    setPriceDisplay(newDisplay);
-    setOpenItemPrice(newDisplay);
+    // "0" followed by a digit means the user meant that digit, not "05".
+    // (A "0." prefix is fine and handled by the generic append below.)
+    if (current === "0") {
+      if (value !== "0") setPrice(value);
+      return;
+    }
+    setPrice(current + value);
   };
 
   const handleAddOpenItem = () => {
@@ -600,9 +591,7 @@ const OpenItemAdder = ({
               <View>
                 <Text style={styles.label}>Base Price</Text>
                 <View style={styles.priceDisplay}>
-                  <Text style={styles.priceText}>
-                    ${parsedBasePrice.toFixed(2)}
-                  </Text>
+                  <Text style={styles.priceText}>${priceDisplay}</Text>
                 </View>
                 <Text
                   style={{
