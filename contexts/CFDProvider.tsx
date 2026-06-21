@@ -558,6 +558,17 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const activeOrderOutstandingTotal = useOrderStore(
     s => s.activeOrderOutstandingTotal
   )
+  // Cash-side outstanding. On a cash-discounted split the payment RPC can leave
+  // the card-side outstanding at 0 while the cash side still owes a portion, so
+  // a non-split CFD payload that reads only the card side shows $0 due. Use
+  // whichever side still owes for the order-level (non-split) outstanding.
+  const activeOrderOutstandingCash = useOrderStore(
+    s => s.activeOrderOutstandingCash
+  )
+  const activeOrderOutstandingEffective = Math.max(
+    activeOrderOutstandingTotal ?? 0,
+    activeOrderOutstandingCash ?? 0
+  )
 
   // Granular field selectors — used as effect deps so unrelated `activeOrder`
   // mutations (status, sync state, etc.) don't re-fire the CFD payload pipelines.
@@ -1300,7 +1311,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       : Math.round(currentTip.amount * 100)
     let displayOutstandingTotal = frozen
       ? frozen.outstandingTotal
-      : Math.round((activeOrderOutstandingTotal + currentTip.amount) * 100)
+      : Math.round((activeOrderOutstandingEffective + currentTip.amount) * 100)
     let displayAmountPaid = frozen
       ? frozen.amountPaid
       : Math.round((activeOrder?.amount_paid ?? 0) * 100)
@@ -1490,6 +1501,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     activeOrderTax,
     activeOrderTotal,
     activeOrderOutstandingTotal,
+    activeOrderOutstandingCash,
     orderTotals,
     currentTip,
     activeScreenState,
@@ -1712,7 +1724,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       let savingsAmount = Math.max(0, liveCardTotal - liveCashTotal)
       const displayTipAmount = Math.round(currentTip.amount * 100)
       let displayOutstandingTotal = Math.round(
-        (activeOrderOutstandingTotal + currentTip.amount) * 100
+        (activeOrderOutstandingEffective + currentTip.amount) * 100
       )
       let displayAmountPaid = Math.round((activeOrder?.amount_paid ?? 0) * 100)
       let displayDiscountAmount = Math.round(activeOrderDiscount * 100)
@@ -1901,6 +1913,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     activeOrderTax,
     activeOrderTotal,
     activeOrderOutstandingTotal,
+    activeOrderOutstandingCash,
     // `orderTotals` intentionally NOT in deps: it returns a fresh object on
     // every order mutation (status, sync_version, etc.), defeating the granular
     // selectors above. The body still reads it via closure; it's captured fresh
@@ -2075,7 +2088,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         ? selectedPaymentMethod === 'cash'
           ? splitCashBase
           : splitCardBase
-        : Math.round(activeOrderOutstandingTotal * 100)
+        : Math.round(activeOrderOutstandingEffective * 100)
       const cardTotal = cardBaseTotal + tipAmt
       const cashTotal = cashBaseTotal + tipAmt
       const savings = Math.max(0, cardTotal - cashTotal)
@@ -2153,6 +2166,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       activeOrder,
       activeOrderDiscount,
       activeOrderOutstandingTotal,
+      activeOrderOutstandingCash,
       activeOrderSubtotal,
       activeOrderTax,
       activeOrderTotal,

@@ -1,3 +1,4 @@
+import { calculateEvenSplitSpread } from '@/lib/order-calculator'
 import { colors } from '@/lib/theme'
 import {
   useActiveOrder,
@@ -13,7 +14,7 @@ import {
   Plus,
   Users
 } from 'lucide-react-native'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
 const SplitEvenlyView = () => {
@@ -73,13 +74,35 @@ const SplitEvenlyView = () => {
   const effectiveTax =
     activeOrderOutstandingTax > 0 ? activeOrderOutstandingTax : activeOrderTax
 
-  // Calculate per-person amounts for both pricing models
-  const cardAmountPerPerson = effectiveCardTotal / numberOfPeople
-  const cashAmountPerPerson = effectiveCashTotal / numberOfPeople
+  // Calculate per-person amounts using a largest-remainder spread so the
+  // DISPLAYED amount equals what will actually be charged. Portions differ by
+  // at most one cent; the few guests covering the remainder pay 1 cent more.
+  // Raw float division (total / N) lost cents and diverged from the charged
+  // amount once toFixed(2) rounded it.
+  const cardSplit = useMemo(
+    () => calculateEvenSplitSpread(effectiveCardTotal, numberOfPeople),
+    [effectiveCardTotal, numberOfPeople]
+  )
+  const cashSplit = useMemo(
+    () => calculateEvenSplitSpread(effectiveCashTotal, numberOfPeople),
+    [effectiveCashTotal, numberOfPeople]
+  )
+  const subtotalSplit = useMemo(
+    () => calculateEvenSplitSpread(effectiveSubtotal, numberOfPeople),
+    [effectiveSubtotal, numberOfPeople]
+  )
+  const taxSplit = useMemo(
+    () => calculateEvenSplitSpread(effectiveTax, numberOfPeople),
+    [effectiveTax, numberOfPeople]
+  )
 
-  // Calculate per-person breakdown (subtotal, tax, total)
-  const subtotalPerPerson = effectiveSubtotal / numberOfPeople
-  const taxPerPerson = effectiveTax / numberOfPeople
+  // Display the higher per-person amount (what the guests covering the
+  // remainder pay). Each guest's exact portion is collected via the
+  // per-portion array built in splitEvenly().
+  const cardAmountPerPerson = cardSplit.perPerson
+  const cashAmountPerPerson = cashSplit.perPerson
+  const subtotalPerPerson = subtotalSplit.perPerson
+  const taxPerPerson = taxSplit.perPerson
 
   // Calculate savings when paying cash vs card
   const cashSavingsPerPerson = Math.max(
@@ -91,8 +114,29 @@ const SplitEvenlyView = () => {
   const effectiveTotal = effectiveCardTotal
   const amountPerPerson = cardAmountPerPerson
 
+  // Cap the people counter so the SMALLEST portion is at least 2¢. A 1¢ portion
+  // strands the payment path's dust tolerance: after a 1¢ portion the remaining
+  // balance is ≤ 2¢, which the server's `balance <= 0.02` fully-paid fallback
+  // mis-reads as settled, flipping the order to `paid` with amount_paid < total
+  // and tripping enforce_order_math (P0005). Min 2¢/portion means the bill can
+  // be split at most totalCents/2 ways (e.g. a 4¢ bill → at most 2 ways). Still
+  // bounded by the original 20-guest UX limit and a floor of 2.
+  const totalCents = Math.round(effectiveCardTotal * 100)
+  // Largest N that keeps every portion ≥ 2¢. On a sub-4¢ bill this is < 2, i.e.
+  // the bill is too small to split evenly without a 1¢ portion — splitEnabled
+  // gates the confirm button in that case (the guest must just pay in full).
+  const maxPeople = Math.min(20, Math.floor(totalCents / 2))
+  const splitEnabled = maxPeople >= 2
+
+  // If the bill shrank (e.g. a portion was already paid) below the current
+  // count, clamp down so the displayed/charged portions never include a 1¢
+  // (dust-stranding) portion.
+  useEffect(() => {
+    if (splitEnabled && numberOfPeople > maxPeople) setNumberOfPeople(maxPeople)
+  }, [maxPeople, numberOfPeople, splitEnabled])
+
   const handleIncrement = () => {
-    if (numberOfPeople < 20) setNumberOfPeople(p => p + 1)
+    if (splitEnabled && numberOfPeople < maxPeople) setNumberOfPeople(p => p + 1)
   }
 
   const handleDecrement = () => {
@@ -109,8 +153,10 @@ const SplitEvenlyView = () => {
   }
 
   const handleConfirmSplit = () => {
-    // 1. Logic: Create the splits in the store with both card and cash amounts
-    splitEvenly(numberOfPeople, cardAmountPerPerson, cashAmountPerPerson)
+    if (!splitEnabled) return
+    // 1. Logic: Create the splits in the store from the TOTALS so the store
+    // can floor the first N-1 portions and assign the remainder to the last.
+    splitEvenly(numberOfPeople, effectiveCardTotal, effectiveCashTotal)
 
     // 2. Flow: Start paying for Guest 1 immediately
     startSplitPaymentFlow('split-evenly')
@@ -261,6 +307,7 @@ const SplitEvenlyView = () => {
 
               <TouchableOpacity
                 onPress={handleIncrement}
+                disabled={numberOfPeople >= maxPeople}
                 style={{
                   width: 40,
                   height: 40,
@@ -268,11 +315,18 @@ const SplitEvenlyView = () => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderWidth: 1.5,
-                  borderColor: colors.label,
-                  backgroundColor: colors.screen
+                  borderColor:
+                    numberOfPeople >= maxPeople ? colors.border : colors.label,
+                  backgroundColor: colors.screen,
+                  opacity: numberOfPeople >= maxPeople ? 0.4 : 1
                 }}
               >
-                <Plus size={18} color={colors.heading} />
+                <Plus
+                  size={18}
+                  color={
+                    numberOfPeople >= maxPeople ? colors.muted : colors.heading
+                  }
+                />
               </TouchableOpacity>
             </View>
           </View>
@@ -468,8 +522,21 @@ const SplitEvenlyView = () => {
           </View>
 
           {/* Action Button */}
+          {!splitEnabled && (
+            <Text
+              style={{
+                color: colors.muted,
+                fontSize: 11,
+                textAlign: 'center',
+                marginBottom: 6
+              }}
+            >
+              This bill is too small to split evenly — please pay it in full.
+            </Text>
+          )}
           <TouchableOpacity
             onPress={handleConfirmSplit}
+            disabled={!splitEnabled}
             style={{
               width: '100%',
               paddingVertical: 11,
@@ -478,7 +545,8 @@ const SplitEvenlyView = () => {
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 8
+              gap: 8,
+              opacity: splitEnabled ? 1 : 0.4
             }}
           >
             <Check size={16} color={colors.onSolid} />

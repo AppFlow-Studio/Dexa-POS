@@ -1424,6 +1424,26 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             return true;
           }
 
+          // P0005 = enforce_order_math: the order row is internally
+          // inconsistent (e.g. payment_status=paid but amount_paid<total). This
+          // is a data-integrity rejection, NOT a transient/network failure —
+          // re-sending the identical payment will deterministically fail again,
+          // so returning false here spins the queue forever (observed on a tiny
+          // sub-cent split before the cash_total rounding fix). Treat it as
+          // terminal: fail the journal and discard so the queue drains. The
+          // underlying order state is corrected by calculate_order_totals_fast
+          // (v5 rounding) / a re-sync, not by replaying this op.
+          if ((error as any)?.code === "P0005") {
+            console.error(
+              `[OfflineSync:payment] enforce_order_math (P0005) — order math inconsistent; discarding non-retryable payment op:`,
+              errMsg,
+            );
+            if (queuedJournal?.id) {
+              failPaymentJournal(queuedJournal.id, `enforce_order_math: ${errMsg}`);
+            }
+            return true; // terminal — stop the infinite retry loop
+          }
+
           // Wave Cat-B: 23505 unique violation on the idempotency_key index is
           // terminal — means the cache row was missing AND the body re-executed,
           // which the partial unique index then blocked. Should be near-zero.

@@ -603,7 +603,13 @@ export class OrderService {
       //                            row (consumed by apply_refund_to_payment_v4
       //                            for proportional SC reversal).
       "process_payment_v12",
-      "process_payment_v15",
+      // v16 — forks v15. The split-payment "fully paid" test now requires ALL
+      // portions captured (v_portions_remaining = 0) and drops v15's
+      // `balance <= 0.02` dust fallback inside the split branch. On a tiny
+      // order (e.g. a $0.02 custom item split 2 ways) that fallback flipped the
+      // order to `paid` after the FIRST $0.01 portion — amount_paid=$0.01 with a
+      // real portion still owed — and enforce_order_math rejected it (P0005).
+      "process_payment_v16",
       params,
       {
         deadline: DEADLINES.paymentRpc,

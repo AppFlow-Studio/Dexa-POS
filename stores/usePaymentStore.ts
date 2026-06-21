@@ -24,6 +24,7 @@ import { useConflictStore } from "@/stores/useConflictStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
+import { calculateEvenSplitSpread } from "@/lib/order-calculator";
 import { calculateCustomSplitCashAmount } from "@/utils/custom-split-amounts";
 import { create } from "zustand";
 import {
@@ -255,8 +256,8 @@ interface PaymentState {
   markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
   splitEvenly: (
     numberOfPeople: number,
-    amountPerPerson: number,
-    cashAmountPerPerson?: number,
+    cardTotal: number,
+    cashTotal?: number,
   ) => void; // New action for evenly splitting with dual pricing
   resetSplits: () => void; // Action to clear splits when going back
   handleSuccessClose: () => void; // Action to run Done logic when success view is closed
@@ -699,15 +700,29 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }));
   },
 
-  splitEvenly: (numberOfPeople, amountPerPerson, cashAmountPerPerson) => {
+  splitEvenly: (numberOfPeople, cardTotal, cashTotal) => {
+    // Use a largest-remainder spread so portions sum EXACTLY to the total and
+    // differ by at most one cent. This prevents the lost-cent / displayed-vs-
+    // charged divergence raw float division (total / N) produced, AND avoids
+    // the multiple-$0-portion artifact of flooring + dumping the remainder on
+    // the last guest.
+    const cardAmounts = calculateEvenSplitSpread(
+      cardTotal,
+      numberOfPeople,
+    ).amounts;
+    const cashAmounts =
+      cashTotal !== undefined
+        ? calculateEvenSplitSpread(cashTotal, numberOfPeople).amounts
+        : undefined;
+
     const newSplits: Split[] = [];
     for (let i = 0; i < numberOfPeople; i++) {
       newSplits.push({
         id: `split_${Date.now()}_${i}`,
         customerName: `Guest ${i + 1}`,
         items: [],
-        amount: amountPerPerson, // Card pricing (default)
-        cashAmount: cashAmountPerPerson, // Cash pricing for dual-price compliance
+        amount: cardAmounts[i], // Card pricing (default)
+        cashAmount: cashAmounts?.[i], // Cash pricing for dual-price compliance
         status: "pending",
       });
     }
@@ -1033,11 +1048,47 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         // Custom-amount payments use p_amount through the FULL/PARTIAL SQL path
         ...(isPerItemPayment || splitSourceView === "split-custom-amount"
           ? {}
-          : {
-              splitCount: splits.length,
-              splitPortionIndex:
-                splits.findIndex((s) => s.id === activeSplitId) + 1,
-            }),
+          : (() => {
+              // split_portion_index is UNIQUE per (order_id, …) for the whole
+              // order lifetime, but the in-memory `splits` array is rebuilt
+              // from scratch each time the sheet is reopened (e.g. "close and
+              // keep changes" then resume). Using the bare array position would
+              // restart indices at 1 and collide with an already-paid portion
+              // (duplicate key on idx_order_payments_split_portion). Offset by
+              // the count of portions already captured so every portion gets a
+              // globally-unique, monotonic index. split_count and the index
+              // share the SAME `paidBeforeSession` baseline (below) so the index
+              // always lands inside 1..split_count — anchoring only one of them
+              // to the live `paidPortions` pushed the 2nd portion's index to 3
+              // on a 2-way split and the RPC rejected it (P0001 "Invalid split
+              // portion index: 3 (must be 1-2)").
+              const paidPortions = (
+                useOrderStore.getState().ordersById[activeOrderId]?.payments ??
+                []
+              ).filter(
+                (p) => !p.isVoided && p.splitInfo?.portionIndex != null,
+              ).length;
+              const positionInSession = splits.findIndex(
+                (s) => s.id === activeSplitId,
+              );
+              // split_count MUST be stable across every portion of one logical
+              // split so the RPC's last-portion test counts them together.
+              // `paidPortions` is read live and increments as this session's
+              // own portions get captured, so `paidPortions + splits.length`
+              // drifted upward portion-to-portion (2-way split recorded as
+              // split_count 2 then 3). Portions then no longer shared a
+              // split_count, the RPC's `split_count = p_split_count` filter
+              // splintered them, portions_remaining never hit 0, and the order
+              // stuck at `partial` (previously masked by v15's tiny-total dust
+              // fallback, which v16 removed). Subtract this session's already-
+              // captured portions to recover the count of portions paid BEFORE
+              // this session — a value that doesn't move during the session.
+              const paidBeforeSession = paidPortions - positionInSession;
+              return {
+                splitCount: paidBeforeSession + splits.length,
+                splitPortionIndex: paidBeforeSession + positionInSession + 1,
+              };
+            })()),
       });
 
       // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)

@@ -410,6 +410,14 @@ const BillSectionContent = ({
   const activeOrderOutstandingTotal = useOrderStore(
     (s) => s.activeOrderOutstandingTotal ?? 0,
   );
+  // Cash-side outstanding. On a cash-discounted split the payment RPC can drive
+  // the card-side outstanding (activeOrderOutstandingTotal) to 0 after a portion
+  // while the cash side still legitimately owes the rest. Reading only the card
+  // side would disable the Pay button / show $0 due and block continuing the
+  // split, so the balance-due below uses whichever side still owes.
+  const activeOrderOutstandingCash = useOrderStore(
+    (s) => s.activeOrderOutstandingCash ?? 0,
+  );
   // Items-array reference: used for the cart-derived useMemos below. This
   // selector still re-renders on every add (intentional — the component
   // updates badges and button-disabled state). Memoized children skip via
@@ -549,13 +557,14 @@ const BillSectionContent = ({
   // parent render. For new orders without payments, the outstanding equals
   // the total; after payments, the outstanding is what's left.
   const displayBalanceDue = activeOrderHasPayments
-    ? activeOrderOutstandingTotal
+    ? Math.max(activeOrderOutstandingTotal, activeOrderOutstandingCash)
     : activeOrderTotal;
 
   // Check if order is partially paid (has payments but not fully paid)
   const isPartiallyPaid =
     activeOrderHasPayments &&
-    (activeOrderPaidStatus !== "Paid" || activeOrderOutstandingTotal > 0.01);
+    (activeOrderPaidStatus !== "Paid" ||
+      Math.max(activeOrderOutstandingTotal, activeOrderOutstandingCash) > 0.01);
 
   const isCurrentOrderEmptyDraft = useMemo(() => {
     if (!activeOrder) return false;
