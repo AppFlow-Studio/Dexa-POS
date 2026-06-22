@@ -224,8 +224,8 @@ function UiScaleSetting () {
   const OPTIONS: { label: string; value: number | null }[] = [
     { label: 'Small', value: 0.85 },
     { label: 'Default', value: null },
-    { label: 'Large', value: 1.15 },
-    { label: 'Extra Large', value: 1.3 },
+    { label: 'Large', value: 1.1 },
+    { label: 'Extra Large', value: 1.2 },
   ]
 
   return (
