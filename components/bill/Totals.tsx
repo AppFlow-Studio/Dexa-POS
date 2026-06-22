@@ -123,7 +123,13 @@ const TotalsComponent: React.FC = () => {
     }
 
     const orderItems = activeOrder?.items ?? []
-    const refundItems = (activeOrder?.order_refund_items ?? []).map(refund => {
+    const refundItems = (activeOrder?.order_refund_items ?? [])
+      // Drop zero-amount rows: a $0 refund line is never meaningful and would
+      // render a phantom "Refund · <item> $0.00" (e.g. a stale optimistic
+      // placeholder). Filtering zeros also restores the "Refunded $X" total
+      // fallback below when only such placeholders exist.
+      .filter(refund => Number(refund.total_refunded) > 0)
+      .map(refund => {
       const item = orderItems.find(
         orderItem =>
           orderItem.db_order_item_id === refund.order_item_id ||

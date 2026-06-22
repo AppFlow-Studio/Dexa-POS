@@ -1,5 +1,6 @@
 import { useUiScale } from '@/lib/uiScale'
 import { useRefreshActiveOrder } from '@/hooks/pos/useRefreshActiveOrder'
+import { payableQuantity } from '@/lib/payableQuantity'
 import { colors } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
 import { round2 } from '@/utils/money'
@@ -237,7 +238,9 @@ const PayForItemsView: React.FC = () => {
 
   const unpaidItems = useMemo(() => {
     if (!activeOrder) return []
-    return activeOrder.items.filter(item => !item.is_voided && item.quantity > (item.paidQuantity || 0))
+    return activeOrder.items.filter(
+      item => !item.is_voided && payableQuantity(item) > 0
+    )
   }, [activeOrder])
 
   const selectedArray = useMemo(() => Array.from(selectedItems.values()), [selectedItems])
@@ -246,7 +249,11 @@ const PayForItemsView: React.FC = () => {
   const selectedCashTotals = useMemo(() => calculateSelectedCashTax(selectedArray, taxRatesMap), [selectedArray, taxRatesMap])
 
   const allUnpaidArray = useMemo(
-    () => unpaidItems.map(item => ({ item, quantityToPay: item.quantity - (item.paidQuantity || 0) })),
+    () =>
+      unpaidItems.map(item => ({
+        item,
+        quantityToPay: payableQuantity(item)
+      })),
     [unpaidItems]
   )
 
@@ -261,7 +268,7 @@ const PayForItemsView: React.FC = () => {
   const cashSavings = Math.max(0, selectedCardTotalScaled - selectedCashTotalScaled)
 
   const handleAddItem = useCallback((item: CartItem) => {
-    const unpaidQty = item.quantity - (item.paidQuantity || 0)
+    const unpaidQty = payableQuantity(item)
     const current = selectedItems.get(item.id)
     const currentQty = current?.quantityToPay || 0
     if (currentQty < unpaidQty) {
@@ -269,20 +276,35 @@ const PayForItemsView: React.FC = () => {
     }
   }, [selectedItems])
 
-  const handleRemoveItem = useCallback((itemId: string) => {
-    const current = selectedItems.get(itemId)
-    if (!current) return
-    if (current.quantityToPay > 1) {
-      setSelectedItems(prev => { const n = new Map(prev); n.set(itemId, { ...current, quantityToPay: current.quantityToPay - 1 }); return n })
-    } else {
-      setSelectedItems(prev => { const n = new Map(prev); n.delete(itemId); return n })
-    }
-  }, [selectedItems])
+  const handleRemoveItem = useCallback(
+    (itemId: string) => {
+      const current = selectedItems.get(itemId)
+      if (!current) return
+
+      if (current.quantityToPay > 1) {
+        setSelectedItems(prev => {
+          const newMap = new Map(prev)
+          newMap.set(itemId, {
+            ...current,
+            quantityToPay: current.quantityToPay - 1
+          })
+          return newMap
+        })
+      } else {
+        setSelectedItems(prev => {
+          const newMap = new Map(prev)
+          newMap.delete(itemId)
+          return newMap
+        })
+      }
+    },
+    [selectedItems]
+  )
 
   const handleSelectAll = useCallback(() => {
     const newMap = new Map<string, { item: CartItem; quantityToPay: number }>()
     for (const item of unpaidItems) {
-      const unpaidQty = item.quantity - (item.paidQuantity || 0)
+      const unpaidQty = payableQuantity(item)
       newMap.set(item.id, { item, quantityToPay: unpaidQty })
     }
     setSelectedItems(newMap)
@@ -346,7 +368,7 @@ const PayForItemsView: React.FC = () => {
               </View>
             ) : (
               unpaidItems.map(item => {
-                const unpaidQty = item.quantity - (item.paidQuantity || 0)
+                const unpaidQty = payableQuantity(item)
                 const selected = selectedItems.get(item.id)
                 const selectedQty = selected?.quantityToPay || 0
                 const isSelected = selectedQty > 0

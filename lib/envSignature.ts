@@ -39,3 +39,19 @@ export function computeEnvSignature(): string {
 
   return `${ref}|${clerkKind}`;
 }
+
+/**
+ * True only when BOTH halves of a signature are resolved — a real Supabase ref
+ * (not "unknown") and a recognized Clerk kind ("test" or "live").
+ *
+ * A half-injected env at boot (e.g. an empty EXPO_PUBLIC_SUPABASE_URL or a
+ * publishable key that isn't yet `pk_test`/`pk_live`) produces an "unknown"
+ * component. Such a signature must NEVER be treated as a real backend switch —
+ * purging on it would wipe a healthy production session and every tablet's
+ * Clerk token for nothing. The boot guard in lib/storage.ts uses this to refuse
+ * reconciliation until the environment is fully resolved.
+ */
+export function isEnvSignatureWellFormed(signature: string): boolean {
+  const [ref, kind] = signature.split("|");
+  return !!ref && ref !== "unknown" && (kind === "test" || kind === "live");
+}

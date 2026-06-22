@@ -9,6 +9,7 @@
  */
 
 import { isServiceChargeEnabled } from '@/lib/serviceCharge'
+import { payableQuantity } from '@/lib/payableQuantity'
 import { CartItem } from '@/lib/types'
 import {
   DualPriceSplitResult,
@@ -1052,7 +1053,7 @@ export function calculateOrderTotalsWithDetails (
     const cashUnitTotalWithTax = round2(cashTotalWithTax / item.quantity)
 
     // Outstanding amounts
-    const unpaidQuantity = item.quantity - (item.paidQuantity ?? 0)
+    const unpaidQuantity = payableQuantity(item)
     const outstandingProportion =
       item.quantity > 0 ? unpaidQuantity / item.quantity : 0
 

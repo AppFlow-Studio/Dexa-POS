@@ -1,4 +1,5 @@
 import { useUiScale } from "@/lib/uiScale";
+import { payableQuantity } from "@/lib/payableQuantity";
 import { colors } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
 import { round2 } from '@/utils/money';
@@ -223,10 +224,10 @@ const SplitByItemView = () => {
     const newSplits = sorted.map((key, idx) => {
       const name = key === "shared" ? "Shared" : `Seat ${key}`;
       const items = seatGroups[key]
-        .filter(item => item.quantity > (item.paidQuantity || 0))
+        .filter(item => payableQuantity(item) > 0)
         .map(item => ({
           ...item,
-          quantity: item.quantity - (item.paidQuantity || 0),
+          quantity: payableQuantity(item),
         }));
       return {
         id: `split_${Date.now()}_${idx}`,
@@ -261,14 +262,14 @@ const SplitByItemView = () => {
 
   const masterItems = useMemo(
     () => (activeOrder?.items || []).filter(
-      (item) => !item.is_voided && item.quantity > (item.paidQuantity || 0)
+      (item) => !item.is_voided && payableQuantity(item) > 0
     ),
     [activeOrder?.items],
   );
 
   const itemData = useMemo(() => {
     return masterItems.map((item) => {
-      const unpaidQty = item.quantity - (item.paidQuantity || 0);
+      const unpaidQty = payableQuantity(item);
       const currentSplit = splits.find((s) => s.id === activeSplitId);
       const qtyInCurrent =
         currentSplit?.items.find((i) => i.id === item.id)?.quantity || 0;

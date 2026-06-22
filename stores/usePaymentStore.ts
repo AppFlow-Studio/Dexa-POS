@@ -1,4 +1,5 @@
 import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
+import { payableQuantity } from "@/lib/payableQuantity";
 import { isOrderReadOnly } from "@/lib/orderAccessControl";
 import { startInteraction } from "@/lib/perf";
 import {
@@ -1259,7 +1260,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const itemAllocations = (orderForAllocations?.items ?? [])
         .filter((item) => !item.is_voided)
         .map((item) => {
-          const unpaidQty = item.quantity - (item.paidQuantity || 0);
+          const unpaidQty = payableQuantity(item);
           if (unpaidQty <= 0) return null;
           return {
             itemId: item.db_order_item_id || item.id,

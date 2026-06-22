@@ -3879,7 +3879,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     (isPaymentsPending || isPaymentsFetching)
 
   // Map previousOrder to OrderProfile format (same as PreviousOrdersSection)
-  const order = useMemo((): OrderProfile | null => {
+  const resolvedOrder = useMemo((): OrderProfile | null => {
     if (activeOrder) {
       // Merge fetched details into active order if it's missing reversals
       if (fetchedReversals.length > 0 && !activeOrder.reversals?.length) {
@@ -3954,6 +3954,27 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     fetchedRefundItems,
     hydratedPayments
   ])
+
+  // Retain the last-known order so a transient eviction from the store doesn't
+  // blank the sheet. When the app is foregrounded after >2min, PosSyncProvider
+  // invalidates the active-orders query → hydrateWorkspace replaces ordersById,
+  // which can evict a closed/previous order this sheet is showing. Without this
+  // fallback, `order` flips to null and the sheet is stuck on "Loading order...".
+  const lastOrderRef = useRef<{ orderId: string; order: OrderProfile } | null>(
+    null
+  )
+  if (resolvedOrder && orderId) {
+    lastOrderRef.current = { orderId, order: resolvedOrder }
+  } else if (!isOpen || !orderId) {
+    // Clear once the sheet is closed (or has no target) so reopening a
+    // different order can't flash the previous one.
+    lastOrderRef.current = null
+  }
+  const order: OrderProfile | null =
+    resolvedOrder ??
+    (lastOrderRef.current?.orderId === orderId
+      ? lastOrderRef.current.order
+      : null)
 
   // Check if active terminal matches the order's payment terminal type
   const { canProcess: terminalCanProcess, blockReason: terminalBlockReason } =
@@ -4709,8 +4730,24 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           }}
         >
           {!order ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: colors.muted, fontSize: s(13) }}>Loading order...</Text>
+            <View style={{ flex: 1 }}>
+              {/* Header with an always-available escape hatch — never trap the
+                  user on the loading state if the order can't be resolved. */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: s(14), paddingVertical: s(12), borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Text style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}>Payment Details</Text>
+                <TouchableOpacity
+                  onPress={close}
+                  style={{
+                    paddingHorizontal: s(14), paddingVertical: s(7), borderRadius: s(8),
+                    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border
+                  }}
+                >
+                  <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.label }}>CLOSE</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: colors.muted, fontSize: s(13) }}>Loading order...</Text>
+              </View>
             </View>
           ) : (
             <View style={{ flex: 1 }}>
