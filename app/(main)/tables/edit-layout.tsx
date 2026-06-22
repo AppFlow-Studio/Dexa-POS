@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { AddTableBottomSheet } from '@/components/tables/AddTableBottomSheet'
 import DraggableTable from '@/components/tables/DraggableTable'
 import PropertiesPanel from '@/components/tables/PropertiesPanel'
@@ -172,6 +173,9 @@ const LayoutEditorScreenContent = () => {
     isLoading,
     loadingFloorPlanId
   } = useFloorPlanStore()
+
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   // In edit mode: tapping an object selects only that object (single-select).
   // Tapping the already-selected object deselects it.
@@ -547,22 +551,22 @@ const LayoutEditorScreenContent = () => {
           justifyContent: 'center'
         }}
       >
-        <Text style={{ color: colors.label, fontSize: 14 }}>
+        <Text style={{ color: colors.label, fontSize: s(14) }}>
           Loading floor plan…
         </Text>
         <TouchableOpacity
           onPress={() => router.back()}
           style={{
-            marginTop: 16,
-            paddingHorizontal: 16,
-            paddingVertical: 10,
-            borderRadius: 8,
+            marginTop: s(16),
+            paddingHorizontal: s(16),
+            paddingVertical: s(10),
+            borderRadius: s(8),
             backgroundColor: colors.card,
             borderWidth: 1,
             borderColor: colors.border
           }}
         >
-          <Text style={{ color: colors.label, fontSize: 13 }}>Go Back</Text>
+          <Text style={{ color: colors.label, fontSize: s(13) }}>Go Back</Text>
         </TouchableOpacity>
       </View>
     )
@@ -596,10 +600,10 @@ const LayoutEditorScreenContent = () => {
         >
           <View
             style={{
-              minWidth: 200,
-              paddingHorizontal: 20,
-              paddingVertical: 18,
-              borderRadius: 16,
+              minWidth: s(200),
+              paddingHorizontal: s(20),
+              paddingVertical: s(18),
+              borderRadius: s(16),
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
@@ -609,12 +613,12 @@ const LayoutEditorScreenContent = () => {
             <ActivityIndicator
               size='large'
               color={colors.teal}
-              style={{ marginBottom: 10 }}
+              style={{ marginBottom: s(10) }}
             />
             <Text
               style={{
                 color: colors.heading,
-                fontSize: 15,
+                fontSize: s(15),
                 fontWeight: '700'
               }}
             >
@@ -623,9 +627,9 @@ const LayoutEditorScreenContent = () => {
             <Text
               style={{
                 color: colors.muted,
-                fontSize: 12,
+                fontSize: s(12),
                 textAlign: 'center',
-                marginTop: 4
+                marginTop: s(4)
               }}
             >
               Loading walls, tables, and sections
@@ -638,8 +642,8 @@ const LayoutEditorScreenContent = () => {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingHorizontal: 14,
-          paddingVertical: 10,
+          paddingHorizontal: s(14),
+          paddingVertical: s(10),
           backgroundColor: colors.card,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
@@ -647,14 +651,14 @@ const LayoutEditorScreenContent = () => {
         }}
       >
         {/* Left: title */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
           <View>
             <Text
-              style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}
+              style={{ color: colors.heading, fontSize: s(14), fontWeight: '700' }}
             >
               {activeLayout.name}
             </Text>
-            <Text style={{ color: colors.muted, fontSize: 10, marginTop: 1 }}>
+            <Text style={{ color: colors.muted, fontSize: s(10), marginTop: s(1) }}>
               {tables.length} object{tables.length !== 1 ? 's' : ''} on canvas
             </Text>
           </View>
@@ -664,49 +668,49 @@ const LayoutEditorScreenContent = () => {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              marginLeft: 8,
+              marginLeft: s(8),
               backgroundColor: colors.screen,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 8,
+              borderRadius: s(8),
               overflow: 'hidden'
             }}
           >
             <TouchableOpacity
               onPress={undo}
               disabled={!hasHistory}
-              style={{ padding: 8, opacity: hasHistory ? 1 : 0.3 }}
+              style={{ padding: s(8), opacity: hasHistory ? 1 : 0.3 }}
             >
-              <Undo2 size={15} color={colors.label} />
+              <Undo2 size={s(15)} color={colors.label} />
             </TouchableOpacity>
             <View
-              style={{ width: 1, height: 20, backgroundColor: colors.border }}
+              style={{ width: 1, height: s(20), backgroundColor: colors.border }}
             />
             <TouchableOpacity
               onPress={redo}
               disabled={!hasFuture}
-              style={{ padding: 8, opacity: hasFuture ? 1 : 0.3 }}
+              style={{ padding: s(8), opacity: hasFuture ? 1 : 0.3 }}
             >
-              <Redo2 size={15} color={colors.label} />
+              <Redo2 size={s(15)} color={colors.label} />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Right: Add + Save */}
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: s(8) }}>
           <TouchableOpacity
             onPress={() => setCanvasSizeModalOpen(true)}
             style={{
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 8,
+              paddingHorizontal: s(14),
+              paddingVertical: s(8),
+              borderRadius: s(8),
               backgroundColor: colors.screen,
               borderWidth: 1,
               borderColor: colors.border
             }}
           >
             <Text
-              style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}
+              style={{ color: colors.label, fontWeight: '600', fontSize: s(13) }}
             >
               Canvas
             </Text>
@@ -716,18 +720,18 @@ const LayoutEditorScreenContent = () => {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 6,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 8,
+              gap: s(6),
+              paddingHorizontal: s(14),
+              paddingVertical: s(8),
+              borderRadius: s(8),
               backgroundColor: colors.teal + '20',
               borderWidth: 1,
               borderColor: colors.teal + '60'
             }}
           >
-            <Plus size={14} color={colors.teal} />
+            <Plus size={s(14)} color={colors.teal} />
             <Text
-              style={{ color: colors.teal, fontWeight: '700', fontSize: 13 }}
+              style={{ color: colors.teal, fontWeight: '700', fontSize: s(13) }}
             >
               Add Object
             </Text>
@@ -735,16 +739,16 @@ const LayoutEditorScreenContent = () => {
           <TouchableOpacity
             onPress={() => router.back()}
             style={{
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 8,
+              paddingHorizontal: s(14),
+              paddingVertical: s(8),
+              borderRadius: s(8),
               backgroundColor: colors.screen,
               borderWidth: 1,
               borderColor: colors.border
             }}
           >
             <Text
-              style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}
+              style={{ color: colors.label, fontWeight: '600', fontSize: s(13) }}
             >
               Save & Exit
             </Text>
@@ -801,23 +805,23 @@ const LayoutEditorScreenContent = () => {
           <View
             style={{
               position: 'absolute',
-              bottom: 14,
-              right: 14,
-              gap: 6,
+              bottom: s(14),
+              right: s(14),
+              gap: s(6),
               zIndex: 20
             }}
           >
             {[
               {
-                icon: <Plus size={15} color={colors.label} />,
+                icon: <Plus size={s(15)} color={colors.label} />,
                 onPress: () => handleZoom('in')
               },
               {
-                icon: <Minus size={15} color={colors.label} />,
+                icon: <Minus size={s(15)} color={colors.label} />,
                 onPress: () => handleZoom('out')
               },
               {
-                icon: <Maximize2 size={15} color={colors.label} />,
+                icon: <Maximize2 size={s(15)} color={colors.label} />,
                 onPress: recenterCanvas
               }
             ].map((btn, i) => (
@@ -825,9 +829,9 @@ const LayoutEditorScreenContent = () => {
                 key={i}
                 onPress={btn.onPress}
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 8,
+                  width: s(36),
+                  height: s(36),
+                  borderRadius: s(8),
                   alignItems: 'center',
                   justifyContent: 'center',
                   backgroundColor: colors.card,
@@ -867,9 +871,9 @@ const LayoutEditorScreenContent = () => {
           >
             <View
               style={{
-                width: 360,
+                width: s(360),
                 backgroundColor: colors.card,
-                borderRadius: 16,
+                borderRadius: s(16),
                 borderWidth: 1,
                 borderColor: colors.border,
                 overflow: 'hidden'
@@ -877,8 +881,8 @@ const LayoutEditorScreenContent = () => {
             >
               <View
                 style={{
-                  paddingHorizontal: 18,
-                  paddingVertical: 14,
+                  paddingHorizontal: s(18),
+                  paddingVertical: s(14),
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border
                 }}
@@ -886,26 +890,26 @@ const LayoutEditorScreenContent = () => {
                 <Text
                   style={{
                     color: colors.heading,
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: '700'
                   }}
                 >
                   Canvas Size
                 </Text>
                 <Text
-                  style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}
+                  style={{ color: colors.muted, fontSize: s(11), marginTop: s(3) }}
                 >
                   Set the stored floor plan workspace size.
                 </Text>
               </View>
 
-              <View style={{ padding: 16, gap: 12 }}>
+              <View style={{ padding: s(16), gap: s(12) }}>
                 <View>
                   <Text
                     style={{
                       color: colors.muted,
-                      fontSize: 10,
-                      marginBottom: 6
+                      fontSize: s(10),
+                      marginBottom: s(6)
                     }}
                   >
                     Width
@@ -919,11 +923,11 @@ const LayoutEditorScreenContent = () => {
                       backgroundColor: colors.screen,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 10,
+                      borderRadius: s(8),
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(10),
                       color: colors.heading,
-                      fontSize: 13
+                      fontSize: s(13)
                     }}
                   />
                 </View>
@@ -932,8 +936,8 @@ const LayoutEditorScreenContent = () => {
                   <Text
                     style={{
                       color: colors.muted,
-                      fontSize: 10,
-                      marginBottom: 6
+                      fontSize: s(10),
+                      marginBottom: s(6)
                     }}
                   >
                     Height
@@ -947,16 +951,16 @@ const LayoutEditorScreenContent = () => {
                       backgroundColor: colors.screen,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 10,
+                      borderRadius: s(8),
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(10),
                       color: colors.heading,
-                      fontSize: 13
+                      fontSize: s(13)
                     }}
                   />
                 </View>
 
-                <Text style={{ color: colors.muted, fontSize: 11 }}>
+                <Text style={{ color: colors.muted, fontSize: s(11) }}>
                   Min {MIN_CANVAS_DIMENSION}, max {MAX_CANVAS_DIMENSION}.
                 </Text>
               </View>
@@ -964,8 +968,8 @@ const LayoutEditorScreenContent = () => {
               <View
                 style={{
                   flexDirection: 'row',
-                  gap: 8,
-                  padding: 14,
+                  gap: s(8),
+                  padding: s(14),
                   borderTopWidth: 1,
                   borderTopColor: colors.border
                 }}
@@ -974,8 +978,8 @@ const LayoutEditorScreenContent = () => {
                   onPress={() => setCanvasSizeModalOpen(false)}
                   style={{
                     flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 9,
+                    paddingVertical: s(10),
+                    borderRadius: s(9),
                     alignItems: 'center',
                     backgroundColor: colors.screen,
                     borderWidth: 1,
@@ -986,7 +990,7 @@ const LayoutEditorScreenContent = () => {
                     style={{
                       color: colors.label,
                       fontWeight: '600',
-                      fontSize: 13
+                      fontSize: s(13)
                     }}
                   >
                     Cancel
@@ -996,8 +1000,8 @@ const LayoutEditorScreenContent = () => {
                   onPress={handleSaveCanvasSize}
                   style={{
                     flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 9,
+                    paddingVertical: s(10),
+                    borderRadius: s(9),
                     alignItems: 'center',
                     backgroundColor: colors.teal + '20',
                     borderWidth: 1,
@@ -1008,7 +1012,7 @@ const LayoutEditorScreenContent = () => {
                     style={{
                       color: colors.teal,
                       fontWeight: '700',
-                      fontSize: 13
+                      fontSize: s(13)
                     }}
                   >
                     Save

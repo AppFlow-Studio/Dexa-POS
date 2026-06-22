@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import {
   getClosestSizePreset,
   getDimensionsForSizePreset,
@@ -33,6 +34,8 @@ interface PropertiesPanelProps {
 }
 
 const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const {
     updateTableName,
     removeTable,
@@ -73,21 +76,21 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
 
   const labelStyle = {
     color: colors.muted,
-    fontSize: 9,
+    fontSize: s(9),
     fontWeight: '700' as const,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.8,
-    marginBottom: 5
+    marginBottom: s(5)
   }
 
   const inputStyle = {
     backgroundColor: colors.panel,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
+    borderRadius: s(8),
+    paddingHorizontal: s(10),
+    paddingVertical: s(8),
+    fontSize: s(13),
     color: colors.heading
   }
 
@@ -122,11 +125,11 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{
         position: 'absolute',
-        top: 14,
-        right: 14,
-        width: 280,
+        bottom: s(14),
+        left: s(14),
+        width: s(280),
         backgroundColor: colors.card,
-        borderRadius: 14,
+        borderRadius: s(14),
         borderWidth: 1,
         borderColor: colors.border
       }}
@@ -136,30 +139,30 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingHorizontal: 14,
-          paddingVertical: 11,
+          paddingHorizontal: s(14),
+          paddingVertical: s(11),
           borderBottomWidth: 1,
           borderBottomColor: colors.border
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
           <Text
-            style={{ color: colors.heading, fontSize: 13, fontWeight: '700' }}
+            style={{ color: colors.heading, fontSize: s(13), fontWeight: '700' }}
           >
             Properties
           </Text>
           <View
             style={{
-              paddingHorizontal: 7,
-              paddingVertical: 2,
-              borderRadius: 6,
+              paddingHorizontal: s(7),
+              paddingVertical: s(2),
+              borderRadius: s(6),
               backgroundColor: colors.inset,
               borderWidth: 1,
               borderColor: colors.border
             }}
           >
             <Text
-              style={{ color: colors.label, fontSize: 10, fontWeight: '600' }}
+              style={{ color: colors.label, fontSize: s(10), fontWeight: '600' }}
             >
               {table.name}
             </Text>
@@ -168,18 +171,18 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
         <TouchableOpacity
           onPress={clearSelection}
           style={{
-            padding: 5,
-            borderRadius: 6,
+            padding: s(5),
+            borderRadius: s(6),
             backgroundColor: colors.inset,
             borderWidth: 1,
             borderColor: colors.border
           }}
         >
-          <X size={13} color={colors.label} />
+          <X size={s(13)} color={colors.label} />
         </TouchableOpacity>
       </View>
 
-      <View style={{ padding: 14, gap: 12 }}>
+      <View style={{ padding: s(14), gap: s(12) }}>
         <View>
           <Text style={labelStyle}>Name</Text>
           <TextInput
@@ -194,7 +197,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
 
         <View>
           <Text style={labelStyle}>Size</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: s(8) }}>
             {OBJECT_SIZE_PRESETS.map(preset => {
               const isActive = sizePreset === preset.id
               return (
@@ -205,8 +208,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
                   style={{
                     flex: 1,
                     alignItems: 'center',
-                    paddingVertical: 10,
-                    borderRadius: 8,
+                    paddingVertical: s(10),
+                    borderRadius: s(8),
                     backgroundColor: isActive
                       ? colors.teal + '20'
                       : isLocked
@@ -220,7 +223,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
                   <Text
                     style={{
                       color: isActive ? colors.teal : colors.label,
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '700'
                     }}
                   >
@@ -235,7 +238,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
 
         <View>
           <Text style={labelStyle}>Rotation</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: s(8) }}>
             <TouchableOpacity
               disabled={isLocked}
               onPress={() => handleRotate('left')}
@@ -244,18 +247,18 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 5,
-                paddingVertical: 8,
-                borderRadius: 8,
+                gap: s(5),
+                paddingVertical: s(8),
+                borderRadius: s(8),
                 backgroundColor: isLocked ? colors.inset : colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
                 opacity: isLocked ? 0.55 : 1
               }}
             >
-              <RotateCcw size={13} color={colors.label} />
+              <RotateCcw size={s(13)} color={colors.label} />
               <Text
-                style={{ color: colors.label, fontSize: 12, fontWeight: '600' }}
+                style={{ color: colors.label, fontSize: s(12), fontWeight: '600' }}
               >
                 {`-${rotationStep} deg`}
               </Text>
@@ -268,18 +271,18 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 5,
-                paddingVertical: 8,
-                borderRadius: 8,
+                gap: s(5),
+                paddingVertical: s(8),
+                borderRadius: s(8),
                 backgroundColor: isLocked ? colors.inset : colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
                 opacity: isLocked ? 0.55 : 1
               }}
             >
-              <RotateCw size={13} color={colors.label} />
+              <RotateCw size={s(13)} color={colors.label} />
               <Text
-                style={{ color: colors.label, fontSize: 12, fontWeight: '600' }}
+                style={{ color: colors.label, fontSize: s(12), fontWeight: '600' }}
               >
                 {`+${rotationStep} deg`}
               </Text>
@@ -295,24 +298,24 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 6,
-              paddingVertical: 9,
-              borderRadius: 8,
+              gap: s(6),
+              paddingVertical: s(9),
+              borderRadius: s(8),
               backgroundColor: isLocked ? colors.warning + '18' : colors.panel,
               borderWidth: 1,
               borderColor: isLocked ? colors.warning + '55' : colors.border
             }}
           >
             {isLocked ? (
-              <Lock size={13} color={colors.warning} />
+              <Lock size={s(13)} color={colors.warning} />
             ) : (
-              <Unlock size={13} color={colors.label} />
+              <Unlock size={s(13)} color={colors.label} />
             )}
             <Text
               style={{
                 color: isLocked ? colors.warning : colors.label,
                 fontWeight: '700',
-                fontSize: 13
+                fontSize: s(13)
               }}
             >
               {isLocked ? 'Locked' : 'Unlocked'}
@@ -326,17 +329,17 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 6,
-            paddingVertical: 9,
-            borderRadius: 8,
+            gap: s(6),
+            paddingVertical: s(9),
+            borderRadius: s(8),
             backgroundColor: colors.danger + '14',
             borderWidth: 1,
             borderColor: colors.danger + '50'
           }}
         >
-          <Trash2 size={13} color={colors.danger} />
+          <Trash2 size={s(13)} color={colors.danger} />
           <Text
-            style={{ color: colors.danger, fontWeight: '700', fontSize: 13 }}
+            style={{ color: colors.danger, fontWeight: '700', fontSize: s(13) }}
           >
             Delete
           </Text>
@@ -359,9 +362,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
         >
           <View
             style={{
-              width: 300,
+              width: s(300),
               backgroundColor: colors.card,
-              borderRadius: 14,
+              borderRadius: s(14),
               borderWidth: 1,
               borderColor: colors.border,
               overflow: 'hidden'
@@ -369,27 +372,27 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
           >
             <View
               style={{
-                padding: 18,
+                padding: s(18),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border
               }}
             >
               <Text
-                style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}
+                style={{ color: colors.heading, fontSize: s(14), fontWeight: '700' }}
               >
                 {`Delete "${table.name}"?`}
               </Text>
-              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
+              <Text style={{ color: colors.muted, fontSize: s(12), marginTop: s(4) }}>
                 This cannot be undone.
               </Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8, padding: 14 }}>
+            <View style={{ flexDirection: 'row', gap: s(8), padding: s(14) }}>
               <TouchableOpacity
                 onPress={() => setShowDeleteConfirm(false)}
                 style={{
                   flex: 1,
-                  paddingVertical: 9,
-                  borderRadius: 8,
+                  paddingVertical: s(9),
+                  borderRadius: s(8),
                   alignItems: 'center',
                   backgroundColor: colors.inset,
                   borderWidth: 1,
@@ -397,7 +400,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
                 }}
               >
                 <Text
-                  style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}
+                  style={{ color: colors.label, fontWeight: '600', fontSize: s(13) }}
                 >
                   Cancel
                 </Text>
@@ -406,8 +409,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
                 onPress={handleDelete}
                 style={{
                   flex: 1,
-                  paddingVertical: 9,
-                  borderRadius: 8,
+                  paddingVertical: s(9),
+                  borderRadius: s(8),
                   alignItems: 'center',
                   backgroundColor: colors.danger + '20',
                   borderWidth: 1,
@@ -415,7 +418,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
                 }}
               >
                 <Text
-                  style={{ color: colors.danger, fontWeight: '700', fontSize: 13 }}
+                  style={{ color: colors.danger, fontWeight: '700', fontSize: s(13) }}
                 >
                   Delete
                 </Text>

@@ -5,6 +5,7 @@ import { TABLE_SHAPES } from "@/lib/table-shapes";
 import { colors } from "@/lib/theme";
 import { getWallEdgeFlags, WallEdgeFlags } from "@/lib/wallCornerSnap";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useUiScale } from "@/lib/uiScale";
 import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
 import { Lock, LockOpen, Minus, Plus } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -117,6 +118,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   disableLongPress = false,
   interactionMode = "normal",
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+
   const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
   // useShallow: both selectors return arrays. Without shallow equality, every
   // mutation to useFloorPlanStore (even unrelated) returns a new array ref and
@@ -947,8 +951,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       <View
         style={{
           position: "absolute",
-          top: 10,
-          right: 56,
+          top: s(10),
+          right: s(56),
           zIndex: 30,
           alignItems: "center",
         }}
@@ -959,9 +963,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
           onLongPress={handleLockLongPress}
           delayLongPress={500}
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
+            width: s(32),
+            height: s(32),
+            borderRadius: s(8),
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: viewLocked ? colors.panel : colors.warning + "20",
@@ -969,11 +973,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             borderColor: viewLocked ? colors.border : colors.warning + "50",
           }}
         >
-          <View style={{ transform: [{ translateY: -1 }] }}>
+          <View style={{ transform: [{ translateY: s(-1) }] }}>
             {viewLocked ? (
-              <Lock size={14} color={colors.label} />
+              <Lock size={s(14)} color={colors.label} />
             ) : (
-              <LockOpen size={14} color={colors.warning} />
+              <LockOpen size={s(14)} color={colors.warning} />
             )}
           </View>
         </TouchableOpacity>
@@ -982,11 +986,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         {showTooltip && (
           <View
             style={{
-              marginTop: 8,
-              minWidth: 120,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 8,
+              marginTop: s(8),
+              minWidth: s(120),
+              paddingHorizontal: s(10),
+              paddingVertical: s(6),
+              borderRadius: s(8),
               backgroundColor: colors.card + "F0",
               borderWidth: 1,
               borderColor: colors.border,
@@ -996,7 +1000,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
           >
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "500",
                 color: colors.label,
                 textAlign: "center",
@@ -1012,10 +1016,10 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       <View
         style={{
           position: "absolute",
-          bottom: 12,
-          right: 12,
+          bottom: s(12),
+          right: s(12),
           zIndex: 20,
-          gap: 4,
+          gap: s(4),
           pointerEvents: "box-none",
         }}
       >
@@ -1059,9 +1063,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
           }}
           style={{
             pointerEvents: "auto",
-            width: 36,
-            height: 36,
-            borderRadius: 8,
+            width: s(36),
+            height: s(36),
+            borderRadius: s(8),
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: colors.panel,
@@ -1069,7 +1073,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             borderColor: colors.border,
           }}
         >
-          <Plus color={colors.label} size={16} />
+          <Plus color={colors.label} size={s(16)} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => {
@@ -1111,9 +1115,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
           }}
           style={{
             pointerEvents: "auto",
-            width: 36,
-            height: 36,
-            borderRadius: 8,
+            width: s(36),
+            height: s(36),
+            borderRadius: s(8),
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: colors.panel,
@@ -1121,7 +1125,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             borderColor: colors.border,
           }}
         >
-          <Minus color={colors.label} size={16} />
+          <Minus color={colors.label} size={s(16)} />
         </TouchableOpacity>
       </View>
     </View>

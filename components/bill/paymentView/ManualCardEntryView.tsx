@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { PaymentErrorModal } from '@/components/bill/paymentView/PaymentErrorModal'
 import { TerminalDetachedModal } from '@/components/payment/TerminalDetachedModal'
 import { TerminalStatusBanner } from '@/components/payment/TerminalStatusBanner'
@@ -43,6 +44,8 @@ import {
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
 
 const ManualCardEntryView = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const supabase = useSupabaseClient()
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const orderTotals = useActiveOrderTotals()
@@ -358,14 +361,14 @@ const ManualCardEntryView = () => {
         contentContainerStyle={{
           flexGrow: 1,
           justifyContent: 'space-between',
-          padding: 16
+          padding: s(16)
         }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps='handled'
       >
         {/* Terminal Status Banner */}
         {terminalStatus !== 'online' && (
-          <View style={{ marginBottom: 16 }}>
+          <View style={{ marginBottom: s(16) }}>
             <TerminalStatusBanner
               status={terminalStatus}
               errorMessage={terminalErrorMessage || undefined}
@@ -390,29 +393,29 @@ const ManualCardEntryView = () => {
           {/* READY STATE */}
           {status === 'ready' && (
             <View style={{ width: '100%', maxWidth: 400 }}>
-              <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              <View style={{ alignItems: 'center', marginBottom: s(16) }}>
                 {/* Manual Key-in badge */}
                 <View
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: 12,
+                    marginBottom: s(12),
                     backgroundColor: `${colors.teal}15`,
-                    paddingVertical: 5,
-                    paddingHorizontal: 12,
-                    borderRadius: 20,
+                    paddingVertical: s(5),
+                    paddingHorizontal: s(12),
+                    borderRadius: s(20),
                     alignSelf: 'center',
                     borderWidth: 1,
                     borderColor: `${colors.teal}30`,
-                    gap: 5
+                    gap: s(5)
                   }}
                 >
-                  <Keyboard size={11} color={colors.teal} />
+                  <Keyboard size={s(11)} color={colors.teal} />
                   <Text
                     style={{
                       color: colors.teal,
-                      fontSize: 10,
+                      fontSize: s(10),
                       fontWeight: '700',
                       textTransform: 'uppercase',
                       letterSpacing: 0.8
@@ -425,11 +428,11 @@ const ManualCardEntryView = () => {
                 <Text
                   style={{
                     color: colors.muted,
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '700',
                     textTransform: 'uppercase',
                     letterSpacing: 0.8,
-                    marginBottom: 4
+                    marginBottom: s(4)
                   }}
                 >
                   {activeSplit
@@ -438,10 +441,10 @@ const ManualCardEntryView = () => {
                 </Text>
                 <Text
                   style={{
-                    fontSize: 36,
+                    fontSize: s(36),
                     fontWeight: '700',
                     color: colors.teal,
-                    marginBottom: 20
+                    marginBottom: s(20)
                   }}
                 >
                   ${totalToPay.toFixed(2)}
@@ -453,11 +456,11 @@ const ManualCardEntryView = () => {
                     <Text
                       style={{
                         color: colors.muted,
-                        fontSize: 11,
+                        fontSize: s(11),
                         fontWeight: '700',
                         textTransform: 'uppercase',
                         letterSpacing: 0.8,
-                        marginBottom: 6,
+                        marginBottom: s(6),
                         alignSelf: 'flex-start'
                       }}
                     >
@@ -467,9 +470,9 @@ const ManualCardEntryView = () => {
                     <View
                       style={{
                         flexDirection: 'row',
-                        gap: 6,
+                        gap: s(6),
                         width: '100%',
-                        marginBottom: 10
+                        marginBottom: s(10)
                       }}
                     >
                       {TIP_PRESETS.map(percent => {
@@ -480,8 +483,8 @@ const ManualCardEntryView = () => {
                             onPress={() => handleTipPreset(percent)}
                             style={{
                               flex: 1,
-                              paddingVertical: 8,
-                              borderRadius: 8,
+                              paddingVertical: s(8),
+                              borderRadius: s(8),
                               borderWidth: 1,
                               backgroundColor: isActive
                                 ? `${colors.teal}15`
@@ -492,7 +495,7 @@ const ManualCardEntryView = () => {
                           >
                             <Text
                               style={{
-                                fontSize: 13,
+                                fontSize: s(13),
                                 fontWeight: '700',
                                 color: isActive ? colors.heading : colors.muted
                               }}
@@ -501,8 +504,8 @@ const ManualCardEntryView = () => {
                             </Text>
                             <Text
                               style={{
-                                fontSize: 10,
-                                marginTop: 1,
+                                fontSize: s(10),
+                                marginTop: s(1),
                                 color: isActive ? colors.teal : colors.muted
                               }}
                             >
@@ -520,18 +523,18 @@ const ManualCardEntryView = () => {
                         backgroundColor: colors.panel,
                         borderWidth: 1,
                         borderColor: colors.border,
-                        borderRadius: 8,
-                        paddingHorizontal: 12,
-                        height: 44,
+                        borderRadius: s(8),
+                        paddingHorizontal: s(12),
+                        height: s(44),
                         width: '100%',
-                        marginBottom: 16
+                        marginBottom: s(16)
                       }}
                     >
                       <Text
                         style={{
                           color: colors.muted,
-                          fontSize: 15,
-                          marginRight: 4
+                          fontSize: s(15),
+                          marginRight: s(4)
                         }}
                       >
                         $
@@ -544,7 +547,7 @@ const ManualCardEntryView = () => {
                         placeholderTextColor={colors.muted}
                         style={{
                           flex: 1,
-                          fontSize: 16,
+                          fontSize: s(16),
                           fontWeight: '700',
                           color: colors.heading
                         }}
@@ -560,16 +563,16 @@ const ManualCardEntryView = () => {
                     width: '100%',
                     borderTopWidth: 1,
                     borderTopColor: colors.border,
-                    paddingTop: 10
+                    paddingTop: s(10)
                   }}
                 >
-                  <Text style={{ color: colors.muted, fontSize: 13 }}>
+                  <Text style={{ color: colors.muted, fontSize: s(13) }}>
                     Grand Total
                   </Text>
                   <Text
                     style={{
                       color: colors.heading,
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '700'
                     }}
                   >
@@ -582,7 +585,7 @@ const ManualCardEntryView = () => {
 
           {/* PROCESSING / SUCCESS STATES */}
           {(status === 'processing' || status === 'success') && (
-            <View style={{ marginBottom: 24, alignItems: 'center' }}>
+            <View style={{ marginBottom: s(24), alignItems: 'center' }}>
               {status === 'processing' && (
                 <Animated.View
                   entering={iosOnly(FadeIn)}
@@ -590,13 +593,13 @@ const ManualCardEntryView = () => {
                 >
                   <View
                     style={{
-                      width: 72,
-                      height: 72,
-                      borderRadius: 36,
+                      width: s(72),
+                      height: s(72),
+                      borderRadius: s(36),
                       backgroundColor: `${colors.teal}15`,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginBottom: 12,
+                      marginBottom: s(12),
                       borderWidth: 1,
                       borderColor: `${colors.teal}30`
                     }}
@@ -607,21 +610,21 @@ const ManualCardEntryView = () => {
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 6,
+                      gap: s(6),
                       backgroundColor: colors.panel,
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 20,
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(6),
+                      borderRadius: s(20),
                       borderWidth: 1,
                       borderColor: colors.border
                     }}
                   >
-                    <Wifi size={13} color={colors.success} />
+                    <Wifi size={s(13)} color={colors.success} />
                     <Text
                       style={{
                         color: colors.muted,
                         fontWeight: '600',
-                        fontSize: 12
+                        fontSize: s(12)
                       }}
                     >
                       Terminal Connected
@@ -637,24 +640,24 @@ const ManualCardEntryView = () => {
                 >
                   <View
                     style={{
-                      width: 72,
-                      height: 72,
-                      borderRadius: 36,
+                      width: s(72),
+                      height: s(72),
+                      borderRadius: s(36),
                       backgroundColor: `${colors.success}15`,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginBottom: 12,
+                      marginBottom: s(12),
                       borderWidth: 1,
                       borderColor: `${colors.success}30`
                     }}
                   >
-                    <CheckCircle2 size={36} color={colors.success} />
+                    <CheckCircle2 size={s(36)} color={colors.success} />
                   </View>
                   <Text
                     style={{
                       color: colors.success,
                       fontWeight: '700',
-                      fontSize: 13
+                      fontSize: s(13)
                     }}
                   >
                     Approved
@@ -662,13 +665,13 @@ const ManualCardEntryView = () => {
                 </Animated.View>
               )}
 
-              <View style={{ marginTop: 16, alignItems: 'center' }}>
+              <View style={{ marginTop: s(16), alignItems: 'center' }}>
                 <Text
                   style={{
-                    fontSize: 20,
+                    fontSize: s(20),
                     fontWeight: '700',
                     color: colors.heading,
-                    marginBottom: 4,
+                    marginBottom: s(4),
                     textAlign: 'center'
                   }}
                 >
@@ -679,7 +682,7 @@ const ManualCardEntryView = () => {
                 <Text
                   style={{
                     color: colors.muted,
-                    fontSize: 13,
+                    fontSize: s(13),
                     textAlign: 'center'
                   }}
                 >
@@ -712,9 +715,9 @@ const ManualCardEntryView = () => {
               disabled={!terminalReady}
               style={{
                 width: '100%',
-                paddingVertical: 11,
-                borderRadius: 8,
-                marginBottom: 8,
+                paddingVertical: s(11),
+                borderRadius: s(8),
+                marginBottom: s(8),
                 alignItems: 'center',
                 backgroundColor: terminalReady ? colors.teal : colors.panel,
                 borderWidth: terminalReady ? 0 : 1,
@@ -726,7 +729,7 @@ const ManualCardEntryView = () => {
                 style={{
                   color: terminalReady ? '#fff' : colors.muted,
                   fontWeight: '700',
-                  fontSize: 14
+                  fontSize: s(14)
                 }}
               >
                 Process on Terminal ${grandTotal.toFixed(2)}
@@ -754,17 +757,17 @@ const ManualCardEntryView = () => {
               }}
               style={{
                 width: '100%',
-                paddingVertical: 10,
+                paddingVertical: s(10),
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 8,
+                borderRadius: s(8),
                 opacity: isCancelling ? 0.5 : 1
               }}
             >
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '600',
                   color: colors.muted,
                   textAlign: 'center'

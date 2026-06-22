@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { calculateEvenSplitSpread } from '@/lib/order-calculator'
 import { colors } from '@/lib/theme'
 import {
@@ -18,6 +19,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
 const SplitEvenlyView = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const setView = usePaymentStore(s => s.setView)
   const splitEvenly = usePaymentStore(s => s.splitEvenly)
   const startSplitPaymentFlow = usePaymentStore(s => s.startSplitPaymentFlow)
@@ -174,8 +177,8 @@ const SplitEvenlyView = () => {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 14,
-          paddingVertical: 12,
+          paddingHorizontal: s(14),
+          paddingVertical: s(12),
           borderBottomWidth: 1,
           borderBottomColor: colors.border
         }}
@@ -183,24 +186,24 @@ const SplitEvenlyView = () => {
         <TouchableOpacity
           onPress={handleGoBack}
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 10,
+            width: s(32),
+            height: s(32),
+            borderRadius: s(10),
             backgroundColor: `${colors.teal}10`,
             alignItems: 'center',
             justifyContent: 'center',
-            marginRight: 10
+            marginRight: s(10)
           }}
         >
-          <ArrowLeft size={16} color={colors.teal} />
+          <ArrowLeft size={s(16)} color={colors.teal} />
         </TouchableOpacity>
         <View>
           <Text
-            style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
           >
             Split Evenly
           </Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>
             Divide the total bill equally.
           </Text>
         </View>
@@ -212,15 +215,15 @@ const SplitEvenlyView = () => {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 14,
-            paddingVertical: 8,
+            paddingHorizontal: s(14),
+            paddingVertical: s(8),
             backgroundColor: `${colors.success}15`,
             borderBottomWidth: 1,
             borderBottomColor: `${colors.success}30`
           }}
         >
           <Text
-            style={{ fontSize: 12, color: colors.success, fontWeight: '600' }}
+            style={{ fontSize: s(12), color: colors.success, fontWeight: '600' }}
           >
             {existingSplitInfo.paidCount} of {existingSplitInfo.totalPortions}{' '}
             guests have paid (${existingSplitInfo.amountCollected.toFixed(2)}{' '}
@@ -230,13 +233,13 @@ const SplitEvenlyView = () => {
       )}
 
       {/* Main Content */}
-      <View style={{ flex: 1, flexDirection: 'row', padding: 14, gap: 12 }}>
+      <View style={{ flex: 1, flexDirection: 'row', padding: s(14), gap: s(12) }}>
         {/* LEFT: Controls */}
         <View
           style={{
             flex: 1,
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
             justifyContent: 'center',
@@ -246,38 +249,38 @@ const SplitEvenlyView = () => {
           <View style={{ alignItems: 'center' }}>
             <View
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
+                width: s(44),
+                height: s(44),
+                borderRadius: s(22),
                 backgroundColor: `${colors.teal}15`,
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: 12
+                marginBottom: s(12)
               }}
             >
-              <Users size={20} color={colors.teal} />
+              <Users size={s(20)} color={colors.teal} />
             </View>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '600',
                 color: colors.label,
-                marginBottom: 18
+                marginBottom: s(18)
               }}
             >
               Number of People
             </Text>
 
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(18) }}
             >
               <TouchableOpacity
                 onPress={handleDecrement}
                 disabled={numberOfPeople <= 2}
                 style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
+                  width: s(40),
+                  height: s(40),
+                  borderRadius: s(20),
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderWidth: 1.5,
@@ -288,17 +291,17 @@ const SplitEvenlyView = () => {
                 }}
               >
                 <Minus
-                  size={18}
+                  size={s(18)}
                   color={numberOfPeople <= 2 ? colors.muted : colors.heading}
                 />
               </TouchableOpacity>
 
               <Text
                 style={{
-                  fontSize: 44,
+                  fontSize: s(44),
                   fontWeight: '700',
                   color: colors.heading,
-                  width: 72,
+                  width: s(72),
                   textAlign: 'center'
                 }}
               >
@@ -309,9 +312,9 @@ const SplitEvenlyView = () => {
                 onPress={handleIncrement}
                 disabled={numberOfPeople >= maxPeople}
                 style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
+                  width: s(40),
+                  height: s(40),
+                  borderRadius: s(20),
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderWidth: 1.5,
@@ -322,7 +325,7 @@ const SplitEvenlyView = () => {
                 }}
               >
                 <Plus
-                  size={18}
+                  size={s(18)}
                   color={
                     numberOfPeople >= maxPeople ? colors.muted : colors.heading
                   }
@@ -338,12 +341,12 @@ const SplitEvenlyView = () => {
             style={{
               flex: 1,
               backgroundColor: colors.panel,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
-              padding: 16,
+              padding: s(16),
               justifyContent: 'center',
-              marginBottom: 10
+              marginBottom: s(10)
             }}
           >
             {/* Total Bill */}
@@ -352,19 +355,19 @@ const SplitEvenlyView = () => {
                 flexDirection: 'row',
                 justifyContent: 'space-between',
                 alignItems: 'flex-end',
-                marginBottom: 14,
-                paddingBottom: 14,
+                marginBottom: s(14),
+                paddingBottom: s(14),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border
               }}
             >
               <Text
-                style={{ color: colors.muted, fontSize: 13, fontWeight: '500' }}
+                style={{ color: colors.muted, fontSize: s(13), fontWeight: '500' }}
               >
                 {isReEntry ? 'Remaining Bill' : 'Total Bill'}
               </Text>
               <Text
-                style={{ fontSize: 18, fontWeight: '700', color: colors.label }}
+                style={{ fontSize: s(18), fontWeight: '700', color: colors.label }}
               >
                 ${effectiveTotal.toFixed(2)}
               </Text>
@@ -374,11 +377,11 @@ const SplitEvenlyView = () => {
             <Text
               style={{
                 color: colors.muted,
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '600',
                 textTransform: 'uppercase',
                 letterSpacing: 0.5,
-                marginBottom: 10
+                marginBottom: s(10)
               }}
             >
               Per Person Breakdown
@@ -388,13 +391,13 @@ const SplitEvenlyView = () => {
               style={{
                 flexDirection: 'row',
                 justifyContent: 'space-between',
-                marginBottom: 6
+                marginBottom: s(6)
               }}
             >
-              <Text style={{ color: colors.muted, fontSize: 12 }}>
+              <Text style={{ color: colors.muted, fontSize: s(12) }}>
                 Subtotal
               </Text>
-              <Text style={{ color: colors.label, fontSize: 13 }}>
+              <Text style={{ color: colors.label, fontSize: s(13) }}>
                 ${subtotalPerPerson.toFixed(2)}
               </Text>
             </View>
@@ -402,41 +405,41 @@ const SplitEvenlyView = () => {
               style={{
                 flexDirection: 'row',
                 justifyContent: 'space-between',
-                marginBottom: 12,
-                paddingBottom: 12,
+                marginBottom: s(12),
+                paddingBottom: s(12),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border
               }}
             >
-              <Text style={{ color: colors.muted, fontSize: 12 }}>Tax</Text>
-              <Text style={{ color: colors.label, fontSize: 13 }}>
+              <Text style={{ color: colors.muted, fontSize: s(12) }}>Tax</Text>
+              <Text style={{ color: colors.label, fontSize: s(13) }}>
                 ${taxPerPerson.toFixed(2)}
               </Text>
             </View>
 
             {/* Card vs Cash */}
-            <View style={{ gap: 6, marginBottom: 10 }}>
+            <View style={{ gap: s(6), marginBottom: s(10) }}>
               <View
                 style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  paddingVertical: 10,
-                  paddingHorizontal: 12,
+                  paddingVertical: s(10),
+                  paddingHorizontal: s(12),
                   backgroundColor: colors.screen,
-                  borderRadius: 10,
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.border
                 }}
               >
                 <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}
                 >
-                  <CreditCard size={14} color={colors.teal} />
+                  <CreditCard size={s(14)} color={colors.teal} />
                   <Text
                     style={{
                       color: colors.label,
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: '500'
                     }}
                   >
@@ -445,7 +448,7 @@ const SplitEvenlyView = () => {
                 </View>
                 <Text
                   style={{
-                    fontSize: 15,
+                    fontSize: s(15),
                     fontWeight: '700',
                     color: colors.teal
                   }}
@@ -459,22 +462,22 @@ const SplitEvenlyView = () => {
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  paddingVertical: 10,
-                  paddingHorizontal: 12,
+                  paddingVertical: s(10),
+                  paddingHorizontal: s(12),
                   backgroundColor: colors.screen,
-                  borderRadius: 10,
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: `${colors.success}40`
                 }}
               >
                 <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}
                 >
-                  <Banknote size={14} color={colors.success} />
+                  <Banknote size={s(14)} color={colors.success} />
                   <Text
                     style={{
                       color: colors.label,
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: '500'
                     }}
                   >
@@ -483,17 +486,17 @@ const SplitEvenlyView = () => {
                   {cashSavingsPerPerson > 0 && (
                     <View
                       style={{
-                        marginLeft: 4,
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
+                        marginLeft: s(4),
+                        paddingHorizontal: s(6),
+                        paddingVertical: s(2),
                         backgroundColor: `${colors.success}20`,
-                        borderRadius: 8
+                        borderRadius: s(8)
                       }}
                     >
                       <Text
                         style={{
                           color: colors.success,
-                          fontSize: 10,
+                          fontSize: s(10),
                           fontWeight: '700'
                         }}
                       >
@@ -504,7 +507,7 @@ const SplitEvenlyView = () => {
                 </View>
                 <Text
                   style={{
-                    fontSize: 15,
+                    fontSize: s(15),
                     fontWeight: '700',
                     color: colors.success
                   }}
@@ -515,7 +518,7 @@ const SplitEvenlyView = () => {
             </View>
 
             <Text
-              style={{ color: colors.muted, fontSize: 10, textAlign: 'center' }}
+              style={{ color: colors.muted, fontSize: s(10), textAlign: 'center' }}
             >
               Each guest can choose their payment method
             </Text>
@@ -526,9 +529,9 @@ const SplitEvenlyView = () => {
             <Text
               style={{
                 color: colors.muted,
-                fontSize: 11,
+                fontSize: s(11),
                 textAlign: 'center',
-                marginBottom: 6
+                marginBottom: s(6)
               }}
             >
               This bill is too small to split evenly — please pay it in full.
@@ -539,18 +542,18 @@ const SplitEvenlyView = () => {
             disabled={!splitEnabled}
             style={{
               width: '100%',
-              paddingVertical: 11,
+              paddingVertical: s(11),
               backgroundColor: colors.teal,
-              borderRadius: 10,
+              borderRadius: s(10),
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 8,
+              gap: s(8),
               opacity: splitEnabled ? 1 : 0.4
             }}
           >
-            <Check size={16} color={colors.onSolid} />
-            <Text style={{ fontWeight: '700', fontSize: 13, color: colors.onSolid }}>
+            <Check size={s(16)} color={colors.onSolid} />
+            <Text style={{ fontWeight: '700', fontSize: s(13), color: colors.onSolid }}>
               {buttonLabel}
             </Text>
           </TouchableOpacity>

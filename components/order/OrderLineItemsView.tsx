@@ -1,5 +1,6 @@
 import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { colors, PAYMENT_STATUS_COLORS } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useOrder, useOrderTotals } from '@/stores/selectors/orderSelectors'
 import { Banknote, CheckCircle2, CreditCard, X } from 'lucide-react-native'
 import { useMemo } from 'react'
@@ -43,6 +44,8 @@ const OrderLineItemsView = ({
   onRetrieve,
   onRefund
 }: OrderLineItemsViewProps) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const orderToView = useOrder(orderId)
   const items = orderToView?.items || []
   // Live SC from the totals selector — reactive to seatCount + rule.
@@ -142,13 +145,13 @@ const OrderLineItemsView = ({
   return (
     <View
       style={{
-        borderRadius: 14,
+        borderRadius: s(14),
         overflow: 'hidden',
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.screen,
         width: '100%',
-        maxWidth: 500,
+        maxWidth: s(500),
         alignSelf: 'center',
         flex: 1
       }}
@@ -156,8 +159,8 @@ const OrderLineItemsView = ({
       {/* ═══ HEADER ═══ */}
       <View
         style={{
-          paddingHorizontal: 16,
-          paddingVertical: 14,
+          paddingHorizontal: s(16),
+          paddingVertical: s(14),
           borderBottomWidth: 1,
           borderBottomColor: colors.border
         }}
@@ -167,12 +170,12 @@ const OrderLineItemsView = ({
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            marginBottom: 5
+            marginBottom: s(5)
           }}
         >
           <Text
             style={{
-              fontSize: 17,
+              fontSize: s(17),
               fontWeight: '700',
               color: colors.heading,
               flex: 1
@@ -186,26 +189,26 @@ const OrderLineItemsView = ({
               backgroundColor: paidStatusColor + '25',
               borderWidth: 1,
               borderColor: paidStatusColor + '60',
-              borderRadius: 20,
-              paddingHorizontal: 10,
-              paddingVertical: 4,
+              borderRadius: s(20),
+              paddingHorizontal: s(10),
+              paddingVertical: s(4),
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 5,
-              marginRight: 10
+              gap: s(5),
+              marginRight: s(10)
             }}
           >
             <View
               style={{
-                width: 6,
-                height: 6,
-                borderRadius: 3,
+                width: s(6),
+                height: s(6),
+                borderRadius: s(3),
                 backgroundColor: paidStatusColor
               }}
             />
             <Text
               style={{
-                fontSize: 12,
+                fontSize: s(12),
                 fontWeight: '700',
                 color: paidStatusColor
               }}
@@ -216,9 +219,9 @@ const OrderLineItemsView = ({
           <TouchableOpacity
             onPress={onClose}
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
+              width: s(28),
+              height: s(28),
+              borderRadius: s(8),
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
@@ -226,12 +229,12 @@ const OrderLineItemsView = ({
               justifyContent: 'center'
             }}
           >
-            <X size={13} color={colors.label} />
+            <X size={s(13)} color={colors.label} />
           </TouchableOpacity>
         </View>
 
         {/* Row 2: meta */}
-        <Text style={{ fontSize: 12, color: colors.muted }}>
+        <Text style={{ fontSize: s(12), color: colors.muted }}>
           {[
             orderTypeLabel,
             customerLabel,
@@ -248,9 +251,9 @@ const OrderLineItemsView = ({
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: 12,
-          paddingBottom: 8
+          paddingHorizontal: s(16),
+          paddingTop: s(12),
+          paddingBottom: s(8)
         }}
       >
         {items.map((item, idx) => (
@@ -265,20 +268,20 @@ const OrderLineItemsView = ({
       {/* ═══ TOTALS ═══ */}
       <View
         style={{
-          paddingHorizontal: 16,
-          paddingTop: 12,
-          paddingBottom: 14,
+          paddingHorizontal: s(16),
+          paddingTop: s(12),
+          paddingBottom: s(14),
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          gap: 4
+          gap: s(4)
         }}
       >
         {/* Subtotal */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 13, color: colors.muted }}>Subtotal</Text>
+          <Text style={{ fontSize: s(13), color: colors.muted }}>Subtotal</Text>
           <Text
             style={{
-              fontSize: 13,
+              fontSize: s(13),
               color: colors.label,
               fontVariant: ['tabular-nums']
             }}
@@ -292,10 +295,10 @@ const OrderLineItemsView = ({
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ fontSize: 13, color: colors.muted }}>Discount</Text>
+            <Text style={{ fontSize: s(13), color: colors.muted }}>Discount</Text>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 color: colors.success,
                 fontVariant: ['tabular-nums']
               }}
@@ -307,10 +310,10 @@ const OrderLineItemsView = ({
 
         {/* Tax */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 13, color: colors.muted }}>Tax</Text>
+          <Text style={{ fontSize: s(13), color: colors.muted }}>Tax</Text>
           <Text
             style={{
-              fontSize: 13,
+              fontSize: s(13),
               color: colors.label,
               fontVariant: ['tabular-nums']
             }}
@@ -325,12 +328,12 @@ const OrderLineItemsView = ({
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
             testID='service-charge-line'
           >
-            <Text style={{ fontSize: 13, color: colors.muted }}>
+            <Text style={{ fontSize: s(13), color: colors.muted }}>
               {serviceChargeName}
             </Text>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 color: colors.label,
                 fontVariant: ['tabular-nums']
               }}
@@ -345,10 +348,10 @@ const OrderLineItemsView = ({
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ fontSize: 13, color: colors.muted }}>Paid</Text>
+            <Text style={{ fontSize: s(13), color: colors.muted }}>Paid</Text>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 color: colors.success,
                 fontVariant: ['tabular-nums']
               }}
@@ -364,17 +367,17 @@ const OrderLineItemsView = ({
             flexDirection: 'row',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginTop: 4
+            marginTop: s(4)
           }}
         >
           <Text
-            style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
           >
             Total
           </Text>
           <Text
             style={{
-              fontSize: 20,
+              fontSize: s(20),
               fontWeight: '700',
               color: colors.heading,
               fontVariant: ['tabular-nums']
@@ -386,22 +389,22 @@ const OrderLineItemsView = ({
 
         {/* Cash savings badge */}
         {cashSavings > 0 && (
-          <View style={{ alignItems: 'flex-end', marginTop: 3 }}>
+          <View style={{ alignItems: 'flex-end', marginTop: s(3) }}>
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 4,
+                gap: s(4),
                 backgroundColor: colors.success + '15',
                 borderWidth: 1,
                 borderColor: colors.success + '30',
-                borderRadius: 20,
-                paddingHorizontal: 8,
-                paddingVertical: 3
+                borderRadius: s(20),
+                paddingHorizontal: s(8),
+                paddingVertical: s(3)
               }}
             >
-              <Banknote size={10} color={colors.success} />
-              <Text style={{ fontSize: 10, color: colors.success }}>
+              <Banknote size={s(10)} color={colors.success} />
+              <Text style={{ fontSize: s(10), color: colors.success }}>
                 Cash ${cashTotal.toFixed(2)} · save ${cashSavings.toFixed(2)}
               </Text>
             </View>
@@ -413,10 +416,10 @@ const OrderLineItemsView = ({
       <View
         style={{
           flexDirection: 'row',
-          gap: 10,
-          paddingHorizontal: 14,
-          paddingBottom: 14,
-          paddingTop: 10,
+          gap: s(10),
+          paddingHorizontal: s(14),
+          paddingBottom: s(14),
+          paddingTop: s(10),
           borderTopWidth: 1,
           borderTopColor: colors.border
         }}
@@ -432,17 +435,17 @@ const OrderLineItemsView = ({
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 7,
-            paddingVertical: 13,
-            borderRadius: 10,
+            gap: s(7),
+            paddingVertical: s(13),
+            borderRadius: s(10),
             backgroundColor: colors.card,
             borderWidth: 1,
             borderColor: colors.border
           }}
         >
-          <CheckCircle2 size={15} color={colors.label} />
+          <CheckCircle2 size={s(15)} color={colors.label} />
           <Text
-            style={{ fontSize: 13, fontWeight: '600', color: colors.label }}
+            style={{ fontSize: s(13), fontWeight: '600', color: colors.label }}
           >
             Mark as Done
           </Text>
@@ -460,23 +463,23 @@ const OrderLineItemsView = ({
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              paddingVertical: 13,
-              paddingHorizontal: 16,
-              borderRadius: 10,
+              paddingVertical: s(13),
+              paddingHorizontal: s(16),
+              borderRadius: s(10),
               backgroundColor: colors.teal
             }}
           >
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(7) }}
             >
-              <CreditCard size={15} color='#000' />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#000' }}>
+              <CreditCard size={s(15)} color='#000' />
+              <Text style={{ fontSize: s(13), fontWeight: '700', color: '#000' }}>
                 {isPartiallyPaid ? 'Pay Remaining' : 'Retrieve to Pay'}
               </Text>
             </View>
             <Text
               style={{
-                fontSize: 14,
+                fontSize: s(14),
                 fontWeight: '700',
                 color: '#000',
                 fontVariant: ['tabular-nums']
@@ -496,17 +499,17 @@ const OrderLineItemsView = ({
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 7,
-              paddingVertical: 13,
-              borderRadius: 10,
+              gap: s(7),
+              paddingVertical: s(13),
+              borderRadius: s(10),
               backgroundColor: colors.danger + '15',
               borderWidth: 1,
               borderColor: colors.danger + '40'
             }}
           >
-            <CreditCard size={15} color={colors.danger} />
+            <CreditCard size={s(15)} color={colors.danger} />
             <Text
-              style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}
+              style={{ fontSize: s(13), fontWeight: '600', color: colors.danger }}
             >
               Refund
             </Text>

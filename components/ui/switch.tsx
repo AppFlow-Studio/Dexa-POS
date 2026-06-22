@@ -4,7 +4,7 @@ import { Platform } from 'react-native'
 import Animated, {
   interpolateColor,
   useAnimatedStyle,
-  useDerivedValue,
+  useSharedValue,
   withTiming
 } from 'react-native-reanimated'
 import { colors } from '~/lib/theme'
@@ -53,6 +53,10 @@ function SwitchWeb ({
   )
 }
 
+// Root is a plain Pressable; wrap it so it can consume Reanimated animated
+// styles (animated background/border on the track).
+const AnimatedRoot = Animated.createAnimatedComponent(SwitchPrimitives.Root)
+
 function SwitchNative ({
   className,
   ...props
@@ -69,34 +73,48 @@ function SwitchNative ({
   const OFF_THUMB = colors.muted // colors.muted
   const OFF_BORDER = colors.border // use theme border color
 
-  const translateX = useDerivedValue(() => (props.checked ? s(16) : 0))
+  // Drive a shared `progress` (0 → off, 1 → on) from the `checked` prop.
+  // useDerivedValue worklets only recompute when a *shared value* they read
+  // changes — `props.checked` is a plain prop, so it never updated. An effect
+  // animating the shared value is the correct bridge from React state.
+  const progress = useSharedValue(props.checked ? 1 : 0)
 
-  const animatedTrackStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(
-      translateX.value,
-      [0, s(16)],
-      [OFF_TRACK, TEAL_TRACK]
-    ),
-    borderColor: interpolateColor(
-      translateX.value,
-      [0, s(16)],
-      [OFF_BORDER, TEAL_BORDER]
-    )
-  }))
+  React.useEffect(() => {
+    progress.value = withTiming(props.checked ? 1 : 0, { duration: 180 })
+  }, [props.checked, progress])
 
-  const animatedThumbStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: withTiming(translateX.value, { duration: 180 }) }
-    ],
-    backgroundColor: interpolateColor(
-      translateX.value,
-      [0, s(16)],
-      [OFF_THUMB, TEAL_THUMB]
-    )
-  }))
+  const thumbShift = s(16)
+
+  const animatedTrackStyle = useAnimatedStyle(
+    () => ({
+      backgroundColor: interpolateColor(
+        progress.value,
+        [0, 1],
+        [OFF_TRACK, TEAL_TRACK]
+      ),
+      borderColor: interpolateColor(
+        progress.value,
+        [0, 1],
+        [OFF_BORDER, TEAL_BORDER]
+      )
+    }),
+    [OFF_TRACK, TEAL_TRACK, OFF_BORDER, TEAL_BORDER]
+  )
+
+  const animatedThumbStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateX: progress.value * thumbShift }],
+      backgroundColor: interpolateColor(
+        progress.value,
+        [0, 1],
+        [OFF_THUMB, TEAL_THUMB]
+      )
+    }),
+    [OFF_THUMB, TEAL_THUMB, thumbShift]
+  )
 
   return (
-    <Animated.View
+    <AnimatedRoot
       style={[
         animatedTrackStyle,
         {
@@ -104,44 +122,36 @@ function SwitchNative ({
           height: s(24),
           borderRadius: s(12),
           borderWidth: 1,
-          justifyContent: 'center'
+          flexDirection: 'row',
+          alignItems: 'center'
         },
         props.disabled ? { opacity: 0.5 } : undefined
       ]}
+      className={cn(className)}
+      {...props}
     >
-      <SwitchPrimitives.Root
-        style={{
-          width: s(42),
-          height: s(24),
-          borderRadius: s(12),
-          flexDirection: 'row',
-          alignItems: 'center'
-        }}
-        className={cn(className)}
-        {...props}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          animatedThumbStyle,
+          {
+            marginLeft: s(3),
+            width: s(18),
+            height: s(18),
+            borderRadius: s(9),
+            shadowColor: '#000',
+            shadowOpacity: 0.25,
+            shadowRadius: s(2),
+            shadowOffset: { width: 0, height: s(1) },
+            elevation: 2
+          }
+        ]}
       >
-        <Animated.View
-          style={[
-            animatedThumbStyle,
-            {
-              marginLeft: s(3),
-              width: s(18),
-              height: s(18),
-              borderRadius: s(9),
-              shadowColor: '#000',
-              shadowOpacity: 0.25,
-              shadowRadius: s(2),
-              shadowOffset: { width: 0, height: s(1) },
-              elevation: 2
-            }
-          ]}
-        >
-          <SwitchPrimitives.Thumb
-            style={{ width: s(18), height: s(18), borderRadius: s(9) }}
-          />
-        </Animated.View>
-      </SwitchPrimitives.Root>
-    </Animated.View>
+        <SwitchPrimitives.Thumb
+          style={{ width: s(18), height: s(18), borderRadius: s(9) }}
+        />
+      </Animated.View>
+    </AnimatedRoot>
   )
 }
 

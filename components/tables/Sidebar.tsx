@@ -1,5 +1,6 @@
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import {
   CalendarClock,
@@ -33,13 +34,14 @@ interface SidebarProps {
   // layouts prop removed
 }
 
-const EXPANDED_WIDTH = 280
-const COLLAPSED_WIDTH = 72
-
 const Sidebar: React.FC<SidebarProps> = ({
   activeLayoutId,
   setActiveLayout
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  const EXPANDED_WIDTH = Math.round(280 * uiScale)
+  const COLLAPSED_WIDTH = Math.round(72 * uiScale)
   const [isExpanded, setIsExpanded] = useState(true)
   const [activeTab, setActiveTab] = useState<TabMode>('tables')
   const [tabsCollapsed, setTabsCollapsed] = useState(false)
@@ -195,13 +197,13 @@ const Sidebar: React.FC<SidebarProps> = ({
           activeOpacity={0.7}
           style={{
             position: 'absolute',
-            right: -14,
+            right: s(-14),
             top: '50%',
-            marginTop: -16,
+            marginTop: s(-16),
             zIndex: 50,
-            width: 32,
-            height: 32,
-            borderRadius: 16,
+            width: s(32),
+            height: s(32),
+            borderRadius: s(16),
             backgroundColor: colors.card,
             borderWidth: 1,
             borderColor: colors.border,
@@ -210,9 +212,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           }}
         >
           {isExpanded ? (
-            <ChevronLeft size={16} color={colors.label} />
+            <ChevronLeft size={s(16)} color={colors.label} />
           ) : (
-            <ChevronRight size={16} color={colors.label} />
+            <ChevronRight size={s(16)} color={colors.label} />
           )}
         </TouchableOpacity>
 
@@ -221,12 +223,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Navigation Tabs */}
         <View
           style={{
-            padding: 8,
+            padding: s(8),
             flexShrink: 0,
             borderBottomWidth: isExpanded ? 1 : 0,
             borderBottomColor: colors.border,
             flexDirection: isExpanded ? 'row' : 'column',
-            gap: 4
+            gap: s(4)
           }}
         >
           {navItems.map(item => {
@@ -253,9 +255,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  height: 40,
-                  gap: 3,
-                  borderRadius: 8,
+                  height: s(40),
+                  gap: s(3),
+                  borderRadius: s(8),
                   borderWidth: 1,
                   backgroundColor: isActive
                     ? colors.teal + '20'
@@ -264,14 +266,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                 }}
               >
                 <item.icon
-                  size={13}
+                  size={s(13)}
                   color={isActive ? colors.teal : colors.label}
                 />
                 <Animated.Text
                   style={[
                     textStyle,
                     {
-                      fontSize: 10,
+                      fontSize: s(10),
                       fontWeight: '600',
                       color: isActive ? colors.teal : colors.label
                     }
@@ -281,7 +283,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {item.label}
                 </Animated.Text>
                 {item.isLocked && !isActive && (
-                  <Lock size={11} color={colors.muted} />
+                  <Lock size={s(11)} color={colors.muted} />
                 )}
               </TouchableOpacity>
             )
@@ -302,8 +304,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Live Status Indicator */}
         <TouchableOpacity
           style={{
-            paddingVertical: 10,
-            paddingHorizontal: 12,
+            paddingVertical: s(10),
+            paddingHorizontal: s(12),
             borderTopWidth: 1,
             borderTopColor: colors.border,
             flexDirection: 'row',
@@ -315,9 +317,9 @@ const Sidebar: React.FC<SidebarProps> = ({
         >
           <View
             style={{
-              width: 7,
-              height: 7,
-              borderRadius: 4,
+              width: s(7),
+              height: s(7),
+              borderRadius: s(4),
               backgroundColor: floor.isConnected
                 ? colors.success
                 : isSyncing
@@ -329,7 +331,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <Animated.Text
               style={[
                 textStyle,
-                { marginLeft: 7, fontSize: 11, color: colors.muted }
+                { marginLeft: s(7), fontSize: s(11), color: colors.muted }
               ]}
             >
               {floor.isConnected
@@ -348,16 +350,16 @@ const Sidebar: React.FC<SidebarProps> = ({
             backgroundColor: colors.panel,
             borderColor: colors.border,
             borderWidth: 1,
-            borderRadius: 16,
-            padding: 24,
-            width: 360
+            borderRadius: s(16),
+            padding: s(24),
+            width: s(360)
           }}
         >
           <DialogHeader>
             <DialogTitle>
               <Text
                 style={{
-                  fontSize: 16,
+                  fontSize: s(16),
                   fontWeight: '700',
                   color: colors.heading,
                   textAlign: 'center'
@@ -367,13 +369,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               </Text>
             </DialogTitle>
           </DialogHeader>
-          <View style={{ paddingTop: 16 }}>
+          <View style={{ paddingTop: s(16) }}>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 color: colors.label,
                 textAlign: 'center',
-                marginBottom: 20
+                marginBottom: s(20)
               }}
             >
               Enter your manager PIN to access this feature
@@ -401,9 +403,9 @@ const Sidebar: React.FC<SidebarProps> = ({
             <TouchableOpacity
               onPress={handlePinSubmit}
               style={{
-                marginTop: 16,
-                paddingVertical: 12,
-                borderRadius: 8,
+                marginTop: s(16),
+                paddingVertical: s(12),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + '20',
                 borderWidth: 1,
                 borderColor: colors.teal + '50',
@@ -411,7 +413,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <Text
-                style={{ fontSize: 14, fontWeight: '700', color: colors.teal }}
+                style={{ fontSize: s(14), fontWeight: '700', color: colors.teal }}
               >
                 Confirm
               </Text>

@@ -25,8 +25,11 @@ import SplitByItemView from './paymentView/SplitByItemView'
 import SplitEvenlyView from './paymentView/SplitEvenlyView'
 import SplitOptionsView from './paymentView/SplitOptionsView'
 import SplitPaymentSuccessView from './SplitPaymentSuccessView'
+import { useUiScale } from '@/lib/uiScale'
 
 const PaymentBottomSheet: React.FC = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const view = usePaymentStore(s => s.view)
   const isOpen = usePaymentStore(s => s.isOpen)
   const close = usePaymentStore(s => s.close)
@@ -54,7 +57,7 @@ const PaymentBottomSheet: React.FC = () => {
 
   // "Discard": abandon the whole split. Roll back any captured-but-unconfirmed
   // portions and defer to the backend's authoritative balance before tearing
-  // down the sheet. close() here was the leak that left a phantom payment /
+  // down the sheet. close() here was the leak that left a phantom payment / a
   // manufactured residual on the next attempt.
   const handleDiscard = () => {
     setIsDirty(false)
@@ -123,7 +126,7 @@ const PaymentBottomSheet: React.FC = () => {
       case 'success':
         return <PaymentSuccessView />
       default:
-        return <Text style={{ color: colors.heading }}>Unknown View</Text>
+        return <Text style={{ color: colors.heading, fontSize: s(14) }}>Unknown View</Text>
     }
   }
 
@@ -152,7 +155,7 @@ const PaymentBottomSheet: React.FC = () => {
               <View
                 style={{
                   backgroundColor: colors.panel,
-                  padding: 16,
+                  padding: s(16),
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -162,7 +165,7 @@ const PaymentBottomSheet: React.FC = () => {
               >
                 <Text
                   style={{
-                    fontSize: 24,
+                    fontSize: s(24),
                     fontWeight: 'bold',
                     color: colors.heading
                   }}
@@ -173,9 +176,9 @@ const PaymentBottomSheet: React.FC = () => {
                   onPress={handleAttemptClose}
                   disabled={isTransactionProcessing}
                   style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    borderRadius: 8,
+                    paddingHorizontal: s(16),
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
                     backgroundColor: colors.muted + '20',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -184,7 +187,7 @@ const PaymentBottomSheet: React.FC = () => {
                 >
                   <Text
                     style={{
-                      fontSize: 14,
+                      fontSize: s(14),
                       fontWeight: '600',
                       color: colors.label
                     }}
@@ -213,50 +216,50 @@ const PaymentBottomSheet: React.FC = () => {
                 backgroundColor: 'rgba(0,0,0,0.5)',
                 justifyContent: 'center',
                 alignItems: 'center',
-                padding: 24
+                padding: s(24)
               }
             ]}
           >
             <View
               style={{
                 backgroundColor: colors.panel,
-                borderRadius: 20,
-                padding: 28,
+                borderRadius: s(20),
+                padding: s(28),
                 width: '100%',
-                maxWidth: 400,
+                maxWidth: s(400),
                 borderWidth: 1,
                 borderColor: colors.border,
                 shadowColor: '#000',
-                shadowOffset: { width: 0, height: 8 },
+                shadowOffset: { width: 0, height: s(8) },
                 shadowOpacity: 0.3,
-                shadowRadius: 16,
+                shadowRadius: s(16),
                 elevation: 10
               }}
             >
-              <View style={{ alignItems: 'center', marginBottom: 20 }}>
+              <View style={{ alignItems: 'center', marginBottom: s(20) }}>
                 <View
                   style={{
-                    width: 60,
-                    height: 60,
-                    borderRadius: 14,
+                    width: s(60),
+                    height: s(60),
+                    borderRadius: s(14),
                     backgroundColor: colors.danger + '20',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: 16
+                    marginBottom: s(16)
                   }}
                 >
                   <AlertTriangle
-                    size={28}
+                    size={s(28)}
                     color={colors.danger}
                     strokeWidth={2.5}
                   />
                 </View>
                 <Text
                   style={{
-                    fontSize: 18,
+                    fontSize: s(18),
                     fontWeight: '800',
                     color: colors.heading,
-                    marginBottom: 8,
+                    marginBottom: s(8),
                     textAlign: 'center'
                   }}
                 >
@@ -264,10 +267,10 @@ const PaymentBottomSheet: React.FC = () => {
                 </Text>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     color: colors.label,
                     textAlign: 'center',
-                    lineHeight: 20
+                    lineHeight: s(20)
                   }}
                 >
                   Keep the portions you've already captured, or discard the
@@ -275,22 +278,22 @@ const PaymentBottomSheet: React.FC = () => {
                 </Text>
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+              <View style={{ flexDirection: 'row', gap: s(10), marginTop: s(8) }}>
                 <TouchableOpacity
                   onPress={handleKeepChanges}
                   style={{
                     flex: 1,
                     backgroundColor: colors.teal + '15',
-                    borderRadius: 12,
+                    borderRadius: s(12),
                     borderWidth: 1.5,
                     borderColor: colors.teal + '50',
-                    paddingVertical: 13,
+                    paddingVertical: s(13),
                     alignItems: 'center'
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 14,
+                      fontSize: s(14),
                       color: colors.teal,
                       fontWeight: '700'
                     }}
@@ -304,16 +307,16 @@ const PaymentBottomSheet: React.FC = () => {
                   style={{
                     flex: 1,
                     backgroundColor: colors.danger + '15',
-                    borderRadius: 12,
+                    borderRadius: s(12),
                     borderWidth: 1.5,
                     borderColor: colors.danger + '50',
-                    paddingVertical: 13,
+                    paddingVertical: s(13),
                     alignItems: 'center'
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 14,
+                      fontSize: s(14),
                       color: colors.danger,
                       fontWeight: '700'
                     }}

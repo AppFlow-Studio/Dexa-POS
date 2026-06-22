@@ -791,9 +791,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       >
         {/* Row 1: Header (Order Line) + Toolbar */}
         <View
-          className={`${
-            isTableOrder ? "px-0 py-2" : "px-0 py-2"
-          } flex-row items-center`}
+          className="px-0 flex-row items-center"
+          style={{ paddingVertical: sc(8) }}
         >
           {headerLeft}
           <View
@@ -907,7 +906,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 style={{
                   backgroundColor: colors.screen,
                   borderColor: colors.border,
-                  maxWidth: 480,
+                  maxWidth: sc(480),
                   alignSelf: 'center',
                   width: '90%',
                 }}
@@ -931,7 +930,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 <ScrollView
                   ref={menuScrollViewRef}
                   className="w-full"
-                  contentContainerStyle={{ padding: 16, gap: 10 }}
+                  contentContainerStyle={{ padding: sc(16), gap: sc(10) }}
                 >
                   {visibleMenus.map((menu) => {
                     const isAvailable =
@@ -1118,7 +1117,10 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         {!forceOrdersView &&
           activeTab === "Menu" &&
           (activeMeal ? (
-            <View className={`${isTableOrder ? "px-3" : ""} pb-3`}>
+            <View
+              className={isTableOrder ? "px-3" : ""}
+              style={{ paddingBottom: sc(12) }}
+            >
               <MenuControls
                 activeMeal={activeMeal}
                 menuOptions={visibleMenus}
@@ -1204,7 +1206,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 <View
                   style={[
                     menuSectionStyles.gridContainer,
-                    { backgroundColor: colors.card },
+                    { backgroundColor: colors.card, marginTop: sc(8) },
                   ]}
                 >
                   <FlashList

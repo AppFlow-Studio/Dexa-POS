@@ -1,4 +1,5 @@
 import type { CheckRecentPaymentMatch } from "@/hooks/usePaymentVerification";
+import { useUiScale } from "@/lib/uiScale";
 import { colors } from "@/lib/theme";
 import type { PaymentVerificationState } from "@/stores/usePaymentStore";
 import { CheckCircle2 } from "lucide-react-native";
@@ -25,6 +26,8 @@ export function PaymentAlreadyRecordedModal({
   onConfirm,
   onCancel,
 }: PaymentAlreadyRecordedModalProps) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   if (!matchedPayment || !verification) return null;
 
   const matchedAmountDollars =
@@ -52,14 +55,14 @@ export function PaymentAlreadyRecordedModal({
           backgroundColor: "rgba(0,0,0,0.75)",
           alignItems: "center",
           justifyContent: "center",
-          padding: 24,
+          padding: s(24),
         }}
       >
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 16,
-            padding: 22,
+            borderRadius: s(16),
+            padding: s(22),
             width: "100%",
             maxWidth: 420,
             borderWidth: 1,
@@ -67,29 +70,29 @@ export function PaymentAlreadyRecordedModal({
           }}
         >
           {/* Icon */}
-          <View style={{ alignItems: "center", marginBottom: 14 }}>
+          <View style={{ alignItems: "center", marginBottom: s(14) }}>
             <View
               style={{
-                width: 56,
-                height: 56,
-                borderRadius: 28,
+                width: s(56),
+                height: s(56),
+                borderRadius: s(28),
                 backgroundColor: colors.success + "20",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <CheckCircle2 size={28} color={colors.success} />
+              <CheckCircle2 size={s(28)} color={colors.success} />
             </View>
           </View>
 
           {/* Title */}
           <Text
             style={{
-              fontSize: 17,
+              fontSize: s(17),
               fontWeight: "700",
               color: colors.success,
               textAlign: "center",
-              marginBottom: 8,
+              marginBottom: s(8),
             }}
           >
             Payment Already Recorded
@@ -98,11 +101,11 @@ export function PaymentAlreadyRecordedModal({
           {/* Body */}
           <Text
             style={{
-              fontSize: 13,
+              fontSize: s(13),
               color: colors.label,
               textAlign: "center",
-              marginBottom: 16,
-              lineHeight: 19,
+              marginBottom: s(16),
+              lineHeight: s(19),
             }}
           >
             We found this payment on the server. Marking complete will adopt
@@ -112,11 +115,11 @@ export function PaymentAlreadyRecordedModal({
           {/* Details */}
           <View
             style={{
-              padding: 12,
-              borderRadius: 8,
+              padding: s(12),
+              borderRadius: s(8),
               backgroundColor: colors.screen,
-              marginBottom: 14,
-              gap: 6,
+              marginBottom: s(14),
+              gap: s(6),
             }}
           >
             <DetailRow label="Server payment id" value={matchedPayment.payment_id ?? "—"} mono />
@@ -130,9 +133,9 @@ export function PaymentAlreadyRecordedModal({
           {hasAmountMismatch && (
             <Text
               style={{
-                fontSize: 12,
+                fontSize: s(12),
                 color: colors.warning,
-                marginBottom: 10,
+                marginBottom: s(10),
                 textAlign: "center",
               }}
             >
@@ -144,9 +147,9 @@ export function PaymentAlreadyRecordedModal({
           {hasKeyMismatch && (
             <Text
               style={{
-                fontSize: 12,
+                fontSize: s(12),
                 color: colors.warning,
-                marginBottom: 10,
+                marginBottom: s(10),
                 textAlign: "center",
               }}
             >
@@ -157,19 +160,19 @@ export function PaymentAlreadyRecordedModal({
           )}
 
           {/* CTAs */}
-          <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flexDirection: "row", gap: s(10) }}>
             <TouchableOpacity
               onPress={onCancel}
               style={{
                 flex: 1,
-                paddingVertical: 12,
-                borderRadius: 10,
+                paddingVertical: s(12),
+                borderRadius: s(10),
                 borderWidth: 1,
                 borderColor: colors.border,
                 alignItems: "center",
               }}
             >
-              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 14 }}>
+              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(14) }}>
                 Cancel
               </Text>
             </TouchableOpacity>
@@ -177,13 +180,13 @@ export function PaymentAlreadyRecordedModal({
               onPress={onConfirm}
               style={{
                 flex: 1,
-                paddingVertical: 12,
-                borderRadius: 10,
+                paddingVertical: s(12),
+                borderRadius: s(10),
                 backgroundColor: colors.success,
                 alignItems: "center",
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: s(14) }}>
                 Mark Complete
               </Text>
             </TouchableOpacity>

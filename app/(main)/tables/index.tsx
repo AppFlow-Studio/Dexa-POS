@@ -15,6 +15,7 @@ import { getDeviceId } from '@/lib/deviceId'
 import { startInteraction } from '@/lib/perf'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
+import { useUiScale } from '@/lib/uiScale'
 import { transferTableServer } from '@/services/serverAssignmentService'
 import { ensureOrderPrefetched } from '@/services/tableOrderPrefetch'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
@@ -76,6 +77,8 @@ const getSelectedTablesCapacity = (
 }
 
 const TablesScreen = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const { colorScheme } = useColorScheme()
   const router = useRouter()
   // Subscribe to tables directly to ensure real-time updates
@@ -715,9 +718,9 @@ const TablesScreen = () => {
         />
 
         {/* Right Side: Floor Plan */}
-        <View style={{ flex: 1, padding: 12, gap: 8 }}>
+        <View style={{ flex: 1, padding: s(12), gap: s(8) }}>
           {/* Top Bar */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
             {/* Layout Tabs */}
             <View
               style={{
@@ -725,8 +728,8 @@ const TablesScreen = () => {
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 8,
-                padding: 3
+                borderRadius: s(8),
+                padding: s(3)
               }}
             >
               {floorPlans.map(layout => (
@@ -746,9 +749,9 @@ const TablesScreen = () => {
                   }}
                   style={[
                     {
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 6
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(5),
+                      borderRadius: s(6)
                     },
                     activeFloorPlanId === layout.id && {
                       backgroundColor: colors.screen
@@ -757,7 +760,7 @@ const TablesScreen = () => {
                 >
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: '600',
                       color:
                         activeFloorPlanId === layout.id
@@ -779,25 +782,25 @@ const TablesScreen = () => {
                 backgroundColor: colors.screen,
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 8,
-                paddingHorizontal: 8,
-                paddingVertical: 5,
-                width: 200
+                borderRadius: s(8),
+                paddingHorizontal: s(8),
+                paddingVertical: s(5),
+                width: s(200)
               }}
             >
-              <Search color={colors.muted} size={13} />
+              <Search color={colors.muted} size={s(13)} />
               <TextInput
                 placeholder='Search tables...'
                 placeholderTextColor={colors.muted}
                 value={searchInput}
                 onChangeText={setSearchInput}
                 style={{
-                  marginLeft: 6,
-                  fontSize: 12,
+                  marginLeft: s(6),
+                  fontSize: s(12),
                   flex: 1,
                   color: colors.heading,
                   includeFontPadding: false,
-                  padding: 4
+                  padding: s(4)
                 }}
               />
             </View>
@@ -818,9 +821,9 @@ const TablesScreen = () => {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 8,
+                paddingHorizontal: s(10),
+                paddingVertical: s(5),
+                borderRadius: s(8),
                 borderWidth: 1,
                 backgroundColor: isMergeMode
                   ? colors.border + '30'
@@ -829,15 +832,15 @@ const TablesScreen = () => {
               }}
             >
               {isMergeMode ? (
-                <X color={colors.label} size={13} />
+                <X color={colors.label} size={s(13)} />
               ) : (
-                <GitMerge color={colors.warning} size={13} />
+                <GitMerge color={colors.warning} size={s(13)} />
               )}
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: '600',
-                  marginLeft: 5,
+                  marginLeft: s(5),
                   color: isMergeMode ? colors.label : colors.warning
                 }}
               >
@@ -852,21 +855,21 @@ const TablesScreen = () => {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 8,
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(5),
+                  borderRadius: s(8),
                   borderWidth: 1,
                   backgroundColor: colors.teal + '15',
                   borderColor: colors.teal + '40'
                 }}
               >
-                <Users color={colors.teal} size={13} />
+                <Users color={colors.teal} size={s(13)} />
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '600',
                     color: colors.teal,
-                    marginLeft: 5
+                    marginLeft: s(5)
                   }}
                 >
                   Servers
@@ -880,21 +883,21 @@ const TablesScreen = () => {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 8,
+                paddingHorizontal: s(10),
+                paddingVertical: s(5),
+                borderRadius: s(8),
                 borderWidth: 1,
                 backgroundColor: colors.panel,
                 borderColor: colors.border
               }}
             >
-              <Pencil color={colors.label} size={13} />
+              <Pencil color={colors.label} size={s(13)} />
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: '600',
                   color: colors.label,
-                  marginLeft: 5
+                  marginLeft: s(5)
                 }}
               >
                 Edit Layout
@@ -904,13 +907,13 @@ const TablesScreen = () => {
 
           {/* Section Filter Pills */}
           {sections.length > 0 && (
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            <View style={{ flexDirection: 'row', gap: s(6), flexWrap: 'wrap' }}>
               <TouchableOpacity
                 onPress={() => setActiveSectionId(null)}
                 style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 3,
-                  borderRadius: 20,
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(3),
+                  borderRadius: s(20),
                   borderWidth: 1,
                   backgroundColor: !activeSectionId
                     ? colors.teal
@@ -920,7 +923,7 @@ const TablesScreen = () => {
               >
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '600',
                     color: !activeSectionId ? colors.onSolid : colors.label
                   }}
@@ -937,9 +940,9 @@ const TablesScreen = () => {
                     )
                   }
                   style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 3,
-                    borderRadius: 20,
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(3),
+                    borderRadius: s(20),
                     borderWidth: 1,
                     borderColor: section.color,
                     backgroundColor:
@@ -950,7 +953,7 @@ const TablesScreen = () => {
                 >
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: '600',
                       color:
                         activeSectionId === section.id
@@ -986,7 +989,7 @@ const TablesScreen = () => {
               backgroundColor: colors.screen,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 12,
+              borderRadius: s(12),
               overflow: 'hidden'
             }}
           >
@@ -1013,20 +1016,20 @@ const TablesScreen = () => {
               <View
                 style={{
                   position: 'absolute',
-                  top: 48,
-                  right: 10,
+                  top: s(48),
+                  right: s(10),
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 10,
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: 12,
+                  gap: s(10),
+                  paddingHorizontal: s(14),
+                  paddingVertical: s(8),
+                  borderRadius: s(12),
                   backgroundColor: colors.panel + 'F8',
                   borderWidth: 1,
                   borderColor: colors.border
                 }}
               >
-                {(
+                {((
                   [
                     ['available', 'Available'],
                     ['seated', 'Seated'],
@@ -1043,20 +1046,20 @@ const TablesScreen = () => {
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 4
+                      gap: s(4)
                     }}
                   >
                     <View
                       style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
+                        width: s(8),
+                        height: s(8),
+                        borderRadius: s(4),
                         backgroundColor: TABLE_STATUS_COLORS[status]
                       }}
                     />
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         fontWeight: '500',
                         color: colors.label
                       }}
@@ -1064,18 +1067,18 @@ const TablesScreen = () => {
                       {label}
                     </Text>
                   </View>
-                ))}
+                )))}
               </View>
             )}
             <TouchableOpacity
               onPress={() => setLegendVisible(v => !v)}
               style={{
                 position: 'absolute',
-                top: 10,
-                right: 10,
-                width: 32,
-                height: 32,
-                borderRadius: 16,
+                top: s(10),
+                right: s(10),
+                width: s(32),
+                height: s(32),
+                borderRadius: s(16),
                 backgroundColor: legendVisible
                   ? colors.teal + '20'
                   : colors.card,
@@ -1086,7 +1089,7 @@ const TablesScreen = () => {
               }}
             >
               <HelpCircle
-                size={16}
+                size={s(16)}
                 color={legendVisible ? colors.teal : colors.muted}
               />
             </TouchableOpacity>

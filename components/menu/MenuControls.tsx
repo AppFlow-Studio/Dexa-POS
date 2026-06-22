@@ -16,13 +16,13 @@ import {
 } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Dimensions,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View
 } from 'react-native'
 
@@ -339,6 +339,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   const styles = useMemo(() => getStylesForScheme(colorScheme), [colorScheme])
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions()
   const storeMenus = useMenuStore(s => s.menus)
   const menus = menuOptions ?? storeMenus
   const isCategoryAvailableNow = useMenuStore(s => s.isCategoryAvailableNow)
@@ -479,15 +480,15 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   )
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, { paddingTop: s(8) }]}>
       {showMenuButtons && (
-      <View style={styles.menuRowArea}>
+      <View style={[styles.menuRowArea, { minHeight: s(42) }]}>
         <ScrollView
           ref={menuScrollRef}
-          style={styles.menuRowScroll}
+          style={[styles.menuRowScroll, { minHeight: s(42) }]}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.menuRow}
+          contentContainerStyle={[styles.menuRow, { gap: s(6), paddingHorizontal: s(4), paddingBottom: s(8) }]}
           onScroll={event => {
             const nextX = event.nativeEvent.contentOffset.x
             menuScrollXRef.current = nextX
@@ -620,17 +621,17 @@ const MenuControls: React.FC<MenuControlsProps> = ({
       </View>
       )}
 
-      <View style={styles.controlsRow}>
+      <View style={[styles.controlsRow, { paddingBottom: s(8), minHeight: s(52) }]}>
         {/* Unlock session badge — only visible when manager mode is active */}
         <UnlockBadge />
 
-        <View style={styles.categoriesArea}>
+        <View style={[styles.categoriesArea, { minHeight: s(40) }]}>
           <ScrollView
             ref={categoriesScrollRef}
-            style={styles.categoriesScroll}
+            style={[styles.categoriesScroll, { minHeight: s(40) }]}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.scrollContent, { gap: s(6), paddingHorizontal: s(4), minHeight: s(40) }]}
             onScroll={event => {
               const nextX = event.nativeEvent.contentOffset.x
               categoriesScrollXRef.current = nextX
@@ -785,6 +786,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
       <Modal
         visible={!!popupMenu}
         transparent
+        statusBarTranslucent
         animationType='fade'
         onRequestClose={() => setPopupMenuName(null)}
       >
@@ -796,14 +798,37 @@ const MenuControls: React.FC<MenuControlsProps> = ({
             onPress={() => {}}
             style={[
               styles.popupCard,
+              { padding: s(14), borderRadius: s(8) },
               (() => {
-                const screenWidth = Dimensions.get('window').width
-                const cardWidth = Math.min(460, screenWidth * 0.92)
-                const left = Math.max(12, Math.min(popupAnchor.x, screenWidth - cardWidth - 12))
+                const margin = s(12)
+                const gap = s(6)
+                const cardWidth = Math.min(s(460), screenWidth * 0.92)
+                const left = Math.max(
+                  margin,
+                  Math.min(popupAnchor.x, screenWidth - cardWidth - margin)
+                )
+
+                // Space available below vs. above the anchor. If there isn't
+                // enough room below, flip the card to open upward so it stays
+                // on screen; cap its height to the chosen side either way.
+                const spaceBelow =
+                  screenHeight - (popupAnchor.y + popupAnchor.height) - gap - margin
+                const spaceAbove = popupAnchor.y - gap - margin
+                const openUpward = spaceBelow < s(180) && spaceAbove > spaceBelow
+
+                if (openUpward) {
+                  return {
+                    bottom: screenHeight - popupAnchor.y + gap,
+                    left,
+                    width: cardWidth,
+                    maxHeight: Math.max(s(120), spaceAbove),
+                  }
+                }
                 return {
-                  top: popupAnchor.y + popupAnchor.height + 6,
+                  top: popupAnchor.y + popupAnchor.height + gap,
                   left,
                   width: cardWidth,
+                  maxHeight: Math.max(s(120), spaceBelow),
                 }
               })()
             ]}
@@ -823,7 +848,10 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                 <X size={s(14)} color={colors.label} />
               </TouchableOpacity>
             </View>
-            <View style={styles.popupGrid}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[styles.popupGrid, { gap: s(8) }]}
+            >
               {popupMenu?.categories?.map(category => {
                 const isActive =
                   activeMeal === popupMenu.name &&
@@ -858,7 +886,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                   </TouchableOpacity>
                 )
               })}
-            </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>

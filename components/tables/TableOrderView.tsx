@@ -53,6 +53,7 @@ import React, {
 } from 'react'
 import { InteractionManager, Text, TouchableOpacity, View } from 'react-native'
 import { Portal as Teleport } from 'react-native-teleport'
+import { useUiScale } from '@/lib/uiScale'
 
 // Stable empty array to avoid new reference on every render
 const EMPTY_NOT_READY_ITEMS: { id: string; name: string; quantity: number }[] =
@@ -77,12 +78,14 @@ const TableOrderMenuPanel = React.memo(
     onOrderClosedCheck: () => boolean
     isMenuDisabled: boolean
   }) {
+    const uiScale = useUiScale()
+    const s = (n: number) => Math.round(n * uiScale)
     return (
     <View
       style={{
         flex: 1,
-        padding: 16,
-        paddingHorizontal: 12,
+        padding: s(16),
+        paddingHorizontal: s(12),
         paddingTop: 0
       }}
     >
@@ -94,10 +97,10 @@ const TableOrderMenuPanel = React.memo(
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 16,
-                paddingVertical: 8,
-                borderRadius: 8,
+                gap: s(6),
+                paddingHorizontal: s(16),
+                paddingVertical: s(8),
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.teal
               }}
@@ -107,7 +110,7 @@ const TableOrderMenuPanel = React.memo(
                 style={{
                   fontWeight: '600',
                   color: colors.teal,
-                  fontSize: 16
+                  fontSize: s(16)
                 }}
               >
                 + New Course
@@ -127,7 +130,7 @@ const TableOrderMenuPanel = React.memo(
         )
       ) : (
         <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: colors.label }}>Loading menu...</Text>
+          <Text style={{ color: colors.label, fontSize: s(14) }}>Loading menu...</Text>
         </View>
       )}
     </View>
@@ -153,6 +156,8 @@ const TableOrderView = React.forwardRef<
   TableOrderViewHandle,
   TableOrderViewProps
 >(({ tableId, onClose }, ref) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const currentTableId = tableId
   const openedAtRef = useRef(nowMs())
 
@@ -1434,7 +1439,7 @@ const TableOrderView = React.forwardRef<
         }}
       >
         <Text
-          style={{ fontSize: 20, fontWeight: 'bold', color: colors.danger }}
+          style={{ fontSize: s(20), fontWeight: 'bold', color: colors.danger }}
         >
           Table not found!
         </Text>
@@ -1451,9 +1456,9 @@ const TableOrderView = React.forwardRef<
           backgroundColor: colors.screen,
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 8,
-          paddingTop: 8,
-          paddingBottom: 4
+          paddingHorizontal: s(8),
+          paddingTop: s(8),
+          paddingBottom: s(4)
         }}
       >
         <View style={{ flex: 1 }}>
@@ -1477,22 +1482,22 @@ const TableOrderView = React.forwardRef<
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                marginHorizontal: 8,
-                marginTop: 6,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
+                marginHorizontal: s(8),
+                marginTop: s(6),
+                paddingHorizontal: s(10),
+                paddingVertical: s(6),
                 backgroundColor: colors.teal + '15',
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.teal + '40',
-                gap: 8
+                gap: s(8)
               }}
             >
-              <CreditCard size={14} color={colors.teal} />
+              <CreditCard size={s(14)} color={colors.teal} />
               <Text
                 style={{
                   flex: 1,
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: '600',
                   color: colors.teal
                 }}
@@ -1502,15 +1507,15 @@ const TableOrderView = React.forwardRef<
               <TouchableOpacity
                 onPress={handleOpenPreAuthCapture}
                 style={{
-                  paddingHorizontal: 8,
-                  paddingVertical: 3,
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(3),
                   backgroundColor: colors.teal + '30',
-                  borderRadius: 6
+                  borderRadius: s(6)
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 10,
+                    fontSize: s(10),
                     fontWeight: '700',
                     color: colors.teal
                   }}
@@ -1521,15 +1526,15 @@ const TableOrderView = React.forwardRef<
               <TouchableOpacity
                 onPress={handleOpenPreAuthIncrement}
                 style={{
-                  paddingHorizontal: 8,
-                  paddingVertical: 3,
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(3),
                   backgroundColor: colors.warning + '30',
-                  borderRadius: 6
+                  borderRadius: s(6)
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 10,
+                    fontSize: s(10),
                     fontWeight: '700',
                     color: colors.warning
                   }}
@@ -1540,7 +1545,8 @@ const TableOrderView = React.forwardRef<
             </View>
           )}
 
-          <View className='flex-1 flex-row'>
+          <View style={{ flex: 1, flexDirection: 'row' }}>
+            <View style={{ flex: 2 }}>
             <TableBillSection
               showOrderDetails={false}
               itemCourseMap={itemCourseMap}
@@ -1579,6 +1585,8 @@ const TableOrderView = React.forwardRef<
               isOvertime={isOvertime}
               overtimeMinutes={defaultSittingTimeMinutes}
             />
+            </View>
+            <View style={{ flex: 3 }}>
             <TableOrderMenuPanel
               renderStage={renderStage}
               enableCoursing={enableCoursing}
@@ -1587,6 +1595,7 @@ const TableOrderView = React.forwardRef<
               onOrderClosedCheck={checkOrderClosedAndWarn}
               isMenuDisabled={isClosedCheckMenuDisabled}
             />
+            </View>
           </View>
         </>
       ) : (
