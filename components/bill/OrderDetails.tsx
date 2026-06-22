@@ -490,6 +490,8 @@ const OrderDetailsComponent: React.FC<{
               }}
             >
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
                 style={{
                   color: isActive
                     ? colors.onSolid

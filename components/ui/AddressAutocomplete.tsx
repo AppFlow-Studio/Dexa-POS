@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import {
   fetchAutocompleteSuggestions,
   fetchPlaceDetails,
@@ -46,6 +47,9 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
   inline = false,
   dropdownPosition = 'below'
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+
   const [suggestions, setSuggestions] = useState<PlacePrediction[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -193,23 +197,23 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            gap: 10,
+            paddingHorizontal: s(12),
+            paddingVertical: s(10),
+            gap: s(10),
             borderTopWidth: index > 0 ? 1 : 0,
             borderColor: colors.border
           }}
         >
-          <MapPin size={14} color={colors.muted} />
+          <MapPin size={s(14)} color={colors.muted} />
           <View style={{ flex: 1 }}>
             <Text
-              style={{ color: colors.heading, fontSize: 12, fontWeight: '600' }}
+              style={{ color: colors.heading, fontSize: s(12), fontWeight: '600' }}
               numberOfLines={1}
             >
               {item.structured_formatting.main_text}
             </Text>
             <Text
-              style={{ color: colors.muted, fontSize: 11, marginTop: 1 }}
+              style={{ color: colors.muted, fontSize: s(11), marginTop: 1 }}
               numberOfLines={1}
             >
               {item.structured_formatting.secondary_text}
@@ -219,13 +223,13 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
       ))}
       <View
         style={{
-          paddingHorizontal: 12,
-          paddingVertical: 6,
+          paddingHorizontal: s(12),
+          paddingVertical: s(6),
           borderTopWidth: 1,
           borderColor: colors.border
         }}
       >
-        <Text style={{ color: colors.muted, fontSize: 9, textAlign: 'right' }}>
+        <Text style={{ color: colors.muted, fontSize: s(9), textAlign: 'right' }}>
           Powered by Google
         </Text>
       </View>
@@ -248,10 +252,10 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
             backgroundColor: colors.card,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 8,
-            minHeight: 44,
-            paddingHorizontal: 12,
-            paddingVertical: 7
+            borderRadius: s(8),
+            minHeight: s(44),
+            paddingHorizontal: s(12),
+            paddingVertical: s(7)
           },
           inputStyle
         ]}
@@ -269,11 +273,11 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
           style={{
             flex: 1,
             color: colors.heading,
-            fontSize: 13,
+            fontSize: s(13),
             padding: 0,
             includeFontPadding: false,
-            lineHeight: 17,
-            maxHeight: 54,
+            lineHeight: s(17),
+            maxHeight: s(54),
             textAlignVertical: inputValue ? 'top' : 'center'
           }}
         />

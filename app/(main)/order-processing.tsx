@@ -1352,7 +1352,7 @@ const OrderProcessing = () => {
                     onPress={openSearch}
                     className="flex-row items-center rounded-lg px-3 py-2.5 justify-start"
                     style={{
-                      width: orderLineViewMode === "minimal" ? 300 : 300,
+                      width: s(300),
                       borderWidth: 1,
                       borderColor: `${colors.teal}35`,
                       backgroundColor: colors.screen,
