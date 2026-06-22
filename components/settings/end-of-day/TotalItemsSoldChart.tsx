@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { View } from "react-native";
+import { useUiScale } from "@/lib/uiScale";
 // 👇 Import Skia and Reanimated hooks
 import { Canvas, Path, interpolateColors } from "@shopify/react-native-skia";
 import {
@@ -72,9 +73,12 @@ const AnimatedSlice = ({
 
 // --- Main Component ---
 const TotalItemsSoldChart = () => {
+  const scale = useUiScale();
+  const s = (value: number) => Math.round(value * scale);
+
   // --- Chart Calculations ---
-  const size = 200;
-  const strokeWidth = 30;
+  const size = s(200);
+  const strokeWidth = s(30);
   const center = size / 2;
   const radius = size / 2 - strokeWidth / 2;
   const totalValue = itemsSoldData.reduce((acc, item) => acc + item.value, 0);
@@ -101,7 +105,7 @@ const TotalItemsSoldChart = () => {
 
   return (
     <View>
-      <View className="h-[300px] w-[200px] m-auto">
+      <View style={{ height: s(300), width: s(200), alignSelf: "center" }}>
         <Canvas style={{ flex: 1 }}>
           {segments.map((segment, index) => (
             <AnimatedSlice
@@ -118,7 +122,7 @@ const TotalItemsSoldChart = () => {
           ))}
         </Canvas>
       </View>
-      <View className="mt-4 gap-y-3">
+      <View style={{ marginTop: s(16), gap: s(12) }}>
         {itemsSoldData.map((item) => (
           <LegendRow key={item.label} {...item} />
         ))}

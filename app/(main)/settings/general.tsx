@@ -16,6 +16,7 @@ import { colors, spinnerColor } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import type { MerchantRole } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
+import { useUiScale } from "@/lib/uiScale";
 import { clearStationData, resetClientSession } from "@/services/cacheService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
@@ -73,6 +74,8 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
   onSuccess,
   onCancel,
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [pin, setPin] = useState("");
   const shakeX = useSharedValue(0);
   const shakeStyle = useAnimatedStyle(() => ({
@@ -128,17 +131,17 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
               backgroundColor: colors.panel,
               borderColor: colors.border,
               borderWidth: 1,
-              borderRadius: 16,
-              padding: 24,
+              borderRadius: s(16),
+              padding: s(24),
             }}
           >
             <Text
               style={{
                 textAlign: "center",
-                fontSize: 18,
+                fontSize: s(18),
                 fontWeight: "700",
                 color: colors.heading,
-                marginBottom: 4,
+                marginBottom: s(4),
               }}
             >
               Manager PIN Required
@@ -146,9 +149,9 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
             <Text
               style={{
                 textAlign: "center",
-                fontSize: 13,
+                fontSize: s(13),
                 color: colors.label,
-                marginBottom: 16,
+                marginBottom: s(16),
               }}
             >
               {title}
@@ -170,18 +173,18 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
             <TouchableOpacity
               onPress={handleVerify}
               style={{
-                paddingVertical: 10,
+                paddingVertical: s(10),
                 backgroundColor: colors.teal + "20",
                 borderWidth: 1,
                 borderColor: colors.teal + "50",
-                borderRadius: 8,
-                marginTop: 12,
+                borderRadius: s(8),
+                marginTop: s(12),
               }}
             >
               <Text
                 style={{
                   textAlign: "center",
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: "700",
                   color: colors.teal,
                 }}
@@ -191,12 +194,12 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleCancel}
-              style={{ paddingVertical: 8, marginTop: 8 }}
+              style={{ paddingVertical: s(8), marginTop: s(8) }}
             >
               <Text
                 style={{
                   textAlign: "center",
-                  fontSize: 13,
+                  fontSize: s(13),
                   color: colors.label,
                 }}
               >
@@ -213,6 +216,8 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 const GeneralSettingsScreen = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const queryClient = useQueryClient();
   const supabase = useSupabaseClient();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
@@ -429,18 +434,18 @@ const GeneralSettingsScreen = () => {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingHorizontal: 14,
-        paddingVertical: 11,
+        paddingHorizontal: s(14),
+        paddingVertical: s(11),
         borderBottomWidth: expandedSections[section] ? 1 : 0,
         borderBottomColor: colors.border,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: s(10) }}>
         <View
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
+            width: s(32),
+            height: s(32),
+            borderRadius: s(8),
             backgroundColor: colors.teal + "15",
             alignItems: "center",
             justifyContent: "center",
@@ -450,7 +455,7 @@ const GeneralSettingsScreen = () => {
         </View>
         <Text
           style={{
-            fontSize: 13,
+            fontSize: s(13),
             fontWeight: "700",
             color: colors.heading,
           }}
@@ -460,22 +465,22 @@ const GeneralSettingsScreen = () => {
         {badge && (
           <View
             style={{
-              paddingHorizontal: 8,
-              paddingVertical: 3,
+              paddingHorizontal: s(8),
+              paddingVertical: s(3),
               backgroundColor: colors.teal + "20",
               borderWidth: 1,
               borderColor: colors.teal + "50",
-              borderRadius: 20,
+              borderRadius: s(20),
             }}
           >
-            <Text style={{ fontSize: 11, color: colors.teal }}>{badge}</Text>
+            <Text style={{ fontSize: s(11), color: colors.teal }}>{badge}</Text>
           </View>
         )}
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={14} color={colors.label} />
+        <ChevronUp size={s(14)} color={colors.label} />
       ) : (
-        <ChevronDown size={14} color={colors.label} />
+        <ChevronDown size={s(14)} color={colors.label} />
       )}
     </TouchableOpacity>
   );
@@ -485,24 +490,24 @@ const GeneralSettingsScreen = () => {
       style={{
         flex: 1,
         backgroundColor: colors.screen,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
+        paddingHorizontal: s(14),
+        paddingVertical: s(10),
       }}
     >
       {/* Header */}
-      <View style={{ marginBottom: 10 }}>
+      <View style={{ marginBottom: s(10) }}>
         <Text
-          style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}
+          style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}
         >
           General Settings
         </Text>
-        <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
+        <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
           Business information, display preferences, and system utilities.
         </Text>
       </View>
 
       <View
-        style={{ height: 1, backgroundColor: colors.border, marginBottom: 10 }}
+        style={{ height: 1, backgroundColor: colors.border, marginBottom: s(10) }}
       />
 
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -510,10 +515,10 @@ const GeneralSettingsScreen = () => {
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 12,
+            marginBottom: s(12),
             overflow: "hidden",
           }}
         >
@@ -524,22 +529,22 @@ const GeneralSettingsScreen = () => {
             "Read-only",
           )}
           {expandedSections.info && (
-            <View style={{ padding: 12, gap: 8 }}>
+            <View style={{ padding: s(12), gap: s(8) }}>
               {/* Info notice */}
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 8,
-                  padding: 9,
+                  gap: s(8),
+                  padding: s(9),
                   backgroundColor: colors.teal + "15",
                   borderWidth: 1,
                   borderColor: colors.teal + "40",
-                  borderRadius: 8,
+                  borderRadius: s(8),
                 }}
               >
-                <ExternalLink size={13} color={colors.teal} />
-                <Text style={{ fontSize: 10, color: colors.teal, flex: 1 }}>
+                <ExternalLink size={s(13)} color={colors.teal} />
+                <Text style={{ fontSize: s(10), color: colors.teal, flex: 1 }}>
                   To update business information, visit your dashboard on the
                   website.
                 </Text>
@@ -549,9 +554,9 @@ const GeneralSettingsScreen = () => {
               <View>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.label,
-                    marginBottom: 4,
+                    marginBottom: s(4),
                     fontWeight: "500",
                   }}
                 >
@@ -564,15 +569,15 @@ const GeneralSettingsScreen = () => {
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    gap: 8,
+                    borderRadius: s(8),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    gap: s(8),
                   }}
                 >
-                  <Building2 size={14} color={colors.teal} />
+                  <Building2 size={s(14)} color={colors.teal} />
                   <Text
-                    style={{ fontSize: 13, color: colors.heading, flex: 1 }}
+                    style={{ fontSize: s(13), color: colors.heading, flex: 1 }}
                   >
                     {displayStoreName}
                   </Text>
@@ -583,9 +588,9 @@ const GeneralSettingsScreen = () => {
               <View>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.label,
-                    marginBottom: 4,
+                    marginBottom: s(4),
                     fontWeight: "500",
                   }}
                 >
@@ -598,15 +603,15 @@ const GeneralSettingsScreen = () => {
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    gap: 8,
+                    borderRadius: s(8),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    gap: s(8),
                   }}
                 >
-                  <MapPin size={14} color={colors.teal} />
+                  <MapPin size={s(14)} color={colors.teal} />
                   <Text
-                    style={{ fontSize: 13, color: colors.heading, flex: 1 }}
+                    style={{ fontSize: s(13), color: colors.heading, flex: 1 }}
                   >
                     {displayAddress}
                   </Text>
@@ -617,9 +622,9 @@ const GeneralSettingsScreen = () => {
               <View>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.label,
-                    marginBottom: 4,
+                    marginBottom: s(4),
                     fontWeight: "500",
                   }}
                 >
@@ -632,15 +637,15 @@ const GeneralSettingsScreen = () => {
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    gap: 8,
+                    borderRadius: s(8),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    gap: s(8),
                   }}
                 >
-                  <Phone size={14} color={colors.teal} />
+                  <Phone size={s(14)} color={colors.teal} />
                   <Text
-                    style={{ fontSize: 13, color: colors.heading, flex: 1 }}
+                    style={{ fontSize: s(13), color: colors.heading, flex: 1 }}
                   >
                     {displayPhone}
                   </Text>
@@ -668,22 +673,22 @@ const GeneralSettingsScreen = () => {
             "Read-only",
           )}
           {expandedSections.hours && (
-            <View style={{ padding: 12 }}>
+            <View style={{ padding: s(12) }}>
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 8,
-                  padding: 9,
+                  gap: s(8),
+                  padding: s(9),
                   backgroundColor: colors.teal + "15",
                   borderWidth: 1,
                   borderColor: colors.teal + "40",
-                  borderRadius: 8,
-                  marginBottom: 10,
+                  borderRadius: s(8),
+                  marginBottom: s(10),
                 }}
               >
-                <ExternalLink size={13} color={colors.teal} />
-                <Text style={{ fontSize: 10, color: colors.teal, flex: 1 }}>
+                <ExternalLink size={s(13)} color={colors.teal} />
+                <Text style={{ fontSize: s(10), color: colors.teal, flex: 1 }}>
                   To update operating hours, visit your dashboard on the
                   website.
                 </Text>
@@ -692,10 +697,10 @@ const GeneralSettingsScreen = () => {
               {displayHours.length === 0 ? (
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     color: colors.label,
                     textAlign: "center",
-                    paddingVertical: 8,
+                    paddingVertical: s(8),
                   }}
                 >
                   No hours configured.
@@ -708,7 +713,7 @@ const GeneralSettingsScreen = () => {
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      paddingVertical: 10,
+                      paddingVertical: s(10),
                       borderBottomWidth: 1,
                       borderBottomColor: colors.border,
                       opacity: h.enabled ? 1 : 0.4,
@@ -716,22 +721,22 @@ const GeneralSettingsScreen = () => {
                   >
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         color: colors.heading,
                         fontWeight: "500",
-                        width: 100,
+                        width: s(100),
                       }}
                     >
                       {h.day}
                     </Text>
                     {h.enabled ? (
-                      <Text style={{ fontSize: 13, color: colors.label }}>
+                      <Text style={{ fontSize: s(13), color: colors.label }}>
                         {h.open} – {h.close}
                       </Text>
                     ) : (
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           color: colors.muted,
                           fontStyle: "italic",
                         }}
@@ -763,22 +768,22 @@ const GeneralSettingsScreen = () => {
             "display",
           )}
           {expandedSections.display && (
-            <View style={{ padding: 12, gap: 2 }}>
+            <View style={{ padding: s(12), gap: s(2) }}>
               {/* POS Menu Navigation */}
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  paddingVertical: 10,
+                  paddingVertical: s(10),
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
                 }}
               >
-                <View style={{ flex: 1, marginRight: 16 }}>
+                <View style={{ flex: 1, marginRight: s(16) }}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       color: colors.heading,
                       fontWeight: "500",
                     }}
@@ -786,17 +791,17 @@ const GeneralSettingsScreen = () => {
                     POS Menu Navigation
                   </Text>
                   <Text
-                    style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
                   >
                     Choose between menu category popups and the compact selector
                   </Text>
                 </View>
-                <View style={{ flexDirection: "row", gap: 8 }}>
+                <View style={{ flexDirection: "row", gap: s(8) }}>
                   <TouchableOpacity
                     onPress={() => setPosMenuNavigationMode("popup")}
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(6),
                       backgroundColor:
                         posMenuNavigationMode === "popup"
                           ? colors.teal + "20"
@@ -806,12 +811,12 @@ const GeneralSettingsScreen = () => {
                         posMenuNavigationMode === "popup"
                           ? colors.teal + "50"
                           : colors.border,
-                      borderRadius: 8,
+                      borderRadius: s(8),
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         color:
                           posMenuNavigationMode === "popup"
                             ? colors.teal
@@ -825,8 +830,8 @@ const GeneralSettingsScreen = () => {
                   <TouchableOpacity
                     onPress={() => setPosMenuNavigationMode("classic")}
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(6),
                       backgroundColor:
                         posMenuNavigationMode === "classic"
                           ? colors.teal + "20"
@@ -836,12 +841,12 @@ const GeneralSettingsScreen = () => {
                         posMenuNavigationMode === "classic"
                           ? colors.teal + "50"
                           : colors.border,
-                      borderRadius: 8,
+                      borderRadius: s(8),
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         color:
                           posMenuNavigationMode === "classic"
                             ? colors.teal
@@ -861,15 +866,15 @@ const GeneralSettingsScreen = () => {
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  paddingVertical: 10,
+                  paddingVertical: s(10),
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
                 }}
               >
-                <View style={{ flex: 1, marginRight: 16 }}>
+                <View style={{ flex: 1, marginRight: s(16) }}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       color: colors.heading,
                       fontWeight: "500",
                     }}
@@ -877,7 +882,7 @@ const GeneralSettingsScreen = () => {
                     Show Menu Item Images
                   </Text>
                   <Text
-                    style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
                   >
                     Display images on menu items in the order screen
                   </Text>
@@ -894,15 +899,15 @@ const GeneralSettingsScreen = () => {
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  paddingVertical: 10,
+                  paddingVertical: s(10),
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
                 }}
               >
-                <View style={{ flex: 1, marginRight: 16 }}>
+                <View style={{ flex: 1, marginRight: s(16) }}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       color: colors.heading,
                       fontWeight: "500",
                     }}
@@ -910,7 +915,7 @@ const GeneralSettingsScreen = () => {
                     Auto-select first required option
                   </Text>
                   <Text
-                    style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
                   >
                     When a required modifier group has no preset default,
                     automatically pick the first free option. Turn off to
@@ -929,20 +934,20 @@ const GeneralSettingsScreen = () => {
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  paddingVertical: 10,
+                  paddingVertical: s(10),
                 }}
               >
-                <View style={{ flex: 1, marginRight: 16 }}>
+                <View style={{ flex: 1, marginRight: s(16) }}>
                   <View
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 8,
+                      gap: s(8),
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         color: colors.heading,
                         fontWeight: "500",
                       }}
@@ -951,17 +956,17 @@ const GeneralSettingsScreen = () => {
                     </Text>
                   </View>
                   <Text
-                    style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
+                    style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}
                   >
                     Choose between Dark and Light mode
                   </Text>
                 </View>
-                <View style={{ flexDirection: "row", gap: 8 }}>
+                <View style={{ flexDirection: "row", gap: s(8) }}>
                   <TouchableOpacity
                     onPress={() => setColorScheme("dark")}
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(6),
                       backgroundColor:
                         colorScheme === "dark"
                           ? colors.teal + "20"
@@ -971,12 +976,12 @@ const GeneralSettingsScreen = () => {
                         colorScheme === "dark"
                           ? colors.teal + "50"
                           : colors.border,
-                      borderRadius: 8,
+                      borderRadius: s(8),
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         color:
                           colorScheme === "dark" ? colors.teal : colors.label,
                         fontWeight: "500",
@@ -988,8 +993,8 @@ const GeneralSettingsScreen = () => {
                   <TouchableOpacity
                     onPress={() => setColorScheme("light")}
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(6),
                       backgroundColor:
                         colorScheme === "light"
                           ? colors.teal + "20"
@@ -999,12 +1004,12 @@ const GeneralSettingsScreen = () => {
                         colorScheme === "light"
                           ? colors.teal + "50"
                           : colors.border,
-                      borderRadius: 8,
+                      borderRadius: s(8),
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         color:
                           colorScheme === "light" ? colors.teal : colors.label,
                         fontWeight: "500",
@@ -1036,7 +1041,7 @@ const GeneralSettingsScreen = () => {
             "network",
           )}
           {expandedSections.network && (
-            <View style={{ padding: 12 }}>
+            <View style={{ padding: s(12) }}>
               {/* Run Speed Test button */}
               <TouchableOpacity
                 onPress={handleSpeedTest}
@@ -1044,36 +1049,36 @@ const GeneralSettingsScreen = () => {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingHorizontal: 12,
-                  paddingVertical: 9,
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(9),
                   backgroundColor: colors.screen,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 10,
-                  marginBottom: speedTestResult ? 12 : 0,
+                  borderRadius: s(10),
+                  marginBottom: speedTestResult ? s(12) : 0,
                 }}
               >
                 <View
                   style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
+                    width: s(32),
+                    height: s(32),
+                    borderRadius: s(8),
                     backgroundColor: colors.teal + "15",
                     alignItems: "center",
                     justifyContent: "center",
-                    marginRight: 12,
+                    marginRight: s(12),
                   }}
                 >
                   {isTestingSpeed ? (
                     <ActivityIndicator size="small" color={spinnerColor} />
                   ) : (
-                    <Wifi size={16} color={colors.teal} />
+                    <Wifi size={s(16)} color={colors.teal} />
                   )}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: "600",
                       color: colors.heading,
                     }}
@@ -1081,7 +1086,7 @@ const GeneralSettingsScreen = () => {
                     {isTestingSpeed ? "Testing..." : "Run Speed Test"}
                   </Text>
                   <Text
-                    style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
                   >
                     Check download speed, latency, and connection type
                   </Text>
@@ -1106,24 +1111,24 @@ const GeneralSettingsScreen = () => {
                         : "Poor";
 
                   return (
-                    <View style={{ gap: 8 }}>
+                    <View style={{ gap: s(8) }}>
                       {/* Quality badge */}
                       <View
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
-                          gap: 8,
-                          padding: 9,
+                          gap: s(8),
+                          padding: s(9),
                           backgroundColor: qualityColor + "15",
                           borderWidth: 1,
                           borderColor: qualityColor + "40",
-                          borderRadius: 8,
+                          borderRadius: s(8),
                         }}
                       >
-                        <Wifi size={13} color={qualityColor} />
+                        <Wifi size={s(13)} color={qualityColor} />
                         <Text
                           style={{
-                            fontSize: 12,
+                            fontSize: s(12),
                             color: qualityColor,
                             fontWeight: "600",
                           }}
@@ -1136,7 +1141,7 @@ const GeneralSettingsScreen = () => {
                       <View
                         style={{
                           flexDirection: "row",
-                          gap: 8,
+                          gap: s(8),
                         }}
                       >
                         {/* Download Speed */}
@@ -1146,30 +1151,30 @@ const GeneralSettingsScreen = () => {
                             backgroundColor: colors.screen,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            borderRadius: 8,
-                            padding: 10,
+                            borderRadius: s(8),
+                            padding: s(10),
                             alignItems: "center",
                           }}
                         >
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               color: colors.muted,
-                              marginBottom: 4,
+                              marginBottom: s(4),
                             }}
                           >
                             Download
                           </Text>
                           <Text
                             style={{
-                              fontSize: 18,
+                              fontSize: s(18),
                               fontWeight: "700",
                               color: colors.heading,
                             }}
                           >
                             {speedTestResult.downloadMbps}
                           </Text>
-                          <Text style={{ fontSize: 10, color: colors.label }}>
+                          <Text style={{ fontSize: s(10), color: colors.label }}>
                             Mbps
                           </Text>
                         </View>
@@ -1181,30 +1186,30 @@ const GeneralSettingsScreen = () => {
                             backgroundColor: colors.screen,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            borderRadius: 8,
-                            padding: 10,
+                            borderRadius: s(8),
+                            padding: s(10),
                             alignItems: "center",
                           }}
                         >
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               color: colors.muted,
-                              marginBottom: 4,
+                              marginBottom: s(4),
                             }}
                           >
                             Latency
                           </Text>
                           <Text
                             style={{
-                              fontSize: 18,
+                              fontSize: s(18),
                               fontWeight: "700",
                               color: colors.heading,
                             }}
                           >
                             {speedTestResult.latencyMs}
                           </Text>
-                          <Text style={{ fontSize: 10, color: colors.label }}>
+                          <Text style={{ fontSize: s(10), color: colors.label }}>
                             ms
                           </Text>
                         </View>
@@ -1216,23 +1221,23 @@ const GeneralSettingsScreen = () => {
                             backgroundColor: colors.screen,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            borderRadius: 8,
-                            padding: 10,
+                            borderRadius: s(8),
+                            padding: s(10),
                             alignItems: "center",
                           }}
                         >
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               color: colors.muted,
-                              marginBottom: 4,
+                              marginBottom: s(4),
                             }}
                           >
                             Type
                           </Text>
                           <Text
                             style={{
-                              fontSize: 13,
+                              fontSize: s(13),
                               fontWeight: "700",
                               color: colors.heading,
                             }}
@@ -1266,19 +1271,19 @@ const GeneralSettingsScreen = () => {
             "cache",
           )}
           {expandedSections.cache && (
-            <View style={{ padding: 12 }}>
+            <View style={{ padding: s(12) }}>
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  marginBottom: 8,
+                  marginBottom: s(8),
                 }}
               >
-                <View style={{ flex: 1, marginRight: 16 }}>
+                <View style={{ flex: 1, marginRight: s(16) }}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       color: colors.heading,
                       fontWeight: "500",
                     }}
@@ -1286,7 +1291,7 @@ const GeneralSettingsScreen = () => {
                     Clear Cache
                   </Text>
                   <Text
-                    style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
+                    style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}
                   >
                     Clears orders and local data. Your session and account
                     remain active.
@@ -1296,17 +1301,17 @@ const GeneralSettingsScreen = () => {
                   onPress={() => setShowClearCacheModal(true)}
                   disabled={isClearing}
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 8,
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(8),
                     backgroundColor: colors.danger + "15",
                     borderWidth: 1,
                     borderColor: colors.danger + "30",
-                    borderRadius: 8,
+                    borderRadius: s(8),
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: "600",
                       color: colors.danger,
                     }}
@@ -1315,7 +1320,7 @@ const GeneralSettingsScreen = () => {
                   </Text>
                 </TouchableOpacity>
               </View>
-              <Text style={{ fontSize: 11, color: colors.muted }}>
+              <Text style={{ fontSize: s(11), color: colors.muted }}>
                 Device ID, store settings, employees, and your logged-in account
                 will be preserved.
               </Text>
@@ -1327,11 +1332,11 @@ const GeneralSettingsScreen = () => {
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 32,
-            padding: 14,
+            marginBottom: s(32),
+            padding: s(14),
           }}
         >
           <View
@@ -1342,31 +1347,31 @@ const GeneralSettingsScreen = () => {
             }}
           >
             <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+              style={{ flexDirection: "row", alignItems: "center", gap: s(10) }}
             >
               <View
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
+                  width: s(32),
+                  height: s(32),
+                  borderRadius: s(8),
                   backgroundColor: colors.danger + "15",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <LogOut size={16} color={colors.danger} />
+                <LogOut size={s(16)} color={colors.danger} />
               </View>
               <View>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "700",
                     color: colors.heading,
                   }}
                 >
                   Log Out
                 </Text>
-                <Text style={{ fontSize: 11, color: colors.label }}>
+                <Text style={{ fontSize: s(11), color: colors.label }}>
                   Requires manager PIN
                 </Text>
               </View>
@@ -1375,17 +1380,17 @@ const GeneralSettingsScreen = () => {
               onPress={() => setShowLogoutPinGate(true)}
               disabled={isLoggingOut}
               style={{
-                paddingHorizontal: 14,
-                paddingVertical: 7,
+                paddingHorizontal: s(14),
+                paddingVertical: s(7),
                 backgroundColor: colors.danger + "15",
                 borderWidth: 1,
                 borderColor: colors.danger + "30",
-                borderRadius: 8,
+                borderRadius: s(8),
               }}
             >
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: "600",
                   color: colors.danger,
                 }}

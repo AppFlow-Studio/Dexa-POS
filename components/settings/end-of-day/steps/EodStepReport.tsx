@@ -5,6 +5,7 @@ import {
   DailySummary
 } from '@/stores/useEndOfDayStore'
 import { Text, TouchableOpacity, View } from 'react-native'
+import { useUiScale } from '@/lib/uiScale'
 import EodChecklistRow from '../EodChecklistRow'
 
 const resolveItem = (
@@ -29,6 +30,8 @@ export default function EodStepReport ({
   canComplete,
   onContinueWithIssues
 }: EodStepReportProps) {
+  const scale = useUiScale()
+  const s = (value: number) => Math.round(value * scale)
   const reportItem = resolveItem(checklist, 'report_generated')
   const blockers = checklist.filter(item => item.status === 'failed').length
   const summaryCards = summary
@@ -41,43 +44,43 @@ export default function EodStepReport ({
     : []
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: s(10) }}>
       <View
         style={{
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 12,
-          gap: 10
+          padding: s(12),
+          gap: s(10)
         }}
       >
-        <View style={{ gap: 4 }}>
+        <View style={{ gap: s(4) }}>
           <Text
-            style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}
           >
             Sales Summary
           </Text>
-          <Text style={{ fontSize: 11, color: colors.label, lineHeight: 16 }}>
+          <Text style={{ fontSize: s(11), color: colors.label, lineHeight: s(16) }}>
             Run the summary, review totals, then finish the close out.
           </Text>
         </View>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}>
           <View
             style={{
               flexGrow: 1,
               flexBasis: 120,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              padding: 10
+              padding: s(10)
             }}
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -88,10 +91,10 @@ export default function EodStepReport ({
             </Text>
             <Text
               style={{
-                fontSize: 18,
+                fontSize: s(18),
                 fontWeight: '800',
                 color: colors.heading,
-                marginTop: 3
+                marginTop: s(3)
               }}
             >
               {checklist.length}
@@ -101,16 +104,16 @@ export default function EodStepReport ({
             style={{
               flexGrow: 1,
               flexBasis: 120,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              padding: 10
+              padding: s(10)
             }}
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -121,10 +124,10 @@ export default function EodStepReport ({
             </Text>
             <Text
               style={{
-                fontSize: 18,
+                fontSize: s(18),
                 fontWeight: '800',
                 color: colors.teal,
-                marginTop: 3
+                marginTop: s(3)
               }}
             >
               {checklist.filter(item => item.status === 'passed').length}
@@ -134,16 +137,16 @@ export default function EodStepReport ({
             style={{
               flexGrow: 1,
               flexBasis: 120,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              padding: 10
+              padding: s(10)
             }}
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -154,10 +157,10 @@ export default function EodStepReport ({
             </Text>
             <Text
               style={{
-                fontSize: 18,
+                fontSize: s(18),
                 fontWeight: '800',
                 color: colors.danger,
-                marginTop: 3
+                marginTop: s(3)
               }}
             >
               {blockers}
@@ -168,17 +171,17 @@ export default function EodStepReport ({
         <TouchableOpacity
           onPress={onRunSummary}
           style={{
-            borderRadius: 12,
+            borderRadius: s(12),
             backgroundColor: colors.teal + '18',
             borderWidth: 1,
             borderColor: colors.teal + '45',
-            paddingHorizontal: 12,
-            paddingVertical: 11,
+            paddingHorizontal: s(12),
+            paddingVertical: s(11),
             alignItems: 'center'
           }}
           disabled={summaryLoading}
         >
-          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>
+          <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.teal }}>
             {summaryLoading ? 'Running summary...' : 'Run daily summary'}
           </Text>
         </TouchableOpacity>
@@ -193,12 +196,12 @@ export default function EodStepReport ({
 
       <View
         style={{
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 12,
-          gap: 10
+          padding: s(12),
+          gap: s(10)
         }}
       >
         <View
@@ -209,41 +212,41 @@ export default function EodStepReport ({
           }}
         >
           <Text
-            style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
           >
             Totals Snapshot
           </Text>
           {summaryLoading ? (
-            <Text style={{ fontSize: 10, color: colors.label }}>
+            <Text style={{ fontSize: s(10), color: colors.label }}>
               Loading...
             </Text>
           ) : null}
         </View>
 
         {summaryLoading ? (
-          <Text style={{ fontSize: 11, color: colors.label }}>Loading…</Text>
+          <Text style={{ fontSize: s(11), color: colors.label }}>Loading…</Text>
         ) : !summary ? (
-          <Text style={{ fontSize: 11, color: colors.label }}>
+          <Text style={{ fontSize: s(11), color: colors.label }}>
             Run summary to see totals and close your day.
           </Text>
         ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}>
             {summaryCards.map(card => (
               <View
                 key={card.label}
                 style={{
                   flexGrow: 1,
                   flexBasis: 120,
-                  borderRadius: 12,
+                  borderRadius: s(12),
                   borderWidth: 1,
                   borderColor: colors.border,
                   backgroundColor: colors.card,
-                  padding: 10
+                  padding: s(10)
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 10,
+                    fontSize: s(10),
                     color: colors.muted,
                     fontWeight: '700',
                     textTransform: 'uppercase',
@@ -254,10 +257,10 @@ export default function EodStepReport ({
                 </Text>
                 <Text
                   style={{
-                    fontSize: 14,
+                    fontSize: s(14),
                     color: colors.heading,
                     fontWeight: '800',
-                    marginTop: 3
+                    marginTop: s(3)
                   }}
                 >
                   ${card.value.toFixed(2)}
@@ -271,45 +274,45 @@ export default function EodStepReport ({
       {summary && (summary.topItem || summary.topServer || summary.busyHour) ? (
         <View
           style={{
-            borderRadius: 16,
+            borderRadius: s(16),
             borderWidth: 1,
             borderColor: colors.border,
             backgroundColor: colors.panel,
-            padding: 12,
-            gap: 10
+            padding: s(12),
+            gap: s(10)
           }}
         >
-          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+          <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
             Highlights
           </Text>
-          <View style={{ gap: 8 }}>
+          <View style={{ gap: s(8) }}>
             {summary.topItem ? (
               <View
                 style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  borderRadius: 10,
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.border,
                   backgroundColor: colors.card,
-                  paddingHorizontal: 12,
-                  paddingVertical: 9
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(9)
                 }}
               >
-                <View style={{ gap: 2 }}>
-                  <Text style={{ fontSize: 10, color: colors.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <View style={{ gap: s(2) }}>
+                  <Text style={{ fontSize: s(10), color: colors.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     Top Item
                   </Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+                  <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
                     {summary.topItem.name}
                   </Text>
                 </View>
-                <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.teal }}>
+                <View style={{ alignItems: 'flex-end', gap: s(2) }}>
+                  <Text style={{ fontSize: s(13), fontWeight: '800', color: colors.teal }}>
                     {summary.topItem.quantity}x
                   </Text>
-                  <Text style={{ fontSize: 11, color: colors.label }}>
+                  <Text style={{ fontSize: s(11), color: colors.label }}>
                     ${summary.topItem.revenue.toFixed(2)}
                   </Text>
                 </View>
@@ -321,27 +324,27 @@ export default function EodStepReport ({
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  borderRadius: 10,
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.border,
                   backgroundColor: colors.card,
-                  paddingHorizontal: 12,
-                  paddingVertical: 9
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(9)
                 }}
               >
-                <View style={{ gap: 2 }}>
-                  <Text style={{ fontSize: 10, color: colors.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <View style={{ gap: s(2) }}>
+                  <Text style={{ fontSize: s(10), color: colors.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     Top Server
                   </Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+                  <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
                     {summary.topServer.name}
                   </Text>
                 </View>
-                <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.teal }}>
+                <View style={{ alignItems: 'flex-end', gap: s(2) }}>
+                  <Text style={{ fontSize: s(13), fontWeight: '800', color: colors.teal }}>
                     ${summary.topServer.revenue.toFixed(2)}
                   </Text>
-                  <Text style={{ fontSize: 11, color: colors.label }}>
+                  <Text style={{ fontSize: s(11), color: colors.label }}>
                     {summary.topServer.orderCount} orders
                   </Text>
                 </View>
@@ -353,24 +356,24 @@ export default function EodStepReport ({
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  borderRadius: 10,
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.border,
                   backgroundColor: colors.card,
-                  paddingHorizontal: 12,
-                  paddingVertical: 9
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(9)
                 }}
               >
-                <View style={{ gap: 2 }}>
-                  <Text style={{ fontSize: 10, color: colors.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <View style={{ gap: s(2) }}>
+                  <Text style={{ fontSize: s(10), color: colors.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     Busiest Hour
                   </Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+                  <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
                     {summary.busyHour.hour === 0 ? '12 AM' : summary.busyHour.hour < 12 ? `${summary.busyHour.hour} AM` : summary.busyHour.hour === 12 ? '12 PM' : `${summary.busyHour.hour - 12} PM`}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: colors.teal }}>
+                  <Text style={{ fontSize: s(13), fontWeight: '800', color: colors.teal }}>
                     {summary.busyHour.orderCount} orders
                   </Text>
                 </View>
@@ -384,17 +387,17 @@ export default function EodStepReport ({
         <TouchableOpacity
           onPress={onContinueWithIssues}
           style={{
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.warning + '50',
             backgroundColor: colors.warning + '15',
-            paddingHorizontal: 12,
-            paddingVertical: 11,
+            paddingHorizontal: s(12),
+            paddingVertical: s(11),
             alignItems: 'center'
           }}
         >
           <Text
-            style={{ fontSize: 13, fontWeight: '700', color: colors.warning }}
+            style={{ fontSize: s(13), fontWeight: '700', color: colors.warning }}
           >
             Continue with issues
           </Text>

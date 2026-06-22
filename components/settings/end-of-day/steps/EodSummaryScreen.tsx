@@ -1,6 +1,7 @@
 import { colors } from '@/lib/theme'
 import { ChecklistItem } from '@/stores/useEndOfDayStore'
 import { Text, View } from 'react-native'
+import { useUiScale } from '@/lib/uiScale'
 import EodChecklistRow from '../EodChecklistRow'
 
 interface EodSummaryScreenProps {
@@ -14,47 +15,49 @@ export default function EodSummaryScreen ({
   blockingItems,
   canComplete
 }: EodSummaryScreenProps) {
+  const scale = useUiScale()
+  const s = (value: number) => Math.round(value * scale)
   const passed = checklist.filter(item => item.status === 'passed').length
   const failed = blockingItems.filter(item => item.status === 'failed').length
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: s(10) }}>
       <View
         style={{
-          borderRadius: 18,
+          borderRadius: s(18),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 12,
-          gap: 10
+          padding: s(12),
+          gap: s(10)
         }}
       >
-        <View style={{ gap: 4 }}>
+        <View style={{ gap: s(4) }}>
           <Text
-            style={{ fontSize: 18, fontWeight: '800', color: colors.heading }}
+            style={{ fontSize: s(18), fontWeight: '800', color: colors.heading }}
           >
             Close Out Summary
           </Text>
-          <Text style={{ fontSize: 12, color: colors.label, lineHeight: 17 }}>
+          <Text style={{ fontSize: s(12), color: colors.label, lineHeight: s(17) }}>
             Review the final checklist status before completing the day.
           </Text>
         </View>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}>
           <View
             style={{
               flexGrow: 1,
               flexBasis: 120,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              padding: 10
+              padding: s(10)
             }}
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -65,10 +68,10 @@ export default function EodSummaryScreen ({
             </Text>
             <Text
               style={{
-                fontSize: 18,
+                fontSize: s(18),
                 fontWeight: '800',
                 color: colors.heading,
-                marginTop: 3
+                marginTop: s(3)
               }}
             >
               {checklist.length}
@@ -78,16 +81,16 @@ export default function EodSummaryScreen ({
             style={{
               flexGrow: 1,
               flexBasis: 120,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              padding: 10
+              padding: s(10)
             }}
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -98,10 +101,10 @@ export default function EodSummaryScreen ({
             </Text>
             <Text
               style={{
-                fontSize: 18,
+                fontSize: s(18),
                 fontWeight: '800',
                 color: colors.teal,
-                marginTop: 3
+                marginTop: s(3)
               }}
             >
               {passed}
@@ -111,16 +114,16 @@ export default function EodSummaryScreen ({
             style={{
               flexGrow: 1,
               flexBasis: 120,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              padding: 10
+              padding: s(10)
             }}
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -131,10 +134,10 @@ export default function EodSummaryScreen ({
             </Text>
             <Text
               style={{
-                fontSize: 18,
+                fontSize: s(18),
                 fontWeight: '800',
                 color: colors.danger,
-                marginTop: 3
+                marginTop: s(3)
               }}
             >
               {failed}
@@ -144,7 +147,7 @@ export default function EodSummaryScreen ({
 
         <View
           style={{
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: canComplete
               ? colors.teal + '45'
@@ -152,12 +155,12 @@ export default function EodSummaryScreen ({
             backgroundColor: canComplete
               ? colors.teal + '12'
               : colors.warning + '12',
-            padding: 10
+            padding: s(10)
           }}
         >
           <Text
             style={{
-              fontSize: 12,
+              fontSize: s(12),
               fontWeight: '700',
               color: canComplete ? colors.teal : colors.warning
             }}
@@ -166,10 +169,10 @@ export default function EodSummaryScreen ({
           </Text>
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               color: colors.label,
-              marginTop: 4,
-              lineHeight: 16
+              marginTop: s(4),
+              lineHeight: s(16)
             }}
           >
             {canComplete
@@ -181,16 +184,16 @@ export default function EodSummaryScreen ({
 
       <View
         style={{
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 12,
-          gap: 10
+          padding: s(12),
+          gap: s(10)
         }}
       >
         <Text
-          style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
         >
           Checklist Details
         </Text>

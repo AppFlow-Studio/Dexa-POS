@@ -4,6 +4,7 @@ import { Switch } from '@/components/ui/switch'
 import { useCFD } from '@/contexts/CFDProvider'
 import { createSupabaseClient } from '@/lib/supabase'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useAuth } from '@clerk/clerk-expo'
 import { useQuery } from '@tanstack/react-query'
@@ -28,6 +29,8 @@ import {
 import * as ImagePicker from 'expo-image-picker'
 
 const CustomerDisplayScreen = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const { getToken } = useAuth()
   const supabase = createSupabaseClient(getToken)
   const selectedStore = useStoreSettingsStore(state => state.selectedStore)
@@ -245,19 +248,19 @@ const CustomerDisplayScreen = () => {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.screen }}
-      contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 10, paddingBottom: 24 }}
+      contentContainerStyle={{ paddingHorizontal: s(14), paddingVertical: s(10), paddingBottom: s(24) }}
     >
       {/* Header */}
-      <View style={{ marginBottom: 10 }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
+      <View style={{ marginBottom: s(10) }}>
+        <Text style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}>
           Customer Display
         </Text>
-        <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
+        <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
           Configure the customer-facing display shown during ordering and payment
         </Text>
       </View>
 
-      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 10 }} />
+      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: s(10) }} />
 
       {/* CFD Card */}
       <View
@@ -265,9 +268,9 @@ const CustomerDisplayScreen = () => {
           backgroundColor: colors.panel,
           borderWidth: 1,
           borderColor: colors.border,
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 10
+          borderRadius: s(12),
+          padding: s(12),
+          marginBottom: s(10)
         }}
       >
         {/* Title row */}
@@ -276,27 +279,27 @@ const CustomerDisplayScreen = () => {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: 10
+            marginBottom: s(10)
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
+                width: s(32),
+                height: s(32),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + '15',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <Monitor size={16} color={colors.teal} />
+              <Monitor size={s(16)} color={colors.teal} />
             </View>
             <View>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+              <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
                 Connected Displays
               </Text>
-              <Text style={{ fontSize: 10, color: colors.muted }}>
+              <Text style={{ fontSize: s(10), color: colors.muted }}>
                 Pair and manage external customer displays
               </Text>
             </View>
@@ -306,9 +309,9 @@ const CustomerDisplayScreen = () => {
 
         {/* Connected displays list */}
         {connectedClientIds.length > 0 && (
-          <View style={{ marginBottom: 10 }}>
+          <View style={{ marginBottom: s(10) }}>
             <Text
-              style={{ fontSize: 11, color: colors.muted, marginBottom: 8, fontWeight: '600' }}
+              style={{ fontSize: s(11), color: colors.muted, marginBottom: s(8), fontWeight: '600' }}
             >
               Active Connections
             </Text>
@@ -320,19 +323,19 @@ const CustomerDisplayScreen = () => {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   backgroundColor: colors.screen,
-                  paddingHorizontal: 10,
-                  paddingVertical: 8,
-                  borderRadius: 8,
-                  marginBottom: 6,
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(8),
+                  borderRadius: s(8),
+                  marginBottom: s(6),
                   borderWidth: 1,
                   borderColor: colors.teal + '30'
                 }}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, color: colors.heading, fontWeight: '500' }}>
+                  <Text style={{ fontSize: s(12), color: colors.heading, fontWeight: '500' }}>
                     {extractIp(clientId)}
                   </Text>
-                  <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+                  <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>
                     Connected
                   </Text>
                 </View>
@@ -342,12 +345,12 @@ const CustomerDisplayScreen = () => {
                     backgroundColor: colors.danger + '20',
                     borderWidth: 1,
                     borderColor: colors.danger + '50',
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 6
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(6),
+                    borderRadius: s(6)
                   }}
                 >
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: colors.danger }}>
+                  <Text style={{ fontSize: s(11), fontWeight: '600', color: colors.danger }}>
                     Disconnect
                   </Text>
                 </Pressable>
@@ -363,12 +366,12 @@ const CustomerDisplayScreen = () => {
             backgroundColor: colors.teal + '20',
             borderWidth: 1,
             borderColor: colors.teal + '50',
-            paddingVertical: 7,
-            borderRadius: 8,
+            paddingVertical: s(7),
+            borderRadius: s(8),
             alignItems: 'center'
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>
+          <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.teal }}>
             {connectedClientIds.length > 0 ? 'Pair Additional Display' : 'Connect Display'}
           </Text>
         </Pressable>
@@ -376,21 +379,21 @@ const CustomerDisplayScreen = () => {
         {/* Show right panel toggle */}
         <View
           style={{
-            marginTop: 10,
-            paddingTop: 10,
+            marginTop: s(10),
+            paddingTop: s(10),
             borderTopWidth: 1,
             borderTopColor: colors.border,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: 12
+            gap: s(12)
           }}
         >
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+            <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}>
               Show right side panel
             </Text>
-            <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+            <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>
               Optional image panel shown alongside the order items
             </Text>
           </View>
@@ -403,17 +406,17 @@ const CustomerDisplayScreen = () => {
         {/* Right panel layout */}
         <View
           style={{
-            marginTop: 10,
-            paddingTop: 10,
+            marginTop: s(10),
+            paddingTop: s(10),
             borderTopWidth: 1,
             borderTopColor: colors.border,
-            gap: 8
+            gap: s(8)
           }}
         >
-          <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted }}>
+          <Text style={{ fontSize: s(11), fontWeight: '600', color: colors.muted }}>
             Right Panel Layout
           </Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: s(8) }}>
             {[
               { label: 'Single Image', value: 'single' },
               { label: 'Stacked Images', value: 'stacked' }
@@ -430,9 +433,9 @@ const CustomerDisplayScreen = () => {
                   }
                   style={{
                     flex: 1,
-                    paddingVertical: 8,
-                    paddingHorizontal: 10,
-                    borderRadius: 8,
+                    paddingVertical: s(8),
+                    paddingHorizontal: s(10),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     borderColor: active ? colors.teal + '50' : colors.border,
                     backgroundColor: active ? colors.teal + '15' : colors.screen
@@ -440,7 +443,7 @@ const CustomerDisplayScreen = () => {
                 >
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: '600',
                       textAlign: 'center',
                       color: active ? colors.teal : colors.label
@@ -457,22 +460,22 @@ const CustomerDisplayScreen = () => {
         {/* Price display mode */}
         <View
           style={{
-            marginTop: 10,
-            paddingTop: 10,
+            marginTop: s(10),
+            paddingTop: s(10),
             borderTopWidth: 1,
             borderTopColor: colors.border,
-            gap: 8
+            gap: s(8)
           }}
         >
           <View>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+            <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}>
               Price Display Mode
             </Text>
-            <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+            <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>
               Which totals are shown on the ordering screen
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: s(8) }}>
             {([
               { label: 'Dual (card + cash)', value: 'dual' as const },
               { label: 'Card only', value: 'card_only' as const },
@@ -487,9 +490,9 @@ const CustomerDisplayScreen = () => {
                   disabled={isSavingPricingMode}
                   style={{
                     flex: 1,
-                    paddingVertical: 8,
-                    paddingHorizontal: 6,
-                    borderRadius: 8,
+                    paddingVertical: s(8),
+                    paddingHorizontal: s(6),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     borderColor: active ? colors.teal + '50' : colors.border,
                     backgroundColor: active ? colors.teal + '15' : colors.screen,
@@ -497,11 +500,11 @@ const CustomerDisplayScreen = () => {
                   }}
                 >
                   {isSavingPricingMode && active ? (
-                    <ActivityIndicator size={12} color={colors.teal} />
+                    <ActivityIndicator size={s(12)} color={colors.teal} />
                   ) : (
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         fontWeight: '600',
                         textAlign: 'center',
                         color: active ? colors.teal : colors.label
@@ -523,9 +526,9 @@ const CustomerDisplayScreen = () => {
           backgroundColor: colors.panel,
           borderWidth: 1,
           borderColor: colors.border,
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 10
+          borderRadius: s(12),
+          padding: s(12),
+          marginBottom: s(10)
         }}
       >
         <View
@@ -533,14 +536,14 @@ const CustomerDisplayScreen = () => {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: 8
+            marginBottom: s(8)
           }}
         >
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+          <View style={{ flex: 1, paddingRight: s(12) }}>
+            <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}>
               Idle Carousel Images
             </Text>
-            <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+            <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>
               Shown while the customer display is idle
             </Text>
           </View>
@@ -550,23 +553,23 @@ const CustomerDisplayScreen = () => {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 5,
+              gap: s(5),
               backgroundColor: carouselUploading ? colors.border : colors.teal + '20',
               borderWidth: 1,
               borderColor: carouselUploading ? colors.border : colors.teal + '50',
-              paddingHorizontal: 10,
-              paddingVertical: 5,
-              borderRadius: 7
+              paddingHorizontal: s(10),
+              paddingVertical: s(5),
+              borderRadius: s(7)
             }}
           >
             {carouselUploading ? (
-              <ActivityIndicator size={12} color={colors.teal} />
+              <ActivityIndicator size={s(12)} color={colors.teal} />
             ) : (
-              <Plus size={13} color={colors.teal} />
+              <Plus size={s(13)} color={colors.teal} />
             )}
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '600',
                 color: carouselUploading ? colors.muted : colors.teal
               }}
@@ -579,27 +582,27 @@ const CustomerDisplayScreen = () => {
         {!carouselImages || carouselImages.length === 0 ? (
           <View
             style={{
-              paddingVertical: 10,
+              paddingVertical: s(10),
               alignItems: 'center',
               borderWidth: 1,
               borderStyle: 'dashed',
               borderColor: colors.border,
-              borderRadius: 8
+              borderRadius: s(8)
             }}
           >
-            <ImageIcon size={16} color={colors.muted} />
-            <Text style={{ fontSize: 9, color: colors.muted, marginTop: 4 }}>
+            <ImageIcon size={s(16)} color={colors.muted} />
+            <Text style={{ fontSize: s(9), color: colors.muted, marginTop: s(4) }}>
               No carousel images yet
             </Text>
           </View>
         ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6) }}>
             {carouselImages.map(img => (
               <View
                 key={img.id}
                 style={{
-                  width: 104,
-                  borderRadius: 8,
+                  width: s(104),
+                  borderRadius: s(8),
                   overflow: 'hidden',
                   borderWidth: 1,
                   borderColor: img.is_active ? colors.teal + '50' : colors.border
@@ -607,7 +610,7 @@ const CustomerDisplayScreen = () => {
               >
                 <Image
                   source={{ uri: img.image_url }}
-                  style={{ width: '100%', height: 58 }}
+                  style={{ width: '100%', height: s(58) }}
                   resizeMode='cover'
                 />
                 <View
@@ -615,8 +618,8 @@ const CustomerDisplayScreen = () => {
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    paddingHorizontal: 6,
-                    paddingVertical: 5,
+                    paddingHorizontal: s(6),
+                    paddingVertical: s(5),
                     backgroundColor: colors.screen
                   }}
                 >
@@ -625,9 +628,9 @@ const CustomerDisplayScreen = () => {
                   >
                     <View
                       style={{
-                        paddingHorizontal: 7,
-                        paddingVertical: 3,
-                        borderRadius: 20,
+                        paddingHorizontal: s(7),
+                        paddingVertical: s(3),
+                        borderRadius: s(20),
                         backgroundColor: img.is_active ? colors.teal + '20' : colors.border,
                         borderWidth: 1,
                         borderColor: img.is_active ? colors.teal + '50' : colors.border
@@ -635,7 +638,7 @@ const CustomerDisplayScreen = () => {
                     >
                       <Text
                         style={{
-                          fontSize: 9,
+                          fontSize: s(9),
                           fontWeight: '600',
                           color: img.is_active ? colors.teal : colors.muted
                         }}
@@ -647,7 +650,7 @@ const CustomerDisplayScreen = () => {
                   <TouchableOpacity
                     onPress={() => setImageDeleteConfirm({ id: img.id, type: 'carousel' })}
                   >
-                    <Trash2 size={13} color={colors.danger} />
+                    <Trash2 size={s(13)} color={colors.danger} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -662,16 +665,16 @@ const CustomerDisplayScreen = () => {
           backgroundColor: colors.panel,
           borderWidth: 1,
           borderColor: colors.border,
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 10
+          borderRadius: s(12),
+          padding: s(12),
+          marginBottom: s(10)
         }}
       >
-        <View style={{ marginBottom: 8 }}>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+        <View style={{ marginBottom: s(8) }}>
+          <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}>
             Ordering Right Panel Images
           </Text>
-          <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+          <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>
             Shown on the ordering screen when the right panel is enabled
           </Text>
         </View>
@@ -700,8 +703,8 @@ const CustomerDisplayScreen = () => {
             <View
               key={section.slot}
               style={{
-                marginTop: section.slot === 'primary' ? 0 : 12,
-                paddingTop: section.slot === 'primary' ? 0 : 12,
+                marginTop: section.slot === 'primary' ? 0 : s(12),
+                paddingTop: section.slot === 'primary' ? 0 : s(12),
                 borderTopWidth: section.slot === 'primary' ? 0 : 1,
                 borderTopColor: colors.border
               }}
@@ -711,18 +714,18 @@ const CustomerDisplayScreen = () => {
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  marginBottom: 8
+                  marginBottom: s(8)
                 }}
               >
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+                <View style={{ flex: 1, paddingRight: s(12) }}>
+                  <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}>
                     {section.title}
                   </Text>
-                  <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+                  <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>
                     {section.subtitle}
                   </Text>
                   <Text
-                    style={{ fontSize: 10, color: colors.teal, marginTop: 4, fontWeight: '600' }}
+                    style={{ fontSize: s(10), color: colors.teal, marginTop: s(4), fontWeight: '600' }}
                   >
                     Crop:{' '}
                     {getOrderingPanelCropVariant(section.slot) === 'vertical'
@@ -741,7 +744,7 @@ const CustomerDisplayScreen = () => {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 5,
+                    gap: s(5),
                     backgroundColor:
                       orderingPanelUploadingSlot === section.slot
                         ? colors.border
@@ -751,19 +754,19 @@ const CustomerDisplayScreen = () => {
                       orderingPanelUploadingSlot === section.slot
                         ? colors.border
                         : colors.teal + '50',
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    borderRadius: 7
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(5),
+                    borderRadius: s(7)
                   }}
                 >
                   {orderingPanelUploadingSlot === section.slot ? (
-                    <ActivityIndicator size={12} color={colors.teal} />
+                    <ActivityIndicator size={s(12)} color={colors.teal} />
                   ) : (
-                    <Plus size={13} color={colors.teal} />
+                    <Plus size={s(13)} color={colors.teal} />
                   )}
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: '600',
                       color:
                         orderingPanelUploadingSlot === section.slot
@@ -783,27 +786,27 @@ const CustomerDisplayScreen = () => {
               {section.images.length === 0 ? (
                 <View
                   style={{
-                    paddingVertical: 10,
+                    paddingVertical: s(10),
                     alignItems: 'center',
                     borderWidth: 1,
                     borderStyle: 'dashed',
                     borderColor: colors.border,
-                    borderRadius: 8
+                    borderRadius: s(8)
                   }}
                 >
-                  <ImageIcon size={16} color={colors.muted} />
-                  <Text style={{ fontSize: 9, color: colors.muted, marginTop: 4 }}>
+                  <ImageIcon size={s(16)} color={colors.muted} />
+                  <Text style={{ fontSize: s(9), color: colors.muted, marginTop: s(4) }}>
                     No images in this slot yet
                   </Text>
                 </View>
               ) : (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6) }}>
                   {section.images.map(img => (
                     <View
                       key={img.id}
                       style={{
-                        width: 116,
-                        borderRadius: 8,
+                        width: s(116),
+                        borderRadius: s(8),
                         overflow: 'hidden',
                         borderWidth: 1,
                         borderColor: img.is_active ? colors.teal + '50' : colors.border
@@ -814,7 +817,7 @@ const CustomerDisplayScreen = () => {
                         style={{
                           width: '100%',
                           height:
-                            getOrderingPanelCropVariant(section.slot) === 'vertical' ? 180 : 98
+                            getOrderingPanelCropVariant(section.slot) === 'vertical' ? s(180) : s(98)
                         }}
                         resizeMode='cover'
                       />
@@ -823,8 +826,8 @@ const CustomerDisplayScreen = () => {
                           flexDirection: 'row',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          paddingHorizontal: 6,
-                          paddingVertical: 5,
+                          paddingHorizontal: s(6),
+                          paddingVertical: s(5),
                           backgroundColor: colors.screen
                         }}
                       >
@@ -833,9 +836,9 @@ const CustomerDisplayScreen = () => {
                         >
                           <View
                             style={{
-                              paddingHorizontal: 7,
-                              paddingVertical: 3,
-                              borderRadius: 20,
+                              paddingHorizontal: s(7),
+                              paddingVertical: s(3),
+                              borderRadius: s(20),
                               backgroundColor: img.is_active ? colors.teal + '20' : colors.border,
                               borderWidth: 1,
                               borderColor: img.is_active ? colors.teal + '50' : colors.border
@@ -843,7 +846,7 @@ const CustomerDisplayScreen = () => {
                           >
                             <Text
                               style={{
-                                fontSize: 9,
+                                fontSize: s(9),
                                 fontWeight: '600',
                                 color: img.is_active ? colors.teal : colors.muted
                               }}
@@ -857,7 +860,7 @@ const CustomerDisplayScreen = () => {
                             setImageDeleteConfirm({ id: img.id, type: 'ordering' })
                           }
                         >
-                          <Trash2 size={13} color={colors.danger} />
+                          <Trash2 size={s(13)} color={colors.danger} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -881,7 +884,7 @@ const CustomerDisplayScreen = () => {
             backgroundColor: 'rgba(0,0,0,0.8)',
             justifyContent: 'center',
             alignItems: 'center',
-            padding: 16
+            padding: s(16)
           }}
         >
           <CFDPairingQR onClose={() => setShowPairing(false)} />
@@ -901,47 +904,47 @@ const CustomerDisplayScreen = () => {
             backgroundColor: 'rgba(0,0,0,0.5)',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 16
+            padding: s(16)
           }}
         >
           <View
             style={{
               backgroundColor: colors.card,
-              borderRadius: 16,
-              padding: 20,
+              borderRadius: s(16),
+              padding: s(20),
               width: '100%',
-              maxWidth: 340,
+              maxWidth: s(340),
               borderWidth: 1,
               borderColor: colors.border
             }}
           >
             <Text
               style={{
-                fontSize: 15,
+                fontSize: s(15),
                 fontWeight: '700',
                 color: colors.heading,
-                marginBottom: 8
+                marginBottom: s(8)
               }}
             >
               Disconnect Display?
             </Text>
-            <Text style={{ fontSize: 12, color: colors.label, marginBottom: 20 }}>
+            <Text style={{ fontSize: s(12), color: colors.label, marginBottom: s(20) }}>
               The display at {disconnectConfirm ? extractIp(disconnectConfirm) : ''} will be
               disconnected.
             </Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flexDirection: 'row', gap: s(10) }}>
               <TouchableOpacity
                 onPress={() => setDisconnectConfirm(null)}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 8,
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
                   borderWidth: 1,
                   borderColor: colors.border,
                   alignItems: 'center'
                 }}
               >
-                <Text style={{ fontSize: 13, color: colors.label }}>Cancel</Text>
+                <Text style={{ fontSize: s(13), color: colors.label }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -950,15 +953,15 @@ const CustomerDisplayScreen = () => {
                 }}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 8,
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
                   backgroundColor: colors.danger + '20',
                   borderWidth: 1,
                   borderColor: colors.danger + '50',
                   alignItems: 'center'
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>
+                <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.danger }}>
                   Disconnect
                 </Text>
               </TouchableOpacity>
@@ -980,46 +983,46 @@ const CustomerDisplayScreen = () => {
             backgroundColor: 'rgba(0,0,0,0.5)',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 16
+            padding: s(16)
           }}
         >
           <View
             style={{
               backgroundColor: colors.card,
-              borderRadius: 16,
-              padding: 20,
+              borderRadius: s(16),
+              padding: s(20),
               width: '100%',
-              maxWidth: 340,
+              maxWidth: s(340),
               borderWidth: 1,
               borderColor: colors.border
             }}
           >
             <Text
               style={{
-                fontSize: 15,
+                fontSize: s(15),
                 fontWeight: '700',
                 color: colors.heading,
-                marginBottom: 8
+                marginBottom: s(8)
               }}
             >
               Delete Image?
             </Text>
-            <Text style={{ fontSize: 12, color: colors.label, marginBottom: 20 }}>
+            <Text style={{ fontSize: s(12), color: colors.label, marginBottom: s(20) }}>
               This image will be permanently removed.
             </Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flexDirection: 'row', gap: s(10) }}>
               <TouchableOpacity
                 onPress={() => setImageDeleteConfirm(null)}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 8,
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
                   borderWidth: 1,
                   borderColor: colors.border,
                   alignItems: 'center'
                 }}
               >
-                <Text style={{ fontSize: 13, color: colors.label }}>Cancel</Text>
+                <Text style={{ fontSize: s(13), color: colors.label }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={async () => {
@@ -1033,15 +1036,15 @@ const CustomerDisplayScreen = () => {
                 }}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 8,
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
                   backgroundColor: colors.danger + '20',
                   borderWidth: 1,
                   borderColor: colors.danger + '50',
                   alignItems: 'center'
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>
+                <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.danger }}>
                   Delete
                 </Text>
               </TouchableOpacity>

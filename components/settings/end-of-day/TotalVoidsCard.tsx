@@ -1,6 +1,7 @@
 import { Canvas, interpolateColors, Path } from "@shopify/react-native-skia";
 import React, { useEffect, type FC } from "react";
 import { View } from "react-native";
+import { useUiScale } from "@/lib/uiScale";
 import {
   SharedValue,
   useDerivedValue,
@@ -69,6 +70,9 @@ const AnimatedArc: FC<AnimatedArcProps> = ({
 
 // --- Main Card Component ---
 const TotalVoidsCard = () => {
+  const scale = useUiScale();
+  const s = (value: number) => Math.round(value * scale);
+
   // Animation Setup ---
   const progress = useSharedValue(0);
   useEffect(() => {
@@ -76,8 +80,8 @@ const TotalVoidsCard = () => {
   }, [progress]);
 
   // --- Chart Calculations ---
-  const size = 120;
-  const strokeWidth = 12;
+  const size = s(120);
+  const strokeWidth = s(12);
   const center = size / 2;
   const radii = [
     center - strokeWidth * 0.5,
@@ -98,8 +102,8 @@ const TotalVoidsCard = () => {
   };
 
   return (
-    <View className="p-4 rounded-2xl">
-      <View className="flex-row items-center">
+    <View style={{ padding: s(16), borderRadius: s(16) }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
         {/* Chart Container */}
         <View style={{ width: size, height: size }}>
           <Canvas style={{ flex: 1 }}>
@@ -124,7 +128,7 @@ const TotalVoidsCard = () => {
         </View>
 
         {/* Legend */}
-        <View className="flex-1 ml-4 gap-y-2">
+        <View style={{ flex: 1, marginLeft: s(16), gap: s(8) }}>
           {totalVoidsData.map((item) => (
             <LegendRow
               key={item.label}
