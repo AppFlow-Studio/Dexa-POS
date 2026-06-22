@@ -213,6 +213,79 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
   );
 };
 
+// ─── UI Scale Setting Component ───────────────────────────────────────────────
+
+function UiScaleSetting () {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  const override = useSettingsStore((s) => s.uiScaleOverride)
+  const setUiScaleOverride = useSettingsStore((s) => s.setUiScaleOverride)
+
+  const OPTIONS: { label: string; value: number | null }[] = [
+    { label: 'Small', value: 0.85 },
+    { label: 'Default', value: null },
+    { label: 'Large', value: 1.15 },
+    { label: 'Extra Large', value: 1.3 },
+  ]
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: s(10),
+      }}
+    >
+      <View style={{ flex: 1, marginRight: s(16) }}>
+        <Text
+          style={{
+            fontSize: s(13),
+            color: colors.heading,
+            fontWeight: '500',
+          }}
+        >
+          UI Scale
+        </Text>
+        <Text
+          style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
+        >
+          Adjust the overall size of buttons, text, and spacing
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: s(6) }}>
+        {OPTIONS.map((opt) => {
+          const active = override === opt.value
+          return (
+            <TouchableOpacity
+              key={opt.label}
+              onPress={() => setUiScaleOverride(opt.value)}
+              style={{
+                paddingHorizontal: s(10),
+                paddingVertical: s(5),
+                borderRadius: s(6),
+                backgroundColor: active ? colors.teal + '20' : 'transparent',
+                borderWidth: 1,
+                borderColor: active ? colors.teal + '50' : colors.border,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: s(11),
+                  fontWeight: '600',
+                  color: active ? colors.teal : colors.label,
+                }}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
+      </View>
+    </View>
+  )
+}
+
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 const GeneralSettingsScreen = () => {
@@ -927,6 +1000,9 @@ const GeneralSettingsScreen = () => {
                   onCheckedChange={setAutoSelectFirstRequiredOption}
                 />
               </View>
+
+              {/* UI Scale */}
+              <UiScaleSetting />
 
               {/* Theme */}
               <View

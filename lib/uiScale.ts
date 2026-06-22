@@ -1,4 +1,5 @@
 import { useWindowDimensions } from "react-native";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 
 /**
  * Automatic UI scaling so the app looks proportionally consistent across
@@ -56,5 +57,8 @@ export function computeUiScale(widthDp: number, heightDp?: number): number {
  */
 export function useUiScale(): number {
   const { width, height } = useWindowDimensions();
-  return computeUiScale(width, height);
+  const override = useSettingsStore((s) => s.uiScaleOverride);
+  const base = computeUiScale(width, height);
+  if (override == null) return base;
+  return Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, base * override));
 }
