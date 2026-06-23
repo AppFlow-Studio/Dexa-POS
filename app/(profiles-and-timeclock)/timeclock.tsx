@@ -4,7 +4,8 @@ import { colors, spinnerColor } from "@/lib/theme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { format } from "date-fns";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import { DateTime } from "luxon";
 import {
     ArrowLeft,
     Calendar as CalendarIcon,
@@ -14,7 +15,7 @@ import {
     RefreshCw,
     Users,
 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     FlatList,
@@ -39,6 +40,8 @@ interface StaffShift {
 
 interface ShiftDisplayEntry {
   id: string;
+  staffProfileId: string;
+  employeeId: string | null;
   employeeName: string;
   role: string;
   clockIn: string;
@@ -49,23 +52,131 @@ interface ShiftDisplayEntry {
   status: string;
 }
 
+function toIsoDateKeySafe(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateKeyForDisplay(dateKey: string): Date {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
+
+function getTodayDateKey(timezone?: string | null): string {
+  if (timezone) {
+    const now = DateTime.now().setZone(timezone);
+    if (now.isValid) {
+      return now.toISODate() ?? format(new Date(), "yyyy-MM-dd");
+    }
+  }
+
+  return toIsoDateKeySafe(new Date()) ?? format(new Date(), "yyyy-MM-dd");
+}
+
+function getUtcBoundsForCalendarDay(dateKey: string, timezone?: string | null) {
+  if (timezone) {
+    const start = DateTime.fromISO(dateKey, { zone: timezone }).startOf("day");
+    if (start.isValid) {
+      const end = start.endOf("day");
+      return {
+        startUtc: start.toUTC().toISO() ?? `${dateKey}T00:00:00.000Z`,
+        endUtc: end.toUTC().toISO() ?? `${dateKey}T23:59:59.999Z`,
+      };
+    }
+  }
+
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const start = new Date(year, month - 1, day, 0, 0, 0, 0);
+  const end = new Date(year, month - 1, day, 23, 59, 59, 999);
+  return {
+    startUtc: start.toISOString(),
+    endUtc: end.toISOString(),
+  };
+}
+
+function parseQueryList(value: string | string[] | undefined): string[] {
+  if (!value) return [];
+  const raw = Array.isArray(value) ? value.join(",") : value;
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 const DailyShiftReportScreen = () => {
   const supabase = useSupabaseClient();
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
+  const listRef = useRef<FlatList<ShiftDisplayEntry>>(null);
+  const {
+    reviewMode,
+    focusEmployeeIds,
+    focusStaffProfileIds,
+  } = useLocalSearchParams<{
+    reviewMode?: string | string[];
+    focusEmployeeIds?: string | string[];
+    focusStaffProfileIds?: string | string[];
+  }>();
+  const [selectedDateKey, setSelectedDateKey] = useState(() =>
+    getTodayDateKey(selectedStore?.timezone),
+  );
+  const [hasManualDateSelection, setHasManualDateSelection] = useState(false);
+  const [dismissReviewFocus, setDismissReviewFocus] = useState(false);
+  const [hasAutoFocusedReviewRows, setHasAutoFocusedReviewRows] =
+    useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shifts, setShifts] = useState<StaffShift[]>([]);
 
   const employees = useEmployeeStore((state) => state.employees);
-  const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
+  const reviewModeValue = Array.isArray(reviewMode) ? reviewMode[0] : reviewMode;
+  const focusEmployeeIdList = useMemo(
+    () => parseQueryList(focusEmployeeIds),
+    [focusEmployeeIds],
+  );
+  const focusStaffProfileIdList = useMemo(
+    () => parseQueryList(focusStaffProfileIds),
+    [focusStaffProfileIds],
+  );
+  const focusEmployeeIdSet = useMemo(
+    () => new Set(focusEmployeeIdList),
+    [focusEmployeeIdList],
+  );
+  const focusStaffProfileIdSet = useMemo(
+    () => new Set(focusStaffProfileIdList),
+    [focusStaffProfileIdList],
+  );
+  const isReviewFocusMode =
+    !dismissReviewFocus &&
+    reviewModeValue === "unresolved" &&
+    (focusEmployeeIdSet.size > 0 || focusStaffProfileIdSet.size > 0);
+
+  useEffect(() => {
+    if (hasManualDateSelection) return;
+    setSelectedDateKey(getTodayDateKey(selectedStore?.timezone));
+  }, [selectedStore?.timezone, hasManualDateSelection]);
+
+  useEffect(() => {
+    setDismissReviewFocus(false);
+    setHasAutoFocusedReviewRows(false);
+  }, [reviewModeValue, focusEmployeeIds, focusStaffProfileIds]);
 
   // Create map of profileId -> employee info
   const employeeMap = useMemo(() => {
     return new Map(
       employees.map((emp) => [
         emp.profileId,
-        { name: emp.fullName, role: emp.role },
+        { name: emp.fullName, role: emp.role, employeeId: emp.id },
       ]),
     );
   }, [employees]);
@@ -81,10 +192,10 @@ const DailyShiftReportScreen = () => {
     setError(null);
 
     try {
-      // Get start and end of selected date
-      const dateStr = format(selectedDate, "yyyy-MM-dd");
-      const startOfDay = `${dateStr}T00:00:00.000Z`;
-      const endOfDay = `${dateStr}T23:59:59.999Z`;
+      const { startUtc, endUtc } = getUtcBoundsForCalendarDay(
+        selectedDateKey,
+        selectedStore?.timezone,
+      );
 
       const { data, error: queryError } = await supabase
         .from("staff_shifts")
@@ -92,8 +203,8 @@ const DailyShiftReportScreen = () => {
           "id, staff_profile_id, status, clock_in_time, clock_out_time, break_logs, hourly_rate_snapshot, created_at",
         )
         .eq("location_id", selectedStore.id)
-        .gte("clock_in_time", startOfDay)
-        .lte("clock_in_time", endOfDay)
+        .gte("clock_in_time", startUtc)
+        .lte("clock_in_time", endUtc)
         .order("clock_in_time", { ascending: false });
 
       if (queryError) throw queryError;
@@ -105,7 +216,7 @@ const DailyShiftReportScreen = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [supabase, selectedStore?.id, selectedDate]);
+  }, [supabase, selectedStore?.id, selectedStore?.timezone, selectedDateKey]);
 
   // Fetch shifts when date or store changes
   useEffect(() => {
@@ -146,6 +257,8 @@ const DailyShiftReportScreen = () => {
 
       return {
         id: shift.id,
+        staffProfileId: shift.staff_profile_id,
+        employeeId: employee?.employeeId ?? null,
         employeeName: employee?.name || "Unknown",
         role: employee?.role || "—",
         clockIn: shift.clock_in_time || shift.created_at,
@@ -155,8 +268,74 @@ const DailyShiftReportScreen = () => {
         duration: durationStr,
         status: shift.status,
       };
+    }).sort((left, right) => {
+      if (!isReviewFocusMode) return 0;
+
+      const leftFocused =
+        (left.employeeId ? focusEmployeeIdSet.has(left.employeeId) : false) ||
+        focusStaffProfileIdSet.has(left.staffProfileId);
+      const rightFocused =
+        (right.employeeId ? focusEmployeeIdSet.has(right.employeeId) : false) ||
+        focusStaffProfileIdSet.has(right.staffProfileId);
+
+      return Number(rightFocused) - Number(leftFocused);
     });
-  }, [shifts, employeeMap]);
+  }, [
+    shifts,
+    employeeMap,
+    isReviewFocusMode,
+    focusEmployeeIdSet,
+    focusStaffProfileIdSet,
+  ]);
+
+  const focusedShiftCount = useMemo(
+    () =>
+      shiftsForDisplay.filter(
+        (shift) =>
+          (shift.employeeId ? focusEmployeeIdSet.has(shift.employeeId) : false) ||
+          focusStaffProfileIdSet.has(shift.staffProfileId),
+      ).length,
+    [shiftsForDisplay, focusEmployeeIdSet, focusStaffProfileIdSet],
+  );
+
+  useEffect(() => {
+    if (
+      !isReviewFocusMode ||
+      isLoading ||
+      hasAutoFocusedReviewRows ||
+      shiftsForDisplay.length === 0
+    ) {
+      return;
+    }
+
+    const focusIndex = shiftsForDisplay.findIndex(
+      (shift) =>
+        (shift.employeeId ? focusEmployeeIdSet.has(shift.employeeId) : false) ||
+        focusStaffProfileIdSet.has(shift.staffProfileId),
+    );
+
+    if (focusIndex < 0) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      listRef.current?.scrollToIndex({
+        index: focusIndex,
+        animated: true,
+        viewPosition: 0.12,
+      });
+      setHasAutoFocusedReviewRows(true);
+    }, 250);
+
+    return () => clearTimeout(timeout);
+  }, [
+    isReviewFocusMode,
+    isLoading,
+    hasAutoFocusedReviewRows,
+    shiftsForDisplay,
+    focusEmployeeIdSet,
+    focusStaffProfileIdSet,
+  ]);
 
   const summaryCards = useMemo(() => {
     const total = shiftsForDisplay.length;
@@ -179,7 +358,9 @@ const DailyShiftReportScreen = () => {
   }, [shiftsForDisplay]);
 
   const onDateChange = (day: DateData) => {
-    setSelectedDate(new Date(day.timestamp));
+    setSelectedDateKey(day.dateString);
+    setHasManualDateSelection(true);
+    setDismissReviewFocus(true);
     setIsCalendarOpen(false);
   };
 
@@ -227,13 +408,19 @@ const DailyShiftReportScreen = () => {
     }
   };
 
-  const renderShiftItem = ({ item }: { item: ShiftDisplayEntry }) => (
+  const renderShiftItem = ({ item }: { item: ShiftDisplayEntry }) => {
+    const isReviewFocusTarget =
+      isReviewFocusMode &&
+      ((item.employeeId ? focusEmployeeIdSet.has(item.employeeId) : false) ||
+        focusStaffProfileIdSet.has(item.staffProfileId));
+
+    return (
     <View
       style={{
         borderRadius: 14,
-        borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.card,
+        borderWidth: isReviewFocusTarget ? 1.5 : 1,
+        borderColor: isReviewFocusTarget ? colors.danger + "70" : colors.border,
+        backgroundColor: isReviewFocusTarget ? colors.danger + "10" : colors.card,
         padding: 12,
         marginBottom: 8,
         gap: 8,
@@ -284,24 +471,37 @@ const DailyShiftReportScreen = () => {
                   : colors.border,
           }}
         >
-          <Text
-            style={{
-              fontSize: 10,
-              fontWeight: "700",
-              color:
-                item.status === "active"
-                  ? colors.teal
-                  : item.status === "on_break"
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            {isReviewFocusTarget ? (
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: "800",
+                  color: colors.danger,
+                }}
+              >
+                Review
+              </Text>
+            ) : null}
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: "700",
+                color:
+                  item.status === "active"
                     ? colors.teal
-                    : colors.label,
-            }}
-          >
-            {item.status === "active"
-              ? "Active"
-              : item.status === "on_break"
-                ? "On Break"
-                : "Completed"}
-          </Text>
+                    : item.status === "on_break"
+                      ? colors.teal
+                      : colors.label,
+              }}
+            >
+              {item.status === "active"
+                ? "Active"
+                : item.status === "on_break"
+                  ? "On Break"
+                  : "Completed"}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -441,10 +641,35 @@ const DailyShiftReportScreen = () => {
         </View>
       </View>
     </View>
-  );
+    );
+  };
 
   const renderListHeader = () => (
     <View style={{ gap: 10, marginBottom: 10 }}>
+      {isReviewFocusMode ? (
+        <View
+          style={{
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: colors.danger + "45",
+            backgroundColor: colors.danger + "12",
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            gap: 4,
+          }}
+        >
+          <Text
+            style={{ fontSize: 11, fontWeight: "800", color: colors.danger }}
+          >
+            End of Day review focus
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.label, lineHeight: 16 }}>
+            {focusedShiftCount > 0
+              ? `${focusedShiftCount} unresolved staff row${focusedShiftCount > 1 ? "s are" : " is"} highlighted below.`
+              : "Review mode is active for unresolved staff from End of Day."}
+          </Text>
+        </View>
+      ) : null}
       <View
         style={{
           borderRadius: 18,
@@ -629,7 +854,7 @@ const DailyShiftReportScreen = () => {
             >
               <CalendarIcon color={colors.teal} size={16} />
               <Text style={{ color: colors.heading, fontWeight: "700" }}>
-                {format(selectedDate, "PPP")}
+                {format(parseDateKeyForDisplay(selectedDateKey), "PPP")}
               </Text>
             </TouchableOpacity>
           }
@@ -645,11 +870,11 @@ const DailyShiftReportScreen = () => {
             }}
           >
             <Calendar
-              current={format(selectedDate, "yyyy-MM-dd")}
+              current={selectedDateKey}
               onDayPress={onDateChange}
               theme={calendarTheme}
               markedDates={{
-                [format(selectedDate, "yyyy-MM-dd")]: {
+                [selectedDateKey]: {
                   selected: true,
                   selectedColor: colors.teal,
                 },
@@ -720,11 +945,21 @@ const DailyShiftReportScreen = () => {
           }}
         >
           <FlatList
+            ref={listRef}
             data={shiftsForDisplay}
             keyExtractor={(item) => item.id}
             renderItem={renderShiftItem}
             ListHeaderComponent={renderListHeader}
             contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
+            onScrollToIndexFailed={({ index }) => {
+              setTimeout(() => {
+                listRef.current?.scrollToIndex({
+                  index,
+                  animated: true,
+                  viewPosition: 0.12,
+                });
+              }, 250);
+            }}
             ListEmptyComponent={
               <View
                 style={{ paddingVertical: 24, alignItems: "center", gap: 8 }}

@@ -231,6 +231,7 @@ export interface ReceiptTemplateData {
   discount: number;
   tip: number;
   total: number;
+  pricingMode?: "cash" | "card" | "dual";
 
   // Service charge (already included in `total` from the backend; rendered
   // as its own line between Tax and Tip when > 0).

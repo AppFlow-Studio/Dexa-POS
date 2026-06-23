@@ -4,6 +4,7 @@ import { OrderProfile } from '@/lib/types'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { formatPaymentStatus } from '@/utils/orderStatusHelpers'
 import { FlashList } from '@shopify/flash-list'
+
 import {
   ArrowDown,
   ArrowUp,
