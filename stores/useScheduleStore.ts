@@ -30,6 +30,21 @@ import { useStoreSettingsStore } from "./useStoreSettingsStore";
 const generateId = () =>
   Date.now().toString(36) + Math.random().toString(36).substring(2);
 
+// ptoRequests is persisted (MMKV) and append-on-submit / remove-on-cancel only,
+// so without a retention bound it grows for the app's lifetime. Keep the
+// current + prior calendar year of RESOLVED requests; pending requests are
+// always kept (an old-but-unactioned request is still actionable). Mirrors the
+// current-year retention applied to usePtoStore.accrualHistory.
+const PTO_REQUEST_RETENTION_YEARS = 1;
+function prunePtoRequests(requests: PTORequest[]): PTORequest[] {
+  const cutoffYear = new Date().getFullYear() - PTO_REQUEST_RETENTION_YEARS;
+  return requests.filter((r) => {
+    if (r.status === "pending") return true; // never drop unactioned requests
+    const submittedYear = new Date(r.submittedAt).getFullYear();
+    return !Number.isNaN(submittedYear) && submittedYear >= cutoffYear;
+  });
+}
+
 interface ScheduleRequestState {
   schedulePeriods: SchedulePeriod[];
   weeklySchedules: WeeklySchedule[];
@@ -516,7 +531,9 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               submittedAt: new Date().toISOString(),
             };
             set((state) => ({
-              ptoRequests: [newRequest, ...state.ptoRequests],
+              // Prune resolved requests outside the retention window so the
+              // persisted list can't grow unbounded across the app lifetime.
+              ptoRequests: prunePtoRequests([newRequest, ...state.ptoRequests]),
             }));
           },
 
@@ -1681,6 +1698,13 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           swapRequests: state.swapRequests,
           ptoRequests: state.ptoRequests,
         }),
+        // Prune on boot so an already-accumulated persisted list gets trimmed
+        // even without a new submission to trigger the in-action prune.
+        onRehydrateStorage: () => (state) => {
+          if (state?.ptoRequests) {
+            state.ptoRequests = prunePtoRequests(state.ptoRequests);
+          }
+        },
       },
     ),
   ),
