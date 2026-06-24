@@ -1409,13 +1409,15 @@ const RedeemTab: React.FC<{ merchantId: string }> = ({ merchantId }) => {
     clearRedeemState()
   }
 
-  // Clear any pending debounce timer on unmount so its closure (which
-  // retains this component's tree) doesn't outlive the screen.
+  // On unmount: clear the pending debounce timer (its closure retains this
+  // component's tree) and wipe redeem state so a looked-up customer's
+  // name/phone/rewards don't linger in the store after leaving the tab.
   useEffect(
     () => () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
+      clearRedeemState()
     },
-    []
+    [clearRedeemState]
   )
 
   const totalPoints = enrollments.reduce(
@@ -1926,6 +1928,7 @@ export default function LoyaltyScreen () {
   const enrollments = useLoyaltyDataStore(storeState => storeState.enrollments)
   const loading = useLoyaltyDataStore(storeState => storeState.loading)
   const fetchData = useLoyaltyDataStore(storeState => storeState.fetchData)
+  const clearData = useLoyaltyDataStore(storeState => storeState.clearData)
 
   const [activeTab, setActiveTab] = useState<TabId>(_persistedTab)
 
@@ -1936,6 +1939,12 @@ export default function LoyaltyScreen () {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // On leaving the screen (Header back press pops/replaces this top-level
+  // route, unmounting us), wipe all loaded loyalty data — programs,
+  // enrollments, and redeem state all embed customer PII that shouldn't
+  // outlive the view. It's re-fetched on next open anyway.
+  useEffect(() => () => clearData(), [clearData])
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
