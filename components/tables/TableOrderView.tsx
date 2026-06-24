@@ -85,8 +85,9 @@ const TableOrderMenuPanel = React.memo(
       style={{
         flex: 1,
         padding: s(16),
-        paddingHorizontal: s(12),
-        paddingTop: 0
+        paddingTop: 0,
+        paddingLeft: 0,
+        paddingRight: s(12)
       }}
     >
       {renderStage >= 2 ? (
@@ -377,13 +378,23 @@ const TableOrderView = React.forwardRef<
       )
     }
     // Keep close-path work minimal so backdrop tap can navigate immediately.
+    isNavigatingAwayRef.current = true
     markNavigatingAway()
   }, [markNavigatingAway])
 
   // Expose prepareClose so [tableId].tsx can suppress store reactivity before router.back()
   useImperativeHandle(ref, () => ({ prepareClose }), [prepareClose])
 
-  // Heavy close cleanup waits for navigation interactions so the floor can paint first.
+  // Track whether we're navigating away to skip unnecessary cleanup work
+  const isNavigatingAwayRef = useRef(false)
+
+  // Close cleanup: tear down a dangling modifier draft so leaving a table
+  // (back / overlay close) never leaves an open modifier session or its draft
+  // cart item behind. Deferred via runAfterInteractions so it can't block the
+  // back animation or the floor repaint — the previous `isNavigatingAwayRef`
+  // early-return ran on EVERY normal back nav (prepareClose sets that ref),
+  // which skipped this entirely and left abandoned drafts to linger until the
+  // 30-min sweep. Deferring is enough for paint speed; skipping was incorrect.
   useEffect(() => {
     return () => {
       InteractionManager.runAfterInteractions(() => {
@@ -403,6 +414,7 @@ const TableOrderView = React.forwardRef<
   const hadSessionRef = useRef(!!session)
   useEffect(() => {
     if (hadSessionRef.current && !session) {
+      isNavigatingAwayRef.current = true
       usePaymentStore.getState().close()
       markNavigatingAway()
       // Prefer onClose (overlay host dismisses the overlay) and fall back to
@@ -412,8 +424,8 @@ const TableOrderView = React.forwardRef<
       } else {
         router.back()
       }
-      setTimeout(hideLoading, 300)
-      return
+      const timeoutId = setTimeout(hideLoading, 300)
+      return () => clearTimeout(timeoutId)
     }
     hadSessionRef.current = !!session
   }, [session, markNavigatingAway, router, hideLoading, onClose])
@@ -1546,7 +1558,11 @@ const TableOrderView = React.forwardRef<
           )}
 
           <View style={{ flex: 1, flexDirection: 'row' }}>
-            <View style={{ flex: 2 }}>
+            {/* Bill column takes a proportional share and the bill content fills
+                it (max-w-lg cap removed on the bill root), so the bill stretches
+                to meet the menu with no screen-colored gap between them.
+                Ratio: bill flex:3 / menu flex:5 → bill 3/8, menu 5/8. */}
+            <View style={{ flex: 3 }}>
             <TableBillSection
               showOrderDetails={false}
               itemCourseMap={itemCourseMap}
@@ -1586,7 +1602,7 @@ const TableOrderView = React.forwardRef<
               overtimeMinutes={defaultSittingTimeMinutes}
             />
             </View>
-            <View style={{ flex: 3 }}>
+            <View style={{ flex: 5 }}>
             <TableOrderMenuPanel
               renderStage={renderStage}
               enableCoursing={enableCoursing}

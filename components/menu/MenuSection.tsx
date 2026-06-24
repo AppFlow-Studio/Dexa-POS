@@ -784,8 +784,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     <>
       <View
         key={colorScheme}
-        className={`mt-0 flex-1 relative overflow-hidden px-2 ${
-          isTableOrder ? "rounded-tl-3xl" : ""
+        className={`mt-0 flex-1 relative overflow-hidden ${
+          isTableOrder ? "pl-0 pr-2" : "px-2"
         }`}
         style={{ backgroundColor: colors.card }}
       >

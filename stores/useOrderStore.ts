@@ -6719,6 +6719,16 @@ export const useOrderStore = create<OrderState>()(
               delete state.dbOrderIdIndex[dbOrderId];
               delete state.persistableOrderIds[dbOrderId];
               delete state.pendingBackendUpdates[dbOrderId];
+              // Drop any tableOrderIdIndex entry that resolved to this order so
+              // it can't leave a dangling key (→ O(n) table-scan fallback in
+              // useTableSession). Surgical delete by value: a removed order is
+              // the only one that could have pointed here.
+              if (orderToRemove?.service_location_id) {
+                const sl = orderToRemove.service_location_id;
+                if (state.tableOrderIdIndex[sl] === dbOrderId) {
+                  delete state.tableOrderIdIndex[sl];
+                }
+              }
             });
 
             // Release ALL per-order/item satellite state (module dicts keyed by
@@ -12303,16 +12313,29 @@ export const useOrderStore = create<OrderState>()(
             const keepSet = new Set<string>();
             const now = Date.now();
 
-            if (state.activeOrderId) keepSet.add(state.activeOrderId);
-            for (const id of state.workingSetOrderIds) keepSet.add(id);
-            for (const id of state.unsyncedOrderIds) keepSet.add(id);
-
             const inactiveStatuses = new Set([
               "completed",
               "voided",
               "cancelled",
               "void",
             ]);
+
+            if (state.activeOrderId) keepSet.add(state.activeOrderId);
+            // Working-set membership grows by one for EVERY table opened during
+            // a shift (setActiveOrder → addToWorkingSet), and nothing trims it
+            // (removeFromWorkingSet is never called). Unconditionally pinning
+            // the whole working set here meant completed orders could never be
+            // pruned — ordersById grew unbounded across a busy service (the
+            // core sustained-perf leak). Pin a working-set order only while it's
+            // NOT in a terminal status; once completed it falls through to the
+            // age/LRU caps below like any other inactive order.
+            for (const id of state.workingSetOrderIds) {
+              const o = state.ordersById[id];
+              if (o && !inactiveStatuses.has(o.order_status ?? "")) {
+                keepSet.add(id);
+              }
+            }
+            for (const id of state.unsyncedOrderIds) keepSet.add(id);
 
             // Collect completed orders to enforce LRU cap
             const completedOrders: { id: string; time: number }[] = [];
@@ -12424,9 +12447,26 @@ export const useOrderStore = create<OrderState>()(
                   delete draft.ordersById[id];
                   delete draft.persistableOrderIds[id];
                   delete draft.pendingBackendUpdates[id];
+                  // Mirror removeOrder()'s working-set cleanup. Without this a
+                  // pruned completed order left a dangling entry in
+                  // workingSetOrderIds / _workingSetLookup pointing at a key no
+                  // longer in ordersById — leaking across a shift and forcing
+                  // working-set iterators to walk dead refs.
+                  delete draft._workingSetLookup[id];
                 }
               }
               draft.orderIds = draft.orderIds.filter((id) => keepSet.has(id));
+              draft.workingSetOrderIds = draft.workingSetOrderIds.filter((id) =>
+                keepSet.has(id),
+              );
+              // Rebuild from the surviving orders so a pruned order can't leave
+              // a stale tableOrderIdIndex entry. A stale entry resolves to a
+              // dead key in useTableSession's Priority-2.5 lookup and silently
+              // falls through to the O(n) full orderIds table-scan — the slow
+              // path that grows with every cleared table on a busy floor.
+              draft.tableOrderIdIndex = rebuildTableOrderIdIndex(
+                draft.ordersById,
+              );
             });
 
             for (const { key, order } of ordersToRelease) {

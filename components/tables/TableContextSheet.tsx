@@ -566,7 +566,11 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
 
     return baseActions
   }, [
-    table,
+    // Shallow identity checks: only recompute when table identity or session status changes,
+    // not when unrelated table fields (position, shape, etc.) mutate via realtime sync.
+    table?.id,
+    table?.session?.id,
+    table?.session?.status,
     status,
     onSeatGuests,
     onSeatReservation,
@@ -574,17 +578,21 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     clearTableSession,
     finishCleaning,
     updateSessionStatus,
-    order,
+    order?.id,
+    order?.order_status,
     isForeignStationSession,
-    selectedStore,
-    liveSession,
+    selectedStore?.id,
+    liveSession?.id,
     onTransferServer,
-    upcomingReservation,
+    upcomingReservation?.id,
+    upcomingReservation?.status,
     handleMarkArrived,
     handleCancelReservation,
     handleOpenTransferPicker,
     isOnline,
-    totals
+    totals?.serviceCharge,
+    totals?.serviceChargeName,
+    totals?.serviceChargeRate
   ])
 
   const partySize = liveSession?.party_size ?? table?.session?.party_size

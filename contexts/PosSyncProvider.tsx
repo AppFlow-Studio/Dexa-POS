@@ -794,6 +794,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } else if (nextState === "background") {
+        // Idle GC: reclaim completed-order memory now, while backgrounded and
+        // nobody is waiting on the JS thread — so the app wakes up lean instead
+        // of carrying a shift's worth of archived orders until the next 2-min
+        // prune tick. Deliberately a GC, NOT a purge+resync: blowing away the
+        // working set on idle would force a network re-fetch on the operator's
+        // first tap (the documented ~1hr-idle cold-start lag), trading a quiet
+        // background cost for foreground latency on a busy floor. Skip on KDS
+        // (it owns its own lifecycle and has no POS order workspace).
+        if (!isKDS) {
+          useOrderStore.getState().clearInactiveOrders();
+        }
+
         // Graceful Castles disconnect: send return2Idle + close the socket so
         // the terminal cleans up its side. Fire-and-forget — the method is
         // safe (never throws, never blocks long) but defensively catch.

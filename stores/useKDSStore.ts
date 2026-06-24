@@ -2215,6 +2215,21 @@ export const useKDSStore = create<KDSState>()(
         const order = payload.data?.order;
         if (!order) return;
 
+        // Pre-gate before allocating a debounce timer. On a POS station (which
+        // still keeps the KDS store warm for the KDS screen) EVERY location
+        // order broadcast lands here; an order that was never fired to the
+        // kitchen and isn't in a kitchen/terminal status can never produce or
+        // remove a ticket, so _processOrderBroadcast would early-return anyway.
+        // Filtering here avoids per-broadcast setTimeout/Map churn under a busy
+        // floor. Terminal statuses are allowed through so ticket REMOVAL still
+        // runs (a completed/voided order may carry sent_to_kitchen_at).
+        const isKitchenRelevant =
+          !!order.sent_to_kitchen_at ||
+          order.status === "sent_to_kitchen" ||
+          order.status === "preparing" ||
+          TERMINAL_ORDER_STATUSES.has(order.status);
+        if (!isKitchenRelevant) return;
+
         // Debounce per-order: bulk_update_order_item_status fires one DB trigger per
         // row, producing N rapid broadcasts with partial item state. Hold 80ms and
         // only process the last one to prevent flickering item counts.
@@ -2233,11 +2248,13 @@ export const useKDSStore = create<KDSState>()(
         const order = payload.data?.order;
         if (!order) return;
 
-        console.log("[KDSStore] Broadcast received:", {
-          orderId: order.id,
-          sessionId: order.session_id,
-          tableNumber: order.table_number,
-        });
+        if (__DEV__) {
+          console.log("[KDSStore] Broadcast received:", {
+            orderId: order.id,
+            sessionId: order.session_id,
+            tableNumber: order.table_number,
+          });
+        }
 
         // Gate: order must have been fired to kitchen
         // Accept sent_to_kitchen_at OR status of sent_to_kitchen/preparing

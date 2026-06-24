@@ -8,6 +8,7 @@ import TableLayoutSkeleton from '@/components/tables/TableLayoutSkeleton'
 import TableLayoutView from '@/components/tables/TableLayoutView'
 import TableOrderOverlay from '@/components/tables/TableOrderOverlay'
 import { useLoading } from '@/contexts/LoadingContext'
+import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { pauseTimerTick, resumeTimerTick } from '@/hooks/useTableTimerTick'
@@ -43,7 +44,7 @@ import {
   Users,
   X
 } from 'lucide-react-native'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   InteractionManager,
   Text,
@@ -142,23 +143,28 @@ const TablesScreen = () => {
   }, [supabaseClient])
 
   const fetchReservations = useReservationStore(s => s.fetchReservations)
+  const fetchReservationsRef = useRef(fetchReservations)
+  fetchReservationsRef.current = fetchReservations
 
   useEffect(() => {
     if (!supabaseClient || !location_id) return
     setReservationSupabaseClient(supabaseClient)
     let interval: ReturnType<typeof setInterval> | null = null
+    let cancelled = false
     const task = InteractionManager.runAfterInteractions(() => {
-      fetchReservations(location_id)
+      if (cancelled) return
+      fetchReservationsRef.current(location_id)
       interval = setInterval(
-        () => fetchReservations(location_id, undefined, { silent: true }),
+        () => fetchReservationsRef.current(location_id, undefined, { silent: true }),
         30000
       )
     })
     return () => {
+      cancelled = true
       task.cancel()
       if (interval) clearInterval(interval)
     }
-  }, [supabaseClient, location_id, fetchReservations])
+  }, [supabaseClient, location_id])
 
   // Consume pending table overlay from waitlist seating flow
   useFocusEffect(
@@ -177,6 +183,18 @@ const TablesScreen = () => {
       return () => pauseTimerTick()
     }, [])
   )
+
+  // DEV: log the live realtime subscriptions for the Tables screen — which
+  // location channels are open and their current connection state. Re-logs
+  // whenever a channel's state changes so you can watch (re)subscribes.
+  const { floor, orders } = useLocationRealtime()
+  useEffect(() => {
+    if (!__DEV__) return
+    console.log('[Tables] Active realtime subscriptions:', {
+      floor: { topic: floor.status.topic, state: floor.status.state },
+      orders: { topic: orders.status.topic, state: orders.status.state }
+    })
+  }, [floor.status.topic, floor.status.state, orders.status.topic, orders.status.state])
 
   // Debounce search input
   useEffect(() => {

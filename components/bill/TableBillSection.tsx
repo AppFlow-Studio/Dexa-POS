@@ -1235,7 +1235,7 @@ const TableBillSection = ({
   return (
     <>
       <View
-        className='max-w-lg  flex-1 flex-col'
+        className='flex-1 flex-col'
         style={{ backgroundColor: colors.panel }}
       >
         {isReadOnly && (

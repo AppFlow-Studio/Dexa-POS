@@ -1040,18 +1040,20 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
           // Don't refresh if already loading
           if (isLoading) {
-            console.log(
-              "[loadFloorPlanStatusIfStale] Skipping - already loading",
-            );
+            if (__DEV__)
+              console.log(
+                "[loadFloorPlanStatusIfStale] Skipping - already loading",
+              );
             return;
           }
 
           // Check if offline - use cached data
           const isOnline = getIsOnline();
           if (!isOnline) {
-            console.log(
-              "[loadFloorPlanStatusIfStale] Offline - using cached data",
-            );
+            if (__DEV__)
+              console.log(
+                "[loadFloorPlanStatusIfStale] Offline - using cached data",
+              );
             return;
           }
 
@@ -1060,15 +1062,16 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             !lastSyncAt || Date.now() - new Date(lastSyncAt).getTime() > ttlMs;
 
           if (isStale) {
-            console.log(
-              "[loadFloorPlanStatusIfStale] Data is stale - refreshing",
-            );
+            if (__DEV__)
+              console.log(
+                "[loadFloorPlanStatusIfStale] Data is stale - refreshing",
+              );
             if (get().tables.length > 0 && get().locationId) {
               await get().refreshTableSessions(); // lightweight, no geometry
             } else {
               await get().loadFloorPlanStatus(); // full load
             }
-          } else {
+          } else if (__DEV__) {
             console.log(
               "[loadFloorPlanStatusIfStale] Data is fresh - skipping refresh",
             );

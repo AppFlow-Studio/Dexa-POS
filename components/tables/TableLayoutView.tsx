@@ -368,8 +368,12 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
 
     let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let pumpCount = 0;
+    const MAX_PUMPS = Math.ceil(prioritizedTables.length / PROGRESSIVE_RENDER_BATCH) + 2;
 
     const pump = () => {
+      if (cancelled || pumpCount >= MAX_PUMPS) return;
+      pumpCount++;
       timeoutId = setTimeout(() => {
         if (cancelled) return;
         setVisibleObjectCount((current) => {
