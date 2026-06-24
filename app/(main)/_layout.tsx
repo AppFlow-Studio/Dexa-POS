@@ -63,13 +63,16 @@ export default function MainLayout () {
   const paymentDetailSheetRef = useRef<BottomSheetMethods>(null)
   const menuSearchSheetRef = useRef<BottomSheetMethods>(null)
   const setSheetRef = useNotificationSheetStore(state => state.setSheetRef)
+  const clearSheetRef = useNotificationSheetStore(state => state.clearSheetRef)
   const { setSearchSheetRef } = useMenuManagementSearchStore()
 
   useEffect(() => {
     if (!isKDS) {
-      setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>)
+      const ref = notificationSheetRef as React.RefObject<BottomSheetMethods>
+      setSheetRef(ref)
+      return () => clearSheetRef(ref)
     }
-  }, [setSheetRef, isKDS])
+  }, [setSheetRef, clearSheetRef, isKDS])
 
   useEffect(() => {
     setSearchSheetRef(menuSearchSheetRef as React.RefObject<BottomSheetMethods>)

@@ -50,14 +50,17 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
   const [activeTab, setActiveTab] = useState<TabName>('Profile Info')
   const notificationSheetRef = useRef<BottomSheetMethods | null>(null)
   const setSheetRef = useNotificationSheetStore(state => state.setSheetRef)
+  const clearSheetRef = useNotificationSheetStore(state => state.clearSheetRef)
 
   // PTO / Requests render as an in-panel overlay rather than a separate route,
   // so the profile Modal stays open and there's no jarring close→navigate jump.
   const [overlay, setOverlay] = useState<'pto' | 'requests' | null>(null)
 
   useEffect(() => {
-    setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>)
-  }, [setSheetRef])
+    const ref = notificationSheetRef as React.RefObject<BottomSheetMethods>
+    setSheetRef(ref)
+    return () => clearSheetRef(ref)
+  }, [setSheetRef, clearSheetRef])
 
   const renderContent = () => {
     switch (activeTab) {
