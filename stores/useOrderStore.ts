@@ -11437,24 +11437,26 @@ export const useOrderStore = create<OrderState>()(
                 ? Math.max(storedOutstanding, computedOutstanding)
                 : computedOutstanding;
 
-            // A legitimate final even-split portion can be a sub-cent remainder
-            // (e.g. $0.05 split 3 ways → last portion is $0.03 but a $0.02 total
-            // can leave $0.01 owing). In that case outstanding == the portion we
-            // are about to collect, so this is NOT "already paid" — let it through.
-            // We only treat it as a true final portion when the explicit amount
-            // still covers what's owed.
-            const isFinalSplitPortion =
-              splitCount !== undefined &&
-              splitPortionIndex !== undefined &&
-              splitPortionIndex === splitCount;
+            // Does this payment actually collect what's still owed? True for an
+            // explicit final split portion AND for a normal full payment that
+            // covers the balance. A null amount means "pay the entire remaining
+            // balance" (the full-pay path), which collects by definition.
             const collectsRemaining =
-              forceExplicitAmount &&
-              amount > 0 &&
-              amount >= outstandingBeforePayment - 0.001;
+              amount == null ||
+              (amount > 0 && amount >= outstandingBeforePayment - 0.001);
 
+            // Reject only when there is genuinely nothing left to collect.
+            // Sub-cent rounding dust (< $0.005) is "already paid", but a real 1¢
+            // balance is money the guest still owes and must be collectable —
+            // a $0.01 order, or a tiny final split remainder (e.g. $0.05 split 3
+            // ways leaves $0.01). Previously the <= $0.01 threshold rejected
+            // legitimate 1¢ checkouts because the escape only fired for explicit
+            // split portions; the by-item/full-pay paths don't set
+            // forceExplicitAmount, so a $0.01 charge falsely read as "paid".
+            const nothingLeftToCollect = outstandingBeforePayment < 0.005;
             if (
-              outstandingBeforePayment <= 0.01 &&
-              !(isFinalSplitPortion && collectsRemaining)
+              nothingLeftToCollect ||
+              (outstandingBeforePayment <= 0.01 && !collectsRemaining)
             ) {
               toastService.show({
                 title: "Already Paid",
