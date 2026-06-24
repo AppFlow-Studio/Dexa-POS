@@ -15,6 +15,7 @@ import {
   useRouter
 } from 'expo-router'
 import { ArrowLeft } from 'lucide-react-native'
+import { useUiScale } from '@/lib/uiScale'
 import React, { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import { NetworkStatusBadge } from './NetworkStatusBadge'
@@ -24,6 +25,10 @@ import { TerminalConnectionBadge } from './TerminalConnectionBadge'
 const Header = () => {
   const pathname = usePathname()
   const router = useRouter()
+  // The back button uses inline pixel sizes (not Tailwind classes), so scale
+  // them manually to match the rest of the UI on small devices.
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const overlayTableId = usePendingTableOverlay(s => s.openTableId)
   const closeTableOverlay = usePendingTableOverlay(s => s.closeTable)
   const vendors = useInventoryStore(s => s.vendors)
@@ -303,12 +308,12 @@ const Header = () => {
             onPress={handleBackPress}
             className='rounded-lg items-center justify-center'
             style={{
-              width: 35,
-              height: 35,
+              width: s(35),
+              height: s(35),
               backgroundColor: `${colors.teal}18`
             }}
           >
-            <ArrowLeft color={colors.teal} size={19} />
+            <ArrowLeft color={colors.teal} size={s(19)} />
           </TouchableOpacity>
         )}
         <Text

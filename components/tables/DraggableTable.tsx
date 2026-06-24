@@ -502,6 +502,24 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     )
   }, [liveSession?.status, liveSession?.order_id])
 
+  // Cancel any in-flight animations on unmount. The staggered entry
+  // (withSpring/withTiming) and the status-change pulse are frequently still
+  // running when the floor unmounts — leaving the floor right after opening it
+  // tears down ~N tables mid-animation. An uncancelled Reanimated animation
+  // pins its shared value's UI-thread mapping past unmount, so ~N tables ×
+  // several animated values leak native memory on every Tables visit (Views
+  // stay flat, Native/PSS climb). cancelAnimation releases them deterministically.
+  useEffect(() => {
+    return () => {
+      cancelAnimation(entryScale)
+      cancelAnimation(entryOpacity)
+      cancelAnimation(pulseScale)
+      cancelAnimation(translateX)
+      cancelAnimation(translateY)
+      cancelAnimation(rotation)
+    }
+  }, [])
+
   // Sync merged + attention state to shared values (keeps useAnimatedStyle on UI thread)
   const newMerged = !!(
     liveSession?.merged_tables && liveSession.merged_tables.length > 0

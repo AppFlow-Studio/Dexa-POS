@@ -22,6 +22,7 @@ import { getDeviceName } from "@/lib/deviceName";
 import { markStart } from "@/lib/perf";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { MerchantRole } from "@/lib/types";
 import {
     EmployeeProfile,
@@ -45,6 +46,8 @@ import Animated, {
 const MAX_PIN_LENGTH = 4;
 
 const PinLoginScreen = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const router = useRouter();
   const { forceTakeover } = useLocalSearchParams<{ forceTakeover?: string }>();
   const [pin, setPin] = useState("");
@@ -806,11 +809,11 @@ const PinLoginScreen = () => {
         {/* Title */}
         <Text
           style={{
-            fontSize: 15,
+            fontSize: s(15),
             fontWeight: "700",
             color: colors.heading,
             textAlign: "center",
-            marginBottom: 4,
+            marginBottom: s(4),
           }}
         >
           {getPinPromptLabel(MAX_PIN_LENGTH)}
@@ -820,25 +823,25 @@ const PinLoginScreen = () => {
         {selectedStation && selectedStore ? (
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               color: colors.muted,
               textAlign: "center",
-              marginBottom: 16,
+              marginBottom: s(16),
             }}
           >
             {selectedStation.station_name} · {selectedStore.name}
           </Text>
         ) : (
-          <View style={{ marginBottom: 16 }} />
+          <View style={{ marginBottom: s(16) }} />
         )}
 
         {!rawIsOnline && (
           <View
             style={{
               alignSelf: "center",
-              marginBottom: 12,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
+              marginBottom: s(12),
+              paddingHorizontal: s(10),
+              paddingVertical: s(6),
               borderRadius: 999,
               backgroundColor: colors.warning + "18",
               borderWidth: 1,
@@ -847,7 +850,7 @@ const PinLoginScreen = () => {
           >
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "600",
                 color: colors.warning,
                 textAlign: "center",
@@ -860,28 +863,28 @@ const PinLoginScreen = () => {
 
         <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />
 
-        <View style={{ marginTop: 10 }}>
+        <View style={{ marginTop: s(10) }}>
           <PinNumpad onKeyPress={handleKeyPress} />
         </View>
 
         {/* Action buttons */}
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
+        <View style={{ flexDirection: "row", gap: s(8), marginTop: s(14) }}>
           <TouchableOpacity
             onPress={handleLogin}
             disabled={!canSubmit}
             style={{
               flex: 1,
-              paddingVertical: 11,
+              paddingVertical: s(11),
               backgroundColor: colors.teal + "20",
               borderWidth: 1,
               borderColor: colors.teal + "50",
-              borderRadius: 10,
+              borderRadius: s(10),
               alignItems: "center",
               opacity: canSubmit ? 1 : 0.4,
             }}
           >
             <Text
-              style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}
+              style={{ fontSize: s(12), fontWeight: "700", color: colors.teal }}
             >
               SIGN IN
             </Text>
@@ -892,17 +895,17 @@ const PinLoginScreen = () => {
             disabled={!canSubmit}
             style={{
               flex: 1,
-              paddingVertical: 11,
+              paddingVertical: s(11),
               backgroundColor: colors.success + "15",
               borderWidth: 1,
               borderColor: colors.success + "40",
-              borderRadius: 10,
+              borderRadius: s(10),
               alignItems: "center",
               opacity: canSubmit ? 1 : 0.4,
             }}
           >
             <Text
-              style={{ fontSize: 12, fontWeight: "700", color: colors.success }}
+              style={{ fontSize: s(12), fontWeight: "700", color: colors.success }}
             >
               CLOCK IN
             </Text>
@@ -913,17 +916,17 @@ const PinLoginScreen = () => {
             disabled={!canSubmit}
             style={{
               flex: 1,
-              paddingVertical: 11,
+              paddingVertical: s(11),
               backgroundColor: colors.danger + "15",
               borderWidth: 1,
               borderColor: colors.danger + "40",
-              borderRadius: 10,
+              borderRadius: s(10),
               alignItems: "center",
               opacity: canSubmit ? 1 : 0.4,
             }}
           >
             <Text
-              style={{ fontSize: 12, fontWeight: "700", color: colors.danger }}
+              style={{ fontSize: s(12), fontWeight: "700", color: colors.danger }}
             >
               CLOCK OUT
             </Text>
@@ -935,21 +938,21 @@ const PinLoginScreen = () => {
           onPress={handleOpenTimeclock}
           style={{
             alignSelf: "center",
-            marginTop: 12,
+            marginTop: s(12),
             flexDirection: "row",
             alignItems: "center",
-            gap: 6,
-            paddingHorizontal: 14,
-            paddingVertical: 7,
+            gap: s(6),
+            paddingHorizontal: s(14),
+            paddingVertical: s(7),
             backgroundColor: colors.card,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 8,
+            borderRadius: s(8),
           }}
         >
-          <Lock size={13} color={colors.label} />
+          <Lock size={s(13)} color={colors.label} />
           <Text
-            style={{ fontSize: 12, fontWeight: "600", color: colors.label }}
+            style={{ fontSize: s(12), fontWeight: "600", color: colors.label }}
           >
             Open Timeclock
           </Text>
@@ -961,8 +964,8 @@ const PinLoginScreen = () => {
           <View
             style={{
               width: "100%",
-              borderRadius: 14,
-              padding: 20,
+              borderRadius: s(14),
+              padding: s(20),
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor:
@@ -980,9 +983,9 @@ const PinLoginScreen = () => {
           >
             <Text
               style={{
-                fontSize: 14,
+                fontSize: s(14),
                 fontWeight: "700",
-                marginBottom: 6,
+                marginBottom: s(6),
                 color:
                   dialog.variant === "success"
                     ? colors.success
@@ -995,10 +998,10 @@ const PinLoginScreen = () => {
             </Text>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 color: colors.label,
-                marginBottom: 18,
-                lineHeight: 19,
+                marginBottom: s(18),
+                lineHeight: s(19),
               }}
             >
               {dialog.message}
@@ -1009,7 +1012,7 @@ const PinLoginScreen = () => {
                 style={{
                   flexDirection: "row",
                   justifyContent: "flex-end",
-                  gap: 8,
+                  gap: s(8),
                 }}
               >
                 <TouchableOpacity
@@ -1018,16 +1021,16 @@ const PinLoginScreen = () => {
                     setPendingTakeoverPin(null);
                   }}
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                    borderRadius: 8,
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(7),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     borderColor: colors.border,
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: "600",
                       color: colors.label,
                     }}
@@ -1038,9 +1041,9 @@ const PinLoginScreen = () => {
                 <TouchableOpacity
                   onPress={handleTakeover}
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                    borderRadius: 8,
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(7),
+                    borderRadius: s(8),
                     backgroundColor: colors.warning + "20",
                     borderWidth: 1,
                     borderColor: colors.warning + "50",
@@ -1048,7 +1051,7 @@ const PinLoginScreen = () => {
                 >
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: "600",
                       color: colors.warning,
                     }}
@@ -1062,9 +1065,9 @@ const PinLoginScreen = () => {
                 onPress={hideDialog}
                 style={{
                   alignSelf: "flex-end",
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 8,
+                  paddingHorizontal: s(14),
+                  paddingVertical: s(7),
+                  borderRadius: s(8),
                   backgroundColor:
                     dialog.variant === "success"
                       ? colors.success + "20"
@@ -1082,7 +1085,7 @@ const PinLoginScreen = () => {
               >
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: "600",
                     color:
                       dialog.variant === "success"

@@ -1,3 +1,4 @@
+import { useUiScale } from "@/lib/uiScale";
 import { colors } from "@/lib/theme";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
@@ -85,29 +86,32 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId, on
 
   if (!activeOrder) return null;
 
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+
   return (
     <View style={inline
-      ? { flexDirection: 'row', alignItems: 'center', gap: 6 }
-      : { borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }
+      ? { flexDirection: 'row', alignItems: 'center', gap: s(6) }
+      : { borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: s(12), paddingVertical: s(6), flexDirection: 'row', alignItems: 'center', gap: s(6) }
     }>
 
       {/* Table */}
-      <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-        <Text style={{ fontSize: 9, color: colors.muted, letterSpacing: 0.5, marginBottom: 1 }}>TABLE</Text>
-        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.heading }}>{getTableDisplayName()}</Text>
+      <View style={{ paddingHorizontal: s(10), paddingVertical: s(5), borderRadius: s(8), backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+        <Text style={{ fontSize: s(9), color: colors.muted, letterSpacing: 0.5, marginBottom: s(1) }}>TABLE</Text>
+        <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.heading }}>{getTableDisplayName()}</Text>
       </View>
 
       {/* Guests */}
       {!hideGuests && (
-        <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ fontSize: 9, color: colors.muted, letterSpacing: 0.5, marginBottom: 1 }}>GUESTS</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <TouchableOpacity onPress={() => handleGuestCountChange(numberOfGuests - 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Minus color={colors.label} size={11} />
+        <View style={{ paddingHorizontal: s(10), paddingVertical: s(5), borderRadius: s(8), backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ fontSize: s(9), color: colors.muted, letterSpacing: 0.5, marginBottom: s(1) }}>GUESTS</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+            <TouchableOpacity onPress={() => handleGuestCountChange(numberOfGuests - 1)} hitSlop={{ top: s(6), bottom: s(6), left: s(6), right: s(6) }}>
+              <Minus color={colors.label} size={s(11)} />
             </TouchableOpacity>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.heading, minWidth: 16, textAlign: 'center' }}>{numberOfGuests}</Text>
-            <TouchableOpacity onPress={() => handleGuestCountChange(numberOfGuests + 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Plus color={colors.label} size={11} />
+            <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.heading, minWidth: s(16), textAlign: 'center' }}>{numberOfGuests}</Text>
+            <TouchableOpacity onPress={() => handleGuestCountChange(numberOfGuests + 1)} hitSlop={{ top: s(6), bottom: s(6), left: s(6), right: s(6) }}>
+              <Plus color={colors.label} size={s(11)} />
             </TouchableOpacity>
           </View>
         </View>
@@ -116,10 +120,10 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId, on
       {/* Server */}
       <TouchableOpacity
         onPress={onOpenServerSheet}
-        style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: activeOrder.server_name ? colors.card : colors.teal + '10', borderWidth: 1, borderColor: activeOrder.server_name ? colors.border : colors.teal + '40' }}
+        style={{ paddingHorizontal: s(10), paddingVertical: s(5), borderRadius: s(8), backgroundColor: activeOrder.server_name ? colors.card : colors.teal + '10', borderWidth: 1, borderColor: activeOrder.server_name ? colors.border : colors.teal + '40' }}
       >
-        <Text style={{ fontSize: 9, color: activeOrder.server_name ? colors.muted : colors.teal, letterSpacing: 0.5, marginBottom: 1 }}>SERVER</Text>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: activeOrder.server_name ? colors.label : colors.teal }}>
+        <Text style={{ fontSize: s(9), color: activeOrder.server_name ? colors.muted : colors.teal, letterSpacing: 0.5, marginBottom: s(1) }}>SERVER</Text>
+        <Text style={{ fontSize: s(12), fontWeight: '600', color: activeOrder.server_name ? colors.label : colors.teal }}>
           {activeOrder.server_name || '— Assign'}
         </Text>
       </TouchableOpacity>
@@ -127,19 +131,19 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId, on
       {/* Customer */}
       <TouchableOpacity
         onPress={openCustomerSheet}
-        style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: activeOrder.customer_name ? colors.card : colors.teal + '10', borderWidth: 1, borderColor: activeOrder.customer_name ? colors.border : colors.teal + '40' }}
+        style={{ paddingHorizontal: s(10), paddingVertical: s(5), borderRadius: s(8), backgroundColor: activeOrder.customer_name ? colors.card : colors.teal + '10', borderWidth: 1, borderColor: activeOrder.customer_name ? colors.border : colors.teal + '40' }}
       >
-        <Text style={{ fontSize: 9, color: activeOrder.customer_name ? colors.muted : colors.teal, letterSpacing: 0.5, marginBottom: 1 }}>CUSTOMER</Text>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: activeOrder.customer_name ? colors.label : colors.teal }}>
+        <Text style={{ fontSize: s(9), color: activeOrder.customer_name ? colors.muted : colors.teal, letterSpacing: 0.5, marginBottom: s(1) }}>CUSTOMER</Text>
+        <Text style={{ fontSize: s(12), fontWeight: '600', color: activeOrder.customer_name ? colors.label : colors.teal }}>
           {activeOrder.customer_name || '— Assign'}
         </Text>
       </TouchableOpacity>
 
       {/* Duration */}
       {duration && (
-        <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ fontSize: 9, color: colors.muted, letterSpacing: 0.5, marginBottom: 1 }}>TIME</Text>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>{duration}</Text>
+        <View style={{ paddingHorizontal: s(10), paddingVertical: s(5), borderRadius: s(8), backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ fontSize: s(9), color: colors.muted, letterSpacing: 0.5, marginBottom: s(1) }}>TIME</Text>
+          <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}>{duration}</Text>
         </View>
       )}
 

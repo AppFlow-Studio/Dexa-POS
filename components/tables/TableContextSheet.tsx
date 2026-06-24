@@ -47,6 +47,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
+import { useUiScale } from '@/lib/uiScale'
 
 interface TableContextSheetProps {
   table: FloorPlanObject | null
@@ -264,6 +265,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const [transferringTableId, setTransferringTableId] = useState<string | null>(
     null
   )
+
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   useEffect(() => {
     if (table) sheetRef.current?.present()
@@ -562,7 +566,11 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
 
     return baseActions
   }, [
-    table,
+    // Shallow identity checks: only recompute when table identity or session status changes,
+    // not when unrelated table fields (position, shape, etc.) mutate via realtime sync.
+    table?.id,
+    table?.session?.id,
+    table?.session?.status,
     status,
     onSeatGuests,
     onSeatReservation,
@@ -570,17 +578,21 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     clearTableSession,
     finishCleaning,
     updateSessionStatus,
-    order,
+    order?.id,
+    order?.order_status,
     isForeignStationSession,
-    selectedStore,
-    liveSession,
+    selectedStore?.id,
+    liveSession?.id,
     onTransferServer,
-    upcomingReservation,
+    upcomingReservation?.id,
+    upcomingReservation?.status,
     handleMarkArrived,
     handleCancelReservation,
     handleOpenTransferPicker,
     isOnline,
-    totals
+    totals?.serviceCharge,
+    totals?.serviceChargeName,
+    totals?.serviceChargeRate
   ])
 
   const partySize = liveSession?.party_size ?? table?.session?.party_size
@@ -606,25 +618,25 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
         handleIndicatorStyle={bottomSheetTheme.handleIndicatorStyle}
         enablePanDownToClose
       >
-      <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+      <BottomSheetScrollView contentContainerStyle={{ paddingBottom: s(24) }}>
         {/* Header */}
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 20,
-            paddingVertical: 16,
+            paddingHorizontal: s(20),
+            paddingVertical: s(16),
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
-            gap: 14
+            gap: s(14)
           }}
         >
           {/* Color accent box */}
           <View
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
+              width: s(32),
+              height: s(32),
+              borderRadius: s(8),
               backgroundColor: tableColor + '18',
               borderWidth: 1,
               borderColor: tableColor + '40',
@@ -634,9 +646,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
           >
             <View
               style={{
-                width: 7,
-                height: 7,
-                borderRadius: 4,
+                width: s(7),
+                height: s(7),
+                borderRadius: s(4),
                 backgroundColor: tableColor
               }}
             />
@@ -645,16 +657,16 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
           {/* Name + status */}
           <View style={{ flex: 1 }}>
             <Text
-              style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}
             >
               {table?.name}
             </Text>
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 color: tableColor,
                 fontWeight: '600',
-                marginTop: 1
+                marginTop: s(1)
               }}
             >
               {STATUS_LABELS[status] ?? status}
@@ -662,25 +674,25 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
           </View>
 
           {/* Meta pills */}
-          <View style={{ flexDirection: 'row', gap: 6 }}>
+          <View style={{ flexDirection: 'row', gap: s(6) }}>
             {partySize ? (
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 4,
+                  gap: s(4),
                   backgroundColor: colors.card,
-                  borderRadius: 8,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
+                  borderRadius: s(8),
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(4),
                   borderWidth: 1,
                   borderColor: colors.border
                 }}
               >
-                <Users size={11} color={colors.muted} />
+                <Users size={s(11)} color={colors.muted} />
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.label,
                     fontWeight: '600'
                   }}
@@ -694,19 +706,19 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 4,
+                  gap: s(4),
                   backgroundColor: colors.card,
-                  borderRadius: 8,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
+                  borderRadius: s(8),
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(4),
                   borderWidth: 1,
                   borderColor: colors.border
                 }}
               >
-                <Clock size={11} color={colors.muted} />
+                <Clock size={s(11)} color={colors.muted} />
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.label,
                     fontWeight: '600'
                   }}
@@ -752,9 +764,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 10,
-                    paddingHorizontal: 16,
-                    paddingVertical: 10,
+                    gap: s(10),
+                    paddingHorizontal: s(16),
+                    paddingVertical: s(10),
                     borderBottomWidth: 1,
                     borderBottomColor: colors.border,
                     backgroundColor: colors.info + '0C'
@@ -762,9 +774,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                 >
                   <View
                     style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: 8,
+                      width: s(30),
+                      height: s(30),
+                      borderRadius: s(8),
                       backgroundColor: colors.info + '18',
                       borderWidth: 1,
                       borderColor: colors.info + '40',
@@ -773,12 +785,12 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                       flexShrink: 0
                     }}
                   >
-                    <CalendarClock size={14} color={colors.info} />
+                    <CalendarClock size={s(14)} color={colors.info} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: '700',
                         color: colors.info
                       }}
@@ -788,9 +800,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                     </Text>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.label,
-                        marginTop: 1
+                        marginTop: s(1)
                       }}
                     >
                       {upcomingReservation.party_size} guests · {timeStr}
@@ -801,9 +813,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                     {upcomingReservation.notes ? (
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: s(10),
                           color: colors.muted,
-                          marginTop: 1
+                          marginTop: s(1)
                         }}
                         numberOfLines={1}
                       >
@@ -813,9 +825,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                   </View>
                   <View
                     style={{
-                      paddingHorizontal: 7,
-                      paddingVertical: 3,
-                      borderRadius: 5,
+                      paddingHorizontal: s(7),
+                      paddingVertical: s(3),
+                      borderRadius: s(5),
                       backgroundColor: isSoon
                         ? colors.warning + '20'
                         : colors.info + '20',
@@ -827,7 +839,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                   >
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         fontWeight: '700',
                         color: isSoon ? colors.warning : colors.info
                       }}
@@ -846,16 +858,16 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: 16,
-              paddingVertical: 10,
+              paddingHorizontal: s(16),
+              paddingVertical: s(10),
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
-              gap: 8
+              gap: s(8)
             }}
           >
             <Text
               style={{
-                fontSize: 17,
+                fontSize: s(17),
                 fontWeight: '700',
                 color: colors.heading,
                 flex: 1
@@ -863,15 +875,15 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
             >
               {formatCurrency(totals.total)}
             </Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>
+            <Text style={{ fontSize: s(11), color: colors.muted }}>
               {totals.itemCount} {totals.itemCount === 1 ? 'item' : 'items'}
             </Text>
             {order?.paid_status ? (
               <View
                 style={{
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 5,
+                  paddingHorizontal: s(6),
+                  paddingVertical: s(2),
+                  borderRadius: s(5),
                   backgroundColor:
                     order.paid_status === 'Paid'
                       ? colors.success + '20'
@@ -882,7 +894,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
               >
                 <Text
                   style={{
-                    fontSize: 10,
+                    fontSize: s(10),
                     fontWeight: '700',
                     color:
                       order.paid_status === 'Paid'
@@ -905,9 +917,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 12,
-              paddingHorizontal: 16,
-              paddingVertical: 8,
+              gap: s(12),
+              paddingHorizontal: s(16),
+              paddingVertical: s(8),
               borderBottomWidth: 1,
               borderBottomColor: colors.border
             }}
@@ -916,17 +928,17 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
               kitchenSummary[k] > 0 ? (
                 <View
                   key={k}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: s(5) }}
                 >
                   <View
                     style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
+                      width: s(6),
+                      height: s(6),
+                      borderRadius: s(3),
                       backgroundColor: KITCHEN_STATUS_COLORS[k]
                     }}
                   />
-                  <Text style={{ fontSize: 11, color: colors.label }}>
+                  <Text style={{ fontSize: s(11), color: colors.label }}>
                     {kitchenSummary[k]} {k}
                   </Text>
                 </View>
@@ -939,10 +951,10 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
         {isOccupied && itemsPreview ? (
           <View
             style={{
-              marginHorizontal: 12,
-              marginTop: 8,
+              marginHorizontal: s(12),
+              marginTop: s(8),
               backgroundColor: colors.card,
-              borderRadius: 8,
+              borderRadius: s(8),
               borderWidth: 1,
               borderColor: colors.border,
               overflow: 'hidden'
@@ -963,36 +975,36 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(6),
                     borderBottomWidth: isLast ? 0 : 1,
                     borderBottomColor: colors.border + '50',
-                    gap: 7
+                    gap: s(7)
                   }}
                 >
                   <View
                     style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: 3,
+                      width: s(5),
+                      height: s(5),
+                      borderRadius: s(3),
                       backgroundColor: statusColor ?? colors.border
                     }}
                   />
                   <Text
-                    style={{ fontSize: 11, color: colors.label, flex: 1 }}
+                    style={{ fontSize: s(11), color: colors.label, flex: 1 }}
                     numberOfLines={1}
                   >
                     {item.quantity}× {item.name}
                   </Text>
-                  <Text style={{ fontSize: 10, color: colors.muted }}>
+                  <Text style={{ fontSize: s(10), color: colors.muted }}>
                     {formatCurrency(item.price * item.quantity)}
                   </Text>
                 </View>
               )
             })}
             {itemsPreview.remaining > 0 && (
-              <View style={{ paddingHorizontal: 10, paddingVertical: 5 }}>
-                <Text style={{ fontSize: 10, color: colors.muted }}>
+              <View style={{ paddingHorizontal: s(10), paddingVertical: s(5) }}>
+                <Text style={{ fontSize: s(10), color: colors.muted }}>
                   +{itemsPreview.remaining} more
                 </Text>
               </View>
@@ -1003,11 +1015,11 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
         {isForeignStationSession ? (
           <View
             style={{
-              marginHorizontal: 12,
-              marginTop: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              borderRadius: 8,
+              marginHorizontal: s(12),
+              marginTop: s(10),
+              paddingHorizontal: s(12),
+              paddingVertical: s(10),
+              borderRadius: s(8),
               borderWidth: 1,
               backgroundColor: colors.warning + '12',
               borderColor: colors.warning + '40'
@@ -1015,7 +1027,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
           >
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '700',
                 color: colors.warning
               }}
@@ -1024,9 +1036,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
             </Text>
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.label,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               Close Table is disabled on this station.
@@ -1038,10 +1050,10 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
         {order?.server_name ? (
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               color: colors.muted,
-              paddingHorizontal: 16,
-              marginTop: 6
+              paddingHorizontal: s(16),
+              marginTop: s(6)
             }}
           >
             Server:{' '}
@@ -1052,7 +1064,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
         ) : null}
 
         {/* Actions */}
-        <View style={{ paddingHorizontal: 12, marginTop: 10, gap: 5 }}>
+        <View style={{ paddingHorizontal: s(12), marginTop: s(10), gap: s(5) }}>
           {actions.map((action, idx) => {
             const isPrimary = action.variant === 'primary'
             const isDanger = action.variant === 'danger'
@@ -1080,9 +1092,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  borderRadius: 8,
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
                   borderWidth: 1,
                   backgroundColor: isPrimary
                     ? colors.teal + '15'
@@ -1094,14 +1106,14 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                     : isDanger
                     ? colors.danger + '40'
                     : colors.border,
-                  gap: 8,
+                  gap: s(8),
                   opacity: action.disabled ? 0.45 : 1
                 }}
               >
                 {action.icon}
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '600',
                     flex: 1,
                     color: isPrimary
@@ -1114,7 +1126,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                   {action.label}
                 </Text>
                 {isPrimary && (
-                  <ChevronRight size={12} color={colors.teal + '80'} />
+                  <ChevronRight size={s(12)} color={colors.teal + '80'} />
                 )}
               </TouchableOpacity>
             )
@@ -1122,10 +1134,10 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
           {actions.length === 0 && (
             <Text
               style={{
-                fontSize: 12,
+                fontSize: s(12),
                 color: colors.muted,
                 textAlign: 'center',
-                paddingVertical: 12
+                paddingVertical: s(12)
               }}
             >
               No actions available
@@ -1149,16 +1161,16 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
             backgroundColor: 'rgba(0,0,0,0.45)',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 18
+            padding: s(18)
           }}
         >
           <Pressable
             onPress={event => event.stopPropagation()}
             style={{
               width: '100%',
-              maxWidth: 420,
+              maxWidth: s(420),
               maxHeight: '78%',
-              borderRadius: 8,
+              borderRadius: s(8),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.background,
@@ -1169,48 +1181,48 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                paddingHorizontal: 16,
-                paddingVertical: 14,
+                paddingHorizontal: s(16),
+                paddingVertical: s(14),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
-                gap: 10
+                gap: s(10)
               }}
             >
-              <ArrowLeftRight size={17} color={colors.teal} />
+              <ArrowLeftRight size={s(17)} color={colors.teal} />
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: '700',
                     color: colors.heading
                   }}
                 >
                   Transfer Table
                 </Text>
-                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }}>
                   Select an available table
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={handleCloseTransferPicker}
-                hitSlop={10}
+                hitSlop={s(10)}
               >
-                <X size={18} color={colors.muted} />
+                <X size={s(18)} color={colors.muted} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={{ padding: 10, gap: 6 }}>
+            <ScrollView contentContainerStyle={{ padding: s(10), gap: s(6) }}>
               {isTransferPickerLoading ? (
                 <View
                   style={{
                     alignItems: 'center',
                     justifyContent: 'center',
-                    paddingVertical: 18,
-                    gap: 8
+                    paddingVertical: s(18),
+                    gap: s(8)
                   }}
                 >
                   <ActivityIndicator size='small' color={colors.teal} />
-                  <Text style={{ fontSize: 12, color: colors.muted }}>
+                  <Text style={{ fontSize: s(12), color: colors.muted }}>
                     Checking tables...
                   </Text>
                 </View>
@@ -1227,21 +1239,21 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      paddingHorizontal: 12,
-                      paddingVertical: 11,
-                      borderRadius: 8,
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(11),
+                      borderRadius: s(8),
                       borderWidth: 1,
                       borderColor: colors.border,
                       backgroundColor: colors.card,
-                      gap: 10,
+                      gap: s(10),
                       opacity: transferringTableId && !isTransferring ? 0.45 : 1
                     }}
                   >
                     <View
                       style={{
-                        width: 30,
-                        height: 30,
-                        borderRadius: 8,
+                        width: s(30),
+                        height: s(30),
+                        borderRadius: s(8),
                         backgroundColor: colors.success + '16',
                         borderWidth: 1,
                         borderColor: colors.success + '40',
@@ -1251,9 +1263,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                     >
                       <View
                         style={{
-                          width: 7,
-                          height: 7,
-                          borderRadius: 4,
+                          width: s(7),
+                          height: s(7),
+                          borderRadius: s(4),
                           backgroundColor: colors.success
                         }}
                       />
@@ -1261,14 +1273,14 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: '700',
                           color: colors.heading
                         }}
                       >
                         {targetTable.name}
                       </Text>
-                      <Text style={{ fontSize: 11, color: colors.muted }}>
+                      <Text style={{ fontSize: s(11), color: colors.muted }}>
                         {targetTable.capacity
                           ? `${targetTable.capacity} seats`
                           : 'Available'}
@@ -1277,7 +1289,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                     {isTransferring ? (
                       <ActivityIndicator size='small' color={colors.teal} />
                     ) : (
-                      <ChevronRight size={14} color={colors.muted} />
+                      <ChevronRight size={s(14)} color={colors.muted} />
                     )}
                   </TouchableOpacity>
                 )
@@ -1286,10 +1298,10 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
               {!isTransferPickerLoading && availableTransferTables.length === 0 ? (
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     color: colors.muted,
                     textAlign: 'center',
-                    paddingVertical: 18
+                    paddingVertical: s(18)
                   }}
                 >
                   No available tables

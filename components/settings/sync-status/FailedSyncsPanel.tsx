@@ -6,6 +6,7 @@
  */
 
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import {
   discardDeadLetterOperation,
   getDeadLetterOperations,
@@ -72,6 +73,8 @@ function isPaymentOp (type: string): boolean {
 }
 
 export function FailedSyncsPanel (): React.ReactElement {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [operations, setOperations] = useState<OfflineOperation[]>([])
   const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set())
   const [resolveOpId, setResolveOpId] = useState<string | null>(null)
@@ -123,10 +126,10 @@ export function FailedSyncsPanel (): React.ReactElement {
     return (
       <View
         style={{
-          paddingHorizontal: 16,
-          paddingVertical: 16,
+          paddingHorizontal: s(16),
+          paddingVertical: s(16),
           backgroundColor: colors.panel,
-          borderRadius: 12,
+          borderRadius: s(12),
           borderWidth: 1,
           borderColor: colors.border
         }}
@@ -135,18 +138,18 @@ export function FailedSyncsPanel (): React.ReactElement {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
-            marginBottom: 8
+            gap: s(8),
+            marginBottom: s(8)
           }}
         >
-          <AlertTriangle size={16} color={colors.label} />
+          <AlertTriangle size={s(16)} color={colors.label} />
           <Text
-            style={{ fontSize: 16, fontWeight: '600', color: colors.heading }}
+            style={{ fontSize: s(16), fontWeight: '600', color: colors.heading }}
           >
             Failed Sync Operations
           </Text>
         </View>
-        <Text style={{ fontSize: 14, color: colors.label }}>
+        <Text style={{ fontSize: s(14), color: colors.label }}>
           No failed operations. All syncs are healthy.
         </Text>
       </View>
@@ -157,7 +160,7 @@ export function FailedSyncsPanel (): React.ReactElement {
     <View
       style={{
         backgroundColor: colors.panel,
-        borderRadius: 12,
+        borderRadius: s(12),
         borderWidth: 1,
         borderColor: colors.danger + '50',
         overflow: 'hidden'
@@ -169,29 +172,29 @@ export function FailedSyncsPanel (): React.ReactElement {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingHorizontal: 16,
-          paddingVertical: 16,
+          paddingHorizontal: s(16),
+          paddingVertical: s(16),
           borderBottomWidth: 1,
           borderBottomColor: colors.border
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <AlertTriangle size={16} color={colors.danger} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+          <AlertTriangle size={s(16)} color={colors.danger} />
           <Text
-            style={{ fontSize: 16, fontWeight: '600', color: colors.heading }}
+            style={{ fontSize: s(16), fontWeight: '600', color: colors.heading }}
           >
             Failed Sync Operations
           </Text>
           <View
             style={{
               backgroundColor: colors.danger + '40',
-              paddingHorizontal: 8,
-              paddingVertical: 2,
-              borderRadius: 12
+              paddingHorizontal: s(8),
+              paddingVertical: s(2),
+              borderRadius: s(12)
             }}
           >
             <Text
-              style={{ fontSize: 12, fontWeight: '700', color: colors.danger }}
+              style={{ fontSize: s(12), fontWeight: '700', color: colors.danger }}
             >
               {operations.length}
             </Text>
@@ -203,16 +206,16 @@ export function FailedSyncsPanel (): React.ReactElement {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 6,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 8,
+              gap: s(6),
+              paddingHorizontal: s(12),
+              paddingVertical: s(6),
+              borderRadius: s(8),
               backgroundColor: colors.teal + '30'
             }}
           >
-            <RefreshCw size={12} color={colors.teal} />
+            <RefreshCw size={s(12)} color={colors.teal} />
             <Text
-              style={{ fontSize: 12, fontWeight: '500', color: colors.teal }}
+              style={{ fontSize: s(12), fontWeight: '500', color: colors.teal }}
             >
               Retry All
             </Text>
@@ -231,20 +234,20 @@ export function FailedSyncsPanel (): React.ReactElement {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: 16,
-              paddingVertical: 16,
+              paddingHorizontal: s(16),
+              paddingVertical: s(16),
               borderBottomWidth: 1,
               borderBottomColor: colors.border + '50'
             }}
           >
             {/* Type + Details */}
-            <View style={{ flex: 1, marginRight: 12 }}>
+            <View style={{ flex: 1, marginRight: s(12) }}>
               <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}
               >
                 <Text
                   style={{
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: '600',
                     color: colors.heading
                   }}
@@ -255,14 +258,14 @@ export function FailedSyncsPanel (): React.ReactElement {
                   <View
                     style={{
                       backgroundColor: colors.danger + '40',
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 4
+                      paddingHorizontal: s(6),
+                      paddingVertical: s(2),
+                      borderRadius: s(4)
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         fontWeight: '700',
                         color: colors.danger
                       }}
@@ -272,12 +275,12 @@ export function FailedSyncsPanel (): React.ReactElement {
                   </View>
                 )}
               </View>
-              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+              <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}>
                 {formatTimestamp(op.timestamp)} · {op.retryCount} retries
               </Text>
               {op.localOrderId && (
                 <Text
-                  style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}
+                  style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}
                   numberOfLines={1}
                 >
                   Order: {op.localOrderId.substring(0, 20)}...
@@ -287,7 +290,7 @@ export function FailedSyncsPanel (): React.ReactElement {
 
             {/* Action buttons */}
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}
             >
               <TouchableOpacity
                 onPress={() => handleRetry(op.id)}
@@ -295,21 +298,21 @@ export function FailedSyncsPanel (): React.ReactElement {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 4,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 8,
+                  gap: s(4),
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(6),
+                  borderRadius: s(8),
                   backgroundColor: colors.teal + '30'
                 }}
               >
                 {isRetrying ? (
                   <ActivityIndicator size='small' color={colors.teal} />
                 ) : (
-                  <RefreshCw size={12} color={colors.teal} />
+                  <RefreshCw size={s(12)} color={colors.teal} />
                 )}
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '500',
                     color: colors.teal
                   }}
@@ -324,19 +327,19 @@ export function FailedSyncsPanel (): React.ReactElement {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 4,
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 8,
+                    gap: s(4),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(6),
+                    borderRadius: s(8),
                     backgroundColor: colors.card,
                     borderWidth: 1,
                     borderColor: colors.border
                   }}
                 >
-                  <Wrench size={12} color={colors.label} />
+                  <Wrench size={s(12)} color={colors.label} />
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: '500',
                       color: colors.label
                     }}
@@ -350,17 +353,17 @@ export function FailedSyncsPanel (): React.ReactElement {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 4,
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 8,
+                    gap: s(4),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(6),
+                    borderRadius: s(8),
                     backgroundColor: colors.card
                   }}
                 >
-                  <Trash2 size={12} color={colors.label} />
+                  <Trash2 size={s(12)} color={colors.label} />
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: '500',
                       color: colors.label
                     }}
@@ -378,12 +381,12 @@ export function FailedSyncsPanel (): React.ReactElement {
       {operations.some(op => isPaymentOp(op.type)) && (
         <View
           style={{
-            paddingHorizontal: 12,
-            paddingVertical: 12,
+            paddingHorizontal: s(12),
+            paddingVertical: s(12),
             backgroundColor: colors.danger + '20'
           }}
         >
-          <Text style={{ fontSize: 12, color: colors.danger }}>
+          <Text style={{ fontSize: s(12), color: colors.danger }}>
             Payment operations can&apos;t be auto-discarded. Tap{' '}
             <Text style={{ fontWeight: '700' }}>Resolve manually</Text> to
             compare local and server state, then mark resolved, retry, or

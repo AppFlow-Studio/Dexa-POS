@@ -1,6 +1,7 @@
 import { useTimeClock } from '@/hooks/useTimeclock'
 import { replaceRoute } from '@/lib/rootNavigation'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
@@ -37,6 +38,8 @@ const getDeviceId = async (): Promise<string> => {
 const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
   employeeId
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   // --- HOOKS ---
   // Use NEW backend hook for actions
   const timeClock = useTimeClock()
@@ -221,9 +224,9 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
       <View
         style={{
           width: '100%',
-          padding: 24,
+          padding: s(24),
           backgroundColor: colors.panel,
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: colors.border,
           alignItems: 'center',
@@ -248,7 +251,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
         style={{
           width: '100%',
           backgroundColor: colors.panel,
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: colors.border,
           overflow: 'hidden'
@@ -259,18 +262,18 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
           style={{
             backgroundColor: colors.card,
             alignItems: 'center',
-            paddingHorizontal: 32,
-            paddingTop: 40,
-            paddingBottom: 32
+            paddingHorizontal: s(20),
+            paddingTop: s(20),
+            paddingBottom: s(16)
           }}
         >
           {/* Clock */}
           <Text
             style={{
               color: colors.label,
-              fontSize: 11,
+              fontSize: s(9),
               fontWeight: '500',
-              marginBottom: 8,
+              marginBottom: s(4),
               textTransform: 'uppercase',
               letterSpacing: 0.8
             }}
@@ -279,10 +282,10 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
           </Text>
           <Text
             style={{
-              fontSize: 48,
+              fontSize: s(32),
               fontWeight: 'bold',
               color: colors.heading,
-              marginBottom: 32
+              marginBottom: s(12)
             }}
           >
             {currentTime.toLocaleTimeString([], {
@@ -296,26 +299,26 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
             <Image
               source={{ uri: user.profilePictureUrl }}
               style={{
-                width: 88,
-                height: 88,
-                borderRadius: 44,
-                marginBottom: 16
+                width: s(64),
+                height: s(64),
+                borderRadius: s(32),
+                marginBottom: s(8)
               }}
             />
           ) : (
             <View
               style={{
-                width: 88,
-                height: 88,
-                borderRadius: 44,
+                width: s(64),
+                height: s(64),
+                borderRadius: s(32),
                 backgroundColor: colors.teal,
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: 16
+                marginBottom: s(8)
               }}
             >
               <Text
-                style={{ color: '#0C0F1A', fontSize: 30, fontWeight: 'bold' }}
+                style={{ color: '#0C0F1A', fontSize: s(22), fontWeight: 'bold' }}
               >
                 {initials}
               </Text>
@@ -325,10 +328,10 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
           <Text
             style={{
               color: colors.heading,
-              fontSize: 20,
+              fontSize: s(16),
               fontWeight: 'bold',
               textAlign: 'center',
-              marginBottom: 12
+              marginBottom: s(8)
             }}
           >
             {user.fullName}
@@ -337,9 +340,9 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
           {/* Status badge */}
           <View
             style={{
-              paddingHorizontal: 16,
-              paddingVertical: 6,
-              borderRadius: 20,
+              paddingHorizontal: s(16),
+              paddingVertical: s(6),
+              borderRadius: s(20),
               backgroundColor:
                 session && isBreak
                   ? colors.warning + '20'
@@ -349,20 +352,20 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
             }}
           >
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}
             >
               {session ? (
                 isBreak ? (
-                  <Pause size={12} color={colors.warning} />
+                  <Pause size={s(12)} color={colors.warning} />
                 ) : (
-                  <Clock size={12} color={colors.teal} />
+                  <Clock size={s(12)} color={colors.teal} />
                 )
               ) : (
-                <Circle size={12} color={colors.label} />
+                <Circle size={s(12)} color={colors.label} />
               )}
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '600',
                   color:
                     session && isBreak
@@ -387,33 +390,33 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
 
         {/* Shift stats */}
         {session && (
-          <View className='px-6 py-5 gap-y-4'>
-            <View className='flex-row items-center justify-between'>
+          <View style={{ paddingHorizontal: s(16), paddingVertical: s(12), gap: s(10) }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}
               >
-                <Timer color={colors.muted} size={15} />
-                <Text style={{ color: colors.label, fontSize: 14 }}>
+                <Timer color={colors.muted} size={s(12)} />
+                <Text style={{ color: colors.label, fontSize: s(12) }}>
                   Duration
                 </Text>
               </View>
               <Text
-                style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
+                style={{ color: colors.teal, fontSize: s(12), fontWeight: '600' }}
               >
                 {shiftDuration}
               </Text>
             </View>
-            <View className='flex-row items-center justify-between'>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}
               >
-                <Clock color={colors.muted} size={15} />
-                <Text style={{ color: colors.label, fontSize: 14 }}>
+                <Clock color={colors.muted} size={s(12)} />
+                <Text style={{ color: colors.label, fontSize: s(12) }}>
                   Clocked in at
                 </Text>
               </View>
               <Text
-                style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
+                style={{ color: colors.teal, fontSize: s(12), fontWeight: '600' }}
               >
                 {new Date(session.clockInTime).toLocaleTimeString([], {
                   hour: '2-digit',
@@ -430,28 +433,29 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
             style={{
               height: 1,
               backgroundColor: colors.border,
-              marginHorizontal: 24
+              marginHorizontal: s(24)
             }}
           />
         )}
 
         {/* Actions */}
-        <View className='px-6 py-5 gap-y-3'>
+        <View style={{ paddingHorizontal: s(16), paddingVertical: s(12), gap: s(8) }}>
           {session ? (
             <>
               {isBreak ? (
                 <TouchableOpacity
                   onPress={handleEndBreak}
-                  className='py-3.5 rounded-xl items-center'
                   style={{
+                    paddingVertical: s(10),
+                    borderRadius: s(10),
+                    alignItems: 'center',
                     backgroundColor: colors.warning + '20',
                     borderWidth: 1,
                     borderColor: colors.warning + '50'
                   }}
                 >
                   <Text
-                    style={{ color: colors.warning }}
-                    className='font-semibold text-sm'
+                    style={{ color: colors.warning, fontSize: s(12), fontWeight: '600' }}
                   >
                     End Break
                   </Text>
@@ -459,16 +463,17 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
               ) : (
                 <TouchableOpacity
                   onPress={handleStartBreak}
-                  className='py-3.5 rounded-xl items-center'
                   style={{
+                    paddingVertical: s(10),
+                    borderRadius: s(10),
+                    alignItems: 'center',
                     backgroundColor: colors.teal + '20',
                     borderWidth: 1,
                     borderColor: colors.teal + '50'
                   }}
                 >
                   <Text
-                    style={{ color: colors.teal }}
-                    className='font-semibold text-sm'
+                    style={{ color: colors.teal, fontSize: s(12), fontWeight: '600' }}
                   >
                     Start Break
                   </Text>
@@ -476,16 +481,17 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
               )}
               <TouchableOpacity
                 onPress={handleClockOut}
-                className='py-3.5 rounded-xl items-center'
                 style={{
+                  paddingVertical: s(10),
+                  borderRadius: s(10),
+                  alignItems: 'center',
                   backgroundColor: colors.danger + '15',
                   borderWidth: 1,
                   borderColor: colors.danger + '40'
                 }}
               >
                 <Text
-                  style={{ color: colors.danger }}
-                  className='font-semibold text-sm'
+                  style={{ color: colors.danger, fontSize: s(12), fontWeight: '600' }}
                 >
                   Clock Out
                 </Text>
@@ -494,13 +500,13 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
           ) : (
             <View
               style={{
-                paddingVertical: 12,
-                borderRadius: 12,
+                paddingVertical: s(10),
+                borderRadius: s(10),
                 alignItems: 'center',
                 backgroundColor: colors.muted + '10'
               }}
             >
-              <Text style={{ color: colors.label, fontSize: 14 }}>
+              <Text style={{ color: colors.label, fontSize: s(12) }}>
                 Clock in from Employee List
               </Text>
             </View>

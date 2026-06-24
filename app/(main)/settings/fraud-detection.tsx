@@ -7,6 +7,7 @@
 
 import { Switch } from '@/components/ui/switch'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useRefundFraudGuardStore } from '@/stores/useRefundFraudGuardStore'
 import {
@@ -27,6 +28,8 @@ import {
 } from 'react-native'
 
 export default function FraudDetectionScreen() {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const fraudConfig = useLocationConfigStore(s => s.config.fraudDetection)
   const _updateConfig = useLocationConfigStore(s => s.updateConfig)
   const update = useCallback(
@@ -58,16 +61,16 @@ export default function FraudDetectionScreen() {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 10,
+        paddingVertical: s(10),
         borderBottomWidth: 1,
         borderBottomColor: colors.border
       }}
     >
       <View style={{ flex: 1, marginRight: 12 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+        <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.heading }}>
           {label}
         </Text>
-        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+        <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}>
           {description}
         </Text>
       </View>
@@ -88,26 +91,26 @@ export default function FraudDetectionScreen() {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 10,
+        paddingVertical: s(10),
         borderBottomWidth: 1,
         borderBottomColor: colors.border
       }}
     >
       <View style={{ flex: 1, marginRight: 12 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+        <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.heading }}>
           {label}
         </Text>
-        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+        <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}>
           {description}
         </Text>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
         <TouchableOpacity
           onPress={() => onChange(Math.max(min, value - 1))}
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 8,
+            width: s(36),
+            height: s(36),
+            borderRadius: s(8),
             backgroundColor: colors.screen,
             borderWidth: 1,
             borderColor: colors.border,
@@ -115,7 +118,7 @@ export default function FraudDetectionScreen() {
             justifyContent: 'center'
           }}
         >
-          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}>
+          <Text style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}>
             -
           </Text>
         </TouchableOpacity>
@@ -127,14 +130,14 @@ export default function FraudDetectionScreen() {
           }}
           keyboardType="numeric"
           style={{
-            width: 56,
-            height: 36,
+            width: s(56),
+            height: s(36),
             backgroundColor: colors.screen,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 8,
+            borderRadius: s(8),
             textAlign: 'center',
-            fontSize: 15,
+            fontSize: s(15),
             fontWeight: '700',
             color: colors.heading,
             paddingVertical: 0,
@@ -143,9 +146,9 @@ export default function FraudDetectionScreen() {
         <TouchableOpacity
           onPress={() => onChange(Math.min(max, value + 1))}
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 8,
+            width: s(36),
+            height: s(36),
+            borderRadius: s(8),
             backgroundColor: colors.screen,
             borderWidth: 1,
             borderColor: colors.border,
@@ -153,7 +156,7 @@ export default function FraudDetectionScreen() {
             justifyContent: 'center'
           }}
         >
-          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}>
+          <Text style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}>
             +
           </Text>
         </TouchableOpacity>
@@ -164,16 +167,16 @@ export default function FraudDetectionScreen() {
   // ─── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: 14 }}>
+    <View style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: s(14) }}>
       {/* Header */}
-      <View style={{ marginBottom: 12, marginTop: 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Shield size={18} color={colors.teal} />
-          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
+      <View style={{ marginBottom: s(12), marginTop: s(8) }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+          <Shield size={s(18)} color={colors.teal} />
+          <Text style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}>
             Fraud Detection
           </Text>
         </View>
-        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+        <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(4) }}>
           Detect and prevent refund-to-self fraud patterns. When enabled, the
           system tracks when the same cashier who created an order also refunds
           it for cash, and escalates through alert and block thresholds.
@@ -185,12 +188,12 @@ export default function FraudDetectionScreen() {
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: fraudConfig.refundToSelfEnabled
               ? colors.teal + '40'
               : colors.border,
-            marginBottom: 10,
+            marginBottom: s(10),
             overflow: 'hidden',
             padding: 14
           }}
@@ -205,8 +208,8 @@ export default function FraudDetectionScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
               <View
                 style={{
-                  width: 36,
-                  height: 36,
+                  width: s(36),
+                  height: s(36),
                   borderRadius: 10,
                   backgroundColor: fraudConfig.refundToSelfEnabled
                     ? colors.teal + '18'
@@ -220,22 +223,22 @@ export default function FraudDetectionScreen() {
                 }}
               >
                 {fraudConfig.refundToSelfEnabled ? (
-                  <Shield size={18} color={colors.teal} />
+                  <Shield size={s(18)} color={colors.teal} />
                 ) : (
-                  <ShieldOff size={18} color={colors.muted} />
+                  <ShieldOff size={s(18)} color={colors.muted} />
                 )}
               </View>
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: '700',
                     color: colors.heading
                   }}
                 >
                   Refund-to-Self Guard
                 </Text>
-                <Text style={{ fontSize: 11, color: colors.muted }}>
+                <Text style={{ fontSize: s(11), color: colors.muted }}>
                   {fraudConfig.refundToSelfEnabled
                     ? 'Active — monitoring same-cashier cash refunds'
                     : 'Disabled — no refund velocity checks'}
@@ -254,17 +257,17 @@ export default function FraudDetectionScreen() {
           <View
             style={{
               backgroundColor: colors.panel,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
-              marginBottom: 10,
+              marginBottom: s(10),
               overflow: 'hidden',
               padding: 14
             }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <AlertTriangle size={14} color={colors.warning} />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8), marginBottom: 10 }}>
+              <AlertTriangle size={s(14)} color={colors.warning} />
+              <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
                 Thresholds
               </Text>
             </View>
@@ -289,15 +292,15 @@ export default function FraudDetectionScreen() {
 
             <View style={{ paddingVertical: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Clock size={12} color={colors.muted} />
-                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+                <Clock size={s(12)} color={colors.muted} />
+                <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.heading }}>
                   Time Window
                 </Text>
               </View>
-              <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 8 }}>
+              <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(8) }}>
                 How far back to look when counting refunds (in minutes)
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
                 <TextInput
                   value={String(fraudConfig.windowMinutes)}
                   onChangeText={text => {
@@ -306,20 +309,20 @@ export default function FraudDetectionScreen() {
                   }}
                   keyboardType="numeric"
                   style={{
-                    width: 72,
-                    height: 36,
+                    width: s(72),
+                    height: s(36),
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     textAlign: 'center',
-                    fontSize: 15,
+                    fontSize: s(15),
                     fontWeight: '700',
                     color: colors.heading,
                     paddingVertical: 0,
                   }}
                 />
-                <Text style={{ fontSize: 13, color: colors.label }}>minutes</Text>
+                <Text style={{ fontSize: s(13), color: colors.label }}>minutes</Text>
               </View>
             </View>
 
@@ -333,13 +336,13 @@ export default function FraudDetectionScreen() {
                   backgroundColor: colors.warning + '15',
                   borderWidth: 1,
                   borderColor: colors.warning + '40',
-                  borderRadius: 8,
+                  borderRadius: s(8),
                   padding: 10,
                   marginTop: 6
                 }}
               >
-                <AlertTriangle size={14} color={colors.warning} />
-                <Text style={{ fontSize: 11, color: colors.warning, flex: 1 }}>
+                <AlertTriangle size={s(14)} color={colors.warning} />
+                <Text style={{ fontSize: s(11), color: colors.warning, flex: 1 }}>
                   Alert threshold should be less than or equal to block threshold.
                 </Text>
               </View>
@@ -351,22 +354,22 @@ export default function FraudDetectionScreen() {
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 10,
+            marginBottom: s(10),
             overflow: 'hidden',
             padding: 14
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <Hash size={14} color={colors.label} />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8), marginBottom: s(8) }}>
+            <Hash size={s(14)} color={colors.label} />
+            <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
               Current Session
             </Text>
           </View>
 
-          <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}>
+          <Text style={{ fontSize: s(12), color: colors.muted, marginBottom: 10 }}>
             {eventCount === 0
               ? 'No flagged refund events on this device.'
               : `${eventCount} flagged refund event${eventCount !== 1 ? 's' : ''} tracked on this device.`}
@@ -383,31 +386,31 @@ export default function FraudDetectionScreen() {
                     justifyContent: 'center',
                     gap: 6,
                     paddingVertical: 8,
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     backgroundColor: colors.danger + '10',
                     borderWidth: 1,
                     borderColor: colors.danger + '30'
                   }}
                 >
-                  <Trash2 size={14} color={colors.danger} />
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.danger }}>
+                  <Trash2 size={s(14)} color={colors.danger} />
+                  <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.danger }}>
                     Clear Event Log
                   </Text>
                 </TouchableOpacity>
               ) : (
-                <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flexDirection: 'row', gap: s(8) }}>
                   <TouchableOpacity
                     onPress={() => setShowClearConfirm(false)}
                     style={{
                       flex: 1,
                       paddingVertical: 8,
-                      borderRadius: 8,
+                      borderRadius: s(8),
                       borderWidth: 1,
                       borderColor: colors.border,
                       alignItems: 'center'
                     }}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>
+                    <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}>
                       Cancel
                     </Text>
                   </TouchableOpacity>
@@ -416,12 +419,12 @@ export default function FraudDetectionScreen() {
                     style={{
                       flex: 1,
                       paddingVertical: 8,
-                      borderRadius: 8,
+                      borderRadius: s(8),
                       backgroundColor: colors.danger,
                       alignItems: 'center'
                     }}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.onSolid }}>
+                    <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.onSolid }}>
                       Confirm Clear
                     </Text>
                   </TouchableOpacity>
@@ -435,17 +438,17 @@ export default function FraudDetectionScreen() {
         <View
           style={{
             backgroundColor: colors.teal + '08',
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.teal + '20',
             padding: 14,
             marginBottom: 20
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal, marginBottom: 6 }}>
+          <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.teal, marginBottom: 6 }}>
             How it works
           </Text>
-          <Text style={{ fontSize: 11, color: colors.label, lineHeight: 16 }}>
+          <Text style={{ fontSize: s(11), color: colors.label, lineHeight: 16 }}>
             When a cashier refunds a cash order they created:{'\n'}
             {'\u2022'} After {fraudConfig.alertThreshold} refund{fraudConfig.alertThreshold !== 1 ? 's' : ''}: a warning toast and notification are shown{'\n'}
             {'\u2022'} After {fraudConfig.blockThreshold} refund{fraudConfig.blockThreshold !== 1 ? 's' : ''}: the refund is blocked until a manager enters their PIN{'\n'}

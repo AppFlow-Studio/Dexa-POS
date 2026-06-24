@@ -11,6 +11,7 @@ import {
 import { getCurrentBusinessDay } from "@/lib/businessDay";
 import { formatCurrency } from "@/utils/currency";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useQuery } from "@tanstack/react-query";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import React from "react";
@@ -60,6 +61,8 @@ export default function EodStepTips({
   onOpenTipWizard,
   onRefresh,
 }: EodStepTipsProps) {
+  const scale = useUiScale();
+  const s = (value: number) => Math.round(value * scale);
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const fetchTipConfig = useTipDistributionStore((state) => state.fetchTipConfig);
   const supabase = useSupabaseClient();
@@ -108,7 +111,7 @@ export default function EodStepTips({
     : null;
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: s(10) }}>
       {/* Shift Declaration Review — manager can declare for undeclared staff */}
       <EodShiftTipReview
         supabase={supabase}
@@ -121,65 +124,65 @@ export default function EodStepTips({
       {(todaySessions?.length ?? 0) > 0 && (
         <View
           style={{
-            borderRadius: 16,
+            borderRadius: s(16),
             borderWidth: 1,
             borderColor: colors.border,
             backgroundColor: colors.panel,
-            padding: 12,
-            gap: 8,
+            padding: s(12),
+            gap: s(8),
           }}
         >
-          <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
+          <Text style={{ fontSize: s(14), fontWeight: "700", color: colors.heading }}>
             Today's Close-Out Sessions
           </Text>
-          <View style={{ gap: 4 }}>
-            {(todaySessions || []).map((s) => {
-              const startTime = s.dataStartAfter
-                ? new Date(s.dataStartAfter).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          <View style={{ gap: s(4) }}>
+            {(todaySessions || []).map((session) => {
+              const startTime = session.dataStartAfter
+                ? new Date(session.dataStartAfter).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                 : "Start of day";
-              const endTime = s.dataCutoffAt
-                ? new Date(s.dataCutoffAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              const endTime = session.dataCutoffAt
+                ? new Date(session.dataCutoffAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                 : "now";
               const statusColor =
-                s.status === "approved" ? colors.success
-                : s.status === "calculated" ? colors.warning
+                session.status === "approved" ? colors.success
+                : session.status === "calculated" ? colors.warning
                 : colors.label;
               const statusLabel =
-                s.status === "approved" ? "Approved"
-                : s.status === "calculated" ? "Awaiting Approval"
-                : s.status === "draft" ? "In Progress"
-                : s.status;
+                session.status === "approved" ? "Approved"
+                : session.status === "calculated" ? "Awaiting Approval"
+                : session.status === "draft" ? "In Progress"
+                : session.status;
 
               return (
                 <View
-                  key={s.id}
+                  key={session.id}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    paddingVertical: 8,
-                    paddingHorizontal: 10,
-                    borderRadius: 10,
+                    paddingVertical: s(8),
+                    paddingHorizontal: s(10),
+                    borderRadius: s(10),
                     backgroundColor: colors.card,
                     borderWidth: 1,
                     borderColor: colors.border,
                   }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
-                      Session #{s.sequenceNumber}
+                    <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.heading }}>
+                      Session #{session.sequenceNumber}
                     </Text>
-                    <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                    <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
                       {startTime} — {endTime}
                     </Text>
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
-                    <Text style={{ fontSize: 10, fontWeight: "600", color: statusColor }}>
+                    <Text style={{ fontSize: s(10), fontWeight: "600", color: statusColor }}>
                       {statusLabel}
                     </Text>
-                    {s.totalDistributed > 0 && (
-                      <Text style={{ fontSize: 11, fontWeight: "700", color: colors.heading, marginTop: 1 }}>
-                        {formatCurrency(s.totalDistributed)}
+                    {session.totalDistributed > 0 && (
+                      <Text style={{ fontSize: s(11), fontWeight: "700", color: colors.heading, marginTop: s(1) }}>
+                        {formatCurrency(session.totalDistributed)}
                       </Text>
                     )}
                   </View>
@@ -192,29 +195,29 @@ export default function EodStepTips({
 
       <View
         style={{
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 12,
-          gap: 10,
+          padding: s(12),
+          gap: s(10),
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
+          <Text style={{ fontSize: s(14), fontWeight: "700", color: colors.heading }}>
             Tip Distribution Snapshot
           </Text>
           <View
             style={{
               borderRadius: 999,
-              paddingHorizontal: 8,
-              paddingVertical: 3,
+              paddingHorizontal: s(8),
+              paddingVertical: s(3),
               backgroundColor: colors.teal + "18",
               borderWidth: 1,
               borderColor: colors.teal + "45",
             }}
           >
-            <Text style={{ fontSize: 10, fontWeight: "700", color: colors.teal }}>
+            <Text style={{ fontSize: s(10), fontWeight: "700", color: colors.teal }}>
               {isMultiDay ? "Multi-day window" : "Today"}
             </Text>
           </View>
@@ -224,24 +227,24 @@ export default function EodStepTips({
           <ActivityIndicator size="small" color={colors.teal} />
         ) : (
           <>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: s(8) }}>
               <View
                 style={{
                   flexGrow: 1,
-                  flexBasis: 140,
-                  borderRadius: 10,
+                  flexBasis: s(140),
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.border,
                   backgroundColor: colors.card,
-                  padding: 10,
+                  padding: s(10),
                 }}
               >
-                <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>Card Tips (net)</Text>
-                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginTop: 3 }}>
+                <Text style={{ fontSize: s(10), color: colors.muted, fontWeight: "700" }}>Card Tips (net)</Text>
+                <Text style={{ fontSize: s(13), fontWeight: "700", color: colors.heading, marginTop: s(3) }}>
                   {fmt(tipSummary?.cardTipsNet ?? 0)}
                 </Text>
                 {(tipSummary?.cardTipsProcessorFee ?? 0) > 0 && (
-                  <Text style={{ fontSize: 9, color: colors.muted, marginTop: 2 }}>
+                  <Text style={{ fontSize: s(9), color: colors.muted, marginTop: s(2) }}>
                     gross {fmt(tipSummary?.cardTips ?? 0)} − bank fee {fmt(tipSummary?.cardTipsProcessorFee ?? 0)}
                   </Text>
                 )}
@@ -249,34 +252,34 @@ export default function EodStepTips({
               <View
                 style={{
                   flexGrow: 1,
-                  flexBasis: 120,
-                  borderRadius: 10,
+                  flexBasis: s(120),
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.border,
                   backgroundColor: colors.card,
-                  padding: 10,
+                  padding: s(10),
                 }}
               >
-                <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>Cash Tips</Text>
-                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginTop: 3 }}>
+                <Text style={{ fontSize: s(10), color: colors.muted, fontWeight: "700" }}>Cash Tips</Text>
+                <Text style={{ fontSize: s(13), fontWeight: "700", color: colors.heading, marginTop: s(3) }}>
                   {fmt(tipSummary?.cashTips ?? 0)}
                 </Text>
               </View>
               <View
                 style={{
                   flexGrow: 1,
-                  flexBasis: 160,
-                  borderRadius: 10,
+                  flexBasis: s(160),
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.teal + "45",
                   backgroundColor: colors.teal + "12",
-                  padding: 10,
+                  padding: s(10),
                 }}
               >
-                <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "700" }}>
+                <Text style={{ fontSize: s(10), color: colors.muted, fontWeight: "700" }}>
                   Total to Distribute
                 </Text>
-                <Text style={{ fontSize: 15, fontWeight: "800", color: colors.teal, marginTop: 3 }}>
+                <Text style={{ fontSize: s(15), fontWeight: "800", color: colors.teal, marginTop: s(3) }}>
                   {fmt(tipSummary?.totalTips ?? 0)}
                 </Text>
               </View>
@@ -285,23 +288,23 @@ export default function EodStepTips({
             {(tipSummary?.cardTipsProcessorFee ?? 0) > 0 && (
               <View
                 style={{
-                  marginTop: 8,
+                  marginTop: s(8),
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 8,
-                  borderRadius: 8,
+                  gap: s(8),
+                  borderRadius: s(8),
                   borderWidth: 1,
                   borderColor: colors.warning + "30",
                   backgroundColor: colors.warning + "10",
-                  paddingHorizontal: 10,
-                  paddingVertical: 8,
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(8),
                 }}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, fontWeight: "700", color: colors.warning }}>
+                  <Text style={{ fontSize: s(11), fontWeight: "700", color: colors.warning }}>
                     Bank fee on card tips: {fmt(tipSummary?.cardTipsProcessorFee ?? 0)}
                   </Text>
-                  <Text style={{ fontSize: 10, color: colors.label, marginTop: 1 }}>
+                  <Text style={{ fontSize: s(10), color: colors.label, marginTop: s(2) }}>
                     The bank takes a cut of every card capture before paying the merchant. The "Total to Distribute" already nets this out.
                   </Text>
                 </View>
@@ -314,20 +317,20 @@ export default function EodStepTips({
       {hasPendingPrior && (
         <View
           style={{
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.warning + "55",
             backgroundColor: colors.warning + "12",
-            padding: 10,
+            padding: s(10),
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.warning }}>
+          <Text style={{ fontSize: s(12), fontWeight: "700", color: colors.warning }}>
             Unresolved prior-day sessions ({pendingSessions.length})
           </Text>
-          <View style={{ marginTop: 6, gap: 4 }}>
-            {pendingSessions.map((s) => (
-              <Text key={s.date} style={{ fontSize: 10, color: colors.warning }}>
-                {s.date} - {s.status}
+          <View style={{ marginTop: s(6), gap: s(4) }}>
+            {pendingSessions.map((ps) => (
+              <Text key={ps.date} style={{ fontSize: s(10), color: colors.warning }}>
+                {ps.date} - {ps.status}
               </Text>
             ))}
           </View>
@@ -336,18 +339,18 @@ export default function EodStepTips({
 
       <View
         style={{
-          borderRadius: 12,
+          borderRadius: s(12),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 10,
-          gap: 8,
+          padding: s(10),
+          gap: s(8),
         }}
       >
-        <Text style={{ fontSize: 12, color: colors.label }}>
+        <Text style={{ fontSize: s(12), color: colors.label }}>
           Review rules, then run the tip distribution workflow.
         </Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: s(8) }}>
           <TouchableOpacity
             onPress={() => {
               onOpenTipWizard();
@@ -355,16 +358,16 @@ export default function EodStepTips({
             }}
             style={{
               flex: 1,
-              borderRadius: 9,
+              borderRadius: s(9),
               backgroundColor: colors.teal + "22",
               borderWidth: 1,
               borderColor: colors.teal + "55",
-              paddingHorizontal: 10,
-              paddingVertical: 10,
+              paddingHorizontal: s(10),
+              paddingVertical: s(10),
               alignItems: "center",
             }}
           >
-            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
+            <Text style={{ fontSize: s(12), fontWeight: "700", color: colors.teal }}>
               {(() => {
                 const sessions = todaySessions || [];
                 const hasUnapproved = sessions.some(s => s.status === "calculated");
@@ -389,16 +392,16 @@ export default function EodStepTips({
             }}
             style={{
               flex: 1,
-              borderRadius: 9,
+              borderRadius: s(9),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              paddingHorizontal: 10,
-              paddingVertical: 10,
+              paddingHorizontal: s(10),
+              paddingVertical: s(10),
               alignItems: "center",
             }}
           >
-            <Text style={{ fontSize: 12, color: colors.label }}>
+            <Text style={{ fontSize: s(12), color: colors.label }}>
               {summaryFetching || rulesFetching ? "Refreshing..." : "Refresh"}
             </Text>
           </TouchableOpacity>
@@ -414,92 +417,92 @@ export default function EodStepTips({
 
       <View
         style={{
-          borderRadius: 12,
+          borderRadius: s(12),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 10,
-          gap: 8,
+          padding: s(10),
+          gap: s(8),
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+          <Text style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}>
             Tip Rules
           </Text>
           {(rulesLoading || rulesFetching) ? (
-            <Text style={{ fontSize: 10, color: colors.label }}>Refreshing...</Text>
+            <Text style={{ fontSize: s(10), color: colors.label }}>Refreshing...</Text>
           ) : null}
         </View>
 
         {rulesError ? (
-          <Text style={{ fontSize: 12, color: colors.danger }}>
+          <Text style={{ fontSize: s(12), color: colors.danger }}>
             Unable to load rules. You can still proceed with tip actions.
           </Text>
         ) : null}
 
         {!rulesData && !rulesLoading ? (
-          <Text style={{ fontSize: 12, color: colors.label }}>No data available.</Text>
+          <Text style={{ fontSize: s(12), color: colors.label }}>No data available.</Text>
         ) : null}
 
         {!!rulesData ? (
-          <View style={{ gap: 10 }}>
+          <View style={{ gap: s(10) }}>
             {rulesData.configs.length === 0 && rulesData.rules.length === 0 ? (
-              <Text style={{ fontSize: 12, color: colors.label }}>
+              <Text style={{ fontSize: s(12), color: colors.label }}>
                 No active pools or rules found for this location.
               </Text>
             ) : null}
 
             {rulesData.configs.length > 0 ? (
-              <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.label }}>
+              <View style={{ gap: s(8) }}>
+                <Text style={{ fontSize: s(11), fontWeight: "700", color: colors.label }}>
                   Tip Pool Configs
                 </Text>
                 {rulesData.configs.map((config) => (
                   <View
                     key={config.id}
                     style={{
-                      borderRadius: 8,
+                      borderRadius: s(8),
                       borderWidth: 1,
                       borderColor: colors.border,
                       backgroundColor: colors.card,
-                      padding: 9,
-                      gap: 5,
+                      padding: s(9),
+                      gap: s(5),
                     }}
                   >
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                      <Text style={{ fontWeight: "700", color: colors.heading, fontSize: 12 }}>
+                      <Text style={{ fontWeight: "700", color: colors.heading, fontSize: s(12) }}>
                         {config.name}
                       </Text>
                       <View
                         style={{
                           borderRadius: 20,
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(3),
                           backgroundColor: colors.teal + "20",
                         }}
                       >
-                        <Text style={{ fontSize: 10, fontWeight: "700", color: colors.teal }}>
+                        <Text style={{ fontSize: s(10), fontWeight: "700", color: colors.teal }}>
                           {config.distributionMethod}
                         </Text>
                       </View>
                     </View>
-                    <Text style={{ fontSize: 10, color: colors.label }}>
+                    <Text style={{ fontSize: s(10), color: colors.label }}>
                       Source: {formatTipSource(config.tipSource)} · {config.sourcePercentage}%
                     </Text>
                     {config.contributingRoleCodes?.length > 0 && (
-                      <Text style={{ fontSize: 10, color: colors.label }}>
+                      <Text style={{ fontSize: s(10), color: colors.label }}>
                         Contributing: {config.contributingRoleCodes.join(", ")}
                       </Text>
                     )}
                     {!!config.description ? (
-                      <Text style={{ fontSize: 11, color: colors.label }}>
+                      <Text style={{ fontSize: s(11), color: colors.label }}>
                         {config.description}
                       </Text>
                     ) : null}
                     {!!config.shares.length ? (
-                      <View style={{ gap: 3 }}>
+                      <View style={{ gap: s(3) }}>
                         {config.shares.map((share) => (
-                          <Text key={share.id} style={{ fontSize: 10, color: colors.label }}>
+                          <Text key={share.id} style={{ fontSize: s(10), color: colors.label }}>
                             {share.roleName || share.roleCode}: {share.sharePercentage}%
                             {share.pointsPerHour ? ` (${share.pointsPerHour} pp/h)` : ""}
                           </Text>
@@ -512,25 +515,25 @@ export default function EodStepTips({
             ) : null}
 
             {rulesData.rules.length > 0 ? (
-              <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.label }}>
+              <View style={{ gap: s(8) }}>
+                <Text style={{ fontSize: s(11), fontWeight: "700", color: colors.label }}>
                   Tip-out Rules
                 </Text>
                 {rulesData.rules.map((rule) => (
                   <View
                     key={rule.id}
                     style={{
-                      borderRadius: 8,
+                      borderRadius: s(8),
                       borderWidth: 1,
                       borderColor: colors.border,
                       backgroundColor: colors.card,
-                      padding: 9,
+                      padding: s(9),
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: colors.heading }}>
+                    <Text style={{ fontSize: s(12), color: colors.heading }}>
                       {rule.fromRoleName || rule.fromRoleCode} -{">"} {rule.toRoleName || rule.toRoleCode}
-                    </Text>-
-                    <Text style={{ fontSize: 10, color: colors.label, marginTop: 2 }}>
+                    </Text>
+                    <Text style={{ fontSize: s(10), color: colors.label, marginTop: s(2) }}>
                       {formatRuleValue(rule)}
                     </Text>
                   </View>

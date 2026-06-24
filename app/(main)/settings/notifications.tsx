@@ -8,6 +8,7 @@
 import SettingsCard from '@/components/settings/SettingsCard'
 import { Switch } from '@/components/ui/switch'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import KDSSoundService, {
   SOUND_PRESET_OPTIONS,
   type SoundPreset
@@ -44,6 +45,8 @@ function SoundPicker ({
   onTest,
   disabled
 }: SoundPickerProps) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [open, setOpen] = useState(false)
 
   return (
@@ -51,7 +54,7 @@ function SoundPicker ({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 12,
+        paddingVertical: s(12),
         borderBottomWidth: 1,
         borderBottomColor: colors.border,
         opacity: disabled ? 0.4 : 1
@@ -59,23 +62,23 @@ function SoundPicker ({
     >
       <View
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: 10,
+          width: s(36),
+          height: s(36),
+          borderRadius: s(10),
           backgroundColor: colors.card,
           alignItems: 'center',
           justifyContent: 'center',
-          marginRight: 12
+          marginRight: s(12)
         }}
       >
-        <Icon size={18} color={colors.teal} />
+        <Icon size={s(18)} color={colors.teal} />
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={{ color: colors.label, fontSize: 14, fontWeight: '500' }}>
+        <Text style={{ color: colors.label, fontSize: s(14), fontWeight: '500' }}>
           {label}
         </Text>
-        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+        <Text style={{ color: colors.muted, fontSize: s(12), marginTop: s(2) }}>
           Plays when a new order arrives from this source
         </Text>
       </View>
@@ -88,18 +91,18 @@ function SoundPicker ({
           flexDirection: 'row',
           alignItems: 'center',
           backgroundColor: colors.card,
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          borderRadius: 8,
+          paddingHorizontal: s(12),
+          paddingVertical: s(8),
+          borderRadius: s(8),
           borderWidth: 1,
           borderColor: colors.border,
-          marginRight: 8
+          marginRight: s(8)
         }}
       >
-        <Text style={{ color: colors.label, fontSize: 13, marginRight: 6 }}>
+        <Text style={{ color: colors.label, fontSize: s(13), marginRight: s(6) }}>
           {SOUND_PRESET_OPTIONS.find(o => o.value === value)?.label || value}
         </Text>
-        <ChevronDown size={14} color={colors.muted} />
+        <ChevronDown size={s(14)} color={colors.muted} />
       </TouchableOpacity>
 
       {/* Test button */}
@@ -107,15 +110,15 @@ function SoundPicker ({
         disabled={disabled}
         onPress={() => onTest(value)}
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: 10,
+          width: s(36),
+          height: s(36),
+          borderRadius: s(10),
           backgroundColor: colors.teal + '20',
           alignItems: 'center',
           justifyContent: 'center'
         }}
       >
-        <Play size={16} color={colors.teal} />
+        <Play size={s(16)} color={colors.teal} />
       </TouchableOpacity>
 
       {/* Dropdown modal */}
@@ -133,9 +136,9 @@ function SoundPicker ({
           <View
             style={{
               backgroundColor: colors.panel,
-              borderRadius: 12,
-              padding: 8,
-              minWidth: 200,
+              borderRadius: s(12),
+              padding: s(8),
+              minWidth: s(200),
               borderWidth: 1,
               borderColor: colors.border
             }}
@@ -148,9 +151,9 @@ function SoundPicker ({
                   setOpen(false)
                 }}
                 style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  borderRadius: 8,
+                  paddingHorizontal: s(16),
+                  paddingVertical: s(12),
+                  borderRadius: s(8),
                   backgroundColor:
                     opt.value === value ? colors.teal + '20' : 'transparent'
                 }}
@@ -158,7 +161,7 @@ function SoundPicker ({
                 <Text
                   style={{
                     color: opt.value === value ? colors.teal : colors.label,
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: opt.value === value ? '600' : '400'
                   }}
                 >
@@ -174,6 +177,8 @@ function SoundPicker ({
 }
 
 export default function NotificationsScreen () {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const config = useLocationConfigStore(s => s.config.notifications)
   const updateConfig = useLocationConfigStore(s => s.updateConfig)
 
@@ -207,30 +212,30 @@ export default function NotificationsScreen () {
     >
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: s(20), paddingBottom: s(40) }}
       >
         {/* Header */}
-        <View style={{ marginBottom: 20 }}>
+        <View style={{ marginBottom: s(20) }}>
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              marginBottom: 4
+              marginBottom: s(4)
             }}
           >
-            <Bell size={22} color={colors.teal} />
+            <Bell size={s(22)} color={colors.teal} />
             <Text
               style={{
-                fontSize: 22,
+                fontSize: s(22),
                 fontWeight: '700',
                 color: colors.heading,
-                marginLeft: 10
+                marginLeft: s(10)
               }}
             >
               Notifications
             </Text>
           </View>
-          <Text style={{ color: colors.muted, fontSize: 13 }}>
+          <Text style={{ color: colors.muted, fontSize: s(13) }}>
             Configure sound alerts when external orders arrive at this station
           </Text>
         </View>
@@ -242,20 +247,20 @@ export default function NotificationsScreen () {
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              paddingVertical: 8
+              paddingVertical: s(8)
             }}
           >
             <View style={{ flex: 1 }}>
               <Text
                 style={{
                   color: colors.heading,
-                  fontSize: 15,
+                  fontSize: s(15),
                   fontWeight: '600'
                 }}
               >
                 Enable Sound Alerts
               </Text>
-              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+              <Text style={{ color: colors.muted, fontSize: s(12), marginTop: s(2) }}>
                 Play a sound when orders arrive from external sources (online,
                 kiosk, third-party)
               </Text>
@@ -267,7 +272,7 @@ export default function NotificationsScreen () {
           </View>
         </SettingsCard>
 
-        <View style={{ height: 16 }} />
+        <View style={{ height: s(16) }} />
 
         {/* Per-source sound pickers */}
         <SettingsCard title='Order Source Sounds'>

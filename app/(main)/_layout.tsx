@@ -180,11 +180,17 @@ export default function MainLayout () {
       })
     }
 
-    // Batch all three store mutations so React processes them as a single
-    // render cycle instead of three separate re-render passes.
+    // Batch store mutations so React processes them as a single render cycle.
+    //
+    // NOTE: the KDS store is intentionally NOT fed here. This is the POS handler
+    // (KDS stations use handleOrderChangeKDS). Feeding KDS broadcasts on a POS
+    // station kept the ticket list "warm" for the KDS screen, but a header-only
+    // broadcast makes _processOrderBroadcast fire scheduleRefetch → a
+    // get_kds_tickets NETWORK fetch for a screen nobody has open — once per
+    // kitchen order, per POS station, all shift. The KDS screen fetches fresh on
+    // mount anyway, so skipping the warm-up is correct and removes the waste.
     unstable_batchedUpdates(() => {
       useOrderStore.getState()._handleOrderBroadcast(broadcastPayload)
-      useKDSStore.getState().handleOrderBroadcast(broadcastPayload)
       usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload)
     })
 
@@ -288,10 +294,15 @@ export default function MainLayout () {
               style={{ backgroundColor: colors.screen }}
             >
               <View
-                className='px-4 z-50'
+                className='z-50'
                 style={{
                   backgroundColor: 'transparent',
-                  borderBottomWidth: 0
+                  borderBottomWidth: 0,
+                  // Render into the camera-cutout zone (don't reserve the full
+                  // safe-area inset) — just keep a flat margin so the title
+                  // clears the rounded screen corners.
+                  paddingLeft: 16,
+                  paddingRight: 16
                 }}
                 onLayout={event =>
                   setHeaderHeight(event.nativeEvent.layout.height)

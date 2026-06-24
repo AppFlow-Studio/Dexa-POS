@@ -49,6 +49,10 @@ export function useRealtimeChannel<T>({
   const shouldBeConnectedRef = useRef(false);
   const statusRef = useRef<ChannelState>('CLOSED');
   const isIntentionalCloseRef = useRef(false);
+  // Pending requestAnimationFrame handles for deferred broadcast dispatch, so
+  // they can be cancelled on teardown (otherwise a frame scheduled just before
+  // unmount/disconnect still fires its callback after the channel is gone).
+  const pendingFramesRef = useRef<Set<number>>(new Set());
 
   // Stabilize callbacks and events via refs to prevent channel teardown on parent re-renders
   const onMessageRef = useRef(onMessage);
@@ -117,10 +121,13 @@ export function useRealtimeChannel<T>({
         channel.on('broadcast', { event }, (payload) => {
           if (__DEV__) console.log(`[Realtime] Received event: ${event} on ${topic}`);
           // Defer to next frame to avoid re-render storms when broadcasts
-          // arrive during screen transitions or reconnect hydration.
-          requestAnimationFrame(() => {
+          // arrive during screen transitions or reconnect hydration. Track the
+          // handle so teardown can cancel a frame that hasn't fired yet.
+          const frame = requestAnimationFrame(() => {
+            pendingFramesRef.current.delete(frame);
             onMessageRef.current(event, payload.payload as T);
           });
+          pendingFramesRef.current.add(frame);
         });
       });
 
@@ -244,9 +251,25 @@ export function useRealtimeChannel<T>({
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
+    // Cancel any deferred broadcast dispatches that haven't fired yet.
+    for (const frame of pendingFramesRef.current) cancelAnimationFrame(frame);
+    pendingFramesRef.current.clear();
     if (channelRef.current) {
-      await supabaseClient.removeChannel(channelRef.current);
+      // Capture + detach synchronously before nulling the ref. removeChannel
+      // is async, but React cleanups don't await — if this cleanup is followed
+      // immediately by a re-subscribe (store/auth/topic transition), the new
+      // subscribe() would see channelRef.current === null and skip removing
+      // this channel, orphaning it on the shared socket (a real leak that
+      // compounds over uptime). unsubscribe() is synchronous and detaches the
+      // channel's handlers right away; removeChannel then frees it fully.
+      const stale = channelRef.current;
       channelRef.current = null;
+      try {
+        stale.unsubscribe();
+      } catch {
+        /* best-effort sync teardown */
+      }
+      await supabaseClient.removeChannel(stale);
     }
     updateStatus({ state: 'CLOSED', subscribedAt: null });
   }, [supabaseClient, updateStatus]);

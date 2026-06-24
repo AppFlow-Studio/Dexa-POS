@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { AlertTriangle } from 'lucide-react-native'
 import { Modal, Text, TouchableOpacity, View } from 'react-native'
 
@@ -21,6 +22,8 @@ export function KickedOutModal ({
   countdown,
   onAcknowledge
 }: KickedOutModalProps) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <Modal
       visible={visible}
@@ -34,41 +37,41 @@ export function KickedOutModal ({
           backgroundColor: 'rgba(0,0,0,0.7)',
           alignItems: 'center',
           justifyContent: 'center',
-          paddingHorizontal: 24
+          paddingHorizontal: s(24)
         }}
       >
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 16,
-            padding: 24,
+            borderRadius: s(16),
+            padding: s(24),
             width: '100%',
-            maxWidth: 480,
+            maxWidth: s(480),
             borderWidth: 2,
             borderColor: colors.danger
           }}
         >
           {/* Icon */}
-          <View style={{ alignItems: 'center', marginBottom: 16 }}>
+          <View style={{ alignItems: 'center', marginBottom: s(16) }}>
             <View
               style={{
                 backgroundColor: colors.danger + '20',
-                padding: 16,
+                padding: s(16),
                 borderRadius: 999
               }}
             >
-              <AlertTriangle size={48} color={colors.danger} />
+              <AlertTriangle size={s(48)} color={colors.danger} />
             </View>
           </View>
 
           {/* Title */}
           <Text
             style={{
-              fontSize: 24,
+              fontSize: s(24),
               fontWeight: 'bold',
               color: colors.danger,
               textAlign: 'center',
-              marginBottom: 8
+              marginBottom: s(8)
             }}
           >
             Session Taken Over
@@ -77,10 +80,10 @@ export function KickedOutModal ({
           {/* Message */}
           <Text
             style={{
-              fontSize: 16,
+              fontSize: s(16),
               color: colors.heading,
               textAlign: 'center',
-              marginBottom: 16
+              marginBottom: s(16)
             }}
           >
             {kickedBy
@@ -91,10 +94,10 @@ export function KickedOutModal ({
           {kickReason && (
             <Text
               style={{
-                fontSize: 14,
+                fontSize: s(14),
                 color: colors.label,
                 textAlign: 'center',
-                marginBottom: 16
+                marginBottom: s(16)
               }}
             >
               Reason: {kickReason}
@@ -105,9 +108,9 @@ export function KickedOutModal ({
           <View
             style={{
               backgroundColor: colors.danger + '10',
-              borderRadius: 8,
-              padding: 16,
-              marginBottom: 24
+              borderRadius: s(8),
+              padding: s(16),
+              marginBottom: s(24)
             }}
           >
             <Text style={{ textAlign: 'center', color: colors.label }}>
@@ -115,7 +118,7 @@ export function KickedOutModal ({
             </Text>
             <Text
               style={{
-                fontSize: 36,
+                fontSize: s(36),
                 fontWeight: 'bold',
                 color: colors.danger,
                 textAlign: 'center'
@@ -124,7 +127,7 @@ export function KickedOutModal ({
               {countdown}
             </Text>
             <Text
-              style={{ textAlign: 'center', color: colors.label, fontSize: 12 }}
+              style={{ textAlign: 'center', color: colors.label, fontSize: s(12) }}
             >
               seconds
             </Text>
@@ -135,13 +138,13 @@ export function KickedOutModal ({
             onPress={onAcknowledge}
             style={{
               backgroundColor: colors.danger,
-              paddingVertical: 12,
-              borderRadius: 8
+              paddingVertical: s(12),
+              borderRadius: s(8)
             }}
           >
             <Text
               style={{
-                fontSize: 16,
+                fontSize: s(16),
                 fontWeight: '600',
                 color: colors.onSolid,
                 textAlign: 'center'

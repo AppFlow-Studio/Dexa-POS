@@ -13,6 +13,7 @@ import {
 } from '@/services/cashTipDeclarationService'
 import { colors } from '@/lib/theme'
 import { formatCurrency } from '@/utils/currency'
+import { useUiScale } from '@/lib/uiScale'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { SupabaseClient } from '@supabase/supabase-js'
 import {
@@ -57,6 +58,8 @@ export default function EodShiftTipReview({
   date,
   afterCutoff,
 }: EodShiftTipReviewProps) {
+  const scale = useUiScale()
+  const s = (value: number) => Math.round(value * scale)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const bdConfig = {
     timezone: selectedStore?.timezone || 'UTC',
@@ -148,26 +151,26 @@ export default function EodShiftTipReview({
   const renderStatusBadge = (shift: ShiftDeclarationRow) => {
     if (shift.status !== 'completed') {
       return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Circle size={8} color='#3B82F6' fill='#3B82F6' />
-          <Text style={{ fontSize: 10, color: '#3B82F6', fontWeight: '600' }}>Active</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}>
+          <Circle size={s(8)} color='#3B82F6' fill='#3B82F6' />
+          <Text style={{ fontSize: s(10), color: '#3B82F6', fontWeight: '600' }}>Active</Text>
         </View>
       )
     }
     if (shift.tipsDeclaredAt) {
       return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Check size={12} color={colors.success} />
-          <Text style={{ fontSize: 10, color: colors.success, fontWeight: '600' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}>
+          <Check size={s(12)} color={colors.success} />
+          <Text style={{ fontSize: s(10), color: colors.success, fontWeight: '600' }}>
             {formatCurrency(shift.declaredCashTips)}
           </Text>
         </View>
       )
     }
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        <AlertTriangle size={10} color={colors.warning} />
-        <Text style={{ fontSize: 10, color: colors.warning, fontWeight: '600' }}>Undeclared</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}>
+        <AlertTriangle size={s(10)} color={colors.warning} />
+        <Text style={{ fontSize: s(10), color: colors.warning, fontWeight: '600' }}>Undeclared</Text>
       </View>
     )
   }
@@ -177,36 +180,36 @@ export default function EodShiftTipReview({
   return (
     <View
       style={{
-        borderRadius: 16,
+        borderRadius: s(16),
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.panel,
-        padding: 12,
-        gap: 10,
-        marginBottom: 10,
+        padding: s(12),
+        gap: s(10),
+        marginBottom: s(10),
       }}
     >
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
           <View
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 7,
+              width: s(28),
+              height: s(28),
+              borderRadius: s(7),
               backgroundColor: colors.teal + '15',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Users size={14} color={colors.teal} />
+            <Users size={s(14)} color={colors.teal} />
           </View>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>
+          <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}>
             Shift Tip Declarations
           </Text>
         </View>
-        <TouchableOpacity onPress={loadShifts} hitSlop={8}>
-          <Text style={{ fontSize: 10, color: colors.label }}>
+        <TouchableOpacity onPress={loadShifts} hitSlop={s(8)}>
+          <Text style={{ fontSize: s(10), color: colors.label }}>
             {loading ? 'Loading...' : 'Refresh'}
           </Text>
         </TouchableOpacity>
@@ -214,29 +217,29 @@ export default function EodShiftTipReview({
 
       {/* Error */}
       {error && (
-        <Text style={{ fontSize: 11, color: colors.danger }}>{error}</Text>
+        <Text style={{ fontSize: s(11), color: colors.danger }}>{error}</Text>
       )}
 
       {/* Loading */}
       {loading && !shifts.length ? (
-        <ActivityIndicator size='small' color={colors.teal} style={{ paddingVertical: 12 }} />
+        <ActivityIndicator size='small' color={colors.teal} style={{ paddingVertical: s(12) }} />
       ) : shifts.length === 0 ? (
-        <Text style={{ fontSize: 12, color: colors.label, paddingVertical: 8 }}>
+        <Text style={{ fontSize: s(12), color: colors.label, paddingVertical: s(8) }}>
           No shifts found for today.
         </Text>
       ) : (
         <>
           {/* Shift rows */}
-          <View style={{ gap: 4 }}>
+          <View style={{ gap: s(4) }}>
             {shifts.map(shift => (
               <View
                 key={shift.id}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  paddingVertical: 8,
-                  paddingHorizontal: 10,
-                  borderRadius: 10,
+                  paddingVertical: s(8),
+                  paddingHorizontal: s(10),
+                  borderRadius: s(10),
                   backgroundColor: colors.card,
                   borderWidth: 1,
                   borderColor: colors.border,
@@ -244,10 +247,10 @@ export default function EodShiftTipReview({
               >
                 {/* Name + time */}
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+                  <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}>
                     {shift.staffName}
                   </Text>
-                  <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                  <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
                     {new Date(shift.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     {shift.clockOutTime
                       ? ` — ${new Date(shift.clockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
@@ -256,7 +259,7 @@ export default function EodShiftTipReview({
                 </View>
 
                 {/* Status */}
-                <View style={{ minWidth: 80, alignItems: 'flex-end', marginRight: 8 }}>
+                <View style={{ minWidth: 80, alignItems: 'flex-end', marginRight: s(8) }}>
                   {renderStatusBadge(shift)}
                 </View>
 
@@ -268,15 +271,15 @@ export default function EodShiftTipReview({
                       setDeclareInput('0')
                     }}
                     style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 6,
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(5),
+                      borderRadius: s(6),
                       backgroundColor: colors.teal + '18',
                       borderWidth: 1,
                       borderColor: colors.teal + '40',
                     }}
                   >
-                    <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>
+                    <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>
                       Declare
                     </Text>
                   </TouchableOpacity>
@@ -291,26 +294,26 @@ export default function EodShiftTipReview({
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              paddingVertical: 8,
-              paddingHorizontal: 10,
-              borderRadius: 10,
+              paddingVertical: s(8),
+              paddingHorizontal: s(10),
+              borderRadius: s(10),
               backgroundColor: undeclaredShifts.length > 0 ? colors.warning + '10' : colors.teal + '10',
               borderWidth: 1,
               borderColor: undeclaredShifts.length > 0 ? colors.warning + '30' : colors.teal + '30',
             }}
           >
             <View>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.heading }}>
+              <Text style={{ fontSize: s(11), fontWeight: '600', color: colors.heading }}>
                 {declaredShifts.length}/{completedShifts.length} shifts declared
                 {activeShifts.length > 0 ? ` · ${activeShifts.length} active` : ''}
               </Text>
               {undeclaredShifts.length > 0 && (
-                <Text style={{ fontSize: 10, color: colors.warning, marginTop: 2 }}>
+                <Text style={{ fontSize: s(10), color: colors.warning, marginTop: s(2) }}>
                   {undeclaredShifts.length} undeclared — calculation will use $0 for those
                 </Text>
               )}
             </View>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>
+            <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.teal }}>
               {formatCurrency(totalDeclared)}
             </Text>
           </View>
@@ -332,19 +335,19 @@ export default function EodShiftTipReview({
               width: 420,
               maxHeight: '80%',
               backgroundColor: colors.panel,
-              borderRadius: 16,
-              padding: 20,
+              borderRadius: s(16),
+              padding: s(20),
               borderWidth: 1,
               borderColor: colors.border,
             }}
           >
             {/* Header */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: s(14) }}>
+              <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}>
                 Declare for {declareForShift?.staffName}
               </Text>
-              <TouchableOpacity onPress={() => setDeclareForShift(null)} hitSlop={8}>
-                <X size={18} color={colors.muted} />
+              <TouchableOpacity onPress={() => setDeclareForShift(null)} hitSlop={s(8)}>
+                <X size={s(18)} color={colors.muted} />
               </TouchableOpacity>
             </View>
 
@@ -352,15 +355,15 @@ export default function EodShiftTipReview({
             <View
               style={{
                 alignItems: 'center',
-                paddingVertical: 14,
-                borderRadius: 12,
+                paddingVertical: s(14),
+                borderRadius: s(12),
                 backgroundColor: colors.teal + '12',
                 borderWidth: 1,
                 borderColor: colors.teal + '40',
-                marginBottom: 12,
+                marginBottom: s(12),
               }}
             >
-              <Text style={{ fontSize: 28, fontWeight: '800', color: colors.teal }}>
+              <Text style={{ fontSize: s(28), fontWeight: '800', color: colors.teal }}>
                 ${declareInput}
               </Text>
             </View>

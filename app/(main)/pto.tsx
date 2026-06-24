@@ -3,6 +3,7 @@ import PTORequestForm from '@/components/profile/PTORequestForm'
 import PtoMetrics from '@/components/pto/PtoMetrics'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useScheduleStore } from '@/stores/useScheduleStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -13,6 +14,8 @@ import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
 
 const PTOPage = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const ptoRequests = useScheduleStore(state => state.ptoRequests)
   const addPTORequest = useScheduleStore(state => state.addPTORequest)
   const cancelPTORequest = useScheduleStore(state => state.cancelPTORequest)
@@ -64,12 +67,12 @@ const PTOPage = () => {
         style={{
           flex: 1,
           backgroundColor: colors.screen,
-          padding: 16,
+          padding: s(16),
           alignItems: 'center',
           justifyContent: 'center'
         }}
       >
-        <Text style={{ color: colors.heading, fontSize: 18 }}>
+        <Text style={{ color: colors.heading, fontSize: s(18) }}>
           Please clock in to view your PTO information.
         </Text>
       </View>
@@ -77,13 +80,13 @@ const PTOPage = () => {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 16 }}>
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: s(16) }}>
       <View
         style={{
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 24
+          marginBottom: s(24)
         }}
       >
         <View></View>
@@ -93,18 +96,18 @@ const PTOPage = () => {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 6,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 8,
+              gap: s(6),
+              paddingHorizontal: s(14),
+              paddingVertical: s(8),
+              borderRadius: s(8),
               backgroundColor: colors.teal + '20',
               borderWidth: 1,
               borderColor: colors.teal + '50'
             }}
           >
-            <Calendar color={colors.teal} size={14} />
+            <Calendar color={colors.teal} size={s(14)} />
             <Text
-              style={{ color: colors.teal, fontWeight: '600', fontSize: 13 }}
+              style={{ color: colors.teal, fontWeight: '600', fontSize: s(13) }}
             >
               Request PTO
             </Text>
@@ -125,22 +128,22 @@ const PTOPage = () => {
 
         <View
           style={{
-            padding: 14,
+            padding: s(14),
             backgroundColor: colors.teal + '08',
             borderWidth: 1,
             borderColor: colors.teal + '25',
-            borderRadius: 14,
-            marginBottom: 16
+            borderRadius: s(14),
+            marginBottom: s(16)
           }}
         >
           <Text
             style={{
-              fontSize: 12,
+              fontSize: s(12),
               fontWeight: '700',
               color: colors.teal,
               textTransform: 'uppercase',
               letterSpacing: 0.5,
-              marginBottom: 10
+              marginBottom: s(10)
             }}
           >
             Accrual Information

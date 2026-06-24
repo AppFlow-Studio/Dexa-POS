@@ -1,6 +1,7 @@
 import { Canvas, Path, interpolateColors } from "@shopify/react-native-skia";
 import React, { useEffect } from "react";
 import { Text, View } from "react-native";
+import { useUiScale } from "@/lib/uiScale";
 import {
   useDerivedValue,
   useSharedValue,
@@ -19,13 +20,16 @@ const paymentData = {
 
 // --- Main Card Component ---
 const PaymentDetailsCard = () => {
+  const scale = useUiScale();
+  const s = (value: number) => Math.round(value * scale);
+
   const progress = useSharedValue(0);
   useEffect(() => {
     progress.value = withTiming(1, { duration: 1200 });
   }, [progress]);
 
-  const strokeWidth = 12;
-  const size = 130;
+  const strokeWidth = s(12);
+  const size = s(130);
   const radius = size / 2 - strokeWidth / 2;
   const center = size / 2;
   const totalAngle = 180;
@@ -62,16 +66,16 @@ const PaymentDetailsCard = () => {
 
   return (
     <View>
-      <View className="flex-row items-center">
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
         {/* Chart Container */}
-        <View className="w-40 h-20 relative">
+        <View style={{ width: s(160), height: s(80), position: "relative" }}>
           <Canvas
             style={{
               width: size,
               height: size,
               position: "absolute",
               top: 0,
-              left: 10,
+              left: s(10),
             }}
           >
             <Path
@@ -91,16 +95,27 @@ const PaymentDetailsCard = () => {
           </Canvas>
 
           {/* Center Label */}
-          <View className="absolute top-8 left-0 right-0 bottom-0 flex items-center justify-start pt-1">
-            <Text className="text-xs text-gray-300">Total Sales</Text>
-            <Text className="text-2xl font-bold text-gray-100">
+          <View
+            style={{
+              position: "absolute",
+              top: s(32),
+              left: 0,
+              right: 0,
+              bottom: 0,
+              alignItems: "center",
+              justifyContent: "flex-start",
+              paddingTop: s(4),
+            }}
+          >
+            <Text style={{ fontSize: s(12), color: "#d1d5db" }}>Total Sales</Text>
+            <Text style={{ fontSize: s(24), fontWeight: "bold", color: "#f3f4f6" }}>
               -${paymentData.displayValue.toFixed(2)}
             </Text>
           </View>
         </View>
 
         {/* Legend */}
-        <View className="flex-1 ml-4 justify-center">
+        <View style={{ flex: 1, marginLeft: s(16), justifyContent: "center" }}>
           <LegendRow
             color={paymentData.color}
             label={paymentData.label}

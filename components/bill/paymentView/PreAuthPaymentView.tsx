@@ -2,6 +2,7 @@
 // Pre-Auth Payment View — Open Tab / Increase Tab / Close Tab
 // ============================================================
 
+import { useUiScale } from '@/lib/uiScale'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { DejavooSpinAPI } from '@/lib/payments/dejavoo-spin-api'
 import { colors } from '@/lib/theme'
@@ -42,6 +43,8 @@ import {
 } from 'react-native'
 
 const PreAuthPaymentView: React.FC = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const setView = usePaymentStore(s => s.setView)
   const close = usePaymentStore(s => s.close)
   const preAuthMode = usePaymentStore(s => s.preAuthMode)
@@ -482,35 +485,38 @@ const PreAuthPaymentView: React.FC = () => {
   const header = renderModeHeader()
   const HeaderIcon = header.icon
 
+  const styles = getStyles(uiScale)
+  const ss = (n: number) => Math.round(n * uiScale)
+
   return (
-    <View style={getStyles().container}>
+    <View style={styles.container}>
       {/* Header */}
-      <View style={getStyles().header}>
+      <View style={styles.header}>
         <TouchableOpacity
-          style={getStyles().backBtn}
+          style={styles.backBtn}
           onPress={handleBack}
         >
-          <ArrowLeft size={18} color={colors.label} />
+          <ArrowLeft size={ss(18)} color={colors.label} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={getStyles().headerTitle}>{header.title}</Text>
-          <Text style={getStyles().headerSub}>{header.subtitle}</Text>
+          <Text style={styles.headerTitle}>{header.title}</Text>
+          <Text style={styles.headerSub}>{header.subtitle}</Text>
         </View>
         <View
           style={[
-            getStyles().iconBadge,
+            styles.iconBadge,
             { backgroundColor: `${header.color}20` }
           ]}
         >
-          <HeaderIcon size={20} color={header.color} />
+          <HeaderIcon size={ss(20)} color={header.color} />
         </View>
       </View>
 
       {/* Exceed Warning */}
       {exceedsHold && preAuth && (
-        <View style={getStyles().warningBanner}>
-          <AlertTriangle size={16} color={colors.warning} />
-          <Text style={getStyles().warningText}>
+        <View style={styles.warningBanner}>
+          <AlertTriangle size={ss(16)} color={colors.warning} />
+          <Text style={styles.warningText}>
             Tab (${outstandingAmount.toFixed(2)}) exceeds hold ($
             {preAuth.preAuthAmount?.toFixed(2)})
           </Text>
@@ -520,13 +526,13 @@ const PreAuthPaymentView: React.FC = () => {
                 setPreAuthMode('increment')
                 setAmount(String(totals?.amountDue ?? totals?.total ?? 0))
               }}
-              style={getStyles().warningAction}
+              style={styles.warningAction}
             >
-              <Text style={getStyles().warningActionText}>Increase Hold</Text>
+              <Text style={styles.warningActionText}>Increase Hold</Text>
             </TouchableOpacity>
           )}
           {preAuth.preAuthTerminalType === 'dejavoo' && (
-            <Text style={getStyles().warningInfo}>
+            <Text style={styles.warningInfo}>
               Hold will be adjusted at close
             </Text>
           )}
@@ -535,43 +541,43 @@ const PreAuthPaymentView: React.FC = () => {
 
       {/* Active Pre-Auth Info */}
       {hasPreAuth && preAuth && mode !== 'open' && (
-        <View style={getStyles().preAuthInfo}>
-          <View style={getStyles().preAuthRow}>
-            <Text style={getStyles().preAuthLabel}>Current Hold</Text>
-            <Text style={getStyles().preAuthValue}>
+        <View style={styles.preAuthInfo}>
+          <View style={styles.preAuthRow}>
+            <Text style={styles.preAuthLabel}>Current Hold</Text>
+            <Text style={styles.preAuthValue}>
               ${preAuth.preAuthAmount?.toFixed(2)}
             </Text>
           </View>
-          <View style={getStyles().preAuthRow}>
-            <Text style={getStyles().preAuthLabel}>Terminal</Text>
-            <Text style={getStyles().preAuthValue}>
+          <View style={styles.preAuthRow}>
+            <Text style={styles.preAuthLabel}>Terminal</Text>
+            <Text style={styles.preAuthValue}>
               {preAuth.preAuthTerminalType === 'castles'
                 ? 'Castles'
                 : 'Dejavoo'}
             </Text>
           </View>
           {preAuth.preAuthRrn && (
-            <View style={getStyles().preAuthRow}>
-              <Text style={getStyles().preAuthLabel}>RRN</Text>
-              <Text style={getStyles().preAuthValue}>{preAuth.preAuthRrn}</Text>
+            <View style={styles.preAuthRow}>
+              <Text style={styles.preAuthLabel}>RRN</Text>
+              <Text style={styles.preAuthValue}>{preAuth.preAuthRrn}</Text>
             </View>
           )}
         </View>
       )}
 
       {/* Amount Input */}
-      <View style={getStyles().inputSection}>
-        <Text style={getStyles().inputLabel}>
+      <View style={styles.inputSection}>
+        <Text style={styles.inputLabel}>
           {mode === 'open'
             ? 'Hold Amount'
             : mode === 'increment'
             ? 'New Hold Amount'
             : 'Charge Amount'}
         </Text>
-        <View style={getStyles().amountRow}>
-          <Text style={getStyles().dollarSign}>$</Text>
+        <View style={styles.amountRow}>
+          <Text style={styles.dollarSign}>$</Text>
           <TextInput
-            style={getStyles().amountInput}
+            style={styles.amountInput}
             value={amount}
             onChangeText={setAmount}
             keyboardType='decimal-pad'
@@ -584,10 +590,10 @@ const PreAuthPaymentView: React.FC = () => {
 
       {/* Tip Input (capture mode only) */}
       {mode === 'capture' && (
-        <View style={getStyles().inputSection}>
-          <Text style={getStyles().inputLabel}>Tip Amount</Text>
+        <View style={styles.inputSection}>
+          <Text style={styles.inputLabel}>Tip Amount</Text>
           {tipPresetPercentages?.length > 0 && (
-            <View style={getStyles().tipPresetRow}>
+            <View style={styles.tipPresetRow}>
               {tipPresetPercentages.map(percent => {
                 const isActive = selectedTipPreset === percent
                 return (
@@ -596,13 +602,13 @@ const PreAuthPaymentView: React.FC = () => {
                     onPress={() => handleTipPreset(percent)}
                     disabled={isProcessing || parsedAmount <= 0}
                     style={[
-                      getStyles().tipPresetBtn,
-                      isActive && getStyles().tipPresetBtnActive
+                      styles.tipPresetBtn,
+                      isActive && styles.tipPresetBtnActive
                     ]}
                   >
                     <Text
                       style={[
-                        getStyles().tipPresetPercent,
+                        styles.tipPresetPercent,
                         isActive && { color: colors.heading }
                       ]}
                     >
@@ -610,7 +616,7 @@ const PreAuthPaymentView: React.FC = () => {
                     </Text>
                     <Text
                       style={[
-                        getStyles().tipPresetAmount,
+                        styles.tipPresetAmount,
                         isActive && { color: colors.teal }
                       ]}
                     >
@@ -621,10 +627,10 @@ const PreAuthPaymentView: React.FC = () => {
               })}
             </View>
           )}
-          <View style={getStyles().amountRow}>
-            <Text style={getStyles().dollarSign}>$</Text>
+          <View style={styles.amountRow}>
+            <Text style={styles.dollarSign}>$</Text>
             <TextInput
-              style={getStyles().amountInput}
+              style={styles.amountInput}
               value={tipAmount}
               onChangeText={handleTipChange}
               keyboardType='decimal-pad'
@@ -634,7 +640,7 @@ const PreAuthPaymentView: React.FC = () => {
             />
           </View>
           {parsedTip > 0 && (
-            <Text style={getStyles().totalText}>
+            <Text style={styles.totalText}>
               Total: ${(parsedAmount + parsedTip).toFixed(2)}
             </Text>
           )}
@@ -642,10 +648,10 @@ const PreAuthPaymentView: React.FC = () => {
       )}
 
       {/* Actions */}
-      <View style={getStyles().footer}>
+      <View style={styles.footer}>
         {mode === 'open' && (
           <TouchableOpacity
-            style={[getStyles().primaryBtn, { backgroundColor: colors.teal }]}
+            style={[styles.primaryBtn, { backgroundColor: colors.teal }]}
             onPress={handleOpenTab}
             disabled={isProcessing || parsedAmount <= 0}
             activeOpacity={0.8}
@@ -653,7 +659,7 @@ const PreAuthPaymentView: React.FC = () => {
             {isProcessing ? (
               <ActivityIndicator color={colors.onSolid} />
             ) : (
-              <Text style={getStyles().primaryBtnText}>
+              <Text style={styles.primaryBtnText}>
                 Hold Card — ${parsedAmount.toFixed(2)}
               </Text>
             )}
@@ -663,7 +669,7 @@ const PreAuthPaymentView: React.FC = () => {
         {mode === 'increment' && (
           <TouchableOpacity
             style={[
-              getStyles().primaryBtn,
+              styles.primaryBtn,
               { backgroundColor: colors.warning }
             ]}
             onPress={handleIncreaseTab}
@@ -673,7 +679,7 @@ const PreAuthPaymentView: React.FC = () => {
             {isProcessing ? (
               <ActivityIndicator color='#fff' />
             ) : (
-              <Text style={getStyles().primaryBtnText}>
+              <Text style={styles.primaryBtnText}>
                 Increase to ${parsedAmount.toFixed(2)}
               </Text>
             )}
@@ -683,7 +689,7 @@ const PreAuthPaymentView: React.FC = () => {
         {mode === 'capture' && (
           <>
             <TouchableOpacity
-              style={[getStyles().primaryBtn, { backgroundColor: colors.success }]}
+              style={[styles.primaryBtn, { backgroundColor: colors.success }]}
               onPress={handleCloseTab}
               disabled={isProcessing || parsedAmount <= 0}
               activeOpacity={0.8}
@@ -691,26 +697,26 @@ const PreAuthPaymentView: React.FC = () => {
               {isProcessing ? (
                 <ActivityIndicator color='#fff' />
               ) : (
-                <Text style={getStyles().primaryBtnText}>
+                <Text style={styles.primaryBtnText}>
                   Charge ${(parsedAmount + parsedTip).toFixed(2)}
                 </Text>
               )}
             </TouchableOpacity>
 
             {/* Secondary actions for capture mode */}
-            <View style={getStyles().secondaryActions}>
+            <View style={styles.secondaryActions}>
               <TouchableOpacity
-                style={getStyles().secondaryBtn}
+                style={styles.secondaryBtn}
                 onPress={() => {
                   setPreAuthMode('increment')
                   setAmount(String(totals?.amountDue ?? totals?.total ?? 0))
                 }}
                 disabled={isProcessing}
               >
-                <TrendingUp size={14} color={colors.warning} />
+                <TrendingUp size={ss(14)} color={colors.warning} />
                 <Text
                   style={[
-                    getStyles().secondaryBtnText,
+                    styles.secondaryBtnText,
                     { color: colors.warning }
                   ]}
                 >
@@ -719,14 +725,14 @@ const PreAuthPaymentView: React.FC = () => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={getStyles().secondaryBtn}
+                style={styles.secondaryBtn}
                 onPress={handleReleaseTab}
                 disabled={isProcessing}
               >
-                <XCircle size={14} color={colors.danger} />
+                <XCircle size={ss(14)} color={colors.danger} />
                 <Text
                   style={[
-                    getStyles().secondaryBtnText,
+                    styles.secondaryBtnText,
                     { color: colors.danger }
                   ]}
                 >
@@ -741,92 +747,93 @@ const PreAuthPaymentView: React.FC = () => {
   )
 }
 
-const getStyles = () =>
-  StyleSheet.create({
+const getStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale)
+  return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.screen },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      paddingHorizontal: s(14),
+      paddingVertical: s(12),
       borderBottomWidth: 1,
       borderBottomColor: colors.border
     },
     backBtn: {
-      width: 30,
-      height: 30,
-      borderRadius: 8,
+      width: s(30),
+      height: s(30),
+      borderRadius: s(8),
       backgroundColor: colors.panel,
       borderWidth: 1,
       borderColor: colors.border,
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: 10
+      marginRight: s(10)
     },
-    headerTitle: { fontSize: 15, fontWeight: '700', color: colors.heading },
-    headerSub: { fontSize: 11, color: colors.muted, marginTop: 1 },
+    headerTitle: { fontSize: s(15), fontWeight: '700', color: colors.heading },
+    headerSub: { fontSize: s(11), color: colors.muted, marginTop: 1 },
     iconBadge: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      width: s(36),
+      height: s(36),
+      borderRadius: s(18),
       alignItems: 'center',
       justifyContent: 'center'
     },
     warningBanner: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 10,
-      marginHorizontal: 14,
-      marginTop: 10,
+      padding: s(10),
+      marginHorizontal: s(14),
+      marginTop: s(10),
       backgroundColor: `${colors.warning}15`,
-      borderRadius: 8,
+      borderRadius: s(8),
       borderWidth: 1,
       borderColor: `${colors.warning}40`,
-      gap: 8
+      gap: s(8)
     },
     warningText: {
       flex: 1,
-      fontSize: 12,
+      fontSize: s(12),
       color: colors.warning,
       fontWeight: '600'
     },
     warningAction: {
-      paddingHorizontal: 10,
-      paddingVertical: 4,
+      paddingHorizontal: s(10),
+      paddingVertical: s(4),
       backgroundColor: `${colors.warning}30`,
-      borderRadius: 6
+      borderRadius: s(6)
     },
     warningActionText: {
-      fontSize: 11,
+      fontSize: s(11),
       fontWeight: '700',
       color: colors.warning
     },
-    warningInfo: { fontSize: 11, color: colors.muted, fontStyle: 'italic' },
+    warningInfo: { fontSize: s(11), color: colors.muted, fontStyle: 'italic' },
     preAuthInfo: {
-      margin: 14,
-      padding: 12,
+      margin: s(14),
+      padding: s(12),
       backgroundColor: colors.panel,
-      borderRadius: 10,
+      borderRadius: s(10),
       borderWidth: 1,
       borderColor: colors.border,
-      gap: 6
+      gap: s(6)
     },
     preAuthRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center'
     },
-    preAuthLabel: { fontSize: 12, color: colors.muted },
-    preAuthValue: { fontSize: 12, fontWeight: '600', color: colors.heading },
+    preAuthLabel: { fontSize: s(12), color: colors.muted },
+    preAuthValue: { fontSize: s(12), fontWeight: '600', color: colors.heading },
     inputSection: {
-      paddingHorizontal: 14,
-      paddingTop: 16
+      paddingHorizontal: s(14),
+      paddingTop: s(16)
     },
     inputLabel: {
-      fontSize: 12,
+      fontSize: s(12),
       fontWeight: '600',
       color: colors.muted,
-      marginBottom: 8,
+      marginBottom: s(8),
       textTransform: 'uppercase',
       letterSpacing: 0.5
     },
@@ -834,40 +841,40 @@ const getStyles = () =>
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.panel,
-      borderRadius: 10,
+      borderRadius: s(10),
       borderWidth: 1,
       borderColor: colors.border,
-      paddingHorizontal: 14
+      paddingHorizontal: s(14)
     },
     dollarSign: {
-      fontSize: 22,
+      fontSize: s(22),
       fontWeight: '700',
       color: colors.heading,
-      marginRight: 4
+      marginRight: s(4)
     },
     amountInput: {
       flex: 1,
-      fontSize: 22,
+      fontSize: s(22),
       fontWeight: '700',
       color: colors.heading,
-      paddingVertical: 12
+      paddingVertical: s(12)
     },
     totalText: {
-      fontSize: 13,
+      fontSize: s(13),
       fontWeight: '600',
       color: colors.teal,
-      marginTop: 8,
+      marginTop: s(8),
       textAlign: 'right'
     },
     tipPresetRow: {
       flexDirection: 'row',
-      gap: 6,
-      marginBottom: 8
+      gap: s(6),
+      marginBottom: s(8)
     },
     tipPresetBtn: {
       flex: 1,
-      paddingVertical: 8,
-      borderRadius: 8,
+      paddingVertical: s(8),
+      borderRadius: s(8),
       borderWidth: 1,
       backgroundColor: colors.panel,
       borderColor: colors.border,
@@ -878,53 +885,54 @@ const getStyles = () =>
       borderColor: colors.teal
     },
     tipPresetPercent: {
-      fontSize: 13,
+      fontSize: s(13),
       fontWeight: '700',
       color: colors.muted
     },
     tipPresetAmount: {
-      fontSize: 10,
+      fontSize: s(10),
       marginTop: 1,
       color: colors.muted
     },
     footer: {
-      paddingHorizontal: 14,
-      paddingTop: 20,
-      paddingBottom: 20,
-      gap: 10
+      paddingHorizontal: s(14),
+      paddingTop: s(20),
+      paddingBottom: s(20),
+      gap: s(10)
     },
     primaryBtn: {
-      paddingVertical: 14,
-      borderRadius: 10,
+      paddingVertical: s(14),
+      borderRadius: s(10),
       alignItems: 'center',
       justifyContent: 'center'
     },
     primaryBtnText: {
-      fontSize: 15,
+      fontSize: s(15),
       fontWeight: '700',
       color: colors.onSolid
     },
     secondaryActions: {
       flexDirection: 'row',
-      gap: 10,
-      marginTop: 4
+      gap: s(10),
+      marginTop: s(4)
     },
     secondaryBtn: {
       flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 6,
-      paddingVertical: 10,
-      borderRadius: 8,
+      gap: s(6),
+      paddingVertical: s(10),
+      borderRadius: s(8),
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.panel
     },
     secondaryBtnText: {
-      fontSize: 12,
+      fontSize: s(12),
       fontWeight: '600'
     }
   })
+}
 
 export default PreAuthPaymentView

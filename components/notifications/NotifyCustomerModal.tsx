@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import {
   NotifyContext,
   TemplateKey,
@@ -56,6 +57,9 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
   recipient,
   onSend,
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+
   const templates = useMemo(
     () => getTemplatesForContext(context),
     [context],
@@ -129,17 +133,17 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
         <Pressable
           onPress={() => {}}
           style={{
-            width: 520,
+            width: s(520),
             maxHeight: "92%",
             backgroundColor: colors.panel,
-            borderRadius: 16,
+            borderRadius: s(16),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: "hidden",
             shadowColor: "#000",
-            shadowOffset: { width: 0, height: 8 },
+            shadowOffset: { width: 0, height: s(8) },
             shadowOpacity: 0.4,
-            shadowRadius: 24,
+            shadowRadius: s(24),
             elevation: 20,
           }}
         >
@@ -149,19 +153,19 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              paddingHorizontal: 16,
-              paddingVertical: 13,
+              paddingHorizontal: s(16),
+              paddingVertical: s(13),
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
               backgroundColor: colors.card,
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: s(10) }}>
               <View
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
+                  width: s(32),
+                  height: s(32),
+                  borderRadius: s(8),
                   backgroundColor: colors.teal + "20",
                   borderWidth: 1,
                   borderColor: colors.teal + "50",
@@ -169,19 +173,19 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
                   justifyContent: "center",
                 }}
               >
-                <Bell size={16} color={colors.teal} />
+                <Bell size={s(16)} color={colors.teal} />
               </View>
               <View>
                 <Text
                   style={{
                     color: colors.heading,
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: "700",
                   }}
                 >
                   Notify {recipient.partyName}
                 </Text>
-                <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+                <Text style={{ color: colors.muted, fontSize: s(11), marginTop: s(2) }}>
                   {describeContext(context)}
                 </Text>
               </View>
@@ -190,31 +194,31 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
               onPress={onClose}
               disabled={isSending}
               style={{
-                padding: 6,
-                borderRadius: 8,
+                padding: s(6),
+                borderRadius: s(8),
                 backgroundColor: colors.screen,
                 borderWidth: 1,
                 borderColor: colors.border,
                 opacity: isSending ? 0.5 : 1,
               }}
             >
-              <X size={14} color={colors.label} />
+              <X size={s(14)} color={colors.label} />
             </TouchableOpacity>
           </View>
 
           <ScrollView
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ padding: 16, gap: 14 }}
+            contentContainerStyle={{ padding: s(16), gap: s(14) }}
           >
             {/* Phone chip */}
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 10,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                borderRadius: 10,
+                gap: s(10),
+                paddingHorizontal: s(12),
+                paddingVertical: s(10),
+                borderRadius: s(10),
                 borderWidth: 1,
                 borderColor: hasPhone
                   ? colors.success + "40"
@@ -225,20 +229,20 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
               }}
             >
               <Phone
-                size={14}
+                size={s(14)}
                 color={hasPhone ? colors.success : colors.warning}
               />
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
                     color: colors.heading,
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "700",
                   }}
                 >
                   {formatPhone(recipient.phone)}
                 </Text>
-                <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+                <Text style={{ color: colors.muted, fontSize: s(11), marginTop: s(2) }}>
                   {hasPhone
                     ? "SMS will be sent to this number"
                     : "Send disabled — please notify guest verbally"}
@@ -251,16 +255,16 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
               <Text
                 style={{
                   color: colors.muted,
-                  fontSize: 9,
+                  fontSize: s(9),
                   fontWeight: "700",
                   textTransform: "uppercase",
                   letterSpacing: 0.8,
-                  marginBottom: 8,
+                  marginBottom: s(8),
                 }}
               >
                 Quick Templates
               </Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: s(8) }}>
                 {templates.map((t) => {
                   const isSelected = t.key === selectedKey;
                   return (
@@ -268,9 +272,9 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
                       key={t.key}
                       onPress={() => handleSelectTemplate(t.key)}
                       style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderRadius: 20,
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(8),
+                        borderRadius: s(20),
                         borderWidth: 1,
                         borderColor: isSelected
                           ? colors.teal
@@ -283,7 +287,7 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
                       <Text
                         style={{
                           color: isSelected ? colors.teal : colors.label,
-                          fontSize: 12,
+                          fontSize: s(12),
                           fontWeight: isSelected ? "700" : "600",
                         }}
                       >
@@ -301,15 +305,15 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 6,
-                  marginBottom: 6,
+                  gap: s(6),
+                  marginBottom: s(6),
                 }}
               >
-                <MessageSquare size={11} color={colors.muted} />
+                <MessageSquare size={s(11)} color={colors.muted} />
                 <Text
                   style={{
                     color: colors.muted,
-                    fontSize: 9,
+                    fontSize: s(9),
                     fontWeight: "700",
                     textTransform: "uppercase",
                     letterSpacing: 0.8,
@@ -320,7 +324,7 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
                 <Text
                   style={{
                     color: colors.muted,
-                    fontSize: 10,
+                    fontSize: s(10),
                     marginLeft: "auto",
                   }}
                 >
@@ -336,14 +340,14 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
                 maxLength={320}
                 style={{
                   backgroundColor: colors.screen,
-                  borderRadius: 10,
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.border,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  fontSize: 13,
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(10),
+                  fontSize: s(13),
                   color: colors.heading,
-                  minHeight: 110,
+                  minHeight: s(110),
                   textAlignVertical: "top",
                 }}
               />
@@ -352,14 +356,14 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
             {error && (
               <View
                 style={{
-                  padding: 10,
-                  borderRadius: 8,
+                  padding: s(10),
+                  borderRadius: s(8),
                   backgroundColor: colors.danger + "12",
                   borderWidth: 1,
                   borderColor: colors.danger + "40",
                 }}
               >
-                <Text style={{ color: colors.danger, fontSize: 12 }}>{error}</Text>
+                <Text style={{ color: colors.danger, fontSize: s(12) }}>{error}</Text>
               </View>
             )}
           </ScrollView>
@@ -368,9 +372,9 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
           <View
             style={{
               flexDirection: "row",
-              gap: 10,
-              paddingHorizontal: 16,
-              paddingVertical: 12,
+              gap: s(10),
+              paddingHorizontal: s(16),
+              paddingVertical: s(12),
               borderTopWidth: 1,
               borderTopColor: colors.border,
               backgroundColor: colors.card,
@@ -381,8 +385,8 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
               disabled={isSending}
               style={{
                 flex: 1,
-                paddingVertical: 11,
-                borderRadius: 9,
+                paddingVertical: s(11),
+                borderRadius: s(9),
                 alignItems: "center",
                 borderWidth: 1,
                 borderColor: colors.border,
@@ -391,7 +395,7 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
               }}
             >
               <Text
-                style={{ color: colors.label, fontWeight: "600", fontSize: 13 }}
+                style={{ color: colors.label, fontWeight: "600", fontSize: s(13) }}
               >
                 Cancel
               </Text>
@@ -404,9 +408,9 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 6,
-                paddingVertical: 11,
-                borderRadius: 9,
+                gap: s(6),
+                paddingVertical: s(11),
+                borderRadius: s(9),
                 backgroundColor: canSend ? colors.teal + "25" : colors.card,
                 borderWidth: 1,
                 borderColor: canSend ? colors.teal + "60" : colors.border,
@@ -417,12 +421,12 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
                 <ActivityIndicator color={colors.teal} size="small" />
               ) : (
                 <>
-                  <Send size={13} color={canSend ? colors.teal : colors.muted} />
+                  <Send size={s(13)} color={canSend ? colors.teal : colors.muted} />
                   <Text
                     style={{
                       color: canSend ? colors.teal : colors.muted,
                       fontWeight: "800",
-                      fontSize: 13,
+                      fontSize: s(13),
                       letterSpacing: 0.3,
                     }}
                   >

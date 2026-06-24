@@ -5,6 +5,7 @@
 import { useToast } from '@/contexts/ToastContext'
 import type { Database } from '@/database.types'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useLoyaltyDataStore } from '@/stores/useLoyaltyDataStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -93,23 +94,27 @@ const Field: React.FC<{
   hint?: string
   required?: boolean
   children: React.ReactNode
-}> = ({ label, hint, required, children }) => (
-  <View style={{ gap: 6 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>
+}> = ({ label, hint, required, children }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+  <View style={{ gap: s(6) }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}>
+      <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}>
         {label}
         {required ? <Text style={{ color: colors.danger }}> *</Text> : null}
       </Text>
       {hint ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-          <Info size={11} color={colors.muted} />
-          <Text style={{ fontSize: 10, color: colors.muted }}>{hint}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(3) }}>
+          <Info size={s(11)} color={colors.muted} />
+          <Text style={{ fontSize: s(10), color: colors.muted }}>{hint}</Text>
         </View>
       ) : null}
     </View>
     {children}
   </View>
-)
+  )
+}
 
 const Input: React.FC<{
   value: string
@@ -125,7 +130,10 @@ const Input: React.FC<{
   keyboardType,
   multiline,
   rows = 3
-}) => (
+}) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <TextInput
     value={value}
     onChangeText={onChangeText}
@@ -138,37 +146,41 @@ const Input: React.FC<{
       backgroundColor: colors.screen,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 9,
-      paddingHorizontal: 12,
-      paddingVertical: multiline ? 10 : 10,
+      borderRadius: s(9),
+      paddingHorizontal: s(12),
+      paddingVertical: multiline ? s(10) : s(10),
       color: colors.heading,
-      fontSize: 13,
+      fontSize: s(13),
       textAlignVertical: multiline ? 'top' : 'center',
-      minHeight: multiline ? rows * 22 : undefined
+      minHeight: multiline ? rows * s(22) : undefined
     }}
   />
-)
+  )
+}
 
 const ToggleRow: React.FC<{
   label: string
   desc?: string
   value: boolean
   onChange: (v: boolean) => void
-}> = ({ label, desc, value, onChange }) => (
+}> = ({ label, desc, value, onChange }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <View
     style={{
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingVertical: 6
+      paddingVertical: s(6)
     }}
   >
-    <View style={{ flex: 1, marginRight: 12 }}>
-      <Text style={{ fontSize: 13, color: colors.heading, fontWeight: '500' }}>
+    <View style={{ flex: 1, marginRight: s(12) }}>
+      <Text style={{ fontSize: s(13), color: colors.heading, fontWeight: '500' }}>
         {label}
       </Text>
       {desc ? (
-        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+        <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }}>
           {desc}
         </Text>
       ) : null}
@@ -180,26 +192,30 @@ const ToggleRow: React.FC<{
       thumbColor={value ? colors.teal : colors.muted}
     />
   </View>
-)
+  )
+}
 
 const SectionBox: React.FC<{ title: string; children: React.ReactNode }> = ({
   title,
   children
-}) => (
+}) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <View
     style={{
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 12,
+      borderRadius: s(12),
       overflow: 'hidden',
-      marginBottom: 4
+      marginBottom: s(4)
     }}
   >
     <View
       style={{
-        paddingHorizontal: 14,
-        paddingVertical: 9,
+        paddingHorizontal: s(14),
+        paddingVertical: s(9),
         backgroundColor: colors.panel,
         borderBottomWidth: 1,
         borderBottomColor: colors.border
@@ -207,7 +223,7 @@ const SectionBox: React.FC<{ title: string; children: React.ReactNode }> = ({
     >
       <Text
         style={{
-          fontSize: 11,
+          fontSize: s(11),
           fontWeight: '700',
           color: colors.label,
           textTransform: 'uppercase',
@@ -217,16 +233,20 @@ const SectionBox: React.FC<{ title: string; children: React.ReactNode }> = ({
         {title}
       </Text>
     </View>
-    <View style={{ padding: 14, gap: 14 }}>{children}</View>
+    <View style={{ padding: s(14), gap: s(14) }}>{children}</View>
   </View>
-)
+  )
+}
 
 const SelectPill: React.FC<{
   options: { id: string; label: string }[]
   value: string
   onChange: (v: string) => void
-}> = ({ options, value, onChange }) => (
-  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+}> = ({ options, value, onChange }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+  <View style={{ flexDirection: 'row', gap: s(8), flexWrap: 'wrap' }}>
     {options.map(opt => {
       const active = value === opt.id
       return (
@@ -234,9 +254,9 @@ const SelectPill: React.FC<{
           key={opt.id}
           onPress={() => onChange(opt.id)}
           style={{
-            paddingHorizontal: 12,
-            paddingVertical: 6,
-            borderRadius: 20,
+            paddingHorizontal: s(12),
+            paddingVertical: s(6),
+            borderRadius: 999,
             backgroundColor: active ? colors.teal : colors.screen,
             borderWidth: 1,
             borderColor: active ? colors.teal : colors.border
@@ -244,7 +264,7 @@ const SelectPill: React.FC<{
         >
           <Text
             style={{
-              fontSize: 12,
+              fontSize: s(12),
               fontWeight: '600',
               color: active ? colors.onSolid : colors.label
             }}
@@ -255,17 +275,20 @@ const SelectPill: React.FC<{
       )
     })}
   </View>
-)
+  )
+}
 
 // ─── Main Form ────────────────────────────────────────────────────────────────
 
 export default function ProgramFormScreen () {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const router = useRouter()
   const { show } = useToast()
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const selectedStore = useStoreSettingsStore(storeState => storeState.selectedStore)
   const merchantId = selectedStore?.merchant_id ?? ''
-  const saveProgram = useLoyaltyDataStore(s => s.saveProgram)
-  const deleteProgram = useLoyaltyDataStore(s => s.deleteProgram)
+  const saveProgram = useLoyaltyDataStore(storeState => storeState.saveProgram)
+  const deleteProgram = useLoyaltyDataStore(storeState => storeState.deleteProgram)
   const params = useLocalSearchParams<{ id?: string }>()
   const editId = params.id
   const isEdit = !!editId
@@ -529,7 +552,7 @@ export default function ProgramFormScreen () {
           justifyContent: 'center'
         }}
       >
-        <ActivityIndicator color={colors.teal} />
+        <ActivityIndicator color={colors.teal} size='large' />
       </View>
     )
   }
@@ -541,9 +564,9 @@ export default function ProgramFormScreen () {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 10,
-          paddingHorizontal: 14,
-          paddingVertical: 8,
+          gap: s(10),
+          paddingHorizontal: s(14),
+          paddingVertical: s(8),
           backgroundColor: colors.panel,
           borderBottomWidth: 1,
           borderBottomColor: colors.border
@@ -552,28 +575,28 @@ export default function ProgramFormScreen () {
         <TouchableOpacity
           onPress={() => router.back()}
           style={{
-            padding: 7,
+            padding: s(7),
             backgroundColor: colors.teal + '10',
-            borderRadius: 10
+            borderRadius: s(10)
           }}
         >
-          <ChevronLeft size={16} color={colors.teal} />
+          <ChevronLeft size={s(16)} color={colors.teal} />
         </TouchableOpacity>
         <View
           style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
+            width: s(28),
+            height: s(28),
+            borderRadius: s(8),
             backgroundColor: colors.teal + '18',
             alignItems: 'center',
             justifyContent: 'center'
           }}
         >
-          <Award size={14} color={colors.teal} />
+          <Award size={s(14)} color={colors.teal} />
         </View>
         <Text
           style={{
-            fontSize: 16,
+            fontSize: s(16),
             fontWeight: '700',
             color: colors.heading,
             flex: 1
@@ -582,14 +605,14 @@ export default function ProgramFormScreen () {
           {isEdit ? 'Edit Program' : 'New Program'}
         </Text>
         {isEdit && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
             <TouchableOpacity
               onPress={handleSave}
               disabled={saving || deleting}
               style={{
-                height: 32,
-                paddingHorizontal: 12,
-                borderRadius: 10,
+                height: s(32),
+                paddingHorizontal: s(12),
+                borderRadius: s(10),
                 alignItems: 'center',
                 justifyContent: 'center',
                 backgroundColor: saving ? colors.teal + '50' : colors.teal
@@ -600,7 +623,7 @@ export default function ProgramFormScreen () {
               ) : (
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '700',
                     color: colors.onSolid
                   }}
@@ -613,15 +636,15 @@ export default function ProgramFormScreen () {
               onPress={handleDelete}
               disabled={deleting || saving}
               style={{
-                padding: 7,
+                padding: s(7),
                 backgroundColor: colors.danger + '15',
-                borderRadius: 10
+                borderRadius: s(10)
               }}
             >
               {deleting ? (
                 <ActivityIndicator color={colors.danger} size='small' />
               ) : (
-                <Trash2 size={14} color={colors.danger} />
+                <Trash2 size={s(14)} color={colors.danger} />
               )}
             </TouchableOpacity>
           </View>
@@ -633,7 +656,7 @@ export default function ProgramFormScreen () {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={{ padding: 14, gap: 12 }}
+          contentContainerStyle={{ padding: s(14), gap: s(12) }}
           showsVerticalScrollIndicator={false}
         >
           {/* Basics */}
@@ -655,7 +678,7 @@ export default function ProgramFormScreen () {
               />
             </Field>
             <Field label='Program Type' required>
-              <View style={{ gap: 8 }}>
+              <View style={{ gap: s(8) }}>
                 {PROGRAM_TYPES.map(pt => {
                   const active = programType === pt.id
                   return (
@@ -665,9 +688,9 @@ export default function ProgramFormScreen () {
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: 12,
-                        padding: 12,
-                        borderRadius: 10,
+                        gap: s(12),
+                        padding: s(12),
+                        borderRadius: s(10),
                         backgroundColor: active
                           ? colors.teal + '15'
                           : colors.screen,
@@ -677,9 +700,9 @@ export default function ProgramFormScreen () {
                     >
                       <View
                         style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 8,
+                          width: s(32),
+                          height: s(32),
+                          borderRadius: s(8),
                           backgroundColor: active
                             ? colors.teal + '30'
                             : colors.border,
@@ -688,30 +711,30 @@ export default function ProgramFormScreen () {
                         }}
                       >
                         <pt.Icon
-                          size={15}
+                          size={s(15)}
                           color={active ? colors.teal : colors.muted}
                         />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: '600',
                             color: active ? colors.teal : colors.heading
                           }}
                         >
                           {pt.label}
                         </Text>
-                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>
                           {pt.desc}
                         </Text>
                       </View>
                       {active && (
                         <View
                           style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: 9,
+                            width: s(18),
+                            height: s(18),
+                            borderRadius: s(9),
                             backgroundColor: colors.teal,
                             alignItems: 'center',
                             justifyContent: 'center'
@@ -719,7 +742,7 @@ export default function ProgramFormScreen () {
                         >
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               color: colors.onSolid,
                               fontWeight: '700'
                             }}
@@ -812,7 +835,7 @@ export default function ProgramFormScreen () {
           {/* Reward */}
           <SectionBox title='Reward'>
             <Field label='Reward Type' required>
-              <View style={{ gap: 6 }}>
+              <View style={{ gap: s(6) }}>
                 {REWARD_TYPES.map(rt => {
                   const active = rewardType === rt.id
                   return (
@@ -822,9 +845,9 @@ export default function ProgramFormScreen () {
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: 10,
-                        padding: 10,
-                        borderRadius: 9,
+                        gap: s(10),
+                        padding: s(10),
+                        borderRadius: s(9),
                         backgroundColor: active
                           ? colors.teal + '15'
                           : colors.screen,
@@ -834,9 +857,9 @@ export default function ProgramFormScreen () {
                     >
                       <View
                         style={{
-                          width: 16,
-                          height: 16,
-                          borderRadius: 8,
+                          width: s(16),
+                          height: s(16),
+                          borderRadius: s(8),
                           borderWidth: 2,
                           borderColor: active ? colors.teal : colors.border,
                           alignItems: 'center',
@@ -846,9 +869,9 @@ export default function ProgramFormScreen () {
                         {active && (
                           <View
                             style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: 4,
+                              width: s(8),
+                              height: s(8),
+                              borderRadius: s(4),
                               backgroundColor: colors.teal
                             }}
                           />
@@ -856,7 +879,7 @@ export default function ProgramFormScreen () {
                       </View>
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           color: active ? colors.teal : colors.heading,
                           fontWeight: active ? '600' : '400'
                         }}
@@ -1001,15 +1024,15 @@ export default function ProgramFormScreen () {
 
           {/* Display color */}
           <SectionBox title='Display Color'>
-            <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+            <View style={{ flexDirection: 'row', gap: s(10), flexWrap: 'wrap' }}>
               {ACCENT_COLORS.map(c => (
                 <TouchableOpacity
                   key={c}
                   onPress={() => setDisplayColor(c)}
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
+                    width: s(36),
+                    height: s(36),
+                    borderRadius: s(18),
                     backgroundColor: c,
                     borderWidth: displayColor === c ? 3 : 1,
                     borderColor:
@@ -1020,7 +1043,7 @@ export default function ProgramFormScreen () {
                 >
                   {displayColor === c && (
                     <Text
-                      style={{ fontSize: 14, color: '#fff', fontWeight: '700' }}
+                      style={{ fontSize: s(14), color: '#fff', fontWeight: '700' }}
                     >
                       ✓
                     </Text>
@@ -1036,11 +1059,11 @@ export default function ProgramFormScreen () {
               onPress={handleSave}
               disabled={saving}
               style={{
-                paddingVertical: 13,
+                paddingVertical: s(13),
                 backgroundColor: saving ? colors.teal + '50' : colors.teal,
-                borderRadius: 10,
+                borderRadius: s(10),
                 alignItems: 'center',
-                marginTop: 4
+                marginTop: s(4)
               }}
             >
               {saving ? (
@@ -1048,7 +1071,7 @@ export default function ProgramFormScreen () {
               ) : (
                 <Text
                   style={{
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: '700',
                     color: colors.onSolid
                   }}
@@ -1059,7 +1082,7 @@ export default function ProgramFormScreen () {
             </TouchableOpacity>
           )}
 
-          <View style={{ height: 20 }} />
+          <View style={{ height: s(20) }} />
         </ScrollView>
       </KeyboardAvoidingView>
 

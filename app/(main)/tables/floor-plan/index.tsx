@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import { colors } from '@/lib/theme'
 import { FloorPlanService } from '@/services/floorPlanService'
@@ -32,6 +33,8 @@ const LayoutNameModal = ({
   initialName?: string
   title: string
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [name, setName] = useState(initialName)
 
   useEffect(() => {
@@ -63,9 +66,9 @@ const LayoutNameModal = ({
       >
         <View
           style={{
-            width: 420,
+            width: s(420),
             backgroundColor: colors.card,
-            borderRadius: 14,
+            borderRadius: s(14),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden'
@@ -73,28 +76,28 @@ const LayoutNameModal = ({
         >
           <View
             style={{
-              paddingHorizontal: 18,
-              paddingVertical: 14,
+              paddingHorizontal: s(18),
+              paddingVertical: s(14),
               borderBottomWidth: 1,
               borderBottomColor: colors.border
             }}
           >
             <Text
-              style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}
+              style={{ color: colors.heading, fontSize: s(14), fontWeight: '700' }}
             >
               {title}
             </Text>
           </View>
-          <View style={{ padding: 18, gap: 12 }}>
+          <View style={{ padding: s(18), gap: s(12) }}>
             <View>
               <Text
                 style={{
                   color: colors.muted,
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '700',
                   textTransform: 'uppercase',
                   letterSpacing: 0.8,
-                  marginBottom: 6
+                  marginBottom: s(6)
                 }}
               >
                 Room Name
@@ -109,21 +112,21 @@ const LayoutNameModal = ({
                   backgroundColor: colors.screen,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 8,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  fontSize: 14,
+                  borderRadius: s(8),
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(10),
+                  fontSize: s(14),
                   color: colors.heading
                 }}
               />
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flexDirection: 'row', gap: s(8) }}>
               <TouchableOpacity
                 onPress={onClose}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 8,
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
                   alignItems: 'center',
                   borderWidth: 1,
                   borderColor: colors.border,
@@ -134,7 +137,7 @@ const LayoutNameModal = ({
                   style={{
                     color: colors.label,
                     fontWeight: '600',
-                    fontSize: 13
+                    fontSize: s(13)
                   }}
                 >
                   Cancel
@@ -144,8 +147,8 @@ const LayoutNameModal = ({
                 onPress={handleSave}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 8,
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
                   alignItems: 'center',
                   backgroundColor: colors.teal + '20',
                   borderWidth: 1,
@@ -156,7 +159,7 @@ const LayoutNameModal = ({
                   style={{
                     color: colors.teal,
                     fontWeight: '700',
-                    fontSize: 13
+                    fontSize: s(13)
                   }}
                 >
                   Save
@@ -181,6 +184,9 @@ const FloorPlanManagementScreen = () => {
     activeFloorPlanId
   } = useFloorPlanStore()
   const activeTables = useFloorPlanStore(s => s.tables)
+
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   useEffect(() => {
     const { locationId, setFloorPlans } = useFloorPlanStore.getState()
@@ -238,8 +244,8 @@ const FloorPlanManagementScreen = () => {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingHorizontal: 16,
-          paddingVertical: 12,
+          paddingHorizontal: s(16),
+          paddingVertical: s(12),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
           backgroundColor: colors.card
@@ -247,11 +253,11 @@ const FloorPlanManagementScreen = () => {
       >
         <View>
           <Text
-            style={{ color: colors.heading, fontSize: 15, fontWeight: '700' }}
+            style={{ color: colors.heading, fontSize: s(15), fontWeight: '700' }}
           >
             Floor Plans
           </Text>
-          <Text style={{ color: colors.muted, fontSize: 11, marginTop: 1 }}>
+          <Text style={{ color: colors.muted, fontSize: s(11), marginTop: s(1) }}>
             {floorPlans.length} room{floorPlans.length !== 1 ? 's' : ''}{' '}
             configured
           </Text>
@@ -261,17 +267,17 @@ const FloorPlanManagementScreen = () => {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 6,
-            paddingHorizontal: 14,
-            paddingVertical: 8,
-            borderRadius: 8,
+            gap: s(6),
+            paddingHorizontal: s(14),
+            paddingVertical: s(8),
+            borderRadius: s(8),
             backgroundColor: colors.teal + '20',
             borderWidth: 1,
             borderColor: colors.teal + '60'
           }}
         >
-          <Plus size={14} color={colors.teal} />
-          <Text style={{ color: colors.teal, fontWeight: '700', fontSize: 13 }}>
+          <Plus size={s(14)} color={colors.teal} />
+          <Text style={{ color: colors.teal, fontWeight: '700', fontSize: s(13) }}>
             New Room
           </Text>
         </TouchableOpacity>
@@ -280,7 +286,7 @@ const FloorPlanManagementScreen = () => {
       <FlatList
         data={floorPlans}
         keyExtractor={item => item.id}
-        contentContainerStyle={{ padding: 14, gap: 8 }}
+        contentContainerStyle={{ padding: s(14), gap: s(8) }}
         renderItem={({ item }) => {
           const isActive = item.id === activeFloorPlanId
           const tableCount = isActive
@@ -297,9 +303,9 @@ const FloorPlanManagementScreen = () => {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                padding: 14,
+                padding: s(14),
                 backgroundColor: colors.card,
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: isActive ? colors.teal + '50' : colors.border
               }}
@@ -307,9 +313,9 @@ const FloorPlanManagementScreen = () => {
               {/* Icon */}
               <View
                 style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 10,
+                  width: s(42),
+                  height: s(42),
+                  borderRadius: s(10),
                   backgroundColor: isActive
                     ? colors.teal + '18'
                     : colors.screen,
@@ -317,23 +323,23 @@ const FloorPlanManagementScreen = () => {
                   borderColor: isActive ? colors.teal + '40' : colors.border,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginRight: 12
+                  marginRight: s(12)
                 }}
               >
                 <LayoutGrid
-                  size={18}
+                  size={s(18)}
                   color={isActive ? colors.teal : colors.muted}
                 />
               </View>
 
               <View style={{ flex: 1 }}>
                 <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}
                 >
                   <Text
                     style={{
                       color: colors.heading,
-                      fontSize: 14,
+                      fontSize: s(14),
                       fontWeight: '700'
                     }}
                   >
@@ -342,9 +348,9 @@ const FloorPlanManagementScreen = () => {
                   {isActive && (
                     <View
                       style={{
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        borderRadius: 4,
+                        paddingHorizontal: s(6),
+                        paddingVertical: s(2),
+                        borderRadius: s(4),
                         backgroundColor: colors.teal + '18',
                         borderWidth: 1,
                         borderColor: colors.teal + '40'
@@ -353,7 +359,7 @@ const FloorPlanManagementScreen = () => {
                       <Text
                         style={{
                           color: colors.teal,
-                          fontSize: 9,
+                          fontSize: s(9),
                           fontWeight: '700'
                         }}
                       >
@@ -363,13 +369,13 @@ const FloorPlanManagementScreen = () => {
                   )}
                 </View>
                 <Text
-                  style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}
+                  style={{ color: colors.muted, fontSize: s(11), marginTop: s(2) }}
                 >
                   {tableCount} table{tableCount !== 1 ? 's' : ''}
                 </Text>
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 6 }}>
+              <View style={{ flexDirection: 'row', gap: s(6) }}>
                 <TouchableOpacity
                   onPress={e => {
                     e.stopPropagation()
@@ -377,14 +383,14 @@ const FloorPlanManagementScreen = () => {
                     setEditModalOpen(true)
                   }}
                   style={{
-                    padding: 8,
-                    borderRadius: 8,
+                    padding: s(8),
+                    borderRadius: s(8),
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border
                   }}
                 >
-                  <Edit2 size={15} color={colors.label} />
+                  <Edit2 size={s(15)} color={colors.label} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={e => {
@@ -393,14 +399,14 @@ const FloorPlanManagementScreen = () => {
                     setDeleteModalOpen(true)
                   }}
                   style={{
-                    padding: 8,
-                    borderRadius: 8,
+                    padding: s(8),
+                    borderRadius: s(8),
                     backgroundColor: colors.danger + '12',
                     borderWidth: 1,
                     borderColor: colors.danger + '40'
                   }}
                 >
-                  <Trash2 size={15} color={colors.danger} />
+                  <Trash2 size={s(15)} color={colors.danger} />
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
@@ -411,21 +417,21 @@ const FloorPlanManagementScreen = () => {
             style={{
               alignItems: 'center',
               justifyContent: 'center',
-              paddingVertical: 48
+              paddingVertical: s(48)
             }}
           >
-            <LayoutGrid size={32} color={colors.muted} />
+            <LayoutGrid size={s(32)} color={colors.muted} />
             <Text
               style={{
                 color: colors.label,
-                fontSize: 14,
+                fontSize: s(14),
                 fontWeight: '600',
-                marginTop: 12
+                marginTop: s(12)
               }}
             >
               No rooms yet
             </Text>
-            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
+            <Text style={{ color: colors.muted, fontSize: s(12), marginTop: s(4) }}>
               Tap "New Room" to create your first floor plan
             </Text>
           </View>

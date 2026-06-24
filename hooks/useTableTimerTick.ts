@@ -25,7 +25,16 @@ function subscribe(listener: () => void) {
     intervalId = setInterval(() => {
       if (paused) return; // Skip firing listeners when paused
       currentTick++;
-      for (const l of listeners) l();
+      // Copy listeners to a new array in case a listener unsubscribes during iteration
+      const batch = Array.from(listeners);
+      for (const l of batch) {
+        try {
+          l();
+        } catch (e) {
+          // Isolate listener errors so one bad callback doesn't break the tick
+          console.error('[useTableTimerTick] Listener error:', e);
+        }
+      }
     }, 60_000);
   }
   return () => {
@@ -34,6 +43,7 @@ function subscribe(listener: () => void) {
     if (subscriberCount === 0 && intervalId !== null) {
       clearInterval(intervalId);
       intervalId = null;
+      currentTick = 0;
     }
   };
 }

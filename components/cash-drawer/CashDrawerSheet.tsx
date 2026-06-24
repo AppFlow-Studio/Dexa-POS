@@ -10,6 +10,7 @@ import NoSaleModal from '@/components/cash-drawer/NoSaleModal'
 import PayInOutModal from '@/components/cash-drawer/PayInOutModal'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { bottomSheetTheme, colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import {
   computeLocalTimeline,
   computeLocalVarianceFlags,
@@ -104,12 +105,13 @@ function formatSignedAmount (value: number) {
   return formatCurrency(0)
 }
 
-function renderSignedAmount (value: number) {
+function renderSignedAmount (value: number, scale: number) {
   const sign = value > 0 ? '+' : value < 0 ? '-' : ''
   const amountColor = getSignedAmountColor(value)
+  const s = (n: number) => Math.round(n * scale)
 
   return (
-    <Text style={{ fontSize: 13, fontWeight: '700' }}>
+    <Text style={{ fontSize: s(13), fontWeight: '700' }}>
       {sign ? <Text style={{ color: amountColor }}>{sign}</Text> : null}
       <Text style={{ color: amountColor }}>{formatSignedAmount(value)}</Text>
     </Text>
@@ -121,6 +123,8 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
   onClose
 }) => {
   const router = useRouter()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const bottomSheetRef = useRef<BottomSheetModal>(null)
   const supabase = useSupabaseClient()
 
@@ -330,15 +334,15 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
   // ── Open view ──────────────────────────────────────────────────────────────
   const renderOpenView = () => (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: s(10) }}>
       <View
         style={{
-          borderRadius: 18,
+          borderRadius: s(18),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.card,
-          padding: 14,
-          gap: 12
+          padding: s(14),
+          gap: s(12)
         }}
       >
         <View
@@ -346,15 +350,15 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             flexDirection: 'row',
             alignItems: 'flex-start',
             justifyContent: 'space-between',
-            gap: 12
+            gap: s(12)
           }}
         >
-          <View style={{ flex: 1, gap: 6 }}>
+          <View style={{ flex: 1, gap: s(6) }}>
             <View
               style={{
                 alignSelf: 'flex-start',
-                paddingHorizontal: 10,
-                paddingVertical: 5,
+                paddingHorizontal: s(10),
+                paddingVertical: s(5),
                 borderRadius: 999,
                 backgroundColor: colors.teal + '15',
                 borderWidth: 1,
@@ -363,7 +367,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             >
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '700',
                   color: colors.teal,
                   letterSpacing: 0.6
@@ -374,25 +378,25 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </View>
             <Text
               style={{
-                fontSize: 20,
+                fontSize: s(20),
                 fontWeight: '800',
                 color: colors.heading,
-                lineHeight: 24
+                lineHeight: s(24)
               }}
             >
               {drawerName || 'Cash Drawer'}
             </Text>
-            <Text style={{ fontSize: 12, color: colors.label, lineHeight: 17 }}>
+            <Text style={{ fontSize: s(12), color: colors.label, lineHeight: s(17) }}>
               Choose a quick start amount or count the drawer by denomination.
             </Text>
           </View>
 
           <View
             style={{
-              minWidth: 92,
-              borderRadius: 14,
-              paddingVertical: 10,
-              paddingHorizontal: 12,
+              minWidth: s(92),
+              borderRadius: s(14),
+              paddingVertical: s(10),
+              paddingHorizontal: s(12),
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
@@ -401,7 +405,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -412,10 +416,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </Text>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '800',
                 color: colors.heading,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               {isQuickStart ? 'Quick' : 'Count'}
@@ -423,13 +427,13 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}>
           <View
             style={{
               flexGrow: 1,
-              flexBasis: 132,
-              borderRadius: 14,
-              padding: 10,
+              flexBasis: s(132),
+              borderRadius: s(14),
+              padding: s(10),
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border
@@ -437,7 +441,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -448,10 +452,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </Text>
             <Text
               style={{
-                fontSize: 16,
+                fontSize: s(16),
                 fontWeight: '800',
                 color: colors.teal,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               {formatCurrency(
@@ -462,9 +466,9 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           <View
             style={{
               flexGrow: 1,
-              flexBasis: 132,
-              borderRadius: 14,
-              padding: 10,
+              flexBasis: s(132),
+              borderRadius: s(14),
+              padding: s(10),
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
@@ -473,7 +477,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -484,10 +488,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </Text>
             <Text
               style={{
-                fontSize: 16,
+                fontSize: s(16),
                 fontWeight: '800',
                 color: colors.heading,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               {isQuickStart ? 'Quick start' : 'Denominations'}
@@ -501,41 +505,41 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 12,
-          borderRadius: 14,
+          gap: s(12),
+          borderRadius: s(14),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          paddingHorizontal: 12,
-          paddingVertical: 10
+          paddingHorizontal: s(12),
+          paddingVertical: s(10)
         }}
       >
         <View style={{ flex: 1 }}>
           <Text
-            style={{ fontSize: 12, color: colors.heading, fontWeight: '700' }}
+            style={{ fontSize: s(12), color: colors.heading, fontWeight: '700' }}
           >
             Quick Start
           </Text>
-          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+          <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}>
             Use a preset or switch to counted denominations.
           </Text>
         </View>
         <TouchableOpacity
           onPress={() => setIsQuickStart(!isQuickStart)}
           style={{
-            paddingHorizontal: 12,
-            paddingVertical: 7,
+            paddingHorizontal: s(12),
+            paddingVertical: s(7),
             borderRadius: 999,
             borderWidth: 1,
             borderColor: isQuickStart ? colors.teal + '50' : colors.border,
             backgroundColor: isQuickStart ? colors.teal + '20' : colors.screen,
-            minWidth: 70,
+            minWidth: s(70),
             alignItems: 'center'
           }}
         >
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               fontWeight: '700',
               color: isQuickStart ? colors.teal : colors.label
             }}
@@ -548,21 +552,21 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       {isQuickStart ? (
         <View
           style={{
-            borderRadius: 16,
+            borderRadius: s(16),
             borderWidth: 1,
             borderColor: colors.border,
             backgroundColor: colors.panel,
-            padding: 12,
-            gap: 12
+            padding: s(12),
+            gap: s(12)
           }}
         >
-          <View style={{ gap: 4 }}>
+          <View style={{ gap: s(4) }}>
             <Text
-              style={{ fontSize: 12, color: colors.heading, fontWeight: '700' }}
+              style={{ fontSize: s(12), color: colors.heading, fontWeight: '700' }}
             >
               Opening Amount
             </Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>
+            <Text style={{ fontSize: s(11), color: colors.muted }}>
               Enter the starting float for this drawer.
             </Text>
           </View>
@@ -573,23 +577,23 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             placeholder='0.00'
             placeholderTextColor={colors.muted}
             style={{
-              height: 54,
-              paddingHorizontal: 14,
+              height: s(54),
+              paddingHorizontal: s(14),
               paddingVertical: 0,
               backgroundColor: colors.inset,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 14,
+              borderRadius: s(14),
               color: colors.heading,
-              fontSize: 22,
-              lineHeight: 26,
+              fontSize: s(22),
+              lineHeight: s(26),
               fontWeight: '800',
               textAlign: 'center',
               textAlignVertical: 'center',
               includeFontPadding: false
             }}
           />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}>
             {[50, 100, 150, 200, 300, 500].map(preset => {
               const isSelected = quickStartAmount === String(preset)
               return (
@@ -598,8 +602,8 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                   onPress={() => setQuickStartAmount(String(preset))}
                   style={{
                     borderRadius: 999,
-                    paddingHorizontal: 13,
-                    paddingVertical: 8,
+                    paddingHorizontal: s(13),
+                    paddingVertical: s(8),
                     borderWidth: 1,
                     backgroundColor: isSelected
                       ? colors.teal + '26'
@@ -609,7 +613,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                 >
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: '700',
                       color: isSelected ? colors.teal : colors.label
                     }}
@@ -624,20 +628,20 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       ) : (
         <View
           style={{
-            borderRadius: 16,
+            borderRadius: s(16),
             borderWidth: 1,
             borderColor: colors.border,
             backgroundColor: colors.panel,
-            padding: 12
+            padding: s(12)
           }}
         >
-          <View style={{ gap: 4, marginBottom: 10 }}>
+          <View style={{ gap: s(4), marginBottom: s(10) }}>
             <Text
-              style={{ fontSize: 12, color: colors.heading, fontWeight: '700' }}
+              style={{ fontSize: s(12), color: colors.heading, fontWeight: '700' }}
             >
               Denomination Count
             </Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>
+            <Text style={{ fontSize: s(11), color: colors.muted }}>
               Count bills and coins to build the opening total.
             </Text>
           </View>
@@ -657,23 +661,23 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       onPress={handleOpen}
       disabled={isSubmitting}
       style={{
-        minHeight: 50,
-        borderRadius: 14,
+        minHeight: s(50),
+        borderRadius: s(14),
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: isSubmitting ? colors.border : colors.teal,
         opacity: isSubmitting ? 0.7 : 1,
         shadowColor: colors.teal,
         shadowOpacity: isSubmitting ? 0 : 0.16,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 8 },
+        shadowRadius: s(14),
+        shadowOffset: { width: 0, height: s(8) },
         elevation: isSubmitting ? 0 : 2
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Unlock size={16} color={colors.onSolid} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+        <Unlock size={s(16)} color={colors.onSolid} />
         <Text
-          style={{ fontSize: 14, fontWeight: '800', color: colors.onSolid }}
+          style={{ fontSize: s(14), fontWeight: '800', color: colors.onSolid }}
         >
           {isSubmitting
             ? 'Opening...'
@@ -687,15 +691,15 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
   // ── Active view ────────────────────────────────────────────────────────────
   const renderActiveView = () => (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: s(10) }}>
       <View
         style={{
-          borderRadius: 18,
+          borderRadius: s(18),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.card,
-          padding: 12,
-          gap: 10
+          padding: s(12),
+          gap: s(10)
         }}
       >
         <View
@@ -703,15 +707,15 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             flexDirection: 'row',
             alignItems: 'stretch',
             justifyContent: 'space-between',
-            gap: 8
+            gap: s(8)
           }}
         >
           <View
             style={{
               flex: 1,
-              borderRadius: 14,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
+              borderRadius: s(14),
+              paddingHorizontal: s(12),
+              paddingVertical: s(10),
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
@@ -720,7 +724,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -731,10 +735,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </Text>
             <Text
               style={{
-                fontSize: 15,
+                fontSize: s(15),
                 color: colors.heading,
                 fontWeight: '800',
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               {drawerName || 'Cash Drawer'}
@@ -743,10 +747,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
           <View
             style={{
-              minWidth: 118,
-              borderRadius: 14,
-              paddingHorizontal: 10,
-              paddingVertical: 10,
+              minWidth: s(118),
+              borderRadius: s(14),
+              paddingHorizontal: s(10),
+              paddingVertical: s(10),
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
@@ -756,7 +760,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -767,10 +771,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </Text>
             <Text
               style={{
-                fontSize: 16,
+                fontSize: s(16),
                 fontWeight: '800',
                 color: colors.teal,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               {formatCurrency(runningBalance)}
@@ -780,10 +784,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           <TouchableOpacity
             onPress={() => setView('close')}
             style={{
-              minWidth: 112,
-              borderRadius: 14,
-              paddingHorizontal: 10,
-              paddingVertical: 10,
+              minWidth: s(112),
+              borderRadius: s(14),
+              paddingHorizontal: s(10),
+              paddingVertical: s(10),
               backgroundColor: colors.danger + '15',
               borderWidth: 1,
               borderColor: colors.danger + '35',
@@ -791,13 +795,13 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               justifyContent: 'center'
             }}
           >
-            <Lock size={14} color={colors.danger} />
+            <Lock size={s(14)} color={colors.danger} />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '700',
                 color: colors.danger,
-                marginTop: 4
+                marginTop: s(4)
               }}
             >
               Close
@@ -805,13 +809,13 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           </TouchableOpacity>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: s(8) }}>
           <View
             style={{
               flex: 1,
-              borderRadius: 12,
-              paddingHorizontal: 10,
-              paddingVertical: 9,
+              borderRadius: s(12),
+              paddingHorizontal: s(10),
+              paddingVertical: s(9),
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
@@ -820,7 +824,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           >
             <Text
               style={{
-                fontSize: 9,
+                fontSize: s(9),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -831,10 +835,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </Text>
             <Text
               style={{
-                fontSize: 14,
+                fontSize: s(14),
                 fontWeight: '800',
                 color: colors.teal,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               {formatCurrency(sessionTotals.sales)}
@@ -843,9 +847,9 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           <View
             style={{
               flex: 1,
-              borderRadius: 12,
-              paddingHorizontal: 10,
-              paddingVertical: 9,
+              borderRadius: s(12),
+              paddingHorizontal: s(10),
+              paddingVertical: s(9),
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
@@ -854,7 +858,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           >
             <Text
               style={{
-                fontSize: 9,
+                fontSize: s(9),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -865,10 +869,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </Text>
             <Text
               style={{
-                fontSize: 14,
+                fontSize: s(14),
                 fontWeight: '800',
                 color: colors.teal,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               {formatCurrency(sessionTotals.cashIn)}
@@ -877,9 +881,9 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           <View
             style={{
               flex: 1,
-              borderRadius: 12,
-              paddingHorizontal: 10,
-              paddingVertical: 9,
+              borderRadius: s(12),
+              paddingHorizontal: s(10),
+              paddingVertical: s(9),
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
@@ -888,7 +892,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           >
             <Text
               style={{
-                fontSize: 9,
+                fontSize: s(9),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -899,10 +903,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </Text>
             <Text
               style={{
-                fontSize: 14,
+                fontSize: s(14),
                 fontWeight: '800',
                 color: colors.danger,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               {formatCurrency(sessionTotals.cashOut)}
@@ -911,9 +915,9 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           <View
             style={{
               flex: 1,
-              borderRadius: 12,
-              paddingHorizontal: 10,
-              paddingVertical: 9,
+              borderRadius: s(12),
+              paddingHorizontal: s(10),
+              paddingVertical: s(9),
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
@@ -922,7 +926,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           >
             <Text
               style={{
-                fontSize: 9,
+                fontSize: s(9),
                 color: colors.muted,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -933,10 +937,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </Text>
             <Text
               style={{
-                fontSize: 14,
+                fontSize: s(14),
                 fontWeight: '800',
                 color: colors.heading,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               {operations.length}
@@ -947,17 +951,17 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
       <View
         style={{
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 10,
-          gap: 8
+          padding: s(10),
+          gap: s(8)
         }}
       >
         <Text
           style={{
-            fontSize: 11,
+            fontSize: s(11),
             color: colors.muted,
             fontWeight: '700',
             textTransform: 'uppercase',
@@ -966,14 +970,14 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
         >
           Drawer Actions
         </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}>
           <TouchableOpacity
             onPress={() => openPayInOut('pay_in')}
             style={{
               flexGrow: 1,
-              flexBasis: 130,
-              minHeight: 50,
-              borderRadius: 12,
+              flexBasis: s(130),
+              minHeight: s(50),
+              borderRadius: s(12),
               backgroundColor: colors.teal + '15',
               borderWidth: 1,
               borderColor: colors.teal + '35',
@@ -981,13 +985,13 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               justifyContent: 'center'
             }}
           >
-            <ArrowDownCircle size={16} color={colors.teal} />
+            <ArrowDownCircle size={s(16)} color={colors.teal} />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '700',
                 color: colors.teal,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               Pay In
@@ -997,9 +1001,9 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             onPress={() => openPayInOut('pay_out')}
             style={{
               flexGrow: 1,
-              flexBasis: 130,
-              minHeight: 50,
-              borderRadius: 12,
+              flexBasis: s(130),
+              minHeight: s(50),
+              borderRadius: s(12),
               backgroundColor: colors.danger + '15',
               borderWidth: 1,
               borderColor: colors.danger + '35',
@@ -1007,13 +1011,13 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               justifyContent: 'center'
             }}
           >
-            <ArrowUpCircle size={16} color={colors.danger} />
+            <ArrowUpCircle size={s(16)} color={colors.danger} />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '700',
                 color: colors.danger,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               Pay Out
@@ -1023,9 +1027,9 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             onPress={() => openPayInOut('cash_drop')}
             style={{
               flexGrow: 1,
-              flexBasis: 130,
-              minHeight: 50,
-              borderRadius: 12,
+              flexBasis: s(130),
+              minHeight: s(50),
+              borderRadius: s(12),
               backgroundColor: colors.teal + '15',
               borderWidth: 1,
               borderColor: colors.teal + '35',
@@ -1033,13 +1037,13 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               justifyContent: 'center'
             }}
           >
-            <Inbox size={16} color={colors.teal} />
+            <Inbox size={s(16)} color={colors.teal} />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '700',
                 color: colors.teal,
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               Drop
@@ -1049,9 +1053,9 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             onPress={() => setNoSaleOpen(true)}
             style={{
               flexGrow: 1,
-              flexBasis: 130,
-              minHeight: 50,
-              borderRadius: 12,
+              flexBasis: s(130),
+              minHeight: s(50),
+              borderRadius: s(12),
               backgroundColor: colors.teal + '15',
               borderWidth: 1,
               borderColor: colors.teal + '35',
@@ -1059,18 +1063,18 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               justifyContent: 'center'
             }}
           >
-            <Banknote size={16} color={colors.teal} />
+            <Banknote size={s(16)} color={colors.teal} />
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                marginTop: 2,
-                gap: 4
+                marginTop: s(2),
+                gap: s(4)
               }}
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '700',
                   color: colors.teal
                 }}
@@ -1080,9 +1084,9 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               {getNoSaleCount() > 0 && (
                 <View
                   style={{
-                    paddingHorizontal: 5,
-                    paddingVertical: 1,
-                    borderRadius: 8,
+                    paddingHorizontal: s(5),
+                    paddingVertical: s(1),
+                    borderRadius: s(8),
                     backgroundColor:
                       cashDrawerSettings.noSaleAlertThreshold > 0 &&
                       getNoSaleCount() >=
@@ -1093,7 +1097,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                 >
                   <Text
                     style={{
-                      fontSize: 9,
+                      fontSize: s(9),
                       fontWeight: '800',
                       color: '#fff'
                     }}
@@ -1109,12 +1113,12 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
       <View
         style={{
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 12,
-          gap: 10
+          padding: s(12),
+          gap: s(10)
         }}
       >
         <View
@@ -1125,19 +1129,19 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           }}
         >
           <Text
-            style={{ fontSize: 12, fontWeight: '800', color: colors.heading }}
+            style={{ fontSize: s(12), fontWeight: '800', color: colors.heading }}
           >
             Transactions
           </Text>
-          <Text style={{ fontSize: 10, color: colors.muted }}>
+          <Text style={{ fontSize: s(10), color: colors.muted }}>
             {operations.length}
           </Text>
         </View>
 
         {recentOps.length === 0 ? (
-          <View style={{ paddingVertical: 18, alignItems: 'center' }}>
-            <Receipt size={22} color={colors.muted} />
-            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 6 }}>
+          <View style={{ paddingVertical: s(18), alignItems: 'center' }}>
+            <Receipt size={s(22)} color={colors.muted} />
+            <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(6) }}>
               No transactions yet
             </Text>
           </View>
@@ -1164,10 +1168,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                 disabled={!op.orderId}
                 activeOpacity={op.orderId ? 0.7 : 1}
                 style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 9,
-                  borderRadius: 10,
-                  marginBottom: 6,
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(9),
+                  borderRadius: s(10),
+                  marginBottom: s(6),
                   backgroundColor: colors.panel,
                   borderWidth: 1,
                   borderColor: op.orderId ? colors.teal + '40' : colors.border
@@ -1179,19 +1183,19 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    marginBottom: 6
+                    marginBottom: s(6)
                   }}
                 >
                   <View
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 6
+                      gap: s(6)
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '700',
                         color: colors.heading
                       }}
@@ -1204,15 +1208,15 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
-                          gap: 2,
+                          gap: s(2),
                           backgroundColor: colors.panel,
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
-                          borderRadius: 4
+                          paddingHorizontal: s(6),
+                          paddingVertical: s(2),
+                          borderRadius: s(4)
                         }}
                       >
-                        <ExternalLink size={9} color={colors.muted} />
-                        <Text style={{ fontSize: 10, color: colors.muted }}>
+                        <ExternalLink size={s(9)} color={colors.muted} />
+                        <Text style={{ fontSize: s(10), color: colors.muted }}>
                           Order
                         </Text>
                       </View>
@@ -1221,14 +1225,14 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                   {/* Amount */}
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '700',
                       color: isNoEffect
                         ? colors.muted
                         : getSignedAmountColor(signedAmountValue)
                     }}
                   >
-                    {isNoEffect ? '—' : renderSignedAmount(signedAmountValue)}
+                    {isNoEffect ? '—' : renderSignedAmount(signedAmountValue, uiScale)}
                   </Text>
                 </View>
 
@@ -1237,17 +1241,17 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: s(6),
                     flexWrap: 'wrap'
                   }}
                 >
                   {op.reason && (
-                    <Text style={{ fontSize: 10, color: colors.label }}>
+                    <Text style={{ fontSize: s(10), color: colors.label }}>
                       {op.reason}
                     </Text>
                   )}
                   {op.performedAt && (
-                    <Text style={{ fontSize: 9, color: colors.muted }}>
+                    <Text style={{ fontSize: s(9), color: colors.muted }}>
                       {formatTime(op.performedAt)}
                     </Text>
                   )}
@@ -1268,31 +1272,31 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 12
+          marginBottom: s(12)
         }}
       >
         <View>
           <Text
-            style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}
           >
             Close Drawer
           </Text>
-          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+          <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }}>
             Count the cash to end your session
           </Text>
         </View>
         <TouchableOpacity
           onPress={() => setView('active')}
           style={{
-            paddingHorizontal: 10,
-            paddingVertical: 5,
-            borderRadius: 8,
+            paddingHorizontal: s(10),
+            paddingVertical: s(5),
+            borderRadius: s(8),
             backgroundColor: colors.panel,
             borderWidth: 1,
             borderColor: colors.border
           }}
         >
-          <Text style={{ fontSize: 11, color: colors.label }}>Back</Text>
+          <Text style={{ fontSize: s(11), color: colors.label }}>Back</Text>
         </TouchableOpacity>
       </View>
 
@@ -1309,9 +1313,9 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           backgroundColor: colors.panel,
           borderWidth: 1,
           borderColor: colors.border,
-          borderRadius: 12,
-          padding: 12,
-          marginTop: 12
+          borderRadius: s(12),
+          padding: s(12),
+          marginTop: s(12)
         }}
       >
         {!isBlind && (
@@ -1319,12 +1323,12 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             style={{
               flexDirection: 'row',
               justifyContent: 'space-between',
-              marginBottom: 8
+              marginBottom: s(8)
             }}
           >
-            <Text style={{ fontSize: 12, color: colors.label }}>Expected</Text>
+            <Text style={{ fontSize: s(12), color: colors.label }}>Expected</Text>
             <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}
+              style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}
             >
               {formatCurrency(runningBalance)}
             </Text>
@@ -1334,12 +1338,12 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           style={{
             flexDirection: 'row',
             justifyContent: 'space-between',
-            marginBottom: 8
+            marginBottom: s(8)
           }}
         >
-          <Text style={{ fontSize: 12, color: colors.label }}>Counted</Text>
+          <Text style={{ fontSize: s(12), color: colors.label }}>Counted</Text>
           <Text
-            style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}
+            style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}
           >
             {formatCurrency(closingTotal)}
           </Text>
@@ -1349,7 +1353,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             style={{
               borderTopWidth: 1,
               borderTopColor: colors.border,
-              paddingTop: 8
+              paddingTop: s(8)
             }}
           >
             <View
@@ -1357,7 +1361,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             >
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: '700',
                   color: colors.heading
                 }}
@@ -1366,20 +1370,20 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               </Text>
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '700',
                   color: getSignedAmountColor(variance)
                 }}
               >
-                {renderSignedAmount(variance)}
+                {renderSignedAmount(variance, uiScale)}
               </Text>
             </View>
           </View>
         )}
       </View>
 
-      <View style={{ marginTop: 10 }}>
-        <Text style={{ fontSize: 11, color: colors.label, marginBottom: 6 }}>
+      <View style={{ marginTop: s(10) }}>
+        <Text style={{ fontSize: s(11), color: colors.label, marginBottom: s(6) }}>
           Notes (optional)
         </Text>
         <TextInput
@@ -1390,15 +1394,15 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           multiline
           numberOfLines={2}
           style={{
-            minHeight: 40,
-            paddingHorizontal: 10,
-            paddingVertical: 8,
+            minHeight: s(40),
+            paddingHorizontal: s(10),
+            paddingVertical: s(8),
             backgroundColor: colors.inset,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 8,
+            borderRadius: s(8),
             color: colors.heading,
-            fontSize: 12,
+            fontSize: s(12),
             textAlignVertical: 'top'
           }}
         />
@@ -1406,15 +1410,15 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
       {/* Variance Detail Panel — shown when variance exceeds warning threshold */}
       {!isBlind && Math.abs(variance) >= varianceWarningThreshold && (
-        <View style={{ marginTop: 12 }}>
+        <View style={{ marginTop: s(12) }}>
           <TouchableOpacity
             onPress={() => setVarianceDetailExpanded(!varianceDetailExpanded)}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              paddingHorizontal: 10,
-              paddingVertical: 8,
+              paddingHorizontal: s(10),
+              paddingVertical: s(8),
               backgroundColor:
                 Math.abs(variance) >= varianceAlertThreshold
                   ? colors.danger + '15'
@@ -1424,12 +1428,12 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                 Math.abs(variance) >= varianceAlertThreshold
                   ? colors.danger + '45'
                   : colors.warning + '50',
-              borderRadius: 10
+              borderRadius: s(10)
             }}
           >
             <Text
               style={{
-                fontSize: 12,
+                fontSize: s(12),
                 fontWeight: '700',
                 color:
                   Math.abs(variance) >= varianceAlertThreshold
@@ -1441,7 +1445,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             </Text>
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 color: colors.muted
               }}
             >
@@ -1454,23 +1458,23 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           {varianceDetailExpanded && (
             <View
               style={{
-                marginTop: 8,
+                marginTop: s(8),
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 10,
-                padding: 10
+                borderRadius: s(10),
+                padding: s(10)
               }}
             >
               {/* Suspicious patterns */}
               {localVarianceFlags.length > 0 && (
-                <View style={{ marginBottom: 10 }}>
+                <View style={{ marginBottom: s(10) }}>
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: '700',
                       color: colors.danger,
-                      marginBottom: 6
+                      marginBottom: s(6)
                     }}
                   >
                     Suspicious Patterns
@@ -1479,18 +1483,18 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                     <View
                       key={i}
                       style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 6,
+                        paddingHorizontal: s(8),
+                        paddingVertical: s(6),
                         backgroundColor: colors.danger + '10',
                         borderWidth: 1,
                         borderColor: colors.danger + '30',
-                        borderRadius: 8,
-                        marginBottom: 4
+                        borderRadius: s(8),
+                        marginBottom: s(4)
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.danger,
                           fontWeight: '600'
                         }}
@@ -1505,10 +1509,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               {/* Operations timeline */}
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '700',
                   color: colors.label,
-                  marginBottom: 6
+                  marginBottom: s(6)
                 }}
               >
                 Operations Timeline
@@ -1522,10 +1526,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      paddingVertical: 4,
-                      paddingHorizontal: 6,
-                      borderRadius: 6,
-                      marginBottom: 2,
+                      paddingVertical: s(4),
+                      paddingHorizontal: s(6),
+                      borderRadius: s(6),
+                      marginBottom: s(2),
                       backgroundColor: isNoSale
                         ? colors.warning + '15'
                         : 'transparent',
@@ -1536,22 +1540,22 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                     }}
                   >
                     <Text
-                      style={{ fontSize: 10, color: colors.muted, width: 60 }}
+                      style={{ fontSize: s(10), color: colors.muted, width: s(60) }}
                     >
                       {formatTime(op.performedAt)}
                     </Text>
                     <View
                       style={{
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        borderRadius: 4,
-                        width: 80,
+                        paddingHorizontal: s(6),
+                        paddingVertical: s(2),
+                        borderRadius: s(4),
+                        width: s(80),
                         backgroundColor: opColor.bg
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: s(10),
                           fontWeight: '600',
                           color: opColor.text
                         }}
@@ -1561,14 +1565,14 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                     </View>
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         fontWeight: '600',
                         color: isNoEffectOperation(op.operationType)
                           ? colors.muted
                           : isDebitOperation(op.operationType)
                           ? colors.danger
                           : colors.teal,
-                        width: 60,
+                        width: s(60),
                         textAlign: 'right'
                       }}
                     >
@@ -1580,7 +1584,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                     </Text>
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         color: colors.heading,
                         fontWeight: '500',
                         flex: 1,
@@ -1604,20 +1608,20 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       onPress={handleClose}
       disabled={isSubmitting}
       style={{
-        paddingVertical: 11,
-        borderRadius: 10,
+        paddingVertical: s(11),
+        borderRadius: s(10),
         alignItems: 'center',
         flexDirection: 'row',
         justifyContent: 'center',
-        gap: 6,
+        gap: s(6),
         backgroundColor: isSubmitting ? colors.border : colors.danger,
         opacity: isSubmitting ? 0.6 : 1
       }}
     >
-      <Lock size={14} color={isSubmitting ? colors.muted : colors.onSolid} />
+      <Lock size={s(14)} color={isSubmitting ? colors.muted : colors.onSolid} />
       <Text
         style={{
-          fontSize: 13,
+          fontSize: s(13),
           fontWeight: '700',
           color: isSubmitting ? colors.muted : colors.onSolid
         }}
@@ -1635,10 +1639,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       <View>
         <Text
           style={{
-            fontSize: 16,
+            fontSize: s(16),
             fontWeight: '700',
             color: colors.heading,
-            marginBottom: 12,
+            marginBottom: s(12),
             textAlign: 'center'
           }}
         >
@@ -1649,21 +1653,21 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             backgroundColor: colors.panel,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 14
+            borderRadius: s(12),
+            padding: s(12),
+            marginBottom: s(14)
           }}
         >
           <View
             style={{
               flexDirection: 'row',
               justifyContent: 'space-between',
-              marginBottom: 8
+              marginBottom: s(8)
             }}
           >
-            <Text style={{ fontSize: 12, color: colors.label }}>Expected</Text>
+            <Text style={{ fontSize: s(12), color: colors.label }}>Expected</Text>
             <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}
+              style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}
             >
               {formatCurrency(closeSummary.expected)}
             </Text>
@@ -1672,12 +1676,12 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             style={{
               flexDirection: 'row',
               justifyContent: 'space-between',
-              marginBottom: 8
+              marginBottom: s(8)
             }}
           >
-            <Text style={{ fontSize: 12, color: colors.label }}>Actual</Text>
+            <Text style={{ fontSize: s(12), color: colors.label }}>Actual</Text>
             <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}
+              style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}
             >
               {formatCurrency(closeSummary.actual)}
             </Text>
@@ -1686,7 +1690,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             style={{
               borderTopWidth: 1,
               borderTopColor: colors.border,
-              paddingTop: 8
+              paddingTop: s(8)
             }}
           >
             <View
@@ -1694,7 +1698,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             >
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: '700',
                   color: colors.heading
                 }}
@@ -1703,12 +1707,12 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               </Text>
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '700',
                   color: getSignedAmountColor(v)
                 }}
               >
-                {renderSignedAmount(v)}
+                {renderSignedAmount(v, uiScale)}
               </Text>
             </View>
           </View>
@@ -1716,13 +1720,13 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
         {/* View Full Analysis button — shown when any non-zero variance exists */}
         {Math.abs(v) >= varianceWarningThreshold && (
-          <View style={{ marginBottom: 10 }}>
+          <View style={{ marginBottom: s(10) }}>
             <TouchableOpacity
               onPress={handleFetchAnalysis}
               disabled={loadingAnalysis}
               style={{
-                paddingVertical: 9,
-                borderRadius: 10,
+                paddingVertical: s(9),
+                borderRadius: s(10),
                 alignItems: 'center',
                 backgroundColor: colors.danger + '15',
                 borderWidth: 1,
@@ -1731,7 +1735,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             >
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: '700',
                   color: colors.danger
                 }}
@@ -1746,22 +1750,22 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             {varianceAnalysis && (
               <View
                 style={{
-                  marginTop: 8,
+                  marginTop: s(8),
                   backgroundColor: colors.panel,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 10,
-                  padding: 10
+                  borderRadius: s(10),
+                  padding: s(10)
                 }}
               >
                 {varianceAnalysis.suspiciousPatterns.length > 0 && (
-                  <View style={{ marginBottom: 8 }}>
+                  <View style={{ marginBottom: s(8) }}>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         fontWeight: '700',
                         color: colors.danger,
-                        marginBottom: 4
+                        marginBottom: s(4)
                       }}
                     >
                       Suspicious Patterns (
@@ -1771,18 +1775,18 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                       <View
                         key={i}
                         style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 6,
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(6),
                           backgroundColor: colors.danger + '10',
                           borderWidth: 1,
                           borderColor: colors.danger + '30',
-                          borderRadius: 8,
-                          marginBottom: 4
+                          borderRadius: s(8),
+                          marginBottom: s(4)
                         }}
                       >
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: s(11),
                             color: colors.danger,
                             fontWeight: '600'
                           }}
@@ -1795,13 +1799,13 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                 )}
 
                 {varianceAnalysis.noSaleEvents.length > 0 && (
-                  <View style={{ marginBottom: 8 }}>
+                  <View style={{ marginBottom: s(8) }}>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         fontWeight: '700',
                         color: colors.warning,
-                        marginBottom: 4
+                        marginBottom: s(4)
                       }}
                     >
                       No-Sale Events ({varianceAnalysis.noSaleEvents.length})
@@ -1812,16 +1816,16 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                         style={{
                           flexDirection: 'row',
                           justifyContent: 'space-between',
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(4),
                           backgroundColor: colors.warning + '10',
-                          borderRadius: 6,
-                          marginBottom: 2
+                          borderRadius: s(6),
+                          marginBottom: s(2)
                         }}
                       >
                         <Text
                           style={{
-                            fontSize: 10,
+                            fontSize: s(10),
                             color: colors.warning,
                             fontWeight: '600'
                           }}
@@ -1829,7 +1833,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                           {formatTime(ev.performedAt)} —{' '}
                           {ev.performedByName || 'Unknown'}
                         </Text>
-                        <Text style={{ fontSize: 10, color: colors.muted }}>
+                        <Text style={{ fontSize: s(10), color: colors.muted }}>
                           {ev.reason || 'No reason'}
                         </Text>
                       </View>
@@ -1841,7 +1845,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                   varianceAnalysis.noSaleEvents.length === 0 && (
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.muted,
                         textAlign: 'center'
                       }}
@@ -1857,14 +1861,14 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
         <TouchableOpacity
           onPress={onClose}
           style={{
-            paddingVertical: 11,
-            borderRadius: 10,
+            paddingVertical: s(11),
+            borderRadius: s(10),
             alignItems: 'center',
             backgroundColor: colors.teal
           }}
         >
           <Text
-            style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}
+            style={{ fontSize: s(13), fontWeight: '700', color: colors.onSolid }}
           >
             Done
           </Text>
@@ -1893,9 +1897,9 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       >
         <BottomSheetScrollView
           contentContainerStyle={{
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            paddingBottom: 12
+            paddingHorizontal: s(14),
+            paddingVertical: s(12),
+            paddingBottom: s(12)
           }}
         >
           {/* PERF: This sheet stays mounted while dismissed (gorhom keeps the
@@ -1906,10 +1910,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               {renderOpenView()}
               <View
                 style={{
-                  marginTop: 12,
+                  marginTop: s(12),
                   borderTopWidth: 1,
                   borderTopColor: colors.border,
-                  paddingTop: 12
+                  paddingTop: s(12)
                 }}
               >
                 {renderOpenViewButton()}
@@ -1922,10 +1926,10 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               {renderCloseView()}
               <View
                 style={{
-                  marginTop: 12,
+                  marginTop: s(12),
                   borderTopWidth: 1,
                   borderTopColor: colors.border,
-                  paddingTop: 12
+                  paddingTop: s(12)
                 }}
               >
                 {renderCloseViewButton()}

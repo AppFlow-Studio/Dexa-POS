@@ -8,6 +8,7 @@ import {
 } from "@shopify/react-native-skia";
 import React, { useEffect } from "react";
 import { View } from "react-native";
+import { useUiScale } from "@/lib/uiScale";
 import {
   useDerivedValue,
   useSharedValue,
@@ -27,6 +28,9 @@ const tipoutData = {
 
 // --- Main Card Component ---
 const ServerTipoutsCard = () => {
+  const scale = useUiScale();
+  const s = (value: number) => Math.round(value * scale);
+
   // Animation Setup ---
   const progress = useSharedValue(0);
   useEffect(() => {
@@ -34,12 +38,12 @@ const ServerTipoutsCard = () => {
   }, [progress]);
 
   // Load font for Skia Text.
-  const font = useFont(inter as any, 12);
-  const boldFont = useFont(inter as any, 20);
+  const font = useFont(inter as any, s(12));
+  const boldFont = useFont(inter as any, s(20));
 
   // --- Chart Calculations ---
-  const size = 120;
-  const strokeWidth = 12;
+  const size = s(120);
+  const strokeWidth = s(12);
   const center = size / 2;
   const radius = center - strokeWidth / 2;
   const totalAngle = 300;
@@ -74,8 +78,8 @@ const ServerTipoutsCard = () => {
 
   const animatedOpacity = useDerivedValue(() => progress.value);
 
-  const textY1 = center - 8;
-  const textY2 = center + 16;
+  const textY1 = center - s(8);
+  const textY2 = center + s(16);
   const textX1 = font ? center - font.measureText("Total Sales").width / 2 : 0;
   const textX2 = boldFont
     ? center -
@@ -84,7 +88,7 @@ const ServerTipoutsCard = () => {
 
   return (
     <View>
-      <View className="flex-row items-center">
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
         {/* Chart Container */}
         <View style={{ width: size, height: size }}>
           <Canvas style={{ flex: 1 }}>
@@ -133,7 +137,7 @@ const ServerTipoutsCard = () => {
         </View>
 
         {/* Legend */}
-        <View className="flex-1 ml-4 justify-center">
+        <View style={{ flex: 1, marginLeft: s(16), justifyContent: "center" }}>
           <LegendRow
             color={tipoutData.color}
             label={tipoutData.label}

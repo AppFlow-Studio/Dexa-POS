@@ -1,5 +1,6 @@
 import AppUpdateModal from '@/components/AppUpdateModal'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { checkForNativeUpdate, VersionManifest } from '@/services/appUpdater'
 import {
   getDeadLetterCount,
@@ -28,6 +29,7 @@ import {
   Percent,
   Printer,
   Receipt,
+  RefreshCw,
   Settings,
   Shield,
   Smartphone,
@@ -64,6 +66,12 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
     id: 'operations',
     title: 'Operations & Hardware',
     items: [
+      {
+        id: 'syncing',
+        label: 'Syncing',
+        icon: RefreshCw,
+        route: '/settings/syncing'
+      },
       {
         id: 'devices-connections',
         label: 'Devices & Connections',
@@ -227,6 +235,8 @@ const itemMatches = (item: SidebarItem, pathname: string) =>
   item.exact ? pathname === item.route : pathname.startsWith(item.route)
 
 const SidebarNavigation = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const router = useRouter()
   const pathname = usePathname()
 
@@ -349,13 +359,13 @@ const SidebarNavigation = () => {
   return (
     <View
       style={{
-        width: 220,
+        width: s(220),
         height: '100%',
         backgroundColor: colors.panel,
         borderRightWidth: 1,
         borderRightColor: colors.border,
         flexDirection: 'column',
-        paddingTop: 12
+        paddingTop: s(12)
       }}
     >
       {/* Header — title + (KDS only) exit. The KDS opens Settings from a
@@ -366,10 +376,10 @@ const SidebarNavigation = () => {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 8,
-          paddingHorizontal: 12,
-          paddingBottom: 12,
-          marginBottom: 4,
+          gap: s(8),
+          paddingHorizontal: s(12),
+          paddingBottom: s(12),
+          marginBottom: s(4),
           borderBottomWidth: 1,
           borderBottomColor: colors.border
         }}
@@ -379,9 +389,9 @@ const SidebarNavigation = () => {
             onPress={handleExitSettings}
             accessibilityLabel='Back to KDS'
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
+              width: s(32),
+              height: s(32),
+              borderRadius: s(8),
               alignItems: 'center',
               justifyContent: 'center',
               borderWidth: 1,
@@ -389,16 +399,16 @@ const SidebarNavigation = () => {
               backgroundColor: colors.card
             }}
           >
-            <ChevronLeft size={18} color={colors.label} />
+            <ChevronLeft size={s(18)} color={colors.label} />
           </TouchableOpacity>
         )}
-        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.label }}>
+        <Text style={{ fontSize: s(15), fontWeight: '700', color: colors.label }}>
           {isKDSStation ? 'Back to KDS' : 'Settings'}
         </Text>
       </View>
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-        <View style={{ paddingHorizontal: 10, paddingBottom: 16 }}>
+        <View style={{ paddingHorizontal: s(10), paddingBottom: s(16) }}>
           {SETTINGS_SECTIONS.map(section => {
             const isExpanded = expandedSections[section.id]
             const hasActiveChild = section.items.some(item =>
@@ -406,7 +416,7 @@ const SidebarNavigation = () => {
             )
 
             return (
-              <View key={section.id} style={{ marginBottom: 4 }}>
+              <View key={section.id} style={{ marginBottom: s(4) }}>
                 {/* Section header */}
                 <TouchableOpacity
                   onPress={() => toggleSection(section.id)}
@@ -414,9 +424,9 @@ const SidebarNavigation = () => {
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    paddingHorizontal: 10,
-                    paddingVertical: 7,
-                    borderRadius: 8,
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(7),
+                    borderRadius: s(8),
                     backgroundColor: hasActiveChild
                       ? colors.teal + '08'
                       : 'transparent'
@@ -424,23 +434,23 @@ const SidebarNavigation = () => {
                 >
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       fontWeight: '600',
                       color: hasActiveChild ? colors.teal : colors.muted,
                       textTransform: 'uppercase',
-                      letterSpacing: 0.8
+                      letterSpacing: s(0.8)
                     }}
                   >
                     {section.title}
                   </Text>
                   {isExpanded ? (
                     <ChevronDown
-                      size={13}
+                      size={s(13)}
                       color={hasActiveChild ? colors.teal : colors.muted}
                     />
                   ) : (
                     <ChevronRight
-                      size={13}
+                      size={s(13)}
                       color={hasActiveChild ? colors.teal : colors.muted}
                     />
                   )}
@@ -448,7 +458,7 @@ const SidebarNavigation = () => {
 
                 {/* Items */}
                 {isExpanded && (
-                  <View style={{ marginTop: 2 }}>
+                  <View style={{ marginTop: s(2) }}>
                     {section.items.map(item => {
                       const isActive = itemMatches(item, pathname)
                       const Icon = item.icon
@@ -460,10 +470,10 @@ const SidebarNavigation = () => {
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            paddingHorizontal: 10,
-                            paddingVertical: 8,
-                            borderRadius: 8,
-                            marginBottom: 1,
+                            paddingHorizontal: s(10),
+                            paddingVertical: s(8),
+                            borderRadius: s(8),
+                            marginBottom: s(1),
                             backgroundColor: isActive
                               ? colors.teal + '15'
                               : 'transparent'
@@ -475,30 +485,30 @@ const SidebarNavigation = () => {
                               style={{
                                 position: 'absolute',
                                 left: 0,
-                                top: 6,
-                                bottom: 6,
-                                width: 2,
+                                top: s(6),
+                                bottom: s(6),
+                                width: s(2),
                                 backgroundColor: colors.teal,
-                                borderRadius: 2
+                                borderRadius: s(2)
                               }}
                             />
                           )}
 
                           <View
                             style={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: 7,
+                              width: s(28),
+                              height: s(28),
+                              borderRadius: s(7),
                               backgroundColor: isActive
                                 ? colors.teal + '20'
                                 : colors.card,
                               alignItems: 'center',
                               justifyContent: 'center',
-                              marginRight: 9
+                              marginRight: s(9)
                             }}
                           >
                             <Icon
-                              size={14}
+                              size={s(14)}
                               color={isActive ? colors.teal : colors.label}
                               strokeWidth={isActive ? 2.5 : 2}
                             />
@@ -506,7 +516,7 @@ const SidebarNavigation = () => {
 
                           <Text
                             style={{
-                              fontSize: 12,
+                              fontSize: s(12),
                               fontWeight: isActive ? '600' : '400',
                               color: isActive ? colors.teal : colors.label,
                               flex: 1
@@ -515,8 +525,8 @@ const SidebarNavigation = () => {
                             {item.label}
                           </Text>
 
-                          {/* Sync badge on General Settings: red for dead-letter, amber for pending queue */}
-                          {item.id === 'general' &&
+                          {/* Sync badge on Syncing tab: red for dead-letter, amber for pending queue */}
+                          {item.id === 'syncing' &&
                             deadLetterCount + pendingQueueCount > 0 && (
                               <View
                                 style={{
@@ -524,18 +534,18 @@ const SidebarNavigation = () => {
                                     deadLetterCount > 0
                                       ? colors.danger
                                       : colors.warning,
-                                  borderRadius: 8,
-                                  minWidth: 16,
-                                  height: 16,
+                                  borderRadius: s(8),
+                                  minWidth: s(16),
+                                  height: s(16),
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  paddingHorizontal: 4
+                                  paddingHorizontal: s(4)
                                 }}
                               >
                                 <Text
                                   style={{
                                     color: colors.onSolid,
-                                    fontSize: 9,
+                                    fontSize: s(9),
                                     fontWeight: '700'
                                   }}
                                 >
@@ -557,7 +567,7 @@ const SidebarNavigation = () => {
       {/* Footer — tap to check for updates */}
       <View
         style={{
-          padding: 12,
+          padding: s(12),
           borderTopWidth: 1,
           borderTopColor: colors.border
         }}
@@ -572,8 +582,8 @@ const SidebarNavigation = () => {
           activeOpacity={0.7}
           style={{
             backgroundColor: colors.card,
-            borderRadius: 8,
-            padding: 10,
+            borderRadius: s(8),
+            padding: s(10),
             borderWidth: 1,
             borderColor:
               updateStatus === 'ready' || updateStatus === 'up-to-date'
@@ -584,7 +594,7 @@ const SidebarNavigation = () => {
           }}
         >
           <Text
-            style={{ fontSize: 11, color: colors.muted, textAlign: 'center' }}
+            style={{ fontSize: s(11), color: colors.muted, textAlign: 'center' }}
           >
             Version {Constants.expoConfig?.version ?? '—'}
           </Text>
@@ -592,10 +602,10 @@ const SidebarNavigation = () => {
           {updateStatus === 'idle' ? (
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.muted,
                 textAlign: 'center',
-                marginTop: 2,
+                marginTop: s(2),
                 opacity: 0.7
               }}
             >
@@ -607,12 +617,12 @@ const SidebarNavigation = () => {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginTop: 3,
-                gap: 4
+                marginTop: s(3),
+                gap: s(4)
               }}
             >
               <ActivityIndicator size='small' color={colors.teal} />
-              <Text style={{ fontSize: 10, color: colors.teal }}>
+              <Text style={{ fontSize: s(10), color: colors.teal }}>
                 Checking…
               </Text>
             </View>
@@ -622,22 +632,22 @@ const SidebarNavigation = () => {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginTop: 3,
-                gap: 4
+                marginTop: s(3),
+                gap: s(4)
               }}
             >
               <ActivityIndicator size='small' color={colors.teal} />
-              <Text style={{ fontSize: 10, color: colors.teal }}>
+              <Text style={{ fontSize: s(10), color: colors.teal }}>
                 Downloading update…
               </Text>
             </View>
           ) : updateStatus === 'ready' ? (
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.success,
                 textAlign: 'center',
-                marginTop: 2,
+                marginTop: s(2),
                 fontWeight: '600'
               }}
             >
@@ -646,10 +656,10 @@ const SidebarNavigation = () => {
           ) : updateStatus === 'up-to-date' ? (
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.success,
                 textAlign: 'center',
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               Up to date
@@ -657,10 +667,10 @@ const SidebarNavigation = () => {
           ) : updateStatus === 'error' ? (
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 color: colors.danger,
                 textAlign: 'center',
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
               Check failed — tap to retry
@@ -670,10 +680,10 @@ const SidebarNavigation = () => {
           {!__DEV__ && Updates.updateId ? (
             <Text
               style={{
-                fontSize: 8,
+                fontSize: s(8),
                 color: colors.muted,
                 textAlign: 'center',
-                marginTop: 3,
+                marginTop: s(3),
                 opacity: 0.5,
                 fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace'
               }}

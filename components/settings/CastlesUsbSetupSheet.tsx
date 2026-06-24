@@ -22,6 +22,7 @@
  */
 
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import {
   listDevices,
   requestPermission,
@@ -71,6 +72,8 @@ interface Props {
 }
 
 export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [stage, setStage] = useState<Stage>('idle')
   const [error, setError] = useState<string | null>(null)
   const [errorHint, setErrorHint] = useState<string | null>(null)
@@ -252,16 +255,16 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
           backgroundColor: 'rgba(0,0,0,0.78)',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: 24,
+          padding: s(24),
         }}
       >
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 16,
-            padding: 22,
+            borderRadius: s(16),
+            padding: s(22),
             width: '100%',
-            maxWidth: 460,
+            maxWidth: s(460),
             borderWidth: 1,
             borderColor: colors.border,
           }}
@@ -271,23 +274,23 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 10,
-              marginBottom: 12,
+              gap: s(10),
+              marginBottom: s(12),
             }}
           >
-            <Usb size={22} color={colors.teal} />
-            <Text style={{ flex: 1, fontSize: 17, fontWeight: '700', color: colors.heading }}>
+            <Usb size={s(22)} color={colors.teal} />
+            <Text style={{ flex: 1, fontSize: s(17), fontWeight: '700', color: colors.heading }}>
               Verify Castles over USB
             </Text>
-            <TouchableOpacity onPress={handleClose} hitSlop={8}>
-              <X size={20} color={colors.muted} />
+            <TouchableOpacity onPress={handleClose} hitSlop={s(8)}>
+              <X size={s(20)} color={colors.muted} />
             </TouchableOpacity>
           </View>
 
           {/* Stage UI */}
           {stage === 'idle' && (
-            <View style={{ gap: 12 }}>
-              <Text style={{ color: colors.label, fontSize: 13, lineHeight: 19 }}>
+            <View style={{ gap: s(12) }}>
+              <Text style={{ color: colors.label, fontSize: s(13), lineHeight: s(19) }}>
                 Plug the Castles Saturn1000 into the tablet via USB-OTG, then tap
                 Detect. We&rsquo;ll find the device, request USB permission, and
                 run a handshake to confirm the terminal app is responding before
@@ -299,36 +302,37 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
             <StageProgress stage={stage} liveDetail={connectActivity} />
           )}
           {stage === 'success' && found && (
-            <View style={{ gap: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <CheckCircle2 size={20} color={colors.success} />
-                <Text style={{ color: colors.success, fontWeight: '700', fontSize: 15 }}>
+            <View style={{ gap: s(10) }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+                <CheckCircle2 size={s(20)} color={colors.success} />
+                <Text style={{ color: colors.success, fontWeight: '700', fontSize: s(15) }}>
                   Terminal verified
                 </Text>
               </View>
               <View
                 style={{
-                  padding: 12,
-                  borderRadius: 8,
+                  padding: s(12),
+                  borderRadius: s(8),
                   backgroundColor: colors.screen,
-                  gap: 4,
+                  gap: s(4),
                 }}
               >
-                <DetailRow label='Device' value={found.productName || '(unnamed)'} />
+                <DetailRow label='Device' value={found.productName || '(unnamed)'} uiScale={uiScale} />
                 <DetailRow
                   label='VID/PID'
                   value={`0x${found.vendorId.toString(16).padStart(4, '0')} / 0x${found.productId.toString(16).padStart(4, '0')}`}
                   mono
+                  uiScale={uiScale}
                 />
-                <DetailRow label='Serial (USB)' value={found.serialNumber || '—'} />
+                <DetailRow label='Serial (USB)' value={found.serialNumber || '—'} uiScale={uiScale} />
               </View>
             </View>
           )}
           {stage === 'failed' && (
-            <View style={{ gap: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                <AlertCircle size={20} color={colors.danger} />
-                <Text style={{ flex: 1, color: colors.danger, fontWeight: '600', fontSize: 14 }}>
+            <View style={{ gap: s(10) }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: s(8) }}>
+                <AlertCircle size={s(20)} color={colors.danger} />
+                <Text style={{ flex: 1, color: colors.danger, fontWeight: '600', fontSize: s(14) }}>
                   {error}
                 </Text>
               </View>
@@ -336,11 +340,11 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
                 <Text
                   style={{
                     color: colors.muted,
-                    fontSize: 12,
-                    lineHeight: 18,
+                    fontSize: s(12),
+                    lineHeight: s(18),
                     backgroundColor: colors.screen,
-                    padding: 10,
-                    borderRadius: 8,
+                    padding: s(10),
+                    borderRadius: s(8),
                   }}
                 >
                   {errorHint}
@@ -350,19 +354,19 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
           )}
 
           {/* Actions */}
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <View style={{ flexDirection: 'row', gap: s(10), marginTop: s(18) }}>
             <TouchableOpacity
               onPress={handleClose}
               style={{
                 flex: 1,
-                paddingVertical: 12,
-                borderRadius: 10,
+                paddingVertical: s(12),
+                borderRadius: s(10),
                 borderWidth: 1,
                 borderColor: colors.border,
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: colors.heading, fontWeight: '600', fontSize: 14 }}>
+              <Text style={{ color: colors.heading, fontWeight: '600', fontSize: s(14) }}>
                 {stage === 'success' ? 'Done' : 'Cancel'}
               </Text>
             </TouchableOpacity>
@@ -372,8 +376,8 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
                 disabled={stage === 'detecting' || stage === 'permission' || stage === 'handshake'}
                 style={{
                   flex: 1,
-                  paddingVertical: 12,
-                  borderRadius: 10,
+                  paddingVertical: s(12),
+                  borderRadius: s(10),
                   backgroundColor:
                     stage === 'detecting' || stage === 'permission' || stage === 'handshake'
                       ? colors.teal + '60'
@@ -381,7 +385,7 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: s(14) }}>
                   {stage === 'idle' ? 'Detect' : stage === 'failed' ? 'Try Again' : 'Working…'}
                 </Text>
               </TouchableOpacity>
@@ -395,6 +399,8 @@ export function CastlesUsbSetupSheet ({ visible, onCancel, onVerified }: Props) 
 
 /** Loader2 icon with a continuous rotation so progress never looks frozen. */
 function Spinner ({ size = 28, color }: { size?: number; color: string }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const spin = useRef(new Animated.Value(0)).current
   useEffect(() => {
     const loop = Animated.loop(
@@ -414,7 +420,7 @@ function Spinner ({ size = 28, color }: { size?: number; color: string }) {
   })
   return (
     <Animated.View style={{ transform: [{ rotate }] }}>
-      <Loader2 size={size} color={color} />
+      <Loader2 size={s(size)} color={color} />
     </Animated.View>
   )
 }
@@ -426,6 +432,8 @@ function StageProgress ({
   stage: 'detecting' | 'permission' | 'handshake'
   liveDetail?: string | null
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const meta: Record<
     typeof stage,
     { step: number; label: string; detail: string }
@@ -447,33 +455,33 @@ function StageProgress ({
     },
   }
   const m = meta[stage]
-  // During the handshake the service streams live sub-steps ("Connecting…",
-  // "Waking terminal…", "Verifying…", "Reconnecting (2/3)…") — show those as the
+  // During the handshake the service streams live sub-steps (“Connecting…”,
+  // “Waking terminal…”, “Verifying…”, “Reconnecting (2/3)…”) — show those as the
   // headline so the user sees real progress instead of one frozen label.
   const label = stage === 'handshake' && liveDetail ? liveDetail : m.label
   return (
-    <View style={{ alignItems: 'center', gap: 8, paddingVertical: 16 }}>
+    <View style={{ alignItems: 'center', gap: s(8), paddingVertical: s(16) }}>
       <Spinner size={28} color={colors.teal} />
       <Text
         style={{
           color: colors.muted,
-          fontSize: 11,
+          fontSize: s(11),
           fontWeight: '700',
-          letterSpacing: 0.6,
+          letterSpacing: s(0.6),
         }}
       >
         STEP {m.step} OF 3
       </Text>
-      <Text style={{ color: colors.heading, fontSize: 14, fontWeight: '600' }}>
+      <Text style={{ color: colors.heading, fontSize: s(14), fontWeight: '600' }}>
         {label}
       </Text>
       <Text
         style={{
           color: colors.muted,
-          fontSize: 12,
-          lineHeight: 18,
+          fontSize: s(12),
+          lineHeight: s(18),
           textAlign: 'center',
-          maxWidth: 320,
+          maxWidth: s(320),
         }}
       >
         {m.detail}
@@ -482,13 +490,14 @@ function StageProgress ({
   )
 }
 
-function DetailRow ({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function DetailRow ({ label, value, mono, uiScale }: { label: string; value: string; mono?: boolean; uiScale: number }) {
+  const s = (n: number) => Math.round(n * uiScale)
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-      <Text style={{ fontSize: 12, color: colors.muted }}>{label}</Text>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: s(12) }}>
+      <Text style={{ fontSize: s(12), color: colors.muted }}>{label}</Text>
       <Text
         style={{
-          fontSize: 12,
+          fontSize: s(12),
           color: colors.heading,
           fontFamily: mono ? 'monospace' : undefined,
           maxWidth: '65%',

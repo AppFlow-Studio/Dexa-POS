@@ -2,6 +2,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
+import { useUiScale } from "@/lib/uiScale";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { Delete, Plus, X } from "lucide-react-native";
@@ -27,134 +28,134 @@ const MODIFIER_PRICE_DELTA_COLOR = "#15803D";
 const round2 = (value: number) =>
   Math.round((value + Number.EPSILON) * 100) / 100;
 
-const createStyles = (modalLayout: boolean) =>
+const createStyles = (modalLayout: boolean, s: (n: number) => number) =>
   StyleSheet.create({
     container: {
       flex: 1,
       width: "100%",
       minHeight: 0,
       backgroundColor: colors.screen,
-      padding: 10,
-      paddingBottom: 10,
-      gap: 6,
+      padding: s(10),
+      paddingBottom: s(10),
+      gap: s(6),
       justifyContent: "space-between",
     },
     topContent: {
-      gap: 6,
+      gap: s(6),
     },
     label: {
-      fontSize: 10,
+      fontSize: s(10),
       fontWeight: "700",
       color: colors.muted,
       letterSpacing: 0.5,
       textTransform: "uppercase",
-      marginBottom: 4,
+      marginBottom: s(4),
     },
     input: {
       backgroundColor: colors.panel,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 9,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      fontSize: 13,
+      borderRadius: s(9),
+      paddingHorizontal: s(12),
+      paddingVertical: s(8),
+      fontSize: s(13),
       color: colors.heading,
-      height: 38,
+      height: s(38),
     },
     modifierRow: {
       flexDirection: "row",
-      gap: 6,
+      gap: s(6),
       alignItems: "center",
     },
     stepTwoContent: {
-      gap: 8,
+      gap: s(8),
     },
     summaryRow: {
       flexDirection: "row",
-      gap: 8,
+      gap: s(8),
     },
     summaryCard: {
       flex: 1,
       backgroundColor: colors.panel,
       borderWidth: 1,
       borderColor: `${colors.teal}30`,
-      borderRadius: 10,
-      paddingHorizontal: 10,
-      paddingVertical: 9,
+      borderRadius: s(10),
+      paddingHorizontal: s(10),
+      paddingVertical: s(9),
       justifyContent: "center",
     },
     summaryValue: {
-      fontSize: 16,
+      fontSize: s(16),
       fontWeight: "700",
       color: colors.heading,
     },
     summarySubtext: {
-      fontSize: 10,
+      fontSize: s(10),
       color: colors.muted,
-      marginTop: 2,
+      marginTop: s(2),
     },
     toGoRow: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      gap: 8,
+      gap: s(8),
       backgroundColor: colors.panel,
       borderWidth: 1,
       borderColor: `${colors.teal}30`,
-      borderRadius: 10,
-      paddingHorizontal: 10,
-      paddingVertical: 9,
+      borderRadius: s(10),
+      paddingHorizontal: s(10),
+      paddingVertical: s(9),
     },
     toGoTitle: {
-      fontSize: 13,
+      fontSize: s(13),
       fontWeight: "700",
       color: colors.heading,
     },
     toGoSubtitle: {
-      fontSize: 11,
+      fontSize: s(11),
       color: colors.muted,
-      marginTop: 2,
+      marginTop: s(2),
     },
     modifierSection: {
       backgroundColor: colors.panel,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 10,
-      padding: 8,
-      gap: 8,
+      borderRadius: s(10),
+      padding: s(8),
+      gap: s(8),
     },
     modifierHeaderRow: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      gap: 8,
+      gap: s(8),
     },
     modifierHeaderText: {
       flex: 1,
-      fontSize: 11,
+      fontSize: s(11),
       color: colors.muted,
-      lineHeight: 15,
+      lineHeight: s(15),
     },
     emptyModifierState: {
-      borderRadius: 9,
+      borderRadius: s(9),
       borderWidth: 1,
       borderColor: colors.border,
       borderStyle: "dashed",
-      paddingHorizontal: 10,
-      paddingVertical: 12,
+      paddingHorizontal: s(10),
+      paddingVertical: s(12),
     },
     modifierChip: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      gap: 6,
+      gap: s(6),
       backgroundColor: colors.panel,
       borderWidth: 1,
       borderColor: `${colors.teal}25`,
-      borderRadius: 10,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      minWidth: modalLayout ? 180 : 156,
+      borderRadius: s(10),
+      paddingHorizontal: s(10),
+      paddingVertical: s(6),
+      minWidth: modalLayout ? s(180) : s(156),
       flexBasis: modalLayout ? "48%" : "100%",
       flexGrow: 1,
       maxWidth: "100%",
@@ -162,13 +163,13 @@ const createStyles = (modalLayout: boolean) =>
     modifierList: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 6,
-      marginTop: 2,
+      gap: s(6),
+      marginTop: s(2),
     },
     modifierAddBtn: {
-      width: 38,
-      height: 38,
-      borderRadius: 9,
+      width: s(38),
+      height: s(38),
+      borderRadius: s(9),
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: `${colors.teal}18`,
@@ -179,23 +180,23 @@ const createStyles = (modalLayout: boolean) =>
       backgroundColor: colors.panel,
       borderWidth: 1,
       borderColor: `${colors.teal}40`,
-      borderRadius: 10,
-      paddingVertical: 6,
+      borderRadius: s(10),
+      paddingVertical: s(6),
       alignItems: "center",
     },
     priceText: {
-      fontSize: 20,
+      fontSize: s(20),
       fontWeight: "700",
       color: colors.teal,
     },
     numpadRow: {
       flexDirection: "row",
-      gap: 4,
+      gap: s(4),
     },
     numpadBtn: {
       flex: 1,
-      height: 36,
-      borderRadius: 9,
+      height: s(36),
+      borderRadius: s(9),
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.panel,
@@ -203,19 +204,19 @@ const createStyles = (modalLayout: boolean) =>
       borderColor: colors.border,
     },
     numpadText: {
-      fontSize: 15,
+      fontSize: s(15),
       fontWeight: "600",
       color: colors.heading,
     },
     actionRow: {
       flexDirection: "row",
-      gap: 8,
-      marginTop: 6,
+      gap: s(8),
+      marginTop: s(6),
     },
     clearBtn: {
       flex: 1,
-      height: 40,
-      borderRadius: 9,
+      height: s(40),
+      borderRadius: s(9),
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.panel,
@@ -224,14 +225,14 @@ const createStyles = (modalLayout: boolean) =>
     },
     addBtn: {
       flex: 1,
-      height: 40,
-      borderRadius: 9,
+      height: s(40),
+      borderRadius: s(9),
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.teal,
     },
     addBtnText: {
-      fontSize: 14,
+      fontSize: s(14),
       fontWeight: "700",
       color: colors.onSolid,
     },
@@ -247,9 +248,11 @@ const OpenItemAdder = ({
   modalLayout = false,
 }: OpenItemAdderProps) => {
   const { colorScheme } = useColorScheme();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const styles = useMemo(
-    () => createStyles(modalLayout),
-    [colorScheme, modalLayout],
+    () => createStyles(modalLayout, s),
+    [colorScheme, modalLayout, uiScale],
   );
 
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
@@ -316,54 +319,45 @@ const OpenItemAdder = ({
     setCurrentStep(2);
   };
 
+  // The raw typed string is the source of truth. "" means nothing has been
+  // entered yet, in which case we show the "0.00" placeholder. We never store
+  // "0.00" as the actual value — that conflated "empty" with "zero dollars" and
+  // made it impossible to type a leading-zero price like 0.50 (the placeholder
+  // already contained a ".", so the "." key was a no-op).
+  const setPrice = (raw: string) => {
+    setOpenItemPrice(raw);
+    setPriceDisplay(raw === "" ? "0.00" : raw);
+  };
+
   const handlePriceInput = (value: string) => {
+    const current = openItemPrice;
     if (value === "clear") {
-      setPriceDisplay("0.00");
-      setOpenItemPrice("0.00");
+      setPrice("");
       return;
     }
     if (value === "backspace") {
-      let current = priceDisplay;
-      if (current === "0.00") return;
-      if (current.length <= 1) {
-        setPriceDisplay("0.00");
-        setOpenItemPrice("0.00");
-        return;
-      }
-      const newDisplay = current.slice(0, -1);
-      if (newDisplay === "" || newDisplay === "0" || newDisplay === "-") {
-        setPriceDisplay("0.00");
-        setOpenItemPrice("0.00");
-      } else {
-        setPriceDisplay(newDisplay);
-        setOpenItemPrice(newDisplay);
-      }
+      setPrice(current.slice(0, -1));
       return;
     }
     if (value === ".") {
-      if (!priceDisplay.includes(".")) {
-        const base = priceDisplay === "0.00" ? "0" : priceDisplay;
-        const newDisplay = base + ".";
-        setPriceDisplay(newDisplay);
-        setOpenItemPrice(newDisplay);
+      if (!current.includes(".")) {
+        setPrice(current === "" ? "0." : current + ".");
       }
       return;
     }
     const isDigit = /^[0-9]$/.test(value);
     if (!isDigit) return;
-    if (priceDisplay === "0.00" || priceDisplay === "0") {
-      const newDisplay = value === "0" ? "0" : value;
-      setPriceDisplay(newDisplay);
-      setOpenItemPrice(newDisplay);
-      return;
-    }
-    if (priceDisplay.includes(".")) {
-      const [, decimals = ""] = priceDisplay.split(".");
+    if (current.includes(".")) {
+      const [, decimals = ""] = current.split(".");
       if (decimals.length >= 2) return;
     }
-    const newDisplay = priceDisplay + value;
-    setPriceDisplay(newDisplay);
-    setOpenItemPrice(newDisplay);
+    // "0" followed by a digit means the user meant that digit, not "05".
+    // (A "0." prefix is fine and handled by the generic append below.)
+    if (current === "0") {
+      if (value !== "0") setPrice(value);
+      return;
+    }
+    setPrice(current + value);
   };
 
   const handleAddOpenItem = () => {
@@ -537,20 +531,20 @@ const OpenItemAdder = ({
       <View style={styles.container}>
         <View style={styles.topContent}>
           {/* Header */}
-          <View style={{ marginBottom: 4 }}>
+          <View style={{ marginBottom: s(4) }}>
             <Text
-              style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}
+              style={{ fontSize: s(16), fontWeight: "700", color: colors.heading }}
             >
               Custom Item
             </Text>
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+            <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}>
               {currentStep === 1
                 ? "Step 1 of 2: enter the item name and base price"
                 : "Step 2 of 2: add custom modifiers and review the total"}
             </Text>
           </View>
 
-          <View style={{ flexDirection: "row", gap: 8, marginBottom: 4 }}>
+          <View style={{ flexDirection: "row", gap: s(8), marginBottom: s(4) }}>
             {[1, 2].map((step) => {
               const active = currentStep === step;
               const complete = currentStep > step;
@@ -559,8 +553,8 @@ const OpenItemAdder = ({
                   key={step}
                   style={{
                     flex: 1,
-                    height: 30,
-                    borderRadius: 9,
+                    height: s(30),
+                    borderRadius: s(9),
                     alignItems: "center",
                     justifyContent: "center",
                     borderWidth: 1,
@@ -572,7 +566,7 @@ const OpenItemAdder = ({
                 >
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: "700",
                       color: active || complete ? colors.teal : colors.muted,
                     }}
@@ -600,16 +594,14 @@ const OpenItemAdder = ({
               <View>
                 <Text style={styles.label}>Base Price</Text>
                 <View style={styles.priceDisplay}>
-                  <Text style={styles.priceText}>
-                    ${parsedBasePrice.toFixed(2)}
-                  </Text>
+                  <Text style={styles.priceText}>${priceDisplay}</Text>
                 </View>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.muted,
                     textAlign: "center",
-                    marginTop: 4,
+                    marginTop: s(4),
                   }}
                 >
                   Step 2 will let you add optional custom modifiers.
@@ -617,10 +609,10 @@ const OpenItemAdder = ({
                 {isDualPricing && (
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       color: colors.muted,
                       textAlign: "center",
-                      marginTop: 4,
+                      marginTop: s(4),
                     }}
                   >
                     Item Price Increase is enabled, the final total will be
@@ -643,7 +635,7 @@ const OpenItemAdder = ({
                         }
                       >
                         {btn === "backspace" ? (
-                          <Delete size={18} color={colors.muted} />
+                          <Delete size={s(18)} color={colors.muted} />
                         ) : (
                           <Text style={styles.numpadText}>{btn}</Text>
                         )}
@@ -715,7 +707,7 @@ const OpenItemAdder = ({
                       placeholderTextColor={colors.muted}
                     />
                   </View>
-                  <View style={{ width: 96 }}>
+                  <View style={{ width: s(96) }}>
                     <TextInput
                       style={styles.input}
                       value={modifierPrice}
@@ -729,7 +721,7 @@ const OpenItemAdder = ({
                     style={styles.modifierAddBtn}
                     onPress={handleAddModifier}
                   >
-                    <Plus size={16} color={colors.teal} />
+                    <Plus size={s(16)} color={colors.teal} />
                   </TouchableOpacity>
                 </View>
 
@@ -740,7 +732,7 @@ const OpenItemAdder = ({
                         <View style={{ flex: 1, paddingRight: 6 }}>
                           <Text
                             style={{
-                              fontSize: 12,
+                              fontSize: s(12),
                               fontWeight: "600",
                               color: colors.heading,
                             }}
@@ -750,10 +742,10 @@ const OpenItemAdder = ({
                           </Text>
                           <Text
                             style={{
-                              fontSize: 16,
+                              fontSize: s(16),
                               fontWeight: "600",
                               color: MODIFIER_PRICE_DELTA_COLOR,
-                              marginTop: 1,
+                              marginTop: s(1),
                             }}
                           >
                             +${modifier.price.toFixed(2)}
@@ -762,7 +754,7 @@ const OpenItemAdder = ({
                         <TouchableOpacity
                           onPress={() => removeModifier(modifier.id)}
                         >
-                          <X size={14} color={colors.muted} />
+                          <X size={s(14)} color={colors.muted} />
                         </TouchableOpacity>
                       </View>
                     ))}
@@ -789,7 +781,7 @@ const OpenItemAdder = ({
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "600",
                     color: colors.muted,
                   }}
@@ -809,7 +801,7 @@ const OpenItemAdder = ({
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "600",
                     color: colors.muted,
                   }}

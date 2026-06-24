@@ -2874,7 +2874,11 @@ const syncPaymentToBackend = async (
       //                            pay-for-items client paths already scale
       //                            items+tax up by the proportional SC share).
       "process_payment_v12",
-      "process_payment_v15",
+      // v16 — split-payment fully-paid requires ALL portions captured (drops
+      // v15's `balance <= 0.02` dust fallback that flipped a tiny split to paid
+      // after the first portion). MUST match orderService.processPayment, which
+      // also calls v16 — this is the direct (non-OrderService) payment path.
+      "process_payment_v16",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -2901,12 +2905,27 @@ const syncPaymentToBackend = async (
     );
 
     if (error) {
-      console.error(
-        "[syncPaymentToBackend] Failed to process payment in backend:",
-        error,
-      );
-
       const errMessage = (error as any)?.message?.toLowerCase?.() || "";
+
+      // P0005 = enforce_order_math: a transient cross-write race (the
+      // pre-payment apply_service_charge_v1 UPDATE can momentarily collide with
+      // an in-flight order write on a tiny split) makes the FIRST direct call
+      // reject, but the queued retry below settles cleanly. Log it as a warning,
+      // not a red error, so it doesn't read as a hard payment failure — the
+      // payment is captured on retry and the order reconciles to the correct
+      // partial/paid state.
+      if ((error as any)?.code === "P0005") {
+        console.warn(
+          "[syncPaymentToBackend] enforce_order_math (P0005) on direct call — queueing for retry (auto-recovers):",
+          (error as any)?.message,
+        );
+      } else {
+        console.error(
+          "[syncPaymentToBackend] Failed to process payment in backend:",
+          error,
+        );
+      }
+
       const isAlreadyPaidError =
         (error as any)?.code === "P0001" &&
         (errMessage.includes("no unpaid items remaining") ||
@@ -3152,12 +3171,29 @@ const syncPaymentToBackend = async (
       const activeOrderId = useOrderStore.getState().activeOrderId;
 
       // Pre-compute fully-paid check (used both inside and outside setState)
+      // The server's order_fully_paid is authoritative. The amount-based
+      // fallback only applies when the RPC didn't return an explicit flag — it
+      // must NOT override an explicit order_fully_paid=false. On a split, a
+      // single remaining portion can be <= 0.01 (e.g. $0.03 split 2 ways leaves
+      // $0.01 after the first $0.02 portion); letting the `<= 0.01` fallback win
+      // there flips the order to Paid mid-split, which then auto-closes the
+      // check and blocks the final portion ("Order is already fully paid").
+      const serverReportsPortionsRemaining =
+        data.is_split_payment === true &&
+        data.portions_remaining != null &&
+        data.portions_remaining > 0;
       const isFullyPaidByAmounts =
-        (data.order_amount_due != null && data.order_amount_due <= 0.01) ||
-        (data.order_cash_amount_due != null &&
-          data.order_cash_amount_due <= 0.01) ||
-        (data.unpaid_cash_total != null && data.unpaid_cash_total <= 0.01);
-      const isFullyPaid = data.order_fully_paid || isFullyPaidByAmounts;
+        !serverReportsPortionsRemaining &&
+        ((data.order_amount_due != null && data.order_amount_due <= 0.01) ||
+          (data.order_cash_amount_due != null &&
+            data.order_cash_amount_due <= 0.01) ||
+          (data.unpaid_cash_total != null && data.unpaid_cash_total <= 0.01));
+      const isFullyPaid =
+        data.order_fully_paid === true
+          ? true
+          : data.order_fully_paid === false
+            ? false
+            : isFullyPaidByAmounts;
 
       useOrderStore.setState((state) => {
         const currentOrder = state.ordersById[order.id];
@@ -6683,6 +6719,16 @@ export const useOrderStore = create<OrderState>()(
               delete state.dbOrderIdIndex[dbOrderId];
               delete state.persistableOrderIds[dbOrderId];
               delete state.pendingBackendUpdates[dbOrderId];
+              // Drop any tableOrderIdIndex entry that resolved to this order so
+              // it can't leave a dangling key (→ O(n) table-scan fallback in
+              // useTableSession). Surgical delete by value: a removed order is
+              // the only one that could have pointed here.
+              if (orderToRemove?.service_location_id) {
+                const sl = orderToRemove.service_location_id;
+                if (state.tableOrderIdIndex[sl] === dbOrderId) {
+                  delete state.tableOrderIdIndex[sl];
+                }
+              }
             });
 
             // Release ALL per-order/item satellite state (module dicts keyed by
@@ -11371,12 +11417,45 @@ export const useOrderStore = create<OrderState>()(
               useStoreSettingsStore.getState().taxRatesMap,
               order,
             );
+            // Prefer the backend-authoritative amount_due / cash_amount_due when
+            // present. The local calculateOrderTotals card-equivalent
+            // reconstruction inflates a cash payment by its dual-pricing
+            // cashSavings, and on a tiny split that over-count clamps the
+            // recomputed outstanding to 0 even though a portion is still owed
+            // (order.cash_amount_due is still correct). Using the stored value
+            // stops the "No unpaid items remaining" false reject when continuing
+            // a split. Fall back to the computed value when the field is absent.
+            const isCashOutstanding = method === "Cash" && !forceCardPricing;
+            const computedOutstanding = isCashOutstanding
+              ? prePaymentTotals.cash_outstanding_total
+              : prePaymentTotals.outstanding_total;
+            const storedOutstanding = isCashOutstanding
+              ? order.cash_amount_due
+              : order.amount_due;
             const outstandingBeforePayment =
-              method === "Cash" && !forceCardPricing
-                ? prePaymentTotals.cash_outstanding_total
-                : prePaymentTotals.outstanding_total;
+              storedOutstanding != null
+                ? Math.max(storedOutstanding, computedOutstanding)
+                : computedOutstanding;
 
-            if (outstandingBeforePayment <= 0.01) {
+            // A legitimate final even-split portion can be a sub-cent remainder
+            // (e.g. $0.05 split 3 ways → last portion is $0.03 but a $0.02 total
+            // can leave $0.01 owing). In that case outstanding == the portion we
+            // are about to collect, so this is NOT "already paid" — let it through.
+            // We only treat it as a true final portion when the explicit amount
+            // still covers what's owed.
+            const isFinalSplitPortion =
+              splitCount !== undefined &&
+              splitPortionIndex !== undefined &&
+              splitPortionIndex === splitCount;
+            const collectsRemaining =
+              forceExplicitAmount &&
+              amount > 0 &&
+              amount >= outstandingBeforePayment - 0.001;
+
+            if (
+              outstandingBeforePayment <= 0.01 &&
+              !(isFinalSplitPortion && collectsRemaining)
+            ) {
               toastService.show({
                 title: "Already Paid",
                 message: "No unpaid items remaining on this order.",
@@ -11714,11 +11793,24 @@ export const useOrderStore = create<OrderState>()(
               order,
             );
 
-            // Determine if order is fully paid based on outstanding amount
+            // Determine if order is fully paid based on outstanding amount.
+            // The <= 0.01 tolerance absorbs cross-mode rounding dust, but on a
+            // tiny even-split it is the size of a whole remaining portion: a
+            // $0.02 item split 2 ways leaves cash_outstanding = $0.01 after the
+            // FIRST $0.01 portion, which would optimistically (and wrongly) read
+            // Paid. Pushing that Paid state while a portion is still owed makes
+            // the server's enforce_order_math trigger reject the write (P0005:
+            // payment_status=paid but amount_paid<total). For an even split the
+            // order can only be fully paid on the LAST portion, so gate on that.
+            const isLastSplitPortion =
+              splitCount == null ||
+              splitPortionIndex == null ||
+              splitPortionIndex >= splitCount;
             const isFullyPaid =
-              method === "Cash"
+              isLastSplitPortion &&
+              (method === "Cash"
                 ? totals.cash_outstanding_total <= 0.01
-                : totals.outstanding_total <= 0.01; // Allow tiny rounding margin
+                : totals.outstanding_total <= 0.01); // Allow tiny rounding margin
 
             // Determine new order status:
             // - If order is in "draft" and payment is made, move to "preparing"
@@ -12221,16 +12313,29 @@ export const useOrderStore = create<OrderState>()(
             const keepSet = new Set<string>();
             const now = Date.now();
 
-            if (state.activeOrderId) keepSet.add(state.activeOrderId);
-            for (const id of state.workingSetOrderIds) keepSet.add(id);
-            for (const id of state.unsyncedOrderIds) keepSet.add(id);
-
             const inactiveStatuses = new Set([
               "completed",
               "voided",
               "cancelled",
               "void",
             ]);
+
+            if (state.activeOrderId) keepSet.add(state.activeOrderId);
+            // Working-set membership grows by one for EVERY table opened during
+            // a shift (setActiveOrder → addToWorkingSet), and nothing trims it
+            // (removeFromWorkingSet is never called). Unconditionally pinning
+            // the whole working set here meant completed orders could never be
+            // pruned — ordersById grew unbounded across a busy service (the
+            // core sustained-perf leak). Pin a working-set order only while it's
+            // NOT in a terminal status; once completed it falls through to the
+            // age/LRU caps below like any other inactive order.
+            for (const id of state.workingSetOrderIds) {
+              const o = state.ordersById[id];
+              if (o && !inactiveStatuses.has(o.order_status ?? "")) {
+                keepSet.add(id);
+              }
+            }
+            for (const id of state.unsyncedOrderIds) keepSet.add(id);
 
             // Collect completed orders to enforce LRU cap
             const completedOrders: { id: string; time: number }[] = [];
@@ -12342,9 +12447,26 @@ export const useOrderStore = create<OrderState>()(
                   delete draft.ordersById[id];
                   delete draft.persistableOrderIds[id];
                   delete draft.pendingBackendUpdates[id];
+                  // Mirror removeOrder()'s working-set cleanup. Without this a
+                  // pruned completed order left a dangling entry in
+                  // workingSetOrderIds / _workingSetLookup pointing at a key no
+                  // longer in ordersById — leaking across a shift and forcing
+                  // working-set iterators to walk dead refs.
+                  delete draft._workingSetLookup[id];
                 }
               }
               draft.orderIds = draft.orderIds.filter((id) => keepSet.has(id));
+              draft.workingSetOrderIds = draft.workingSetOrderIds.filter((id) =>
+                keepSet.has(id),
+              );
+              // Rebuild from the surviving orders so a pruned order can't leave
+              // a stale tableOrderIdIndex entry. A stale entry resolves to a
+              // dead key in useTableSession's Priority-2.5 lookup and silently
+              // falls through to the O(n) full orderIds table-scan — the slow
+              // path that grows with every cleared table on a busy floor.
+              draft.tableOrderIdIndex = rebuildTableOrderIdIndex(
+                draft.ordersById,
+              );
             });
 
             for (const { key, order } of ordersToRelease) {
@@ -16841,10 +16963,26 @@ export const useOrderStore = create<OrderState>()(
                       null,
                   };
 
-                  // Self-healing: if amount_due ≈ 0 and all payments synced, ensure paid_status = "Paid"
+                  // Self-healing: if amount_due ≈ 0 and all payments synced, ensure paid_status = "Paid".
+                  // Guard: also require collected money to actually cover the
+                  // total. On a tiny even-split (e.g. $0.02 split 2 ways) the
+                  // server can report amount_due≈0 after the FIRST $0.01 portion
+                  // while the order is genuinely still Partial; healing to Paid
+                  // there pushes a paid/amount_paid<total contradiction that the
+                  // server's enforce_order_math rejects (P0005).
+                  const _healPaidTotal =
+                    (updatedOrder as any).total_amount ??
+                    (updatedOrder as any).card_total ??
+                    0;
+                  const _healAmountPaid = (updatedOrder.payments ?? []).reduce(
+                    (sum, p) =>
+                      sum + (p.amount ?? 0) - (p.refundedAmount ?? 0),
+                    0,
+                  );
                   if (
                     updatedOrder.paid_status !== "Paid" &&
                     (updatedOrder.amount_due ?? 0) <= 0.01 &&
+                    _healAmountPaid + 0.01 >= _healPaidTotal &&
                     (updatedOrder.payments ?? []).length > 0 &&
                     (updatedOrder.payments ?? []).every(
                       (p) => !!p.db_payment_id,

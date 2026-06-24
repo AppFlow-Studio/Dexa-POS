@@ -1,5 +1,6 @@
 "use no memo";
 
+import { useUiScale } from "@/lib/uiScale";
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { PrinterService } from "@/services/printing/PrinterService";
@@ -25,6 +26,8 @@ import SendReceiptSheet from "@/components/receipts/SendReceiptSheet";
 import type { SendReceiptDeliveryMethod } from "@/services/messaging/sendReceiptService";
 
 const PaymentSuccessView = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const close = usePaymentStore((s) => s.close);
   const paymentMethod = usePaymentStore((s) => s.paymentMethod);
   const completedPaymentInfo = usePaymentStore((s) => s.completedPaymentInfo);
@@ -263,20 +266,20 @@ const PaymentSuccessView = () => {
   return (
     <View className="flex-1 justify-between" style={{ backgroundColor: colors.screen }}>
       {/* Main Content - Centered vertically if possible */}
-      <View className="flex-1 justify-center items-center px-6" style={{ paddingTop: 28, paddingBottom: 28 }}>
+      <View className="flex-1 justify-center items-center px-6" style={{ paddingTop: s(28), paddingBottom: s(28) }}>
         {/* Success Icon */}
         <Animated.View
           entering={iosOnly(FadeIn.delay(100))}
           className="items-center mb-6"
-          style={{ marginTop: 8 }}
+          style={{ marginTop: s(8) }}
         >
-          <View style={{ width: 80, height: 80, backgroundColor: colors.success + "15", borderRadius: 40, alignItems: "center", justifyContent: "center", marginBottom: 20, borderWidth: 2, borderColor: colors.success + "40" }}>
-            <Check color={colors.success} size={44} strokeWidth={3.5} />
+          <View style={{ width: s(80), height: s(80), backgroundColor: colors.success + "15", borderRadius: s(40), alignItems: "center", justifyContent: "center", marginBottom: s(20), borderWidth: 2, borderColor: colors.success + "40" }}>
+            <Check color={colors.success} size={s(44)} strokeWidth={3.5} />
           </View>
-          <Text style={{ fontSize: 28, fontWeight: "800", color: colors.heading, marginBottom: 8 }}>
+          <Text style={{ fontSize: s(28), fontWeight: "800", color: colors.heading, marginBottom: s(8) }}>
             Payment Successful
           </Text>
-          <Text style={{ fontSize: 14, color: colors.label, fontWeight: "600" }}>
+          <Text style={{ fontSize: s(14), color: colors.label, fontWeight: "600" }}>
             {(completedPaymentInfo?.paymentMethod || paymentMethod || "Card")} Payment
           </Text>
         </Animated.View>
@@ -284,7 +287,7 @@ const PaymentSuccessView = () => {
         {/* Compact Receipt Card */}
         <Animated.View
           entering={iosOnly(FadeInUp.delay(200))}
-          style={{ width: "100%", maxWidth: 400, backgroundColor: colors.panel, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 22, alignItems: "center" }}
+          style={{ width: "100%", maxWidth: s(400), backgroundColor: colors.panel, borderRadius: s(16), borderWidth: 1, borderColor: colors.border, padding: s(22), alignItems: "center" }}
         >
           {/* Use captured payment info from store to prevent real-time sync overwrites */}
           {(() => {
@@ -320,32 +323,32 @@ const PaymentSuccessView = () => {
               <>
                 {totalTips > 0 ? (
                   <>
-                    <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 4 }}>
+                    <Text style={{ color: colors.muted, fontSize: s(11), fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: s(4) }}>
                       Bill Total
                     </Text>
-                    <Text style={{ fontSize: 26, fontWeight: "700", color: colors.heading, marginBottom: 10 }}>
+                    <Text style={{ fontSize: s(26), fontWeight: "700", color: colors.heading, marginBottom: s(10) }}>
                       ${totalPaid.toFixed(2)}
                     </Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-                      <Text style={{ color: colors.muted, fontSize: 12, marginRight: 8 }}>Tip:</Text>
-                      <Text style={{ color: colors.success, fontSize: 17, fontWeight: "700" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: s(10) }}>
+                      <Text style={{ color: colors.muted, fontSize: s(12), marginRight: s(8) }}>Tip:</Text>
+                      <Text style={{ color: colors.success, fontSize: s(17), fontWeight: "700" }}>
                         +${totalTips.toFixed(2)}
                       </Text>
                     </View>
-                    <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: 12 }} />
-                    <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 4 }}>
+                    <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: s(12) }} />
+                    <Text style={{ color: colors.muted, fontSize: s(11), fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: s(4) }}>
                       Grand Total
                     </Text>
-                    <Text style={{ fontSize: 38, fontWeight: "800", color: colors.teal, marginBottom: 14 }}>
+                    <Text style={{ fontSize: s(38), fontWeight: "800", color: colors.teal, marginBottom: s(14) }}>
                       ${grandTotal.toFixed(2)}
                     </Text>
                   </>
                 ) : (
                   <>
-                    <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 4 }}>
+                    <Text style={{ color: colors.muted, fontSize: s(11), fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: s(4) }}>
                       Total Paid
                     </Text>
-                    <Text style={{ fontSize: 42, fontWeight: "800", color: colors.teal, marginBottom: 24 }}>
+                    <Text style={{ fontSize: s(42), fontWeight: "800", color: colors.teal, marginBottom: s(24) }}>
                       ${totalPaid.toFixed(2)}
                     </Text>
                   </>
@@ -354,17 +357,17 @@ const PaymentSuccessView = () => {
             );
           })()}
 
-          <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: 18 }} />
+          <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: s(18) }} />
 
-          <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%", marginBottom: 12 }}>
-            <Text style={{ color: colors.muted, fontSize: 13 }}>Transaction ID</Text>
-            <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 13 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%", marginBottom: s(12) }}>
+            <Text style={{ color: colors.muted, fontSize: s(13) }}>Transaction ID</Text>
+            <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(13) }}>
               #{activeOrder?.id.slice(-6).toUpperCase()}
             </Text>
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%" }}>
-            <Text style={{ color: colors.muted, fontSize: 13 }}>Date</Text>
-            <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 13 }}>
+            <Text style={{ color: colors.muted, fontSize: s(13) }}>Date</Text>
+            <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(13) }}>
               {new Date().toLocaleDateString()}
             </Text>
           </View>
@@ -372,48 +375,48 @@ const PaymentSuccessView = () => {
       </View>
 
       {/* Footer Actions - Fixed at Bottom */}
-      <View style={{ width: "100%", backgroundColor: colors.panel, paddingTop: 12, paddingBottom: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
-        <View style={{ paddingHorizontal: 20, gap: 10 }}>
+      <View style={{ width: "100%", backgroundColor: colors.panel, paddingTop: s(12), paddingBottom: s(16), borderTopWidth: 1, borderTopColor: colors.border }}>
+        <View style={{ paddingHorizontal: s(20), gap: s(10) }}>
           {/* Secondary Actions Row */}
-          <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ flexDirection: "row", gap: s(8) }}>
             <TouchableOpacity
               onPress={handlePrint}
               disabled={isPrinting}
-              style={{ flex: 1, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, opacity: isPrinting ? 0.6 : 1 }}
+              style={{ flex: 1, paddingVertical: s(8), backgroundColor: colors.card, borderRadius: s(8), borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: s(4), opacity: isPrinting ? 0.6 : 1 }}
             >
               {isPrinting ? (
                 <ActivityIndicator size="small" color={colors.label} />
               ) : (
-                <Printer size={13} color={colors.label} />
+                <Printer size={s(13)} color={colors.label} />
               )}
-              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 11 }}>
+              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(11) }}>
                 {isPrinting ? "Printing..." : "Print"}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => openSendReceipt("email")}
-              style={{ flex: 1, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 }}
+              style={{ flex: 1, paddingVertical: s(8), backgroundColor: colors.card, borderRadius: s(8), borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: s(4) }}
             >
-              <Mail size={13} color={colors.label} />
-              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 11 }}>Email</Text>
+              <Mail size={s(13)} color={colors.label} />
+              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(11) }}>Email</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => openSendReceipt("sms")}
-              style={{ flex: 1, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 }}
+              style={{ flex: 1, paddingVertical: s(8), backgroundColor: colors.card, borderRadius: s(8), borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: s(4) }}
             >
-              <MessageSquare size={13} color={colors.label} />
-              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 11 }}>Text</Text>
+              <MessageSquare size={s(13)} color={colors.label} />
+              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(11) }}>Text</Text>
             </TouchableOpacity>
           </View>
 
           {/* Primary Action */}
           <TouchableOpacity
             onPress={handleDone}
-            style={{ width: "100%", paddingVertical: 10, backgroundColor: colors.teal, borderRadius: 8, alignItems: "center", shadowColor: colors.teal, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 }}
+            style={{ width: "100%", paddingVertical: s(10), backgroundColor: colors.teal, borderRadius: s(8), alignItems: "center", shadowColor: colors.teal, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 }}
           >
-            <Text style={{ color: colors.onSolid, fontWeight: "700", fontSize: 13 }}>
+            <Text style={{ color: colors.onSolid, fontWeight: "700", fontSize: s(13) }}>
               {activeOrder?.order_type === "dine_in" || activeOrder?.order_type == 'Dine In'
                 ? "Finalize Payment"
                 : "Start New Order"}

@@ -8,6 +8,7 @@ import NetInfo from "@react-native-community/netinfo";
 import { Dimensions, PixelRatio, Platform } from "react-native";
 import { getJSON, setJSON } from "@/lib/storage";
 import { getDeviceId } from "@/lib/deviceId";
+import { computeUiScale } from "@/lib/uiScale";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { detectNativeHardware } from "@/native/HardwareDetection";
 
@@ -164,7 +165,7 @@ export async function detectDeviceCapabilities(): Promise<DeviceCapabilities> {
   setCachedCapabilities(capabilities);
 
   console.log(
-    `[DeviceDetection] Detected: ${manufacturer} ${model} | Printer: ${hasBuiltinPrinter} | CFD: ${hasBuiltinCfd} | NFC: ${hasNfc} | Scanner: ${hasBarcodeScanner}`,
+    `[DeviceDetection] Detected: ${manufacturer} ${model} | ${Math.round(width)}x${Math.round(height)}dp | density: ${screenDensity} | uiScale: ${computeUiScale(width, height).toFixed(2)} | Printer: ${hasBuiltinPrinter} | CFD: ${hasBuiltinCfd} | NFC: ${hasNfc} | Scanner: ${hasBarcodeScanner}`,
   );
 
   return capabilities;

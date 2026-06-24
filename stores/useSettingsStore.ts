@@ -161,7 +161,9 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   autoSelectFirstRequiredOption: boolean;
   setAutoSelectFirstRequiredOption: (value: boolean) => void;
 
-  // Actions
+  // UI Scale Override
+  uiScaleOverride: number | null;
+  setUiScaleOverride: (value: number | null) => void;
   setDefaultSittingTimeMinutes: (minutes: number) => void;
   setOrderLineSettings: (settings: Partial<OrderLineSettings>) => void;
   updateDiningSettings: (
@@ -489,6 +491,9 @@ export const useSettingsStore = create<SettingsState>()(
       setAutoSelectFirstRequiredOption: (value) =>
         set({ autoSelectFirstRequiredOption: value }),
 
+      // UI Scale Override
+      uiScaleOverride: null,
+
       setDefaultSittingTimeMinutes: (minutes) =>
         set({ defaultSittingTimeMinutes: minutes }),
 
@@ -550,6 +555,8 @@ export const useSettingsStore = create<SettingsState>()(
           ),
         })),
 
+      setUiScaleOverride: (value) => set({ uiScaleOverride: value }),
+
       setOrderLineSettings: (settings) =>
         set((state) => ({
           orderLineSettings: { ...state.orderLineSettings, ...settings },
@@ -583,8 +590,8 @@ export const useSettingsStore = create<SettingsState>()(
         autoSelectFirstRequiredOption: state.autoSelectFirstRequiredOption,
         // Order Line
         orderLineSettings: state.orderLineSettings,
-        // Printer Assignment
-        defaultReceiptPrinterId: state.defaultReceiptPrinterId,
+        // UI Scale Override
+        uiScaleOverride: state.uiScaleOverride,
       }),
     },
   ),

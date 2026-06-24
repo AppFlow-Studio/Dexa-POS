@@ -4,7 +4,7 @@ import { useSearchStore } from '@/stores/searchStore'
 import { useMenuStore } from '@/stores/useMenuStore'
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetScrollView,
+  BottomSheetFlatList,
   BottomSheetTextInput
 } from '@gorhom/bottom-sheet'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
@@ -45,28 +45,44 @@ const isScheduleActive = (schedules: Schedule[] | undefined): boolean => {
   })
 }
 
+type SearchItem = MenuItemType & {
+  menuName: string
+  displayPrice: number
+  isDisabled: boolean
+  disabledReason?: string
+  uniqueKey: string
+}
+
 interface SearchSection {
   title: string
-  data: (MenuItemType & {
-    menuName: string
-    displayPrice: number
-    isDisabled: boolean
-    disabledReason?: string
-    uniqueKey: string
-  })[]
+  data: SearchItem[]
 }
+
+// Flattened rows for the virtualized list: a section header or an item.
+type SearchRow =
+  | { type: 'header'; key: string; title: string }
+  | { type: 'item'; key: string; item: SearchItem }
 
 const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   const searchSheetRef = useRef<BottomSheetMethods>(null)
   const inputRef = useRef<any>(null)
   const snapPoints = useMemo(() => ['85%'], [])
   const [searchText, setSearchText] = useState('')
+  // Track open state so the (potentially huge) menu list only mounts while the
+  // sheet is visible. The sheet sits in the always-mounted root POS tree at
+  // index={-1}; without this gate it rendered EVERY menu item as a live view
+  // for the whole app lifetime (~2000 views on a full menu), inflating the
+  // baseline view tree the moment a station is selected.
+  const [isOpen, setIsOpen] = useState(false)
 
   const { menus } = useMenuStore(state => state)
   const { closeSearch, setSearchSheetRef } = useSearchStore()
 
-  // Menu-Aware Search Logic
+  // Menu-Aware Search Logic. Skip all work while the sheet is closed — there's
+  // nothing to display, and an empty search would otherwise materialize the
+  // entire menu into section data on every menus/searchText change.
   const searchResults = useMemo<SearchSection[]>(() => {
+    if (!isOpen) return []
     const trimmedSearch = searchText.trim().toLowerCase()
 
     const availableSections: SearchSection[] = []
@@ -147,7 +163,24 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
     })
 
     return [...availableSections, ...unavailableSections]
-  }, [searchText, menus])
+  }, [isOpen, searchText, menus])
+
+  // Flatten sections → a single virtualizable row list (header + item rows) so
+  // BottomSheetFlatList only mounts the rows currently on screen.
+  const searchRows = useMemo<SearchRow[]>(() => {
+    const rows: SearchRow[] = []
+    searchResults.forEach((section, sectionIndex) => {
+      rows.push({
+        type: 'header',
+        key: `section-${sectionIndex}`,
+        title: section.title
+      })
+      section.data.forEach(item => {
+        rows.push({ type: 'item', key: item.uniqueKey, item })
+      })
+    })
+    return rows
+  }, [searchResults])
 
   useLayoutEffect(() => {
     setSearchSheetRef(searchSheetRef as React.RefObject<BottomSheetMethods>)
@@ -166,12 +199,55 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
     []
   )
 
+  const renderRow = useCallback(({ item: row }: { item: SearchRow }) => {
+    if (row.type === 'header') {
+      return (
+        <View
+          style={{
+            paddingVertical: 6,
+            marginTop: 12,
+            marginBottom: 8,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '700',
+              color: colors.teal,
+              letterSpacing: 0.5,
+              textTransform: 'uppercase'
+            }}
+          >
+            {row.title}
+          </Text>
+        </View>
+      )
+    }
+    return (
+      <SearchResultItem
+        item={row.item}
+        menuName={row.item.menuName}
+        displayPrice={row.item.displayPrice}
+        isDisabled={row.item.isDisabled}
+        disabledReason={row.item.disabledReason}
+      />
+    )
+  }, [])
+
   const handleSheetChange = useCallback((index: number) => {
-    if (index >= 0) {
+    const open = index >= 0
+    setIsOpen(open)
+    if (open) {
       // Delay focus slightly so Android opens keyboard after expand animation starts.
       setTimeout(() => {
         inputRef.current?.focus?.()
       }, 80)
+    } else {
+      // Drop the search text on close so the next open starts clean and we don't
+      // hold a filtered result set while hidden.
+      setSearchText('')
     }
   }, [])
 
@@ -243,14 +319,21 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
         </View>
       </View>
 
-      <BottomSheetScrollView
+      <BottomSheetFlatList
+        data={searchRows}
+        keyExtractor={row => row.key}
+        renderItem={renderRow}
+        keyboardShouldPersistTaps='handled'
+        removeClippedSubviews
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 12,
           paddingBottom: 40
         }}
-      >
-        {searchResults.length === 0 ? (
+        ListEmptyComponent={
           <View
             style={{
               alignItems: 'center',
@@ -273,44 +356,8 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
                 : 'No items available'}
             </Text>
           </View>
-        ) : (
-          searchResults.map((section, sectionIndex) => (
-            <View key={`section-${sectionIndex}`} style={{ marginBottom: 20 }}>
-              <View
-                style={{
-                  paddingVertical: 6,
-                  marginBottom: 8,
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.border
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '700',
-                    color: colors.teal,
-                    letterSpacing: 0.5,
-                    textTransform: 'uppercase'
-                  }}
-                >
-                  {section.title}
-                </Text>
-              </View>
-
-              {section.data.map(item => (
-                <SearchResultItem
-                  key={item.uniqueKey}
-                  item={item}
-                  menuName={item.menuName}
-                  displayPrice={item.displayPrice}
-                  isDisabled={item.isDisabled}
-                  disabledReason={item.disabledReason}
-                />
-              ))}
-            </View>
-          ))
-        )}
-      </BottomSheetScrollView>
+        }
+      />
     </BottomSheet>
   )
 })

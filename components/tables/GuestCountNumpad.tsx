@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { colors } from '@/lib/theme'
 import React from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
@@ -15,10 +16,12 @@ const ROWS = [
 ]
 
 const GuestCountNumpad: React.FC<GuestCountNumpadProps> = ({ onKeyPress }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
-    <View style={{ gap: 8 }}>
+    <View style={{ gap: s(8) }}>
       {ROWS.map((row, rowIdx) => (
-        <View key={rowIdx} style={{ flexDirection: 'row', gap: 8 }}>
+        <View key={rowIdx} style={{ flexDirection: 'row', gap: s(8) }}>
           {row.map(btn => {
             const isBackspace = btn === 'backspace'
             const isClear = btn === 'clear'
@@ -31,8 +34,8 @@ const GuestCountNumpad: React.FC<GuestCountNumpadProps> = ({ onKeyPress }) => {
                 activeOpacity={0.65}
                 style={{
                   flex: 1,
-                  height: 56,
-                  borderRadius: 10,
+                  height: s(56),
+                  borderRadius: s(10),
                   alignItems: 'center',
                   justifyContent: 'center',
                   backgroundColor: isBackspace
@@ -47,10 +50,10 @@ const GuestCountNumpad: React.FC<GuestCountNumpadProps> = ({ onKeyPress }) => {
                 }}
               >
                 {isBackspace ? (
-                  <Delete size={18} color={colors.danger} />
+                  <Delete size={s(18)} color={colors.danger} />
                 ) : (
                   <Text style={{
-                    fontSize: isClear ? 13 : 20,
+                    fontSize: isClear ? s(13) : s(20),
                     fontWeight: isClear ? '600' : '700',
                     color: isClear ? colors.label : colors.heading
                   }}>

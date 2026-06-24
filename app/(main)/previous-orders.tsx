@@ -10,6 +10,7 @@ import {
 import { usePreviousOrdersListSync } from '@/hooks/pos/usePreviousOrdersListSync'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { OrderProfile } from '@/lib/types'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -99,28 +100,32 @@ const SkeletonBar = ({
   )
 }
 
-const SkeletonRow = () => (
+const SkeletonRow = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <View
     style={{
       backgroundColor: colors.panel,
-      borderRadius: 12,
-      marginHorizontal: 8,
-      marginBottom: 8,
-      padding: 16
+      borderRadius: s(12),
+      marginHorizontal: s(8),
+      marginBottom: s(8),
+      padding: s(16)
     }}
   >
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-      <SkeletonBar width={70} height={20} />
-      <SkeletonBar width={50} height={14} />
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(12) }}>
+      <SkeletonBar width={70} height={s(20)} />
+      <SkeletonBar width={50} height={s(14)} />
       <View style={{ flex: 1 }} />
-      <SkeletonBar width={60} height={24} style={{ borderRadius: 6 }} />
-      <SkeletonBar width={32} height={32} style={{ borderRadius: 16 }} />
-      <SkeletonBar width={40} height={20} style={{ borderRadius: 10 }} />
-      <SkeletonBar width={70} height={20} />
+      <SkeletonBar width={60} height={s(24)} style={{ borderRadius: s(6) }} />
+      <SkeletonBar width={32} height={s(32)} style={{ borderRadius: s(16) }} />
+      <SkeletonBar width={40} height={s(20)} style={{ borderRadius: s(10) }} />
+      <SkeletonBar width={70} height={s(20)} />
     </View>
-    <SkeletonBar width={180} height={12} style={{ marginTop: 6 }} />
+    <SkeletonBar width={180} height={s(12)} style={{ marginTop: s(6) }} />
   </View>
-)
+  )
+}
 
 // ─── Filter Pill Component ──────────────────────────────────
 interface FilterPillProps {
@@ -137,16 +142,19 @@ const FilterPill = ({
   onPress,
   icon,
   count
-}: FilterPillProps) => (
+}: FilterPillProps) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={0.7}
     style={{
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      gap: s(6),
+      paddingHorizontal: s(12),
+      paddingVertical: s(8),
       borderRadius: 999,
       backgroundColor: isActive ? colors.teal + '20' : 'transparent'
     }}
@@ -154,7 +162,7 @@ const FilterPill = ({
     {icon && typeof icon === 'string' ? icon : <View>{icon}</View>}
     <Text
       style={{
-        fontSize: 12,
+        fontSize: s(12),
         fontWeight: isActive ? '700' : '600',
         color: isActive ? colors.heading : colors.label
       }}
@@ -165,19 +173,20 @@ const FilterPill = ({
       <View
         style={{
           borderRadius: 999,
-          paddingHorizontal: 6,
-          minWidth: 20,
+          paddingHorizontal: s(6),
+          minWidth: s(20),
           alignItems: 'center',
           backgroundColor: isActive ? colors.teal + '30' : colors.teal + '15'
         }}
       >
-        <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal }}>
+        <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.teal }}>
           {count}
         </Text>
       </View>
     )}
   </TouchableOpacity>
-)
+  )
+}
 
 // ─── Sort Segment Group ─────────────────────────────────────
 const SortSegmentGroup = ({
@@ -189,6 +198,8 @@ const SortSegmentGroup = ({
   sortOrder: 'asc' | 'desc'
   onSortChange: (field: 'date' | 'total' | 'status') => void
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const segments: { key: 'date' | 'total' | 'status'; label: string }[] = [
     { key: 'date', label: 'Date' },
     { key: 'total', label: 'Amount' },
@@ -200,7 +211,7 @@ const SortSegmentGroup = ({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        borderRadius: 8,
+        borderRadius: s(8),
         overflow: 'hidden',
         borderWidth: 1,
         borderColor: colors.border,
@@ -226,15 +237,15 @@ const SortSegmentGroup = ({
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
+                gap: s(4),
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
                 backgroundColor: isActive ? colors.teal + '20' : 'transparent'
               }}
             >
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: isActive ? '700' : '600',
                   color: isActive ? colors.teal : colors.label
                 }}
@@ -243,9 +254,9 @@ const SortSegmentGroup = ({
               </Text>
               {isActive &&
                 (sortOrder === 'desc' ? (
-                  <ArrowDown color={colors.teal} size={12} />
+                  <ArrowDown color={colors.teal} size={s(12)} />
                 ) : (
-                  <ArrowUp color={colors.teal} size={12} />
+                  <ArrowUp color={colors.teal} size={s(12)} />
                 ))}
             </TouchableOpacity>
           </React.Fragment>
@@ -257,8 +268,10 @@ const SortSegmentGroup = ({
 
 // ─── Main Screen ────────────────────────────────────────────
 const PreviousOrdersScreen = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const router = useRouter()
-  const setActiveOrder = useOrderStore(s => s.setActiveOrder)
+  const setActiveOrder = useOrderStore(storeState => storeState.setActiveOrder)
 
   // Modal state
   const [activeModal, setActiveModal] = useState<'notes' | null>(null)
@@ -697,14 +710,14 @@ const PreviousOrdersScreen = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1, backgroundColor: colors.screen }}
     >
-      <View style={{ flex: 1, padding: 16, backgroundColor: colors.screen }}>
+      <View style={{ flex: 1, padding: s(16), backgroundColor: colors.screen }}>
         {/* ─── Date Pills ─────────────────────────────── */}
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
-            marginBottom: 8
+            gap: s(8),
+            marginBottom: s(8)
           }}
         >
           <DatePillRow
@@ -718,8 +731,8 @@ const PreviousOrdersScreen = () => {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
-            marginBottom: 10
+            gap: s(8),
+            marginBottom: s(10)
           }}
         >
           {/* Search bar */}
@@ -730,22 +743,22 @@ const PreviousOrdersScreen = () => {
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 8,
-              paddingHorizontal: 10,
+              borderRadius: s(8),
+              paddingHorizontal: s(10),
               width: 340
             }}
           >
-            <Search color={colors.label} size={15} />
+            <Search color={colors.label} size={s(15)} />
             <TextInput
               placeholder='Search order, customer, or phone...'
               placeholderTextColor={colors.muted}
               value={searchText}
               onChangeText={setSearchText}
               style={{
-                marginLeft: 6,
-                fontSize: 13,
-                paddingVertical: 8,
-                height: 36,
+                marginLeft: s(6),
+                fontSize: s(13),
+                paddingVertical: s(8),
+                height: s(36),
                 flex: 1,
                 color: colors.heading
               }}
@@ -756,49 +769,49 @@ const PreviousOrdersScreen = () => {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 6, alignItems: 'center' }}
+            contentContainerStyle={{ gap: s(6), alignItems: 'center' }}
             style={{ flex: 1 }}
           >
             <FilterPill
               label='Needs Attention'
               isActive={activeFilter === 'needs-attention'}
               onPress={() => toggleFilter('needs-attention')}
-              icon={<AlertTriangle color={colors.teal} size={13} />}
+              icon={<AlertTriangle color={colors.teal} size={s(13)} />}
               count={filterCounts.needsAttention}
             />
             <FilterPill
               label='Refunded'
               isActive={activeFilter === 'refunded'}
               onPress={() => toggleFilter('refunded')}
-              icon={<RotateCcw color={colors.teal} size={13} />}
+              icon={<RotateCcw color={colors.teal} size={s(13)} />}
               count={filterCounts.refunded}
             />
             <FilterPill
               label='Online'
               isActive={activeFilter === 'online'}
               onPress={() => toggleFilter('online')}
-              icon={<Globe color={colors.teal} size={13} />}
+              icon={<Globe color={colors.teal} size={s(13)} />}
               count={filterCounts.online}
             />
             <FilterPill
               label='Dine-In'
               isActive={activeFilter === 'dine-in'}
               onPress={() => toggleFilter('dine-in')}
-              icon={<Utensils color={colors.teal} size={13} />}
+              icon={<Utensils color={colors.teal} size={s(13)} />}
               count={filterCounts.dineIn}
             />
             <FilterPill
               label='Takeaway'
               isActive={activeFilter === 'takeaway'}
               onPress={() => toggleFilter('takeaway')}
-              icon={<ShoppingBag color={colors.teal} size={13} />}
+              icon={<ShoppingBag color={colors.teal} size={s(13)} />}
               count={filterCounts.takeaway}
             />
             <FilterPill
               label='Delivery'
               isActive={activeFilter === 'delivery'}
               onPress={() => toggleFilter('delivery')}
-              icon={<Truck color={colors.teal} size={13} />}
+              icon={<Truck color={colors.teal} size={s(13)} />}
               count={filterCounts.delivery}
             />
           </ScrollView>
@@ -815,7 +828,7 @@ const PreviousOrdersScreen = () => {
         <View
           style={{
             flex: 1,
-            borderRadius: 12,
+            borderRadius: s(12),
             overflow: 'hidden',
             position: 'relative',
             backgroundColor: colors.screen
@@ -836,7 +849,7 @@ const PreviousOrdersScreen = () => {
             drawDistance={500}
             ListEmptyComponent={
               isInitialLoading ? (
-                <View style={{ paddingTop: 4 }}>
+                <View style={{ paddingTop: s(4) }}>
                   {Array.from({ length: 6 }).map((_, i) => (
                     <SkeletonRow key={i} />
                   ))}
@@ -846,14 +859,14 @@ const PreviousOrdersScreen = () => {
                   style={{
                     alignItems: 'center',
                     justifyContent: 'center',
-                    paddingVertical: 64
+                    paddingVertical: s(64)
                   }}
                 >
-                  <Text style={{ fontSize: 20, color: colors.muted }}>
+                  <Text style={{ fontSize: s(20), color: colors.muted }}>
                     No orders found
                   </Text>
                   <Text
-                    style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}
+                    style={{ fontSize: s(14), color: colors.muted, marginTop: s(8) }}
                   >
                     Try adjusting your filters or search
                   </Text>
@@ -869,15 +882,15 @@ const PreviousOrdersScreen = () => {
               />
             }
             contentContainerStyle={{
-              paddingTop: 4,
-              paddingBottom: 16,
+              paddingTop: s(4),
+              paddingBottom: s(16),
               backgroundColor: colors.screen
             }}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.3}
             ListFooterComponent={
               isLoadingMore ? (
-                <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                <View style={{ paddingVertical: s(16), alignItems: 'center' }}>
                   <ActivityIndicator size='small' color={colors.teal} />
                 </View>
               ) : null
@@ -891,7 +904,7 @@ const PreviousOrdersScreen = () => {
               exiting={iosOnly(FadeOut.duration(200))}
               style={{
                 position: 'absolute',
-                top: 16,
+                top: s(16),
                 left: 0,
                 right: 0,
                 alignItems: 'center',
@@ -905,24 +918,24 @@ const PreviousOrdersScreen = () => {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 8,
-                  paddingHorizontal: 20,
-                  paddingVertical: 12,
+                  gap: s(8),
+                  paddingHorizontal: s(20),
+                  paddingVertical: s(12),
                   borderRadius: 999,
                   backgroundColor: colors.teal,
                   shadowColor: colors.teal,
-                  shadowOffset: { width: 0, height: 4 },
+                  shadowOffset: { width: 0, height: s(4) },
                   shadowOpacity: 0.3,
-                  shadowRadius: 8,
+                  shadowRadius: s(8),
                   elevation: 8
                 }}
               >
-                <RefreshCw size={16} color={colors.onSolid} />
+                <RefreshCw size={s(16)} color={colors.onSolid} />
                 <Text
                   style={{
                     color: colors.onSolid,
                     fontWeight: '600',
-                    fontSize: 14
+                    fontSize: s(14)
                   }}
                 >
                   {newOrdersCount} New Order{newOrdersCount > 1 ? 's' : ''} -

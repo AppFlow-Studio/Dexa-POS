@@ -1,5 +1,6 @@
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { CheckCircle2 } from "lucide-react-native";
 import React, { useCallback } from "react";
 import {
@@ -19,6 +20,8 @@ interface BulkCompleteModalProps {
 }
 
 const OrderRow = React.memo<{ order: OrderProfile }>(({ order }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const displayId =
     order.display_number || order.order_number || `#${order.id.slice(-4)}`;
   const total = order.total_amount ?? 0;
@@ -28,43 +31,43 @@ const OrderRow = React.memo<{ order: OrderProfile }>(({ order }) => {
       style={{
         flexDirection: "row",
         alignItems: "center",
-        paddingHorizontal: 14,
-        paddingVertical: 8,
+        paddingHorizontal: s(14),
+        paddingVertical: s(8),
         borderBottomWidth: 1,
         borderBottomColor: colors.border,
       }}
     >
       <View
         style={{
-          width: 8,
-          height: 8,
-          borderRadius: 4,
+          width: s(8),
+          height: s(8),
+          borderRadius: s(4),
           backgroundColor: colors.success,
-          marginRight: 10,
+          marginRight: s(10),
         }}
       />
       <Text
         style={{
-          fontSize: 13,
+          fontSize: s(13),
           fontWeight: "700",
           color: colors.heading,
-          width: 60,
+          width: s(60),
         }}
       >
         {displayId}
       </Text>
       <Text
-        style={{ fontSize: 12, color: colors.label, flex: 1 }}
+        style={{ fontSize: s(12), color: colors.label, flex: 1 }}
         numberOfLines={1}
       >
         {order.customer_name || "Walk-In"}
       </Text>
       <Text
         style={{
-          fontSize: 13,
+          fontSize: s(13),
           fontWeight: "600",
           color: colors.heading,
-          marginLeft: 8,
+          marginLeft: s(8),
         }}
       >
         ${total.toFixed(2)}
@@ -81,6 +84,8 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const renderItem = useCallback(
     ({ item }: { item: OrderProfile }) => <OrderRow order={item} />,
     [],
@@ -101,7 +106,7 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
           backgroundColor: "rgba(7, 10, 18, 0.58)",
           justifyContent: "center",
           alignItems: "center",
-          padding: 24,
+          padding: s(24),
         }}
         onPress={onCancel}
       >
@@ -109,9 +114,9 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
           onPress={() => {}}
           style={{
             width: "100%",
-            maxWidth: 420,
+            maxWidth: s(420),
             backgroundColor: colors.panel,
-            borderRadius: 22,
+            borderRadius: s(22),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: "hidden",
@@ -119,9 +124,9 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
         >
           <View
             style={{
-              paddingHorizontal: 18,
-              paddingTop: 18,
-              paddingBottom: 14,
+              paddingHorizontal: s(18),
+              paddingTop: s(18),
+              paddingBottom: s(14),
             }}
           >
             <View
@@ -131,12 +136,12 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
                 justifyContent: "space-between",
               }}
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: s(10) }}>
                 <View
                   style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 14,
+                    width: s(40),
+                    height: s(40),
+                    borderRadius: s(14),
                     backgroundColor: colors.success + "16",
                     borderWidth: 1,
                     borderColor: colors.success + "26",
@@ -144,19 +149,19 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
                     justifyContent: "center",
                   }}
                 >
-                  <CheckCircle2 size={18} color={colors.success} />
+                  <CheckCircle2 size={s(18)} color={colors.success} />
                 </View>
                 <View>
                   <Text
                     style={{
-                      fontSize: 18,
+                      fontSize: s(18),
                       fontWeight: "700",
                       color: colors.heading,
                     }}
                   >
                     Complete Orders
                   </Text>
-                  <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
+                  <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(3) }}>
                     Finalize ready tickets and move them into history.
                   </Text>
                 </View>
@@ -164,9 +169,9 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
 
               <View
                 style={{
-                  minWidth: 34,
-                  height: 28,
-                  paddingHorizontal: 10,
+                  minWidth: s(34),
+                  height: s(28),
+                  paddingHorizontal: s(10),
                   borderRadius: 999,
                   backgroundColor: colors.success + "16",
                   borderWidth: 1,
@@ -177,7 +182,7 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
               >
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: "700",
                     color: colors.success,
                   }}
@@ -190,17 +195,17 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
 
           <View
             style={{
-              marginHorizontal: 18,
-              marginBottom: 14,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              borderRadius: 14,
+              marginHorizontal: s(18),
+              marginBottom: s(14),
+              paddingHorizontal: s(14),
+              paddingVertical: s(12),
+              borderRadius: s(14),
               backgroundColor: colors.success + "0E",
               borderWidth: 1,
               borderColor: colors.success + "24",
             }}
           >
-            <Text style={{ fontSize: 12, color: colors.label, lineHeight: 18 }}>
+            <Text style={{ fontSize: s(12), color: colors.label, lineHeight: s(18) }}>
               You are about to complete{" "}
               <Text style={{ color: colors.heading, fontWeight: "700" }}>
                 {orders.length} order{orders.length !== 1 ? "s" : ""}
@@ -211,9 +216,9 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
 
           <View
             style={{
-              marginHorizontal: 18,
-              marginBottom: 16,
-              borderRadius: 16,
+              marginHorizontal: s(18),
+              marginBottom: s(16),
+              borderRadius: s(16),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
@@ -225,8 +230,8 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingHorizontal: 14,
-                paddingVertical: 10,
+                paddingHorizontal: s(14),
+                paddingVertical: s(10),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
                 backgroundColor: colors.panel,
@@ -234,7 +239,7 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: "700",
                   color: colors.muted,
                   letterSpacing: 0.4,
@@ -243,7 +248,7 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
               >
                 Orders Ready To Close
               </Text>
-              <Text style={{ fontSize: 11, color: colors.muted }}>
+              <Text style={{ fontSize: s(11), color: colors.muted }}>
                 Review before confirming
               </Text>
             </View>
@@ -252,7 +257,7 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
               data={orders}
               keyExtractor={keyExtractor}
               renderItem={renderItem}
-              style={{ maxHeight: 300 }}
+              style={{ maxHeight: s(300) }}
               initialNumToRender={10}
               windowSize={3}
             />
@@ -263,15 +268,15 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              gap: 10,
-              paddingHorizontal: 18,
-              paddingVertical: 16,
+              gap: s(10),
+              paddingHorizontal: s(18),
+              paddingVertical: s(16),
               borderTopWidth: 1,
               borderTopColor: colors.border,
               backgroundColor: colors.panel,
             }}
           >
-            <Text style={{ flex: 1, fontSize: 11, color: colors.muted, lineHeight: 16 }}>
+            <Text style={{ flex: 1, fontSize: s(11), color: colors.muted, lineHeight: s(16) }}>
               This action marks every listed order as completed immediately.
             </Text>
 
@@ -279,16 +284,16 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 10,
-                marginLeft: 12,
+                gap: s(10),
+                marginLeft: s(12),
               }}
             >
               <TouchableOpacity
                 onPress={onCancel}
                 style={{
-                  height: 40,
-                  paddingHorizontal: 16,
-                  borderRadius: 12,
+                  height: s(40),
+                  paddingHorizontal: s(16),
+                  borderRadius: s(12),
                   borderWidth: 1,
                   borderColor: colors.border,
                   backgroundColor: colors.card,
@@ -298,7 +303,7 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "600",
                     color: colors.label,
                   }}
@@ -311,17 +316,17 @@ const BulkCompleteModal: React.FC<BulkCompleteModalProps> = ({
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 7,
-                  height: 40,
-                  paddingHorizontal: 16,
-                  borderRadius: 12,
+                  gap: s(7),
+                  height: s(40),
+                  paddingHorizontal: s(16),
+                  borderRadius: s(12),
                   backgroundColor: colors.success,
                 }}
               >
-                <CheckCircle2 size={14} color={colors.onSolid} />
+                <CheckCircle2 size={s(14)} color={colors.onSolid} />
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "700",
                     color: colors.onSolid,
                   }}

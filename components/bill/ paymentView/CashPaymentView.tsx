@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { useCFD } from '@/contexts/CFDProvider'
 import { round2 } from '@/lib/order-calculator'
 import { colors } from '@/lib/theme'
@@ -16,6 +17,8 @@ import { Text, TouchableOpacity, View } from 'react-native'
 const PRESET_BILLS = [10, 20, 50, 100]
 
 const CashPaymentView = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const activeOrderId = useOrderStore(s => s.activeOrderId)
   const orderTotals = useActiveOrderTotals()
   const close = usePaymentStore(s => s.close)
@@ -195,6 +198,9 @@ const CashPaymentView = () => {
     return result
   })()
 
+  const labelStyle = getLabelStyle(s)
+  const inputStyle = getInputStyle(s)
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
       {/* ── Header ── */}
@@ -202,8 +208,8 @@ const CashPaymentView = () => {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 20,
-          paddingVertical: 12,
+          paddingHorizontal: s(20),
+          paddingVertical: s(12),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
           backgroundColor: colors.panel
@@ -215,14 +221,14 @@ const CashPaymentView = () => {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 5,
+            gap: s(5),
             opacity: isProcessing ? 0.4 : 1,
-            minWidth: 72
+            minWidth: s(72)
           }}
         >
-          <ArrowLeft size={15} color={colors.muted} />
+          <ArrowLeft size={s(15)} color={colors.muted} />
           <Text
-            style={{ color: colors.muted, fontSize: 13, fontWeight: '600' }}
+            style={{ color: colors.muted, fontSize: s(13), fontWeight: '600' }}
           >
             Back
           </Text>
@@ -232,7 +238,7 @@ const CashPaymentView = () => {
           style={{
             flex: 1,
             textAlign: 'center',
-            fontSize: 15,
+            fontSize: s(15),
             fontWeight: '700',
             color: colors.heading
           }}
@@ -240,7 +246,7 @@ const CashPaymentView = () => {
           Cash Payment
         </Text>
 
-        <View style={{ minWidth: 72 }} />
+        <View style={{ minWidth: s(72) }} />
       </View>
 
       {/* ── Body ── */}
@@ -252,17 +258,17 @@ const CashPaymentView = () => {
               width: '44%',
               borderRightWidth: 1,
               borderRightColor: colors.border,
-              padding: 18
+              padding: s(18)
             }}
           >
-            <View style={{ gap: 10 }}>
+            <View style={{ gap: s(10) }}>
               {/* Total Due */}
               <View
                 style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  paddingBottom: 10,
+                  paddingBottom: s(10),
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border
                 }}
@@ -270,7 +276,7 @@ const CashPaymentView = () => {
                 <Text
                   style={{
                     color: colors.muted,
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '600'
                   }}
                 >
@@ -278,7 +284,7 @@ const CashPaymentView = () => {
                 </Text>
                 <Text
                   style={{
-                    fontSize: 22,
+                    fontSize: s(22),
                     fontWeight: '800',
                     color: colors.heading
                   }}
@@ -288,12 +294,12 @@ const CashPaymentView = () => {
               </View>
 
               {/* Amount Received */}
-              <View style={{ gap: 5 }}>
-                <Text style={getLabelStyle()}>Amount Received</Text>
+              <View style={{ gap: s(5) }}>
+                <Text style={labelStyle}>Amount Received</Text>
                 <TouchableOpacity
                   onPress={() => setActiveInput('tendered')}
                   style={[
-                    getInputStyle(),
+                    inputStyle,
                     {
                       borderColor:
                         activeInput === 'tendered' ? colors.teal : colors.border
@@ -303,7 +309,7 @@ const CashPaymentView = () => {
                   <Text
                     style={{
                       color: colors.muted,
-                      fontSize: 16,
+                      fontSize: s(16),
                       fontWeight: '600'
                     }}
                   >
@@ -312,10 +318,10 @@ const CashPaymentView = () => {
                   <Text
                     style={{
                       flex: 1,
-                      fontSize: 20,
+                      fontSize: s(20),
                       fontWeight: '700',
                       color: colors.heading,
-                      marginLeft: 4
+                      marginLeft: s(4)
                     }}
                   >
                     {amountTendered || '0.00'}
@@ -324,24 +330,24 @@ const CashPaymentView = () => {
               </View>
 
               {/* Cash Tip */}
-              <View style={{ gap: 5 }}>
+              <View style={{ gap: s(5) }}>
                 <View
                   style={{
                     flexDirection: 'row',
                     justifyContent: 'space-between'
                   }}
                 >
-                  <Text style={getLabelStyle()}>Cash Tip (Optional)</Text>
-                  <Text style={{ color: colors.muted, fontSize: 10 }}>
+                  <Text style={labelStyle}>Cash Tip (Optional)</Text>
+                  <Text style={{ color: colors.muted, fontSize: s(10) }}>
                     Goes to server tip-out
                   </Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => setActiveInput('tip')}
                   style={[
-                    getInputStyle(),
+                    inputStyle,
                     {
-                      height: 42,
+                      height: s(42),
                       borderColor:
                         activeInput === 'tip' ? colors.teal : colors.border
                     }
@@ -350,7 +356,7 @@ const CashPaymentView = () => {
                   <Text
                     style={{
                       color: colors.muted,
-                      fontSize: 15,
+                      fontSize: s(15),
                       fontWeight: '600'
                     }}
                   >
@@ -359,10 +365,10 @@ const CashPaymentView = () => {
                   <Text
                     style={{
                       flex: 1,
-                      fontSize: 17,
+                      fontSize: s(17),
                       fontWeight: '600',
                       color: colors.heading,
-                      marginLeft: 4
+                      marginLeft: s(4)
                     }}
                   >
                     {cashTip || '0.00'}
@@ -376,14 +382,14 @@ const CashPaymentView = () => {
                   backgroundColor: isSufficient
                     ? `${colors.teal}12`
                     : `${colors.panel}`,
-                  borderRadius: 10,
-                  padding: 14,
+                  borderRadius: s(10),
+                  padding: s(14),
                   borderWidth: 1,
                   borderColor: isSufficient
                     ? `${colors.teal}40`
                     : colors.border,
-                  gap: 8,
-                  marginTop: 2
+                  gap: s(8),
+                  marginTop: s(2)
                 }}
               >
                 <View
@@ -395,7 +401,7 @@ const CashPaymentView = () => {
                 >
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       fontWeight: '700',
                       textTransform: 'uppercase',
                       letterSpacing: 0.8,
@@ -406,7 +412,7 @@ const CashPaymentView = () => {
                   </Text>
                   <Text
                     style={{
-                      fontSize: 24,
+                      fontSize: s(24),
                       fontWeight: '800',
                       color: isSufficient ? colors.teal : colors.muted
                     }}
@@ -426,16 +432,16 @@ const CashPaymentView = () => {
                 <View
                   style={{
                     backgroundColor: colors.panel,
-                    borderRadius: 10,
-                    padding: 14,
+                    borderRadius: s(10),
+                    padding: s(14),
                     borderWidth: 1,
                     borderColor: colors.border,
-                    gap: 8
+                    gap: s(8)
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       fontWeight: '700',
                       color: colors.teal,
                       textTransform: 'uppercase',
@@ -445,7 +451,7 @@ const CashPaymentView = () => {
                     Give back
                   </Text>
                   <View
-                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}
+                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6) }}
                   >
                     {changeBreakdown.map(({ label, count }) => (
                       <View
@@ -453,20 +459,20 @@ const CashPaymentView = () => {
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
-                          gap: 3,
+                          gap: s(3),
                           backgroundColor: colors.screen,
                           borderWidth: 1,
                           borderColor: `${colors.teal}30`,
-                          borderRadius: 6,
-                          paddingHorizontal: 10,
-                          paddingVertical: 4
+                          borderRadius: s(6),
+                          paddingHorizontal: s(10),
+                          paddingVertical: s(4)
                         }}
                       >
                         <Text
                           style={{
                             color: colors.teal,
                             fontWeight: '700',
-                            fontSize: 12
+                            fontSize: s(12)
                           }}
                         >
                           {count}×
@@ -475,7 +481,7 @@ const CashPaymentView = () => {
                           style={{
                             color: colors.teal,
                             fontWeight: '600',
-                            fontSize: 12
+                            fontSize: s(12)
                           }}
                         >
                           {label}
@@ -492,8 +498,8 @@ const CashPaymentView = () => {
           <View
             style={{
               flex: 1,
-              paddingVertical: 12,
-              paddingHorizontal: 16,
+              paddingVertical: s(12),
+              paddingHorizontal: s(16),
               justifyContent: 'space-between'
             }}
           >
@@ -505,22 +511,22 @@ const CashPaymentView = () => {
                 alignItems: 'center'
               }}
             >
-              <View style={{ gap: 8, alignSelf: 'center', width: '80%' }}>
+              <View style={{ gap: s(8), alignSelf: 'center', width: '80%' }}>
                 {[
                   ['1', '2', '3'],
                   ['4', '5', '6'],
                   ['7', '8', '9'],
                   ['.', '0', '⌫']
                 ].map((row, i) => (
-                  <View key={i} style={{ flexDirection: 'row', gap: 8 }}>
+                  <View key={i} style={{ flexDirection: 'row', gap: s(8) }}>
                     {row.map(btn => (
                       <TouchableOpacity
                         key={btn}
                         onPress={() => numpadHandler(btn)}
                         style={{
                           flex: 1,
-                          height: 54,
-                          borderRadius: 8,
+                          height: s(54),
+                          borderRadius: s(8),
                           alignItems: 'center',
                           justifyContent: 'center',
                           backgroundColor: colors.panel,
@@ -529,12 +535,12 @@ const CashPaymentView = () => {
                         }}
                       >
                         {btn === '⌫' ? (
-                          <Delete size={15} color={colors.muted} />
+                          <Delete size={s(15)} color={colors.muted} />
                         ) : (
                           <Text
                             style={{
                               color: colors.heading,
-                              fontSize: 17,
+                              fontSize: s(17),
                               fontWeight: '600'
                             }}
                           >
@@ -547,13 +553,13 @@ const CashPaymentView = () => {
                 ))}
 
                 {/* Preset row 1: EXACT + $10 + $20 */}
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 32 }}>
+                <View style={{ flexDirection: 'row', gap: s(8), marginTop: s(32) }}>
                   <TouchableOpacity
                     onPress={handleSelectExact}
                     style={{
                       flex: 1,
-                      height: 46,
-                      borderRadius: 8,
+                      height: s(46),
+                      borderRadius: s(8),
                       alignItems: 'center',
                       justifyContent: 'center',
                       backgroundColor: colors.teal
@@ -563,7 +569,7 @@ const CashPaymentView = () => {
                       style={{
                         color: colors.onSolid,
                         fontWeight: '700',
-                        fontSize: 9,
+                        fontSize: s(9),
                         textTransform: 'uppercase',
                         letterSpacing: 0.4
                       }}
@@ -574,7 +580,7 @@ const CashPaymentView = () => {
                       style={{
                         color: colors.onSolid,
                         fontWeight: '800',
-                        fontSize: 11
+                        fontSize: s(11)
                       }}
                     >
                       ${totalWithTip.toFixed(2)}
@@ -586,8 +592,8 @@ const CashPaymentView = () => {
                       onPress={() => handleSelectPreset(bill)}
                       style={{
                         flex: 1,
-                        height: 46,
-                        borderRadius: 8,
+                        height: s(46),
+                        borderRadius: s(8),
                         alignItems: 'center',
                         justifyContent: 'center',
                         backgroundColor: colors.panel,
@@ -599,7 +605,7 @@ const CashPaymentView = () => {
                         style={{
                           color: colors.heading,
                           fontWeight: '700',
-                          fontSize: 12
+                          fontSize: s(12)
                         }}
                       >
                         ${bill}
@@ -610,15 +616,15 @@ const CashPaymentView = () => {
 
                 {/* Preset row 2: $50 + $100 */}
                 {presetsRow2.length > 0 && (
-                <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flexDirection: 'row', gap: s(8) }}>
                   {presetsRow2.map(bill => (
                     <TouchableOpacity
                       key={bill}
                       onPress={() => handleSelectPreset(bill)}
                       style={{
                         flex: 1,
-                        height: 46,
-                        borderRadius: 8,
+                        height: s(46),
+                        borderRadius: s(8),
                         alignItems: 'center',
                         justifyContent: 'center',
                         backgroundColor: colors.panel,
@@ -630,7 +636,7 @@ const CashPaymentView = () => {
                         style={{
                           color: colors.heading,
                           fontWeight: '700',
-                          fontSize: 12
+                          fontSize: s(12)
                         }}
                       >
                         ${bill}
@@ -650,8 +656,8 @@ const CashPaymentView = () => {
             flexDirection: 'row',
             borderTopWidth: 1,
             borderTopColor: colors.border,
-            padding: 12,
-            gap: 10,
+            padding: s(12),
+            gap: s(10),
             backgroundColor: colors.panel
           }}
         >
@@ -659,20 +665,20 @@ const CashPaymentView = () => {
             onPress={handleOpenDrawer}
             style={{
               flex: 1,
-              paddingVertical: 14,
-              borderRadius: 9,
+              paddingVertical: s(14),
+              borderRadius: s(9),
               alignItems: 'center',
               justifyContent: 'center',
               flexDirection: 'row',
-              gap: 7,
+              gap: s(7),
               backgroundColor: colors.screen,
               borderWidth: 1,
               borderColor: colors.border
             }}
           >
-            <Printer size={15} color={colors.muted} />
+            <Printer size={s(15)} color={colors.muted} />
             <Text
-              style={{ color: colors.heading, fontWeight: '600', fontSize: 13 }}
+              style={{ color: colors.heading, fontWeight: '600', fontSize: s(13) }}
             >
               Open Drawer
             </Text>
@@ -683,23 +689,23 @@ const CashPaymentView = () => {
             disabled={(!isSufficient && total > 0) || isProcessing}
             style={{
               flex: 2,
-              paddingVertical: 14,
-              borderRadius: 9,
+              paddingVertical: s(14),
+              borderRadius: s(9),
               alignItems: 'center',
               justifyContent: 'center',
               flexDirection: 'row',
-              gap: 7,
+              gap: s(7),
               backgroundColor: colors.teal,
               opacity: (!isSufficient && total > 0) || isProcessing ? 0.35 : 1
             }}
           >
             <Text
-              style={{ fontWeight: '600', fontSize: 13, color: colors.onSolid }}
+              style={{ fontWeight: '600', fontSize: s(13), color: colors.onSolid }}
             >
               {isProcessing ? 'Processing...' : 'Complete Order'}
             </Text>
             {!isProcessing && (
-              <Text style={{ color: colors.onSolid, fontSize: 13 }}>→</Text>
+              <Text style={{ color: colors.onSolid, fontSize: s(13) }}>→</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -708,22 +714,22 @@ const CashPaymentView = () => {
   )
 }
 
-const getLabelStyle = () => ({
+const getLabelStyle = (s: (n: number) => number) => ({
   color: colors.muted,
-  fontSize: 10,
+  fontSize: s(10),
   fontWeight: '700' as const,
   textTransform: 'uppercase' as const,
   letterSpacing: 0.8
 })
 
-const getInputStyle = () => ({
+const getInputStyle = (s: (n: number) => number) => ({
   flexDirection: 'row' as const,
   alignItems: 'center' as const,
   backgroundColor: colors.panel,
-  borderRadius: 8,
+  borderRadius: s(8),
   borderWidth: 1.5,
-  paddingHorizontal: 12,
-  height: 48
+  paddingHorizontal: s(12),
+  height: s(48)
 })
 
 export default CashPaymentView

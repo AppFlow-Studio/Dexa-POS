@@ -1,5 +1,6 @@
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { Mail, Phone, Shield } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
@@ -9,26 +10,30 @@ const SectionRow = ({
   label,
   value,
   last,
+  scale,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   last?: boolean;
-}) => (
+  scale: number;
+}) => {
+  const s = (n: number) => Math.round(n * scale);
+  return (
   <View
     style={{
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      paddingHorizontal: s(14),
+      paddingVertical: s(12),
       borderBottomWidth: last ? 0 : 1,
       borderBottomColor: colors.border,
     }}
   >
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: s(10) }}>
       <View
         style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
+          width: s(32),
+          height: s(32),
+          borderRadius: s(8),
           backgroundColor: colors.teal + "15",
           alignItems: "center",
           justifyContent: "center",
@@ -40,32 +45,35 @@ const SectionRow = ({
       <View style={{ flex: 1 }}>
         <Text
           style={{
-            fontSize: 10,
+            fontSize: s(10),
             fontWeight: "600",
             color: colors.muted,
             textTransform: "uppercase",
             letterSpacing: 0.8,
-            marginBottom: 2,
+            marginBottom: s(2),
           }}
         >
           {label}
         </Text>
-        <Text style={{ fontSize: 13, fontWeight: "500", color: colors.heading }}>
+        <Text style={{ fontSize: s(13), fontWeight: "500", color: colors.heading }}>
           {value}
         </Text>
       </View>
     </View>
   </View>
-);
+  );
+};
 
 const SecurityTab = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const { employees, activeEmployeeId } = useEmployeeStore();
   const currentEmployee = employees.find((e) => e.id === activeEmployeeId);
 
   if (!currentEmployee) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ color: colors.muted, fontSize: 13 }}>No employee selected.</Text>
+        <Text style={{ color: colors.muted, fontSize: s(13) }}>No employee selected.</Text>
       </View>
     );
   }
@@ -73,16 +81,16 @@ const SecurityTab = () => {
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}
+      contentContainerStyle={{ paddingHorizontal: s(16), paddingTop: s(16), paddingBottom: s(24) }}
     >
       <Text
         style={{
-          fontSize: 11,
+          fontSize: s(11),
           fontWeight: "700",
           color: colors.muted,
           textTransform: "uppercase",
           letterSpacing: 1,
-          marginBottom: 10,
+          marginBottom: s(10),
         }}
       >
         Account Security
@@ -91,35 +99,38 @@ const SecurityTab = () => {
       <View
         style={{
           backgroundColor: colors.card,
-          borderRadius: 12,
+          borderRadius: s(12),
           borderWidth: 1,
           borderColor: colors.border,
           overflow: "hidden",
         }}
       >
         <SectionRow
-          icon={<Mail size={15} color={colors.teal} />}
+          icon={<Mail size={s(15)} color={colors.teal} />}
           label="Email"
           value={currentEmployee.email || "Not set"}
+          scale={uiScale}
         />
         <SectionRow
-          icon={<Phone size={15} color={colors.teal} />}
+          icon={<Phone size={s(15)} color={colors.teal} />}
           label="Phone Number"
           value={currentEmployee.phone || "Not set"}
+          scale={uiScale}
         />
         <SectionRow
-          icon={<Shield size={15} color={colors.teal} />}
+          icon={<Shield size={s(15)} color={colors.teal} />}
           label="PIN"
           value={currentEmployee.pin ? "••••" : "Not set"}
           last
+          scale={uiScale}
         />
       </View>
 
       <Text
         style={{
-          fontSize: 11,
+          fontSize: s(11),
           color: colors.muted,
-          marginTop: 12,
+          marginTop: s(12),
           textAlign: "center",
         }}
       >
