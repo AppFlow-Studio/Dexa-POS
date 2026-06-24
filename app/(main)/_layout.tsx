@@ -97,11 +97,9 @@ export default function MainLayout () {
   // Register PaymentDetailBottomSheet ref with store
   useEffect(() => {
     if (!isKDS) {
-      usePaymentDetailSheetStore
-        .getState()
-        .setBottomSheetRef(
-          paymentDetailSheetRef as React.RefObject<BottomSheetMethods>
-        )
+      const ref = paymentDetailSheetRef as React.RefObject<BottomSheetMethods>
+      usePaymentDetailSheetStore.getState().setBottomSheetRef(ref)
+      return () => usePaymentDetailSheetStore.getState().clearBottomSheetRef(ref)
     }
   }, [paymentDetailSheetRef, isKDS])
 
