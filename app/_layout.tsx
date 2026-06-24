@@ -871,6 +871,25 @@ export default Sentry.wrap(function RootLayout() {
     };
   }, [isKDS, isCFDMode]);
 
+  // Also stop draft cleanup when app goes to background (prevents background timer leaks)
+  React.useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "background" || state === "inactive") {
+        if (!isKDS && !isCFDMode) {
+          useOrderStore.getState().stopDraftCleanup();
+          PrinterService.stopProcessing();
+        }
+      } else if (state === "active") {
+        // Restart when app comes back to foreground
+        if (!isKDS && !isCFDMode) {
+          useOrderStore.getState().startDraftCleanup();
+          PrinterService.startProcessing();
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [isKDS, isCFDMode]);
+
   if (!isColorSchemeLoaded) {
     return null;
   }

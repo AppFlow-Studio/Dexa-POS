@@ -1849,6 +1849,13 @@ const KitchenDisplayScreen = () => {
     isRealtimeConnectedRef.current = isRealtimeConnected;
   }, [isRealtimeConnected]);
 
+  // Cleanup KDS store module-level state on unmount
+  useEffect(() => {
+    return () => {
+      useKDSStore.getState()._cleanup();
+    };
+  }, []);
+
   // Debounce disconnected indicator — only show after 2s of being disconnected
   useEffect(() => {
     if (isRealtimeConnected) {
@@ -1868,20 +1875,27 @@ const KitchenDisplayScreen = () => {
 
     fetchTickets(locationId);
 
-    let timeoutId: ReturnType<typeof setTimeout>;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
     const schedulePoll = () => {
       // No poll needed when realtime is healthy and no display filter —
       // broadcasts cover all updates. Only poll when offline or display-filtered.
       if (isRealtimeConnectedRef.current && !hasDisplayFilter) return;
       const interval = isRealtimeConnectedRef.current ? 30_000 : 15_000;
       timeoutId = setTimeout(() => {
+        if (cancelled) return;
         backgroundFetchTickets(locationId);
-        schedulePoll();
+        if (!cancelled) {
+          schedulePoll();
+        }
       }, interval);
     };
     schedulePoll();
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [
     isReady,
     locationId,

@@ -53,7 +53,8 @@ import { useInventoryStore } from "@/stores/useInventoryStore";
 import { setKDSSupabaseClient } from "@/stores/useKDSStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
-    setOrderStoreSupabaseClient
+    setOrderStoreSupabaseClient,
+    useOrderStore
 } from "@/stores/useOrderStore";
 import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
@@ -668,29 +669,17 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Cleanup previous subscriptions if switching locations
-    // if (realtimeLocationRef.current && realtimeLocationRef.current !== locationId) {
-    //   useFloorPlanStore.getState().cleanup();
-    //   // REMOVED: Cleanup for duplicate order subscription (now handled by useOrdersRealtime hook)
-    //   // useOrderStore.getState().cleanupOrderRealtime();
-    // }
+    if (realtimeLocationRef.current && realtimeLocationRef.current !== locationId) {
+      useFloorPlanStore.getState().cleanup();
+    }
 
     realtimeLocationRef.current = locationId;
 
-    // Setup realtime subscriptions for tables/sessions
-    // useFloorPlanStore.getState().setupRealtimeSubscriptions(locationId);
-
-    // REMOVED: Duplicate order realtime subscription (now handled by LocationRealtimeProvider with useOrdersRealtime hook)
-    // useOrderStore.getState().setupOrderRealtimeSubscriptions(locationId);
-
-    // console.log('[PosSyncProvider] Realtime subscriptions enabled for location:', locationId);
-
     // Cleanup function
-    // return () => {
-    //   useFloorPlanStore.getState().cleanup();
-    //   // REMOVED: Cleanup for duplicate order subscription
-    //   // useOrderStore.getState().cleanupOrderRealtime();
-    //   realtimeLocationRef.current = null;
-    // };
+    return () => {
+      useFloorPlanStore.getState().cleanup();
+      realtimeLocationRef.current = null;
+    };
   }, [selectedStore?.id]);
 
   // Single owner of floor plan + tax rate + receipt template sync (perf F3:
