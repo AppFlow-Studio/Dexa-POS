@@ -671,6 +671,14 @@ function SalesSettingTab() {
         value={printingConfig.autoPrintReceipt}
         onToggle={(v) => updateConfig("printing", { autoPrintReceipt: v })}
       />
+      <ToggleRow
+        label="Auto-Print Split Receipts"
+        subtitle="On split-paid orders, print a separate receipt for each guest as they pay (instead of one combined receipt)."
+        value={printingConfig.autoPrintSplitReceipts}
+        onToggle={(v) =>
+          updateConfig("printing", { autoPrintSplitReceipts: v })
+        }
+      />
     </View>
   );
 }

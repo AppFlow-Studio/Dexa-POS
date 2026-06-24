@@ -28,13 +28,19 @@ const ANIMATION_DURATION = 280
 const SWIPE_THRESHOLD = 100
 
 // Label for a payment row: prefer the split portion, fall back to an ordinal.
+// Pay-for-items is sequential partial item payment (no splitInfo), so it gets
+// an "Items Paid" label rather than "Payment 1 of 1".
 function portionLabel (
   payment: OrderProfilePayment,
   index: number,
-  totalCount: number
+  totalCount: number,
+  splitPath?: string | null
 ): string {
   if (payment.splitInfo) {
     return `Split ${payment.splitInfo.portionIndex} of ${payment.splitInfo.totalPortions}`
+  }
+  if (splitPath === 'pay-for-items') {
+    return totalCount > 1 ? `Items Paid #${index + 1}` : 'Items Paid'
   }
   return `Payment ${index + 1} of ${totalCount}`
 }
@@ -287,7 +293,12 @@ const SplitReceiptSelectorModal: React.FC<SplitReceiptSelectorModalProps> = ({
               const isRefunded =
                 payment.status === 'refunded' ||
                 (payment.refundedAmount ?? 0) > 0
-              const payer = payment.transactionDetails?.splitLabel
+              const rawPayer = payment.transactionDetails?.splitLabel
+              // Suppress the generic pay-for-items placeholder.
+              const payer =
+                rawPayer && rawPayer !== 'Selected Items'
+                  ? rawPayer
+                  : undefined
               const total = payment.amount + (payment.tip_amount || 0)
               const isThisPrinting = printingId === payment.id
               return (
@@ -313,7 +324,12 @@ const SplitReceiptSelectorModal: React.FC<SplitReceiptSelectorModalProps> = ({
                         color: colors.heading
                       }}
                     >
-                      {portionLabel(payment, index, printablePayments.length)}
+                      {portionLabel(
+                        payment,
+                        index,
+                        printablePayments.length,
+                        order.split_payment_path
+                      )}
                       {payer ? ` · ${payer}` : ''}
                     </Text>
                     <Text

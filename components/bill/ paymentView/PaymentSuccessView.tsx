@@ -17,12 +17,13 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { Check, Mail, MessageSquare, Printer } from "lucide-react-native";
+import { Check, ChevronUp, Layers, Mail, MessageSquare, Printer } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 import { iosOnly } from "@/lib/safeAnimations";
 import SendReceiptSheet from "@/components/receipts/SendReceiptSheet";
+import SplitReceiptSelectorModal from "@/components/bill/SplitReceiptSelectorModal";
 import type { SendReceiptDeliveryMethod } from "@/services/messaging/sendReceiptService";
 
 const PaymentSuccessView = () => {
@@ -42,6 +43,8 @@ const PaymentSuccessView = () => {
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
 
   const [isPrinting, setIsPrinting] = useState(false);
+  const [printMenuOpen, setPrintMenuOpen] = useState(false);
+  const [splitSelectorOpen, setSplitSelectorOpen] = useState(false);
   const [receiptSheet, setReceiptSheet] = useState<{
     open: boolean;
     method: SendReceiptDeliveryMethod;
@@ -74,6 +77,7 @@ const PaymentSuccessView = () => {
 
   const activeOrder = useActiveOrder();
   const items = activeOrder?.items || [];
+  const isSplitPaid = !!activeOrder?.split_payment_path;
   // console.log("[PaymentSuccessView] items", items);
   // console.log("[PaymentSuccessView] activeOrder", activeOrder);
   const handleDone = () => {
@@ -258,6 +262,27 @@ const PaymentSuccessView = () => {
     }
   };
 
+  const handlePrintAllSplits = async () => {
+    if (!activeOrder || !selectedStore) {
+      show({ title: "Print Error", message: "No order or store available.", type: "error" });
+      return;
+    }
+    setIsPrinting(true);
+    try {
+      const success = await PrinterService.printAllSplitReceipts(activeOrder, selectedStore);
+      if (success) {
+        show({ title: "Printing Split Receipts", message: "Sent to printer.", type: "success" });
+      } else {
+        useNoPrinterModalStore.getState().show("receipt");
+      }
+    } catch (e) {
+      console.warn("[PaymentSuccessView] Print all splits failed:", e);
+      show({ title: "Print Error", message: "Failed to send to printer.", type: "error" });
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   const openSendReceipt = (method: SendReceiptDeliveryMethod) => {
     if (!activeOrder?.db_order_id) {
       show({
@@ -381,25 +406,98 @@ const PaymentSuccessView = () => {
         </Animated.View>
       </View>
 
+      {/* Backdrop to dismiss the print dropdown on outside tap */}
+      {printMenuOpen && (
+        <Pressable
+          onPress={() => setPrintMenuOpen(false)}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50 }}
+        />
+      )}
+
       {/* Footer Actions - Fixed at Bottom */}
-      <View style={{ width: "100%", backgroundColor: colors.panel, paddingTop: s(12), paddingBottom: s(16), borderTopWidth: 1, borderTopColor: colors.border }}>
+      <View style={{ width: "100%", backgroundColor: colors.panel, paddingTop: s(12), paddingBottom: s(16), borderTopWidth: 1, borderTopColor: colors.border, zIndex: printMenuOpen ? 100 : 0 }}>
         <View style={{ paddingHorizontal: s(20), gap: s(10) }}>
           {/* Secondary Actions Row */}
           <View style={{ flexDirection: "row", gap: s(8) }}>
-            <TouchableOpacity
-              onPress={handlePrint}
-              disabled={isPrinting}
-              style={{ flex: 1, paddingVertical: s(8), backgroundColor: colors.card, borderRadius: s(8), borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: s(4), opacity: isPrinting ? 0.6 : 1 }}
-            >
-              {isPrinting ? (
-                <ActivityIndicator size="small" color={colors.label} />
-              ) : (
-                <Printer size={s(13)} color={colors.label} />
+            {/* Print — split-paid orders get a dropdown of receipt options */}
+            <View style={{ flex: 1, position: "relative", zIndex: printMenuOpen ? 50 : 1 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (isSplitPaid) {
+                    setPrintMenuOpen((o) => !o);
+                  } else {
+                    handlePrint();
+                  }
+                }}
+                disabled={isPrinting}
+                style={{ width: "100%", paddingVertical: s(8), backgroundColor: colors.card, borderRadius: s(8), borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: s(4), opacity: isPrinting ? 0.6 : 1 }}
+              >
+                {isPrinting ? (
+                  <ActivityIndicator size="small" color={colors.label} />
+                ) : (
+                  <Printer size={s(13)} color={colors.label} />
+                )}
+                <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(11) }}>
+                  {isPrinting ? "Printing..." : "Print"}
+                </Text>
+                {isSplitPaid && !isPrinting && (
+                  <ChevronUp size={s(12)} color={colors.label} />
+                )}
+              </TouchableOpacity>
+
+              {isSplitPaid && printMenuOpen && (
+                <View
+                  style={{
+                    position: "absolute",
+                    bottom: "100%",
+                    marginBottom: s(10),
+                    // Center the menu horizontally over the Print button.
+                    left: "50%",
+                    width: s(320),
+                    marginLeft: -s(320) / 2,
+                    backgroundColor: colors.panel,
+                    borderRadius: s(14),
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    paddingVertical: s(6),
+                    zIndex: 50,
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.22,
+                    shadowRadius: s(12),
+                    elevation: 10,
+                  }}
+                >
+                  {[
+                    { icon: <Printer size={s(20)} color={colors.label} />, label: "Print Combined Receipt", onPress: handlePrint },
+                    { icon: <Layers size={s(20)} color={colors.teal} />, label: "Print Split Receipts…", onPress: () => setSplitSelectorOpen(true) },
+                    { icon: <Printer size={s(20)} color={colors.teal} />, label: "Print All Split Receipts", onPress: handlePrintAllSplits },
+                  ].map((item, idx) => (
+                    <TouchableOpacity
+                      key={item.label}
+                      onPress={() => {
+                        setPrintMenuOpen(false);
+                        item.onPress();
+                      }}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: s(14),
+                        paddingVertical: s(15),
+                        paddingHorizontal: s(18),
+                        borderTopWidth: idx === 0 ? 0 : 1,
+                        borderTopColor: colors.border,
+                      }}
+                    >
+                      {item.icon}
+                      <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(15) }}>
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               )}
-              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(11) }}>
-                {isPrinting ? "Printing..." : "Print"}
-              </Text>
-            </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
               onPress={() => openSendReceipt("email")}
@@ -439,6 +537,13 @@ const PaymentSuccessView = () => {
         defaultMethod={receiptSheet.method}
         defaultEmail={activeOrder?.customer_email}
         defaultPhone={activeOrder?.customer_phone}
+      />
+
+      <SplitReceiptSelectorModal
+        isOpen={splitSelectorOpen}
+        onClose={() => setSplitSelectorOpen(false)}
+        order={activeOrder ?? null}
+        location={selectedStore ?? null}
       />
     </View>
   );

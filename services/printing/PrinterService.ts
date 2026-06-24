@@ -1380,33 +1380,80 @@ function buildReceiptTemplateData (
   if (scopePayment) {
     const sp = scopePayment
     const spTip = sp.tip_amount || 0
-    const spServiceCharge = sp.service_charge || 0
-    const spTax = sp.tax_portion ?? 0
-    const spDiscount = sp.discount_portion ?? 0
+    // `amount` is the charge for this portion — tax & service-charge inclusive,
+    // already net of any discount. Total = that charge + tip.
     const spTotal = sp.amount + spTip
-    // Anchor subtotal so subtotal + tax + serviceCharge − discount + tip = total.
-    const spSubtotal =
-      sp.subtotal_portion ?? sp.amount - spTax - spServiceCharge + spDiscount
 
     const path = order.split_payment_path
     const isByItem = path === 'split-by-item' || path === 'pay-for-items'
 
+    // Effective blended tax rate, used to back tax out of inclusive amounts.
+    const effRate =
+      pricingMode === 'cash'
+        ? cashSubtotal > 0
+          ? cashTax / cashSubtotal
+          : 0
+        : subtotal > 0
+          ? tax / subtotal
+          : 0
+
+    let spGrossSubtotal: number
+    let spDiscount: number
+    let spTax: number
+    let spServiceCharge: number
+
     if (isByItem) {
-      // List only the items this payment covered, scaled so the line totals
-      // reconcile to this portion's subtotal (coverage carries card prices).
-      const dataByDbId = new Map<string, ReceiptItemData>()
+      // By-item / pay-for-items: we know exactly which items this payment
+      // covered, and each order item carries its own net subtotal / tax /
+      // discount. Compute the covered portion's breakdown directly so Subtotal,
+      // Discount and Tax are exact, then attribute whatever the captured amount
+      // has left over to this portion's share of the service charge (which
+      // startSplitPaymentFlow distributes into the per-split amount as a
+      // proportional remainder). Everything reconciles to the captured amount.
+      const cartByKey = new Map<string, CartItem>()
+      const dataByKey = new Map<string, ReceiptItemData>()
       nonVoidedItems.forEach((it, i) => {
-        if (it.db_order_item_id) dataByDbId.set(it.db_order_item_id, items[i])
+        for (const key of [it.db_order_item_id, it.id]) {
+          if (key && !cartByKey.has(key)) {
+            cartByKey.set(key, it)
+            dataByKey.set(key, items[i])
+          }
+        }
       })
       const coverage = sp.itemsCovered ?? []
-      const coverageSum = coverage.reduce((s, c) => s + (c.subtotal || 0), 0)
-      const factor = coverageSum > 0 ? spSubtotal / coverageSum : 1
+      const isCash = pricingMode === 'cash'
+
+      let grossSubtotal = 0
+      let netSubtotal = 0
+      let coveredTax = 0
+      let coveredDiscount = 0
+
       displayItems = coverage.map(c => {
-        const base = dataByDbId.get(c.itemId)
+        const cart = cartByKey.get(c.itemId)
+        const base = dataByKey.get(c.itemId)
+        const qty = cart?.quantity || 0
+        // Fraction of the order item this payment covered.
+        const frac = qty > 0 ? Math.min(1, (c.quantity || 0) / qty) : 1
+        const lineGross = c.subtotal || 0 // gross (= net + discount)
+        const lineNet = cart
+          ? (isCash ? cart.cashSubtotal ?? 0 : cart.subtotal ?? 0) * frac
+          : lineGross
+        const lineTax = cart
+          ? (isCash ? cart.cashTaxAmount ?? 0 : cart.taxAmount ?? 0) * frac
+          : lineGross * effRate
+        const lineDiscount = cart
+          ? (isCash
+              ? cart.discount_cash_amount ?? 0
+              : cart.discount_amount ?? 0) * frac
+          : 0
+        grossSubtotal += lineGross
+        netSubtotal += lineNet
+        coveredTax += lineTax
+        coveredDiscount += lineDiscount
         return {
           name: base?.name ?? c.itemName,
           quantity: c.quantity,
-          price: (c.subtotal || 0) * factor,
+          price: lineGross, // gross line price (pre-discount)
           cashPrice: undefined,
           isVoided: false,
           modifiers: base?.modifiers ?? [],
@@ -1414,13 +1461,42 @@ function buildReceiptTemplateData (
           seatNumber: base?.seatNumber ?? null
         }
       })
+
+      spGrossSubtotal = grossSubtotal
+      spDiscount = coveredDiscount
+      spTax = coveredTax
+      // Remainder over net subtotal + tax = this portion's service-charge share
+      // (only meaningful when the order actually carries a service charge;
+      // otherwise it's sub-cent rounding and is left out of the breakdown).
+      const orderHasSC =
+        (isCash
+          ? orderTotals.cash_service_charge
+          : orderTotals.service_charge) > 0
+      const residual = sp.amount - netSubtotal - coveredTax
+      spServiceCharge = orderHasSC ? Math.max(0, residual) : 0
     } else {
-      // Even / custom split: keep the full check above for reference and flag
-      // it; the totals block below shows only this payer's share.
+      // Even / custom split: the amount is a share of the whole check, which
+      // bundles discount, tax AND service charge. Prorate every order-level
+      // figure by this portion's fraction so Subtotal / Discount / Tax / SC all
+      // reconcile to the charged amount. Full check is shown above for reference.
       isPartialSplitReceipt = true
+      const orderCharge =
+        pricingMode === 'cash'
+          ? orderTotals.cash_total_amount
+          : orderTotals.total_amount
+      const f = orderCharge > 0 ? sp.amount / orderCharge : 0
+      spGrossSubtotal = (pricingMode === 'cash' ? cashSubtotal : subtotal) * f
+      spDiscount =
+        (pricingMode === 'cash' ? orderTotals.cash_discount_amount : discount) *
+        f
+      spTax = (pricingMode === 'cash' ? cashTax : tax) * f
+      spServiceCharge =
+        (pricingMode === 'cash'
+          ? orderTotals.cash_service_charge
+          : orderTotals.service_charge) * f
     }
 
-    displaySubtotal = spSubtotal
+    displaySubtotal = spGrossSubtotal
     displayTax = spTax
     displayDiscount = spDiscount
     displayTotal = spTotal
@@ -1440,8 +1516,21 @@ function buildReceiptTemplateData (
       sp.splitInfo?.portionIndex ?? (spIndex >= 0 ? spIndex + 1 : 1)
     const totalPortions =
       sp.splitInfo?.totalPortions ?? nonVoidedPayments.length ?? 1
-    splitLabel = `Split ${portionIndex} of ${totalPortions}`
-    splitPayerName = sp.transactionDetails?.splitLabel
+
+    if (path === 'pay-for-items') {
+      // Pay-for-items is sequential partial item payment, not a planned N-way
+      // split — "Split 1 of 1" reads oddly. Label it by what it is, and number
+      // it only when the order had more than one such payment.
+      splitLabel =
+        totalPortions > 1 ? `Items Paid #${portionIndex}` : 'Items Paid'
+      // Suppress the generic "Selected Items" placeholder payer name — it's
+      // redundant under the "Items Paid" header.
+      const payer = sp.transactionDetails?.splitLabel
+      splitPayerName = payer && payer !== 'Selected Items' ? payer : undefined
+    } else {
+      splitLabel = `Split ${portionIndex} of ${totalPortions}`
+      splitPayerName = sp.transactionDetails?.splitLabel
+    }
   }
 
   return {
