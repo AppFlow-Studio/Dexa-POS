@@ -132,6 +132,11 @@ interface ConflictState {
 // STORE IMPLEMENTATION
 // ============================================================================
 
+// Per-order auto-clear timers for markOrderAsUpdated. Tracked so repeated
+// marks on the same order (multi-station churn on a hot order) don't each
+// spawn an independent uncancelled timer — we reset the existing one instead.
+const _recentlyUpdatedTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 export const useConflictStore = create<ConflictState>((set, get) => ({
   // Initial state
   recentConflicts: [],
@@ -288,10 +293,15 @@ export const useConflictStore = create<ConflictState>((set, get) => ({
       return { recentlyUpdatedOrderIds: updated };
     });
 
-    // Auto-clear after 5 seconds
-    setTimeout(() => {
+    // Auto-clear after 5 seconds. Reset any in-flight timer for this order so
+    // repeated marks don't accumulate uncancelled timers.
+    const existing = _recentlyUpdatedTimers.get(orderId);
+    if (existing !== undefined) clearTimeout(existing);
+    const handle = setTimeout(() => {
+      _recentlyUpdatedTimers.delete(orderId);
       get().clearRecentlyUpdated(orderId);
     }, 5000);
+    _recentlyUpdatedTimers.set(orderId, handle);
   },
 
   wasRecentlyUpdated: (orderId: string) => {
@@ -299,6 +309,11 @@ export const useConflictStore = create<ConflictState>((set, get) => ({
   },
 
   clearRecentlyUpdated: (orderId: string) => {
+    const existing = _recentlyUpdatedTimers.get(orderId);
+    if (existing !== undefined) {
+      clearTimeout(existing);
+      _recentlyUpdatedTimers.delete(orderId);
+    }
     set((state) => {
       const updated = new Set(state.recentlyUpdatedOrderIds);
       updated.delete(orderId);
