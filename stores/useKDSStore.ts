@@ -407,6 +407,14 @@ function getTicketMutationVersion(ticketId: string): number {
   return _ticketMutationVersions.get(ticketId) ?? 0;
 }
 
+// Drop the version entry for a ticket that has left state. Without this the
+// Map only ever grows (bump on every mutation, never deleted) — one entry per
+// ticket id ever seen, for the whole KDS session. Called from every ticket-
+// removal site and on _cleanup.
+function deleteTicketMutationVersion(ticketId: string): void {
+  _ticketMutationVersions.delete(ticketId);
+}
+
 /** Track ticket IDs that have been recalled — survives server refetches */
 const _recalledTicketIds = new Set<string>();
 const _recalledCycleTicketIds = new Set<string>();
@@ -693,8 +701,8 @@ function getEffectiveItemQuantity(
 function isActionableKitchenItem(
   item: Pick<
     KDSTicketItem,
-    "is_voided" | "refunded_quantity" | "quantity" | "kitchen_status"
-  >,
+    "is_voided" | "refunded_quantity" | "quantity"
+  > & { kitchen_status: string | null },
 ): boolean {
   const status = (item.kitchen_status ?? "").toLowerCase();
   const isTerminalKitchenStatus =
@@ -1951,6 +1959,7 @@ export const useKDSStore = create<KDSState>()(
           // Avoid shallow-copying entire map — use Object.create trick with deletion
           updatedById = Object.assign({}, _ticketsById);
           delete updatedById[ticketId];
+          deleteTicketMutationVersion(ticketId);
 
           if (ticket) {
             const updatedDone = dedupeTicketsByIdKeepFirst([
@@ -3055,6 +3064,7 @@ export const useKDSStore = create<KDSState>()(
           updatedTickets = tickets.filter((t) => t.ticket_id !== ticketId);
           updatedById = { ..._ticketsById };
           delete updatedById[ticketId];
+          deleteTicketMutationVersion(ticketId);
         } else {
           const updatedTicket = { ...ticket, items: updatedItems };
           updatedTickets = tickets.map((t) =>
@@ -3079,7 +3089,13 @@ export const useKDSStore = create<KDSState>()(
           if (kdsDisplayId) params.p_kds_display_id = kdsDisplayId;
           scheduleRetry(
             `ack_notice_${ticketId}_${itemId}`,
-            () => client.rpc("acknowledge_kds_notice", params),
+            async () => {
+              const { error } = await client.rpc(
+                "acknowledge_kds_notice",
+                params,
+              );
+              if (error) throw error;
+            },
             0,
             () => {
               const lastLoc = get()._lastLocationId;
@@ -3581,7 +3597,10 @@ export const useKDSStore = create<KDSState>()(
           (t) => !removedIds.has(t.ticket_id),
         );
         const updatedById = { ..._ticketsById };
-        for (const id of removedIds) delete updatedById[id];
+        for (const id of removedIds) {
+          delete updatedById[id];
+          deleteTicketMutationVersion(id);
+        }
         const updatedDone = dedupeTicketsByIdKeepFirst([
           ...newDoneTickets,
           ...get().doneTickets,
@@ -3613,6 +3632,7 @@ export const useKDSStore = create<KDSState>()(
         _recalledTicketIds.clear();
         _recalledCycleTicketIds.clear();
         _recalledTicketAt.clear();
+        _ticketMutationVersions.clear();
         _acknowledgedNoticeItemIds.clear();
         persistAcknowledgedNoticeItems();
         if (_refetchTimeout) {

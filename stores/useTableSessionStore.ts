@@ -140,7 +140,16 @@ const RECENTLY_CLEARED_TTL_MS = 30_000;
 const recentlyClearedSessions = new Map<string, number>();
 
 function _recordCleared(sessionId: string) {
-  recentlyClearedSessions.set(sessionId, Date.now());
+  const now = Date.now();
+  // Opportunistic TTL sweep: wasSessionRecentlyCleared only evicts the entry it
+  // is asked about, so a cleared session that's never re-queried would linger
+  // forever. Session ids are unique per seating, so over a long shift this Map
+  // grows with throughput (not table count). Sweep expired entries on each
+  // write — cheap, no timer, bounded to the active-clear window.
+  for (const [sid, t] of recentlyClearedSessions) {
+    if (now - t > RECENTLY_CLEARED_TTL_MS) recentlyClearedSessions.delete(sid);
+  }
+  recentlyClearedSessions.set(sessionId, now);
 }
 
 export function wasSessionRecentlyCleared(sessionId: string): boolean {
