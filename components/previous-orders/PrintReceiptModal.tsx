@@ -5,6 +5,7 @@ import { SelectedLocation } from '@/stores/useStoreSettingsStore'
 import { Mail, MessageSquare, Printer, X } from 'lucide-react-native'
 import React, { useEffect, useRef, useState } from 'react'
 import SendReceiptSheet from '@/components/receipts/SendReceiptSheet'
+import SplitReceiptSelectorModal from '@/components/bill/SplitReceiptSelectorModal'
 import type { SendReceiptDeliveryMethod } from '@/services/messaging/sendReceiptService'
 import {
   ActivityIndicator,
@@ -85,6 +86,7 @@ const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
     method: SendReceiptDeliveryMethod
   }>({ open: false, method: 'email' })
   const [isPrinting, setIsPrinting] = useState(false)
+  const [splitSelectorOpen, setSplitSelectorOpen] = useState(false)
 
   // Pan responder for drag gesture
   const panResponder = useRef(
@@ -421,6 +423,45 @@ const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
           </View>
         </ScrollView>
 
+        {/* Split Receipts entry — only for split-paid orders */}
+        {!!order.split_payment_path &&
+          (order.payments?.filter(p => !p.isVoided).length ?? 0) > 1 && (
+            <View
+              style={{
+                paddingHorizontal: 14,
+                paddingTop: 4
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => setSplitSelectorOpen(true)}
+                disabled={!location}
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  gap: 6,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.teal + '40',
+                  backgroundColor: colors.teal + '12',
+                  opacity: location ? 1 : 0.5
+                }}
+              >
+                <Printer color={colors.teal} size={14} />
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: colors.teal
+                  }}
+                >
+                  Split Receipts
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
         {/* Footer with Buttons */}
         <View
           style={{
@@ -530,6 +571,12 @@ const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
         defaultMethod={receiptSheet.method}
         defaultEmail={order?.customer_email}
         defaultPhone={order?.customer_phone}
+      />
+      <SplitReceiptSelectorModal
+        isOpen={splitSelectorOpen}
+        onClose={() => setSplitSelectorOpen(false)}
+        order={order}
+        location={location}
       />
     </View>
   )

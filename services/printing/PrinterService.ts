@@ -159,6 +159,72 @@ export const PrinterService = {
   },
 
   /**
+   * Print a receipt scoped to a single split-payment portion — only that
+   * payer's items/totals/tender. Supplements the combined receipt.
+   */
+  async printSplitPaymentReceipt (
+    order: OrderProfile,
+    payment: OrderProfilePayment,
+    location: SelectedLocation
+  ): Promise<boolean> {
+    if (payment.isVoided) return false
+
+    const printer = getReceiptPrinter(location.id)
+    if (!printer) {
+      console.warn('[PrinterService] No receipt printer configured')
+      return false
+    }
+
+    const { printMerchantCopy, printCustomerCopy } =
+      useLocationConfigStore.getState().config.printing
+
+    const copies: string[] = []
+    if (printMerchantCopy) copies.push('Merchant Copy')
+    if (printCustomerCopy) copies.push('Customer Copy')
+    if (copies.length === 0) copies.push('Customer Copy')
+
+    const baseData = buildReceiptTemplateData(order, location, printer, {
+      scopeToPayment: payment
+    })
+
+    for (const label of copies) {
+      const templateData: ReceiptTemplateData = {
+        ...baseData,
+        copyLabel: copies.length > 1 ? label : baseData.copyLabel ?? label
+      }
+      const job = createJobForPrinter(
+        printer,
+        templateData,
+        'receipt',
+        'normal',
+        order.id,
+        'receipt'
+      )
+      usePrintQueueStore.getState().enqueue(job)
+    }
+
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
+   * Print one separate receipt for every non-voided payment on the order.
+   */
+  async printAllSplitReceipts (
+    order: OrderProfile,
+    location: SelectedLocation
+  ): Promise<boolean> {
+    const payments = (order.payments ?? []).filter(p => !p.isVoided)
+    if (payments.length === 0) return false
+    let ok = true
+    for (const p of payments) {
+      const sent = await this.printSplitPaymentReceipt(order, p, location)
+      ok = ok && sent
+    }
+    return ok
+  },
+
+  /**
    * Print kitchen tickets for items, routed by category.
    */
   async printKitchenTickets (
@@ -1071,10 +1137,46 @@ function resolveReceiptPricingMode (
   return 'dual'
 }
 
+// Transform a single OrderProfilePayment into the receipt payment row. Shared
+// by the combined-receipt path (maps every non-voided payment) and the
+// per-portion split-receipt path (maps just the one scoped payment).
+function mapPaymentToReceiptData (p: OrderProfilePayment): ReceiptPaymentData {
+  const td = p.transactionDetails
+  const dejavoo = td?.dejavooTransaction
+  // Handle both nesting levels: local payments store full terminal response
+  // ({ terminal_vendor, castles_transaction, raw_castles_response }),
+  // backend-synced payments store just the inner castles_transaction object
+  const castlesRaw = td?.castlesTransaction as Record<string, any> | undefined
+  const castles = (castlesRaw?.castles_transaction ?? castlesRaw) as
+    | Record<string, string>
+    | undefined
+
+  return {
+    method: getPaymentMethodName(p.method),
+    amount: p.amount,
+    last4: p.last4 ?? td?.last4 ?? castles?.cardLast4,
+    cardBrand:
+      p.cardBrand ?? td?.cardType ?? dejavoo?.cardType ?? castles?.cardType,
+    authCode:
+      td?.authorizationCode ?? dejavoo?.authCode ?? castles?.approvalCode,
+    rrn: td?.rrn ?? dejavoo?.rrn ?? castles?.rrn,
+    entryMode: dejavoo?.entryMode ?? dejavoo?.entryType ?? castles?.entryMode,
+    aid: castles?.cardAID ?? (td as Record<string, any>)?.cardAID,
+    tipAmount: p.tip_amount || undefined,
+    originalTipAmount:
+      p.original_tip_amount != null && p.original_tip_amount !== p.tip_amount
+        ? p.original_tip_amount
+        : undefined,
+    amountTendered: p.amountTendered ?? td?.amountTendered,
+    changeGiven: p.changeGiven ?? td?.changeGiven
+  }
+}
+
 function buildReceiptTemplateData (
   order: OrderProfile,
   location: SelectedLocation,
-  printer: PrinterConfig
+  printer: PrinterConfig,
+  options?: { scopeToPayment?: OrderProfilePayment }
 ): ReceiptTemplateData {
   const template = useReceiptTemplateStore
     .getState()
@@ -1182,44 +1284,14 @@ function buildReceiptTemplateData (
     }
   })
 
-  // Map payments
-  const payments: ReceiptPaymentData[] = (order.payments ?? [])
-    .filter(p => !p.isVoided)
-    .map(p => {
-      const td = p.transactionDetails
-      const dejavoo = td?.dejavooTransaction
-      // Handle both nesting levels: local payments store full terminal response
-      // ({ terminal_vendor, castles_transaction, raw_castles_response }),
-      // backend-synced payments store just the inner castles_transaction object
-      const castlesRaw = td?.castlesTransaction as
-        | Record<string, any>
-        | undefined
-      const castles = (castlesRaw?.castles_transaction ?? castlesRaw) as
-        | Record<string, string>
-        | undefined
-
-      return {
-        method: getPaymentMethodName(p.method),
-        amount: p.amount,
-        last4: p.last4 ?? td?.last4 ?? castles?.cardLast4,
-        cardBrand:
-          p.cardBrand ?? td?.cardType ?? dejavoo?.cardType ?? castles?.cardType,
-        authCode:
-          td?.authorizationCode ?? dejavoo?.authCode ?? castles?.approvalCode,
-        rrn: td?.rrn ?? dejavoo?.rrn ?? castles?.rrn,
-        entryMode:
-          dejavoo?.entryMode ?? dejavoo?.entryType ?? castles?.entryMode,
-        aid: castles?.cardAID ?? (td as Record<string, any>)?.cardAID,
-        tipAmount: p.tip_amount || undefined,
-        originalTipAmount:
-          p.original_tip_amount != null &&
-          p.original_tip_amount !== p.tip_amount
-            ? p.original_tip_amount
-            : undefined,
-        amountTendered: p.amountTendered ?? td?.amountTendered,
-        changeGiven: p.changeGiven ?? td?.changeGiven
-      }
-    })
+  // Map payments. When scoped to a single split portion, only that payment
+  // appears in the payments section; otherwise map every non-voided payment.
+  const scopePayment = options?.scopeToPayment
+  const payments: ReceiptPaymentData[] = scopePayment
+    ? [mapPaymentToReceiptData(scopePayment)]
+    : (order.payments ?? [])
+        .filter(p => !p.isVoided)
+        .map(mapPaymentToReceiptData)
 
   // Format date/time
   const orderDate = order.opened_at ? new Date(order.opened_at) : new Date()
@@ -1250,7 +1322,9 @@ function buildReceiptTemplateData (
   // Finalized printed receipts should reconcile to the pricing the guest
   // actually used. Split tenders and unpaid orders stay in dual mode because
   // there is no single charged pricing to display.
-  const pricingMode = resolveReceiptPricingMode(order.payments ?? [])
+  const pricingMode = resolveReceiptPricingMode(
+    scopePayment ? [scopePayment] : order.payments ?? []
+  )
 
   let displayItems = items
   let displaySubtotal = subtotal
@@ -1292,6 +1366,84 @@ function buildReceiptTemplateData (
     displayTaxRate = cashSubtotal > 0 ? (cashTax / cashSubtotal) * 100 : 0
   }
 
+  let displayTip = tip
+  let displayAmountPaid: number | undefined = order.amount_paid
+  let displayAmountDue: number | undefined = order.amount_due
+  let splitLabel: string | undefined
+  let splitPayerName: string | undefined
+  let isPartialSplitReceipt: boolean | undefined
+
+  // ── Scope to a single split portion ───────────────────────────────────
+  // Overrides totals + items so the receipt reflects only what this one payer
+  // paid. Anchored on the captured `amount`/`tip_amount` so the printed block
+  // always reconciles to the guest's charge, regardless of cash/card pricing.
+  if (scopePayment) {
+    const sp = scopePayment
+    const spTip = sp.tip_amount || 0
+    const spServiceCharge = sp.service_charge || 0
+    const spTax = sp.tax_portion ?? 0
+    const spDiscount = sp.discount_portion ?? 0
+    const spTotal = sp.amount + spTip
+    // Anchor subtotal so subtotal + tax + serviceCharge − discount + tip = total.
+    const spSubtotal =
+      sp.subtotal_portion ?? sp.amount - spTax - spServiceCharge + spDiscount
+
+    const path = order.split_payment_path
+    const isByItem = path === 'split-by-item' || path === 'pay-for-items'
+
+    if (isByItem) {
+      // List only the items this payment covered, scaled so the line totals
+      // reconcile to this portion's subtotal (coverage carries card prices).
+      const dataByDbId = new Map<string, ReceiptItemData>()
+      nonVoidedItems.forEach((it, i) => {
+        if (it.db_order_item_id) dataByDbId.set(it.db_order_item_id, items[i])
+      })
+      const coverage = sp.itemsCovered ?? []
+      const coverageSum = coverage.reduce((s, c) => s + (c.subtotal || 0), 0)
+      const factor = coverageSum > 0 ? spSubtotal / coverageSum : 1
+      displayItems = coverage.map(c => {
+        const base = dataByDbId.get(c.itemId)
+        return {
+          name: base?.name ?? c.itemName,
+          quantity: c.quantity,
+          price: (c.subtotal || 0) * factor,
+          cashPrice: undefined,
+          isVoided: false,
+          modifiers: base?.modifiers ?? [],
+          notes: base?.notes,
+          seatNumber: base?.seatNumber ?? null
+        }
+      })
+    } else {
+      // Even / custom split: keep the full check above for reference and flag
+      // it; the totals block below shows only this payer's share.
+      isPartialSplitReceipt = true
+    }
+
+    displaySubtotal = spSubtotal
+    displayTax = spTax
+    displayDiscount = spDiscount
+    displayTotal = spTotal
+    displayTip = spTip
+    displayServiceCharge = spServiceCharge
+    // Per-portion receipts strip the order-level cash breakdown and balance.
+    displayCashSubtotal = undefined
+    displayCashTax = undefined
+    displayCashTotal = undefined
+    displayCashServiceCharge = undefined
+    displayAmountPaid = spTotal
+    displayAmountDue = undefined
+
+    const nonVoidedPayments = (order.payments ?? []).filter(p => !p.isVoided)
+    const spIndex = nonVoidedPayments.findIndex(p => p.id === sp.id)
+    const portionIndex =
+      sp.splitInfo?.portionIndex ?? (spIndex >= 0 ? spIndex + 1 : 1)
+    const totalPortions =
+      sp.splitInfo?.totalPortions ?? nonVoidedPayments.length ?? 1
+    splitLabel = `Split ${portionIndex} of ${totalPortions}`
+    splitPayerName = sp.transactionDetails?.splitLabel
+  }
+
   return {
     storeName: location.name,
     storeAddress: addressParts.join(', '),
@@ -1310,7 +1462,7 @@ function buildReceiptTemplateData (
     subtotal: displaySubtotal,
     tax: displayTax,
     discount: displayDiscount,
-    tip,
+    tip: displayTip,
     total: displayTotal,
     pricingMode,
     cashSubtotal: displayCashSubtotal,
@@ -1320,8 +1472,8 @@ function buildReceiptTemplateData (
     cashServiceCharge: displayCashServiceCharge,
     serviceChargeName: orderTotals.service_charge_name || undefined,
     payments,
-    amountPaid: order.amount_paid,
-    amountDue: order.amount_due,
+    amountPaid: displayAmountPaid,
+    amountDue: displayAmountDue,
     footerMessage:
       template.footerText ??
       printer.receiptFooter ??
@@ -1337,7 +1489,10 @@ function buildReceiptTemplateData (
       ? useReceiptTemplateStore.getState().cachedLogoBase64 ?? undefined
       : undefined,
     printDate: printDateStr,
-    printTime: printTimeStr
+    printTime: printTimeStr,
+    splitLabel,
+    splitPayerName,
+    isPartialSplitReceipt
   }
 }
 

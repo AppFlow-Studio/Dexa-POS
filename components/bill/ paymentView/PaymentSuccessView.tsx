@@ -34,6 +34,7 @@ const PaymentSuccessView = () => {
 
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const autoPrintReceipt = useLocationConfigStore((s) => s.config.printing.autoPrintReceipt);
+  const autoPrintSplitReceipts = useLocationConfigStore((s) => s.config.printing.autoPrintSplitReceipts);
 
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
 
@@ -51,11 +52,17 @@ const PaymentSuccessView = () => {
     usePaymentStore.getState().setPaymentClean();
   }, []);
 
-  // Auto-print receipt on mount when setting enabled
+  // Auto-print receipt on mount when setting enabled.
+  // For split orders with per-portion auto-print on, each portion already
+  // printed its own receipt (in usePaymentStore) — skip the combined one to
+  // avoid double-printing. The combined receipt stays available via the manual
+  // Print button and the reprint selector.
   useEffect(() => {
     if (autoPrintReceipt && activeOrderId) {
       const order = useOrderStore.getState().ordersById[activeOrderId];
-      if (order && selectedStore) {
+      const printedPerPortion =
+        !!order?.split_payment_path && autoPrintSplitReceipts;
+      if (order && selectedStore && !printedPerPortion) {
         PrinterService.printReceipt(order, selectedStore)
           .catch((e) => console.warn("[PaymentSuccessView] Auto-print receipt failed:", e));
       }

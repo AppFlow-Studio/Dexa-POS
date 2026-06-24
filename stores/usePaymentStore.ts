@@ -23,6 +23,7 @@ import { trackCashPaymentInDrawer } from "@/services/paymentService";
 import { finalizeDineInPaymentClear } from "@/services/tables/finalizeDineInPaymentClear";
 import { useConflictStore } from "@/stores/useConflictStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { calculateCustomSplitCashAmount } from "@/utils/custom-split-amounts";
@@ -1012,6 +1013,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         useOrderStore.getState().sendNewItemsToKitchenForOrder(activeOrderId);
       }
 
+      // Snapshot existing payment ids so we can identify the one this call
+      // appends (for per-portion auto-print after success).
+      const prePaymentPaymentIds = new Set(
+        (
+          useOrderStore.getState().ordersById[activeOrderId]?.payments ?? []
+        ).map((p) => p.id),
+      );
+
       // Await payment and check for success
       // Only pass splitCount/splitPortionIndex for EVEN split payments
       // For per-item payments (split-by-item, pay-for-items), we pass itemAllocations instead
@@ -1106,6 +1115,38 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const nextPending = updatedSplits.find((s) => s.status === "pending");
 
       set({ splits: updatedSplits });
+
+      // Auto-print this portion's receipt (supplements the combined receipt).
+      // Fires for every portion including the last, so each payer gets a copy.
+      try {
+        const { autoPrintSplitReceipts } =
+          useLocationConfigStore.getState().config.printing;
+        if (autoPrintSplitReceipts) {
+          const selectedStore =
+            useStoreSettingsStore.getState().selectedStore;
+          const afterOrder =
+            useOrderStore.getState().ordersById[activeOrderId];
+          const justPaid = (afterOrder?.payments ?? []).find(
+            (p) => !prePaymentPaymentIds.has(p.id),
+          );
+          if (selectedStore && afterOrder && justPaid) {
+            const { PrinterService } =
+              require("@/services/printing/PrinterService") as typeof import("@/services/printing/PrinterService");
+            PrinterService.printSplitPaymentReceipt(
+              afterOrder,
+              justPaid,
+              selectedStore,
+            ).catch((e: unknown) =>
+              console.warn(
+                "[PaymentStore] split receipt auto-print failed:",
+                e,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        console.warn("[PaymentStore] split receipt auto-print error:", e);
+      }
 
       if (nextPending) {
         set({ view: "split-payment-success" });

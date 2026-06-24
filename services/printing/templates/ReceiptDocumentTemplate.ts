@@ -429,6 +429,30 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     }
   }
 
+  // ── C2. Split-payment header (per-portion receipts only) ─────────────
+  if (validated.splitLabel) {
+    nodes.push({
+      type: "text_line",
+      content: sanitizeForPrint(validated.splitLabel),
+      align: "center",
+      format: BOLD,
+    });
+    if (validated.splitPayerName) {
+      nodes.push({
+        type: "text_line",
+        content: sanitizeForPrint(validated.splitPayerName),
+        align: "center",
+      });
+    }
+    if (validated.isPartialSplitReceipt) {
+      nodes.push({
+        type: "text_line",
+        content: "Partial payment - full check below",
+        align: "center",
+      });
+    }
+  }
+
   // ═══ SEAM: handoff from DEXA top to Figure body ══════════════════════
   nodes.push({ type: "empty_line" });
 
