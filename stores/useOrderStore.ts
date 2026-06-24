@@ -4072,6 +4072,21 @@ function releaseOrderState(
   // Clear the string-keyed module dicts under every id the order was keyed
   // under (its own id, db UUID, and the store key it was removed under).
   _cleanupOrderModuleState(orderId, dbId, storeKey);
+  // Prune the two order-keyed module Maps that aren't covered by
+  // _cleanupOrderModuleState: localIdToDbOrderId (PERSISTED — grew one entry
+  // per order for the app's lifetime across restarts) and lastOrderDetailSyncAt
+  // (in-mem sync cooldown — grew one entry per distinct synced order per shift).
+  // Both are dead once the order leaves ordersById: the local→db mapping only
+  // exists to dedupe creation/resolve queue keys for a LIVE order, and the
+  // cooldown only throttles syncs for an order still in memory. A re-open from
+  // history re-keys + re-syncs fresh, so dropping these loses nothing.
+  let localIdMapChanged = false;
+  for (const k of [orderId, dbId, storeKey]) {
+    if (!k) continue;
+    if (localIdToDbOrderId.delete(k)) localIdMapChanged = true;
+    lastOrderDetailSyncAt.delete(k);
+  }
+  if (localIdMapChanged) persistLocalIdMap();
   const items = order.items ?? [];
   for (const item of items) {
     if (item?.id) quantitySyncGenerations.delete(item.id);
