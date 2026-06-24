@@ -13,6 +13,7 @@ import {
 import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -116,6 +117,15 @@ const Sidebar: React.FC<SidebarProps> = ({
     )
     opacitySV.value = withTiming(isExpanded ? 1 : 0, { duration: 150 })
   }, [isExpanded])
+
+  // Cancel in-flight width/opacity animations on unmount so they don't pin
+  // their shared-value UI-thread mappings past teardown.
+  useEffect(() => {
+    return () => {
+      cancelAnimation(widthSV)
+      cancelAnimation(opacitySV)
+    }
+  }, [])
 
   const containerStyle = useAnimatedStyle(() => ({
     width: widthSV.value

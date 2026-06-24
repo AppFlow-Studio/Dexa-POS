@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -756,6 +757,26 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   useEffect(() => {
     return () => {
       if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+    };
+  }, []);
+
+  // Cancel all in-flight canvas animations on unmount. The mount fade-in
+  // (opacity / skeletonOpacity / contentOpacity withTiming, 200-300ms) is
+  // routinely still running when the floor unmounts — an uncancelled Reanimated
+  // animation pins its shared value's UI-thread mapping past unmount, leaking
+  // native memory on every Tables visit (Views flat, Native/PSS climb). The
+  // gesture values (scale/translate) also carry withSpring/withDecay momentum.
+  useEffect(() => {
+    return () => {
+      cancelAnimation(scale);
+      cancelAnimation(savedScale);
+      cancelAnimation(translateX);
+      cancelAnimation(translateY);
+      cancelAnimation(savedTranslateX);
+      cancelAnimation(savedTranslateY);
+      cancelAnimation(opacity);
+      cancelAnimation(skeletonOpacity);
+      cancelAnimation(contentOpacity);
     };
   }, []);
 
