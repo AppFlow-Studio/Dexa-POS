@@ -64,7 +64,7 @@ export default function MainLayout () {
   const menuSearchSheetRef = useRef<BottomSheetMethods>(null)
   const setSheetRef = useNotificationSheetStore(state => state.setSheetRef)
   const clearSheetRef = useNotificationSheetStore(state => state.clearSheetRef)
-  const { setSearchSheetRef } = useMenuManagementSearchStore()
+  const { setSearchSheetRef, clearSearchSheetRef } = useMenuManagementSearchStore()
 
   useEffect(() => {
     if (!isKDS) {
@@ -75,8 +75,10 @@ export default function MainLayout () {
   }, [setSheetRef, clearSheetRef, isKDS])
 
   useEffect(() => {
-    setSearchSheetRef(menuSearchSheetRef as React.RefObject<BottomSheetMethods>)
-  }, [setSearchSheetRef])
+    const ref = menuSearchSheetRef as React.RefObject<BottomSheetMethods>
+    setSearchSheetRef(ref)
+    return () => clearSearchSheetRef(ref)
+  }, [setSearchSheetRef, clearSearchSheetRef])
 
   // DEBUG: Verify station context is initialized before broadcasts arrive (Step 4)
   useEffect(() => {
