@@ -134,6 +134,7 @@ interface KDSState {
   markItemDone: (ticketId: string, itemId: string) => void;
   acknowledgeNoticeItem: (ticketId: string, itemId: string) => void;
   isTicketRecalled: (ticketId: string) => boolean;
+  isRushPending: (ticketId: string) => boolean;
 
   // Done tickets
   recallDoneTicket: (ticketId: string) => void;
@@ -2773,6 +2774,10 @@ export const useKDSStore = create<KDSState>()(
       },
 
       isTicketRecalled: (ticketId: string) => _recalledTicketIds.has(ticketId),
+      isRushPending: (ticketId: string) => {
+        const pending = _pendingActions.get(ticketId);
+        return pending?.rushOverride != null;
+      },
 
       prioritizeTicket: (ticketId: string) => {
         const { tickets, _ticketsById, prioritizedTicketIds } = get();
@@ -2856,6 +2861,11 @@ export const useKDSStore = create<KDSState>()(
         const { tickets, _ticketsById } = get();
         const ticket = _ticketsById[ticketId];
         if (!ticket) return;
+
+        // Guard against rapid toggles: if a rush action is already pending for
+        // this ticket, wait for it to settle before allowing another toggle.
+        const existingPending = _pendingActions.get(ticketId);
+        if (existingPending?.rushOverride != null) return;
 
         const currentRush = ticket.items.some((i) => i.rush);
         const newRush = !currentRush;

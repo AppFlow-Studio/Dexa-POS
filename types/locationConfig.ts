@@ -47,6 +47,8 @@ export interface KdsConfig {
   orangeThresholdMinutes: number
   redThresholdMinutes: number
   newOrderPosition: 'left' | 'right'
+  servedOrderSort: 'newest-first' | 'oldest-first'
+  ticketTapMode: 'double-tap' | 'single-select'
 }
 
 export interface PrintingConfig {
@@ -220,6 +222,8 @@ export const DEFAULT_KDS_CONFIG: KdsConfig = {
   orangeThresholdMinutes: 10,
   redThresholdMinutes: 15,
   newOrderPosition: 'right',
+  servedOrderSort: 'newest-first',
+  ticketTapMode: 'double-tap',
 }
 
 export const DEFAULT_PRINTING_CONFIG: PrintingConfig = {

@@ -8,7 +8,6 @@ import { ManualIpPanel } from "@/components/settings/ManualIpPanel";
 import { PrinterListSection } from "@/components/settings/PrinterListSection";
 import { PrinterRoutingModal } from "@/components/settings/PrinterRoutingModal";
 import { useLocationStations } from "@/hooks/useLocationStations";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { usePrinterDiscovery } from "@/hooks/usePrinterDiscovery";
 import { getPrinterReachability } from "@/stores/selectors/printerSelectors";
 import { colors } from "@/lib/theme";
@@ -680,8 +679,6 @@ function SalesSettingTab() {
 // ---------------------------------------------------------------------------
 
 interface KitchenLocal {
-  autoFire: boolean;
-  autoFireDelay: number;
   showGuestCount: boolean;
   showModifiers: boolean;
   showCourseNumber: boolean;
@@ -693,9 +690,7 @@ interface KitchenLocal {
 function OrderSettingTab({ onOpenRouting }: { onOpenRouting: (p: PrinterConfig) => void }) {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
-  const supabase = useSupabaseClient();
   const selectedStore = useStoreSettingsStore((store) => store.selectedStore);
-  const kdsConfig = useLocationConfigStore((store) => store.config.kds);
   const printingConfig = useLocationConfigStore((store) => store.config.printing);
   const updateConfig = useLocationConfigStore((store) => store.updateConfig);
 
@@ -709,8 +704,6 @@ function OrderSettingTab({ onOpenRouting }: { onOpenRouting: (p: PrinterConfig) 
 
   // Local-state-only kitchen toggles (preserved as-is per plan)
   const [kitchen, setKitchen] = useState<KitchenLocal>({
-    autoFire: true,
-    autoFireDelay: 0,
     showGuestCount: true,
     showModifiers: true,
     showCourseNumber: false,
@@ -746,48 +739,16 @@ function OrderSettingTab({ onOpenRouting }: { onOpenRouting: (p: PrinterConfig) 
     (p) => p.isActive && (p.printerRole === "kitchen" || p.printerRole === "bar" || p.isDefaultKitchen),
   );
 
-  const workflowMode = kdsConfig.workflowMode ?? "3-step";
-
   return (
     <View>
-      <SectionHeader title="Kitchen Ticket Settings" />
-      <ToggleRow
-        label="Auto-Fire Tickets"
-        value={kitchen.autoFire}
-        onToggle={() => setKitchen((p) => ({ ...p, autoFire: !p.autoFire }))}
+      <SectionHeader
+        title="Kitchen Ticket Settings"
+        rightContent={
+          <Text style={{ fontSize: s(10), color: colors.muted }}>
+            KDS display options moved to Settings → Kitchen Display
+          </Text>
+        }
       />
-      {kitchen.autoFire && (
-        <View style={{
-          backgroundColor: colors.card,
-          borderRadius: s(8),
-          borderWidth: 1,
-          borderColor: colors.border,
-          paddingHorizontal: s(12),
-          paddingVertical: s(10),
-          marginBottom: s(4),
-        }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={{ fontSize: s(13), color: colors.heading }}>Auto-fire delay</Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
-              <TouchableOpacity
-                onPress={() => setKitchen((p) => ({ ...p, autoFireDelay: Math.max(0, p.autoFireDelay - 1) }))}
-                style={{ backgroundColor: colors.panel, paddingHorizontal: s(10), paddingVertical: s(6), borderRadius: s(6) }}
-              >
-                <Minus size={s(14)} color={colors.heading} />
-              </TouchableOpacity>
-              <Text style={{ fontSize: s(13), fontWeight: "700", color: colors.teal, width: s(44), textAlign: "center" }}>
-                {kitchen.autoFireDelay}s
-              </Text>
-              <TouchableOpacity
-                onPress={() => setKitchen((p) => ({ ...p, autoFireDelay: Math.min(120, p.autoFireDelay + 1) }))}
-                style={{ backgroundColor: colors.panel, paddingHorizontal: s(10), paddingVertical: s(6), borderRadius: s(6) }}
-              >
-                <Plus size={s(14)} color={colors.heading} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
       <ToggleRow
         label="Print Void Tickets"
         value={printingConfig.printVoidTickets}
@@ -872,179 +833,6 @@ function OrderSettingTab({ onOpenRouting }: { onOpenRouting: (p: PrinterConfig) 
           </View>
         </>
       )}
-
-      <SectionHeader title="KDS Workflow Mode" />
-      <View style={{
-        backgroundColor: colors.card,
-        borderRadius: s(10),
-        borderWidth: 1,
-        borderColor: colors.border,
-        padding: s(12),
-        marginBottom: s(4),
-      }}>
-        <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(10) }}>
-          Controls how items flow through the KDS. 3-Step requires cooks to acknowledge orders before cooking. 2-Step skips the Pending stage.
-        </Text>
-        <View style={{ flexDirection: "row", gap: s(8) }}>
-          {([
-            { value: "3-step" as const, label: "3-Step", desc: "Pending → Cooking → Served" },
-            { value: "2-step" as const, label: "2-Step", desc: "Cooking → Served" },
-          ] as const).map((opt) => {
-            const isSelected = workflowMode === opt.value;
-            return (
-              <TouchableOpacity
-                key={opt.value}
-                onPress={async () => {
-                  if (!selectedStore?.id) return;
-                  updateConfig("kds", { workflowMode: opt.value });
-                  useStoreSettingsStore.getState().setSelectedStore({
-                    ...selectedStore,
-                    kds_workflow_mode: opt.value,
-                  });
-                  await supabase
-                    .from("locations")
-                    .update({ kds_workflow_mode: opt.value })
-                    .eq("id", selectedStore.id);
-                  if (opt.value === "2-step") {
-                    await supabase.rpc("migrate_pending_to_preparing", {
-                      p_location_id: selectedStore.id,
-                    });
-                  }
-                }}
-                style={{
-                  flex: 1,
-                  paddingHorizontal: s(10),
-                  paddingVertical: s(10),
-                  borderRadius: s(8),
-                  borderWidth: 1,
-                  borderColor: isSelected ? colors.teal + "50" : colors.border,
-                  backgroundColor: isSelected ? colors.teal + "15" : colors.panel,
-                }}
-              >
-                <Text style={{ fontSize: s(12), fontWeight: "700", color: isSelected ? colors.teal : colors.heading }}>
-                  {opt.label}
-                </Text>
-                <Text style={{ fontSize: s(10), marginTop: s(2), color: isSelected ? colors.teal + "CC" : colors.muted }}>
-                  {opt.desc}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      {workflowMode !== "2-step" && (
-        <>
-          <SectionHeader title="KDS Auto-Fire" />
-          <ToggleRow
-            label="Auto-Fire Pending Courses"
-            value={kdsConfig.autoFireEnabled}
-            onToggle={(v) => updateConfig("kds", { autoFireEnabled: v })}
-          />
-          {kdsConfig.autoFireEnabled && (
-            <View style={{
-              backgroundColor: colors.card,
-              borderRadius: s(8),
-              borderWidth: 1,
-              borderColor: colors.border,
-              paddingHorizontal: s(12),
-              paddingVertical: s(10),
-              marginBottom: s(4),
-            }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <Text style={{ fontSize: s(12), color: colors.label }}>Delay before auto-fire</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
-                  <TouchableOpacity
-                    onPress={() => updateConfig("kds", { autoFireDelayMinutes: Math.max(1, kdsConfig.autoFireDelayMinutes - 1) })}
-                    style={{ backgroundColor: colors.panel, paddingHorizontal: s(10), paddingVertical: s(6), borderRadius: s(6) }}
-                  >
-                    <Minus size={s(14)} color={colors.heading} />
-                  </TouchableOpacity>
-                  <Text style={{ fontSize: s(13), fontWeight: "700", color: colors.teal, width: s(52), textAlign: "center" }}>
-                    {kdsConfig.autoFireDelayMinutes} min
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => updateConfig("kds", { autoFireDelayMinutes: Math.min(30, kdsConfig.autoFireDelayMinutes + 1) })}
-                    style={{ backgroundColor: colors.panel, paddingHorizontal: s(10), paddingVertical: s(6), borderRadius: s(6) }}
-                  >
-                    <Plus size={s(14)} color={colors.heading} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
-        </>
-      )}
-
-      <SectionHeader title="Display Settings" />
-      <ToggleRow
-        label="Display Seat Numbers"
-        value={kdsConfig.displaySeatNumbers ?? false}
-        onToggle={(v) => updateConfig("kds", { displaySeatNumbers: v })}
-      />
-      <ToggleRow
-        label="Display Guest Count"
-        value={kdsConfig.displayGuestCount ?? false}
-        onToggle={(v) => updateConfig("kds", { displayGuestCount: v })}
-      />
-      <ToggleRow
-        label="Highlight Item Notes"
-        value={kdsConfig.highlightNotes ?? false}
-        onToggle={(v) => updateConfig("kds", { highlightNotes: v })}
-      />
-      <ToggleRow
-        label="Display Exclusions at Top"
-        value={kdsConfig.displayExclusionsAtTop ?? false}
-        onToggle={(v) => updateConfig("kds", { displayExclusionsAtTop: v })}
-      />
-
-      <SectionHeader title="Receipt Formatting" />
-      <ToggleRow
-        label="Alphabetically Sort Items"
-        value={kdsConfig.alphabeticalSort ?? false}
-        onToggle={(v) => updateConfig("kds", { alphabeticalSort: v })}
-      />
-      <ToggleRow
-        label="Aggregate Identical Items"
-        subtitle="Merge items with same name, modifiers, and notes"
-        value={kdsConfig.aggregateIdenticalItems ?? false}
-        onToggle={(v) => updateConfig("kds", { aggregateIdenticalItems: v })}
-      />
-      <ToggleRow
-        label="Aggregate to Existing Tickets"
-        subtitle="Single Ticket Mode"
-        value={kdsConfig.aggregateToExistingTickets ?? false}
-        onToggle={(v) => updateConfig("kds", { aggregateToExistingTickets: v })}
-      />
-      <ToggleRow
-        label="Hide Done Items"
-        value={kdsConfig.hideDoneItems ?? false}
-        onToggle={(v) => updateConfig("kds", { hideDoneItems: v })}
-      />
-
-      <SectionHeader title="Ticket Color Thresholds" />
-      <ColorThresholdRow
-        label="Yellow (Warning)"
-        value={kdsConfig.yellowThresholdMinutes ?? 5}
-        min={1}
-        max={(kdsConfig.orangeThresholdMinutes ?? 10) - 1}
-        onChange={(v) => updateConfig("kds", { yellowThresholdMinutes: v })}
-      />
-      <ColorThresholdRow
-        label="Orange (Late)"
-        value={kdsConfig.orangeThresholdMinutes ?? 10}
-        min={(kdsConfig.yellowThresholdMinutes ?? 5) + 1}
-        max={(kdsConfig.redThresholdMinutes ?? 15) - 1}
-        onChange={(v) => updateConfig("kds", { orangeThresholdMinutes: v })}
-      />
-      <ColorThresholdRow
-        label="Red (Critical)"
-        value={kdsConfig.redThresholdMinutes ?? 15}
-        min={(kdsConfig.orangeThresholdMinutes ?? 10) + 1}
-        max={60}
-        onChange={(v) => updateConfig("kds", { redThresholdMinutes: v })}
-      />
-
       <SectionHeader title="Auto-Print Kitchen" />
       <ToggleRow
         label="Auto-Print Kitchen Tickets"
@@ -1155,55 +943,6 @@ function OrderSettingTab({ onOpenRouting }: { onOpenRouting: (p: PrinterConfig) 
         ) : (
           <Text style={{ fontSize: 11, color: colors.muted }}>No kitchen / bar printers configured</Text>
         )}
-      </View>
-    </View>
-  );
-}
-
-function ColorThresholdRow({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (v: number) => void;
-}) {
-  const uiScale = useUiScale();
-  const s = (n: number) => Math.round(n * uiScale);
-  return (
-    <View style={{
-      backgroundColor: colors.card,
-      borderRadius: s(8),
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: s(12),
-      paddingVertical: s(10),
-      marginBottom: s(4),
-    }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <Text style={{ fontSize: s(12), color: colors.label, fontWeight: "500" }}>{label}</Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
-          <TouchableOpacity
-            onPress={() => onChange(Math.max(min, value - 1))}
-            style={{ backgroundColor: colors.panel, width: s(28), height: s(28), borderRadius: s(6), alignItems: "center", justifyContent: "center" }}
-          >
-            <Minus size={s(12)} color={colors.heading} />
-          </TouchableOpacity>
-          <Text style={{ fontSize: s(12), fontWeight: "700", color: colors.teal, minWidth: s(32), textAlign: "center" }}>
-            {value}m
-          </Text>
-          <TouchableOpacity
-            onPress={() => onChange(Math.min(max, value + 1))}
-            style={{ backgroundColor: colors.panel, width: s(28), height: s(28), borderRadius: s(6), alignItems: "center", justifyContent: "center" }}
-          >
-            <Plus size={s(12)} color={colors.heading} />
-          </TouchableOpacity>
-        </View>
       </View>
     </View>
   );
