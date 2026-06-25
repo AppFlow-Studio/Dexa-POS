@@ -1,4 +1,8 @@
 import { resolveMenuImage } from '@/services/menuImageCache'
+import {
+  dedupeSyncCategoryItems,
+  sortSyncCategoryItems
+} from '@/lib/menuSyncDedupe'
 import { extractMenuItemPlaceholderIconKey } from '@/lib/menuItemPlaceholderIcon'
 import {
   Category,
@@ -334,18 +338,15 @@ const transformMenuItemsFromSync = (
     .map(menu => {
       const categories: Category[] = (menu.categories || []).map(catEntry => {
         // Map items specifically for this menu/category context
-        const items = (catEntry.items || [])
-          .sort((a, b) => {
-            // Website Logic: Missing display_order goes to the BOTTOM
-            const aOrder = a.display_order ?? 999999
-            const bOrder = b.display_order ?? 999999
-            const orderDiff = aOrder - bOrder
-            if (orderDiff !== 0) return orderDiff
-            // Fallback to name if order is missing or equal
-            const nameA = a.menu_item?.name || ''
-            const nameB = b.menu_item?.name || ''
-            return nameA.localeCompare(nameB)
-          })
+        const items = dedupeSyncCategoryItems(
+          sortSyncCategoryItems(catEntry.items || []),
+          {
+            menuId: menu.id,
+            menuName: menu.name,
+            categoryId: catEntry.category_id,
+            categoryName: catEntry.category.name
+          }
+        )
           .map(itemEntry =>
             mapSyncItem(itemEntry, {
               menuId: menu.id,
