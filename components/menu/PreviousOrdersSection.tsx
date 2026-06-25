@@ -5,7 +5,7 @@ import { OrderProfile } from '@/lib/types'
 import { useUiScale } from '@/lib/uiScale'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { RefreshCw, Search, X } from 'lucide-react-native'
 import React, { useCallback, useMemo, useState } from 'react'
 import {
@@ -184,12 +184,21 @@ const PreviousOrdersSection = () => {
         // viewScope === 'location' → no station gate
         if (finalStatuses.has(o.order_status ?? '')) continue
         if (o.order_status === 'draft' && o.items.length === 0) continue
-        // Date-window gate (skip when bounds aren't resolved yet — initial
-        // render before the RPC returns). `opened_at` can be null on brand-
-        // new drafts; let those through so the user sees what they're
-        // currently typing.
-        if (startTs && endTs && o.opened_at) {
-          if (o.opened_at < startTs || o.opened_at >= endTs) continue
+        // Date-window gate. Once bounds are resolved, a SCANNED order (not the
+        // active order / working set, which were added above and bypass this)
+        // is EXCLUDED when its `opened_at` is missing or outside the window.
+        // These come from useOrdersQuery (status-only, no date bound), so
+        // without this a non-final order from days ago leaks into "Today".
+        // Previously the gate also skipped when `opened_at` was falsy, letting
+        // those stale orders through; only the active order / working set need
+        // that lenience (the cashier is mid-edit), and they already bypass.
+        // The gate is only skipped entirely while bounds are still null — the
+        // brief pre-RPC render window on genuine first load. setDateWindow now
+        // resolves bounds synchronously (Luxon) on every pill tap, so a tap
+        // never reopens that null-bounds window.
+        if (startTs && endTs) {
+          if (!o.opened_at || o.opened_at < startTs || o.opened_at >= endTs)
+            continue
         }
         ids.add(id)
       }
@@ -227,6 +236,33 @@ const PreviousOrdersSection = () => {
   const loadMoreOrders = usePreviousOrdersStore(s => s.loadMoreOrders)
   const isLoadingMore = usePreviousOrdersStore(s => s._isLoadingMore)
   const hasMore = usePreviousOrdersStore(s => s._hasMore)
+  // Store-driven loading flag: true during the initial fetch AND on every
+  // filter/date-window switch (setDateWindow clears the list + flags a refetch).
+  // Drives the empty-state spinner so a switch never shows "No orders found".
+  const isFetching = usePreviousOrdersStore(s => s._isRefreshing)
+
+  // Release previous orders from memory when navigating away. Nothing is
+  // persisted locally — the list is re-fetched from the backend on next entry
+  // via usePreviousOrdersListSync. Pagination + refresh-throttle state is reset
+  // so a re-entry starts from a clean keyset cursor and always re-fetches.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        usePreviousOrdersStore.setState({
+          previousOrders: [],
+          _orderLookup: {},
+          newOrdersCount: 0,
+          _isRefreshing: false,
+          _currentOffset: 0,
+          _hasMore: false,
+          _isLoadingMore: false,
+          _oldestCursor: null,
+          lastHistoryRefreshAt: null,
+          _lastRefreshLocationId: null
+        })
+      }
+    }, [])
+  )
 
   const handleDatePillSelect = useCallback(
     (pill: DatePillDef) => {
@@ -541,6 +577,7 @@ const PreviousOrdersSection = () => {
           onRefresh={handleRefresh}
           onEndReached={handleLoadMore}
           isLoadingMore={isLoadingMore}
+          isInitialLoading={isFetching}
         />
 
         {/* New Orders Banner - Floating */}

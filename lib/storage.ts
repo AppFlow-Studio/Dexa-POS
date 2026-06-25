@@ -629,7 +629,6 @@ export const CLEARABLE_SYNC_KEYS = [
   "order_items_cache",
   "offline_orders",
   "offline_id_registry",
-  // today_orders:* keys are cleared per-location via todayOrdersCache.clearLocation()
 ] as const;
 
 /**
@@ -661,6 +660,20 @@ export function clearCacheData(): { clearedKeys: string[]; errors: string[] } {
     } catch (error) {
       errors.push(`Failed to clear ${key}: ${error}`);
     }
+  }
+
+  // Evict any legacy `today_orders:*` cache entries left on disk from a prior
+  // build. Previous orders are no longer persisted locally — they're fetched
+  // fresh on each screen entry — so these keys should never accumulate.
+  try {
+    for (const key of syncStorage.getAllKeys()) {
+      if (key.startsWith("today_orders:")) {
+        syncStorage.remove(key);
+        clearedKeys.push(key);
+      }
+    }
+  } catch (error) {
+    errors.push(`Failed to clear today_orders cache: ${error}`);
   }
 
   return { clearedKeys, errors };

@@ -14,7 +14,6 @@ import {
   storage,
   syncStorage,
 } from "@/lib/storage";
-import { todayOrdersCache } from "@/stores/todayOrdersCache";
 import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -248,14 +247,8 @@ export function clearLocationData(): void {
 
   queryClient.clear();
 
-  // Clear today's orders MMKV cache for this location
-  const locationId = orderState.currentLocationId;
-  if (locationId) {
-    todayOrdersCache.clearLocation(locationId);
-  }
-
   console.log(
-    "[clearLocationData] Cleared orders, employees, query cache, and order cache (preserved unsynced)",
+    "[clearLocationData] Cleared orders, employees, and query cache (preserved unsynced)",
   );
 }
 

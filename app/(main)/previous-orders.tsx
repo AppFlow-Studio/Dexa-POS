@@ -288,17 +288,26 @@ const PreviousOrdersScreen = () => {
   const [sortBy, setSortBy] = useState<'date' | 'total' | 'status'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
-  const {
-    refresh: handleRefresh,
-    isRefreshing,
-    isInitialLoading
-  } = usePreviousOrdersListSync()
+  const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync()
+
+  // Store-driven loading flag: true during the initial fetch AND on every
+  // filter/date-window switch (setDateWindow clears the list + flags a refetch).
+  // Drives the skeleton rows so a switch never flashes "No orders found".
+  const isInitialLoading = usePreviousOrdersStore(s => s._isRefreshing)
 
   // Date window
   const dateWindowLabel = usePreviousOrdersStore(
     s => s.dateWindow?.label ?? 'today'
   )
   const setDateWindow = usePreviousOrdersStore(s => s.setDateWindow)
+  // Resolved date-window bounds, read at component level so the live-orders
+  // selector below can gate on them (same source as the history fetch).
+  const liveDateBounds = usePreviousOrdersStore(
+    useShallow(s => ({
+      startTs: s.dateWindow?._resolvedStartTs ?? null,
+      endTs: s.dateWindow?._resolvedEndTs ?? null
+    }))
+  )
   const handleDatePillSelect = useCallback(
     (pill: DatePillDef) => {
       const { startDate, endDate } = pill.getDateRange()
@@ -326,6 +335,8 @@ const PreviousOrdersScreen = () => {
       for (const wsId of s.workingSetOrderIds || []) {
         liveIds.add(s.dbOrderIdIndex[wsId] || wsId)
       }
+      const startTs = liveDateBounds.startTs
+      const endTs = liveDateBounds.endTs
       for (const id of s.orderIds) {
         if (liveIds.has(id)) continue
         const o = s.ordersById[id]
@@ -333,6 +344,16 @@ const PreviousOrdersScreen = () => {
         if (o.station_id !== s.currentStationId) continue // own station only
         if (finalStatuses.has(o.order_status ?? '')) continue
         if (o.order_status === 'draft') continue
+        // Date-window gate. The active order / working set (added above) bypass
+        // it — the cashier is mid-edit on those. A SCANNED order from
+        // useOrdersQuery (status-only, no date bound) is excluded when its
+        // `opened_at` is missing or outside the resolved window, so non-final
+        // orders from days ago don't leak into "Today". Skipped only while
+        // bounds are null (brief pre-RPC first-load window).
+        if (startTs && endTs) {
+          if (!o.opened_at || o.opened_at < startTs || o.opened_at >= endTs)
+            continue
+        }
         liveIds.add(id)
       }
       const result: OrderProfile[] = []
@@ -351,15 +372,25 @@ const PreviousOrdersScreen = () => {
   const isLoadingMore = usePreviousOrdersStore(s => s._isLoadingMore)
   const hasMore = usePreviousOrdersStore(s => s._hasMore)
 
-  // Release previous orders from memory when navigating away (~10MB for 500 orders).
-  // Data is re-fetched on next focus via usePreviousOrdersListSync bootstrap.
+  // Release previous orders from memory when navigating away (~10MB for 500
+  // orders). Nothing is persisted locally — the list is re-fetched from the
+  // backend on next entry via usePreviousOrdersListSync. Also reset pagination
+  // state so a re-entry starts from a clean keyset cursor instead of resuming
+  // the prior session's paging.
   useFocusEffect(
     useCallback(() => {
       return () => {
         usePreviousOrdersStore.setState({
           previousOrders: [],
           _orderLookup: {},
-          newOrdersCount: 0
+          newOrdersCount: 0,
+          _isRefreshing: false,
+          _currentOffset: 0,
+          _hasMore: false,
+          _isLoadingMore: false,
+          _oldestCursor: null,
+          lastHistoryRefreshAt: null,
+          _lastRefreshLocationId: null
         })
       }
     }, [])

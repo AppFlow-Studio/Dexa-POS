@@ -14,7 +14,6 @@ import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { OrderService } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
-import { projectToSummary, todayOrdersCache } from "@/stores/todayOrdersCache";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type {
@@ -69,6 +68,37 @@ export function resolveBusinessDayConfig(): BusinessDayConfig | null {
     timezone: store.timezone,
     rolloverHour: store.business_day_start_hour ?? 0,
   };
+}
+
+/**
+ * Synchronously resolve business-day bounds for a date window using the local
+ * Luxon config — no network. Used by `setDateWindow` to populate
+ * `_resolvedStartTs/_endTs` immediately on a pill tap, so the live-orders date
+ * gate (which reads these bounds) never sees a null window between the tap and
+ * the authoritative RPC refresh. The RPC overwrites these with server bounds.
+ * Returns null when no business-day config is available (pre-login).
+ */
+function resolveLocalBounds(window: {
+  startDate: string | null;
+  endDate: string | null;
+  label: DateWindowLabel;
+}): { startTs: string; endTs: string } | null {
+  const config = resolveBusinessDayConfig();
+  if (!config) return null;
+  try {
+    if (window.label === "today" || !window.startDate) {
+      const day = getCurrentBusinessDay(config);
+      const b = getBusinessDayBounds(day, config);
+      return { startTs: b.startUtc, endTs: b.endUtc };
+    }
+    const startB = getBusinessDayBounds(window.startDate, config);
+    const endTs = window.endDate
+      ? getBusinessDayBounds(window.endDate, config).endUtc
+      : startB.endUtc;
+    return { startTs: startB.startUtc, endTs };
+  } catch {
+    return null;
+  }
 }
 
 /** DB row id and local order id may both appear in URLs / lookups */
@@ -237,6 +267,10 @@ interface PreviousOrdersState {
   // Date window for business-day-aware filtering
   dateWindow: DateWindow;
 
+  /** True while a full refresh (initial fetch or filter switch) is in flight.
+   *  Screens show a loading state when this is true and the list is empty. */
+  _isRefreshing: boolean;
+
   // Pagination state
   _currentOffset: number; // Legacy offset cursor — kept for compat with refresh accounting
   _hasMore: boolean;
@@ -372,20 +406,31 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     lastHistoryRefreshAt: null,
     _lastRefreshLocationId: null,
     dateWindow: { ...DEFAULT_DATE_WINDOW },
+    _isRefreshing: false,
     _currentOffset: 0,
     _hasMore: false,
     _isLoadingMore: false,
     _oldestCursor: null,
 
     setDateWindow: (window) => {
+      // Resolve bounds synchronously (Luxon, no network) so the live-orders
+      // date gate has a window to filter against immediately — before the
+      // debounced RPC refresh returns authoritative bounds. Without this, the
+      // gate sees null bounds for ~200ms+ and leaks out-of-window orders (e.g.
+      // 4-day-old orders flashing under the freshly-tapped "Today" pill).
+      const localBounds = resolveLocalBounds(window);
       set({
         dateWindow: {
           ...window,
-          _resolvedStartTs: null,
-          _resolvedEndTs: null,
+          _resolvedStartTs: localBounds?.startTs ?? null,
+          _resolvedEndTs: localBounds?.endTs ?? null,
         },
         previousOrders: [],
         _orderLookup: {},
+        // Show the loading state immediately on tap — the list was just cleared,
+        // and the (debounced) refetch is on its way. Without this the empty list
+        // renders "No orders found" during the gap until the fetch returns.
+        _isRefreshing: true,
         _currentOffset: 0,
         _hasMore: false, // Block loadMore until refresh resolves bounds + sets _hasMore
         _isLoadingMore: false,
@@ -537,17 +582,6 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           _orderLookup: buildOrderLookupMap(previousOrders),
         };
       });
-
-      // Write-through to MMKV cache for instant boot rendering
-      const locationId = resolveHistoryLocationId();
-      const config = resolveBusinessDayConfig();
-      if (locationId && config) {
-        todayOrdersCache.upsert(
-          locationId,
-          config,
-          projectToSummary(previousOrder),
-        );
-      }
     },
 
     getOrderById: (orderId: string) => {
@@ -601,6 +635,9 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         console.warn(
           "Location ID not found for history (selected store / floor plan)",
         );
+        // setDateWindow may have optimistically flagged a refresh; clear it so
+        // the loading state doesn't stick when no fetch actually runs.
+        if (get()._isRefreshing) set({ _isRefreshing: false });
         return;
       }
 
@@ -611,12 +648,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         st.lastHistoryRefreshAt != null &&
         Date.now() - st.lastHistoryRefreshAt < HISTORY_REFRESH_COALESCE_MS
       ) {
+        if (st._isRefreshing) set({ _isRefreshing: false });
         return;
       }
 
       if (refreshPreviousOrdersInFlight) {
         return refreshPreviousOrdersInFlight;
       }
+
+      set({ _isRefreshing: true });
 
       refreshPreviousOrdersInFlight = (async () => {
         if (__DEV__)
@@ -813,24 +853,11 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             console.log(
               `Previous orders refreshed: ${mergedPreviousOrders.length} orders loaded (window: ${dateWindow.label}).`,
             );
-
-          // Bulk-write to MMKV cache for instant boot rendering (today only)
-          if (dateWindow.label === "today") {
-            const config = resolveBusinessDayConfig();
-            if (config) {
-              const businessDay = getCurrentBusinessDay(config);
-              todayOrdersCache.writeFromRefresh(
-                locationId,
-                businessDay,
-                mergedPreviousOrders,
-              );
-              todayOrdersCache.evictStale(locationId, businessDay);
-            }
-          }
         } catch (err) {
           console.error("Error in refreshPreviousOrders:", err);
         } finally {
           refreshPreviousOrdersInFlight = null;
+          set({ _isRefreshing: false });
         }
       })();
 

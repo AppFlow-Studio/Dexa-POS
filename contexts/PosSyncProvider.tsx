@@ -3,7 +3,6 @@ import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
-import { usePreviousOrdersBootstrap } from "@/hooks/pos/usePreviousOrdersBootstrap";
 import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
@@ -139,11 +138,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     //   setCoursingSupabaseClient(null);
     // };
   }, [supabase]);
-
-  usePreviousOrdersBootstrap({
-    locationId: selectedStore?.id ?? null,
-    enabled: Boolean(supabase && selectedStore?.id && !isKDS),
-  });
 
   useBusinessDayRollover({
     enabled: Boolean(supabase && selectedStore?.id && !isKDS),
