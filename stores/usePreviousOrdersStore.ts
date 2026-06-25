@@ -14,6 +14,7 @@ import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { OrderService } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
+import { previousOrdersOfflineCache } from "@/stores/previousOrdersOfflineCache";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type {
@@ -188,6 +189,20 @@ export const setPreviousOrdersSupabaseClient = (
 ) => {
   _supabaseClient = client;
 };
+
+/**
+ * Raw NetInfo-based online status. Lazily required to avoid a static import
+ * cycle (offlineSyncService imports stores). Defaults to online if the service
+ * isn't wired yet, so we never wrongly suppress a fetch.
+ */
+function isDeviceOnline(): boolean {
+  try {
+    const { getRawIsOnline } = require("@/services/offlineSyncService");
+    return getRawIsOnline();
+  } catch {
+    return true;
+  }
+}
 
 interface RefundItem {
   itemId: string;
@@ -567,6 +582,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         order_source: order.order_source ?? null,
         delivery_platform: order.delivery_platform ?? null,
         created_by_staff_profile_id: order.created_by_staff_profile_id ?? null,
+        // Flag as offline/unsynced when archived without a backend row while the
+        // device is offline. Drives the row's "Offline" badge; cleared when the
+        // order later syncs and a server fetch replaces this entry.
+        _offlineUnsynced: !order.db_order_id && !isDeviceOnline(),
       };
 
       set((state) => {
@@ -587,6 +606,37 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           _orderLookup: buildOrderLookupMap(previousOrders),
         };
       });
+
+      // Merge this order INTO the persisted offline snapshot so it survives
+      // navigating away + re-entering (re-entry hydrates from this cache).
+      //
+      // Critically, merge into the *cached* list — NOT get().previousOrders.
+      // addOrderToHistory often fires from archiveOrder while the Previous
+      // Orders screen is unmounted, so the in-memory list is [] (wiped on
+      // leave). Writing that would clobber the cached server snapshot. Reading
+      // the cache, prepending the new order, and writing back keeps the
+      // snapshot additive. When online the next server fetch overwrites it.
+      const locationId = resolveHistoryLocationId();
+      if (locationId) {
+        const cached = previousOrdersOfflineCache.get(locationId);
+        const base = cached?.orders ?? [];
+        // Dedupe by db_order_id / orderId so a re-archive or a later synced
+        // copy doesn't duplicate the row.
+        const newKey = previousOrder.db_order_id || previousOrder.orderId;
+        const deduped = base.filter(
+          (o) => (o.db_order_id || o.orderId) !== newKey,
+        );
+        const mergedCache = [previousOrder, ...deduped].sort(
+          (a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        );
+        previousOrdersOfflineCache.set(
+          locationId,
+          mergedCache,
+          cached?.windowLabel ??
+            (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
+        );
+      }
     },
 
     getOrderById: (orderId: string) => {
@@ -643,6 +693,32 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         // setDateWindow may have optimistically flagged a refresh; clear it so
         // the loading state doesn't stick when no fetch actually runs.
         if (get()._isRefreshing) set({ _isRefreshing: false });
+        return;
+      }
+
+      // Offline: don't hit the network. Hydrate the list from the last
+      // successful online fetch so the screen isn't empty. The cache is shown
+      // ONLY here (offline) — online always renders fresh server data.
+      if (!isDeviceOnline()) {
+        const cached = previousOrdersOfflineCache.get(locationId);
+        if (cached) {
+          const orders = cached.orders.filter((po) => !isEmptyDraftOrder(po));
+          set({
+            previousOrders: orders,
+            _orderLookup: buildOrderLookupMap(orders),
+            newOrdersCount: 0,
+            _isRefreshing: false,
+            // No live pagination offline — cache is a fixed snapshot.
+            _hasMore: false,
+            _isLoadingMore: false,
+          });
+          if (__DEV__)
+            console.log(
+              `[PreviousOrders] offline — hydrated ${orders.length} orders from cache.`,
+            );
+        } else if (get()._isRefreshing) {
+          set({ _isRefreshing: false });
+        }
         return;
       }
 
@@ -786,7 +862,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           // Skip pre-sort: the merged result is sorted below, and the Map merge
           // loses ordering anyway.
 
-          const existingPreviousOrders = get().previousOrders;
+          // Drop offline-unsynced placeholders before merging: this is an online
+          // refresh, so the authoritative server result supersedes them. A truly
+          // synced order comes back from the fetch (unflagged); a not-yet-synced
+          // one re-surfaces on a later fetch/broadcast. Prevents a duplicate row
+          // (offline-badged local copy keyed by orderId + server copy keyed by
+          // db_order_id) that the keyed merge would otherwise keep.
+          const existingPreviousOrders = get().previousOrders.filter(
+            (o) => !o._offlineUnsynced,
+          );
 
           // Build merge map — filtered when date-bounded, full when not
           const ordersMap = new Map<string, PreviousOrder>();
@@ -854,6 +938,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             _isLoadingMore: false,
             _oldestCursor,
           });
+
+          // Persist this successful fetch as the offline fallback snapshot.
+          // Read back ONLY when offline (see top of refreshPreviousOrders).
+          previousOrdersOfflineCache.set(
+            locationId,
+            mergedPreviousOrders,
+            (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
+          );
+
           if (__DEV__)
             console.log(
               `Previous orders refreshed: ${mergedPreviousOrders.length} orders loaded (window: ${dateWindow.label}).`,
@@ -1054,6 +1147,16 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       } finally {
         _lastLoadMoreCompletedAt = Date.now();
         set({ _isLoadingMore: false });
+        // Keep the offline snapshot in sync with scrolled-in pages so going
+        // offline mid-scroll retains everything the user already loaded.
+        const lid = resolveHistoryLocationId();
+        if (lid) {
+          previousOrdersOfflineCache.set(
+            lid,
+            get().previousOrders,
+            (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
+          );
+        }
       }
     },
 

@@ -662,18 +662,21 @@ export function clearCacheData(): { clearedKeys: string[]; errors: string[] } {
     }
   }
 
-  // Evict any legacy `today_orders:*` cache entries left on disk from a prior
-  // build. Previous orders are no longer persisted locally — they're fetched
-  // fresh on each screen entry — so these keys should never accumulate.
+  // Evict the Previous Orders offline-fallback snapshots (one per location),
+  // plus any legacy `today_orders:*` keys from a prior build. Both are
+  // best-effort caches, safe to drop on a full cache clear.
   try {
     for (const key of syncStorage.getAllKeys()) {
-      if (key.startsWith("today_orders:")) {
+      if (
+        key.startsWith("prev_orders_offline:") ||
+        key.startsWith("today_orders:")
+      ) {
         syncStorage.remove(key);
         clearedKeys.push(key);
       }
     }
   } catch (error) {
-    errors.push(`Failed to clear today_orders cache: ${error}`);
+    errors.push(`Failed to clear previous-orders offline cache: ${error}`);
   }
 
   return { clearedKeys, errors };

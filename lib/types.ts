@@ -537,6 +537,10 @@ export interface PreviousOrder {
   order_refund_items?: OrderRefundItemRecord[]
   // Staff attribution (for fraud detection — who created this order)
   created_by_staff_profile_id?: string | null
+  // True when this entry was archived to history while OFFLINE (not yet
+  // confirmed by the backend). Drives the "Offline" badge on the row. Cleared
+  // automatically once the order syncs and a server fetch replaces it.
+  _offlineUnsynced?: boolean
 }
 
 export type InventoryItemStatus =
@@ -1061,6 +1065,10 @@ export interface OrderProfile {
   // to skip per-order get_order_details fan-out when the bulk fetch already
   // delivered fresh data. Cleared on realtime/local writes that drift the order.
   _lastBulkFetchAt?: number
+
+  // Display-only: set on Previous Orders rows whose history entry was archived
+  // while offline (not yet confirmed by the backend). Drives the "Offline" badge.
+  _offlineUnsynced?: boolean
 }
 
 export type CheckStatus = 'Pending' | 'Cleared' | 'Voided'

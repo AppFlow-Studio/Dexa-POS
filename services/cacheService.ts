@@ -14,6 +14,7 @@ import {
   storage,
   syncStorage,
 } from "@/lib/storage";
+import { previousOrdersOfflineCache } from "@/stores/previousOrdersOfflineCache";
 import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -246,6 +247,13 @@ export function clearLocationData(): void {
   });
 
   queryClient.clear();
+
+  // Drop the Previous Orders offline fallback snapshot for this location so a
+  // logout / location switch doesn't leak the prior location's history.
+  const locationId = orderState.currentLocationId;
+  if (locationId) {
+    previousOrdersOfflineCache.clearLocation(locationId);
+  }
 
   console.log(
     "[clearLocationData] Cleared orders, employees, and query cache (preserved unsynced)",

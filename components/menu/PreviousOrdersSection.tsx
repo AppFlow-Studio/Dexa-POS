@@ -1,4 +1,5 @@
 import { usePreviousOrdersListSync } from '@/hooks/pos/usePreviousOrdersListSync'
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
@@ -6,6 +7,7 @@ import { useUiScale } from '@/lib/uiScale'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useFocusEffect, useRouter } from 'expo-router'
+import { useShallow } from 'zustand/react/shallow'
 import { RefreshCw, Search, X } from 'lucide-react-native'
 import React, { useCallback, useMemo, useState } from 'react'
 import {
@@ -131,6 +133,50 @@ const PreviousOrdersSection = () => {
   // date filter). It now appears here only once it syncs and a fetch/broadcast
   // surfaces it.
   const { previousOrders, newOrdersCount } = usePreviousOrdersStore()
+  const { rawIsOnline } = useNetworkStatus()
+
+  // OFFLINE ONLY: the backend is unreachable, so previousOrders can't refresh.
+  // Surface the device's own non-final orders (active + working set + own-station
+  // open) so staff still see everything pending — including open/unpaid orders
+  // created while offline — each badged "Offline". When online this is empty and
+  // the list stays server-fetched only.
+  const offlineLiveOrders = useOrderStore(
+    useShallow(s => {
+      if (rawIsOnline) return [] as OrderProfile[]
+      const finalStatuses = new Set([
+        'completed',
+        'void',
+        'cancelled',
+        'voided'
+      ])
+      const ids = new Set<string>()
+      if (s.activeOrderId) ids.add(s.activeOrderId)
+      for (const wsId of s.workingSetOrderIds || []) {
+        ids.add(s.dbOrderIdIndex[wsId] || wsId)
+      }
+      for (const id of s.orderIds) {
+        if (ids.has(id)) continue
+        const o = s.ordersById[id]
+        if (!o) continue
+        if (o.station_id !== s.currentStationId) continue // own station only
+        if (finalStatuses.has(o.order_status ?? '')) continue
+        ids.add(id)
+      }
+      const result: OrderProfile[] = []
+      const seen = new Set<string>()
+      for (const id of ids) {
+        const o = s.ordersById[id]
+        if (!o) continue
+        if (o.order_status === 'draft' && o.items.length === 0) continue
+        const canonical = o.db_order_id ?? o.id
+        if (seen.has(canonical)) continue
+        seen.add(canonical)
+        // Tag as offline/unsynced when it has no backend row yet.
+        result.push(o.db_order_id ? o : { ...o, _offlineUnsynced: true })
+      }
+      return result
+    })
+  )
   const dateWindowLabel = usePreviousOrdersStore(
     s => s.dateWindow?.label ?? 'today'
   )
@@ -199,10 +245,11 @@ const PreviousOrdersSection = () => {
     height: number
   } | null>(null)
 
-  // Server-fetched history mapped to OrderProfile. No live-order merge — this
-  // list is exactly what the date-bounded backend fetch returned.
+  // Server-fetched history mapped to OrderProfile. Online: this is exactly the
+  // date-bounded backend fetch. Offline: offlineLiveOrders (the device's own
+  // pending orders) is prepended so open/unpaid offline orders are visible too.
   const allOrders: OrderProfile[] = useMemo(() => {
-    return previousOrders.map(
+    const mappedHistory: OrderProfile[] = previousOrders.map(
       po =>
         ({
           id: po.orderId,
@@ -257,10 +304,25 @@ const PreviousOrdersSection = () => {
           order_source: po.order_source ?? null,
           delivery_platform: po.delivery_platform ?? null,
           reversals: po.reversals,
-          order_refund_items: po.order_refund_items
+          order_refund_items: po.order_refund_items,
+          _offlineUnsynced: po._offlineUnsynced
         } as OrderProfile)
     )
-  }, [previousOrders])
+
+    if (offlineLiveOrders.length === 0) return mappedHistory
+
+    // Offline: prepend live pending orders, deduped against history (a finalized
+    // order can be in both the cache and the live store). Live copy wins.
+    const liveIds = new Set<string>()
+    for (const o of offlineLiveOrders) {
+      liveIds.add(o.id)
+      if (o.db_order_id) liveIds.add(o.db_order_id)
+    }
+    const historyMinusLive = mappedHistory.filter(
+      o => !liveIds.has(o.id) && !(o.db_order_id && liveIds.has(o.db_order_id))
+    )
+    return [...offlineLiveOrders, ...historyMinusLive]
+  }, [previousOrders, offlineLiveOrders])
 
   // Compute per-tab counts
   const tabCounts = useMemo<TabCounts>(() => {
