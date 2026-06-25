@@ -2223,18 +2223,28 @@ const KitchenDisplayScreen = () => {
       }
 
       if (isForceDoneAction) {
-        bulkMarkTicketsDone(ticketIdsToAdvance);
+        const { done, skippedNotice } = bulkMarkTicketsDone(ticketIdsToAdvance);
+        if (skippedNotice > 0) {
+          toast.show({
+            title: "Some tickets kept",
+            message: `${done} marked done by ${employee.fullName}. ${skippedNotice} kept — unacknowledged void/refund needs review.`,
+            type: "warning",
+          });
+        } else {
+          toast.show({
+            title: "Marked Done",
+            message: `${done} ticket(s) marked done by ${employee.fullName}.`,
+            type: "success",
+          });
+        }
       } else {
         bulkAdvanceTickets(ticketIdsToAdvance, locationId || "");
+        toast.show({
+          title: "Bulk Advance",
+          message: `${ticketIdsToAdvance.length} ticket(s) advanced by ${employee.fullName}.`,
+          type: "success",
+        });
       }
-
-      toast.show({
-        title: isForceDoneAction ? "Marked Done" : "Bulk Advance",
-        message: isForceDoneAction
-          ? `${ticketIdsToAdvance.length} ticket(s) marked done by ${employee.fullName}.`
-          : `${ticketIdsToAdvance.length} ticket(s) advanced by ${employee.fullName}.`,
-        type: "success",
-      });
       setPendingBulkAction(null);
     },
     [

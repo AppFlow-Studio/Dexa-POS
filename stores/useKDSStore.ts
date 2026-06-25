@@ -149,7 +149,9 @@ interface KDSState {
   selectAllVisible: (ids: string[]) => void;
   clearSelection: () => void;
   bulkAdvanceTickets: (ticketIds: string[], locationId: string) => void;
-  bulkMarkTicketsDone: (ticketIds: string[]) => void;
+  bulkMarkTicketsDone: (
+    ticketIds: string[],
+  ) => { done: number; skippedNotice: number };
 
   // Config
   setNewOrderPosition: (pos: "left" | "right") => void;
@@ -3522,13 +3524,26 @@ export const useKDSStore = create<KDSState>()(
         const matchedTickets = tickets.filter((t) =>
           ticketSet.has(t.ticket_id),
         );
-        if (matchedTickets.length === 0) return;
+        if (matchedTickets.length === 0) {
+          return { done: 0, skippedNotice: 0 };
+        }
 
         // Build single optimistic state update for ALL tickets at once
         const removedIds = new Set<string>();
         const newDoneTickets: KDSTicket[] = [];
+        let skippedNotice = 0;
 
         for (const ticket of matchedTickets) {
+          // Block bulk-done on any ticket carrying an unacknowledged void/refund.
+          // The void is a notice the cook must handle explicitly — and since
+          // bulk-done never acknowledges it, the server keeps returning the
+          // ticket, so it would just reappear on the next fetch anyway. Leave it
+          // on the board and report it so the caller can warn.
+          if (ticket.items.some((i) => isKitchenNoticeItem(i))) {
+            skippedNotice++;
+            continue;
+          }
+
           const actionableItemIds = ticket.items
             .filter((i) => isActionableKitchenItem(i))
             .map((i) => i.id);
@@ -3538,17 +3553,23 @@ export const useKDSStore = create<KDSState>()(
             cancelRetry(`item_${ticket.ticket_id}_${id}`);
           }
 
-          // Register pending action
+          // Register pending action. Cover EVERY item id (not just the
+          // currently-actionable ones) with target "served". The optimistic
+          // removal below is unconditional, so the suppression in
+          // overlayPendingActions must be too — otherwise a ticket whose items
+          // were all already served/voided (e.g. a concurrent broadcast bumped
+          // the last item moments before this bulk action) gets removed with no
+          // pending entry, and the next fetch/broadcast re-adds it to the board.
           const itemStatusMap = new Map<string, string>();
-          for (const id of actionableItemIds) itemStatusMap.set(id, "served");
-          if (actionableItemIds.length > 0) {
-            setPendingAction(ticket.ticket_id, {
-              ticketId: ticket.ticket_id,
-              targetStatus: "done",
-              itemStatuses: itemStatusMap,
-              timestamp: Date.now(),
-            });
+          for (const item of ticket.items) {
+            itemStatusMap.set(item.id, "served");
           }
+          setPendingAction(ticket.ticket_id, {
+            ticketId: ticket.ticket_id,
+            targetStatus: "done",
+            itemStatuses: itemStatusMap,
+            timestamp: Date.now(),
+          });
 
           removedIds.add(ticket.ticket_id);
           deleteRecalledTicketId(ticket.ticket_id);
@@ -3622,6 +3643,8 @@ export const useKDSStore = create<KDSState>()(
           doneCount: updatedDone.length,
           selectedTicketIds: new Set<string>(),
         });
+
+        return { done: removedIds.size, skippedNotice };
       },
 
       // ─── Cleanup (for unmount) ──────────────────────────────────────
