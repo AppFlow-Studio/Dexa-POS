@@ -12,7 +12,6 @@ import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { OrderProfile } from '@/lib/types'
-import { useShallow } from 'zustand/react/shallow'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
@@ -300,14 +299,6 @@ const PreviousOrdersScreen = () => {
     s => s.dateWindow?.label ?? 'today'
   )
   const setDateWindow = usePreviousOrdersStore(s => s.setDateWindow)
-  // Resolved date-window bounds, read at component level so the live-orders
-  // selector below can gate on them (same source as the history fetch).
-  const liveDateBounds = usePreviousOrdersStore(
-    useShallow(s => ({
-      startTs: s.dateWindow?._resolvedStartTs ?? null,
-      endTs: s.dateWindow?._resolvedEndTs ?? null
-    }))
-  )
   const handleDatePillSelect = useCallback(
     (pill: DatePillDef) => {
       const { startDate, endDate } = pill.getDateRange()
@@ -316,57 +307,12 @@ const PreviousOrdersScreen = () => {
     [setDateWindow]
   )
 
-  // ─── Store-based data layer (mirrors PreviousOrdersSection pattern) ───
-  // Derive the live (active + working-set + own-station non-final) order set
-  // inside a useShallow store read instead of subscribing to the whole
-  // ordersById map. This screen only cares about those orders + DB-fetched
-  // history, so it re-renders only when a live order's reference changes or the
-  // live set changes — not on every mutation to any of the 800+ stale orders.
-  const liveActiveOrders = useOrderStore(
-    useShallow(s => {
-      const finalStatuses = new Set([
-        'completed',
-        'void',
-        'cancelled',
-        'voided'
-      ])
-      const liveIds = new Set<string>()
-      if (s.activeOrderId) liveIds.add(s.activeOrderId)
-      for (const wsId of s.workingSetOrderIds || []) {
-        liveIds.add(s.dbOrderIdIndex[wsId] || wsId)
-      }
-      const startTs = liveDateBounds.startTs
-      const endTs = liveDateBounds.endTs
-      for (const id of s.orderIds) {
-        if (liveIds.has(id)) continue
-        const o = s.ordersById[id]
-        if (!o) continue
-        if (o.station_id !== s.currentStationId) continue // own station only
-        if (finalStatuses.has(o.order_status ?? '')) continue
-        if (o.order_status === 'draft') continue
-        // Date-window gate. The active order / working set (added above) bypass
-        // it — the cashier is mid-edit on those. A SCANNED order from
-        // useOrdersQuery (status-only, no date bound) is excluded when its
-        // `opened_at` is missing or outside the resolved window, so non-final
-        // orders from days ago don't leak into "Today". Skipped only while
-        // bounds are null (brief pre-RPC first-load window).
-        if (startTs && endTs) {
-          if (!o.opened_at || o.opened_at < startTs || o.opened_at >= endTs)
-            continue
-        }
-        liveIds.add(id)
-      }
-      const result: OrderProfile[] = []
-      for (const id of liveIds) {
-        const o = s.ordersById[id]
-        if (!o) continue
-        // Hide empty drafts (active/working-set are added unconditionally above).
-        if (o.order_status === 'draft' && o.items.length === 0) continue
-        result.push(o)
-      }
-      return result
-    })
-  )
+  // ─── Server-fetched data layer ───
+  // Previous Orders renders ONLY the date-bounded backend fetch (previousOrders).
+  // Live in-memory orders from useOrderStore are not merged in: a just-created /
+  // unsynced order is not a "previous order" and was previously pinned to the
+  // top of every date window. It surfaces here only once it syncs and a fetch /
+  // broadcast returns it.
   const { previousOrders, newOrdersCount } = usePreviousOrdersStore()
   const loadMoreOrders = usePreviousOrdersStore(s => s.loadMoreOrders)
   const isLoadingMore = usePreviousOrdersStore(s => s._isLoadingMore)
@@ -400,83 +346,55 @@ const PreviousOrdersScreen = () => {
     if (hasMore && !isLoadingMore) void loadMoreOrders()
   }, [hasMore, isLoadingMore, loadMoreOrders])
 
-  // Combine active orders + history orders with dedup (same as PreviousOrdersSection)
+  // Server-fetched history mapped to OrderProfile. No live-order merge — this
+  // list is exactly what the date-bounded backend fetch returned.
   const allOrders: OrderProfile[] = useMemo(() => {
-    // liveActiveOrders (selector above) already holds the active + working-set +
-    // own-station non-final orders with empty drafts filtered out.
-    // Build lookup from DB-fetched previous orders to patch stale active order statuses.
-    // usePreviousOrdersStore re-fetches from DB on screen focus, so this data is fresh.
-    const poByDbId = new Map<string, typeof previousOrders[number]>()
-    for (const po of previousOrders) {
-      if (po.db_order_id) poByDbId.set(po.db_order_id, po)
-    }
-
-    const activeOrders: OrderProfile[] = []
-    for (const o of liveActiveOrders) {
-      // Patch stale paid_status using fresh DB data from previous orders store
-      if (o.db_order_id && o.paid_status === 'Refunded') {
-        const po = poByDbId.get(o.db_order_id)
-        if (po && po.paymentStatus === 'Paid') {
-          activeOrders.push({ ...o, paid_status: 'Paid' as const })
-          continue
-        }
-      }
-      activeOrders.push(o)
-    }
-
-    const activeIds = new Set(activeOrders.map(o => o.id))
-    const activeDbIds = new Set(
-      activeOrders.map(o => o.db_order_id).filter(Boolean)
+    return previousOrders.map(
+      po =>
+        ({
+          id: po.orderId,
+          db_order_id: po.db_order_id,
+          display_number: po.display_number,
+          order_number: po.display_number,
+          customer_name: po.customer,
+          customer_phone: po.customer_phone ?? undefined,
+          server_name: po.server,
+          order_status: po.voided
+            ? 'void'
+            : po.refunded && po.paymentStatus !== 'Paid'
+            ? 'refunded'
+            : po.closed_at
+            ? 'completed'
+            : 'pending',
+          check_status: po.checkStatus || 'Opened',
+          paid_status: po.paymentStatus,
+          order_type: po.type,
+          items: po.items,
+          total_amount: po.total,
+          total_cash_amount: po.total_cash_amount,
+          total_tax: po.tax,
+          service_charge: po.service_charge,
+          service_charge_name: po.service_charge_name,
+          service_charge_rate: po.service_charge_rate,
+          service_charge_is_taxable: po.service_charge_is_taxable,
+          amount_paid: po.amount_paid,
+          amount_due: po.amount_due,
+          cash_amount_due: po.cash_amount_due,
+          opened_at: po.timestamp || po.opened_at,
+          created_at: po.timestamp,
+          closed_at: po.closed_at,
+          service_location_id: po.service_location_id || null,
+          service_location_name: po.service_location_name,
+          station_id: po.station_id || null,
+          _sourceStationName: po.station_name,
+          notes: po.notes,
+          payments: po.payments,
+          order_source: po.order_source ?? null,
+          reversals: po.reversals,
+          order_refund_items: po.order_refund_items
+        } as OrderProfile)
     )
-
-    const mappedHistoryOrders: OrderProfile[] = previousOrders
-      .filter(po => {
-        if (activeIds.has(po.orderId)) return false
-        if (po.db_order_id && activeDbIds.has(po.db_order_id)) return false
-        return true
-      })
-      .map(
-        po =>
-          ({
-            id: po.orderId,
-            db_order_id: po.db_order_id,
-            display_number: po.display_number,
-            order_number: po.display_number,
-            customer_name: po.customer,
-            customer_phone: po.customer_phone ?? undefined,
-            server_name: po.server,
-            order_status: po.voided
-              ? 'void'
-              : po.refunded && po.paymentStatus !== 'Paid'
-              ? 'refunded'
-              : po.closed_at
-              ? 'completed'
-              : 'pending',
-            check_status: po.checkStatus || 'Opened',
-            paid_status: po.paymentStatus,
-            order_type: po.type,
-            items: po.items,
-            total_amount: po.total,
-            amount_paid: po.amount_paid,
-            amount_due: po.amount_due,
-            cash_amount_due: po.cash_amount_due,
-            opened_at: po.timestamp || po.opened_at,
-            created_at: po.timestamp,
-            closed_at: po.closed_at,
-            service_location_id: po.service_location_id || null,
-            service_location_name: po.service_location_name,
-            station_id: po.station_id || null,
-            _sourceStationName: po.station_name,
-            notes: po.notes,
-            payments: po.payments,
-            order_source: po.order_source ?? null,
-            reversals: po.reversals,
-            order_refund_items: po.order_refund_items
-          } as OrderProfile)
-      )
-
-    return [...activeOrders, ...mappedHistoryOrders]
-  }, [liveActiveOrders, previousOrders])
+  }, [previousOrders])
 
   // ─── Compute filter counts from allOrders ──────────────
   const filterCounts = useMemo(() => {
