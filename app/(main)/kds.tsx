@@ -1761,10 +1761,8 @@ const KitchenDisplayScreen = () => {
   const kdsAutoFireEnabled = kdsConfig.autoFireEnabled;
   const kdsAutoFireDelayMinutes = kdsConfig.autoFireDelayMinutes;
   const kdsHideDoneItems = kdsConfig.hideDoneItems;
-  const kdsNewOrderPosition = kdsConfig.newOrderPosition ?? "right";
   const kdsServedOrderSort = kdsConfig.servedOrderSort ?? "newest-first";
   const kdsTicketTapMode = kdsConfig.ticketTapMode ?? "double-tap";
-  const setNewOrderPosition = useKDSStore((s) => s.setNewOrderPosition);
 
   const countPending = useKDSStore((s) => s.counts.pending);
   const countCooking = useKDSStore((s) => s.counts.cooking);
@@ -1806,11 +1804,6 @@ const KitchenDisplayScreen = () => {
 
   // Cleanup retries + pending actions on unmount
   useEffect(() => () => kdsCleanup(), [kdsCleanup]);
-
-  // Sync new order position config into KDS store
-  useEffect(() => {
-    setNewOrderPosition(kdsNewOrderPosition);
-  }, [kdsNewOrderPosition, setNewOrderPosition]);
 
   // Realtime connection status for adaptive polling
   const { orders: ordersChannel } = useLocationRealtime();

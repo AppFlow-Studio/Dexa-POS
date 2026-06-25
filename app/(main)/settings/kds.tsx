@@ -270,19 +270,6 @@ const KdsSettingsScreen = () => {
         <SectionHeader title="Layout" />
         <View style={{ marginBottom: s(8) }}>
           <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(6), paddingHorizontal: s(2) }}>
-            New Orders Appear
-          </Text>
-          <OptionCards
-            options={[
-              { value: "left", label: "Left", desc: "Newest first" },
-              { value: "right", label: "Right", desc: "Newest last" },
-            ]}
-            value={kdsConfig.newOrderPosition ?? "right"}
-            onChange={(v) => updateConfig("kds", { newOrderPosition: v })}
-          />
-        </View>
-        <View style={{ marginBottom: s(8) }}>
-          <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(6), paddingHorizontal: s(2) }}>
             Served Tickets Sort
           </Text>
           <OptionCards
