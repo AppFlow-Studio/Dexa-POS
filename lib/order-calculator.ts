@@ -9,6 +9,7 @@
  */
 
 import { isServiceChargeEnabled } from '@/lib/serviceCharge'
+import { payableQuantity } from '@/lib/payableQuantity'
 import { CartItem } from '@/lib/types'
 import {
   DualPriceSplitResult,
@@ -1052,7 +1053,7 @@ export function calculateOrderTotalsWithDetails (
     const cashUnitTotalWithTax = round2(cashTotalWithTax / item.quantity)
 
     // Outstanding amounts
-    const unpaidQuantity = item.quantity - (item.paidQuantity ?? 0)
+    const unpaidQuantity = payableQuantity(item)
     const outstandingProportion =
       item.quantity > 0 ? unpaidQuantity / item.quantity : 0
 
@@ -1152,6 +1153,47 @@ export function calculateEvenSplit (
   amounts.push(lastPerson)
 
   return { perPerson, lastPerson, amounts }
+}
+
+/**
+ * Calculate even split amounts using a largest-remainder distribution.
+ *
+ * Unlike {@link calculateEvenSplit} (which floors every portion and dumps the
+ * full remainder on the last person — producing multiple $0 portions for tiny
+ * totals and a heavier final guest), this floors every portion to the cent and
+ * then hands out the leftover cents one-per-portion. Result: every portion
+ * differs by at most one cent, and the sum equals the total exactly.
+ *
+ * Operates in integer cents to avoid float drift.
+ *
+ * @param total - Total amount to split
+ * @param splitCount - Number of people splitting
+ * @returns Split amounts for each person (sums exactly to total)
+ */
+export function calculateEvenSplitSpread (
+  total: number,
+  splitCount: number
+): EvenSplitResult {
+  if (splitCount <= 1) {
+    return { perPerson: total, lastPerson: total, amounts: [total] }
+  }
+
+  const totalCents = Math.round(total * 100)
+  const baseCents = Math.floor(totalCents / splitCount)
+  // Number of portions that receive one extra cent (the remainder).
+  const extra = totalCents - baseCents * splitCount
+
+  const amounts: number[] = []
+  for (let i = 0; i < splitCount; i++) {
+    const cents = baseCents + (i < extra ? 1 : 0)
+    amounts.push(cents / 100)
+  }
+
+  return {
+    perPerson: amounts[0],
+    lastPerson: amounts[amounts.length - 1],
+    amounts
+  }
 }
 
 /**

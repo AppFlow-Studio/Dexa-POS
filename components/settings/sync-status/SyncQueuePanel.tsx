@@ -6,6 +6,7 @@
  */
 
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import {
   forceRetryAllPending,
   getIsOnline,
@@ -91,6 +92,8 @@ function formatTimestamp (ts: string): string {
 }
 
 export function SyncQueuePanel (): React.ReactElement {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [operations, setOperations] = useState<OfflineOperation[]>([])
   const [queueStatus, setQueueStatus] = useState<ReturnType<
     typeof getQueueStatus
@@ -148,10 +151,10 @@ export function SyncQueuePanel (): React.ReactElement {
     return (
       <View
         style={{
-          paddingHorizontal: 16,
-          paddingVertical: 16,
+          paddingHorizontal: s(16),
+          paddingVertical: s(16),
           backgroundColor: colors.panel,
-          borderRadius: 12,
+          borderRadius: s(12),
           borderWidth: 1,
           borderColor: colors.border
         }}
@@ -160,32 +163,32 @@ export function SyncQueuePanel (): React.ReactElement {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
-            marginBottom: 8
+            gap: s(8),
+            marginBottom: s(8)
           }}
         >
-          <Cloud size={16} color={colors.teal} />
+          <Cloud size={s(16)} color={colors.teal} />
           <Text
-            style={{ fontSize: 16, fontWeight: '600', color: colors.heading }}
+            style={{ fontSize: s(16), fontWeight: '600', color: colors.heading }}
           >
             Sync Queue
           </Text>
           <View
             style={{
               backgroundColor: colors.card,
-              paddingHorizontal: 8,
-              paddingVertical: 2,
-              borderRadius: 8
+              paddingHorizontal: s(8),
+              paddingVertical: s(2),
+              borderRadius: s(8)
             }}
           >
             <Text
-              style={{ fontSize: 12, fontWeight: '700', color: colors.muted }}
+              style={{ fontSize: s(12), fontWeight: '700', color: colors.muted }}
             >
               0
             </Text>
           </View>
         </View>
-        <Text style={{ fontSize: 14, color: colors.label }}>
+        <Text style={{ fontSize: s(14), color: colors.label }}>
           Queue is empty. All operations synced.
         </Text>
       </View>
@@ -196,7 +199,7 @@ export function SyncQueuePanel (): React.ReactElement {
     <View
       style={{
         backgroundColor: colors.panel,
-        borderRadius: 12,
+        borderRadius: s(12),
         borderWidth: 1,
         borderColor: colors.teal + '50',
         overflow: 'hidden'
@@ -208,29 +211,29 @@ export function SyncQueuePanel (): React.ReactElement {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingHorizontal: 16,
-          paddingVertical: 16,
+          paddingHorizontal: s(16),
+          paddingVertical: s(16),
           borderBottomWidth: 1,
           borderBottomColor: colors.border
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Cloud size={16} color={colors.teal} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+          <Cloud size={s(16)} color={colors.teal} />
           <Text
-            style={{ fontSize: 16, fontWeight: '600', color: colors.heading }}
+            style={{ fontSize: s(16), fontWeight: '600', color: colors.heading }}
           >
             Sync Queue
           </Text>
           <View
             style={{
               backgroundColor: colors.teal + '40',
-              paddingHorizontal: 8,
-              paddingVertical: 2,
-              borderRadius: 12
+              paddingHorizontal: s(8),
+              paddingVertical: s(2),
+              borderRadius: s(12)
             }}
           >
             <Text
-              style={{ fontSize: 12, fontWeight: '700', color: colors.teal }}
+              style={{ fontSize: s(12), fontWeight: '700', color: colors.teal }}
             >
               {operations.length}
             </Text>
@@ -238,18 +241,18 @@ export function SyncQueuePanel (): React.ReactElement {
         </View>
 
         {/* Online/Offline indicator */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
           {online ? (
             <>
-              <Cloud size={12} color={colors.success} />
-              <Text style={{ fontSize: 12, color: colors.success }}>
+              <Cloud size={s(12)} color={colors.success} />
+              <Text style={{ fontSize: s(12), color: colors.success }}>
                 Online
               </Text>
             </>
           ) : (
             <>
-              <CloudOff size={12} color={colors.warning} />
-              <Text style={{ fontSize: 12, color: colors.warning }}>
+              <CloudOff size={s(12)} color={colors.warning} />
+              <Text style={{ fontSize: s(12), color: colors.warning }}>
                 Offline
               </Text>
             </>
@@ -263,9 +266,9 @@ export function SyncQueuePanel (): React.ReactElement {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
-            paddingHorizontal: 16,
-            paddingVertical: 10,
+            gap: s(8),
+            paddingHorizontal: s(16),
+            paddingVertical: s(10),
             borderBottomWidth: 1,
             borderBottomColor: colors.border + '50'
           }}
@@ -274,14 +277,14 @@ export function SyncQueuePanel (): React.ReactElement {
             <View
               style={{
                 backgroundColor: colors.warning + '40',
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                borderRadius: 8
+                paddingHorizontal: s(8),
+                paddingVertical: s(2),
+                borderRadius: s(8)
               }}
             >
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '700',
                   color: colors.warning
                 }}
@@ -294,13 +297,13 @@ export function SyncQueuePanel (): React.ReactElement {
             <View
               style={{
                 backgroundColor: colors.info + '40',
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                borderRadius: 8
+                paddingHorizontal: s(8),
+                paddingVertical: s(2),
+                borderRadius: s(8)
               }}
             >
               <Text
-                style={{ fontSize: 10, fontWeight: '700', color: colors.info }}
+                style={{ fontSize: s(10), fontWeight: '700', color: colors.info }}
               >
                 {queueStatus.processing} Processing
               </Text>
@@ -310,14 +313,14 @@ export function SyncQueuePanel (): React.ReactElement {
             <View
               style={{
                 backgroundColor: colors.warning + '40',
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                borderRadius: 8
+                paddingHorizontal: s(8),
+                paddingVertical: s(2),
+                borderRadius: s(8)
               }}
             >
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '700',
                   color: colors.warning
                 }}
@@ -330,14 +333,14 @@ export function SyncQueuePanel (): React.ReactElement {
             <View
               style={{
                 backgroundColor: colors.danger + '40',
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                borderRadius: 8
+                paddingHorizontal: s(8),
+                paddingVertical: s(2),
+                borderRadius: s(8)
               }}
             >
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '700',
                   color: colors.danger
                 }}
@@ -359,19 +362,19 @@ export function SyncQueuePanel (): React.ReactElement {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: 16,
-              paddingVertical: 16,
+              paddingHorizontal: s(16),
+              paddingVertical: s(16),
               borderBottomWidth: 1,
               borderBottomColor: colors.border + '50'
             }}
           >
-            <View style={{ flex: 1, marginRight: 12 }}>
+            <View style={{ flex: 1, marginRight: s(12) }}>
               <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}
               >
                 <Text
                   style={{
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: '600',
                     color: colors.heading
                   }}
@@ -380,15 +383,15 @@ export function SyncQueuePanel (): React.ReactElement {
                 </Text>
                 <View
                   style={{
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderRadius: 4,
+                    paddingHorizontal: s(6),
+                    paddingVertical: s(2),
+                    borderRadius: s(4),
                     backgroundColor: statusStyle.getBg(colors)
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       fontWeight: '700',
                       color: statusStyle.getText(colors)
                     }}
@@ -397,13 +400,13 @@ export function SyncQueuePanel (): React.ReactElement {
                   </Text>
                 </View>
               </View>
-              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+              <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}>
                 {formatTimestamp(op.timestamp)}
                 {op.retryCount > 0 ? ` · ${op.retryCount} retries` : ''}
               </Text>
               {op.localOrderId && (
                 <Text
-                  style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}
+                  style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}
                   numberOfLines={1}
                 >
                   Order: {op.localOrderId.substring(0, 20)}...
@@ -420,9 +423,9 @@ export function SyncQueuePanel (): React.ReactElement {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'flex-end',
-          gap: 8,
-          paddingHorizontal: 12,
-          paddingVertical: 12
+          gap: s(8),
+          paddingHorizontal: s(12),
+          paddingVertical: s(12)
         }}
       >
         {hasStuckOps && (
@@ -432,20 +435,20 @@ export function SyncQueuePanel (): React.ReactElement {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 6,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 8,
+              gap: s(6),
+              paddingHorizontal: s(12),
+              paddingVertical: s(6),
+              borderRadius: s(8),
               backgroundColor: colors.warning + '30'
             }}
           >
             {forceRetrying ? (
               <ActivityIndicator size='small' color={colors.warning} />
             ) : (
-              <RotateCcw size={12} color={colors.warning} />
+              <RotateCcw size={s(12)} color={colors.warning} />
             )}
             <Text
-              style={{ fontSize: 12, fontWeight: '500', color: colors.warning }}
+              style={{ fontSize: s(12), fontWeight: '500', color: colors.warning }}
             >
               Force Retry All
             </Text>
@@ -457,19 +460,19 @@ export function SyncQueuePanel (): React.ReactElement {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 6,
-            paddingHorizontal: 12,
-            paddingVertical: 6,
-            borderRadius: 8,
+            gap: s(6),
+            paddingHorizontal: s(12),
+            paddingVertical: s(6),
+            borderRadius: s(8),
             backgroundColor: colors.teal + '30'
           }}
         >
           {syncing ? (
             <ActivityIndicator size='small' color={colors.teal} />
           ) : (
-            <RefreshCw size={12} color={colors.teal} />
+            <RefreshCw size={s(12)} color={colors.teal} />
           )}
-          <Text style={{ fontSize: 12, fontWeight: '500', color: colors.teal }}>
+          <Text style={{ fontSize: s(12), fontWeight: '500', color: colors.teal }}>
             Sync Now
           </Text>
         </TouchableOpacity>

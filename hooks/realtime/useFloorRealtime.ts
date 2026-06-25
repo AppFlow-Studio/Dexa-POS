@@ -37,6 +37,14 @@ import type {
 
 // Coalesce bursts of broadcasts into a single authoritative reload.
 const RECONCILE_DEBOUNCE_MS = 300;
+// Max-rate ceiling for broadcast-driven reconciles. Under a busy floor the
+// debounce coalesces bursts but NOT a steady trickle (N active tables → a
+// near-continuous stream of session/order broadcasts), which would otherwise
+// fire one reconcile every ~debounce. This trailing throttle bounds the
+// session-refresh rate regardless of broadcast volume; any change that lands
+// inside the cooldown is picked up by the trailing edge. Heartbeat and
+// fallback poll still bound staleness on top of this.
+const RECONCILE_MIN_INTERVAL_MS = 1_500;
 // Perf T1b: skip a broadcast-driven reconcile when an authoritative snapshot
 // just landed (e.g. a floor-plan switch ran loadFloorPlanStatus moments ago).
 // Staleness exposure is the same class the in-flight load dedupe already
@@ -86,13 +94,42 @@ export function useFloorRealtime({
   // Authoritative reconcile (debounced)
   // ------------------------------------------------------------------
   const reconcileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastReconcileAtRef = useRef(0);
 
+  // Full authoritative snapshot (geometry + sessions + junction membership in
+  // one transactional read). Used for catch-up on (re)subscribe and the
+  // disconnected fallback poll, where we may have missed structural changes.
   const reconcileNow = useCallback(() => {
+    lastReconcileAtRef.current = Date.now();
     void useFloorPlanStore.getState().loadFloorPlanStatus();
+  }, []);
+
+  // Lightweight session-only refresh for broadcast-driven reconciles. A
+  // session/order/assignment broadcast can never change table GEOMETRY — only
+  // session state — so the full geometry snapshot is wasted work on the hot
+  // path. refreshTableSessions does a single flat getLocationTableStatus query
+  // and reuses cached geometry, then patches the session store the same way.
+  const reconcileSessions = useCallback(() => {
+    lastReconcileAtRef.current = Date.now();
+    const store = useFloorPlanStore.getState();
+    // No tables cached yet (cold open) → fall back to the full load so we have
+    // geometry to merge sessions into.
+    if (store.tables.length > 0 && store.activeFloorPlanId) {
+      void store.refreshTableSessions();
+    } else {
+      void store.loadFloorPlanStatus();
+    }
   }, []);
 
   const scheduleReconcile = useCallback(() => {
     if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
+    const sinceLast = Date.now() - lastReconcileAtRef.current;
+    // Trailing throttle: honor the debounce, but never fire faster than the
+    // min interval even under a steady broadcast stream.
+    const delay = Math.max(
+      RECONCILE_DEBOUNCE_MS,
+      RECONCILE_MIN_INTERVAL_MS - sinceLast
+    );
     reconcileTimer.current = setTimeout(() => {
       reconcileTimer.current = null;
       const { lastSyncAt } = useFloorPlanStore.getState();
@@ -106,9 +143,9 @@ export function useFloorRealtime({
           );
         return;
       }
-      reconcileNow();
-    }, RECONCILE_DEBOUNCE_MS);
-  }, [reconcileNow]);
+      reconcileSessions();
+    }, delay);
+  }, [reconcileSessions]);
 
   useEffect(
     () => () => {
@@ -169,11 +206,20 @@ export function useFloorRealtime({
   const wasConnectedRef = useRef(false);
   useEffect(() => {
     if (isConnected && !wasConnectedRef.current) {
-      if (__DEV__) console.log('[FloorRealtime] (re)SUBSCRIBED — forcing catch-up reconcile');
-      reconcileNow();
+      if (__DEV__) console.log('[FloorRealtime] (re)SUBSCRIBED — catch-up reconcile (staleness-gated)');
+      // Staleness-gated catch-up instead of an unconditional full snapshot.
+      // A Clerk JWT refresh during a send tears down + re-subscribes BOTH
+      // channels (clean CLOSED, no heartbeat error), and the old unconditional
+      // reconcileNow() fired a full get_floor_plan_objects (28-object) fetch on
+      // every such reconnect — stacking with the in-flight send and inflating
+      // pos.add_to_cart. After a brief reconnect the snapshot is barely stale,
+      // so this either no-ops (fresh) or runs the lightweight session refresh.
+      // A genuinely long disconnect leaves data stale → still reconciles. The
+      // heartbeat below remains the backstop for structural/geometry drift.
+      void useFloorPlanStore.getState().loadFloorPlanStatusIfStale(HEARTBEAT_STALE_MS);
     }
     wasConnectedRef.current = isConnected;
-  }, [isConnected, reconcileNow]);
+  }, [isConnected]);
 
   // ------------------------------------------------------------------
   // Heartbeat — converge even if every broadcast is silently dropped.

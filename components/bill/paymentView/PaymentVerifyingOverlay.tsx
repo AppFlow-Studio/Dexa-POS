@@ -1,3 +1,4 @@
+import { useUiScale } from "@/lib/uiScale";
 import { usePaymentVerification } from "@/hooks/usePaymentVerification";
 import { colors } from "@/lib/theme";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react-native";
@@ -20,6 +21,8 @@ import { PaymentTerminalReconciliationModal } from "./PaymentTerminalReconciliat
  * `canRetryNow` AND a secondary tap-confirm modal.
  */
 export default function PaymentVerifyingOverlay() {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const {
     isVerifying,
     elapsedMs,
@@ -60,8 +63,8 @@ export default function PaymentVerifyingOverlay() {
     return (
       <View
         style={{
-          minHeight: 500,
-          padding: 24,
+          minHeight: s(500),
+          padding: s(24),
           backgroundColor: colors.panel,
           alignItems: "center",
         }}
@@ -87,8 +90,8 @@ export default function PaymentVerifyingOverlay() {
         // ScrollView child, vertical-centering pushes the card past the
         // visible viewport ("below the sheet"). Top-anchor instead so the
         // card sits right under the progress-strip header.
-        minHeight: 500,
-        padding: 24,
+        minHeight: s(500),
+        padding: s(24),
         backgroundColor: colors.panel,
         alignItems: "center",
       }}
@@ -97,31 +100,31 @@ export default function PaymentVerifyingOverlay() {
         style={{
           width: "100%",
           maxWidth: 480,
-          padding: 24,
-          borderRadius: 16,
+          padding: s(24),
+          borderRadius: s(16),
           backgroundColor: colors.screen,
           borderWidth: 1,
           borderColor: colors.border,
         }}
       >
         {/* Icon + title */}
-        <View style={{ alignItems: "center", marginBottom: 16 }}>
+        <View style={{ alignItems: "center", marginBottom: s(16) }}>
           <View
             style={{
-              width: 64,
-              height: 64,
-              borderRadius: 32,
+              width: s(64),
+              height: s(64),
+              borderRadius: s(32),
               backgroundColor: colors.warning + "20",
               alignItems: "center",
               justifyContent: "center",
-              marginBottom: 12,
+              marginBottom: s(12),
             }}
           >
             <ActivityIndicator size="large" color={colors.warning} />
           </View>
           <Text
             style={{
-              fontSize: 20,
+              fontSize: s(20),
               fontWeight: "700",
               color: colors.heading,
               textAlign: "center",
@@ -134,11 +137,11 @@ export default function PaymentVerifyingOverlay() {
         {/* Body copy */}
         <Text
           style={{
-            fontSize: 14,
+            fontSize: s(14),
             color: colors.label,
             textAlign: "center",
-            marginBottom: 20,
-            lineHeight: 20,
+            marginBottom: s(20),
+            lineHeight: s(20),
           }}
         >
           {verification?.reason === "crash_recovery"
@@ -147,12 +150,12 @@ export default function PaymentVerifyingOverlay() {
         </Text>
 
         {/* Progress bar */}
-        <View style={{ marginBottom: 16 }}>
+        <View style={{ marginBottom: s(16) }}>
           <View
             style={{
               backgroundColor: colors.border,
               height: 6,
-              borderRadius: 3,
+              borderRadius: s(3),
               overflow: "hidden",
             }}
           >
@@ -166,8 +169,8 @@ export default function PaymentVerifyingOverlay() {
           </View>
           <Text
             style={{
-              marginTop: 6,
-              fontSize: 12,
+              marginTop: s(6),
+              fontSize: s(12),
               color: colors.muted,
               textAlign: "center",
             }}
@@ -177,22 +180,22 @@ export default function PaymentVerifyingOverlay() {
         </View>
 
         {/* CTAs */}
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: s(8) }}>
           <TouchableOpacity
             onPress={manualCheckNow}
             style={{
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
-              gap: 8,
-              paddingVertical: 12,
-              borderRadius: 10,
+              gap: s(8),
+              paddingVertical: s(12),
+              borderRadius: s(10),
               borderWidth: 1,
               borderColor: colors.border,
             }}
           >
-            <Loader2 size={16} color={colors.heading} />
-            <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 14 }}>
+            <Loader2 size={s(16)} color={colors.heading} />
+            <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(14) }}>
               Check now
             </Text>
           </TouchableOpacity>
@@ -203,19 +206,19 @@ export default function PaymentVerifyingOverlay() {
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
-              gap: 8,
-              paddingVertical: 12,
-              borderRadius: 10,
+              gap: s(8),
+              paddingVertical: s(12),
+              borderRadius: s(10),
               backgroundColor: canRetryNow ? colors.danger : colors.muted + "40",
               opacity: canRetryNow ? 1 : 0.5,
             }}
           >
-            <RefreshCw size={16} color={canRetryNow ? "#fff" : colors.muted} />
+            <RefreshCw size={s(16)} color={canRetryNow ? "#fff" : colors.muted} />
             <Text
               style={{
                 color: canRetryNow ? "#fff" : colors.muted,
                 fontWeight: "700",
-                fontSize: 14,
+                fontSize: s(14),
               }}
             >
               Try Again with new charge
@@ -224,10 +227,10 @@ export default function PaymentVerifyingOverlay() {
           {!canRetryNow && (
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 color: colors.muted,
                 textAlign: "center",
-                marginTop: 4,
+                marginTop: s(4),
               }}
             >
               Try Again unlocks once we confirm no payment landed (
@@ -251,6 +254,7 @@ export default function PaymentVerifyingOverlay() {
       {/* Wave 8 (C6): secondary tap-confirm for Try Again */}
       <RetryConfirmModal
         visible={retryConfirmOpen}
+        scale={uiScale}
         onConfirm={() => {
           setRetryConfirmOpen(false);
           retryWithNewCharge();
@@ -263,11 +267,13 @@ export default function PaymentVerifyingOverlay() {
 
 interface RetryConfirmModalProps {
   visible: boolean;
+  scale: number;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-function RetryConfirmModal({ visible, onConfirm, onCancel }: RetryConfirmModalProps) {
+function RetryConfirmModal({ visible, scale, onConfirm, onCancel }: RetryConfirmModalProps) {
+  const s = (n: number) => Math.round(n * scale)
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <View
@@ -276,71 +282,71 @@ function RetryConfirmModal({ visible, onConfirm, onCancel }: RetryConfirmModalPr
           backgroundColor: "rgba(0,0,0,0.75)",
           alignItems: "center",
           justifyContent: "center",
-          padding: 24,
+          padding: s(24),
         }}
       >
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 16,
-            padding: 22,
+            borderRadius: s(16),
+            padding: s(22),
             width: "100%",
             maxWidth: 360,
             borderWidth: 1,
             borderColor: colors.danger + "60",
           }}
         >
-          <View style={{ alignItems: "center", marginBottom: 12 }}>
+          <View style={{ alignItems: "center", marginBottom: s(12) }}>
             <View
               style={{
-                width: 52,
-                height: 52,
-                borderRadius: 26,
+                width: s(52),
+                height: s(52),
+                borderRadius: s(26),
                 backgroundColor: colors.danger + "20",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <AlertTriangle size={26} color={colors.danger} />
+              <AlertTriangle size={s(26)} color={colors.danger} />
             </View>
           </View>
           <Text
             style={{
-              fontSize: 16,
+              fontSize: s(16),
               fontWeight: "700",
               color: colors.danger,
               textAlign: "center",
-              marginBottom: 8,
+              marginBottom: s(8),
             }}
           >
             Charge Customer Again?
           </Text>
           <Text
             style={{
-              fontSize: 13,
+              fontSize: s(13),
               color: colors.label,
               textAlign: "center",
-              marginBottom: 16,
-              lineHeight: 19,
+              marginBottom: s(16),
+              lineHeight: s(19),
             }}
           >
             This will charge the customer again. Are you sure no payment
             posted? If you're unsure, choose Cancel and check with the
             customer or your manager.
           </Text>
-          <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flexDirection: "row", gap: s(10) }}>
             <TouchableOpacity
               onPress={onCancel}
               style={{
                 flex: 1,
-                paddingVertical: 12,
-                borderRadius: 10,
+                paddingVertical: s(12),
+                borderRadius: s(10),
                 borderWidth: 1,
                 borderColor: colors.border,
                 alignItems: "center",
               }}
             >
-              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 14 }}>
+              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(14) }}>
                 Cancel
               </Text>
             </TouchableOpacity>
@@ -348,13 +354,13 @@ function RetryConfirmModal({ visible, onConfirm, onCancel }: RetryConfirmModalPr
               onPress={onConfirm}
               style={{
                 flex: 1,
-                paddingVertical: 12,
-                borderRadius: 10,
+                paddingVertical: s(12),
+                borderRadius: s(10),
                 backgroundColor: colors.danger,
                 alignItems: "center",
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: s(14) }}>
                 Yes, Charge Again
               </Text>
             </TouchableOpacity>

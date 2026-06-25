@@ -40,6 +40,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { useShallow } from 'zustand/react/shallow'
 import BillItem from './BillItem'
+import { useUiScale } from '@/lib/uiScale'
 
 // --- Types ---
 interface CourseAccordionProps {
@@ -149,6 +150,8 @@ function CourseGroupInner ({
   onResendCourse,
   onRemoveCourse
 }: CourseGroupProps) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const scale = useSharedValue(1)
   const [showActions, setShowActions] = useState(false)
 
@@ -206,13 +209,16 @@ function CourseGroupInner ({
         <GestureDetector gesture={composedGesture}>
           <Animated.View className='flex-row items-center flex-1'>
             <View
-              className='w-2 h-2 rounded-full mr-2.5'
               style={{
+                width: s(8),
+                height: s(8),
+                borderRadius: s(4),
+                marginRight: s(10),
                 backgroundColor: isCurrent ? colors.success : colors.muted
               }}
             />
             <Text
-              style={{ fontSize: 12, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: s(12), fontWeight: '700', color: colors.heading }}
             >
               Course {courseId}
             </Text>
@@ -227,7 +233,7 @@ function CourseGroupInner ({
                 </Text>
               </View>
             )}
-            <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 6 }}>
+            <Text style={{ fontSize: s(11), color: colors.muted, marginLeft: s(6) }}>
               {courseItemCount} item{courseItemCount !== 1 ? 's' : ''}
             </Text>
           </Animated.View>
@@ -237,17 +243,17 @@ function CourseGroupInner ({
           {!isSent && courseItemCount === 0 && courseId !== 1 && onRemoveCourse && (
             <TouchableOpacity
               onPress={() => onRemoveCourse(courseId)}
-              hitSlop={8}
+              hitSlop={s(8)}
               style={{
-                width: 24,
-                height: 24,
+                width: s(24),
+                height: s(24),
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderRadius: 6
+                borderRadius: s(6)
               }}
               activeOpacity={0.5}
             >
-              <X size={14} color={colors.muted} />
+              <X size={s(14)} color={colors.muted} />
             </TouchableOpacity>
           )}
           {hasUnsentItems && (
@@ -255,20 +261,20 @@ function CourseGroupInner ({
           )}
           <TouchableOpacity
             onPress={() => onToggle(courseId)}
-            hitSlop={8}
+            hitSlop={s(8)}
             style={{
-              width: 28,
-              height: 28,
+              width: s(28),
+              height: s(28),
               alignItems: 'center',
               justifyContent: 'center',
-              borderRadius: 6
+              borderRadius: s(6)
             }}
             activeOpacity={0.5}
           >
             {isExpanded ? (
-              <ChevronDown size={18} color={colors.label} />
+              <ChevronDown size={s(18)} color={colors.label} />
             ) : (
-              <ChevronRight size={18} color={colors.label} />
+              <ChevronRight size={s(18)} color={colors.label} />
             )}
           </TouchableOpacity>
         </View>
@@ -307,23 +313,23 @@ function CourseGroupInner ({
             <View
               style={{
                 backgroundColor: colors.panel,
-                borderRadius: 12,
-                padding: 8,
-                width: 220,
+                borderRadius: s(12),
+                padding: s(8),
+                width: s(220),
                 shadowColor: '#000',
-                shadowOffset: { width: 0, height: 4 },
+                shadowOffset: { width: 0, height: s(4) },
                 shadowOpacity: 0.3,
-                shadowRadius: 8,
+                shadowRadius: s(8),
                 elevation: 8
               }}
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '700',
                   color: colors.heading,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(6)
                 }}
               >
                 Course {courseId} Actions
@@ -337,17 +343,17 @@ function CourseGroupInner ({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    borderRadius: 8
+                    gap: s(10),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    borderRadius: s(8)
                   }}
                   activeOpacity={0.7}
                 >
-                  <Flame size={16} color={colors.danger} />
+                  <Flame size={s(16)} color={colors.danger} />
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '600',
                       color: colors.danger
                     }}
@@ -365,17 +371,17 @@ function CourseGroupInner ({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    borderRadius: 8
+                    gap: s(10),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    borderRadius: s(8)
                   }}
                   activeOpacity={0.7}
                 >
-                  <ArrowUpToLine size={16} color='#f59e0b' />
+                  <ArrowUpToLine size={s(16)} color='#f59e0b' />
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '600',
                       color: '#f59e0b'
                     }}
@@ -393,17 +399,17 @@ function CourseGroupInner ({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    borderRadius: 8
+                    gap: s(10),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    borderRadius: s(8)
                   }}
                   activeOpacity={0.7}
                 >
-                  <Send size={16} color={colors.teal} />
+                  <Send size={s(16)} color={colors.teal} />
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '600',
                       color: colors.teal
                     }}
@@ -469,6 +475,8 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   isOvertime,
   overtimeMinutes
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(() => {
     const initial = new Set<number>()
     activeOrder?.items?.forEach(item => {
@@ -672,7 +680,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   if (!activeOrder) {
     return (
       <View className='flex-1 items-center justify-center'>
-        <Text style={{ fontSize: 12, color: colors.muted }}>
+        <Text style={{ fontSize: s(12), color: colors.muted }}>
           No active order.
         </Text>
       </View>
@@ -680,7 +688,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   }
 
   const Dot = () => (
-    <Text style={{ fontSize: 10, color: colors.muted, marginHorizontal: 3 }}>
+    <Text style={{ fontSize: s(10), color: colors.muted, marginHorizontal: s(3) }}>
       ·
     </Text>
   )
@@ -689,31 +697,31 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   return (
     <View
       className='flex-1'
-      style={{ backgroundColor: colors.panel, padding: 16 }}
+      style={{ backgroundColor: colors.panel, padding: s(16) }}
     >
       {/* Meta info row */}
       <View
-        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}
+        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(6) }}
       >
         {tableName && (
           <Text
-            style={{ fontSize: 10, fontWeight: '600', color: colors.label }}
+            style={{ fontSize: s(10), fontWeight: '600', color: colors.label }}
           >
             {tableName}
           </Text>
         )}
         <Dot />
-        <Text style={{ fontSize: 10, color: colors.muted }}>
+        <Text style={{ fontSize: s(10), color: colors.muted }}>
           {guestCount || 1} guest{(guestCount || 1) !== 1 ? 's' : ''}
         </Text>
         <Dot />
         <TouchableOpacity
           onPress={onOpenServerSheet}
-          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          hitSlop={{ top: s(8), bottom: s(8), left: s(4), right: s(4) }}
         >
           <Text
             style={{
-              fontSize: 10,
+              fontSize: s(10),
               color: orderMeta.serverName ? colors.muted : colors.teal
             }}
           >
@@ -723,11 +731,11 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         <Dot />
         <TouchableOpacity
           onPress={openCustomerSheet}
-          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          hitSlop={{ top: s(8), bottom: s(8), left: s(4), right: s(4) }}
         >
           <Text
             style={{
-              fontSize: 10,
+              fontSize: s(10),
               color: orderMeta.customerName ? colors.muted : colors.teal
             }}
           >
@@ -739,7 +747,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       {/* Main Header */}
       <View className='flex-row items-center justify-between pb-3 mb-2'>
         <Text
-          style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
         >
           Order{' '}
           {orderMeta.displayNumber
@@ -757,14 +765,14 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
             <View
               style={{
                 backgroundColor: colors.warning + '30',
-                paddingHorizontal: 10,
-                paddingVertical: 4,
+                paddingHorizontal: s(10),
+                paddingVertical: s(4),
                 borderRadius: 999
               }}
             >
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '600',
                   color: colors.warning
                 }}
@@ -779,18 +787,18 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 8,
+                gap: s(6),
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.teal
               }}
               activeOpacity={0.8}
             >
-              <Plus size={16} color={colors.teal} />
+              <Plus size={s(16)} color={colors.teal} />
               <Text
-                style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}
+                style={{ fontSize: s(11), fontWeight: '600', color: colors.teal }}
               >
                 New Course
               </Text>
@@ -829,7 +837,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
               ))
             ) : (
               <View className='flex-1 items-center justify-center mt-10'>
-                <Text style={{ fontSize: 12, color: colors.muted }}>
+                <Text style={{ fontSize: s(12), color: colors.muted }}>
                   Add items to start an order.
                 </Text>
               </View>
@@ -847,7 +855,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
             </View>
           ) : (
             <View className='flex-1 items-center justify-center mt-10'>
-              <Text style={{ fontSize: 12, color: colors.muted }}>
+              <Text style={{ fontSize: s(12), color: colors.muted }}>
                 Add items to start an order.
               </Text>
             </View>

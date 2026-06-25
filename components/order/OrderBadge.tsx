@@ -3,6 +3,7 @@ import { isOrderReadOnly } from '@/lib/orderAccessControl'
 import { colors } from '@/lib/theme'
 import { toastService } from '@/lib/toastService'
 import { OrderProfile } from '@/lib/types'
+import { useUiScale } from '@/lib/uiScale'
 import { useWasOrderRecentlyUpdated } from '@/stores/useConflictStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -147,6 +148,8 @@ const PopoverContent = React.memo<PopoverContentProps>(
     onPrintReceipt,
     onClose
   }) => {
+    const uiScale = useUiScale()
+    const s = (n: number) => Math.round(n * uiScale)
     const effectivePaidStatus = useMemo(
       () => deriveEffectivePaidStatus(order) ?? order.paid_status,
       [order]
@@ -248,9 +251,9 @@ const PopoverContent = React.memo<PopoverContentProps>(
     return (
       <View
         style={{
-          width: 300,
+          width: s(300),
           backgroundColor: colors.panel,
-          borderRadius: 14,
+          borderRadius: s(14),
           borderWidth: 1,
           borderColor: colors.border,
           overflow: 'hidden'
@@ -260,9 +263,9 @@ const PopoverContent = React.memo<PopoverContentProps>(
         <View
           style={{
             backgroundColor: colors.screen,
-            paddingHorizontal: 14,
-            paddingTop: 12,
-            paddingBottom: 10
+            paddingHorizontal: s(14),
+            paddingTop: s(12),
+            paddingBottom: s(10)
           }}
         >
           {/* Order ID + status pill */}
@@ -277,27 +280,27 @@ const PopoverContent = React.memo<PopoverContentProps>(
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
+                gap: s(6),
                 flex: 1,
-                marginRight: 8
+                marginRight: s(8)
               }}
             >
               {/* Icon box */}
               <View
                 style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 8,
+                  width: s(30),
+                  height: s(30),
+                  borderRadius: s(8),
                   backgroundColor: colors.teal + '15',
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}
               >
-                <ShoppingBag size={14} color={colors.teal} />
+                <ShoppingBag size={s(14)} color={colors.teal} />
               </View>
               <Text
                 style={{
-                  fontSize: 15,
+                  fontSize: s(15),
                   fontWeight: '700',
                   color: colors.heading
                 }}
@@ -305,22 +308,22 @@ const PopoverContent = React.memo<PopoverContentProps>(
                 {displayId}
               </Text>
               {order.order_type ? (
-                <Text style={{ fontSize: 12, color: colors.muted }}>
+                <Text style={{ fontSize: s(12), color: colors.muted }}>
                   · {order.order_type}
                 </Text>
               ) : null}
             </View>
             <View
               style={{
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                borderRadius: 20,
+                paddingHorizontal: s(8),
+                paddingVertical: s(3),
+                borderRadius: s(20),
                 backgroundColor: statusPill.bg
               }}
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '600',
                   color: statusPill.textColor
                 }}
@@ -336,17 +339,17 @@ const PopoverContent = React.memo<PopoverContentProps>(
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginTop: 8
+              marginTop: s(8)
             }}
           >
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}
             >
-              <Text style={{ fontSize: 12, color: colors.heading }}>
+              <Text style={{ fontSize: s(12), color: colors.heading }}>
                 {order.customer_name || 'Walk-In'}
               </Text>
               <Text style={{ color: colors.muted }}>·</Text>
-              <Text style={{ fontSize: 12, color: colors.muted }}>
+              <Text style={{ fontSize: s(12), color: colors.muted }}>
                 {order.items.length > 0
                   ? order.items.length
                   : order._broadcastItemCount ?? 0}{' '}
@@ -358,7 +361,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
                   : ''}
               </Text>
             </View>
-            <Text style={{ fontSize: 11, color: colors.muted }}>
+            <Text style={{ fontSize: s(11), color: colors.muted }}>
               {formattedTime}
             </Text>
           </View>
@@ -368,16 +371,16 @@ const PopoverContent = React.memo<PopoverContentProps>(
             style={{
               flexDirection: 'row',
               flexWrap: 'wrap',
-              gap: 5,
-              marginTop: 7
+              gap: s(5),
+              marginTop: s(7)
             }}
           >
             {order.order_status ? (
               <View
                 style={{
-                  paddingHorizontal: 8,
-                  paddingVertical: 2,
-                  borderRadius: 20,
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(2),
+                  borderRadius: s(20),
                   backgroundColor:
                     getOrderDotColor(order.order_status, refundStatus) + '20',
                   borderWidth: 1,
@@ -387,7 +390,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
               >
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '600',
                     color: getOrderDotColor(order.order_status, refundStatus)
                   }}
@@ -399,9 +402,9 @@ const PopoverContent = React.memo<PopoverContentProps>(
             {order.check_status ? (
               <View
                 style={{
-                  paddingHorizontal: 8,
-                  paddingVertical: 2,
-                  borderRadius: 20,
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(2),
+                  borderRadius: s(20),
                   backgroundColor:
                     order.check_status === 'Opened'
                       ? colors.success + '20'
@@ -415,7 +418,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
               >
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '600',
                     color:
                       order.check_status === 'Opened'
@@ -429,10 +432,10 @@ const PopoverContent = React.memo<PopoverContentProps>(
             ) : null}
             {isFromOtherStation && (
               <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: s(3) }}
               >
-                <Repeat2 color={colors.info} size={11} />
-                <Text style={{ fontSize: 11, color: colors.info }}>
+                <Repeat2 color={colors.info} size={s(11)} />
+                <Text style={{ fontSize: s(11), color: colors.info }}>
                   {order._sourceStationName}
                 </Text>
               </View>
@@ -446,22 +449,22 @@ const PopoverContent = React.memo<PopoverContentProps>(
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            paddingHorizontal: 14,
-            paddingVertical: 10,
+            paddingHorizontal: s(14),
+            paddingVertical: s(10),
             borderBottomWidth: 1,
             borderBottomColor: colors.border
           }}
         >
-          <View style={{ gap: 1 }}>
+          <View style={{ gap: s(1) }}>
             {refundStatus.totalRefunded > 0 && (
-              <Text style={{ fontSize: 11, color: colors.danger }}>
+              <Text style={{ fontSize: s(11), color: colors.danger }}>
                 Refunded ${refundStatus.totalRefunded.toFixed(2)}
               </Text>
             )}
             {effectivePaidStatus !== 'Paid' &&
               !refundStatus.hasRefund &&
               cashSavings > 0.01 && (
-                <Text style={{ fontSize: 11, color: colors.success }}>
+                <Text style={{ fontSize: s(11), color: colors.success }}>
                   Cash ${cashAmountDue.toFixed(2)} · save $
                   {cashSavings.toFixed(2)}
                 </Text>
@@ -470,7 +473,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
             {(order.payments || [])
               .filter(p => !p.isVoided)
               .map((payment, idx) => (
-                <Text key={idx} style={{ fontSize: 11, color: colors.muted }}>
+                <Text key={idx} style={{ fontSize: s(11), color: colors.muted }}>
                   {payment.method === 'Cash'
                     ? `Cash $${(payment.amount ?? 0).toFixed(2)}`
                     : payment.cardBrand || payment.last4
@@ -482,14 +485,14 @@ const PopoverContent = React.memo<PopoverContentProps>(
               ))}
           </View>
           <Text
-            style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(20), fontWeight: '700', color: colors.heading }}
           >
             ${totalAmount.toFixed(2)}
           </Text>
         </View>
 
         {/* ── Action list ── */}
-        <View style={{ paddingVertical: 4 }}>
+        <View style={{ paddingVertical: s(4) }}>
           {/* Mark as Done — visible for kitchen-active or ready+paid orders */}
           {(order.order_status === 'preparing' ||
             order.order_status === 'sent_to_kitchen' ||
@@ -503,26 +506,26 @@ const PopoverContent = React.memo<PopoverContentProps>(
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                paddingHorizontal: 14,
-                paddingVertical: 9
+                paddingHorizontal: s(14),
+                paddingVertical: s(9)
               }}
             >
               <View
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 8,
+                  width: s(28),
+                  height: s(28),
+                  borderRadius: s(8),
                   backgroundColor: colors.success + '15',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginRight: 10
+                  marginRight: s(10)
                 }}
               >
-                <CheckCircle2 size={14} color={colors.success} />
+                <CheckCircle2 size={s(14)} color={colors.success} />
               </View>
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '600',
                   color: colors.success,
                   flex: 1
@@ -530,7 +533,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
               >
                 Mark as Done
               </Text>
-              <ChevronRight size={14} color={colors.muted} />
+              <ChevronRight size={s(14)} color={colors.muted} />
             </TouchableOpacity>
           )}
 
@@ -543,26 +546,26 @@ const PopoverContent = React.memo<PopoverContentProps>(
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: 14,
-              paddingVertical: 9
+              paddingHorizontal: s(14),
+              paddingVertical: s(9)
             }}
           >
             <View
               style={{
-                width: 28,
-                height: 28,
-                borderRadius: 8,
+                width: s(28),
+                height: s(28),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + '15',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 10
+                marginRight: s(10)
               }}
             >
-              <Eye size={14} color={colors.teal} />
+              <Eye size={s(14)} color={colors.teal} />
             </View>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '600',
                 color: colors.heading,
                 flex: 1
@@ -570,7 +573,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
             >
               View Items
             </Text>
-            <ChevronRight size={14} color={colors.muted} />
+            <ChevronRight size={s(14)} color={colors.muted} />
           </TouchableOpacity>
 
           {/* Print Receipt */}
@@ -583,26 +586,26 @@ const PopoverContent = React.memo<PopoverContentProps>(
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                paddingHorizontal: 14,
-                paddingVertical: 9
+                paddingHorizontal: s(14),
+                paddingVertical: s(9)
               }}
             >
               <View
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 8,
+                  width: s(28),
+                  height: s(28),
+                  borderRadius: s(8),
                   backgroundColor: colors.muted + '15',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginRight: 10
+                  marginRight: s(10)
                 }}
               >
-                <Printer size={14} color={colors.muted} />
+                <Printer size={s(14)} color={colors.muted} />
               </View>
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '600',
                   color: colors.heading,
                   flex: 1
@@ -610,7 +613,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
               >
                 Print Receipt
               </Text>
-              <ChevronRight size={14} color={colors.muted} />
+              <ChevronRight size={s(14)} color={colors.muted} />
             </TouchableOpacity>
           )}
 
@@ -637,12 +640,12 @@ const PopoverContent = React.memo<PopoverContentProps>(
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  marginHorizontal: 8,
-                  marginTop: 4,
-                  marginBottom: 4,
-                  paddingHorizontal: 10,
-                  paddingVertical: 9,
-                  borderRadius: 10,
+                  marginHorizontal: s(8),
+                  marginTop: s(4),
+                  marginBottom: s(4),
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(9),
+                  borderRadius: s(10),
                   backgroundColor: colors.teal + '15',
                   borderWidth: 1,
                   borderColor: colors.teal + '30',
@@ -650,14 +653,14 @@ const PopoverContent = React.memo<PopoverContentProps>(
                 }}
               >
                 <CreditCard
-                  size={15}
+                  size={s(15)}
                   color={colors.teal}
-                  style={{ marginRight: 10 }}
+                  style={{ marginRight: s(10) }}
                 />
                 <View style={{ flex: 1 }}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '600',
                       color: colors.teal
                     }}
@@ -667,9 +670,9 @@ const PopoverContent = React.memo<PopoverContentProps>(
                   {isReadOnlyForStation && (
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.muted,
-                        marginTop: 1
+                        marginTop: s(1)
                       }}
                     >
                       Owned by another station — Take Over to pay
@@ -678,7 +681,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
                 </View>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: '700',
                     color: colors.teal
                   }}
@@ -700,25 +703,25 @@ const PopoverContent = React.memo<PopoverContentProps>(
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  marginHorizontal: 8,
-                  marginTop: 4,
-                  marginBottom: 4,
-                  paddingHorizontal: 10,
-                  paddingVertical: 9,
-                  borderRadius: 10,
+                  marginHorizontal: s(8),
+                  marginTop: s(4),
+                  marginBottom: s(4),
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(9),
+                  borderRadius: s(10),
                   backgroundColor: colors.warning + '15',
                   borderWidth: 1,
                   borderColor: colors.warning + '30'
                 }}
               >
                 <RotateCcw
-                  size={15}
+                  size={s(15)}
                   color={colors.warning}
-                  style={{ marginRight: 10 }}
+                  style={{ marginRight: s(10) }}
                 />
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: '600',
                     color: colors.warning,
                     flex: 1
@@ -728,7 +731,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
                 </Text>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: '700',
                     color: colors.warning
                   }}

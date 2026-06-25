@@ -1,3 +1,4 @@
+import { useUiScale } from "@/lib/uiScale";
 import { colors } from "@/lib/theme";
 import { Minus, Plus } from "lucide-react-native";
 import React from "react";
@@ -20,19 +21,21 @@ const SeatSelector: React.FC<SeatSelectorProps> = ({
   onRemoveSeat,
   canRemoveSeat = true,
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 6, paddingHorizontal: 4, alignItems: "center" }}
+      contentContainerStyle={{ gap: s(6), paddingHorizontal: s(4), alignItems: "center" }}
     >
       {/* Shared button */}
       <TouchableOpacity
         onPress={() => onSelectSeat(null)}
         style={{
-          paddingHorizontal: 14,
-          paddingVertical: 6,
-          borderRadius: 16,
+          paddingHorizontal: s(14),
+          paddingVertical: s(6),
+          borderRadius: s(16),
           backgroundColor:
             activeSeat === null ? colors.teal + "25" : colors.screen,
           borderWidth: 1,
@@ -42,7 +45,7 @@ const SeatSelector: React.FC<SeatSelectorProps> = ({
       >
         <Text
           style={{
-            fontSize: 12,
+            fontSize: s(12),
             fontWeight: "600",
             color: activeSeat === null ? colors.teal : colors.label,
           }}
@@ -57,9 +60,9 @@ const SeatSelector: React.FC<SeatSelectorProps> = ({
           key={seat}
           onPress={() => onSelectSeat(seat)}
           style={{
-            paddingHorizontal: 14,
-            paddingVertical: 6,
-            borderRadius: 16,
+            paddingHorizontal: s(14),
+            paddingVertical: s(6),
+            borderRadius: s(16),
             backgroundColor:
               activeSeat === seat ? colors.teal + "25" : colors.screen,
             borderWidth: 1,
@@ -70,7 +73,7 @@ const SeatSelector: React.FC<SeatSelectorProps> = ({
         >
           <Text
             style={{
-              fontSize: 12,
+              fontSize: s(12),
               fontWeight: "600",
               color: activeSeat === seat ? colors.teal : colors.label,
             }}
@@ -86,9 +89,9 @@ const SeatSelector: React.FC<SeatSelectorProps> = ({
           onPress={onRemoveSeat}
           disabled={!canRemoveSeat}
           style={{
-            width: 28,
-            height: 28,
-            borderRadius: 14,
+            width: s(28),
+            height: s(28),
+            borderRadius: s(14),
             alignItems: "center",
             justifyContent: "center",
             borderWidth: 1,
@@ -99,7 +102,7 @@ const SeatSelector: React.FC<SeatSelectorProps> = ({
           }}
           activeOpacity={0.7}
         >
-          <Minus color={colors.label} size={14} />
+          <Minus color={colors.label} size={s(14)} />
         </TouchableOpacity>
       )}
 
@@ -108,9 +111,9 @@ const SeatSelector: React.FC<SeatSelectorProps> = ({
         <TouchableOpacity
           onPress={onAddSeat}
           style={{
-            width: 28,
-            height: 28,
-            borderRadius: 14,
+            width: s(28),
+            height: s(28),
+            borderRadius: s(14),
             alignItems: "center",
             justifyContent: "center",
             borderWidth: 1,
@@ -120,7 +123,7 @@ const SeatSelector: React.FC<SeatSelectorProps> = ({
           }}
           activeOpacity={0.7}
         >
-          <Plus color={colors.teal} size={14} />
+          <Plus color={colors.teal} size={s(14)} />
         </TouchableOpacity>
       )}
     </ScrollView>

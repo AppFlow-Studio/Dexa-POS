@@ -6,6 +6,7 @@
 
 import { Switch } from '@/components/ui/switch'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import {
   fetchTipDistributionRulesOverview,
   TipDistributionRulesOverview,
@@ -37,6 +38,8 @@ import {
 } from 'react-native'
 
 export default function TipSettingsScreen() {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const tipsConfig = useLocationConfigStore(s => s.config.tips)
   const _updateConfig = useLocationConfigStore(s => s.updateConfig)
   const updateTips = useCallback(
@@ -113,7 +116,7 @@ export default function TipSettingsScreen() {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 10,
+        paddingVertical: s(10),
         borderBottomWidth: 1,
         borderBottomColor: colors.border,
       }}
@@ -121,20 +124,20 @@ export default function TipSettingsScreen() {
       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
         <View
           style={{
-            width: 32,
-            height: 32,
+            width: s(32),
+            height: s(32),
             backgroundColor: colors.teal + '15',
-            borderRadius: 8,
+            borderRadius: s(8),
             alignItems: 'center',
             justifyContent: 'center',
-            marginRight: 10,
+            marginRight: s(10),
           }}
         >
           {icon}
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 13, color: colors.heading, fontWeight: '500' }}>{label}</Text>
-          <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>{description}</Text>
+          <Text style={{ fontSize: s(13), color: colors.heading, fontWeight: '500' }}>{label}</Text>
+          <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>{description}</Text>
         </View>
       </View>
       <Switch checked={value} onCheckedChange={onToggle} />
@@ -153,34 +156,34 @@ export default function TipSettingsScreen() {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 10,
+        paddingVertical: s(10),
         borderBottomWidth: 1,
         borderBottomColor: colors.border,
       }}
     >
       <View
         style={{
-          width: 32,
-          height: 32,
+          width: s(32),
+          height: s(32),
           backgroundColor: colors.teal + '15',
-          borderRadius: 8,
+          borderRadius: s(8),
           alignItems: 'center',
           justifyContent: 'center',
-          marginRight: 10,
+          marginRight: s(10),
         }}
       >
         {icon}
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, color: colors.heading, fontWeight: '500' }}>{label}</Text>
-        <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>{description}</Text>
+        <Text style={{ fontSize: s(13), color: colors.heading, fontWeight: '500' }}>{label}</Text>
+        <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>{description}</Text>
       </View>
       <View
         style={{
           flexDirection: 'row',
           alignItems: 'center',
           backgroundColor: colors.screen,
-          borderRadius: 8,
+          borderRadius: s(8),
           borderWidth: 1,
           borderColor: colors.border,
         }}
@@ -194,15 +197,15 @@ export default function TipSettingsScreen() {
           }}
           keyboardType='decimal-pad'
           style={{
-            width: 60,
-            paddingHorizontal: 10,
-            paddingVertical: 7,
+            width: s(60),
+            paddingHorizontal: s(10),
+            paddingVertical: s(7),
             color: colors.heading,
-            fontSize: 14,
+            fontSize: s(14),
             textAlign: 'center',
           }}
         />
-        <Text style={{ fontSize: 11, color: colors.muted, paddingRight: 10 }}>{suffix}</Text>
+        <Text style={{ fontSize: s(11), color: colors.muted, paddingRight: s(10) }}>{suffix}</Text>
       </View>
     </View>
   )
@@ -223,18 +226,18 @@ export default function TipSettingsScreen() {
         >
           <View
             style={{
-              width: 320,
+              width: s(320),
               backgroundColor: colors.panel,
-              borderRadius: 16,
-              padding: 20,
+              borderRadius: s(16),
+              padding: s(20),
               borderWidth: 1,
               borderColor: colors.border,
             }}
           >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>Add Tip Preset</Text>
-              <TouchableOpacity onPress={() => setShowPresetModal(false)} hitSlop={8}>
-                <X size={18} color={colors.muted} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: s(16) }}>
+              <Text style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}>Add Tip Preset</Text>
+              <TouchableOpacity onPress={() => setShowPresetModal(false)} hitSlop={s(8)}>
+                <X size={s(18)} color={colors.muted} />
               </TouchableOpacity>
             </View>
             <View
@@ -242,10 +245,10 @@ export default function TipSettingsScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 backgroundColor: colors.screen,
-                borderRadius: 10,
+                borderRadius: s(10),
                 borderWidth: 1,
                 borderColor: colors.border,
-                marginBottom: 16,
+                marginBottom: s(16),
               }}
             >
               <TextInput
@@ -256,25 +259,25 @@ export default function TipSettingsScreen() {
                 placeholderTextColor={colors.muted}
                 style={{
                   flex: 1,
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
+                  paddingHorizontal: s(14),
+                  paddingVertical: s(12),
                   color: colors.heading,
-                  fontSize: 16,
+                  fontSize: s(16),
                 }}
                 autoFocus
               />
-              <Text style={{ fontSize: 16, color: colors.muted, paddingRight: 14 }}>%</Text>
+              <Text style={{ fontSize: s(16), color: colors.muted, paddingRight: s(14) }}>%</Text>
             </View>
             <TouchableOpacity
               onPress={addPreset}
               style={{
                 backgroundColor: colors.teal,
-                borderRadius: 10,
-                paddingVertical: 12,
+                borderRadius: s(10),
+                paddingVertical: s(12),
                 alignItems: 'center',
               }}
             >
-              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.onSolid }}>Add Preset</Text>
+              <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.onSolid }}>Add Preset</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -282,51 +285,51 @@ export default function TipSettingsScreen() {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: s(16), paddingBottom: s(40) }}
       >
         {/* Header */}
-        <Text style={{ fontSize: 20, fontWeight: '800', color: colors.heading, marginBottom: 4 }}>
+        <Text style={{ fontSize: s(20), fontWeight: '800', color: colors.heading, marginBottom: s(4) }}>
           Tip Settings
         </Text>
-        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 16 }}>
+        <Text style={{ fontSize: s(12), color: colors.muted, marginBottom: s(16) }}>
           Configure how tips are collected, displayed, and managed at this location.
         </Text>
-        <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
+        <View style={{ height: 1, backgroundColor: colors.border, marginBottom: s(16) }} />
 
         {/* Section 1: CFD Tip Presets */}
         <View
           style={{
             backgroundColor: colors.panel,
-            padding: 14,
-            borderRadius: 14,
+            padding: s(14),
+            borderRadius: s(14),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 12,
+            marginBottom: s(12),
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(12) }}>
             <View
               style={{
-                width: 32,
-                height: 32,
+                width: s(32),
+                height: s(32),
                 backgroundColor: colors.teal + '15',
-                borderRadius: 8,
+                borderRadius: s(8),
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 10,
+                marginRight: s(10),
               }}
             >
-              <Percent size={16} color={colors.teal} />
+              <Percent size={s(16)} color={colors.teal} />
             </View>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>
+            <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}>
               Tip Presets
             </Text>
           </View>
-          <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 12 }}>
+          <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(12) }}>
             Percentage options shown to customers on the tip selection screen.
           </Text>
 
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8), marginBottom: s(12) }}>
             {presets.map(pct => (
               <View
                 key={pct}
@@ -334,19 +337,19 @@ export default function TipSettingsScreen() {
                   flexDirection: 'row',
                   alignItems: 'center',
                   backgroundColor: colors.teal + '18',
-                  borderRadius: 20,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
+                  borderRadius: s(20),
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(6),
                   borderWidth: 1,
                   borderColor: colors.teal + '40',
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal, marginRight: 6 }}>
+                <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.teal, marginRight: s(6) }}>
                   {pct}%
                 </Text>
                 {presets.length > 1 && (
-                  <TouchableOpacity onPress={() => removePreset(pct)} hitSlop={6}>
-                    <X size={14} color={colors.teal} />
+                  <TouchableOpacity onPress={() => removePreset(pct)} hitSlop={s(6)}>
+                    <X size={s(14)} color={colors.teal} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -357,15 +360,15 @@ export default function TipSettingsScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 backgroundColor: colors.card,
-                borderRadius: 20,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
+                borderRadius: s(20),
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
                 borderWidth: 1,
                 borderColor: colors.border,
               }}
             >
-              <Plus size={14} color={colors.label} />
-              <Text style={{ fontSize: 12, color: colors.label, marginLeft: 4 }}>Add</Text>
+              <Plus size={s(14)} color={colors.label} />
+              <Text style={{ fontSize: s(12), color: colors.label, marginLeft: s(4) }}>Add</Text>
             </TouchableOpacity>
           </View>
 
@@ -374,7 +377,7 @@ export default function TipSettingsScreen() {
             'Let customers enter a custom tip amount',
             tipsConfig.allowCustom ?? true,
             v => updateTips({ allowCustom: v }),
-            <DollarSign size={16} color={colors.teal} />
+            <DollarSign size={s(16)} color={colors.teal} />
           )}
 
           {renderNumericRow(
@@ -383,7 +386,7 @@ export default function TipSettingsScreen() {
             tipsConfig.maxTipPercentage ?? 100,
             v => updateTips({ maxTipPercentage: v }),
             '%',
-            <AlertTriangle size={16} color={colors.teal} />
+            <AlertTriangle size={s(16)} color={colors.teal} />
           )}
         </View>
 
@@ -391,28 +394,28 @@ export default function TipSettingsScreen() {
         <View
           style={{
             backgroundColor: colors.panel,
-            padding: 14,
-            borderRadius: 14,
+            padding: s(14),
+            borderRadius: s(14),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 12,
+            marginBottom: s(12),
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(12) }}>
             <View
               style={{
-                width: 32,
-                height: 32,
+                width: s(32),
+                height: s(32),
                 backgroundColor: colors.teal + '15',
-                borderRadius: 8,
+                borderRadius: s(8),
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 10,
+                marginRight: s(10),
               }}
             >
-              <Settings size={16} color={colors.teal} />
+              <Settings size={s(16)} color={colors.teal} />
             </View>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>
+            <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}>
               Tip Behavior
             </Text>
           </View>
@@ -422,7 +425,7 @@ export default function TipSettingsScreen() {
             'Force a tip selection before processing card payments',
             tipsConfig.requireTipOnCard ?? false,
             v => updateTips({ requireTipOnCard: v }),
-            <DollarSign size={16} color={colors.teal} />
+            <DollarSign size={s(16)} color={colors.teal} />
           )}
 
           {renderToggleRow(
@@ -430,7 +433,7 @@ export default function TipSettingsScreen() {
             'Allow tip entry for cash payments',
             tipsConfig.enableTipOnCash ?? true,
             v => updateTips({ enableTipOnCash: v }),
-            <DollarSign size={16} color={colors.teal} />
+            <DollarSign size={s(16)} color={colors.teal} />
           )}
 
           {renderToggleRow(
@@ -438,7 +441,7 @@ export default function TipSettingsScreen() {
             'Automatically open the cash drawer when a tip is received',
             tipsConfig.openDrawerOnTip ?? false,
             v => updateTips({ openDrawerOnTip: v }),
-            <DollarSign size={16} color={colors.teal} />
+            <DollarSign size={s(16)} color={colors.teal} />
           )}
 
           {renderNumericRow(
@@ -447,7 +450,7 @@ export default function TipSettingsScreen() {
             tipsConfig.tipAdjustTimeoutSeconds ?? 30,
             v => updateTips({ tipAdjustTimeoutSeconds: v }),
             'sec',
-            <Clock size={16} color={colors.teal} />
+            <Clock size={s(16)} color={colors.teal} />
           )}
 
           {renderNumericRow(
@@ -456,7 +459,7 @@ export default function TipSettingsScreen() {
             tipsConfig.highTipWarningThreshold ?? 30,
             v => updateTips({ highTipWarningThreshold: v }),
             '%',
-            <AlertTriangle size={16} color={colors.teal} />
+            <AlertTriangle size={s(16)} color={colors.teal} />
           )}
         </View>
 
@@ -464,96 +467,96 @@ export default function TipSettingsScreen() {
         <View
           style={{
             backgroundColor: colors.panel,
-            padding: 14,
-            borderRadius: 14,
+            padding: s(14),
+            borderRadius: s(14),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 12,
+            marginBottom: s(12),
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(4) }}>
             <View
               style={{
-                width: 32,
-                height: 32,
+                width: s(32),
+                height: s(32),
                 backgroundColor: colors.teal + '15',
-                borderRadius: 8,
+                borderRadius: s(8),
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 10,
+                marginRight: s(10),
               }}
             >
-              <Users size={16} color={colors.teal} />
+              <Users size={s(16)} color={colors.teal} />
             </View>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>
+            <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}>
               Active Tip Rules
             </Text>
           </View>
-          <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 12 }}>
+          <Text style={{ fontSize: s(10), color: colors.muted, marginBottom: s(12) }}>
             Tip pools and tip-out rules are managed from your Dexa dashboard.
           </Text>
 
           {rulesLoading ? (
-            <ActivityIndicator size='small' color={colors.teal} style={{ paddingVertical: 12 }} />
+            <ActivityIndicator size='small' color={colors.teal} style={{ paddingVertical: s(12) }} />
           ) : !rulesData ? (
-            <Text style={{ fontSize: 12, color: colors.label, paddingVertical: 8 }}>
+            <Text style={{ fontSize: s(12), color: colors.label, paddingVertical: s(8) }}>
               Unable to load rules.
             </Text>
           ) : rulesData.configs.length === 0 && rulesData.rules.length === 0 ? (
-            <Text style={{ fontSize: 12, color: colors.label, paddingVertical: 8 }}>
+            <Text style={{ fontSize: s(12), color: colors.label, paddingVertical: s(8) }}>
               No active tip pools or tip-out rules configured.
             </Text>
           ) : (
-            <View style={{ gap: 10 }}>
+            <View style={{ gap: s(10) }}>
               {rulesData.configs.length > 0 && (
-                <View style={{ gap: 6 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.label }}>
+                <View style={{ gap: s(6) }}>
+                  <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.label }}>
                     Tip Pools
                   </Text>
                   {rulesData.configs.map(config => (
                     <View
                       key={config.id}
                       style={{
-                        borderRadius: 10,
+                        borderRadius: s(10),
                         borderWidth: 1,
                         borderColor: colors.border,
                         backgroundColor: colors.card,
-                        padding: 10,
-                        gap: 4,
+                        padding: s(10),
+                        gap: s(4),
                       }}
                     >
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+                        <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
                           {config.name}
                         </Text>
                         <View
                           style={{
-                            borderRadius: 20,
-                            paddingHorizontal: 8,
-                            paddingVertical: 2,
+                            borderRadius: s(20),
+                            paddingHorizontal: s(8),
+                            paddingVertical: s(2),
                             backgroundColor: colors.teal + '20',
                           }}
                         >
-                          <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>
+                          <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>
                             {config.distributionMethod.replace('_', ' ')}
                           </Text>
                         </View>
                       </View>
-                      <Text style={{ fontSize: 11, color: colors.label }}>
+                      <Text style={{ fontSize: s(11), color: colors.label }}>
                         Source: {formatTipSource(config.tipSource)} · {config.sourcePercentage}%
                       </Text>
                       {config.contributingRoleCodes.length > 0 && (
-                        <Text style={{ fontSize: 11, color: colors.label }}>
+                        <Text style={{ fontSize: s(11), color: colors.label }}>
                           Contributing: {config.contributingRoleCodes.join(', ')}
                         </Text>
                       )}
                       {config.description ? (
-                        <Text style={{ fontSize: 11, color: colors.muted }}>{config.description}</Text>
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>{config.description}</Text>
                       ) : null}
                       {config.shares.length > 0 && (
-                        <View style={{ gap: 2, marginTop: 2 }}>
+                        <View style={{ gap: s(2), marginTop: s(2) }}>
                           {config.shares.map(share => (
-                            <Text key={share.id} style={{ fontSize: 10, color: colors.label }}>
+                            <Text key={share.id} style={{ fontSize: s(10), color: colors.label }}>
                               {share.roleName || share.roleCode}: {share.sharePercentage}%
                               {share.pointsPerHour ? ` (${share.pointsPerHour} pts/hr)` : ''}
                             </Text>
@@ -566,25 +569,25 @@ export default function TipSettingsScreen() {
               )}
 
               {rulesData.rules.length > 0 && (
-                <View style={{ gap: 6 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.label }}>
+                <View style={{ gap: s(6) }}>
+                  <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.label }}>
                     Tip-Out Rules
                   </Text>
                   {rulesData.rules.map(rule => (
                     <View
                       key={rule.id}
                       style={{
-                        borderRadius: 10,
+                        borderRadius: s(10),
                         borderWidth: 1,
                         borderColor: colors.border,
                         backgroundColor: colors.card,
-                        padding: 10,
+                        padding: s(10),
                       }}
                     >
-                      <Text style={{ fontSize: 12, color: colors.heading }}>
+                      <Text style={{ fontSize: s(12), color: colors.heading }}>
                         {rule.fromRoleName || rule.fromRoleCode} {'->'} {rule.toRoleName || rule.toRoleCode}
                       </Text>
-                      <Text style={{ fontSize: 10, color: colors.label, marginTop: 2 }}>
+                      <Text style={{ fontSize: s(10), color: colors.label, marginTop: s(2) }}>
                         {formatRuleValue(rule)}
                       </Text>
                     </View>

@@ -10,7 +10,10 @@ import {
     writeRefundJournal,
     type RefundPipelineStep
 } from "@/services/refundJournal";
-import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import {
+    getSharedCastlesService,
+    isTerminalTransportDead,
+} from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import {
     CASTLES_DEFAULT_PORT,
@@ -941,8 +944,14 @@ export class RefundService {
     const errors: string[] = [];
     let terminalRefundCount = 0;
     let batchIndex = 0;
+    // When a terminal refund fails with a transport-death error (terminal hung /
+    // USB read died / app-layer wedge), STOP — firing the next item's refund into
+    // a dead terminal just compounds the failure (and was a factor in the S1-0002
+    // crash where the 2nd item's refund hung the USB terminal). Clean declines do
+    // not set this; they continue to the next item.
+    let terminalDead = false;
 
-    for (const paymentAllocation of allocation.items) {
+    refundLoop: for (const paymentAllocation of allocation.items) {
       const paymentTotals: Record<string, number> = {};
       for (const alloc of paymentAllocation.paymentAllocations) {
         paymentTotals[alloc.paymentId] =
@@ -1061,6 +1070,15 @@ export class RefundService {
             terminalResult.error ?? "Terminal declined",
           );
           errors.push(terminalResult.error || "Terminal refund failed.");
+
+          // Fail-fast: if the terminal/transport is dead (not a clean decline),
+          // stop the whole batch — any remaining items would just be fired into
+          // a wedged terminal. Already-succeeded items have each been reconciled
+          // per-iteration below, so the order stays consistent for them.
+          if (isTerminalTransportDead(terminalResult.error)) {
+            terminalDead = true;
+            break refundLoop;
+          }
           continue;
         }
 
@@ -1171,7 +1189,52 @@ export class RefundService {
 
         completeRefundJournal(subJournalId, reversal.id);
         reversals.push({ reversalId: reversal.id, paymentId, amount });
+
+        // Reconcile order-level totals NOW, per successful item, instead of only
+        // once after the whole loop. apply_refund_to_payment only updates the
+        // order_payments row; only update_order_payment_status_after_refund
+        // recomputes orders.amount_paid/amount_due/payment_status. Doing it here
+        // means a crash on a LATER item can't strand this item's refund (the
+        // S1-0002 bug: item #1's $39.59 refund committed, then the crash on item
+        // #2 skipped the single trailing reconcile, leaving the order stuck at
+        // amount_due=$39.59 / payment_status=partial). The key is unique per
+        // iteration (derived from subKey) and distinct from the trailing call's
+        // key (derived from parentBatchKey), so idempotency dedup never swallows
+        // the final convergence. Tolerate transient failures — the trailing
+        // reconcile is the backstop.
+        const perItemReconcile =
+          await OrderService.updateOrderPaymentStatusAfterRefund(
+            this.supabase,
+            request.orderId,
+            {
+              keyOverride: toRefundStepKey(
+                subKey,
+                "update_order_payment_status",
+              ),
+            },
+          );
+        if (perItemReconcile.error && !isTransientRpcError(perItemReconcile.error)) {
+          console.error(
+            "[RefundService] Item return - per-item reconcile error:",
+            perItemReconcile.error,
+          );
+        }
       }
+    }
+
+    // Nothing refunded → this is a FAILURE, not a success. Route it through the
+    // error path so every consumer (modals + store) shows "Refund Failed" and the
+    // store bails before marking anything refunded or running applyRefundRecovery.
+    // (processFullPaymentRefund already returns kind:"error" on terminal failure;
+    // item-return previously returned kind:"success" with success:false, which the
+    // UI rendered as a green "Refund Successful" — the reported unplug bug.)
+    if (reversals.length === 0) {
+      const message = terminalDead
+        ? "Terminal offline — no items were refunded. Reconnect the terminal and try again."
+        : errors.length > 0
+          ? errors.join("; ")
+          : "No items were refunded.";
+      return { kind: "error", error: message };
     }
 
     const orderStatusResult =
@@ -1192,12 +1255,21 @@ export class RefundService {
       );
     }
 
+    // ≥1 item refunded. If the terminal died partway, surface a partial-success
+    // message so the UI can warn (not green-success) that the rest were skipped.
+    const errorParts = [...errors];
+    if (terminalDead) {
+      errorParts.unshift(
+        `Terminal went offline mid-refund — ${reversals.length} item refund(s) completed; remaining items were NOT refunded. Reconnect the terminal and retry the rest.`,
+      );
+    }
+
     return {
       kind: "success",
       data: {
-        success: reversals.length > 0,
+        success: true,
         reversals,
-        error: errors.length > 0 ? errors.join("; ") : undefined,
+        error: errorParts.length > 0 ? errorParts.join("; ") : undefined,
       },
     };
   }

@@ -1,5 +1,6 @@
 import { createSupabaseClient } from '@/lib/supabase'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { Station, StationViewScope } from '@/types/station'
@@ -35,6 +36,8 @@ import {
 } from 'react-native'
 
 const StationsScreen = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const { getToken } = useAuth()
   const supabase = createSupabaseClient(getToken)
   const selectedStore = useStoreSettingsStore(state => state.selectedStore)
@@ -128,10 +131,10 @@ const StationsScreen = () => {
         onPress={() => toggleSection(sectionKey)}
         style={{
           backgroundColor: colors.panel,
-          paddingHorizontal: 14,
-          paddingVertical: 11,
-          borderTopLeftRadius: 12,
-          borderTopRightRadius: 12,
+          paddingHorizontal: s(14),
+          paddingVertical: s(11),
+          borderTopLeftRadius: s(12),
+          borderTopRightRadius: s(12),
           borderBottomWidth: 1,
           borderColor: colors.border,
           flexDirection: 'row',
@@ -142,30 +145,30 @@ const StationsScreen = () => {
         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
           <View
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
+              width: s(32),
+              height: s(32),
+              borderRadius: s(8),
               backgroundColor: colors.teal + '15',
               alignItems: 'center',
               justifyContent: 'center',
-              marginRight: 8
+              marginRight: s(8)
             }}
           >
             {icon}
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+            <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
               {title}
             </Text>
-            <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+            <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
               {subtitle}
             </Text>
           </View>
         </View>
         {isExpanded ? (
-          <ChevronUp size={14} color={colors.label} />
+          <ChevronUp size={s(14)} color={colors.label} />
         ) : (
-          <ChevronDown size={14} color={colors.label} />
+          <ChevronDown size={s(14)} color={colors.label} />
         )}
       </TouchableOpacity>
     )
@@ -176,9 +179,9 @@ const StationsScreen = () => {
     return (
       <View
         style={{
-          paddingHorizontal: 8,
-          paddingVertical: 3,
-          borderRadius: 20,
+          paddingHorizontal: s(8),
+          paddingVertical: s(3),
+          borderRadius: s(20),
           backgroundColor: enabled ? colors.teal + '20' : colors.border + '80',
           borderWidth: 1,
           borderColor: enabled ? colors.teal + '50' : colors.border
@@ -186,7 +189,7 @@ const StationsScreen = () => {
       >
         <Text
           style={{
-            fontSize: 10,
+            fontSize: s(10),
             fontWeight: '600',
             color: enabled ? colors.teal : colors.muted
           }}
@@ -206,11 +209,11 @@ const StationsScreen = () => {
         key={station.id}
         style={{
           backgroundColor: colors.screen,
-          padding: 12,
-          borderRadius: 12,
+          padding: s(12),
+          borderRadius: s(12),
           borderWidth: 1,
           borderColor: colors.border,
-          marginBottom: 8
+          marginBottom: s(8)
         }}
       >
         <View
@@ -218,63 +221,63 @@ const StationsScreen = () => {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: 10
+            marginBottom: s(10)
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
+                width: s(32),
+                height: s(32),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + '15',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 8
+                marginRight: s(8)
               }}
             >
-              <Monitor size={16} color={colors.teal} />
+              <Monitor size={s(16)} color={colors.teal} />
             </View>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+                <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
                   {station.station_name}
                 </Text>
                 {station.station_number > 0 && (
                   <View
                     style={{
-                      marginLeft: 6,
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
+                      marginLeft: s(6),
+                      paddingHorizontal: s(6),
+                      paddingVertical: s(2),
                       backgroundColor: colors.teal + '15',
                       borderWidth: 1,
                       borderColor: colors.teal + '40',
-                      borderRadius: 20
+                      borderRadius: s(20)
                     }}
                   >
-                    <Text style={{ fontSize: 10, color: colors.label }}>
+                    <Text style={{ fontSize: s(10), color: colors.label }}>
                       #{station.station_number}
                     </Text>
                   </View>
                 )}
               </View>
-              <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+              <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
                 {station.station_type.charAt(0).toUpperCase() +
                   station.station_type.slice(1)}
               </Text>
             </View>
           </View>
           <View style={{ alignItems: 'flex-end' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(4) }}>
               {isOnline ? (
-                <Wifi size={13} color={colors.teal} />
+                <Wifi size={s(13)} color={colors.teal} />
               ) : (
-                <WifiOff size={13} color={colors.muted} />
+                <WifiOff size={s(13)} color={colors.muted} />
               )}
               <Text
                 style={{
-                  fontSize: 11,
-                  marginLeft: 4,
+                  fontSize: s(11),
+                  marginLeft: s(4),
                   color: isOnline ? colors.teal : colors.muted
                 }}
               >
@@ -283,14 +286,14 @@ const StationsScreen = () => {
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               {isAvailable ? (
-                <CheckCircle2 size={13} color={colors.teal} />
+                <CheckCircle2 size={s(13)} color={colors.teal} />
               ) : (
-                <AlertCircle size={13} color={colors.label} />
+                <AlertCircle size={s(13)} color={colors.label} />
               )}
               <Text
                 style={{
-                  fontSize: 11,
-                  marginLeft: 4,
+                  fontSize: s(11),
+                  marginLeft: s(4),
                   color: isAvailable ? colors.teal : colors.label
                 }}
               >
@@ -305,17 +308,17 @@ const StationsScreen = () => {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              marginBottom: 10,
-              paddingHorizontal: 8,
-              paddingVertical: 6,
+              marginBottom: s(10),
+              paddingHorizontal: s(8),
+              paddingVertical: s(6),
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 8
+              borderRadius: s(8)
             }}
           >
-            <User size={12} color={colors.label} />
-            <Text style={{ fontSize: 11, color: colors.label, marginLeft: 6 }}>
+            <User size={s(12)} color={colors.label} />
+            <Text style={{ fontSize: s(11), color: colors.label, marginLeft: s(6) }}>
               In use by {station.current_session.staff_name}
               {station.current_session.device_name &&
                 ` on ${station.current_session.device_name}`}
@@ -327,11 +330,11 @@ const StationsScreen = () => {
           style={{
             borderTopWidth: 1,
             borderTopColor: colors.border,
-            paddingTop: 10,
-            marginBottom: 10
+            paddingTop: s(10),
+            marginBottom: s(10)
           }}
         >
-          <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 6 }}>
+          <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(6) }}>
             View Scope
           </Text>
           {(() => {
@@ -348,16 +351,16 @@ const StationsScreen = () => {
             return (
               <View
                 style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 3,
-                  borderRadius: 20,
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(3),
+                  borderRadius: s(20),
                   alignSelf: 'flex-start',
                   backgroundColor: scopeColor + '20',
                   borderWidth: 1,
                   borderColor: scopeColor + '50'
                 }}
               >
-                <Text style={{ fontSize: 10, fontWeight: '600', color: scopeColor }}>
+                <Text style={{ fontSize: s(10), fontWeight: '600', color: scopeColor }}>
                   {scopeLabel}
                 </Text>
               </View>
@@ -369,14 +372,14 @@ const StationsScreen = () => {
           style={{
             borderTopWidth: 1,
             borderTopColor: colors.border,
-            paddingTop: 10,
-            marginBottom: 10
+            paddingTop: s(10),
+            marginBottom: s(10)
           }}
         >
-          <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 8 }}>
+          <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(8) }}>
             Capabilities
           </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6) }}>
             {renderCapabilityBadge('Create Orders', station.can_create_orders)}
             {renderCapabilityBadge('Process Payments', station.can_process_payments)}
             {renderCapabilityBadge('Void Orders', station.can_void_orders)}
@@ -392,28 +395,28 @@ const StationsScreen = () => {
             style={{
               borderTopWidth: 1,
               borderTopColor: colors.border,
-              paddingTop: 10,
-              marginBottom: 10
+              paddingTop: s(10),
+              marginBottom: s(10)
             }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-              <Smartphone size={13} color={colors.label} />
-              <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(8) }}>
+              <Smartphone size={s(13)} color={colors.label} />
+              <Text style={{ fontSize: s(11), color: colors.muted, marginLeft: s(6) }}>
                 Device Health
               </Text>
             </View>
             <View
               style={{
                 backgroundColor: colors.panel,
-                padding: 10,
-                borderRadius: 8,
-                gap: 6
+                padding: s(10),
+                borderRadius: s(8),
+                gap: s(6)
               }}
             >
               {station.hardware_model && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontSize: 11, color: colors.label }}>Hardware</Text>
-                  <Text style={{ fontSize: 11, color: colors.heading }}>
+                  <Text style={{ fontSize: s(11), color: colors.label }}>Hardware</Text>
+                  <Text style={{ fontSize: s(11), color: colors.heading }}>
                     {station.device_manufacturer && `${station.device_manufacturer} `}
                     {station.hardware_model || station.device_model}
                   </Text>
@@ -421,8 +424,8 @@ const StationsScreen = () => {
               )}
               {station.last_heartbeat_at && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontSize: 11, color: colors.label }}>Last Heartbeat</Text>
-                  <Text style={{ fontSize: 11, color: colors.heading }}>
+                  <Text style={{ fontSize: s(11), color: colors.label }}>Last Heartbeat</Text>
+                  <Text style={{ fontSize: s(11), color: colors.heading }}>
                     {formatDistanceToNow(new Date(station.last_heartbeat_at), {
                       addSuffix: true
                     })}
@@ -437,10 +440,10 @@ const StationsScreen = () => {
                     alignItems: 'center'
                   }}
                 >
-                  <Text style={{ fontSize: 11, color: colors.label }}>Network</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Wifi size={10} color={colors.label} />
-                    <Text style={{ fontSize: 11, color: colors.heading }}>
+                  <Text style={{ fontSize: s(11), color: colors.label }}>Network</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}>
+                    <Wifi size={s(10)} color={colors.label} />
+                    <Text style={{ fontSize: s(11), color: colors.heading }}>
                       {station.network_type}
                     </Text>
                   </View>
@@ -448,29 +451,29 @@ const StationsScreen = () => {
               )}
               {station.app_version && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontSize: 11, color: colors.label }}>App Version</Text>
-                  <Text style={{ fontSize: 11, color: colors.heading }}>
+                  <Text style={{ fontSize: s(11), color: colors.label }}>App Version</Text>
+                  <Text style={{ fontSize: s(11), color: colors.heading }}>
                     v{station.app_version}
                   </Text>
                 </View>
               )}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6), marginTop: s(2) }}>
                 {station.has_builtin_printer && (
                   <View
                     style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderRadius: 20,
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(3),
+                      borderRadius: s(20),
                       backgroundColor: colors.teal + '15',
                       borderWidth: 1,
                       borderColor: colors.teal + '40',
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 4
+                      gap: s(4)
                     }}
                   >
-                    <Printer size={9} color={colors.teal} />
-                    <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>
+                    <Printer size={s(9)} color={colors.teal} />
+                    <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>
                       Printer
                     </Text>
                   </View>
@@ -478,19 +481,19 @@ const StationsScreen = () => {
                 {station.has_builtin_cfd && (
                   <View
                     style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderRadius: 20,
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(3),
+                      borderRadius: s(20),
                       backgroundColor: colors.teal + '15',
                       borderWidth: 1,
                       borderColor: colors.teal + '40',
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 4
+                      gap: s(4)
                     }}
                   >
-                    <Monitor size={9} color={colors.teal} />
-                    <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>
+                    <Monitor size={s(9)} color={colors.teal} />
+                    <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>
                       CFD
                     </Text>
                   </View>
@@ -498,19 +501,19 @@ const StationsScreen = () => {
                 {station.has_nfc && (
                   <View
                     style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderRadius: 20,
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(3),
+                      borderRadius: s(20),
                       backgroundColor: colors.teal + '15',
                       borderWidth: 1,
                       borderColor: colors.teal + '40',
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 4
+                      gap: s(4)
                     }}
                   >
-                    <Cpu size={9} color={colors.teal} />
-                    <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>
+                    <Cpu size={s(9)} color={colors.teal} />
+                    <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>
                       NFC
                     </Text>
                   </View>
@@ -518,19 +521,19 @@ const StationsScreen = () => {
                 {station.has_cash_drawer_port && (
                   <View
                     style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderRadius: 20,
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(3),
+                      borderRadius: s(20),
                       backgroundColor: colors.teal + '15',
                       borderWidth: 1,
                       borderColor: colors.teal + '40',
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 4
+                      gap: s(4)
                     }}
                   >
-                    <CreditCard size={9} color={colors.teal} />
-                    <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>
+                    <CreditCard size={s(9)} color={colors.teal} />
+                    <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>
                       Cash Drawer
                     </Text>
                   </View>
@@ -545,42 +548,42 @@ const StationsScreen = () => {
             style={{
               borderTopWidth: 1,
               borderTopColor: colors.border,
-              paddingTop: 10
+              paddingTop: s(10)
             }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-              <CreditCard size={13} color={colors.label} />
-              <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(8) }}>
+              <CreditCard size={s(13)} color={colors.label} />
+              <Text style={{ fontSize: s(11), color: colors.muted, marginLeft: s(6) }}>
                 Linked Payment Terminal
               </Text>
             </View>
-            <View style={{ backgroundColor: colors.panel, padding: 10, borderRadius: 8 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+            <View style={{ backgroundColor: colors.panel, padding: s(10), borderRadius: s(8) }}>
+              <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.heading }}>
                 {station.payment_terminal.terminal_name}
               </Text>
               {station.payment_terminal.register_id && (
-                <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
+                <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(2) }}>
                   Register: {station.payment_terminal.register_id}
                 </Text>
               )}
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: s(8) }}>
                 {station.payment_terminal.is_connected ? (
                   <>
-                    <CheckCircle2 size={12} color={colors.teal} />
-                    <Text style={{ fontSize: 11, color: colors.teal, marginLeft: 4 }}>
+                    <CheckCircle2 size={s(12)} color={colors.teal} />
+                    <Text style={{ fontSize: s(11), color: colors.teal, marginLeft: s(4) }}>
                       Connected
                     </Text>
                   </>
                 ) : (
                   <>
-                    <AlertCircle size={12} color={colors.danger} />
-                    <Text style={{ fontSize: 11, color: colors.danger, marginLeft: 4 }}>
+                    <AlertCircle size={s(12)} color={colors.danger} />
+                    <Text style={{ fontSize: s(11), color: colors.danger, marginLeft: s(4) }}>
                       Disconnected
                     </Text>
                   </>
                 )}
                 {station.payment_terminal.last_connection_test_at && (
-                  <Text style={{ fontSize: 10, color: colors.muted, marginLeft: 8 }}>
+                  <Text style={{ fontSize: s(10), color: colors.muted, marginLeft: s(8) }}>
                     Last test:{' '}
                     {formatDistanceToNow(
                       new Date(station.payment_terminal.last_connection_test_at),
@@ -604,11 +607,11 @@ const StationsScreen = () => {
         key={terminal.id}
         style={{
           backgroundColor: colors.screen,
-          padding: 12,
-          borderRadius: 12,
+          padding: s(12),
+          borderRadius: s(12),
           borderWidth: 1,
           borderColor: colors.border,
-          marginBottom: 8
+          marginBottom: s(8)
         }}
       >
         <View
@@ -616,33 +619,33 @@ const StationsScreen = () => {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: 10
+            marginBottom: s(10)
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
+                width: s(32),
+                height: s(32),
+                borderRadius: s(8),
                 backgroundColor: terminal.is_connected
                   ? colors.teal + '20'
                   : colors.danger + '20',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 8
+                marginRight: s(8)
               }}
             >
               <CreditCard
-                size={16}
+                size={s(16)}
                 color={terminal.is_connected ? colors.teal : colors.danger}
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+              <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
                 {terminal.terminal_name}
               </Text>
-              <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+              <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
                 {terminal.terminal_type.charAt(0).toUpperCase() +
                   terminal.terminal_type.slice(1)}
                 {terminal.terminal_model && ` • ${terminal.terminal_model}`}
@@ -652,15 +655,15 @@ const StationsScreen = () => {
           <View style={{ alignItems: 'flex-end' }}>
             {terminal.is_connected ? (
               <>
-                <CheckCircle2 size={16} color={colors.teal} />
-                <Text style={{ fontSize: 10, color: colors.teal, marginTop: 3 }}>
+                <CheckCircle2 size={s(16)} color={colors.teal} />
+                <Text style={{ fontSize: s(10), color: colors.teal, marginTop: s(3) }}>
                   Connected
                 </Text>
               </>
             ) : (
               <>
-                <AlertCircle size={16} color={colors.danger} />
-                <Text style={{ fontSize: 10, color: colors.danger, marginTop: 3 }}>
+                <AlertCircle size={s(16)} color={colors.danger} />
+                <Text style={{ fontSize: s(10), color: colors.danger, marginTop: s(3) }}>
                   Offline
                 </Text>
               </>
@@ -671,36 +674,36 @@ const StationsScreen = () => {
         <View
           style={{
             backgroundColor: colors.panel,
-            padding: 10,
-            borderRadius: 8,
+            padding: s(10),
+            borderRadius: s(8),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 10,
-            gap: 6
+            marginBottom: s(10),
+            gap: s(6)
           }}
         >
           {terminal.register_id && (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 11, color: colors.label }}>Register ID</Text>
-              <Text style={{ fontSize: 11, color: colors.heading }}>
+              <Text style={{ fontSize: s(11), color: colors.label }}>Register ID</Text>
+              <Text style={{ fontSize: s(11), color: colors.heading }}>
                 {terminal.register_id}
               </Text>
             </View>
           )}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 11, color: colors.label }}>Linked Station</Text>
-            <Text style={{ fontSize: 11, color: colors.heading }}>
+            <Text style={{ fontSize: s(11), color: colors.label }}>Linked Station</Text>
+            <Text style={{ fontSize: s(11), color: colors.heading }}>
               {station.station_name}
             </Text>
           </View>
         </View>
 
         {terminal.last_connection_status && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-            <Text style={{ fontSize: 11, color: colors.label }}>Status: </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(10) }}>
+            <Text style={{ fontSize: s(11), color: colors.label }}>Status: </Text>
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '600',
                 color:
                   terminal.last_connection_status === 'Online'
@@ -713,7 +716,7 @@ const StationsScreen = () => {
               {terminal.last_connection_status}
             </Text>
             {terminal.last_connection_test_at && (
-              <Text style={{ fontSize: 10, color: colors.muted, marginLeft: 8 }}>
+              <Text style={{ fontSize: s(10), color: colors.muted, marginLeft: s(8) }}>
                 •{' '}
                 {formatDistanceToNow(new Date(terminal.last_connection_test_at), {
                   addSuffix: true
@@ -728,14 +731,14 @@ const StationsScreen = () => {
             backgroundColor: colors.teal + '10',
             borderWidth: 1,
             borderColor: colors.teal + '30',
-            padding: 10,
-            borderRadius: 8,
+            padding: s(10),
+            borderRadius: s(8),
             flexDirection: 'row',
             alignItems: 'center'
           }}
         >
-          <Shield size={14} color={colors.teal} />
-          <Text style={{ fontSize: 11, color: colors.teal, marginLeft: 8, flex: 1 }}>
+          <Shield size={s(14)} color={colors.teal} />
+          <Text style={{ fontSize: s(11), color: colors.teal, marginLeft: s(8), flex: 1 }}>
             Auth credentials encrypted and accessed securely during payment processing
           </Text>
         </View>
@@ -746,11 +749,11 @@ const StationsScreen = () => {
   if (isLoading) {
     return (
       <ScrollView
-        style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: 14, paddingVertical: 10 }}
+        style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: s(14), paddingVertical: s(10) }}
       >
-        <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 80 }}>
+        <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: s(80) }}>
           <ActivityIndicator size='large' color={colors.teal} />
-          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 12 }}>
+          <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(12) }}>
             Loading stations...
           </Text>
         </View>
@@ -761,29 +764,29 @@ const StationsScreen = () => {
   if (error) {
     return (
       <ScrollView
-        style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: 14, paddingVertical: 10 }}
+        style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: s(14), paddingVertical: s(10) }}
       >
-        <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 80 }}>
-          <AlertCircle size={40} color={colors.danger} />
-          <Text style={{ fontSize: 14, color: colors.danger, textAlign: 'center', marginTop: 12 }}>
+        <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: s(80) }}>
+          <AlertCircle size={s(40)} color={colors.danger} />
+          <Text style={{ fontSize: s(14), color: colors.danger, textAlign: 'center', marginTop: s(12) }}>
             Failed to load stations
           </Text>
-          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4, textAlign: 'center' }}>
+          <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(4), textAlign: 'center' }}>
             {(error as Error).message || 'Please try again later'}
           </Text>
           <TouchableOpacity
             onPress={() => refetch()}
             style={{
-              marginTop: 14,
+              marginTop: s(14),
               backgroundColor: colors.teal + '20',
               borderWidth: 1,
               borderColor: colors.teal + '50',
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-              borderRadius: 8
+              paddingHorizontal: s(16),
+              paddingVertical: s(8),
+              borderRadius: s(8)
             }}
           >
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>Retry</Text>
+            <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.teal }}>Retry</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -793,7 +796,7 @@ const StationsScreen = () => {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.screen }}
-      contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 10, paddingBottom: 24 }}
+      contentContainerStyle={{ paddingHorizontal: s(14), paddingVertical: s(10), paddingBottom: s(24) }}
     >
       {/* Header */}
       <View
@@ -801,14 +804,14 @@ const StationsScreen = () => {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 10
+          marginBottom: s(10)
         }}
       >
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
+          <Text style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}>
             Stations
           </Text>
-          <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
+          <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
             Manage stations, view scopes, and linked payment terminals
           </Text>
         </View>
@@ -816,23 +819,23 @@ const StationsScreen = () => {
           onPress={() => refetch()}
           disabled={isRefetching}
           style={{
-            marginLeft: 12,
-            padding: 7,
-            borderRadius: 8,
+            marginLeft: s(12),
+            padding: s(7),
+            borderRadius: s(8),
             backgroundColor: isRefetching ? colors.border : colors.teal + '20',
             borderWidth: 1,
             borderColor: isRefetching ? colors.border : colors.teal + '50'
           }}
         >
           <RefreshCw
-            size={14}
+            size={s(14)}
             color={isRefetching ? colors.muted : colors.teal}
             style={isRefetching ? { opacity: 0.5 } : undefined}
           />
         </TouchableOpacity>
       </View>
 
-      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 10 }} />
+      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: s(10) }} />
 
       {/* This Station — View Scope */}
       {selectedStation && (
@@ -841,30 +844,30 @@ const StationsScreen = () => {
             backgroundColor: colors.panel,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 10
+            borderRadius: s(12),
+            padding: s(12),
+            marginBottom: s(10)
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(10) }}>
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
+                width: s(32),
+                height: s(32),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + '15',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 8
+                marginRight: s(8)
               }}
             >
-              <Eye size={16} color={colors.teal} />
+              <Eye size={s(16)} color={colors.teal} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+              <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
                 This Station
               </Text>
-              <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+              <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
                 {selectedStation.station_name} — Order visibility
               </Text>
             </View>
@@ -873,7 +876,7 @@ const StationsScreen = () => {
             )}
           </View>
 
-          <View style={{ gap: 8 }}>
+          <View style={{ gap: s(8) }}>
             {([
               {
                 value: 'own' as StationViewScope,
@@ -898,37 +901,37 @@ const StationsScreen = () => {
                     backgroundColor: isSelected ? colors.teal + '12' : colors.screen,
                     borderWidth: 1,
                     borderColor: isSelected ? colors.teal + '50' : colors.border,
-                    borderRadius: 10,
-                    padding: 10,
+                    borderRadius: s(10),
+                    padding: s(10),
                     opacity: viewScopeUpdating ? 0.6 : 1
                   }}
                 >
                   <View
                     style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 11,
+                      width: s(22),
+                      height: s(22),
+                      borderRadius: s(11),
                       borderWidth: 2,
                       borderColor: isSelected ? colors.teal : colors.border,
                       backgroundColor: isSelected ? colors.teal : 'transparent',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginRight: 10
+                      marginRight: s(10)
                     }}
                   >
-                    {isSelected && <Check size={13} color='#fff' strokeWidth={3} />}
+                    {isSelected && <Check size={s(13)} color='#fff' strokeWidth={3} />}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: '600',
                         color: isSelected ? colors.teal : colors.heading
                       }}
                     >
                       {option.label}
                     </Text>
-                    <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                    <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
                       {option.description}
                     </Text>
                   </View>
@@ -941,9 +944,9 @@ const StationsScreen = () => {
 
       {/* Stations Section */}
       {stations && stations.length > 0 && (
-        <View style={{ marginBottom: 10 }}>
+        <View style={{ marginBottom: s(10) }}>
           {renderSectionHeader(
-            <Monitor size={14} color={colors.teal} />,
+            <Monitor size={s(14)} color={colors.teal} />,
             'Stations',
             `${stations.length} station${stations.length !== 1 ? 's' : ''} registered`,
             'stations'
@@ -952,12 +955,12 @@ const StationsScreen = () => {
             <View
               style={{
                 backgroundColor: colors.panel,
-                borderBottomLeftRadius: 12,
-                borderBottomRightRadius: 12,
+                borderBottomLeftRadius: s(12),
+                borderBottomRightRadius: s(12),
                 borderWidth: 1,
                 borderTopWidth: 0,
                 borderColor: colors.border,
-                padding: 12
+                padding: s(12)
               }}
             >
               {stations.map(renderStationCard)}
@@ -968,9 +971,9 @@ const StationsScreen = () => {
 
       {/* Terminals Section */}
       {stations && stations.some(s => s.payment_terminal) && (
-        <View style={{ marginBottom: 10 }}>
+        <View style={{ marginBottom: s(10) }}>
           {renderSectionHeader(
-            <CreditCard size={14} color={colors.teal} />,
+            <CreditCard size={s(14)} color={colors.teal} />,
             'Payment Terminals',
             `${stations.filter(s => s.payment_terminal).length} terminal${
               stations.filter(s => s.payment_terminal).length !== 1 ? 's' : ''
@@ -981,12 +984,12 @@ const StationsScreen = () => {
             <View
               style={{
                 backgroundColor: colors.panel,
-                borderBottomLeftRadius: 12,
-                borderBottomRightRadius: 12,
+                borderBottomLeftRadius: s(12),
+                borderBottomRightRadius: s(12),
                 borderWidth: 1,
                 borderTopWidth: 0,
                 borderColor: colors.border,
-                padding: 12
+                padding: s(12)
               }}
             >
               {stations.filter(s => s.payment_terminal).map(renderTerminalCard)}
@@ -1001,25 +1004,25 @@ const StationsScreen = () => {
           backgroundColor: colors.panel,
           borderWidth: 1,
           borderColor: colors.border,
-          padding: 12,
-          borderRadius: 12,
-          marginTop: 8
+          padding: s(12),
+          borderRadius: s(12),
+          marginTop: s(8)
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-          <Shield size={16} color={colors.teal} style={{ marginTop: 1 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: s(10) }}>
+          <Shield size={s(16)} color={colors.teal} style={{ marginTop: s(1) }} />
           <View style={{ flex: 1 }}>
             <Text
               style={{
-                fontSize: 12,
+                fontSize: s(12),
                 fontWeight: '600',
                 color: colors.teal,
-                marginBottom: 4
+                marginBottom: s(4)
               }}
             >
               Security & Encryption
             </Text>
-            <Text style={{ fontSize: 10, color: colors.label, lineHeight: 14 }}>
+            <Text style={{ fontSize: s(10), color: colors.label, lineHeight: s(14) }}>
               All payment terminal auth keys are encrypted in the database using PGP
               encryption and are only decrypted in memory during payment processing.
               Credentials are never stored persistently on devices.

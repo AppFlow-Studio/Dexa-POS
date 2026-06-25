@@ -17,6 +17,7 @@ import {
 } from "lucide-react-native";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useUiScale } from "@/lib/uiScale";
 import PinDisplay from "./auth/PinDisplay";
 import PinNumpad from "./auth/PinNumpad";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -29,6 +30,7 @@ interface MenuCardProps {
   isLocked?: boolean;
   onLockPress?: () => void;
   isDisabled?: boolean;
+  scale?: number;
 }
 
 const MenuCard: React.FC<MenuCardProps> = ({
@@ -38,10 +40,16 @@ const MenuCard: React.FC<MenuCardProps> = ({
   isLocked = false,
   onLockPress,
   isDisabled = false,
+  scale = 1,
 }) => {
-  const renderedIcon = React.isValidElement<{ color?: string }>(icon)
+  const s = (n: number) => Math.round(n * scale);
+  const renderedIcon = React.isValidElement<{ color?: string; size?: number }>(
+    icon
+  )
     ? React.cloneElement(icon, {
         color: isDisabled ? colors.muted : icon.props.color,
+        // Scale the icon glyph itself (defaults to 24 if unset).
+        size: s(icon.props.size ?? 24),
       })
     : icon;
 
@@ -56,13 +64,13 @@ const MenuCard: React.FC<MenuCardProps> = ({
         style={{
           width: "100%",
           height: "100%",
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: isDisabled ? colors.border : colors.teal + "25",
           backgroundColor: isDisabled ? colors.panel : colors.card,
           alignItems: "center",
           justifyContent: "center",
-          padding: 12,
+          padding: s(12),
           opacity: isDisabled ? 0.45 : 1,
         }}
       >
@@ -86,22 +94,22 @@ const MenuCard: React.FC<MenuCardProps> = ({
             hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
             style={{ position: "absolute", top: 10, right: 10 }}
           >
-            <Lock color={colors.muted} size={11} />
+            <Lock color={colors.muted} size={s(11)} />
           </TouchableOpacity>
         )}
 
         {/* Icon */}
         <View
           style={{
-            width: 48,
-            height: 48,
-            borderRadius: 14,
+            width: s(48),
+            height: s(48),
+            borderRadius: s(14),
             backgroundColor: isDisabled ? colors.card : colors.teal + "15",
             borderWidth: 1,
             borderColor: isDisabled ? colors.border : colors.teal + "40",
             alignItems: "center",
             justifyContent: "center",
-            marginBottom: 10,
+            marginBottom: s(10),
           }}
         >
           {renderedIcon}
@@ -109,7 +117,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
 
         <Text
           style={{
-            fontSize: 11,
+            fontSize: s(11),
             fontWeight: "600",
             color: isDisabled ? colors.muted : colors.heading,
             textAlign: "center",
@@ -125,6 +133,14 @@ const MenuCard: React.FC<MenuCardProps> = ({
 
 const MainMenu: React.FC = () => {
   const router = useRouter();
+  // This screen uses inline pixel sizes (not Tailwind classes), so the global
+  // --ui-scale doesn't reach it automatically — apply the scale manually so
+  // the nav cards fit on small phones (and rows wrap instead of cropping).
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const cardSize = s(150);
+  const rowGap = s(20);
+  const sectionGap = s(50);
   const employees = useEmployeeStore((s) => s.employees);
   const { rawIsOnline } = useNetworkStatus();
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
@@ -327,15 +343,23 @@ const MainMenu: React.FC = () => {
   const managementItems = menuItems.filter((item) => item.isLocked);
 
   const renderRow = (items: typeof menuItems) => (
-    <View style={{ flexDirection: "row", gap: 20, justifyContent: "center" }}>
+    <View
+      style={{
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: rowGap,
+        justifyContent: "center",
+      }}
+    >
       {items.map((item) => (
-        <View key={item.id} style={{ width: 150, height: 150 }}>
+        <View key={item.id} style={{ width: cardSize, height: cardSize }}>
           {(() => {
             const isDisabled =
               !rawIsOnline && !offlineAllowedRoutes.has(item.route);
 
             return (
               <MenuCard
+                scale={uiScale}
                 icon={item.icon}
                 title={item.title}
                 subtitle={item.subtitle}
@@ -371,34 +395,34 @@ const MainMenu: React.FC = () => {
           justifyContent: "center",
           alignItems: "center",
           padding: 20,
-          gap: 50,
+          gap: sectionGap,
         }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ alignItems: "center", gap: 14 }}>
+        <View style={{ alignItems: "center", gap: s(14) }}>
           <Text
             style={{
-              fontSize: 12,
+              fontSize: s(12),
               color: colors.heading,
               fontWeight: "700",
               letterSpacing: 1.4,
               textTransform: "uppercase",
-              padding: 8,
+              padding: s(8),
             }}
           >
             Operations
           </Text>
           {renderRow(regularItems)}
         </View>
-        <View style={{ alignItems: "center", gap: 14 }}>
+        <View style={{ alignItems: "center", gap: s(14) }}>
           <Text
             style={{
-              fontSize: 12,
+              fontSize: s(12),
               color: colors.heading,
               fontWeight: "700",
               letterSpacing: 1.4,
               textTransform: "uppercase",
-              padding: 8,
+              padding: s(8),
             }}
           >
             Management
@@ -414,21 +438,21 @@ const MainMenu: React.FC = () => {
             backgroundColor: colors.panel,
             borderWidth: 1,
             borderColor: colors.card,
-            borderRadius: 14,
+            borderRadius: s(14),
           }}
           className="w-fit h-fit p-0"
         >
           <View
             style={{
-              padding: 24,
-              minWidth: 320,
+              padding: s(24),
+              minWidth: s(320),
             }}
           >
             <DialogHeader>
               <DialogTitle>
                 <Text
                   style={{
-                    fontSize: 15,
+                    fontSize: s(15),
                     fontWeight: "700",
                     color: colors.heading,
                     textAlign: "center",
@@ -441,11 +465,11 @@ const MainMenu: React.FC = () => {
 
             <Text
               style={{
-                fontSize: 12,
+                fontSize: s(12),
                 color: colors.muted,
                 textAlign: "center",
-                marginTop: 6,
-                marginBottom: 16,
+                marginTop: s(6),
+                marginBottom: s(16),
               }}
             >
               Enter your manager PIN to continue
@@ -455,16 +479,16 @@ const MainMenu: React.FC = () => {
 
             <View
               style={{
-                minHeight: 18,
-                marginTop: 8,
-                marginBottom: 2,
+                minHeight: s(18),
+                marginTop: s(8),
+                marginBottom: s(2),
                 justifyContent: "center",
               }}
             >
               {pinError && (
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     color: colors.danger,
                     textAlign: "center",
                   }}
@@ -474,7 +498,7 @@ const MainMenu: React.FC = () => {
               )}
             </View>
 
-            <View style={{ marginTop: 8 }}>
+            <View style={{ marginTop: s(8) }}>
               <PinNumpad
                 onKeyPress={(input) => {
                   // Clear error when user starts typing
@@ -499,17 +523,17 @@ const MainMenu: React.FC = () => {
               onPress={handlePinSubmit}
               disabled={currentPin.length < 4}
               style={{
-                marginTop: 14,
-                paddingVertical: 11,
+                marginTop: s(14),
+                paddingVertical: s(11),
                 backgroundColor:
                   currentPin.length === 4 ? colors.teal : colors.teal + "30",
-                borderRadius: 10,
+                borderRadius: s(10),
                 alignItems: "center",
               }}
             >
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: "700",
                   color:
                     currentPin.length === 4 ? colors.onSolid : colors.muted,

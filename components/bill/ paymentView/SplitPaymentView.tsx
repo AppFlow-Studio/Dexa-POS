@@ -1,6 +1,8 @@
+import { useUiScale } from "@/lib/uiScale";
 import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { colors } from "@/lib/theme";
 import { getItemEffectiveSubtotal, useOrderStore } from "@/stores/useOrderStore";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -32,13 +34,14 @@ interface Split {
 }
 
 const SplitPaymentView = () => {
-  const { activeOrderId, orders, activeOrderOutstandingTotal } =
-    useOrderStore();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const { activeOrderOutstandingTotal } = useOrderStore();
   const close = usePaymentStore((s) => s.close);
   const setView = usePaymentStore((s) => s.setView);
   const { show } = useToast();
 
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrder = useActiveOrder();
   // Filter out voided items - they should not be included in splits
   const originalItems = (activeOrder?.items || []).filter(
     (item) => !item.is_voided
@@ -354,7 +357,7 @@ const SplitPaymentView = () => {
                         onPress={() => handleRemoveSplit(split)}
                         className="p-2 bg-red-900/30 rounded-full"
                       >
-                        <Minus color={colors.danger} size={20} />
+                        <Minus color={colors.danger} size={s(20)} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -420,7 +423,7 @@ const SplitPaymentView = () => {
                     onPress={() => handleRemoveSplit(split)}
                     className="p-2 ml-2"
                   >
-                    <Minus color={colors.danger} size={20} />
+                    <Minus color={colors.danger} size={s(20)} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -443,7 +446,8 @@ const SplitPaymentView = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="rounded-2xl overflow-hidden bg-panel border border-gray-700 w-[550px]"
+      className="rounded-2xl overflow-hidden bg-panel border border-gray-700"
+      style={{ width: s(550) }}
     >
       {/* Dark Header */}
       <View className="p-4">
@@ -455,8 +459,8 @@ const SplitPaymentView = () => {
       {/* Dark Content */}
       <View className="p-4 bg-surface rounded-b-2xl">
         <ScrollView
-          className="max-h-[800px]"
           showsVerticalScrollIndicator={false}
+          style={{ maxHeight: s(800) }}
         >
           {/* Total */}
           <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-600 mb-4">

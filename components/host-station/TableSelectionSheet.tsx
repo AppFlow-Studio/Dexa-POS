@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { FloorPlanObject, WaitlistEntry } from '@/types/db-floor-plan-types'
 import { ArrowRight, Users, X } from 'lucide-react-native'
 import React, { useMemo } from 'react'
@@ -13,6 +14,9 @@ interface TableSelectionSheetProps {
 }
 
 export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({ isOpen, onClose, onSelectTable, entry, tables }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+
   const availableTables = useMemo(
     () => tables.filter(t => (t.session?.status || 'available') === 'available' && (t.category === 'table' || t.category === 'booth')),
     [tables]
@@ -41,9 +45,9 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({ isOpen
       <Pressable
         onPress={() => onSelectTable([item.id])}
         style={({ pressed }) => ({
-          marginHorizontal: 14,
-          marginBottom: 8,
-          borderRadius: 12,
+          marginHorizontal: s(14),
+          marginBottom: s(8),
+          borderRadius: s(12),
           borderWidth: 1,
           borderColor: isIdeal ? colors.teal + '60' : colors.border,
           backgroundColor: pressed ? colors.screen : isIdeal ? colors.teal + '0A' : colors.card,
@@ -51,36 +55,36 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({ isOpen
         })}
       >
         {/* Ideal accent bar */}
-        {isIdeal && <View style={{ height: 2, backgroundColor: colors.teal, marginBottom: 0 }} />}
+        {isIdeal && <View style={{ height: s(2), backgroundColor: colors.teal, marginBottom: 0 }} />}
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: s(14), gap: s(12) }}>
           {/* Position number */}
-          <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: isIdeal ? colors.teal + '18' : colors.screen, borderWidth: 1, borderColor: isIdeal ? colors.teal + '40' : colors.border, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: isIdeal ? colors.teal : colors.muted, fontSize: 12, fontWeight: '700' }}>{index + 1}</Text>
+          <View style={{ width: s(32), height: s(32), borderRadius: s(8), backgroundColor: isIdeal ? colors.teal + '18' : colors.screen, borderWidth: 1, borderColor: isIdeal ? colors.teal + '40' : colors.border, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: isIdeal ? colors.teal : colors.muted, fontSize: s(12), fontWeight: '700' }}>{index + 1}</Text>
           </View>
 
           {/* Info */}
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ color: colors.heading, fontWeight: '700', fontSize: 14 }}>{item.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+              <Text style={{ color: colors.heading, fontWeight: '700', fontSize: s(14) }}>{item.name}</Text>
               {isBooth && (
-                <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.info + '18', borderWidth: 1, borderColor: colors.info + '40' }}>
-                  <Text style={{ color: colors.info, fontSize: 9, fontWeight: '700' }}>BOOTH</Text>
+                <View style={{ paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: s(4), backgroundColor: colors.info + '18', borderWidth: 1, borderColor: colors.info + '40' }}>
+                  <Text style={{ color: colors.info, fontSize: s(9), fontWeight: '700' }}>BOOTH</Text>
                 </View>
               )}
               {isIdeal && (
-                <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.teal + '18', borderWidth: 1, borderColor: colors.teal + '50' }}>
-                  <Text style={{ color: colors.teal, fontSize: 9, fontWeight: '700' }}>BEST FIT</Text>
+                <View style={{ paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: s(4), backgroundColor: colors.teal + '18', borderWidth: 1, borderColor: colors.teal + '50' }}>
+                  <Text style={{ color: colors.teal, fontSize: s(9), fontWeight: '700' }}>BEST FIT</Text>
                 </View>
               )}
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-              <Users size={11} color={isOver ? colors.warning : colors.muted} />
-              <Text style={{ color: isOver ? colors.warning : colors.label, fontSize: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(4), marginTop: s(4) }}>
+              <Users size={s(11)} color={isOver ? colors.warning : colors.muted} />
+              <Text style={{ color: isOver ? colors.warning : colors.label, fontSize: s(12) }}>
                 Seats {capacity || 'unknown'}
               </Text>
               {entry && capacity > 0 && (
-                <Text style={{ color: colors.muted, fontSize: 11 }}>
+                <Text style={{ color: colors.muted, fontSize: s(11) }}>
                   · {capacity - entry.party_size > 0 ? `+${capacity - entry.party_size} extra` : capacity < entry.party_size ? `${entry.party_size - capacity} short` : 'perfect fit'}
                 </Text>
               )}
@@ -88,8 +92,8 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({ isOpen
           </View>
 
           {/* Action indicator */}
-          <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: isIdeal ? colors.teal + '18' : colors.screen, borderWidth: 1, borderColor: isIdeal ? colors.teal + '40' : colors.border, alignItems: 'center', justifyContent: 'center' }}>
-            <ArrowRight size={14} color={isIdeal ? colors.teal : colors.muted} />
+          <View style={{ width: s(32), height: s(32), borderRadius: s(8), backgroundColor: isIdeal ? colors.teal + '18' : colors.screen, borderWidth: 1, borderColor: isIdeal ? colors.teal + '40' : colors.border, alignItems: 'center', justifyContent: 'center' }}>
+            <ArrowRight size={s(14)} color={isIdeal ? colors.teal : colors.muted} />
           </View>
         </View>
       </Pressable>
@@ -99,49 +103,49 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({ isOpen
   return (
     <Modal visible={isOpen} transparent animationType='fade' onRequestClose={onClose}>
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center' }} onPress={onClose}>
-        <Pressable onPress={e => e.stopPropagation()} style={{ width: 460, maxHeight: '75%', backgroundColor: colors.screen, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+        <Pressable onPress={e => e.stopPropagation()} style={{ width: s(460), maxHeight: '75%', backgroundColor: colors.screen, borderRadius: s(16), overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
 
           {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: s(18), paddingVertical: s(14), borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
             <View>
-              <Text style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}>Seat Party</Text>
+              <Text style={{ color: colors.heading, fontSize: s(14), fontWeight: '700' }}>Seat Party</Text>
               {entry && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Users size={11} color={colors.muted} />
-                    <Text style={{ color: colors.muted, fontSize: 11 }}>{entry.party_size} guest{entry.party_size !== 1 ? 's' : ''}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6), marginTop: s(3) }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}>
+                    <Users size={s(11)} color={colors.muted} />
+                    <Text style={{ color: colors.muted, fontSize: s(11) }}>{entry.party_size} guest{entry.party_size !== 1 ? 's' : ''}</Text>
                   </View>
-                  <Text style={{ color: colors.border, fontSize: 11 }}>·</Text>
-                  <Text style={{ color: colors.muted, fontSize: 11 }}>{entry.party_name}</Text>
+                  <Text style={{ color: colors.border, fontSize: s(11) }}>·</Text>
+                  <Text style={{ color: colors.muted, fontSize: s(11) }}>{entry.party_name}</Text>
                 </View>
               )}
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
               {availableTables.length > 0 && (
-                <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: colors.success + '18', borderWidth: 1, borderColor: colors.success + '40' }}>
-                  <Text style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}>{availableTables.length} available</Text>
+                <View style={{ paddingHorizontal: s(8), paddingVertical: s(3), borderRadius: s(6), backgroundColor: colors.success + '18', borderWidth: 1, borderColor: colors.success + '40' }}>
+                  <Text style={{ color: colors.success, fontSize: s(11), fontWeight: '700' }}>{availableTables.length} available</Text>
                 </View>
               )}
-              <TouchableOpacity onPress={onClose} style={{ padding: 6, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}>
-                <X size={14} color={colors.label} />
+              <TouchableOpacity onPress={onClose} style={{ padding: s(6), borderRadius: s(8), backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}>
+                <X size={s(14)} color={colors.label} />
               </TouchableOpacity>
             </View>
           </View>
 
           {availableTables.length === 0 ? (
-            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
-              <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                <Users size={22} color={colors.muted} />
+            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: s(48), paddingHorizontal: s(24) }}>
+              <View style={{ width: s(48), height: s(48), borderRadius: s(12), backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: s(12) }}>
+                <Users size={s(22)} color={colors.muted} />
               </View>
-              <Text style={{ color: colors.label, fontSize: 14, fontWeight: '600' }}>No tables available</Text>
-              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>All tables are currently occupied</Text>
+              <Text style={{ color: colors.label, fontSize: s(14), fontWeight: '600' }}>No tables available</Text>
+              <Text style={{ color: colors.muted, fontSize: s(12), marginTop: s(4), textAlign: 'center' }}>All tables are currently occupied</Text>
             </View>
           ) : (
             <FlatList
               data={sortedTables}
               renderItem={renderTableItem}
               keyExtractor={item => item.id}
-              contentContainerStyle={{ paddingTop: 12, paddingBottom: 20 }}
+              contentContainerStyle={{ paddingTop: s(12), paddingBottom: s(20) }}
               showsVerticalScrollIndicator={false}
             />
           )}

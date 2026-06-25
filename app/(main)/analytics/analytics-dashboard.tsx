@@ -1,5 +1,6 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useAnalyticsStore } from '@/stores/useAnalyticsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
@@ -12,12 +13,10 @@ import {
   CreditCard,
   DollarSign,
   Hash,
-  
   LayoutDashboard,
   Package,
   RefreshCw,
   ShoppingBag,
-  
   Table2,
   TrendingUp,
   User,
@@ -74,7 +73,6 @@ const TABS: { id: TabId; label: string; Icon: TabIconComponent }[] = [
   { id: 'overview', label: 'Overview', Icon: ({ size, color }) => <LayoutDashboard size={size} color={color} /> },
   { id: 'items', label: 'Items', Icon: ({ size, color }) => <Package size={size} color={color} /> },
   { id: 'customers', label: 'Customers', Icon: ({ size, color }) => <User size={size} color={color} /> },
-  
   { id: 'staff', label: 'Staff', Icon: ({ size, color }) => <Users size={size} color={color} /> },
   { id: 'payments', label: 'Payments', Icon: ({ size, color }) => <CreditCard size={size} color={color} /> },
 ]
@@ -87,71 +85,83 @@ interface StatCardProps {
   value: string
   sub?: string
 }
-const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub }) => (
-  <View style={{
-    flex: 1,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 12,
-    borderTopWidth: 2,
-    borderTopColor: colors.teal,
-    overflow: 'hidden',
-  }}>
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 10, fontWeight: '600', color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 5 }}>{label}</Text>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading, lineHeight: 24 }} numberOfLines={1}>{value}</Text>
-        {sub ? <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>{sub}</Text> : null}
-      </View>
-      <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center', marginLeft: 8 }}>
-        {icon}
+const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+    <View style={{
+      flex: 1,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: s(12),
+      padding: s(12),
+      borderTopWidth: 2,
+      borderTopColor: colors.teal,
+      overflow: 'hidden',
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: s(5) }}>{label}</Text>
+          <Text style={{ fontSize: s(20), fontWeight: '700', color: colors.heading, lineHeight: s(24) }} numberOfLines={1}>{value}</Text>
+          {sub ? <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>{sub}</Text> : null}
+        </View>
+        <View style={{ width: s(30), height: s(30), borderRadius: s(8), backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center', marginLeft: s(8) }}>
+          {icon}
+        </View>
       </View>
     </View>
-  </View>
-)
+  )
+}
 
 // ─── Section card ─────────────────────────────────────────────────────────────
 
-const SectionCard: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
-  <View style={{
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    overflow: 'hidden',
-    marginBottom: 12,
-  }}>
+const SectionCard: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
     <View style={{
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      backgroundColor: colors.panel,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: s(14),
+      overflow: 'hidden',
+      marginBottom: s(12),
     }}>
-      <View style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: colors.teal + '18', alignItems: 'center', justifyContent: 'center' }}>
-        {icon}
+      <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: s(8),
+        paddingHorizontal: s(14),
+        paddingVertical: s(10),
+        backgroundColor: colors.panel,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}>
+        <View style={{ width: s(26), height: s(26), borderRadius: s(7), backgroundColor: colors.teal + '18', alignItems: 'center', justifyContent: 'center' }}>
+          {icon}
+        </View>
+        <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>{title}</Text>
       </View>
-      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>{title}</Text>
+      <View style={{ padding: s(12) }}>{children}</View>
     </View>
-    <View style={{ padding: 12 }}>{children}</View>
-  </View>
-)
+  )
+}
 
 // ─── Inner panel (sub-box inside a section) ───────────────────────────────────
 
-const Panel: React.FC<{ label?: string; children: React.ReactNode; style?: any }> = ({ label, children, style }) => (
-  <View style={[{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12 }, style]}>
-    {label ? (
-      <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>{label}</Text>
-    ) : null}
-    {children}
-  </View>
-)
+const Panel: React.FC<{ label?: string; children: React.ReactNode; style?: any }> = ({ label, children, style }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+    <View style={[{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: s(10), padding: s(12) }, style]}>
+      {label ? (
+        <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: s(10) }}>{label}</Text>
+      ) : null}
+      {children}
+    </View>
+  )
+}
 
 // ─── Donut chart box ──────────────────────────────────────────────────────────
 
@@ -161,46 +171,50 @@ interface DonutBoxProps {
   centerLabel: string
   bgColor: string
 }
-const DonutBox: React.FC<DonutBoxProps> = ({ pieData, centerValue, centerLabel, bgColor }) => (
-  <View style={{
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 200,
-  }}>
-    <PieChart
-      data={pieData}
-      donut
-      radius={80}
-      innerRadius={54}
-      innerCircleColor={bgColor}
-      strokeColor={bgColor}
-      strokeWidth={3}
-      centerLabelComponent={() => (
-        <View style={{ alignItems: 'center' }}>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading }}>{centerValue}</Text>
-          <Text style={{ fontSize: 10, color: colors.muted }}>{centerLabel}</Text>
-        </View>
-      )}
-    />
-    {/* Legend below */}
-    <View style={{ marginTop: 12, width: '100%', gap: 6 }}>
-      {pieData.map((item) => (
-        <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: item.color }} />
-            <Text style={{ fontSize: 11, color: colors.label }}>{item.label}</Text>
+const DonutBox: React.FC<DonutBoxProps> = ({ pieData, centerValue, centerLabel, bgColor }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+    <View style={{
+      backgroundColor: colors.panel,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: s(10),
+      padding: s(14),
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: s(200),
+    }}>
+      <PieChart
+        data={pieData}
+        donut
+        radius={s(80)}
+        innerRadius={s(54)}
+        innerCircleColor={bgColor}
+        strokeColor={bgColor}
+        strokeWidth={s(3)}
+        centerLabelComponent={() => (
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: s(18), fontWeight: '700', color: colors.heading }}>{centerValue}</Text>
+            <Text style={{ fontSize: s(10), color: colors.muted }}>{centerLabel}</Text>
           </View>
-          <Text style={{ fontSize: 11, fontWeight: '600', color: colors.heading }}>{item.sub}</Text>
-        </View>
-      ))}
+        )}
+      />
+      {/* Legend below */}
+      <View style={{ marginTop: s(12), width: '100%', gap: s(6) }}>
+        {pieData.map((item) => (
+          <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
+              <View style={{ width: s(8), height: s(8), borderRadius: s(4), backgroundColor: item.color }} />
+              <Text style={{ fontSize: s(11), color: colors.label }}>{item.label}</Text>
+            </View>
+            <Text style={{ fontSize: s(11), fontWeight: '600', color: colors.heading }}>{item.sub}</Text>
+          </View>
+        ))}
+      </View>
     </View>
-  </View>
-)
+  )
+}
 
 // ─── Date presets ─────────────────────────────────────────────────────────────
 
@@ -230,6 +244,8 @@ interface MiniCalendarProps {
 }
 
 const MiniCalendar: React.FC<MiniCalendarProps> = ({ value, onChange, minDate, maxDate }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [cursor, setCursor] = useState(() => new Date(value.getFullYear(), value.getMonth(), 1))
 
   // Keep cursor in sync when value changes (e.g. modal reopens with different date)
@@ -250,28 +266,28 @@ const MiniCalendar: React.FC<MiniCalendarProps> = ({ value, onChange, minDate, m
   while (cells.length % 7 !== 0) cells.push(null)
 
   return (
-    <View style={{ backgroundColor: colors.screen, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.border }}>
+    <View style={{ backgroundColor: colors.screen, borderRadius: s(10), padding: s(10), borderWidth: 1, borderColor: colors.border }}>
       {/* Month nav */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <TouchableOpacity onPress={prev} style={{ padding: 4 }} activeOpacity={0.7}>
-          <ChevronLeft size={16} color={colors.teal} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: s(8) }}>
+        <TouchableOpacity onPress={prev} style={{ padding: s(4) }} activeOpacity={0.7}>
+          <ChevronLeft size={s(16)} color={colors.teal} />
         </TouchableOpacity>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>{MONTHS[month]} {year}</Text>
-        <TouchableOpacity onPress={next} style={{ padding: 4 }} activeOpacity={0.7}>
-          <ChevronRight size={16} color={colors.teal} />
+        <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>{MONTHS[month]} {year}</Text>
+        <TouchableOpacity onPress={next} style={{ padding: s(4) }} activeOpacity={0.7}>
+          <ChevronRight size={s(16)} color={colors.teal} />
         </TouchableOpacity>
       </View>
       {/* Day headers */}
-      <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+      <View style={{ flexDirection: 'row', marginBottom: s(4) }}>
         {DAYS.map(d => (
-          <Text key={d} style={{ flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '600', color: colors.muted }}>{d}</Text>
+          <Text key={d} style={{ flex: 1, textAlign: 'center', fontSize: s(10), fontWeight: '600', color: colors.muted }}>{d}</Text>
         ))}
       </View>
       {/* Grid */}
       {Array.from({ length: cells.length / 7 }, (_, row) => (
         <View key={row} style={{ flexDirection: 'row' }}>
           {cells.slice(row * 7, row * 7 + 7).map((day, col) => {
-            if (!day) return <View key={col} style={{ flex: 1, height: 32 }} />
+            if (!day) return <View key={col} style={{ flex: 1, height: s(32) }} />
             const cellDate = new Date(year, month, day)
             const isSelected = value.getDate() === day && value.getMonth() === month && value.getFullYear() === year
             const isDisabled =
@@ -282,15 +298,15 @@ const MiniCalendar: React.FC<MiniCalendarProps> = ({ value, onChange, minDate, m
                 key={col}
                 onPress={() => !isDisabled && onChange(cellDate)}
                 activeOpacity={isDisabled ? 1 : 0.7}
-                style={{ flex: 1, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                style={{ flex: 1, height: s(32), alignItems: 'center', justifyContent: 'center' }}
               >
                 <View style={{
-                  width: 26, height: 26, borderRadius: 13,
+                  width: s(26), height: s(26), borderRadius: s(13),
                   backgroundColor: isSelected ? colors.teal : 'transparent',
                   alignItems: 'center', justifyContent: 'center',
                 }}>
                   <Text style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: isSelected ? '700' : '400',
                     color: isSelected ? colors.onSolid : isDisabled ? colors.muted : colors.heading,
                   }}>{day}</Text>
@@ -306,138 +322,148 @@ const MiniCalendar: React.FC<MiniCalendarProps> = ({ value, onChange, minDate, m
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
-const EmptyState: React.FC<{ icon: React.ReactNode; message: string }> = ({ icon, message }) => (
-  <View style={{ alignItems: 'center', paddingVertical: 32 }}>
-    {icon}
-    <Text style={{ fontSize: 12, color: colors.muted, marginTop: 10 }}>{message}</Text>
-  </View>
-)
+const EmptyState: React.FC<{ icon: React.ReactNode; message: string }> = ({ icon, message }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+    <View style={{ alignItems: 'center', paddingVertical: s(32) }}>
+      {icon}
+      <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(10) }}>{message}</Text>
+    </View>
+  )
+}
 
 // ─── Tab: Overview ────────────────────────────────────────────────────────────
 
-const OverviewTab: React.FC<{ data: any }> = ({ data }) => (
-  <>
-    {/* Orders summary */}
-    <SectionCard title="Orders" icon={<ShoppingBag size={14} color={colors.teal} />}>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1, gap: 8 }}>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <StatCard icon={<Hash size={14} color={colors.teal} />} label="Total Orders" value={String(data.orders.totalOrders)} sub={`${data.orders.completedOrders} paid`} />
-            <StatCard icon={<DollarSign size={14} color={colors.teal} />} label="Revenue" value={fmt$(data.orders.totalRevenue)} sub={fmtFull$(data.orders.totalRevenue)} />
-            <StatCard icon={<TrendingUp size={14} color={colors.teal} />} label="Avg Order" value={fmt$(data.orders.averageOrderValue)} />
-            <StatCard icon={<ArrowDownLeft size={14} color={colors.teal} />} label="Discounts" value={fmt$(data.orders.totalDiscounts)} />
-          </View>
+const OverviewTab: React.FC<{ data: any }> = ({ data }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+    <>
+      {/* Orders summary */}
+      <SectionCard title="Orders" icon={<ShoppingBag size={s(14)} color={colors.teal} />}>
+        <View style={{ flexDirection: 'row', gap: s(10) }}>
+          <View style={{ flex: 1, gap: s(8) }}>
+            <View style={{ flexDirection: 'row', gap: s(8) }}>
+              <StatCard icon={<Hash size={s(14)} color={colors.teal} />} label="Total Orders" value={String(data.orders.totalOrders)} sub={`${data.orders.completedOrders} paid`} />
+              <StatCard icon={<DollarSign size={s(14)} color={colors.teal} />} label="Revenue" value={fmt$(data.orders.totalRevenue)} sub={fmtFull$(data.orders.totalRevenue)} />
+              <StatCard icon={<TrendingUp size={s(14)} color={colors.teal} />} label="Avg Order" value={fmt$(data.orders.averageOrderValue)} />
+              <StatCard icon={<ArrowDownLeft size={s(14)} color={colors.teal} />} label="Discounts" value={fmt$(data.orders.totalDiscounts)} />
+            </View>
 
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Panel style={{ flex: 1, flexDirection: undefined }}>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Status</Text>
-              <View style={{ gap: 6 }}>
-                {[
-                  { label: 'Paid', count: data.orders.completedOrders, color: colors.teal },
-                  { label: 'Voided', count: data.orders.voidedOrders, color: colors.danger },
-                  { label: 'Cancelled', count: data.orders.cancelledOrders, color: colors.warning },
-                ].map((item) => {
-                  const total = data.orders.totalOrders || 1
-                  const pct = Math.round((item.count / total) * 100)
-                  return (
-                    <View key={item.label}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: item.color }} />
-                          <Text style={{ fontSize: 11, color: colors.label }}>{item.label}</Text>
+            <View style={{ flexDirection: 'row', gap: s(8) }}>
+              <Panel style={{ flex: 1, flexDirection: undefined }}>
+                <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: s(10) }}>Status</Text>
+                <View style={{ gap: s(6) }}>
+                  {[
+                    { label: 'Paid', count: data.orders.completedOrders, color: colors.teal },
+                    { label: 'Voided', count: data.orders.voidedOrders, color: colors.danger },
+                    { label: 'Cancelled', count: data.orders.cancelledOrders, color: colors.warning },
+                  ].map((item) => {
+                    const total = data.orders.totalOrders || 1
+                    const pct = Math.round((item.count / total) * 100)
+                    return (
+                      <View key={item.label}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: s(3) }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
+                            <View style={{ width: s(6), height: s(6), borderRadius: s(3), backgroundColor: item.color }} />
+                            <Text style={{ fontSize: s(11), color: colors.label }}>{item.label}</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: s(4) }}>
+                            <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}>{item.count}</Text>
+                            <Text style={{ fontSize: s(10), color: colors.muted }}>{pct}%</Text>
+                          </View>
                         </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-                          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>{item.count}</Text>
-                          <Text style={{ fontSize: 10, color: colors.muted }}>{pct}%</Text>
+                        <View style={{ height: 3, backgroundColor: colors.card, borderRadius: 3 }}>
+                          <View style={{ height: 3, width: `${Math.max(2, pct)}%`, backgroundColor: item.color, borderRadius: 3, opacity: 0.8 }} />
                         </View>
                       </View>
-                      <View style={{ height: 3, backgroundColor: colors.card, borderRadius: 3 }}>
-                        <View style={{ height: 3, width: `${Math.max(2, pct)}%`, backgroundColor: item.color, borderRadius: 3, opacity: 0.8 }} />
-                      </View>
+                    )
+                  })}
+                </View>
+              </Panel>
+
+              <Panel style={{ flex: 1 }}>
+                <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: s(8) }}>Collected</Text>
+                <View style={{ gap: s(4) }}>
+                  {[
+                    { label: 'Tax', value: fmtFull$(data.orders.totalTax) },
+                    { label: 'Tips', value: fmtFull$(data.orders.totalTips) },
+                  ].map((item) => (
+                    <View key={item.label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: s(11), color: colors.label }}>{item.label}</Text>
+                      <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.teal }}>{item.value}</Text>
                     </View>
-                  )
-                })}
-              </View>
-            </Panel>
-
-            <Panel style={{ flex: 1 }}>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Collected</Text>
-              <View style={{ gap: 4 }}>
-                {[
-                  { label: 'Tax', value: fmtFull$(data.orders.totalTax) },
-                  { label: 'Tips', value: fmtFull$(data.orders.totalTips) },
-                ].map((item) => (
-                  <View key={item.label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 11, color: colors.label }}>{item.label}</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{item.value}</Text>
-                  </View>
-                ))}
-              </View>
-            </Panel>
+                  ))}
+                </View>
+              </Panel>
+            </View>
           </View>
+
+          {data.orders.ordersByType.length > 0 && (() => {
+            const pieData = data.orders.ordersByType.map((row: any, i: number) => ({
+              value: row.count,
+              color: CHART_COLORS[i % CHART_COLORS.length],
+              label: fmtLabel(row.type),
+              sub: `${row.count} · ${fmtFull$(row.revenue)}`,
+            }))
+            return (
+              <DonutBox
+                pieData={pieData}
+                centerValue={String(data.orders.totalOrders)}
+                centerLabel="orders"
+                bgColor={colors.panel}
+              />
+            )
+          })()}
         </View>
+      </SectionCard>
 
-        {data.orders.ordersByType.length > 0 && (() => {
-          const pieData = data.orders.ordersByType.map((row: any, i: number) => ({
-            value: row.count,
-            color: CHART_COLORS[i % CHART_COLORS.length],
-            label: fmtLabel(row.type),
-            sub: `${row.count} · ${fmtFull$(row.revenue)}`,
-          }))
-          return (
-            <DonutBox
-              pieData={pieData}
-              centerValue={String(data.orders.totalOrders)}
-              centerLabel="orders"
-              bgColor={colors.panel}
-            />
-          )
-        })()}
-      </View>
-    </SectionCard>
+      {/* Table sessions */}
+      <SectionCard title="Table Sessions" icon={<Table2 size={s(14)} color={colors.teal} />}>
+        <View style={{ flexDirection: 'row', gap: s(8) }}>
+          <StatCard icon={<Hash size={s(14)} color={colors.teal} />} label="Sessions" value={String(data.sessions.totalSessions)} sub={`${data.sessions.totalCovers} covers`} />
+          <StatCard icon={<Users size={s(14)} color={colors.teal} />} label="Avg Party" value={data.sessions.averagePartySize.toFixed(1)} sub="guests / session" />
+          <StatCard icon={<Clock size={s(14)} color={colors.teal} />} label="Avg Duration" value={data.sessions.averageDurationMinutes > 0 ? `${Math.round(data.sessions.averageDurationMinutes)}m` : '—'} />
+        </View>
+      </SectionCard>
 
-    {/* Table sessions */}
-    <SectionCard title="Table Sessions" icon={<Table2 size={14} color={colors.teal} />}>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <StatCard icon={<Hash size={14} color={colors.teal} />} label="Sessions" value={String(data.sessions.totalSessions)} sub={`${data.sessions.totalCovers} covers`} />
-        <StatCard icon={<Users size={14} color={colors.teal} />} label="Avg Party" value={data.sessions.averagePartySize.toFixed(1)} sub="guests / session" />
-        <StatCard icon={<Clock size={14} color={colors.teal} />} label="Avg Duration" value={data.sessions.averageDurationMinutes > 0 ? `${Math.round(data.sessions.averageDurationMinutes)}m` : '—'} />
-      </View>
-    </SectionCard>
-
-  </>
-)
+    </>
+  )
+}
 
 // ─── Tab: Items ───────────────────────────────────────────────────────────────
 
 const ItemsTab: React.FC<{ data: any }> = ({ data }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   if (data.topItems.length === 0) {
-    return <EmptyState icon={<Package size={32} color={colors.muted} />} message="No item data for this period" />
+    return <EmptyState icon={<Package size={s(32)} color={colors.muted} />} message="No item data for this period" />
   }
 
   return (
-    <SectionCard title="Top Selling Items" icon={<Package size={14} color={colors.teal} />}>
-      <View style={{ gap: 8 }}>
+    <SectionCard title="Top Selling Items" icon={<Package size={s(14)} color={colors.teal} />}>
+      <View style={{ gap: s(8) }}>
         {data.topItems.map((item: any, i: number) => (
-          <View key={item.itemName} style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: 10, padding: 12 }}>
+          <View key={item.itemName} style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: s(10), padding: s(12) }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: colors.teal }}>{i + 1}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8), flex: 1 }}>
+                <View style={{ width: s(22), height: s(22), borderRadius: s(11), backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: s(10), fontWeight: '700', color: colors.teal }}>{i + 1}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }} numberOfLines={1}>{item.itemName}</Text>
-                  {item.categoryName ? <Text style={{ fontSize: 10, color: colors.muted }}>{item.categoryName}</Text> : null}
+                  <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.heading }} numberOfLines={1}>{item.itemName}</Text>
+                  {item.categoryName ? <Text style={{ fontSize: s(10), color: colors.muted }}>{item.categoryName}</Text> : null}
                 </View>
               </View>
-              <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-end' }}>
+              <View style={{ flexDirection: 'row', gap: s(18), alignItems: 'flex-end' }}>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>{item.quantity}</Text>
-                  <Text style={{ fontSize: 10, color: colors.muted }}>sold</Text>
+                  <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}>{item.quantity}</Text>
+                  <Text style={{ fontSize: s(10), color: colors.muted }}>sold</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>{fmtFull$(item.revenue)}</Text>
-                  <Text style={{ fontSize: 10, color: colors.muted }}>revenue</Text>
+                  <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.teal }}>{fmtFull$(item.revenue)}</Text>
+                  <Text style={{ fontSize: s(10), color: colors.muted }}>revenue</Text>
                 </View>
               </View>
             </View>
@@ -451,35 +477,37 @@ const ItemsTab: React.FC<{ data: any }> = ({ data }) => {
 // ─── Tab: Customers ───────────────────────────────────────────────────────────
 
 const CustomersTab: React.FC<{ data: any }> = ({ data }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   if (data.topCustomers.length === 0) {
-    return <EmptyState icon={<User size={32} color={colors.muted} />} message="No customer data for this period" />
+    return <EmptyState icon={<User size={s(32)} color={colors.muted} />} message="No customer data for this period" />
   }
 
   return (
-    <SectionCard title="Top Customers" icon={<User size={14} color={colors.teal} />}>
-      <View style={{ gap: 8 }}>
+    <SectionCard title="Top Customers" icon={<User size={s(14)} color={colors.teal} />}>
+      <View style={{ gap: s(8) }}>
         {data.topCustomers.map((customer: any) => {
           const initial = (customer.name || '?').charAt(0).toUpperCase()
           return (
-            <View key={customer.customerId || customer.name} style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: 10, padding: 12 }}>
+            <View key={customer.customerId || customer.name} style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: s(10), padding: s(12) }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>{initial}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10), flex: 1 }}>
+                  <View style={{ width: s(32), height: s(32), borderRadius: s(16), backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.teal }}>{initial}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }} numberOfLines={1}>{customer.name}</Text>
-                    <Text style={{ fontSize: 10, color: colors.muted }}>{customer.orderCount} {customer.orderCount === 1 ? 'visit' : 'visits'}</Text>
+                    <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.heading }} numberOfLines={1}>{customer.name}</Text>
+                    <Text style={{ fontSize: s(10), color: colors.muted }}>{customer.orderCount} {customer.orderCount === 1 ? 'visit' : 'visits'}</Text>
                   </View>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-end' }}>
+                <View style={{ flexDirection: 'row', gap: s(18), alignItems: 'flex-end' }}>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.teal }}>{fmtFull$(customer.totalSpend)}</Text>
-                    <Text style={{ fontSize: 10, color: colors.muted }}>total spent</Text>
+                    <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.teal }}>{fmtFull$(customer.totalSpend)}</Text>
+                    <Text style={{ fontSize: s(10), color: colors.muted }}>total spent</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.label }}>{fmtFull$(customer.avgSpend)}</Text>
-                    <Text style={{ fontSize: 10, color: colors.muted }}>avg order</Text>
+                    <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.label }}>{fmtFull$(customer.avgSpend)}</Text>
+                    <Text style={{ fontSize: s(10), color: colors.muted }}>avg order</Text>
                   </View>
                 </View>
               </View>
@@ -491,12 +519,13 @@ const CustomersTab: React.FC<{ data: any }> = ({ data }) => {
   )
 }
 
-
 // ─── Tab: Staff ───────────────────────────────────────────────────────────────
 
 const StaffTab: React.FC<{ data: any }> = ({ data }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   if (data.staff.length === 0) {
-    return <EmptyState icon={<Users size={32} color={colors.muted} />} message="No staff data for this period" />
+    return <EmptyState icon={<Users size={s(32)} color={colors.muted} />} message="No staff data for this period" />
   }
 
   const maxRev = Math.max(...data.staff.map((s: any) => s.revenue), 1)
@@ -505,9 +534,9 @@ const StaffTab: React.FC<{ data: any }> = ({ data }) => {
     label: row.name.split(' ')[0],
     frontColor: colors.teal,
     topLabelComponent: () => (
-      <View style={{ width: 44, alignItems: 'center', marginBottom: 3 }}>
+      <View style={{ width: s(44), alignItems: 'center', marginBottom: s(3) }}>
         <Text
-          style={{ fontSize: 9, color: colors.label, fontWeight: '600' }}
+          style={{ fontSize: s(9), color: colors.label, fontWeight: '600' }}
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.7}
@@ -520,58 +549,58 @@ const StaffTab: React.FC<{ data: any }> = ({ data }) => {
 
   return (
     <>
-      <SectionCard title="Staff Performance" icon={<Users size={14} color={colors.teal} />}>
-        <Panel label="Revenue by Staff" style={{ marginBottom: 12 }}>
+      <SectionCard title="Staff Performance" icon={<Users size={s(14)} color={colors.teal} />}>
+        <Panel label="Revenue by Staff" style={{ marginBottom: s(12) }}>
           <BarChart
             data={barData}
-            barWidth={28}
-            spacing={16}
+            barWidth={s(28)}
+            spacing={s(16)}
             roundedTop
             hideRules={false}
             rulesColor={colors.border}
             rulesType="dashed"
-            dashWidth={4}
-            dashGap={6}
+            dashWidth={s(4)}
+            dashGap={s(6)}
             xAxisColor={colors.border}
             yAxisColor="transparent"
             yAxisThickness={0}
-            yAxisTextStyle={{ color: colors.label, fontSize: 9 }}
-            xAxisLabelTextStyle={{ color: colors.label, fontSize: 10 }}
+            yAxisTextStyle={{ color: colors.label, fontSize: s(9) }}
+            xAxisLabelTextStyle={{ color: colors.label, fontSize: s(10) }}
             noOfSections={3}
             maxValue={maxRev * 1.25}
             isAnimated
             animationDuration={500}
-            barBorderRadius={4}
+            barBorderRadius={s(4)}
             backgroundColor={colors.panel}
             formatYLabel={(v) => fmt$(Number(v))}
           />
         </Panel>
 
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: s(8) }}>
           {data.staff.map((row: any) => (
             <View
               key={row.staffId}
-              style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: 10, padding: 12 }}
+              style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: colors.teal, borderRadius: s(10), padding: s(12) }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal }}>{row.name.charAt(0).toUpperCase()}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+                  <View style={{ width: s(28), height: s(28), borderRadius: s(14), backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.teal }}>{row.name.charAt(0).toUpperCase()}</Text>
                   </View>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>{row.name}</Text>
+                  <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.heading }}>{row.name}</Text>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 20 }}>
+                <View style={{ flexDirection: 'row', gap: s(20) }}>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>{fmtFull$(row.revenue)}</Text>
-                    <Text style={{ fontSize: 10, color: colors.muted }}>revenue</Text>
+                    <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.teal }}>{fmtFull$(row.revenue)}</Text>
+                    <Text style={{ fontSize: s(10), color: colors.muted }}>revenue</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>{row.orderCount}</Text>
-                    <Text style={{ fontSize: 10, color: colors.muted }}>orders</Text>
+                    <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>{row.orderCount}</Text>
+                    <Text style={{ fontSize: s(10), color: colors.muted }}>orders</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.label }}>{fmtFull$(row.averageOrderValue)}</Text>
-                    <Text style={{ fontSize: 10, color: colors.muted }}>avg order</Text>
+                    <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.label }}>{fmtFull$(row.averageOrderValue)}</Text>
+                    <Text style={{ fontSize: s(10), color: colors.muted }}>avg order</Text>
                   </View>
                 </View>
               </View>
@@ -585,59 +614,65 @@ const StaffTab: React.FC<{ data: any }> = ({ data }) => {
 
 // ─── Tab: Payments ────────────────────────────────────────────────────────────
 
-const PaymentsTab: React.FC<{ data: any }> = ({ data }) => (
-  <SectionCard title="Payments" icon={<CreditCard size={14} color={colors.teal} />}>
-    <View style={{ flexDirection: 'row', gap: 10 }}>
-      <View style={{ flex: 1, gap: 8 }}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <StatCard icon={<DollarSign size={14} color={colors.teal} />} label="Collected" value={fmt$(data.payments.totalAmount)} sub={`${data.payments.totalPayments} txns`} />
-          <StatCard icon={<ArrowDownLeft size={14} color={colors.teal} />} label="Refunds" value={String(data.payments.refundCount)} sub={data.payments.refundCount > 0 ? fmtFull$(data.payments.refundAmount) : 'None'} />
+const PaymentsTab: React.FC<{ data: any }> = ({ data }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+    <SectionCard title="Payments" icon={<CreditCard size={s(14)} color={colors.teal} />}>
+      <View style={{ flexDirection: 'row', gap: s(10) }}>
+        <View style={{ flex: 1, gap: s(8) }}>
+          <View style={{ flexDirection: 'row', gap: s(8) }}>
+            <StatCard icon={<DollarSign size={s(14)} color={colors.teal} />} label="Collected" value={fmt$(data.payments.totalAmount)} sub={`${data.payments.totalPayments} txns`} />
+            <StatCard icon={<ArrowDownLeft size={s(14)} color={colors.teal} />} label="Refunds" value={String(data.payments.refundCount)} sub={data.payments.refundCount > 0 ? fmtFull$(data.payments.refundAmount) : 'None'} />
+          </View>
+
+          {data.payments.byMethod.length > 0 && (
+            <Panel label="Breakdown">
+              {data.payments.byMethod.map((row: any, i: number) => {
+                const total = data.payments.totalAmount || 1
+                const pct = Math.round((row.amount / total) * 100)
+                return (
+                  <View key={row.method} style={{ marginBottom: i < data.payments.byMethod.length - 1 ? s(8) : 0 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: s(3) }}>
+                      <Text style={{ fontSize: s(12), color: colors.heading }}>{fmtLabel(row.method)}</Text>
+                      <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.teal }}>{fmtFull$(row.amount)}</Text>
+                    </View>
+                    <View style={{ height: 3, backgroundColor: colors.card, borderRadius: 3 }}>
+                      <View style={{ height: 3, width: `${Math.max(2, pct)}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length], borderRadius: 3 }} />
+                    </View>
+                  </View>
+                )
+              })}
+            </Panel>
+          )}
         </View>
 
-        {data.payments.byMethod.length > 0 && (
-          <Panel label="Breakdown">
-            {data.payments.byMethod.map((row: any, i: number) => {
-              const total = data.payments.totalAmount || 1
-              const pct = Math.round((row.amount / total) * 100)
-              return (
-                <View key={row.method} style={{ marginBottom: i < data.payments.byMethod.length - 1 ? 8 : 0 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
-                    <Text style={{ fontSize: 12, color: colors.heading }}>{fmtLabel(row.method)}</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{fmtFull$(row.amount)}</Text>
-                  </View>
-                  <View style={{ height: 3, backgroundColor: colors.card, borderRadius: 3 }}>
-                    <View style={{ height: 3, width: `${Math.max(2, pct)}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length], borderRadius: 3 }} />
-                  </View>
-                </View>
-              )
-            })}
-          </Panel>
-        )}
+        {data.payments.byMethod.length > 0 && (() => {
+          const pieData = data.payments.byMethod.map((row: any, i: number) => ({
+            value: row.amount,
+            color: CHART_COLORS[i % CHART_COLORS.length],
+            label: fmtLabel(row.method),
+            sub: fmtFull$(row.amount),
+          }))
+          return (
+            <DonutBox
+              pieData={pieData}
+              centerValue={String(data.payments.totalPayments)}
+              centerLabel="txns"
+              bgColor={colors.panel}
+            />
+          )
+        })()}
       </View>
-
-      {data.payments.byMethod.length > 0 && (() => {
-        const pieData = data.payments.byMethod.map((row: any, i: number) => ({
-          value: row.amount,
-          color: CHART_COLORS[i % CHART_COLORS.length],
-          label: fmtLabel(row.method),
-          sub: fmtFull$(row.amount),
-        }))
-        return (
-          <DonutBox
-            pieData={pieData}
-            centerValue={String(data.payments.totalPayments)}
-            centerLabel="txns"
-            bgColor={colors.panel}
-          />
-        )
-      })()}
-    </View>
-  </SectionCard>
-)
+    </SectionCard>
+  )
+}
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 const AnalyticsDashboardScreen = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const supabase = useSupabaseClient()
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore)
   const locationId = selectedStore?.id || ''
@@ -676,28 +711,28 @@ const AnalyticsDashboardScreen = () => {
 
       {/* ── Header ───────────────────────────────────────────────── */}
       <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.panel }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: s(16), paddingVertical: s(10) }}>
           <View>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>Analytics</Text>
-            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{selectedStore?.name || 'All Locations'}</Text>
+            <Text style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}>Analytics</Text>
+            <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }}>{selectedStore?.name || 'All Locations'}</Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
             <TouchableOpacity
               onPress={() => { setTempStart(new Date(filters.dateRange.start)); setTempEnd(new Date(filters.dateRange.end)); setActivePicker(null); setShowDateModal(true) }}
-              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.teal + '15', borderWidth: 1, borderColor: colors.teal + '40', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 6 }}
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.teal + '15', borderWidth: 1, borderColor: colors.teal + '40', borderRadius: s(8), paddingHorizontal: s(10), paddingVertical: s(6), gap: s(6) }}
               activeOpacity={0.8}
             >
-              <Calendar size={13} color={colors.teal} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>{fmtDateRange()}</Text>
+              <Calendar size={s(13)} color={colors.teal} />
+              <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.teal }}>{fmtDateRange()}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={load} style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 7 }} activeOpacity={0.8}>
-              {isLoading ? <ActivityIndicator size={14} color={colors.teal} /> : <RefreshCw size={14} color={colors.label} />}
+            <TouchableOpacity onPress={load} style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: s(8), padding: s(7) }} activeOpacity={0.8}>
+              {isLoading ? <ActivityIndicator size={s(14)} color={colors.teal} /> : <RefreshCw size={s(14)} color={colors.label} />}
             </TouchableOpacity>
           </View>
         </View>
 
         {/* ── Tab bar ──────────────────────────────────────────── */}
-        <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingBottom: 0 }}>
+        <View style={{ flexDirection: 'row', paddingHorizontal: s(12), paddingBottom: 0 }}>
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id
             const iconColor = isActive ? colors.teal : colors.muted
@@ -709,16 +744,16 @@ const AnalyticsDashboardScreen = () => {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 5,
-                  paddingHorizontal: 12,
-                  paddingVertical: 9,
+                  gap: s(5),
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(9),
                   borderBottomWidth: 2,
                   borderBottomColor: isActive ? colors.teal : 'transparent',
-                  marginRight: 2,
+                  marginRight: s(2),
                 }}
               >
-                <tab.Icon size={12} color={iconColor} />
-                <Text style={{ fontSize: 12, fontWeight: isActive ? '700' : '500', color: iconColor }}>{tab.label}</Text>
+                <tab.Icon size={s(12)} color={iconColor} />
+                <Text style={{ fontSize: s(12), fontWeight: isActive ? '700' : '500', color: iconColor }}>{tab.label}</Text>
               </TouchableOpacity>
             )
           })}
@@ -726,19 +761,19 @@ const AnalyticsDashboardScreen = () => {
       </View>
 
       {/* ── Body ─────────────────────────────────────────────────── */}
-      <ScrollView contentContainerStyle={{ padding: 14 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: s(14) }} showsVerticalScrollIndicator={false}>
 
         {error && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '30', borderRadius: 10, padding: 10, marginBottom: 12 }}>
-            <AlertCircle size={14} color={colors.danger} />
-            <Text style={{ fontSize: 12, color: colors.danger, flex: 1 }}>{error}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8), backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '30', borderRadius: s(10), padding: s(10), marginBottom: s(12) }}>
+            <AlertCircle size={s(14)} color={colors.danger} />
+            <Text style={{ fontSize: s(12), color: colors.danger, flex: 1 }}>{error}</Text>
           </View>
         )}
 
         {isLoading && !data && (
-          <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: 80 }}>
+          <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: s(80) }}>
             <ActivityIndicator color={colors.teal} size="large" />
-            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 12 }}>Loading analytics...</Text>
+            <Text style={{ color: colors.muted, fontSize: s(12), marginTop: s(12) }}>Loading analytics...</Text>
           </View>
         )}
 
@@ -747,53 +782,52 @@ const AnalyticsDashboardScreen = () => {
             {activeTab === 'overview' && <OverviewTab data={data} />}
             {activeTab === 'items' && <ItemsTab data={data} />}
             {activeTab === 'customers' && <CustomersTab data={data} />}
-            
             {activeTab === 'staff' && <StaffTab data={data} />}
             {activeTab === 'payments' && <PaymentsTab data={data} />}
           </>
         )}
 
         {!isLoading && !data && !error && (
-          <View style={{ alignItems: 'center', paddingTop: 80 }}>
-            <Text style={{ color: colors.muted, fontSize: 12 }}>No data available for the selected period.</Text>
+          <View style={{ alignItems: 'center', paddingTop: s(80) }}>
+            <Text style={{ color: colors.muted, fontSize: s(12) }}>No data available for the selected period.</Text>
           </View>
         )}
 
-        <View style={{ height: 24 }} />
+        <View style={{ height: s(24) }} />
       </ScrollView>
 
       {/* ── Date Range Modal ──────────────────────────────────────── */}
       <Modal visible={showDateModal} transparent animationType="fade" onRequestClose={() => setShowDateModal(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 16, width: 360, maxWidth: '92%' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>Select Date Range</Text>
-              <TouchableOpacity onPress={() => setShowDateModal(false)} style={{ padding: 4 }}>
-                <X size={16} color={colors.label} />
+          <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: s(16), padding: s(16), width: s(360), maxWidth: '92%' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: s(14) }}>
+              <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}>Select Date Range</Text>
+              <TouchableOpacity onPress={() => setShowDateModal(false)} style={{ padding: s(4) }}>
+                <X size={s(16)} color={colors.label} />
               </TouchableOpacity>
             </View>
 
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6), marginBottom: s(14) }}>
               {presets.map((p) => {
                 const isActive = activePresetLabel === p.label
                 return (
                   <TouchableOpacity
                     key={p.label}
                     onPress={() => { setDateRange(p.getRange(), p.label); setActivePicker(null); setShowDateModal(false) }}
-                    style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, backgroundColor: isActive ? colors.teal : colors.screen, borderWidth: 1, borderColor: isActive ? colors.teal : colors.border }}
+                    style={{ paddingHorizontal: s(12), paddingVertical: s(5), borderRadius: s(20), backgroundColor: isActive ? colors.teal : colors.screen, borderWidth: 1, borderColor: isActive ? colors.teal : colors.border }}
                     activeOpacity={0.8}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: isActive ? colors.onSolid : colors.label }}>{p.label}</Text>
+                    <Text style={{ fontSize: s(12), fontWeight: '600', color: isActive ? colors.onSolid : colors.label }}>{p.label}</Text>
                   </TouchableOpacity>
                 )
               })}
             </View>
 
-            <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 14 }} />
-            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Custom Range</Text>
+            <View style={{ height: 1, backgroundColor: colors.border, marginBottom: s(14) }} />
+            <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: s(10) }}>Custom Range</Text>
 
             {/* From / To toggle tabs */}
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+            <View style={{ flexDirection: 'row', gap: s(8), marginBottom: s(10) }}>
               {(['from', 'to'] as const).map((side) => {
                 const isActive = activePicker === side
                 const date = side === 'from' ? tempStart : tempEnd
@@ -801,14 +835,14 @@ const AnalyticsDashboardScreen = () => {
                   <TouchableOpacity
                     key={side}
                     onPress={() => setActivePicker(isActive ? null : side)}
-                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isActive ? colors.teal + '15' : colors.screen, borderWidth: 1, borderColor: isActive ? colors.teal : colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 }}
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isActive ? colors.teal + '15' : colors.screen, borderWidth: 1, borderColor: isActive ? colors.teal : colors.border, borderRadius: s(8), paddingHorizontal: s(10), paddingVertical: s(7) }}
                     activeOpacity={0.8}
                   >
                     <View>
-                      <Text style={{ fontSize: 9, color: isActive ? colors.teal : colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{side === 'from' ? 'From' : 'To'}</Text>
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: isActive ? colors.teal : colors.heading }}>{date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                      <Text style={{ fontSize: s(9), color: isActive ? colors.teal : colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: s(2) }}>{side === 'from' ? 'From' : 'To'}</Text>
+                      <Text style={{ fontSize: s(12), fontWeight: '600', color: isActive ? colors.teal : colors.heading }}>{date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
                     </View>
-                    <Calendar size={13} color={isActive ? colors.teal : colors.label} />
+                    <Calendar size={s(13)} color={isActive ? colors.teal : colors.label} />
                   </TouchableOpacity>
                 )
               })}
@@ -816,7 +850,7 @@ const AnalyticsDashboardScreen = () => {
 
             {/* Calendar grid */}
             {activePicker === 'from' && (
-              <View style={{ marginBottom: 10 }}>
+              <View style={{ marginBottom: s(10) }}>
                 <MiniCalendar
                   value={tempStart}
                   maxDate={tempEnd}
@@ -825,7 +859,7 @@ const AnalyticsDashboardScreen = () => {
               </View>
             )}
             {activePicker === 'to' && (
-              <View style={{ marginBottom: 10 }}>
+              <View style={{ marginBottom: s(10) }}>
                 <MiniCalendar
                   value={tempEnd}
                   minDate={tempStart}
@@ -834,8 +868,8 @@ const AnalyticsDashboardScreen = () => {
               </View>
             )}
 
-            <TouchableOpacity onPress={applyCustomRange} style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', borderRadius: 8, paddingVertical: 9, alignItems: 'center' }} activeOpacity={0.8}>
-              <Text style={{ color: colors.teal, fontSize: 13, fontWeight: '600' }}>Apply Range</Text>
+            <TouchableOpacity onPress={applyCustomRange} style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', borderRadius: s(8), paddingVertical: s(9), alignItems: 'center' }} activeOpacity={0.8}>
+              <Text style={{ color: colors.teal, fontSize: s(13), fontWeight: '600' }}>Apply Range</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -1,4 +1,5 @@
 import { bottomSheetTheme, colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import {
   BottomSheetBackdrop,
@@ -27,6 +28,9 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
   const sheetRef = useRef<BottomSheetModal>(null)
   const snapPoints = useMemo(() => ['60%', '85%'], [])
   const [search, setSearch] = useState('')
+
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   const employees = useEmployeeStore(s => s.employees)
 
@@ -103,8 +107,8 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 12,
+            paddingHorizontal: s(16),
+            paddingVertical: s(12),
             borderBottomWidth: 1,
             borderBottomColor: colors.border + '50'
           }}
@@ -112,17 +116,17 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
           {/* Avatar circle */}
           <View
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
+              width: s(36),
+              height: s(36),
+              borderRadius: s(18),
               backgroundColor: colors.teal + '20',
               alignItems: 'center',
               justifyContent: 'center',
-              marginRight: 12
+              marginRight: s(12)
             }}
           >
             <Text
-              style={{ color: colors.teal, fontSize: 13, fontWeight: '700' }}
+              style={{ color: colors.teal, fontSize: s(13), fontWeight: '700' }}
             >
               {item.fullName.charAt(0).toUpperCase()}
             </Text>
@@ -131,7 +135,7 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
           {/* Name + role */}
           <View style={{ flex: 1 }}>
             <Text
-              style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }}
+              style={{ color: colors.heading, fontSize: s(13), fontWeight: '500' }}
             >
               {item.fullName}
             </Text>
@@ -139,8 +143,8 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
               <Text
                 style={{
                   color: colors.muted,
-                  fontSize: 11,
-                  marginTop: 2,
+                  fontSize: s(11),
+                  marginTop: s(2),
                   textTransform: 'capitalize'
                 }}
               >
@@ -150,11 +154,11 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
           </View>
 
           {/* Checkmark if selected */}
-          {isSelected && <Check color={colors.teal} size={20} />}
+          {isSelected && <Check color={colors.teal} size={s(20)} />}
         </TouchableOpacity>
       )
     },
-    [currentServer, handleSelect]
+    [currentServer, handleSelect, s]
   )
 
   return (
@@ -175,19 +179,19 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            paddingHorizontal: 16,
-            paddingBottom: 12,
+            paddingHorizontal: s(16),
+            paddingBottom: s(12),
             borderBottomWidth: 1,
             borderBottomColor: colors.border
           }}
         >
           <Text
-            style={{ color: colors.heading, fontSize: 15, fontWeight: '600' }}
+            style={{ color: colors.heading, fontSize: s(15), fontWeight: '600' }}
           >
             Assign Server
           </Text>
-          <TouchableOpacity onPress={handleClose} style={{ padding: 4 }}>
-            <X color={colors.muted} size={20} />
+          <TouchableOpacity onPress={handleClose} style={{ padding: s(4) }}>
+            <X color={colors.muted} size={s(20)} />
           </TouchableOpacity>
         </View>
 
@@ -196,17 +200,17 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            marginHorizontal: 16,
-            marginVertical: 12,
-            paddingHorizontal: 12,
-            paddingVertical: 8,
+            marginHorizontal: s(16),
+            marginVertical: s(12),
+            paddingHorizontal: s(12),
+            paddingVertical: s(8),
             backgroundColor: colors.card,
-            borderRadius: 8,
+            borderRadius: s(8),
             borderWidth: 1,
             borderColor: colors.border
           }}
         >
-          <Search color={colors.muted} size={16} />
+          <Search color={colors.muted} size={s(16)} />
           <BottomSheetTextInput
             value={search}
             onChangeText={setSearch}
@@ -215,14 +219,14 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
             style={{
               flex: 1,
               color: colors.heading,
-              fontSize: 13,
-              marginLeft: 8,
+              fontSize: s(13),
+              marginLeft: s(8),
               padding: 0
             }}
           />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch('')}>
-              <X color={colors.muted} size={14} />
+              <X color={colors.muted} size={s(14)} />
             </TouchableOpacity>
           )}
         </View>
@@ -235,18 +239,18 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
           renderSectionHeader={({ section }) => (
             <View
               style={{
-                paddingVertical: 4,
-                paddingHorizontal: 16,
+                paddingVertical: s(4),
+                paddingHorizontal: s(16),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
-                marginBottom: 4,
+                marginBottom: s(4),
                 backgroundColor: colors.panel
               }}
             >
               <Text
                 style={{
                   color: colors.teal,
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '700',
                   letterSpacing: 1
                 }}
@@ -256,8 +260,8 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
             </View>
           )}
           ListEmptyComponent={
-            <View style={{ alignItems: 'center', paddingVertical: 32 }}>
-              <Text style={{ color: colors.muted, fontSize: 13 }}>
+            <View style={{ alignItems: 'center', paddingVertical: s(32) }}>
+              <Text style={{ color: colors.muted, fontSize: s(13) }}>
                 {search
                   ? 'No matching employees found'
                   : 'No other clocked-in employees'}

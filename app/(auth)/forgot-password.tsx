@@ -1,4 +1,5 @@
 import { colors, spinnerColor } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useSignIn } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
 import { useRouter } from "expo-router";
@@ -43,6 +44,8 @@ const mapClerkError = (err: any, fallback: string): string => {
 const ForgotPasswordScreen = () => {
   const { signIn, setActive, isLoaded } = useSignIn();
   const router = useRouter();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   const [step, setStep] = useState<"request" | "reset">("request");
   const [emailAddress, setEmailAddress] = useState("");
@@ -118,41 +121,41 @@ const ForgotPasswordScreen = () => {
 
   const inputStyle = {
     width: "100%" as const,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: s(12),
+    paddingVertical: s(10),
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderRadius: s(8),
     backgroundColor: colors.screen,
     color: colors.heading,
-    fontSize: 13,
+    fontSize: s(13),
   };
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "position"}
       keyboardVerticalOffset={
-        Platform.OS === "ios" ? 24 : ANDROID_KEYBOARD_LIFT_OFFSET
+        Platform.OS === "ios" ? s(24) : ANDROID_KEYBOARD_LIFT_OFFSET
       }
       style={{ width: "100%" }}
     >
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: 16 }}
+        contentContainerStyle={{ paddingBottom: s(16) }}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ width: "100%" }}>
           <Text
             style={{
-              fontSize: 15,
+              fontSize: s(15),
               fontWeight: "700",
               color: colors.heading,
-              marginBottom: 4,
+              marginBottom: s(4),
             }}
           >
             {step === "request" ? "Forgot Password" : "Reset Password"}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 20 }}>
+          <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(20) }}>
             {step === "request"
               ? "Enter your email and we'll send you a code to reset your password."
               : `We sent a code to ${emailAddress}. Enter it below along with your new password.`}
@@ -164,15 +167,15 @@ const ForgotPasswordScreen = () => {
                 backgroundColor: colors.danger + "15",
                 borderWidth: 1,
                 borderColor: colors.danger + "40",
-                borderRadius: 8,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                marginBottom: 14,
+                borderRadius: s(8),
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
+                marginBottom: s(14),
               }}
             >
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   color: colors.danger,
                   textAlign: "center",
                 }}
@@ -183,13 +186,13 @@ const ForgotPasswordScreen = () => {
           )}
 
           {step === "request" ? (
-            <View style={{ marginBottom: 16 }}>
+            <View style={{ marginBottom: s(16) }}>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: "600",
                   color: colors.label,
-                  marginBottom: 5,
+                  marginBottom: s(5),
                 }}
               >
                 Email
@@ -207,13 +210,13 @@ const ForgotPasswordScreen = () => {
             </View>
           ) : (
             <>
-              <View style={{ marginBottom: 10 }}>
+              <View style={{ marginBottom: s(10) }}>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: "600",
                     color: colors.label,
-                    marginBottom: 5,
+                    marginBottom: s(5),
                   }}
                 >
                   Verification Code
@@ -230,20 +233,20 @@ const ForgotPasswordScreen = () => {
                 />
               </View>
 
-              <View style={{ marginBottom: 10 }}>
+              <View style={{ marginBottom: s(10) }}>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: "600",
                     color: colors.label,
-                    marginBottom: 5,
+                    marginBottom: s(5),
                   }}
                 >
                   New Password
                 </Text>
                 <View style={{ position: "relative" }}>
                   <TextInput
-                    style={{ ...inputStyle, paddingRight: 40 }}
+                    style={{ ...inputStyle, paddingRight: s(40) }}
                     placeholder="••••••••"
                     placeholderTextColor={colors.muted}
                     secureTextEntry={!showPassword}
@@ -255,29 +258,29 @@ const ForgotPasswordScreen = () => {
                     onPress={() => setShowPassword((v) => !v)}
                     style={{
                       position: "absolute",
-                      right: 10,
+                      right: s(10),
                       top: 0,
                       bottom: 0,
                       justifyContent: "center",
                     }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    hitSlop={{ top: s(8), bottom: s(8), left: s(8), right: s(8) }}
                   >
                     {showPassword ? (
-                      <EyeOff size={16} color={colors.muted} />
+                      <EyeOff size={s(16)} color={colors.muted} />
                     ) : (
-                      <Eye size={16} color={colors.muted} />
+                      <Eye size={s(16)} color={colors.muted} />
                     )}
                   </TouchableOpacity>
                 </View>
               </View>
 
-              <View style={{ marginBottom: 16 }}>
+              <View style={{ marginBottom: s(16) }}>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: "600",
                     color: colors.label,
-                    marginBottom: 5,
+                    marginBottom: s(5),
                   }}
                 >
                   Confirm New Password
@@ -300,8 +303,8 @@ const ForgotPasswordScreen = () => {
             disabled={isLoading || !isLoaded}
             style={{
               width: "100%",
-              paddingVertical: 11,
-              borderRadius: 10,
+              paddingVertical: s(11),
+              borderRadius: s(10),
               alignItems: "center",
               backgroundColor:
                 isLoading || !isLoaded ? colors.teal + "30" : colors.teal,
@@ -312,7 +315,7 @@ const ForgotPasswordScreen = () => {
             ) : (
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: "700",
                   color: colors.onSolid,
                 }}
@@ -331,10 +334,10 @@ const ForgotPasswordScreen = () => {
                 setConfirmPassword("");
                 setError(null);
               }}
-              style={{ alignSelf: "center", marginTop: 12 }}
+              style={{ alignSelf: "center", marginTop: s(12) }}
             >
               <Text
-                style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}
+                style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}
               >
                 Use a different email
               </Text>
@@ -343,10 +346,10 @@ const ForgotPasswordScreen = () => {
 
           <TouchableOpacity
             onPress={() => router.replace("/login")}
-            style={{ alignSelf: "center", marginTop: 16 }}
+            style={{ alignSelf: "center", marginTop: s(16) }}
           >
             <Text
-              style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}
+              style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}
             >
               Back to Sign In
             </Text>

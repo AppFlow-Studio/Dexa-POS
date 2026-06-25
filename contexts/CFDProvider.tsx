@@ -558,6 +558,17 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const activeOrderOutstandingTotal = useOrderStore(
     s => s.activeOrderOutstandingTotal
   )
+  // Cash-side outstanding. On a cash-discounted split the payment RPC can leave
+  // the card-side outstanding at 0 while the cash side still owes a portion, so
+  // a non-split CFD payload that reads only the card side shows $0 due. Use
+  // whichever side still owes for the order-level (non-split) outstanding.
+  const activeOrderOutstandingCash = useOrderStore(
+    s => s.activeOrderOutstandingCash
+  )
+  const activeOrderOutstandingEffective = Math.max(
+    activeOrderOutstandingTotal ?? 0,
+    activeOrderOutstandingCash ?? 0
+  )
 
   // Granular field selectors — used as effect deps so unrelated `activeOrder`
   // mutations (status, sync state, etc.) don't re-fire the CFD payload pipelines.
@@ -1300,7 +1311,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       : Math.round(currentTip.amount * 100)
     let displayOutstandingTotal = frozen
       ? frozen.outstandingTotal
-      : Math.round((activeOrderOutstandingTotal + currentTip.amount) * 100)
+      : Math.round((activeOrderOutstandingEffective + currentTip.amount) * 100)
     let displayAmountPaid = frozen
       ? frozen.amountPaid
       : Math.round((activeOrder?.amount_paid ?? 0) * 100)
@@ -1490,6 +1501,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     activeOrderTax,
     activeOrderTotal,
     activeOrderOutstandingTotal,
+    activeOrderOutstandingCash,
     orderTotals,
     currentTip,
     activeScreenState,
@@ -1570,9 +1582,22 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
       // A sale just finished (Done/Skip) but the operator hasn't closed the
       // payment sheet yet. Stay idle and clear the latch once they actually
-      // move on (order cleared or order-processing returned to idle).
+      // move on. "Moved on" = payment sheet closed, OR they left the sales
+      // screen / cleared the order / order-processing went idle.
+      //
+      // Closing the sheet is the key signal: the latch only exists to avoid
+      // flashing order data BEHIND the still-open sheet. Once it's closed, a
+      // still-active order on the sales screen should repaint as `ordering`
+      // rather than be stranded on branding idle — previously the latch only
+      // cleared when the order was emptied (isOrderProcessingIdle requires an
+      // empty order), so a live, non-empty order kept the CFD stuck idle.
       if (saleCompletedAwaitingCloseRef.current) {
-        if (!isSalesScreen || !activeOrder || isOrderProcessingIdle) {
+        if (
+          !paymentIsOpen ||
+          !isSalesScreen ||
+          !activeOrder ||
+          isOrderProcessingIdle
+        ) {
           saleCompletedAwaitingCloseRef.current = false
         }
       }
@@ -1699,7 +1724,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       let savingsAmount = Math.max(0, liveCardTotal - liveCashTotal)
       const displayTipAmount = Math.round(currentTip.amount * 100)
       let displayOutstandingTotal = Math.round(
-        (activeOrderOutstandingTotal + currentTip.amount) * 100
+        (activeOrderOutstandingEffective + currentTip.amount) * 100
       )
       let displayAmountPaid = Math.round((activeOrder?.amount_paid ?? 0) * 100)
       let displayDiscountAmount = Math.round(activeOrderDiscount * 100)
@@ -1888,6 +1913,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     activeOrderTax,
     activeOrderTotal,
     activeOrderOutstandingTotal,
+    activeOrderOutstandingCash,
     // `orderTotals` intentionally NOT in deps: it returns a fresh object on
     // every order mutation (status, sync_version, etc.), defeating the granular
     // selectors above. The body still reads it via closure; it's captured fresh
@@ -1904,7 +1930,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     organizationLogoUrl,
     showCFDOrderingRightPanel,
     cfdOrderingRightPanelMode,
-    paymentActiveSplit
+    paymentActiveSplit,
+    paymentIsOpen
   ])
 
   useEffect(() => {
@@ -2061,7 +2088,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         ? selectedPaymentMethod === 'cash'
           ? splitCashBase
           : splitCardBase
-        : Math.round(activeOrderOutstandingTotal * 100)
+        : Math.round(activeOrderOutstandingEffective * 100)
       const cardTotal = cardBaseTotal + tipAmt
       const cashTotal = cashBaseTotal + tipAmt
       const savings = Math.max(0, cardTotal - cashTotal)
@@ -2139,6 +2166,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       activeOrder,
       activeOrderDiscount,
       activeOrderOutstandingTotal,
+      activeOrderOutstandingCash,
       activeOrderSubtotal,
       activeOrderTax,
       activeOrderTotal,

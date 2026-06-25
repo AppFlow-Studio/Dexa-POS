@@ -267,6 +267,12 @@ export interface ReceiptTemplateData {
 
   // Copy label printed at the bottom of the receipt
   copyLabel?: string;  // e.g. "Customer Copy" | "Merchant Copy"
+
+  // Split-receipt scoping (only set for per-portion split receipts; ignored
+  // on the combined-receipt path so existing receipts are byte-identical).
+  splitLabel?: string;             // e.g. "Split 2 of 3"
+  splitPayerName?: string;         // payer name (from transactionDetails.splitLabel)
+  isPartialSplitReceipt?: boolean; // even/custom split → "Partial payment - full check below"
 }
 
 export interface ReceiptItemData {

@@ -156,22 +156,16 @@ function buildAndApplyRefundPatch(input: RefundMutationInput): void {
     }),
   );
 
-  // Build order_refund_items for item refunds
-  const newRefundItems: OrderRefundItemRecord[] =
-    input.type === "items"
-      ? input.selectedItems.map((item) => ({
-          id: `temp_${Date.now()}_${item.itemId}`,
-          reversal_id: newReversals[0]?.id || "",
-          order_item_id: item.itemId,
-          quantity_refunded: item.quantity,
-          unit_price_refunded: 0,
-          subtotal_refunded: 0,
-          tax_refunded: 0,
-          total_refunded: 0,
-          refund_reason: toRefundReasonType(input.reason),
-          created_at: now,
-        }))
-      : [];
+  // Intentionally do NOT build optimistic per-item order_refund_items here.
+  // We don't yet know the authoritative per-item refunded amounts, and emitting
+  // placeholder rows with total_refunded=0 produced a phantom
+  // "Refund · <item> $0.00" line in the bill that was never reconciled away when
+  // the real backend rows synced in (it coexisted with the real $6.80 row). The
+  // optimistic refund is already reflected via the refundedQuantity increment
+  // (patchedItems), the payment refundedAmount, and amount_due below; the
+  // authoritative per-item rows arrive on the next backend sync, and the bill
+  // shows the "Refunded $X" total in the meantime.
+  const newRefundItems: OrderRefundItemRecord[] = [];
 
   // Build patched items (increment refundedQuantity for item refunds)
   const currentItems = activeOrder?.items || prevOrder?.items || [];
@@ -384,7 +378,10 @@ export function useRefundMutation() {
 
         return {
           totalAmount: input.totalAmount,
-          warning: result.error || undefined,
+          // Partial-refund message lives on result.data.error (result is already
+          // narrowed to kind:"success" here); surfacing it drives the
+          // "Refund Processed (with warnings)" toast for a partial item refund.
+          warning: result.data?.error || undefined,
           isOffline: !ordersRealtime.isConnected,
         };
       }

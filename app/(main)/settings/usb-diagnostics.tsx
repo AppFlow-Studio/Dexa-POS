@@ -15,6 +15,7 @@
 
 import SettingsCard from '@/components/settings/SettingsCard'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import {
   diagnoseUsb,
   listDevices,
@@ -58,6 +59,8 @@ const MOCK_SCENARIOS: { id: CastlesMockScenario; label: string; description: str
 ]
 
 export default function UsbDiagnosticsScreen () {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [diag, setDiag] = useState<UsbDiagnosticInfo | null>(null)
   const [devices, setDevices] = useState<UsbDeviceInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -101,16 +104,16 @@ export default function UsbDiagnosticsScreen () {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.screen }}
-      contentContainerStyle={{ padding: 16, gap: 16 }}
+      contentContainerStyle={{ padding: s(16), gap: s(16) }}
     >
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Usb size={22} color={colors.heading} />
-        <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
+        <Usb size={s(22)} color={colors.heading} />
+        <Text style={{ fontSize: s(20), fontWeight: '700', color: colors.heading }}>
           USB Diagnostics
         </Text>
       </View>
-      <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>
+      <Text style={{ color: colors.muted, fontSize: s(13), lineHeight: s(19) }}>
         Surfaces the native USB host state so &ldquo;terminal not found&rdquo;
         failures classify clearly. Mock scenarios below let you reproduce
         every Castles failure mode on simulator without hardware.
@@ -122,19 +125,19 @@ export default function UsbDiagnosticsScreen () {
         disabled={loading}
         style={{
           alignSelf: 'flex-start',
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          borderRadius: 8,
+          paddingHorizontal: s(12),
+          paddingVertical: s(8),
+          borderRadius: s(8),
           backgroundColor: colors.teal + '20',
           borderWidth: 1,
           borderColor: colors.teal + '40',
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 8,
+          gap: s(8),
         }}
       >
-        <RefreshCcw size={14} color={colors.teal} />
-        <Text style={{ color: colors.teal, fontWeight: '600', fontSize: 13 }}>
+        <RefreshCcw size={s(14)} color={colors.teal} />
+        <Text style={{ color: colors.teal, fontWeight: '600', fontSize: s(13) }}>
           {loading ? 'Refreshing…' : 'Refresh'}
         </Text>
       </TouchableOpacity>
@@ -142,13 +145,13 @@ export default function UsbDiagnosticsScreen () {
       {/* Error path (e.g., iOS simulator) */}
       {error && (
         <SettingsCard title='Native module unavailable'>
-          <View style={{ flexDirection: 'row', gap: 10, padding: 12 }}>
-            <AlertCircle size={20} color={colors.warning} />
+          <View style={{ flexDirection: 'row', gap: s(10), padding: s(12) }}>
+            <AlertCircle size={s(20)} color={colors.warning} />
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.warning, fontWeight: '600', marginBottom: 4 }}>
+              <Text style={{ color: colors.warning, fontWeight: '600', marginBottom: s(4) }}>
                 {error}
               </Text>
-              <Text style={{ color: colors.muted, fontSize: 12 }}>
+              <Text style={{ color: colors.muted, fontSize: s(12) }}>
                 USB diagnostics only work on a physical Android device with a
                 dev client build. Use the mock scenarios below to iterate the
                 UX without hardware.
@@ -161,9 +164,9 @@ export default function UsbDiagnosticsScreen () {
       {/* Diagnostics fields */}
       {diag && (
         <SettingsCard title='Host state'>
-          <View style={{ gap: 8, padding: 12 }}>
+          <View style={{ gap: s(8), padding: s(12) }}>
             {fields.map((f) => (
-              <DiagnosticRow key={f.label} field={f} />
+              <DiagnosticRow key={f.label} field={f} uiScale={uiScale} />
             ))}
           </View>
         </SettingsCard>
@@ -173,9 +176,9 @@ export default function UsbDiagnosticsScreen () {
       {diag && devices != null && (
         <SettingsCard title={`Discovered USB serial devices (${devices.length})`}>
           {devices.length === 0 ? (
-            <View style={{ padding: 12, flexDirection: 'row', gap: 10 }}>
-              <AlertTriangle size={20} color={colors.warning} />
-              <Text style={{ flex: 1, color: colors.label, fontSize: 13, lineHeight: 19 }}>
+            <View style={{ padding: s(12), flexDirection: 'row', gap: s(10) }}>
+              <AlertTriangle size={s(20)} color={colors.warning} />
+              <Text style={{ flex: 1, color: colors.label, fontSize: s(13), lineHeight: s(19) }}>
                 The native prober didn&rsquo;t recognise any serial device.
                 If &ldquo;raw devices&rdquo; above is &gt; 0, the tablet sees
                 USB devices but doesn&rsquo;t recognise the Castles VID/PID.
@@ -185,9 +188,9 @@ export default function UsbDiagnosticsScreen () {
               </Text>
             </View>
           ) : (
-            <View style={{ gap: 8, padding: 12 }}>
+            <View style={{ gap: s(8), padding: s(12) }}>
               {devices.map((d) => (
-                <DeviceCard key={d.deviceId} device={d} />
+                <DeviceCard key={d.deviceId} device={d} uiScale={uiScale} />
               ))}
             </View>
           )}
@@ -287,16 +290,17 @@ function interpretDiagnostics (
   return rows
 }
 
-function DiagnosticRow ({ field }: { field: InterpretedField }) {
+function DiagnosticRow ({ field, uiScale }: { field: InterpretedField; uiScale: number }) {
+  const s = (n: number) => Math.round(n * uiScale)
   const icon =
     field.severity === 'ok' ? (
-      <CheckCircle2 size={16} color={colors.success} />
+      <CheckCircle2 size={s(16)} color={colors.success} />
     ) : field.severity === 'warn' ? (
-      <AlertTriangle size={16} color={colors.warning} />
+      <AlertTriangle size={s(16)} color={colors.warning} />
     ) : field.severity === 'error' ? (
-      <AlertCircle size={16} color={colors.danger} />
+      <AlertCircle size={s(16)} color={colors.danger} />
     ) : (
-      <Usb size={16} color={colors.muted} />
+      <Usb size={s(16)} color={colors.muted} />
     )
   const tone =
     field.severity === 'ok'
@@ -308,13 +312,13 @@ function DiagnosticRow ({ field }: { field: InterpretedField }) {
           : colors.label
 
   return (
-    <View style={{ gap: 4 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+    <View style={{ gap: s(4) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
         {icon}
-        <Text style={{ flex: 1, color: colors.label, fontSize: 13 }}>
+        <Text style={{ flex: 1, color: colors.label, fontSize: s(13) }}>
           {field.label}
         </Text>
-        <Text style={{ color: tone, fontWeight: '600', fontSize: 13 }}>
+        <Text style={{ color: tone, fontWeight: '600', fontSize: s(13) }}>
           {field.value}
         </Text>
       </View>
@@ -322,9 +326,9 @@ function DiagnosticRow ({ field }: { field: InterpretedField }) {
         <Text
           style={{
             color: colors.muted,
-            fontSize: 12,
-            lineHeight: 17,
-            marginLeft: 24,
+            fontSize: s(12),
+            lineHeight: s(17),
+            marginLeft: s(24),
           }}
         >
           {field.hint}
@@ -335,17 +339,19 @@ function DiagnosticRow ({ field }: { field: InterpretedField }) {
 }
 
 function MockScenarioSection () {
-  const enabled = useCastlesMockStore((s) => s.enabled)
-  const scenario = useCastlesMockStore((s) => s.scenario)
-  const setEnabled = useCastlesMockStore((s) => s.setEnabled)
-  const setScenarioStore = useCastlesMockStore((s) => s.setScenario)
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  const enabled = useCastlesMockStore((x) => x.enabled)
+  const scenario = useCastlesMockStore((x) => x.scenario)
+  const setEnabled = useCastlesMockStore((x) => x.setEnabled)
+  const setScenarioStore = useCastlesMockStore((x) => x.setScenario)
 
   return (
     <SettingsCard title='Castles mock scenario (QA)'>
-      <View style={{ padding: 12, gap: 10 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-          <FlaskConical size={18} color={enabled ? colors.warning : colors.muted} />
-          <Text style={{ flex: 1, color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+      <View style={{ padding: s(12), gap: s(10) }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: s(10) }}>
+          <FlaskConical size={s(18)} color={enabled ? colors.warning : colors.muted} />
+          <Text style={{ flex: 1, color: colors.muted, fontSize: s(12), lineHeight: s(18) }}>
             {enabled
               ? 'Mock mode is ON. ALL Castles connect attempts on this device route through the mock — real terminal traffic is bypassed. Disable this before processing live sales.'
               : 'Mock mode is OFF. Enable to reproduce wedge / detach / timeout scenarios on this build without hardware. The toggle persists across restarts.'}
@@ -356,58 +362,58 @@ function MockScenarioSection () {
         <TouchableOpacity
           onPress={() => setEnabled(!enabled)}
           style={{
-            padding: 14,
-            borderRadius: 10,
+            padding: s(14),
+            borderRadius: s(10),
             borderWidth: 1,
             borderColor: enabled ? colors.warning : colors.border,
             backgroundColor: enabled ? colors.warning + '20' : colors.panel,
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 12,
+            gap: s(12),
           }}
         >
           <View
             style={{
-              width: 42,
-              height: 24,
-              borderRadius: 12,
+              width: s(42),
+              height: s(24),
+              borderRadius: s(12),
               backgroundColor: enabled ? colors.warning : colors.muted + '40',
-              padding: 2,
+              padding: s(2),
               alignItems: enabled ? 'flex-end' : 'flex-start',
               justifyContent: 'center',
             }}
           >
             <View
               style={{
-                width: 20,
-                height: 20,
-                borderRadius: 10,
+                width: s(20),
+                height: s(20),
+                borderRadius: s(10),
                 backgroundColor: '#fff',
               }}
             />
           </View>
-          <Text style={{ flex: 1, fontWeight: '700', color: enabled ? colors.warning : colors.heading, fontSize: 14 }}>
+          <Text style={{ flex: 1, fontWeight: '700', color: enabled ? colors.warning : colors.heading, fontSize: s(14) }}>
             {enabled ? 'Mock mode ENABLED' : 'Enable mock mode'}
           </Text>
         </TouchableOpacity>
 
         {/* Scenarios */}
-        {MOCK_SCENARIOS.map((s) => {
-          const active = scenario === s.id
+        {MOCK_SCENARIOS.map((item) => {
+          const active = scenario === item.id
           return (
             <TouchableOpacity
-              key={s.id}
+              key={item.id}
               onPress={() => {
-                setScenarioStore(s.id)
+                setScenarioStore(item.id)
                 // Keep the mock module's internal var in sync immediately so
                 // the next connect picks up the new scenario without needing
                 // a factory call to refresh it.
-                setCastlesMockScenario(s.id)
+                setCastlesMockScenario(item.id)
               }}
               disabled={!enabled}
               style={{
-                padding: 12,
-                borderRadius: 10,
+                padding: s(12),
+                borderRadius: s(10),
                 borderWidth: 1,
                 borderColor: active && enabled ? colors.teal : colors.border,
                 backgroundColor: active && enabled ? colors.teal + '15' : colors.panel,
@@ -418,13 +424,13 @@ function MockScenarioSection () {
                 style={{
                   fontWeight: '700',
                   color: active && enabled ? colors.teal : colors.heading,
-                  fontSize: 14,
+                  fontSize: s(14),
                 }}
               >
-                {s.label}
+                {item.label}
               </Text>
-              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
-                {s.description}
+              <Text style={{ color: colors.muted, fontSize: s(12), marginTop: s(2) }}>
+                {item.description}
               </Text>
             </TouchableOpacity>
           )
@@ -434,44 +440,45 @@ function MockScenarioSection () {
   )
 }
 
-function DeviceCard ({ device }: { device: UsbDeviceInfo }) {
+function DeviceCard ({ device, uiScale }: { device: UsbDeviceInfo; uiScale: number }) {
+  const s = (n: number) => Math.round(n * uiScale)
   const isCastles = device.vendorId === 0x0ca6
   return (
     <View
       style={{
-        padding: 12,
-        borderRadius: 10,
+        padding: s(12),
+        borderRadius: s(10),
         borderWidth: 1,
         borderColor: isCastles ? colors.success + '60' : colors.border,
         backgroundColor: colors.panel,
-        gap: 4,
+        gap: s(4),
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
         {isCastles ? (
-          <CheckCircle2 size={14} color={colors.success} />
+          <CheckCircle2 size={s(14)} color={colors.success} />
         ) : (
-          <Usb size={14} color={colors.muted} />
+          <Usb size={s(14)} color={colors.muted} />
         )}
-        <Text style={{ flex: 1, color: colors.heading, fontWeight: '700', fontSize: 13 }}>
+        <Text style={{ flex: 1, color: colors.heading, fontWeight: '700', fontSize: s(13) }}>
           {device.productName || '(unnamed device)'}
         </Text>
         {device.hasPermission ? (
-          <Text style={{ color: colors.success, fontSize: 11, fontWeight: '600' }}>
+          <Text style={{ color: colors.success, fontSize: s(11), fontWeight: '600' }}>
             permission ✓
           </Text>
         ) : (
-          <Text style={{ color: colors.warning, fontSize: 11, fontWeight: '600' }}>
+          <Text style={{ color: colors.warning, fontSize: s(11), fontWeight: '600' }}>
             no permission
           </Text>
         )}
       </View>
-      <Text style={{ color: colors.muted, fontSize: 11, fontFamily: 'monospace' }}>
+      <Text style={{ color: colors.muted, fontSize: s(11), fontFamily: 'monospace' }}>
         VID 0x{device.vendorId.toString(16).padStart(4, '0').toUpperCase()} ·
         {' '}PID 0x{device.productId.toString(16).padStart(4, '0').toUpperCase()} ·
         {' '}deviceId {device.deviceId}
       </Text>
-      <Text style={{ color: colors.muted, fontSize: 11 }}>
+      <Text style={{ color: colors.muted, fontSize: s(11) }}>
         Driver: {device.driverName || '—'} · Manufacturer:{' '}
         {device.manufacturerName || '—'} · Serial:{' '}
         {device.serialNumber || '—'}

@@ -2,6 +2,7 @@ import { usePreviousOrdersListSync } from '@/hooks/pos/usePreviousOrdersListSync
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
+import { useUiScale } from '@/lib/uiScale'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useRouter } from 'expo-router'
@@ -49,6 +50,8 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
   counts,
   activeTab
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const TAB_NAMES: TabName[] = [
     'All',
     'Takeaway',
@@ -61,11 +64,11 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
     <View
       className='flex-row self-start rounded-lg p-0.5'
       style={{
-        height: 36,
+        height: s(36),
         backgroundColor: colors.card,
         borderWidth: 1,
         borderColor: colors.border,
-        gap: 2
+        gap: s(2)
       }}
     >
       {TAB_NAMES.map(name => {
@@ -78,10 +81,10 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
             className='flex-row items-center rounded-md gap-x-1.5'
             style={[
               {
-                paddingHorizontal: 14,
+                paddingHorizontal: s(14),
                 alignSelf: 'stretch',
                 justifyContent: 'center',
-                borderRadius: 6,
+                borderRadius: s(6),
                 borderWidth: 1
               },
               isActive
@@ -98,8 +101,9 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
             ]}
           >
             <Text
-              className='text-xs font-semibold'
               style={{
+                fontSize: s(12),
+                fontWeight: '600',
                 color: isActive
                   ? name === 'Online'
                     ? colors.info
@@ -212,6 +216,8 @@ const PreviousOrdersSection = () => {
     s => s.dateWindow?.label ?? 'today'
   )
   const setDateWindow = usePreviousOrdersStore(s => s.setDateWindow)
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<TabName>('All')
   const [isItemsModalOpen, setItemsModalOpen] = useState(false)
@@ -425,8 +431,8 @@ const PreviousOrdersSection = () => {
     <View
       style={{
         flex: 1,
-        paddingHorizontal: 12,
-        paddingTop: 12,
+        paddingHorizontal: s(12),
+        paddingTop: s(12),
         backgroundColor: colors.screen
       }}
     >
@@ -435,8 +441,8 @@ const PreviousOrdersSection = () => {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 8,
-          marginBottom: 6
+          gap: s(8),
+          marginBottom: s(6)
         }}
       >
         <DatePillRow
@@ -448,8 +454,8 @@ const PreviousOrdersSection = () => {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 8,
-          marginBottom: 10
+          gap: s(8),
+          marginBottom: s(10)
         }}
       >
         <OrderTabs
@@ -464,15 +470,15 @@ const PreviousOrdersSection = () => {
             flex: 1,
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-            borderRadius: 8,
+            paddingHorizontal: s(10),
+            paddingVertical: s(6),
+            borderRadius: s(8),
             backgroundColor: colors.screen,
             borderWidth: 1,
             borderColor: colors.border
           }}
         >
-          <Search color={colors.muted} size={12} />
+          <Search color={colors.muted} size={s(12)} />
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -480,9 +486,9 @@ const PreviousOrdersSection = () => {
             placeholderTextColor={colors.muted}
             style={{
               flex: 1,
-              marginLeft: 7,
+              marginLeft: s(7),
               color: colors.heading,
-              fontSize: 12,
+              fontSize: s(12),
               padding: 0
             }}
             autoCapitalize='none'
@@ -490,7 +496,7 @@ const PreviousOrdersSection = () => {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <X color={colors.muted} size={12} />
+              <X color={colors.muted} size={s(12)} />
             </TouchableOpacity>
           )}
         </View>
@@ -499,9 +505,9 @@ const PreviousOrdersSection = () => {
         <TouchableOpacity
           onPress={handleRefresh}
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
+            width: s(32),
+            height: s(32),
+            borderRadius: s(8),
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: colors.screen,
@@ -510,7 +516,7 @@ const PreviousOrdersSection = () => {
           }}
         >
           <RefreshCw
-            size={13}
+            size={s(13)}
             color={isRefreshing ? colors.teal : colors.muted}
           />
         </TouchableOpacity>
@@ -558,7 +564,7 @@ const PreviousOrdersSection = () => {
                 elevation: 8
               }}
             >
-              <RefreshCw size={13} color={colors.onSolid} />
+              <RefreshCw size={s(13)} color={colors.onSolid} />
               <Text
                 className='text-xs font-semibold'
                 style={{ color: colors.onSolid }}

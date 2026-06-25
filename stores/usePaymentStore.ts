@@ -1,4 +1,5 @@
 import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
+import { payableQuantity } from "@/lib/payableQuantity";
 import { isOrderReadOnly } from "@/lib/orderAccessControl";
 import { startInteraction } from "@/lib/perf";
 import {
@@ -22,8 +23,10 @@ import { trackCashPaymentInDrawer } from "@/services/paymentService";
 import { finalizeDineInPaymentClear } from "@/services/tables/finalizeDineInPaymentClear";
 import { useConflictStore } from "@/stores/useConflictStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
+import { calculateEvenSplitSpread } from "@/lib/order-calculator";
 import { calculateCustomSplitCashAmount } from "@/utils/custom-split-amounts";
 import { create } from "zustand";
 import {
@@ -183,6 +186,12 @@ interface PaymentState {
    */
   openForVerification: (journal: PaymentJournalEntryLike) => void;
   close: () => void;
+  // User-cancel of an in-progress (split) payment. Rolls back optimistic,
+  // never-backend-confirmed payments on the active order, routes through the
+  // formal reopen so the order reads `partial` from the backend, then closes.
+  // Use this — not close() — whenever the user abandons the sheet with captured
+  // portions, so no phantom residual survives.
+  cancelInProgressPayment: () => void;
   setView: (view: PaymentView) => void;
   setActiveTableId: (tableId: string | null) => void;
   clearActiveTableId: () => void;
@@ -249,8 +258,8 @@ interface PaymentState {
   markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
   splitEvenly: (
     numberOfPeople: number,
-    amountPerPerson: number,
-    cashAmountPerPerson?: number,
+    cardTotal: number,
+    cashTotal?: number,
   ) => void; // New action for evenly splitting with dual pricing
   resetSplits: () => void; // Action to clear splits when going back
   handleSuccessClose: () => void; // Action to run Done logic when success view is closed
@@ -418,6 +427,47 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   },
 
   close: () => {
+    get().resetPaymentState();
+    set({ isOpen: false });
+  },
+
+  cancelInProgressPayment: () => {
+    const orderState = useOrderStore.getState();
+    const activeOrderId = orderState.activeOrderId;
+
+    if (activeOrderId) {
+      const order = orderState.ordersById[activeOrderId];
+      // A split is "in progress" once a portion has been captured (which locks
+      // split_payment_path) or any payment exists on the order.
+      const inSplit =
+        !!order?.split_payment_path ||
+        (order?.payments?.length ?? 0) > 0;
+
+      if (inSplit) {
+        // Abandon the WHOLE split. voidAllPayments fires void_payment on every
+        // backend-confirmed portion (reversing the real charge) AND removes any
+        // never-synced locals, restores paidQuantity, and clears the split lock.
+        // This is what makes Discard wipe an already-charged first portion — a
+        // plain local rollback can't, since that portion is real money on the
+        // server. Fire-and-forget: the sheet closes immediately; voidAllPayments
+        // rolls itself back and toasts if any RPC fails.
+        void orderState.voidAllPayments(activeOrderId).catch(() => {
+          // Errors are surfaced + rolled back inside voidPayment; nothing to do.
+        });
+      } else {
+        // No captured portion yet — just drop optimistic, never-confirmed
+        // payments and defer amount_due to the backend.
+        const rolledBack =
+          orderState.discardUnsyncedPayments(activeOrderId);
+        if (rolledBack) {
+          void orderState
+            .syncOrderFromBackendComplete(activeOrderId, { force: true })
+            .catch(() => {});
+        }
+      }
+    }
+
+    // Tear down the sheet UI.
     get().resetPaymentState();
     set({ isOpen: false });
   },
@@ -652,15 +702,29 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }));
   },
 
-  splitEvenly: (numberOfPeople, amountPerPerson, cashAmountPerPerson) => {
+  splitEvenly: (numberOfPeople, cardTotal, cashTotal) => {
+    // Use a largest-remainder spread so portions sum EXACTLY to the total and
+    // differ by at most one cent. This prevents the lost-cent / displayed-vs-
+    // charged divergence raw float division (total / N) produced, AND avoids
+    // the multiple-$0-portion artifact of flooring + dumping the remainder on
+    // the last guest.
+    const cardAmounts = calculateEvenSplitSpread(
+      cardTotal,
+      numberOfPeople,
+    ).amounts;
+    const cashAmounts =
+      cashTotal !== undefined
+        ? calculateEvenSplitSpread(cashTotal, numberOfPeople).amounts
+        : undefined;
+
     const newSplits: Split[] = [];
     for (let i = 0; i < numberOfPeople; i++) {
       newSplits.push({
         id: `split_${Date.now()}_${i}`,
         customerName: `Guest ${i + 1}`,
         items: [],
-        amount: amountPerPerson, // Card pricing (default)
-        cashAmount: cashAmountPerPerson, // Cash pricing for dual-price compliance
+        amount: cardAmounts[i], // Card pricing (default)
+        cashAmount: cashAmounts?.[i], // Cash pricing for dual-price compliance
         status: "pending",
       });
     }
@@ -964,6 +1028,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         useOrderStore.getState().sendNewItemsToKitchenForOrder(activeOrderId);
       }
 
+      // Snapshot existing payment ids so we can identify the one this call
+      // appends (for per-portion auto-print after success).
+      const prePaymentPaymentIds = new Set(
+        (
+          useOrderStore.getState().ordersById[activeOrderId]?.payments ?? []
+        ).map((p) => p.id),
+      );
+
       // Await payment and check for success
       // Only pass splitCount/splitPortionIndex for EVEN split payments
       // For per-item payments (split-by-item, pay-for-items), we pass itemAllocations instead
@@ -986,11 +1058,47 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         // Custom-amount payments use p_amount through the FULL/PARTIAL SQL path
         ...(isPerItemPayment || splitSourceView === "split-custom-amount"
           ? {}
-          : {
-              splitCount: splits.length,
-              splitPortionIndex:
-                splits.findIndex((s) => s.id === activeSplitId) + 1,
-            }),
+          : (() => {
+              // split_portion_index is UNIQUE per (order_id, …) for the whole
+              // order lifetime, but the in-memory `splits` array is rebuilt
+              // from scratch each time the sheet is reopened (e.g. "close and
+              // keep changes" then resume). Using the bare array position would
+              // restart indices at 1 and collide with an already-paid portion
+              // (duplicate key on idx_order_payments_split_portion). Offset by
+              // the count of portions already captured so every portion gets a
+              // globally-unique, monotonic index. split_count and the index
+              // share the SAME `paidBeforeSession` baseline (below) so the index
+              // always lands inside 1..split_count — anchoring only one of them
+              // to the live `paidPortions` pushed the 2nd portion's index to 3
+              // on a 2-way split and the RPC rejected it (P0001 "Invalid split
+              // portion index: 3 (must be 1-2)").
+              const paidPortions = (
+                useOrderStore.getState().ordersById[activeOrderId]?.payments ??
+                []
+              ).filter(
+                (p) => !p.isVoided && p.splitInfo?.portionIndex != null,
+              ).length;
+              const positionInSession = splits.findIndex(
+                (s) => s.id === activeSplitId,
+              );
+              // split_count MUST be stable across every portion of one logical
+              // split so the RPC's last-portion test counts them together.
+              // `paidPortions` is read live and increments as this session's
+              // own portions get captured, so `paidPortions + splits.length`
+              // drifted upward portion-to-portion (2-way split recorded as
+              // split_count 2 then 3). Portions then no longer shared a
+              // split_count, the RPC's `split_count = p_split_count` filter
+              // splintered them, portions_remaining never hit 0, and the order
+              // stuck at `partial` (previously masked by v15's tiny-total dust
+              // fallback, which v16 removed). Subtract this session's already-
+              // captured portions to recover the count of portions paid BEFORE
+              // this session — a value that doesn't move during the session.
+              const paidBeforeSession = paidPortions - positionInSession;
+              return {
+                splitCount: paidBeforeSession + splits.length,
+                splitPortionIndex: paidBeforeSession + positionInSession + 1,
+              };
+            })()),
       });
 
       // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)
@@ -1058,6 +1166,38 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const nextPending = updatedSplits.find((s) => s.status === "pending");
 
       set({ splits: updatedSplits });
+
+      // Auto-print this portion's receipt (supplements the combined receipt).
+      // Fires for every portion including the last, so each payer gets a copy.
+      try {
+        const { autoPrintSplitReceipts } =
+          useLocationConfigStore.getState().config.printing;
+        if (autoPrintSplitReceipts) {
+          const selectedStore =
+            useStoreSettingsStore.getState().selectedStore;
+          const afterOrder =
+            useOrderStore.getState().ordersById[activeOrderId];
+          const justPaid = (afterOrder?.payments ?? []).find(
+            (p) => !prePaymentPaymentIds.has(p.id),
+          );
+          if (selectedStore && afterOrder && justPaid) {
+            const { PrinterService } =
+              require("@/services/printing/PrinterService") as typeof import("@/services/printing/PrinterService");
+            PrinterService.printSplitPaymentReceipt(
+              afterOrder,
+              justPaid,
+              selectedStore,
+            ).catch((e: unknown) =>
+              console.warn(
+                "[PaymentStore] split receipt auto-print failed:",
+                e,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        console.warn("[PaymentStore] split receipt auto-print error:", e);
+      }
 
       if (nextPending) {
         set({ view: "split-payment-success" });
@@ -1161,7 +1301,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const itemAllocations = (orderForAllocations?.items ?? [])
         .filter((item) => !item.is_voided)
         .map((item) => {
-          const unpaidQty = item.quantity - (item.paidQuantity || 0);
+          const unpaidQty = payableQuantity(item);
           if (unpaidQty <= 0) return null;
           return {
             itemId: item.db_order_item_id || item.id,

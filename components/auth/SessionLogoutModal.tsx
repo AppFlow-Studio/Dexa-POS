@@ -7,6 +7,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { colors, spinnerColor } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { LogOut, Monitor } from "lucide-react-native";
 import React from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
@@ -28,12 +29,14 @@ const SessionLogoutModal: React.FC<SessionLogoutModalProps> = ({
   isLoading,
   stationName,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent
         className="p-6 rounded-2xl"
         style={{
-          width: 480,
+          width: s(480),
           backgroundColor: colors.panel,
           borderColor: colors.border,
         }}
@@ -72,7 +75,7 @@ const SessionLogoutModal: React.FC<SessionLogoutModalProps> = ({
               className="w-12 h-12 rounded-full items-center justify-center mr-4"
               style={{ backgroundColor: colors.warning + "20" }}
             >
-              <Monitor color={colors.warning} size={24} />
+              <Monitor color={colors.warning} size={s(24)} />
             </View>
             <View className="flex-1">
               <Text
@@ -103,7 +106,7 @@ const SessionLogoutModal: React.FC<SessionLogoutModalProps> = ({
               className="w-12 h-12 rounded-full items-center justify-center mr-4"
               style={{ backgroundColor: colors.danger + "20" }}
             >
-              <LogOut color={colors.danger} size={24} />
+              <LogOut color={colors.danger} size={s(24)} />
             </View>
             <View className="flex-1">
               <Text

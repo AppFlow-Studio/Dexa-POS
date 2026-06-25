@@ -18,7 +18,11 @@ import { debounce } from "lodash";
 import { createMMKV } from "react-native-mmkv";
 import type { PersistStorage, StorageValue } from "zustand/middleware";
 import { StateStorage } from "zustand/middleware";
-import { computeEnvSignature, ENV_SIGNATURE_KEY } from "@/lib/envSignature";
+import {
+  computeEnvSignature,
+  ENV_SIGNATURE_KEY,
+  isEnvSignatureWellFormed,
+} from "@/lib/envSignature";
 
 // ============================================================================
 // MMKV INSTANCES
@@ -71,6 +75,13 @@ export interface EnvReconcileResult {
   switched: boolean;
   from: string | null;
   to: string;
+  /**
+   * True when boot saw a malformed/half-injected ("unknown") signature and
+   * REFUSED to reconcile — it cleared nothing and left the stored baseline
+   * untouched. Surfaced to Sentry from app/_layout.tsx (Sentry isn't yet
+   * initialized when this runs at module load).
+   */
+  refusedUnknownSignature?: boolean;
 }
 
 let lastEnvReconcile: EnvReconcileResult | null = null;
@@ -101,17 +112,49 @@ function reconcileEnvironmentOnBoot(): EnvReconcileResult {
   const current = computeEnvSignature();
   const stored = storage.getString(ENV_SIGNATURE_KEY) ?? null;
 
+  // Guardrail: never reconcile on a malformed/half-injected env. A blank
+  // EXPO_PUBLIC_SUPABASE_URL or an unrecognized Clerk key prefix at boot yields
+  // an "unknown" component; treating that as a backend switch would wipe a
+  // healthy production session and every tablet's Clerk token for nothing.
+  // Refuse, clear nothing, and leave the stored baseline untouched so the next
+  // fully-resolved boot reconciles normally.
+  if (!isEnvSignatureWellFormed(current)) {
+    console.error(
+      `[EnvGuard] Refusing to reconcile on malformed env signature "${current}" ` +
+        `(stored="${stored ?? "<none>"}"). Clearing nothing.`,
+    );
+    return (lastEnvReconcile = {
+      switched: false,
+      from: stored,
+      to: current,
+      refusedUnknownSignature: true,
+    });
+  }
+
   if (stored === null) {
     // First run with the guard present — record baseline, clear nothing.
     storage.set(ENV_SIGNATURE_KEY, current);
     return (lastEnvReconcile = { switched: false, from: null, to: current });
   }
 
+  // A malformed stored baseline (storage corruption, or a pre-guard build that
+  // stamped an "unknown" half) must not be mistaken for the previous
+  // environment — re-baseline to the current resolved signature without purging.
+  if (!isEnvSignatureWellFormed(stored)) {
+    console.warn(
+      `[EnvGuard] Stored signature "${stored}" was malformed — re-baselining to ` +
+        `"${current}" without purging.`,
+    );
+    storage.set(ENV_SIGNATURE_KEY, current);
+    return (lastEnvReconcile = { switched: false, from: stored, to: current });
+  }
+
   if (stored === current) {
     return (lastEnvReconcile = { switched: false, from: stored, to: current });
   }
 
-  // Real environment switch — wipe state from the previous backend.
+  // Real environment switch — both signatures well-formed and genuinely
+  // different. Wipe state from the previous backend.
   console.warn(
     `[EnvGuard] Backend environment changed (${stored} -> ${current}). ` +
       `Clearing persisted state from the previous environment.`,
@@ -148,6 +191,47 @@ function reconcileEnvironmentOnBoot(): EnvReconcileResult {
 
 // Run once at module load, before any persisted store hydrates.
 reconcileEnvironmentOnBoot();
+
+// ============================================================================
+// SECURE STORAGE INTEGRITY PROBE
+// ============================================================================
+
+const SECURE_PROBE_KEY = "__secure_probe_v1";
+let secureStorageProbeFailed = false;
+
+/**
+ * Whether the boot-time secure-storage read/write probe failed. A failure means
+ * the encrypted MMKV bucket can't be written/decrypted this boot — every Clerk
+ * token read then returns null and the merchant is silently logged out
+ * fleet-wide. Surfaced to Sentry from app/_layout.tsx (Sentry isn't initialized
+ * when this runs at module load).
+ *
+ * Note: the encryption key (`dexa-pos-secure-key-v1`) is intentionally NEVER
+ * rotated — rotating it would make the existing bucket undecryptable and log
+ * every device out at once. This probe only OBSERVES decrypt health; it never
+ * changes the key.
+ */
+export function didSecureStorageProbeFail(): boolean {
+  return secureStorageProbeFailed;
+}
+
+function probeSecureStorage(): void {
+  try {
+    const sentinel = "ok";
+    secureStorage.set(SECURE_PROBE_KEY, sentinel);
+    if (secureStorage.getString(SECURE_PROBE_KEY) !== sentinel) {
+      secureStorageProbeFailed = true;
+      console.error(
+        "[SecureStorage] Decrypt/read-back probe MISMATCH — encrypted bucket may be unreadable; Clerk tokens at risk.",
+      );
+    }
+  } catch (e) {
+    secureStorageProbeFailed = true;
+    console.error("[SecureStorage] Decrypt probe threw:", e);
+  }
+}
+
+probeSecureStorage();
 
 // ============================================================================
 // ZUSTAND STORAGE ADAPTERS

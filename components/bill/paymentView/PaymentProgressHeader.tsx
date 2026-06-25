@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { colors } from '@/lib/theme'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { usePaymentStore } from '@/stores/usePaymentStore'
@@ -10,6 +11,8 @@ import Animated, {
 } from 'react-native-reanimated'
 
 const PaymentProgressHeader: React.FC = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const view = usePaymentStore(s => s.view)
   const activeSplitId = usePaymentStore(s => s.activeSplitId)
   const splits = usePaymentStore(s => s.splits)
@@ -198,8 +201,8 @@ const PaymentProgressHeader: React.FC = () => {
     <View
       style={{
         width: '100%',
-        paddingHorizontal: 24,
-        paddingVertical: 12,
+        paddingHorizontal: s(24),
+        paddingVertical: s(12),
         backgroundColor: colors.panel,
         borderBottomWidth: 1,
         borderBottomColor: colors.border
@@ -210,13 +213,13 @@ const PaymentProgressHeader: React.FC = () => {
           flexDirection: 'row',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 8
+          marginBottom: s(8)
         }}
       >
         <Text
           style={{
             color: colors.muted,
-            fontSize: 11,
+            fontSize: s(11),
             fontWeight: '700',
             textTransform: 'uppercase',
             letterSpacing: 0.8
@@ -228,9 +231,9 @@ const PaymentProgressHeader: React.FC = () => {
         <Text
           style={{
             color: colors.teal,
-            fontSize: 11,
+            fontSize: s(11),
             fontWeight: 'bold',
-            marginLeft: 8
+            marginLeft: s(8)
           }}
         >
           {Math.round(targetProgress)}%
@@ -242,14 +245,14 @@ const PaymentProgressHeader: React.FC = () => {
           height: 6,
           width: '100%',
           backgroundColor: colors.muted + '15',
-          borderRadius: 3,
+          borderRadius: s(3),
           overflow: 'hidden'
         }}
       >
         <Animated.View
           style={[
             animatedStyle,
-            { height: '100%', backgroundColor: colors.teal, borderRadius: 3 }
+            { height: '100%', backgroundColor: colors.teal, borderRadius: s(3) }
           ]}
         />
       </View>

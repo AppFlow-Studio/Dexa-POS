@@ -21,6 +21,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useShallow } from "zustand/react/shallow";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
+import { useUiScale } from "@/lib/uiScale";
 import {
     BrushCleaning,
     CheckCircle,
@@ -85,6 +86,12 @@ const getStatusAccentColor = (status: string, isOvertime: boolean): string => {
   }
 };
 
+const useScale = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return { uiScale, s }
+}
+
 const StatusIndicator = ({
   status,
   tableId,
@@ -94,6 +101,7 @@ const StatusIndicator = ({
   tableId?: string;
   isOvertime: boolean;
 }) => {
+  const { s } = useScale()
   // Get the session directly from the store to ensure we have the latest status
   const sessionStatus = tableId
     ? useTableSessionStore((s) => s.sessions[tableId])?.status
@@ -140,9 +148,9 @@ const StatusIndicator = ({
   return (
     <View
       style={{
-        width: 6,
-        height: 6,
-        borderRadius: 3,
+        width: s(6),
+        height: s(6),
+        borderRadius: s(3),
         backgroundColor: color,
       }}
     />
@@ -155,6 +163,7 @@ const QuickActionButton: React.FC<{
   variant?: "primary" | "secondary" | "destructive";
   disabled?: boolean;
 }> = ({ onPress, label, variant = "secondary", disabled = false }) => {
+  const { s } = useScale()
   const bg =
     variant === "primary"
       ? colors.teal + "20"
@@ -179,21 +188,21 @@ const QuickActionButton: React.FC<{
       onPress={onPress}
       disabled={disabled}
       style={{
-        paddingHorizontal: 8,
-        paddingVertical: 5,
-        borderRadius: 7,
+        paddingHorizontal: s(8),
+        paddingVertical: s(5),
+        borderRadius: s(7),
         flexDirection: "row",
         alignItems: "center",
-        gap: 4,
+        gap: s(4),
         backgroundColor: bg,
         borderWidth: 1,
         borderColor: border,
         opacity: disabled ? 0.5 : 1,
       }}
     >
-      {label.startsWith("Send") && <Send size={11} color={textColor} />}
-      {label === "Open Order" && <Pencil size={11} color={textColor} />}
-      <Text style={{ fontSize: 11, fontWeight: "600", color: textColor }}>
+      {label.startsWith("Send") && <Send size={s(11)} color={textColor} />}
+      {label === "Open Order" && <Pencil size={s(11)} color={textColor} />}
+      <Text style={{ fontSize: s(11), fontWeight: "600", color: textColor }}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -384,6 +393,7 @@ const ExpandedView: React.FC<{
   onToggleExpand: () => void;
   table: FloorPlanObject;
 }> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
+  const { s } = useScale()
   const updateSessionStatus = useTableSessionStore(
     (s) => s.updateSessionStatus,
   );
@@ -554,13 +564,13 @@ const ExpandedView: React.FC<{
       entering={iosOnly(FadeIn.duration(200))}
       exiting={iosOnly(FadeOut.duration(100))}
       style={{
-        marginTop: 10,
+        marginTop: s(10),
         borderTopWidth: 1,
         borderTopColor: colors.border,
-        paddingTop: 10,
+        paddingTop: s(10),
         backgroundColor: colors.screen,
-        borderRadius: 8,
-        padding: 10,
+        borderRadius: s(8),
+        padding: s(10),
         overflow: "visible",
       }}
     >
@@ -568,9 +578,9 @@ const ExpandedView: React.FC<{
       {tableData.seatedTime && (
         <Text
           style={{
-            fontSize: 10,
+            fontSize: s(10),
             color: colors.muted,
-            marginBottom: 8,
+            marginBottom: s(8),
             letterSpacing: 0.4,
           }}
         >
@@ -584,19 +594,19 @@ const ExpandedView: React.FC<{
 
       {/* Items by course */}
       {hasItems && (
-        <View style={{ marginBottom: 10 }}>
+        <View style={{ marginBottom: s(10) }}>
           {Object.entries(groupedItems)
             .sort(([a], [b]) => Number(a) - Number(b))
             .map(([courseNumber, { items }]) => (
-              <View key={courseNumber} style={{ marginBottom: 8 }}>
+              <View key={courseNumber} style={{ marginBottom: s(8) }}>
                 <Text
                   style={{
-                    fontSize: 10,
+                    fontSize: s(10),
                     fontWeight: "600",
                     color: colors.muted,
                     textTransform: "uppercase",
                     letterSpacing: 0.8,
-                    marginBottom: 5,
+                    marginBottom: s(5),
                   }}
                 >
                   Course {courseNumber}
@@ -608,15 +618,15 @@ const ExpandedView: React.FC<{
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      paddingVertical: 3,
-                      paddingHorizontal: 8,
-                      borderRadius: 5,
+                      paddingVertical: s(3),
+                      paddingHorizontal: s(8),
+                      borderRadius: s(5),
                       backgroundColor: colors.card,
-                      marginBottom: 2,
+                      marginBottom: s(2),
                     }}
                   >
                     <Text
-                      style={{ fontSize: 12, color: colors.label, flex: 1 }}
+                      style={{ fontSize: s(12), color: colors.label, flex: 1 }}
                     >
                       <Text
                         style={{ fontWeight: "600", color: colors.heading }}
@@ -625,14 +635,14 @@ const ExpandedView: React.FC<{
                       </Text>{" "}
                       {item.name}
                     </Text>
-                    <View style={{ marginLeft: 8 }}>
+                    <View style={{ marginLeft: s(8) }}>
                       {(item.item_status === "Ready" ||
                         item.item_status === "Served") && (
-                        <CheckCircle size={13} color={colors.success} />
+                        <CheckCircle size={s(13)} color={colors.success} />
                       )}
                       {(item.kitchen_status === "sent" ||
                         item.item_status === "Preparing") && (
-                        <Clock size={13} color={colors.warning} />
+                        <Clock size={s(13)} color={colors.warning} />
                       )}
                     </View>
                   </View>
@@ -647,14 +657,14 @@ const ExpandedView: React.FC<{
         style={{
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          paddingTop: 8,
-          marginBottom: 10,
-          gap: 4,
+          paddingTop: s(8),
+          marginBottom: s(10),
+          gap: s(4),
         }}
       >
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Subtotal</Text>
-          <Text style={{ fontSize: 11, color: colors.label }}>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>Subtotal</Text>
+          <Text style={{ fontSize: s(11), color: colors.label }}>
             ${tableData.subtotal?.toFixed(2)}
           </Text>
         </View>
@@ -663,8 +673,8 @@ const ExpandedView: React.FC<{
           <View
             style={{ flexDirection: "row", justifyContent: "space-between" }}
           >
-            <Text style={{ fontSize: 11, color: colors.teal }}>Paid</Text>
-            <Text style={{ fontSize: 11, color: colors.teal }}>
+            <Text style={{ fontSize: s(11), color: colors.teal }}>Paid</Text>
+            <Text style={{ fontSize: s(11), color: colors.teal }}>
               ${tableData.amountPaid.toFixed(2)}
               {(() => {
                 const payments = tableData.orders[0]?.payments;
@@ -678,10 +688,10 @@ const ExpandedView: React.FC<{
         )}
 
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Remaining</Text>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>Remaining</Text>
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               fontWeight: "600",
               color: tableData.amountDue <= 0 ? colors.success : colors.label,
             }}
@@ -694,19 +704,19 @@ const ExpandedView: React.FC<{
           style={{
             flexDirection: "row",
             justifyContent: "space-between",
-            marginTop: 2,
-            paddingTop: 6,
+            marginTop: s(2),
+            paddingTop: s(6),
             borderTopWidth: 1,
             borderTopColor: colors.border,
           }}
         >
           <Text
-            style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}
+            style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
           >
             Total
           </Text>
           <Text
-            style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}
+            style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
           >
             ${tableData.total?.toFixed(2)}
           </Text>
@@ -719,7 +729,7 @@ const ExpandedView: React.FC<{
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",
-          gap: 6,
+          gap: s(6),
           flexWrap: "wrap",
         }}
       >
@@ -780,6 +790,7 @@ const TableListItem: React.FC<{
   onNavigateToOrder,
   handleTablePress,
 }) => {
+  const { s } = useScale()
   const tableData = useTableData(table);
 
   const isActiveStatus = useMemo(() => {
@@ -849,17 +860,17 @@ const TableListItem: React.FC<{
 
   return (
     <Animated.View
-      style={{ marginBottom: 4, overflow: isExpanded ? "visible" : "hidden" }}
+      style={{ marginBottom: s(4), overflow: isExpanded ? "visible" : "hidden" }}
     >
       <TouchableOpacity
         onPress={handlePress}
         activeOpacity={0.8}
         style={{
-          borderRadius: 8,
+          borderRadius: s(8),
           backgroundColor: isExpanded ? colors.teal + "08" : colors.panel,
           borderWidth: 1,
           borderColor: isExpanded ? colors.teal + "40" : colors.border,
-          borderLeftWidth: 3,
+          borderLeftWidth: s(3),
           borderLeftColor: accentColor,
           overflow: isExpanded ? "visible" : "hidden",
         }}
@@ -869,9 +880,9 @@ const TableListItem: React.FC<{
           style={{
             flexDirection: "row",
             alignItems: "center",
-            paddingVertical: 5,
-            paddingHorizontal: 8,
-            gap: 6,
+            paddingVertical: s(5),
+            paddingHorizontal: s(8),
+            gap: s(6),
           }}
         >
           {/* Status dot */}
@@ -884,14 +895,14 @@ const TableListItem: React.FC<{
           {/* Name + meta */}
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text
-              style={{ fontSize: 12, fontWeight: "700", color: colors.heading }}
+              style={{ fontSize: s(12), fontWeight: "700", color: colors.heading }}
               numberOfLines={1}
             >
               {tableData.displayName}
             </Text>
             {metaLine ? (
               <Text
-                style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
                 numberOfLines={1}
               >
                 {metaLine}
@@ -900,12 +911,12 @@ const TableListItem: React.FC<{
           </View>
 
           {/* Right side */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
             {/* Available label */}
             {normalizedStatus === "available" && (
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   color: colors.success,
                   fontWeight: "600",
                 }}
@@ -918,10 +929,10 @@ const TableListItem: React.FC<{
             {(normalizedStatus === "cleaning" ||
               normalizedStatus === "closing") && (
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+                style={{ flexDirection: "row", alignItems: "center", gap: s(3) }}
               >
-                <BrushCleaning size={11} color={colors.muted} />
-                <Text style={{ fontSize: 10, color: colors.muted }}>
+                <BrushCleaning size={s(11)} color={colors.muted} />
+                <Text style={{ fontSize: s(10), color: colors.muted }}>
                   Cleaning
                 </Text>
               </View>
@@ -933,14 +944,14 @@ const TableListItem: React.FC<{
                 style={{
                   alignItems: "center",
                   justifyContent: "center",
-                  minWidth: 48,
-                  gap: 2,
+                  minWidth: s(48),
+                  gap: s(2),
                 }}
               >
                 {tableData.total > 0 && (
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       fontWeight: "700",
                       color: colors.heading,
                       textAlign: "center",
@@ -953,9 +964,9 @@ const TableListItem: React.FC<{
                 {duration ? (
                   <View
                     style={{
-                      paddingHorizontal: 5,
-                      paddingVertical: 1,
-                      borderRadius: 20,
+                      paddingHorizontal: s(5),
+                      paddingVertical: s(1),
+                      borderRadius: s(20),
                       backgroundColor: isOvertime
                         ? colors.warning + "15"
                         : colors.teal + "15",
@@ -967,7 +978,7 @@ const TableListItem: React.FC<{
                   >
                     <Text
                       style={{
-                        fontSize: 9,
+                        fontSize: s(9),
                         fontWeight: "600",
                         color: isOvertime ? colors.warning : colors.teal,
                         textAlign: "center",
@@ -982,14 +993,14 @@ const TableListItem: React.FC<{
 
             {/* Chevron */}
             {showActiveDetails && (
-              <ChevronIcon size={12} color={colors.muted} />
+              <ChevronIcon size={s(12)} color={colors.muted} />
             )}
           </View>
         </View>
       </TouchableOpacity>
 
       {isExpanded && showActiveDetails && (
-        <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
+        <View style={{ paddingHorizontal: s(12), paddingBottom: s(12) }}>
           <ExpandedView
             tableData={tableData}
             table={table}

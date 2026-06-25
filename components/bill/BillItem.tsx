@@ -1,6 +1,7 @@
 import { useIsNetworkDegraded } from "@/hooks/useNetworkStatus";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { CartItem } from "@/lib/types";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
@@ -68,53 +69,57 @@ const ModifiersList = React.memo<{
   isVoided?: boolean;
   discountFactor?: number;
 }>(
-  ({ modifiers, isVoided = false, discountFactor = 1 }) => (
-    <View>
-      {modifiers.map(
-        (modifier, index) =>
-          modifier.options.length > 0 &&
-          modifier.options.map((option, optionIndex) => {
-            const displayPrice = option.price * discountFactor;
-            return (
-              <View
-                key={`mod-${index}-opt-${optionIndex}`}
-                className="flex-row items-center my-0.5"
-                style={{
-                  paddingLeft: 4,
-                  paddingRight: 12,
-                  borderLeftColor: colors.border,
-                  borderLeftWidth: 2,
-                  paddingVertical: 1,
-                }}
-              >
-                <Text
+  ({ modifiers, isVoided = false, discountFactor = 1 }) => {
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
+    return (
+      <View>
+        {modifiers.map(
+          (modifier, index) =>
+            modifier.options.length > 0 &&
+            modifier.options.map((option, optionIndex) => {
+              const displayPrice = option.price * discountFactor;
+              return (
+                <View
+                  key={`mod-${index}-opt-${optionIndex}`}
+                  className="flex-row items-center my-0.5"
                   style={{
-                    fontSize: 10,
-                    color: option.isNo ? colors.danger : colors.heading,
-                    flex: 1,
+                    paddingLeft: s(4),
+                    paddingRight: s(12),
+                    borderLeftColor: colors.border,
+                    borderLeftWidth: 2,
+                    paddingVertical: s(1),
                   }}
                 >
-                  {option.isNo ? `NO ${option.name}` : option.name}
-                </Text>
-                <Text
-                  style={{
-                    width: PRICE_COLUMN_WIDTH,
-                    fontSize: 10,
-                    textAlign: "right",
-                    color: isVoided ? colors.muted : colors.teal,
-                    textDecorationLine: isVoided ? "line-through" : "none",
-                  }}
-                >
-                  {!option.isNo && option.price > 0
-                    ? `+$${displayPrice.toFixed(2)}`
-                    : ""}
-                </Text>
-              </View>
-            );
-          }),
-      )}
-    </View>
-  ),
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      color: option.isNo ? colors.danger : colors.heading,
+                      flex: 1,
+                    }}
+                  >
+                    {option.isNo ? `NO ${option.name}` : option.name}
+                  </Text>
+                  <Text
+                    style={{
+                      width: s(PRICE_COLUMN_WIDTH),
+                      fontSize: s(10),
+                      textAlign: "right",
+                      color: isVoided ? colors.muted : colors.teal,
+                      textDecorationLine: isVoided ? "line-through" : "none",
+                    }}
+                  >
+                    {!option.isNo && option.price > 0
+                      ? `+$${displayPrice.toFixed(2)}`
+                      : ""}
+                  </Text>
+                </View>
+              );
+            }),
+        )}
+      </View>
+    );
+  },
   (prev, next) => {
     // Deep comparison for modifiers array - compare actual option content
     if (prev.modifiers.length !== next.modifiers.length) return false;
@@ -150,16 +155,18 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   payments: paymentsProp,
   isNetworkDegraded: isNetworkDegradedProp,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   // FIXED: Use selectors instead of destructuring to avoid subscribing to entire store
-  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const activeOrderId = useOrderStore((st) => st.activeOrderId);
   const removeItemFromActiveOrder = useOrderStore(
-    (s) => s.removeItemFromActiveOrder,
+    (st) => st.removeItemFromActiveOrder,
   );
-  const setItemQuantity = useOrderStore((s) => s.setItemQuantity);
-  const openToView = useModifierSidebarStore((s) => s.openToView);
-  const openToEdit = useModifierSidebarStore((s) => s.openToEdit);
+  const setItemQuantity = useOrderStore((st) => st.setItemQuantity);
+  const openToView = useModifierSidebarStore((st) => st.openToView);
+  const openToEdit = useModifierSidebarStore((st) => st.openToEdit);
   const isModifierActive = useModifierSidebarStore(
-    (s) => s.activeEditingItemId === item.id,
+    (st) => st.activeEditingItemId === item.id,
   );
   // Wave 2.2: when the active order is owned by another station, show this
   // line as visually muted and force the modifier sheet into read-only mode
@@ -173,22 +180,22 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   // we only want it when the merchant should know syncing isn't immediate.
   const networkIsDegraded = useIsNetworkDegraded();
   const isNetworkDegraded = isNetworkDegradedProp ?? networkIsDegraded;
-  const retrySingleItemSync = useOrderStore((s) => s.retrySingleItemSync);
-  const showToast = useToastStore((s) => s.show);
+  const retrySingleItemSync = useOrderStore((st) => st.retrySingleItemSync);
+  const showToast = useToastStore((st) => st.show);
 
   // If caller passes payment info, skip the per-item store subscriptions entirely.
   // Fall back to store subscriptions only when props are not provided (legacy call sites).
-  const orderHasPaymentsFromStore = useOrderStore((s) => {
+  const orderHasPaymentsFromStore = useOrderStore((st) => {
     if (orderHasPaymentsProp !== undefined) return false; // skip — prop wins
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    const order = st.activeOrderId ? st.ordersById[st.activeOrderId] : null;
     return !!order?.payments?.some((p: any) => !p.isVoided);
   });
   const orderHasPayments = orderHasPaymentsProp ?? orderHasPaymentsFromStore;
 
-  const paymentsFromStore = useOrderStore((s) => {
+  const paymentsFromStore = useOrderStore((st) => {
     if (paymentsProp !== undefined) return null; // skip — prop wins
     if (!orderHasPayments) return null;
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    const order = st.activeOrderId ? st.ordersById[st.activeOrderId] : null;
     return order?.payments ?? null;
   });
   const payments =
@@ -645,8 +652,8 @@ const BillItemComponent: React.FC<BillItemProps> = ({
           style={{
             position: "absolute",
             left: 0,
-            top: 7,
-            bottom: 7,
+            top: s(7),
+            bottom: s(7),
             width: 3,
             borderRadius: 999,
             backgroundColor: leftStatusColor,
@@ -708,8 +715,8 @@ const BillItemComponent: React.FC<BillItemProps> = ({
               <View className="flex-row items-center py-0 pl-3 pr-3 gap-2">
                 <Text
                   style={{
-                    minWidth: 18,
-                    fontSize: 13,
+                    minWidth: s(18),
+                    fontSize: s(13),
                     fontWeight: "700",
                     color: isVoided ? colors.muted : colors.heading,
                     textAlign: "left",
@@ -723,7 +730,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                   <View className="flex-row items-center gap-1.5">
                     <Text
                       style={{
-                        fontSize: 14,
+                        fontSize: s(14),
                         fontWeight: "600",
                         flexShrink: 1,
                         color: isVoided ? colors.muted : colors.heading,
@@ -792,10 +799,10 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                           accessibilityLabel="Retry sync for this item"
                         >
                           <View className="flex-row items-center gap-1">
-                            <AlertCircle size={13} color={colors.danger} />
+                            <AlertCircle size={s(13)} color={colors.danger} />
                             <Text
                               style={{
-                                fontSize: 10,
+                                fontSize: s(10),
                                 fontWeight: "700",
                                 color: colors.danger,
                               }}
@@ -811,7 +818,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                         >
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               fontWeight: "700",
                               color: colors.muted,
                               textDecorationLine: "underline",
@@ -826,7 +833,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       isNetworkDegraded ? (
                       // Pending dot only when the network is actually struggling.
                       // Hidden during normal optimistic flow to avoid flicker.
-                      <ActivityIndicator size={10} color={colors.info} />
+                      <ActivityIndicator size={s(10)} color={colors.info} />
                     ) : null}
                   </View>
 
@@ -839,10 +846,10 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     syncError && (
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: s(10),
                           fontWeight: "500",
                           color: colors.muted,
-                          marginTop: 1,
+                          marginTop: s(1),
                         }}
                         numberOfLines={2}
                       >
@@ -864,7 +871,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                         >
                           <Text
                             style={{
-                              fontSize: 9,
+                              fontSize: s(9),
                               fontWeight: "700",
                               color: colors.danger,
                             }}
@@ -880,7 +887,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                         >
                           <Text
                             style={{
-                              fontSize: 9,
+                              fontSize: s(9),
                               fontWeight: "700",
                               color: colors.danger,
                             }}
@@ -900,7 +907,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                           >
                             <Text
                               style={{
-                                fontSize: 9,
+                                fontSize: s(9),
                                 fontWeight: "700",
                                 color: colors.warning,
                               }}
@@ -923,11 +930,11 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                           >
                             {paymentCoverage.primaryMethod === "Cash" &&
                               !paymentCoverage.isSplitMethod && (
-                                <Banknote size={9} color={colors.success} />
+                                <Banknote size={s(9)} color={colors.success} />
                               )}
                             <Text
                               style={{
-                                fontSize: 9,
+                                fontSize: s(9),
                                 fontWeight: "700",
                                 color: colors.success,
                               }}
@@ -945,7 +952,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                         >
                           <Text
                             style={{
-                              fontSize: 9,
+                              fontSize: s(9),
                               fontWeight: "700",
                               color: colors.warning,
                             }}
@@ -959,7 +966,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
                   {isVoided && item.void_reason && (
                     <Text
-                      style={{ fontSize: 10, color: colors.danger + "AA" }}
+                      style={{ fontSize: s(10), color: colors.danger + "AA" }}
                       className="mt-0.5 italic"
                     >
                       {item.void_reason}
@@ -967,7 +974,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                   )}
                   {paymentCoverage.hasRepaid && (
                     <Text
-                      style={{ fontSize: 9, color: colors.muted }}
+                      style={{ fontSize: s(9), color: colors.muted }}
                       className="italic mt-0.5"
                     >
                       Refunded → Re-paid {paymentCoverage.repaidMethodLabel}
@@ -981,9 +988,9 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                   !isVoided && (
                     <View
                       style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: 10,
+                        width: s(20),
+                        height: s(20),
+                        borderRadius: s(10),
                         backgroundColor: colors.border,
                         alignItems: "center",
                         justifyContent: "center",
@@ -991,7 +998,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     >
                       <Text
                         style={{
-                          fontSize: 9,
+                          fontSize: s(9),
                           fontWeight: "700",
                           color: colors.label,
                         }}
@@ -1004,16 +1011,16 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                 {/* Price + modifier upcharge */}
                 <View
                   style={{
-                    width: PRICE_COLUMN_WIDTH,
+                    width: s(PRICE_COLUMN_WIDTH),
                     alignItems: "flex-end",
                     justifyContent: "flex-end",
-                    marginLeft: 6,
+                    marginLeft: s(6),
                   }}
                 >
                   {hasVisibleDiscount && (
                     <Text
                       style={{
-                        fontSize: 9,
+                        fontSize: s(9),
                         fontWeight: "600",
                         color: colors.muted,
                         textDecorationLine: "line-through",
@@ -1024,7 +1031,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                   )}
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: "600",
                       color: isVoided ? colors.muted : colors.teal,
                       textDecorationLine: isVoided ? "line-through" : "none",
@@ -1035,7 +1042,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                   {hasVisibleDiscount && itemDiscountAmount > 0.005 && (
                     <Text
                       style={{
-                        fontSize: 8,
+                        fontSize: s(8),
                         fontWeight: "700",
                         color: colors.success,
                       }}
@@ -1050,7 +1057,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
               {hasModifiers && (
                 <View
                   style={{
-                    marginLeft: 36,
+                    marginLeft: s(36),
                   }}
                 >
                   {item.customizations.modifiers &&
@@ -1063,11 +1070,11 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     )}
                   {item.customizations.notes && (
                     <View className="flex-row items-start gap-1 mt-0.5">
-                      <Text style={{ fontSize: 10, color: colors.muted }}>
+                      <Text style={{ fontSize: s(10), color: colors.muted }}>
                         Note:
                       </Text>
                       <Text
-                        style={{ fontSize: 10, color: colors.label }}
+                        style={{ fontSize: s(10), color: colors.label }}
                         className="italic flex-1"
                       >
                         {item.customizations.notes}

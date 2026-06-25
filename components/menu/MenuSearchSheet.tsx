@@ -8,7 +8,14 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet'
 import { router } from 'expo-router'
 import { Search, Settings, X } from 'lucide-react-native'
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import { ScheduleCard } from './ScheduleCard'
 
@@ -29,12 +36,22 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
   const modifierGroups = useMenuStore(s => s.modifierGroups)
   const isMenuAvailableNow = useMenuStore(s => s.isMenuAvailableNow)
   const [searchQuery, setSearchQuery] = useState('')
+  // Only compute/render results while the sheet is open. This sheet lives in the
+  // always-mounted (main) layout at index={-1}; without this gate it rebuilt the
+  // full menu/category/modifier result set (and the grouped sections) on every
+  // menu-store change for the whole app lifetime — wasted work + retained arrays.
+  const [isOpen, setIsOpen] = useState(false)
+
+  const handleChange = useCallback((index: number) => {
+    setIsOpen(index >= 0)
+  }, [])
 
   useEffect(() => {
     setSearchQuery('')
   }, [activeTab])
 
   const searchResults = useMemo(() => {
+    if (!isOpen) return []
     const query = searchQuery.toLowerCase().trim()
 
     switch (activeTab) {
@@ -83,6 +100,7 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
         return []
     }
   }, [
+    isOpen,
     searchQuery,
     activeTab,
     menuItems,
@@ -243,6 +261,7 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
       index={-1}
       snapPoints={['90%']}
       enablePanDownToClose={true}
+      onChange={handleChange}
       onClose={closeSearch}
       backdropComponent={({ style, animatedIndex, animatedPosition }) => (
         <BottomSheetBackdrop

@@ -32,6 +32,12 @@ BEGIN
      AND cash_price = 7.99;
 
   IF v_target_count <> 4 THEN
+    IF v_target_count = 0 THEN
+      RAISE NOTICE
+        'No matching Charcoal Gardenia stale Milk Shakes rows found. Skipping data correction in this environment.';
+      RETURN;
+    END IF;
+
     RAISE EXCEPTION
       'Expected 4 stale Charcoal Gardenia Milk Shakes rows, found %. Aborting.',
       v_target_count;

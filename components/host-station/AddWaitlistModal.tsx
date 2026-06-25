@@ -1,5 +1,6 @@
 import DiscardChangesModal from '@/components/ui/DiscardChangesModal'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { X } from 'lucide-react-native'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
@@ -36,6 +37,9 @@ interface AddWaitlistModalProps {
 
 export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(
   ({ visible, onClose, onSubmit, isLoading, mode = 'add', initialValues }) => {
+    const uiScale = useUiScale()
+    const s = (n: number) => Math.round(n * uiScale)
+
     const [isDirty, setIsDirty] = useState(false)
     const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
 
@@ -87,18 +91,18 @@ export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(
         >
           <View
             style={{
-              width: 480,
+              width: s(480),
               maxHeight: '88%',
               backgroundColor: colors.panel,
-              borderRadius: 16,
+              borderRadius: s(16),
               borderWidth: 1,
               borderColor: colors.border,
               overflow: 'hidden',
               // Shadow for depth
               shadowColor: '#000',
-              shadowOffset: { width: 0, height: 8 },
+              shadowOffset: { width: 0, height: s(8) },
               shadowOpacity: 0.4,
-              shadowRadius: 24,
+              shadowRadius: s(24),
               elevation: 20
             }}
           >
@@ -108,8 +112,8 @@ export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                paddingHorizontal: 16,
-                paddingVertical: 13,
+                paddingHorizontal: s(16),
+                paddingVertical: s(13),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
                 backgroundColor: colors.card
@@ -119,14 +123,14 @@ export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(
                 <Text
                   style={{
                     color: colors.heading,
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: '700'
                   }}
                 >
                   {mode === 'edit' ? 'Edit Waitlist Entry' : 'Add to Waitlist'}
                 </Text>
                 <Text
-                  style={{ color: colors.muted, fontSize: 11, marginTop: 1 }}
+                  style={{ color: colors.muted, fontSize: s(11), marginTop: s(1) }}
                 >
                   {mode === 'edit'
                     ? 'Update the party details below'
@@ -136,14 +140,14 @@ export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(
               <TouchableOpacity
                 onPress={requestClose}
                 style={{
-                  padding: 6,
-                  borderRadius: 8,
+                  padding: s(6),
+                  borderRadius: s(8),
                   backgroundColor: colors.screen,
                   borderWidth: 1,
                   borderColor: colors.border
                 }}
               >
-                <X size={14} color={colors.label} />
+                <X size={s(14)} color={colors.label} />
               </TouchableOpacity>
             </View>
 

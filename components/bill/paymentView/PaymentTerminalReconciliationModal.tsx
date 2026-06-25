@@ -1,3 +1,4 @@
+import { useUiScale } from "@/lib/uiScale";
 import { colors } from "@/lib/theme";
 import type { PaymentVerificationState } from "@/stores/usePaymentStore";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react-native";
@@ -36,6 +37,8 @@ export function PaymentTerminalReconciliationModal({
   onConfirmCharged,
   onConfirmNotCharged,
 }: PaymentTerminalReconciliationModalProps) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
 
   if (!verification || !visible) return null;
@@ -61,7 +64,7 @@ export function PaymentTerminalReconciliationModal({
       <View
         style={{
           backgroundColor: colors.panel,
-          borderRadius: 16,
+          borderRadius: s(16),
           width: "100%",
           maxWidth: 480,
           borderWidth: 1,
@@ -69,30 +72,30 @@ export function PaymentTerminalReconciliationModal({
           overflow: "hidden",
         }}
       >
-        <View style={{ padding: 22 }}>
+        <View style={{ padding: s(22) }}>
             {/* Icon + title */}
-            <View style={{ alignItems: "center", marginBottom: 14 }}>
+            <View style={{ alignItems: "center", marginBottom: s(14) }}>
               <View
                 style={{
-                  width: 60,
-                  height: 60,
-                  borderRadius: 30,
+                  width: s(60),
+                  height: s(60),
+                  borderRadius: s(30),
                   backgroundColor: colors.warning + "20",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <AlertTriangle size={30} color={colors.warning} />
+                <AlertTriangle size={s(30)} color={colors.warning} />
               </View>
             </View>
 
             <Text
               style={{
-                fontSize: 18,
+                fontSize: s(18),
                 fontWeight: "700",
                 color: colors.heading,
                 textAlign: "center",
-                marginBottom: 8,
+                marginBottom: s(8),
               }}
             >
               Incomplete Payment Detected
@@ -100,11 +103,11 @@ export function PaymentTerminalReconciliationModal({
 
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 color: colors.label,
                 textAlign: "center",
-                marginBottom: 16,
-                lineHeight: 19,
+                marginBottom: s(16),
+                lineHeight: s(19),
               }}
             >
               The app closed before we received the response from the
@@ -118,11 +121,11 @@ export function PaymentTerminalReconciliationModal({
             {/* Details panel */}
             <View
               style={{
-                padding: 14,
-                borderRadius: 10,
+                padding: s(14),
+                borderRadius: s(10),
                 backgroundColor: colors.screen,
-                marginBottom: 12,
-                gap: 8,
+                marginBottom: s(12),
+                gap: s(8),
               }}
             >
               <DetailRow label="Amount" value={`$${amountDollars}`} highlight />
@@ -143,22 +146,22 @@ export function PaymentTerminalReconciliationModal({
             {adoptionError && (
               <View
                 style={{
-                  padding: 10,
-                  borderRadius: 8,
+                  padding: s(10),
+                  borderRadius: s(8),
                   backgroundColor: colors.danger + "15",
                   borderWidth: 1,
                   borderColor: colors.danger + "40",
-                  marginBottom: 12,
+                  marginBottom: s(12),
                 }}
               >
-                <Text style={{ color: colors.danger, fontSize: 12 }}>
+                <Text style={{ color: colors.danger, fontSize: s(12) }}>
                   {adoptionError}
                 </Text>
               </View>
             )}
 
             {/* CTAs */}
-            <View style={{ gap: 10 }}>
+            <View style={{ gap: s(10) }}>
               <TouchableOpacity
                 onPress={onConfirmCharged}
                 disabled={isAdopting}
@@ -166,9 +169,9 @@ export function PaymentTerminalReconciliationModal({
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 8,
-                  paddingVertical: 14,
-                  borderRadius: 10,
+                  gap: s(8),
+                  paddingVertical: s(14),
+                  borderRadius: s(10),
                   backgroundColor: colors.success,
                   opacity: isAdopting ? 0.6 : 1,
                 }}
@@ -176,10 +179,10 @@ export function PaymentTerminalReconciliationModal({
                 {isAdopting ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <CheckCircle2 size={18} color="#fff" />
+                  <CheckCircle2 size={s(18)} color="#fff" />
                 )}
                 <Text
-                  style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}
+                  style={{ color: "#fff", fontWeight: "700", fontSize: s(14) }}
                 >
                   {isAdopting
                     ? "Recording…"
@@ -193,20 +196,20 @@ export function PaymentTerminalReconciliationModal({
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 8,
-                  paddingVertical: 12,
-                  borderRadius: 10,
+                  gap: s(8),
+                  paddingVertical: s(12),
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.danger + "60",
                   opacity: isAdopting ? 0.4 : 1,
                 }}
               >
-                <XCircle size={16} color={colors.danger} />
+                <XCircle size={s(16)} color={colors.danger} />
                 <Text
                   style={{
                     color: colors.danger,
                     fontWeight: "600",
-                    fontSize: 14,
+                    fontSize: s(14),
                   }}
                 >
                   No — discard
@@ -216,11 +219,11 @@ export function PaymentTerminalReconciliationModal({
 
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               color: colors.muted,
               textAlign: "center",
-              marginTop: 12,
-              lineHeight: 16,
+              marginTop: s(12),
+              lineHeight: s(16),
             }}
           >
             The same payment is safe to record twice — the server
@@ -235,6 +238,7 @@ export function PaymentTerminalReconciliationModal({
           second nested <Modal> renders behind the parent on Android. */}
       {discardConfirmOpen && (
         <DiscardConfirmOverlay
+          scale={uiScale}
           onConfirm={() => {
             setDiscardConfirmOpen(false);
             onConfirmNotCharged();
@@ -277,14 +281,17 @@ function DetailRow({
 }
 
 interface DiscardConfirmOverlayProps {
+  scale: number;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 function DiscardConfirmOverlay({
+  scale,
   onConfirm,
   onCancel,
 }: DiscardConfirmOverlayProps) {
+  const s = (n: number) => Math.round(n * scale)
   return (
     <View
       style={[
@@ -293,71 +300,71 @@ function DiscardConfirmOverlay({
           backgroundColor: "rgba(0,0,0,0.85)",
           alignItems: "center",
           justifyContent: "center",
-          padding: 24,
+          padding: s(24),
         },
       ]}
     >
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 16,
-            padding: 22,
+            borderRadius: s(16),
+            padding: s(22),
             width: "100%",
             maxWidth: 360,
             borderWidth: 1,
             borderColor: colors.danger + "60",
           }}
         >
-          <View style={{ alignItems: "center", marginBottom: 12 }}>
+          <View style={{ alignItems: "center", marginBottom: s(12) }}>
             <View
               style={{
-                width: 52,
-                height: 52,
-                borderRadius: 26,
+                width: s(52),
+                height: s(52),
+                borderRadius: s(26),
                 backgroundColor: colors.danger + "20",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <AlertTriangle size={26} color={colors.danger} />
+              <AlertTriangle size={s(26)} color={colors.danger} />
             </View>
           </View>
           <Text
             style={{
-              fontSize: 16,
+              fontSize: s(16),
               fontWeight: "700",
               color: colors.danger,
               textAlign: "center",
-              marginBottom: 8,
+              marginBottom: s(8),
             }}
           >
             Confirm: no charge happened?
           </Text>
           <Text
             style={{
-              fontSize: 13,
+              fontSize: s(13),
               color: colors.label,
               textAlign: "center",
-              marginBottom: 16,
-              lineHeight: 19,
+              marginBottom: s(16),
+              lineHeight: s(19),
             }}
           >
             If the customer WAS charged and you discard this, it will not be
             recorded on the POS — caught only at end-of-day reconciliation.
           </Text>
-          <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flexDirection: "row", gap: s(10) }}>
             <TouchableOpacity
               onPress={onCancel}
               style={{
                 flex: 1,
-                paddingVertical: 12,
-                borderRadius: 10,
+                paddingVertical: s(12),
+                borderRadius: s(10),
                 borderWidth: 1,
                 borderColor: colors.border,
                 alignItems: "center",
               }}
             >
-              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 14 }}>
+              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: s(14) }}>
                 Cancel
               </Text>
             </TouchableOpacity>
@@ -365,13 +372,13 @@ function DiscardConfirmOverlay({
               onPress={onConfirm}
               style={{
                 flex: 1,
-                paddingVertical: 12,
-                borderRadius: 10,
+                paddingVertical: s(12),
+                borderRadius: s(10),
                 backgroundColor: colors.danger,
                 alignItems: "center",
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: s(14) }}>
                 Yes, discard
               </Text>
             </TouchableOpacity>

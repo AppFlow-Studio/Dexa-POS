@@ -11,6 +11,83 @@ const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_KEY!;
 // read this ref, so tokens are always fresh without recreating the client.
 const getTokenRef = { current: null as (() => Promise<string | null>) | null };
 
+// ---------------------------------------------------------------------------
+// JWT cache for the Supabase accessToken() callback.
+//
+// Clerk's getToken() rotates the session JWT (~60s lifetime). Supabase's
+// accessToken option calls our callback on EVERY request, and supabase-js feeds
+// that token to the Realtime socket — when the token STRING changes, Realtime
+// re-authenticates by tearing down and re-subscribing every channel. With one
+// authenticated RPC per item-add, that meant both POS channels dropped on every
+// send (→ reconnect + "pending items block timed out" + a redundant floor
+// refetch, inflating pos.add_to_cart well past budget).
+//
+// Fix: hold the last token and its decoded exp; only call Clerk again when the
+// cached token is missing or within REFRESH_MARGIN_MS of expiry. Back-to-back
+// RPCs then see the SAME token string, so Realtime stops re-authing. A 30s
+// margin means we always hand out a token with >=30s of life left — ample for
+// any in-flight request — while still refreshing before it can actually expire.
+// ---------------------------------------------------------------------------
+const REFRESH_MARGIN_MS = 30_000;
+let cachedToken: string | null = null;
+let cachedTokenExpMs = 0;
+// Coalesce concurrent refreshes so a burst of parallel requests triggers one
+// Clerk call, not N.
+let inFlightTokenFetch: Promise<string | null> | null = null;
+
+function decodeJwtExpMs(token: string): number {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return 0;
+    // base64url → base64
+    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const json = globalThis.atob
+      ? globalThis.atob(b64)
+      : Buffer.from(b64, "base64").toString("binary");
+    const exp = JSON.parse(json)?.exp;
+    return typeof exp === "number" ? exp * 1000 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function getCachedAccessToken(): Promise<string | null> {
+  const now = Date.now();
+  if (cachedToken && now < cachedTokenExpMs - REFRESH_MARGIN_MS) {
+    return cachedToken;
+  }
+  if (inFlightTokenFetch) return inFlightTokenFetch;
+
+  inFlightTokenFetch = (async () => {
+    try {
+      const fresh = (await getTokenRef.current?.()) ?? null;
+      if (fresh) {
+        cachedToken = fresh;
+        // If exp can't be decoded, treat as immediately stale (exp=0) so we
+        // never pin a token we can't reason about — falls back to per-call
+        // fetch, i.e. the old behavior, only for undecodable tokens.
+        cachedTokenExpMs = decodeJwtExpMs(fresh);
+      } else {
+        // getToken returned null (signed out / no session) — drop any stale
+        // cached token so we don't keep handing out a dead JWT post-sign-out.
+        cachedToken = null;
+        cachedTokenExpMs = 0;
+      }
+      return fresh;
+    } finally {
+      inFlightTokenFetch = null;
+    }
+  })();
+  return inFlightTokenFetch;
+}
+
+/** Clear the cached JWT (e.g. on sign-out) so the next call fetches fresh. */
+export function clearSupabaseTokenCache(): void {
+  cachedToken = null;
+  cachedTokenExpMs = 0;
+  inFlightTokenFetch = null;
+}
+
 // Single shared client for the entire app lifetime. One WebSocket connection
 // to Supabase Realtime, shared across all 66+ call sites.
 let sharedClient: SupabaseClient | null = null;
@@ -53,7 +130,9 @@ function getSharedClient(): SupabaseClient {
   if (!sharedClient) {
     sharedClient = createClient(supabaseUrl, supabaseKey, {
       async accessToken() {
-        return (await getTokenRef.current?.()) ?? null;
+        // Return a STABLE cached token (refreshed only near expiry) so per-RPC
+        // calls don't surface a rotated JWT that makes Realtime drop channels.
+        return getCachedAccessToken();
       },
       realtime: realtimeConfig,
       ...(instrumentedFetch

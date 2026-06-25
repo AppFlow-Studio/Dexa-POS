@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { ToastRenderer, useToast } from '@/contexts/ToastContext'
 import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
 import { isOrderReadOnly } from '@/lib/orderAccessControl'
@@ -25,6 +26,7 @@ import type {
 import { OrderService } from '@/services/orderService'
 import { PrinterService } from '@/services/printing/PrinterService'
 import SendReceiptSheet from '@/components/receipts/SendReceiptSheet'
+import SplitReceiptSelectorModal from '@/components/bill/SplitReceiptSelectorModal'
 import type { SendReceiptDeliveryMethod } from '@/services/messaging/sendReceiptService'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useNoPrinterModalStore } from '@/stores/useNoPrinterModalStore'
@@ -170,6 +172,8 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   disabled = false,
   flex = true
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const getColors = () => {
     if (disabled) {
       return { bg: 'transparent', border: colors.border, text: colors.muted, icon: colors.muted }
@@ -192,21 +196,21 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       disabled={disabled}
       style={{
         flex: flex ? 1 : undefined,
-        minWidth: 80,
-        paddingVertical: 8,
-        paddingHorizontal: 10,
-        borderRadius: 8,
+        minWidth: s(80),
+        paddingVertical: s(8),
+        paddingHorizontal: s(10),
+        borderRadius: s(8),
         borderWidth: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 5,
+        gap: s(5),
         backgroundColor: bg,
         borderColor: border,
         opacity: disabled ? 0.6 : 1,
       }}
     >
-      {React.cloneElement(icon as React.ReactElement, { color: iconColor, size: 16 })}
-      <Text style={{ fontSize: 12, fontWeight: '600', color: text, textAlign: 'center' }} numberOfLines={1}>
+      {React.cloneElement(icon as React.ReactElement<any>, { color: iconColor, size: s(16) })}
+      <Text style={{ fontSize: s(12), fontWeight: '600', color: text, textAlign: 'center' }} numberOfLines={1}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -229,32 +233,35 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   label,
   icon,
   isNegative = false,
-}) => (
+}) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <View
     style={{
       flex: 1,
       backgroundColor: colors.teal + '10',
-      borderRadius: 12,
-      padding: 14,
+      borderRadius: s(12),
+      padding: s(14),
       borderWidth: 1,
       borderColor: colors.teal + '30',
     }}
   >
-    <View style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.teal + '15', marginBottom: 10 }}>
-      {React.cloneElement(icon as React.ReactElement, { color: colors.teal, size: 16 })}
+    <View style={{ width: s(32), height: s(32), borderRadius: s(8), alignItems: 'center', justifyContent: 'center', backgroundColor: colors.teal + '15', marginBottom: s(10) }}>
+      {React.cloneElement(icon as React.ReactElement<any>, { color: colors.teal, size: s(16) })}
     </View>
-    <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading, marginBottom: 4 }} numberOfLines={1}>
+    <Text style={{ fontSize: s(18), fontWeight: '700', color: colors.heading, marginBottom: s(4) }} numberOfLines={1}>
       {isNegative && amount > 0 ? '−' : ''}${amount?.toFixed(2)}
     </Text>
     {cashAmount !== undefined && cashAmount > 0 && (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-        <Banknote color={colors.teal} size={14} />
-        <Text style={{ fontSize: 11, color: colors.teal, marginLeft: 4, fontWeight: '600' }}>${cashAmount?.toFixed(2)} cash</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(6) }}>
+        <Banknote color={colors.teal} size={s(14)} />
+        <Text style={{ fontSize: s(11), color: colors.teal, marginLeft: s(4), fontWeight: '600' }}>${cashAmount?.toFixed(2)} cash</Text>
       </View>
     )}
-    <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '500' }}>{label}</Text>
+    <Text style={{ fontSize: s(11), color: colors.muted, fontWeight: '500' }}>{label}</Text>
   </View>
-)
+)}
 
 const normalizeCardBrand = (brand?: string) => brand?.trim().toLowerCase() || ''
 
@@ -340,6 +347,8 @@ const LeftPane: React.FC<LeftPaneProps> = ({
   serviceChargeRate,
   total
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
 
   // Determine if order was cash-paid for price display
@@ -467,9 +476,9 @@ const LeftPane: React.FC<LeftPaneProps> = ({
   return (
     <View style={{ flex: 4, backgroundColor: colors.panel, borderRightWidth: 1, borderRightColor: colors.border }}>
       {/* Header */}
-      <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>Order Receipt</Text>
-        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+      <View style={{ paddingHorizontal: s(14), paddingVertical: s(12), borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <Text style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}>Order Receipt</Text>
+        <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}>
           {order?.items?.length || 0} items
         </Text>
       </View>
@@ -561,33 +570,33 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                     <View style={{ flex: 1, paddingRight: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 2 }}>
                         {isVoided && (
-                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>VOID</Text>
+                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: 20 }}>
+                            <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>VOID</Text>
                           </View>
                         )}
                         {isFullyRefunded && !isVoided && (
-                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>REFUNDED</Text>
+                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: 20 }}>
+                            <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>REFUNDED</Text>
                           </View>
                         )}
                         {isPartiallyRefunded && !isVoided && (
-                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>{item.refundedQuantity} REFUND</Text>
+                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: 20 }}>
+                            <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>{item.refundedQuantity} REFUND</Text>
                           </View>
                         )}
                         {isPaid && !isVoided && (
-                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>PAID</Text>
+                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: 20 }}>
+                            <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>PAID</Text>
                           </View>
                         )}
                         {isPartialPaid && !isVoided && !hasRefundHistory && (
-                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>{netCoveredQty}/{item.quantity}</Text>
+                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: 20 }}>
+                            <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}>{netCoveredQty}/{item.quantity}</Text>
                           </View>
                         )}
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: isUnpaid ? '700' : '500',
                             color: (isVoided || isFullyRefunded) ? colors.muted : colors.heading,
                             textDecorationLine: (isVoided || isFullyRefunded) ? 'line-through' : 'none',
@@ -601,7 +610,7 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                       {getModifiersDisplay(item)}
                       {/* Notes */}
                       {item.customizations.notes && (
-                        <Text style={{ fontSize: 11, color: colors.muted, fontStyle: 'italic', marginTop: 3, marginLeft: 12 }}>
+                        <Text style={{ fontSize: s(11), color: colors.muted, fontStyle: 'italic', marginTop: s(3), marginLeft: s(12) }}>
                           Note: {item.customizations.notes}
                         </Text>
                       )}
@@ -609,11 +618,11 @@ const LeftPane: React.FC<LeftPaneProps> = ({
 
                     {/* Quantity & Price + Status Icon */}
                     <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
-                      <View style={{ alignItems: 'flex-end', marginRight: 4 }}>
-                        <Text style={{ fontSize: 11, color: isVoided ? colors.muted : colors.label }}>{item.quantity}x</Text>
+                      <View style={{ alignItems: 'flex-end', marginRight: s(4) }}>
+                        <Text style={{ fontSize: s(11), color: isVoided ? colors.muted : colors.label }}>{item.quantity}x</Text>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: '600',
                             color: isVoided ? colors.muted : isFullyRefunded ? colors.teal : colors.heading,
                             textDecorationLine: (isVoided || isFullyRefunded) ? 'line-through' : 'none',
@@ -627,35 +636,35 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                       </View>
                       {/* Status icon */}
                       {isPaid && !isVoided && (
-                        <Check size={14} color={colors.teal} />
+                        <Check size={s(14)} color={colors.teal} />
                       )}
                       {isFullyRefunded && !isVoided && (
-                        <RotateCcw size={14} color={colors.teal} />
+                        <RotateCcw size={s(14)} color={colors.teal} />
                       )}
                       {isPartiallyRefunded && !isVoided && (
-                        <RotateCcw size={12} color={colors.teal} />
+                        <RotateCcw size={s(12)} color={colors.teal} />
                       )}
                       {/* Expand/collapse chevron */}
                       {isExpanded ? (
-                        <ChevronUp size={14} color={colors.label} style={{ marginLeft: 2 }} />
+                        <ChevronUp size={s(14)} color={colors.label} style={{ marginLeft: s(2) }} />
                       ) : (
-                        <ChevronDown size={14} color={colors.label} style={{ marginLeft: 2 }} />
+                        <ChevronDown size={s(14)} color={colors.label} style={{ marginLeft: s(2) }} />
                       )}
                     </View>
                   </View>
 
                   {/* Collapsible Timeline */}
                   {isExpanded && timeline.length > 0 && (
-                    <View style={{ marginTop: 8, marginLeft: 8, paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: colors.border }}>
+                    <View style={{ marginTop: s(8), marginLeft: s(8), paddingLeft: s(12), borderLeftWidth: 1, borderLeftColor: colors.border }}>
                       {timeline.map((entry, tIdx) => {
                         const dotColor = colors.teal
                         return (
-                          <View key={tIdx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 }}>
-                            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dotColor, marginTop: 3, marginLeft: -16 }} />
-                            <View style={{ marginLeft: 8, flex: 1 }}>
-                              <Text style={{ fontSize: 12, color: colors.label }}>{entry.label}</Text>
+                          <View key={tIdx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: s(6) }}>
+                            <View style={{ width: s(7), height: s(7), borderRadius: 4, backgroundColor: dotColor, marginTop: s(3), marginLeft: -s(16) }} />
+                            <View style={{ marginLeft: s(8), flex: 1 }}>
+                              <Text style={{ fontSize: s(12), color: colors.label }}>{entry.label}</Text>
                               {entry.timestamp && (
-                                <Text style={{ fontSize: 10, color: colors.muted }}>
+                                <Text style={{ fontSize: s(10), color: colors.muted }}>
                                   {formatDistanceToNow(new Date(entry.timestamp), { addSuffix: true })}
                                 </Text>
                               )}
@@ -666,8 +675,8 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                     </View>
                   )}
                   {isExpanded && timeline.length === 0 && (
-                    <View style={{ marginTop: 6, marginLeft: 8 }}>
-                      <Text style={{ fontSize: 10, color: colors.muted, fontStyle: 'italic' }}>No history available</Text>
+                    <View style={{ marginTop: s(6), marginLeft: s(8) }}>
+                      <Text style={{ fontSize: s(10), color: colors.muted, fontStyle: 'italic' }}>No history available</Text>
                     </View>
                   )}
                 </View>
@@ -677,46 +686,46 @@ const LeftPane: React.FC<LeftPaneProps> = ({
 
           {/* Empty State */}
           {(!order?.items || order.items.length === 0) && (
-            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-              <Package size={28} color={colors.muted} />
-              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 8 }}>No items</Text>
+            <View style={{ paddingVertical: s(40), alignItems: 'center' }}>
+              <Package size={s(28)} color={colors.muted} />
+              <Text style={{ fontSize: s(13), color: colors.muted, marginTop: s(8) }}>No items</Text>
             </View>
           )}
         </View>
       </ScrollView>
 
       {/* Pricing Footer */}
-      <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.screen }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-          <Text style={{ fontSize: 13, color: colors.label }}>Subtotal</Text>
-          <Text style={{ fontSize: 13, color: colors.heading }}>${subtotal?.toFixed(2)}</Text>
+      <View style={{ paddingHorizontal: s(14), paddingVertical: s(12), borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.screen }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: s(4) }}>
+          <Text style={{ fontSize: s(13), color: colors.label }}>Subtotal</Text>
+          <Text style={{ fontSize: s(13), color: colors.heading }}>${subtotal?.toFixed(2)}</Text>
         </View>
         {discount > 0 && (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-            <Text style={{ fontSize: 13, color: colors.success }}>Discount</Text>
-            <Text style={{ fontSize: 13, color: colors.success }}>-${discount?.toFixed(2)}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: s(4) }}>
+            <Text style={{ fontSize: s(13), color: colors.success }}>Discount</Text>
+            <Text style={{ fontSize: s(13), color: colors.success }}>-${discount?.toFixed(2)}</Text>
           </View>
         )}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: serviceCharge > 0.001 ? 4 : 8 }}>
-          <Text style={{ fontSize: 13, color: colors.label }}>Tax</Text>
-          <Text style={{ fontSize: 13, color: colors.heading }}>${tax?.toFixed(2)}</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: serviceCharge > 0.001 ? s(4) : s(8) }}>
+          <Text style={{ fontSize: s(13), color: colors.label }}>Tax</Text>
+          <Text style={{ fontSize: s(13), color: colors.heading }}>${tax?.toFixed(2)}</Text>
         </View>
         {/* Service Charge — snapshotted at billing time; rate shown in label
             so the customer/staff can verify the gratuity policy applied. */}
         {serviceCharge > 0.001 && (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-            <Text style={{ fontSize: 13, color: colors.label }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: s(8) }}>
+            <Text style={{ fontSize: s(13), color: colors.label }}>
               {serviceChargeName}
               {serviceChargeRate != null
                 ? ` (${Number(serviceChargeRate).toFixed(2)}%)`
                 : ''}
             </Text>
-            <Text style={{ fontSize: 13, color: colors.heading }}>${serviceCharge.toFixed(2)}</Text>
+            <Text style={{ fontSize: s(13), color: colors.heading }}>${serviceCharge.toFixed(2)}</Text>
           </View>
         )}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>Total</Text>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>${total?.toFixed(2)}</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: s(8), borderTopWidth: 1, borderTopColor: colors.border }}>
+          <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}>Total</Text>
+          <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}>${total?.toFixed(2)}</Text>
         </View>
       </View>
     </View>
@@ -743,6 +752,7 @@ interface RightPaneSummaryProps {
   onContinueCharging: () => void
   onIssueReceipt: () => void
   onSendReceipt?: () => void
+  onPrintSplitReceipts?: () => void
   onPrintKitchenTicket: () => void
   onTipAdjust: () => void
   onRefund: () => void
@@ -764,6 +774,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   onContinueCharging,
   onIssueReceipt,
   onSendReceipt,
+  onPrintSplitReceipts,
   onPrintKitchenTicket,
   onTipAdjust,
   onRefund,
@@ -775,6 +786,8 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   isClaiming = false,
   ownerLabel
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [expandedPaymentIndex, setExpandedPaymentIndex] = useState<
     number | null
   >(null)
@@ -818,8 +831,8 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
         )}
 
         {/* Summary Cards */}
-        <View style={{ paddingHorizontal: 14, paddingVertical: 14 }}>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ paddingHorizontal: s(14), paddingVertical: s(14) }}>
+          <View style={{ flexDirection: 'row', gap: s(8) }}>
             <SummaryCard
               amount={paymentSummary.orderTotal}
               cashAmount={
@@ -828,7 +841,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                   : paymentSummary.orderCashTotal
               }
               label='Order Total'
-              icon={<DollarSign size={18} color={colors.teal} />}
+              icon={<DollarSign size={s(18)} color={colors.teal} />}
               accentColor={colors.teal}
             />
             <SummaryCard
@@ -844,49 +857,49 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                     })`
                   : 'Refunds'
               }
-              icon={<RefreshCcw size={14} color={colors.danger} />}
+              icon={<RefreshCcw size={s(14)} color={colors.danger} />}
               isNegative
               accentColor={colors.danger}
             />
             <SummaryCard
               amount={paymentSummary.collected - paymentSummary.refunds}
               label='Net Collected'
-              icon={<CircleDollarSign size={18} color={colors.teal} />}
+              icon={<CircleDollarSign size={s(18)} color={colors.teal} />}
               accentColor={colors.teal}
             />
             {(paymentSummary.held ?? 0) > 0 && (
               <SummaryCard
                 amount={paymentSummary.held!}
                 label='Auth Hold'
-                icon={<Lock size={14} />}
+                icon={<Lock size={s(14)} />}
               />
             )}
           </View>
         </View>
 
         {/* Transaction History */}
-        <View style={{ paddingHorizontal: 14 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 }}>
-            <View style={{ width: 3, height: 18, backgroundColor: colors.teal, borderRadius: 1.5 }} />
-            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+        <View style={{ paddingHorizontal: s(14) }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(12), gap: s(8) }}>
+            <View style={{ width: 3, height: s(18), backgroundColor: colors.teal, borderRadius: 1.5 }} />
+            <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.teal, textTransform: 'uppercase', letterSpacing: 0.6 }}>
               Transaction History
             </Text>
           </View>
 
           {/* Payment List */}
           {isPaymentsLoading ? (
-            <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+            <View style={{ paddingVertical: s(32), alignItems: 'center' }}>
               <ActivityIndicator size='small' color={colors.teal} />
-              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 10 }}>
+              <Text style={{ fontSize: s(13), color: colors.muted, marginTop: s(10) }}>
                 Loading payment...
               </Text>
             </View>
           ) : paymentSummary.payments.length === 0 ? (
-            <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
-                <CreditCard size={20} color={colors.muted} />
+            <View style={{ paddingVertical: s(32), alignItems: 'center' }}>
+              <View style={{ width: s(44), height: s(44), borderRadius: s(22), backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', marginBottom: s(10) }}>
+                <CreditCard size={s(20)} color={colors.muted} />
               </View>
-              <Text style={{ fontSize: 13, color: colors.muted }}>No payments recorded</Text>
+              <Text style={{ fontSize: s(13), color: colors.muted }}>No payments recorded</Text>
             </View>
           ) : (
             paymentSummary.payments.map((payment, index) => {
@@ -914,51 +927,51 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                   <TouchableOpacity
                     onPress={() => canExpand && setExpandedPaymentIndex(isExpanded ? null : index)}
                     activeOpacity={canExpand ? 0.7 : 1}
-                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: s(10) }}
                   >
                     {/* Payment Method Icon */}
                     <View style={{
-                      width: 40, height: 40, borderRadius: 10,
+                      width: s(40), height: s(40), borderRadius: s(10),
                       backgroundColor: payment.isVoided ? colors.danger + '15' : colors.teal + '15',
                       borderWidth: 1.5, borderColor: payment.isVoided ? colors.danger + '40' : colors.teal + '40',
-                      alignItems: 'center', justifyContent: 'center', marginRight: 10
+                      alignItems: 'center', justifyContent: 'center', marginRight: s(10)
                     }}>
                       {payment.isVoided ? (
-                        <X size={16} color={colors.danger} />
+                        <X size={s(16)} color={colors.danger} />
                       ) : payment.method === 'Card' ? (
-                        <CreditCard size={18} color={colors.teal} />
+                        <CreditCard size={s(18)} color={colors.teal} />
                       ) : (
-                        <Banknote size={18} color={colors.teal} />
+                        <Banknote size={s(18)} color={colors.teal} />
                       )}
                     </View>
 
                     {/* Payment Details */}
                     <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: payment.isVoided ? colors.muted : colors.heading }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6), flexWrap: 'wrap' }}>
+                        <Text style={{ fontSize: s(13), fontWeight: '600', color: payment.isVoided ? colors.muted : colors.heading }}>
                           {payment.method === 'Card' && (cardLast4 || cardBrandLabel)
                             ? `${cardBrandLabel || 'Card'}${cardLast4 ? ` •••• ${cardLast4}` : ''}`
                             : payment.method}
                         </Text>
                         {payment.method === 'Card' && cardBrandLabel && <CardBrandBadge brand={cardBrandLabel} />}
                         {payment.isVoided && (
-                          <View style={{ backgroundColor: colors.danger + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.danger }}>VOIDED</Text>
+                          <View style={{ backgroundColor: colors.danger + '20', paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: 20 }}>
+                            <Text style={{ fontSize: s(10), fontWeight: '700', color: colors.danger }}>VOIDED</Text>
                           </View>
                         )}
                         {payment.isPreAuth && !payment.isVoided && (
-                          <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning }}>AUTH HOLD</Text>
+                          <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: 20 }}>
+                            <Text style={{ fontSize: s(10), fontWeight: '700', color: colors.warning }}>AUTH HOLD</Text>
                           </View>
                         )}
                       </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 6 }}>
-                        <Text style={{ fontSize: 11, color: colors.muted }}>{formatTimestamp(payment.timestamp)}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: s(2), gap: s(6) }}>
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>{formatTimestamp(payment.timestamp)}</Text>
                         {canExpand && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                            <Package size={10} color={colors.muted} />
-                            {hasItemsCovered && <Text style={{ fontSize: 11, color: colors.muted }}>{payment.itemsCovered!.length} items</Text>}
-                            {isExpanded ? <ChevronUp size={11} color={colors.muted} /> : <ChevronDown size={11} color={colors.muted} />}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(3) }}>
+                            <Package size={s(10)} color={colors.muted} />
+                            {hasItemsCovered && <Text style={{ fontSize: s(11), color: colors.muted }}>{payment.itemsCovered!.length} items</Text>}
+                            {isExpanded ? <ChevronUp size={s(11)} color={colors.muted} /> : <ChevronDown size={s(11)} color={colors.muted} />}
                           </View>
                         )}
                       </View>
@@ -967,10 +980,10 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                     {/* Amount */}
                     <View style={{ alignItems: 'flex-end' }}>
                       {payment.tipAmount > 0 && (
-                        <Text style={{ fontSize: 11, color: colors.info }}>+${payment.tipAmount?.toFixed(2)} tip</Text>
+                        <Text style={{ fontSize: s(11), color: colors.info }}>+${payment.tipAmount?.toFixed(2)} tip</Text>
                       )}
                       <Text style={{
-                        fontSize: 14, fontWeight: '700',
+                        fontSize: s(14), fontWeight: '700',
                         color: payment.isVoided ? colors.danger : payment.isPreAuth ? colors.warning : colors.success
                       }}>
                         {payment.isVoided ? 'Voided' : payment.isPreAuth ? `$${payment.orderAmount?.toFixed(2)} held` : `$${payment.collected?.toFixed(2)}`}
@@ -980,12 +993,12 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
 
                   {/* Expanded Details */}
                   {isExpanded && canExpand && (
-                    <View style={{ backgroundColor: colors.panel, borderRadius: 10, marginBottom: 10, padding: 12, borderWidth: 1, borderColor: colors.border }}>
+                    <View style={{ backgroundColor: colors.panel, borderRadius: s(10), marginBottom: s(10), padding: s(12), borderWidth: 1, borderColor: colors.border }}>
                       {hasCardInfo && (
-                        <View style={hasItemsCovered ? { marginBottom: 12 } : {}}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                            {payment.method === 'Cash' ? <Banknote size={12} color={colors.muted} /> : <CreditCard size={12} color={colors.muted} />}
-                            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted, marginLeft: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        <View style={hasItemsCovered ? { marginBottom: s(12) } : {}}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(8), paddingBottom: s(8), borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                            {payment.method === 'Cash' ? <Banknote size={s(12)} color={colors.muted} /> : <CreditCard size={s(12)} color={colors.muted} />}
+                            <Text style={{ fontSize: s(11), fontWeight: '600', color: colors.muted, marginLeft: s(6), textTransform: 'uppercase', letterSpacing: 0.5 }}>
                               {payment.method === 'Cash' ? 'Cash Payment Details' : 'Card Details'}
                             </Text>
                           </View>
@@ -999,13 +1012,13 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                                   />
                                 )}
                                 {payment.cardInfo?.last4 && (
-                                  <Text style={{ fontSize: 13, color: colors.heading, marginLeft: 8 }}>
+                                  <Text style={{ fontSize: s(13), color: colors.heading, marginLeft: s(8) }}>
                                     •••• {payment.cardInfo.last4}
                                   </Text>
                                 )}
                               </View>
                               {payment.cardInfo?.entryMode && (
-                                <Text style={{ fontSize: 11, color: colors.muted }}>
+                                <Text style={{ fontSize: s(11), color: colors.muted }}>
                                   Entry: {payment.cardInfo.entryMode}
                                 </Text>
                               )}
@@ -1069,9 +1082,9 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                           let totalTax = 0
                           return (
                             <View>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                                <Package size={12} color={colors.muted} />
-                                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted, marginLeft: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: s(8), paddingBottom: s(8), borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                                <Package size={s(12)} color={colors.muted} />
+                                <Text style={{ fontSize: s(11), fontWeight: '600', color: colors.muted, marginLeft: s(6), textTransform: 'uppercase', letterSpacing: 0.5 }}>
                                   Items Covered
                                 </Text>
                               </View>
@@ -1106,34 +1119,34 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                                     <View
                                       key={coveredItem.itemId || itemIndex}
                                       style={{
-                                        paddingVertical: 8,
+                                        paddingVertical: s(8),
                                         borderBottomWidth: itemIndex < payment.itemsCovered!.length - 1 ? 1 : 0,
                                         borderBottomColor: colors.border,
                                       }}
                                     >
                                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                                          <View style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
-                                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.label }}>{coveredItem.quantity}x</Text>
+                                          <View style={{ width: s(24), height: s(24), borderRadius: s(6), backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginRight: s(8) }}>
+                                            <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.label }}>{coveredItem.quantity}x</Text>
                                           </View>
-                                          <Text style={{ fontSize: 12, color: colors.heading }} numberOfLines={1}>{coveredItem.itemName}</Text>
+                                          <Text style={{ fontSize: s(12), color: colors.heading }} numberOfLines={1}>{coveredItem.itemName}</Text>
                                         </View>
                                         <View style={{ alignItems: 'flex-end' }}>
-                                          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>${displaySubtotal?.toFixed(2)}</Text>
-                                          {isCash && <Text style={{ fontSize: 10, color: colors.success }}>Cash Price</Text>}
+                                          <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.heading }}>${displaySubtotal?.toFixed(2)}</Text>
+                                          {isCash && <Text style={{ fontSize: s(10), color: colors.success }}>Cash Price</Text>}
                                         </View>
                                       </View>
                                       {cartItem && cartItem.taxRate > 0 && (
-                                        <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 32, marginTop: 2 }}>Tax: ${itemTax.toFixed(2)} ({cartItem.taxRate}%)</Text>
+                                        <Text style={{ fontSize: s(11), color: colors.muted, marginLeft: s(32), marginTop: s(2) }}>Tax: ${itemTax.toFixed(2)} ({cartItem.taxRate}%)</Text>
                                       )}
                                     </View>
                                   )
                                 }
                               )}
                               {totalTax > 0 && (
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: 1, borderTopColor: colors.border }}>
-                                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>Total Tax</Text>
-                                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>${totalTax.toFixed(2)}</Text>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: s(8), marginTop: s(4), borderTopWidth: 1, borderTopColor: colors.border }}>
+                                  <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}>Total Tax</Text>
+                                  <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}>${totalTax.toFixed(2)}</Text>
                                 </View>
                               )}
                             </View>
@@ -1155,45 +1168,45 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                   {/* Refund/Void History for this payment */}
                   {payment.dbPaymentId &&
                     getReversalsForPayment(payment.dbPaymentId).map((reversal, rIdx) => (
-                      <View key={`reversal-${reversal.id || rIdx}`} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 46, borderTopWidth: 1, borderTopColor: colors.border }}>
-                        <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.danger + '15', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                          <RotateCcw size={13} color={colors.danger} />
+                      <View key={`reversal-${reversal.id || rIdx}`} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: s(8), paddingLeft: s(46), borderTopWidth: 1, borderTopColor: colors.border }}>
+                        <View style={{ width: s(30), height: s(30), borderRadius: s(8), backgroundColor: colors.danger + '15', alignItems: 'center', justifyContent: 'center', marginRight: s(10) }}>
+                          <RotateCcw size={s(13)} color={colors.danger} />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.danger }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
+                            <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.danger }}>
                               {reversal.reversal_type === 'void' ? 'VOIDED' : reversal.reversal_type === 'refund' ? 'REFUNDED' : reversal.reversal_type === 'partial_refund' ? 'PARTIAL REFUND' : 'ITEM RETURN'}
                             </Text>
                             {reversal.reason_description && (
-                              <Text style={{ fontSize: 11, color: colors.muted }} numberOfLines={1}>• {reversal.reason_description}</Text>
+                              <Text style={{ fontSize: s(11), color: colors.muted }} numberOfLines={1}>• {reversal.reason_description}</Text>
                             )}
                           </View>
-                          <Text style={{ fontSize: 11, color: colors.muted }}>
+                          <Text style={{ fontSize: s(11), color: colors.muted }}>
                             {reversal.completed_at ? formatDistanceToNow(new Date(reversal.completed_at), { addSuffix: true }) : reversal.requested_at ? formatDistanceToNow(new Date(reversal.requested_at), { addSuffix: true }) : ''}
                           </Text>
                         </View>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>-${Number(reversal.amount || 0)?.toFixed(2)}</Text>
+                        <Text style={{ fontSize: s(13), fontWeight: '600', color: colors.danger }}>-${Number(reversal.amount || 0)?.toFixed(2)}</Text>
                       </View>
                     ))}
 
                   {/* Tip Adjustment Log */}
                   {payment.tip_adjusted_at && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 46, borderTopWidth: 1, borderTopColor: colors.border }}>
-                      <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.info + '15', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                        <CircleDollarSign size={13} color={colors.teal} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: s(8), paddingLeft: s(46), borderTopWidth: 1, borderTopColor: colors.border }}>
+                      <View style={{ width: s(30), height: s(30), borderRadius: s(8), backgroundColor: colors.info + '15', alignItems: 'center', justifyContent: 'center', marginRight: s(10) }}>
+                        <CircleDollarSign size={s(13)} color={colors.teal} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.info }}>TIP ADJUSTED</Text>
-                          <Text style={{ fontSize: 11, color: colors.muted }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
+                          <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.info }}>TIP ADJUSTED</Text>
+                          <Text style={{ fontSize: s(11), color: colors.muted }}>
                             • ${Number(payment.original_tip_amount || 0).toFixed(2)} → ${Number(payment.tipAmount).toFixed(2)}
                           </Text>
                         </View>
-                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>
                           {formatDistanceToNow(new Date(payment.tip_adjusted_at), { addSuffix: true })}
                         </Text>
                       </View>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: payment.tipAmount >= (payment.original_tip_amount || 0) ? colors.info : colors.danger }}>
+                      <Text style={{ fontSize: s(13), fontWeight: '600', color: payment.tipAmount >= (payment.original_tip_amount || 0) ? colors.info : colors.danger }}>
                         {payment.tipAmount >= (payment.original_tip_amount || 0) ? '+' : '-'}${Math.abs(payment.tipAmount - (payment.original_tip_amount || 0)).toFixed(2)}
                       </Text>
                     </View>
@@ -1206,15 +1219,15 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
       </ScrollView>
 
       {/* Action Buttons Footer */}
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.panel, borderTopWidth: 1.5, borderTopColor: colors.teal + '30' }}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: s(14), paddingVertical: s(12), backgroundColor: colors.panel, borderTopWidth: 1.5, borderTopColor: colors.teal + '30' }}>
+        <View style={{ flexDirection: 'row', gap: s(8) }}>
           {/* Management actions (Reopen / Close / Charge / Adjust Tip /
               Process Refund) are hidden when the order belongs to another
               station — Take Over is offered via the ReadOnlyBanner above
               instead. Print Receipt + Print Kitchen always remain. */}
           {!isReadOnly && !isOpen && (
             <ActionButton
-              icon={<RotateCcw size={16} />}
+              icon={<RotateCcw size={s(16)} />}
               label='Reopen'
               onPress={onReopenOrder}
               variant='primary'
@@ -1222,7 +1235,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           )}
           {!isReadOnly && isOpen && (
             <ActionButton
-              icon={<Check size={16} />}
+              icon={<Check size={s(16)} />}
               label='Close Order'
               onPress={onCloseOrder}
               variant='primary'
@@ -1230,7 +1243,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           )}
           {!isReadOnly && isOpen && hasBalanceDue && (
             <ActionButton
-              icon={<DollarSign size={16} />}
+              icon={<DollarSign size={s(16)} />}
               label='Charge'
               onPress={onContinueCharging}
               variant='primary'
@@ -1238,15 +1251,25 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           )}
           {paymentSummary.collected > 0 && (
             <ActionButton
-              icon={<Printer size={16} />}
+              icon={<Printer size={s(16)} />}
               label='Print Receipt'
               onPress={onIssueReceipt}
               variant='primary'
             />
           )}
+          {paymentSummary.collected > 0 &&
+            !!order?.split_payment_path &&
+            onPrintSplitReceipts && (
+              <ActionButton
+                icon={<Printer size={s(16)} />}
+                label='Split Receipts'
+                onPress={onPrintSplitReceipts}
+                variant='primary'
+              />
+            )}
           {paymentSummary.collected > 0 && onSendReceipt && (
             <ActionButton
-              icon={<Send size={16} />}
+              icon={<Send size={s(16)} />}
               label='Send Receipt'
               onPress={onSendReceipt}
               variant='primary'
@@ -1254,7 +1277,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           )}
           {order?.items && order.items.length > 0 && (
             <ActionButton
-              icon={<ChefHat size={16} />}
+              icon={<ChefHat size={s(16)} />}
               label='Print Kitchen'
               onPress={onPrintKitchenTicket}
               variant='primary'
@@ -1262,7 +1285,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           )}
           {!isReadOnly && hasCardPayments && terminalCanProcess && (
             <ActionButton
-              icon={<CircleDollarSign size={16} />}
+              icon={<CircleDollarSign size={s(16)} />}
               label='Adjust Tip'
               onPress={onTipAdjust}
               variant='primary'
@@ -1270,7 +1293,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           )}
           {!isReadOnly && paymentSummary.collected > 0 && terminalCanProcess && (
             <ActionButton
-              icon={<RefreshCcw size={16} />}
+              icon={<RefreshCcw size={s(16)} />}
               label='Process Refund'
               onPress={onRefund}
               variant='danger'
@@ -1307,6 +1330,8 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
   onTipAdjusted,
   onProcessingChange
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const tipAdjustMutation = useTipAdjustMutation()
   const processing = tipAdjustMutation.isPending
   console.log('PaymentDetailBottomSheet Payment Summary', paymentSummary)
@@ -1479,10 +1504,10 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           <View
             style={{
               backgroundColor: colors.card,
-              borderRadius: 14,
-              padding: 28,
+              borderRadius: s(14),
+              padding: s(28),
               alignItems: 'center',
-              marginHorizontal: 32,
+              marginHorizontal: s(32),
               borderWidth: 1,
               borderColor: colors.border
             }}
@@ -1491,9 +1516,9 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             <Text
               style={{
                 color: colors.heading,
-                fontSize: 15,
+                fontSize: s(15),
                 fontWeight: '700',
-                marginTop: 14
+                marginTop: s(14)
               }}
             >
               Adjusting Tips
@@ -1501,8 +1526,8 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             <Text
               style={{
                 color: colors.label,
-                fontSize: 12,
-                marginTop: 6,
+                fontSize: s(12),
+                marginTop: s(6),
                 textAlign: 'center'
               }}
             >
@@ -1531,9 +1556,9 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           <View
             style={{
               backgroundColor: colors.card,
-              borderRadius: 14,
-              padding: 20,
-              marginHorizontal: 32,
+              borderRadius: s(14),
+              padding: s(20),
+              marginHorizontal: s(32),
               borderWidth: 1,
               borderColor: colors.border,
               maxWidth: 400,
@@ -1542,21 +1567,21 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           >
             <Text
               style={{
-                fontSize: 15,
+                fontSize: s(15),
                 fontWeight: '700',
                 color: colors.warning,
                 textAlign: 'center',
-                marginBottom: 8
+                marginBottom: s(8)
               }}
             >
               High Tip Warning
             </Text>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 color: colors.label,
                 textAlign: 'center',
-                marginBottom: 12
+                marginBottom: s(12)
               }}
             >
               {highTipPayments.length === 1
@@ -1575,19 +1600,19 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                   style={{
                     flexDirection: 'row',
                     justifyContent: 'space-between',
-                    paddingVertical: 8,
-                    paddingHorizontal: 10,
+                    paddingVertical: s(8),
+                    paddingHorizontal: s(10),
                     backgroundColor: colors.warning + '10',
-                    borderRadius: 8,
-                    marginBottom: 6
+                    borderRadius: s(8),
+                    marginBottom: s(6)
                   }}
                 >
-                  <Text style={{ fontSize: 13, color: colors.label }}>
+                  <Text style={{ fontSize: s(13), color: colors.label }}>
                     ••••{p.last4 || '????'} (${p.orderAmount?.toFixed(2)})
                   </Text>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '700',
                       color: colors.warning
                     }}
@@ -1599,11 +1624,11 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             })}
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 color: colors.muted,
                 textAlign: 'center',
-                marginTop: 8,
-                marginBottom: 16
+                marginTop: s(8),
+                marginBottom: s(16)
               }}
             >
               Are you sure you want to proceed?
@@ -1613,8 +1638,8 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                 onPress={() => setShowHighTipConfirm(false)}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 8,
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
                   backgroundColor: 'transparent',
                   borderWidth: 1,
                   borderColor: colors.border,
@@ -1623,7 +1648,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: '700',
                     color: colors.label
                   }}
@@ -1638,8 +1663,8 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                 }}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 8,
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
                   backgroundColor: colors.warning + '20',
                   borderWidth: 1,
                   borderColor: colors.warning + '50',
@@ -1648,7 +1673,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: '700',
                     color: colors.warning
                   }}
@@ -1666,8 +1691,8 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 14,
-          paddingVertical: 10,
+          paddingHorizontal: s(14),
+          paddingVertical: s(10),
           borderBottomWidth: 1,
           borderBottomColor: colors.border
         }}
@@ -1676,20 +1701,20 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           onPress={onBack}
           disabled={processing}
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 10,
+            width: s(30),
+            height: s(30),
+            borderRadius: s(10),
             backgroundColor: colors.teal + '10',
             alignItems: 'center',
             justifyContent: 'center',
-            marginRight: 10,
+            marginRight: s(10),
             opacity: processing ? 0.3 : 1
           }}
         >
-          <ArrowLeft size={16} color={colors.teal} />
+          <ArrowLeft size={s(16)} color={colors.teal} />
         </TouchableOpacity>
         <Text
-          style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
         >
           Adjust Tips
         </Text>
@@ -1701,14 +1726,14 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
         contentContainerStyle={{ paddingBottom: 120 }}
       >
         {/* Payment Rows Table */}
-        <View style={{ paddingHorizontal: 14, paddingTop: 12 }}>
+        <View style={{ paddingHorizontal: s(14), paddingTop: s(12) }}>
           {/* Column Headers */}
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: 10,
-              paddingBottom: 8,
+              paddingHorizontal: s(10),
+              paddingBottom: s(8),
               borderBottomWidth: 1,
               borderBottomColor: colors.border
             }}
@@ -1716,7 +1741,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             <Text
               style={{
                 flex: 1,
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '600',
                 color: colors.muted,
                 textTransform: 'uppercase',
@@ -1727,8 +1752,8 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             </Text>
             <Text
               style={{
-                width: 88,
-                fontSize: 11,
+                width: s(88),
+                fontSize: s(11),
                 fontWeight: '600',
                 color: colors.muted,
                 textTransform: 'uppercase',
@@ -1740,8 +1765,8 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             </Text>
             <Text
               style={{
-                width: 100,
-                fontSize: 11,
+                width: s(100),
+                fontSize: s(11),
                 fontWeight: '600',
                 color: colors.muted,
                 textTransform: 'uppercase',
@@ -1768,8 +1793,8 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  paddingVertical: 10,
-                  paddingHorizontal: 10,
+                  paddingVertical: s(10),
+                  paddingHorizontal: s(10),
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
                   backgroundColor: isActive ? colors.teal + '08' : 'transparent'
@@ -1785,29 +1810,29 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                 >
                   <View
                     style={{
-                      width: 20,
+                      width: s(20),
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginRight: 6
+                      marginRight: s(6)
                     }}
                   >
-                    {hasTip && <Check size={14} color={colors.teal} />}
+                    {hasTip && <Check size={s(14)} color={colors.teal} />}
                   </View>
                   <View
                     style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
+                      width: s(32),
+                      height: s(32),
+                      borderRadius: s(8),
                       backgroundColor: isActive
                         ? colors.teal + '15'
                         : colors.card,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginRight: 8
+                      marginRight: s(8)
                     }}
                   >
                     <CreditCard
-                      size={15}
+                      size={s(15)}
                       color={isActive ? colors.teal : colors.label}
                     />
                   </View>
@@ -1821,7 +1846,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                     >
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: '600',
                           color: colors.heading
                         }}
@@ -1835,9 +1860,9 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                     </View>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.muted,
-                        marginTop: 1
+                        marginTop: s(1)
                       }}
                     >
                       {brandLabel || 'Card'}
@@ -1849,8 +1874,8 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                 {/* Order Amount */}
                 <Text
                   style={{
-                    width: 88,
-                    fontSize: 13,
+                    width: s(88),
+                    fontSize: s(13),
                     fontWeight: '600',
                     color: colors.heading,
                     textAlign: 'right'
@@ -1860,13 +1885,13 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                 </Text>
 
                 {/* New Tip */}
-                <View style={{ width: 100, alignItems: 'flex-end' }}>
+                <View style={{ width: s(100), alignItems: 'flex-end' }}>
                   <View
                     style={{
-                      borderRadius: 8,
+                      borderRadius: s(8),
                       borderWidth: 1,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(5),
                       backgroundColor: isActive
                         ? colors.teal + '15'
                         : colors.screen,
@@ -1875,7 +1900,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                   >
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '600',
                         textAlign: 'right',
                         color: tipValue
@@ -1890,9 +1915,9 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                   </View>
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       color: colors.muted,
-                      marginTop: 2,
+                      marginTop: s(2),
                       textAlign: 'right'
                     }}
                   >
@@ -1905,14 +1930,14 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
         </View>
 
         {/* Summary Bar */}
-        <View style={{ paddingHorizontal: 14, marginTop: 12 }}>
+        <View style={{ paddingHorizontal: s(14), marginTop: s(12) }}>
           <View
             style={{
               flexDirection: 'row',
               justifyContent: 'space-between',
               backgroundColor: colors.card,
-              borderRadius: 12,
-              padding: 14,
+              borderRadius: s(12),
+              padding: s(14),
               borderWidth: 1,
               borderColor: colors.border
             }}
@@ -1920,19 +1945,19 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             <View style={{ alignItems: 'center' }}>
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '600',
                   color: colors.muted,
                   textTransform: 'uppercase',
                   letterSpacing: 0.5,
-                  marginBottom: 4
+                  marginBottom: s(4)
                 }}
               >
                 Order Total
               </Text>
               <Text
                 style={{
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: '700',
                   color: colors.heading
                 }}
@@ -1943,18 +1968,18 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             <View style={{ alignItems: 'center' }}>
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '600',
                   color: colors.muted,
                   textTransform: 'uppercase',
                   letterSpacing: 0.5,
-                  marginBottom: 4
+                  marginBottom: s(4)
                 }}
               >
                 New Tips
               </Text>
               <Text
-                style={{ fontSize: 14, fontWeight: '700', color: colors.teal }}
+                style={{ fontSize: s(14), fontWeight: '700', color: colors.teal }}
               >
                 ${totalNewTips?.toFixed(2)}
               </Text>
@@ -1962,19 +1987,19 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             <View style={{ alignItems: 'center' }}>
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '600',
                   color: colors.muted,
                   textTransform: 'uppercase',
                   letterSpacing: 0.5,
-                  marginBottom: 4
+                  marginBottom: s(4)
                 }}
               >
                 Grand Total
               </Text>
               <Text
                 style={{
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: '700',
                   color: colors.success
                 }}
@@ -1986,11 +2011,11 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
         </View>
 
         {/* Numeric Keypad */}
-        <View style={{ paddingHorizontal: 14, marginTop: 14 }}>
+        <View style={{ paddingHorizontal: s(14), marginTop: s(14) }}>
           {keypadKeys.map((row, rowIndex) => (
             <View
               key={rowIndex}
-              style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}
+              style={{ flexDirection: 'row', gap: s(8), marginBottom: s(8) }}
             >
               {row.map(key => (
                 <TouchableOpacity
@@ -1998,21 +2023,21 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                   onPress={() => handleKeyPress(key)}
                   style={{
                     flex: 1,
-                    paddingVertical: 12,
+                    paddingVertical: s(12),
                     backgroundColor: colors.card,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     alignItems: 'center',
                     justifyContent: 'center'
                   }}
                 >
                   {key === 'backspace' ? (
-                    <Delete size={18} color={colors.heading} />
+                    <Delete size={s(18)} color={colors.heading} />
                   ) : (
                     <Text
                       style={{
-                        fontSize: 18,
+                        fontSize: s(18),
                         fontWeight: '600',
                         color: colors.heading
                       }}
@@ -2034,21 +2059,21 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           bottom: 0,
           left: 0,
           right: 0,
-          paddingHorizontal: 14,
-          paddingVertical: 12,
+          paddingHorizontal: s(14),
+          paddingVertical: s(12),
           backgroundColor: colors.panel,
           borderTopWidth: 1,
           borderTopColor: colors.border
         }}
       >
-        <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flexDirection: 'row', gap: s(10) }}>
           <TouchableOpacity
             onPress={onBack}
             disabled={processing}
             style={{
               flex: 1,
-              paddingVertical: 11,
-              borderRadius: 8,
+              paddingVertical: s(11),
+              borderRadius: s(8),
               backgroundColor: 'transparent',
               borderWidth: 1,
               borderColor: colors.border,
@@ -2057,7 +2082,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             }}
           >
             <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.label }}
+              style={{ fontSize: s(13), fontWeight: '700', color: colors.label }}
             >
               CANCEL
             </Text>
@@ -2067,8 +2092,8 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             disabled={!hasChanges || processing}
             style={{
               flex: 2,
-              paddingVertical: 11,
-              borderRadius: 8,
+              paddingVertical: s(11),
+              borderRadius: s(8),
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor:
@@ -2083,7 +2108,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             ) : (
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '700',
                   color: hasChanges ? colors.teal : colors.muted
                 }}
@@ -2136,6 +2161,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   onProcessRefund,
   refundProcessing
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const { show } = useToast()
   const processingRef = useRef(false)
   const [refundType, setRefundType] = useState<RefundType>('full')
@@ -2603,19 +2630,19 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 14,
-              padding: 28,
+              borderRadius: s(14),
+              padding: s(28),
               alignItems: 'center',
-              marginHorizontal: 32
+              marginHorizontal: s(32)
             }}
           >
             <ActivityIndicator size='large' color={colors.danger} />
             <Text
               style={{
                 color: colors.heading,
-                fontSize: 15,
+                fontSize: s(15),
                 fontWeight: '700',
-                marginTop: 14
+                marginTop: s(14)
               }}
             >
               Processing Refund
@@ -2623,8 +2650,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             <Text
               style={{
                 color: colors.label,
-                fontSize: 12,
-                marginTop: 6,
+                fontSize: s(12),
+                marginTop: s(6),
                 textAlign: 'center'
               }}
             >
@@ -2640,8 +2667,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 14,
-          paddingVertical: 10,
+          paddingHorizontal: s(14),
+          paddingVertical: s(10),
           borderBottomWidth: 1,
           borderBottomColor: colors.border
         }}
@@ -2650,20 +2677,20 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           onPress={onBack}
           disabled={refundProcessing}
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 10,
+            width: s(30),
+            height: s(30),
+            borderRadius: s(10),
             backgroundColor: colors.teal + '10',
             alignItems: 'center',
             justifyContent: 'center',
-            marginRight: 10,
+            marginRight: s(10),
             opacity: refundProcessing ? 0.3 : 1
           }}
         >
-          <ArrowLeft size={16} color={colors.teal} />
+          <ArrowLeft size={s(16)} color={colors.teal} />
         </TouchableOpacity>
         <Text
-          style={{ color: colors.heading, fontSize: 15, fontWeight: '700' }}
+          style={{ color: colors.heading, fontSize: s(15), fontWeight: '700' }}
         >
           Process Refund
         </Text>
@@ -2675,22 +2702,22 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         contentContainerStyle={{ paddingBottom: 120 }}
       >
         {/* Refund Type Tabs */}
-        <View
-          style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8 }}
-        >
-          <Text
-            style={{
-              fontSize: 11,
+      <View
+        style={{ paddingHorizontal: s(14), paddingTop: s(12), paddingBottom: s(8) }}
+      >
+        <Text
+          style={{
+              fontSize: s(11),
               fontWeight: '600',
               color: colors.muted,
               textTransform: 'uppercase',
               letterSpacing: 0.5,
-              marginBottom: 8
+              marginBottom: s(8)
             }}
-          >
-            Refund Type
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
+        >
+          Refund Type
+        </Text>
+          <View style={{ flexDirection: 'row', gap: s(6) }}>
             {[
               { key: 'full', label: 'Full Refund' },
               { key: 'items', label: 'By Item' },
@@ -2717,9 +2744,9 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                   disabled={isDisabled}
                   style={{
                     flex: 1,
-                    paddingVertical: 7,
-                    paddingHorizontal: 10,
-                    borderRadius: 8,
+                    paddingVertical: s(7),
+                    paddingHorizontal: s(10),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     alignItems: 'center',
                     opacity: isDisabled ? 0.4 : 1,
@@ -2731,7 +2758,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 >
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: '600',
                       color: isDisabled
                         ? colors.muted
@@ -2749,18 +2776,18 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         </View>
 
         {isZeroRefundable && (
-          <View style={{ paddingHorizontal: 14, paddingBottom: 8 }}>
+          <View style={{ paddingHorizontal: s(14), paddingBottom: s(8) }}>
             <View
               style={{
                 backgroundColor: colors.warning + '10',
                 borderWidth: 1,
                 borderColor: colors.warning + '30',
-                borderRadius: 8,
-                paddingHorizontal: 12,
-                paddingVertical: 8
+                borderRadius: s(8),
+                paddingHorizontal: s(12),
+                paddingVertical: s(8)
               }}
             >
-              <Text style={{ fontSize: 12, color: colors.warning }}>
+              <Text style={{ fontSize: s(12), color: colors.warning }}>
                 No refundable balance available. All refundable payments are
                 voided or fully refunded.
               </Text>
@@ -2770,9 +2797,9 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
 
         {/* Full Refund View */}
         {refundType === 'full' && (
-          <View style={{ paddingHorizontal: 14 }}>
+          <View style={{ paddingHorizontal: s(14) }}>
             <Text
-              style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}
+              style={{ fontSize: s(12), color: colors.muted, marginBottom: s(10) }}
             >
               All payments will be fully reversed
             </Text>
@@ -2784,32 +2811,32 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    paddingVertical: 10,
+                    paddingVertical: s(10),
                     borderBottomWidth: 1,
                     borderBottomColor: colors.border
                   }}
                 >
                   <View
                     style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
+                      width: s(32),
+                      height: s(32),
+                      borderRadius: s(8),
                       backgroundColor: colors.teal + '15',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginRight: 10
+                      marginRight: s(10)
                     }}
                   >
                     {payment.method === 'Card' ? (
-                      <CreditCard size={16} color={colors.teal} />
+                      <CreditCard size={s(16)} color={colors.teal} />
                     ) : (
-                      <Banknote size={16} color={colors.teal} />
+                      <Banknote size={s(16)} color={colors.teal} />
                     )}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '600',
                         color: colors.heading
                       }}
@@ -2823,17 +2850,17 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                     )}
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 11, color: colors.muted }}>
+                    <Text style={{ fontSize: s(11), color: colors.muted }}>
                       Order: ${payment.orderAmount?.toFixed(2)}
                     </Text>
                     {payment.tipAmount > 0 && (
-                      <Text style={{ fontSize: 11, color: colors.info }}>
+                      <Text style={{ fontSize: s(11), color: colors.info }}>
                         Tip: ${payment.tipAmount?.toFixed(2)}
                       </Text>
                     )}
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '700',
                         color: colors.danger
                       }}
@@ -2846,30 +2873,30 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             })}
             <View
               style={{
-                marginTop: 12,
+                marginTop: s(12),
                 backgroundColor: colors.card,
-                borderRadius: 12,
-                padding: 14,
+                borderRadius: s(12),
+                padding: s(14),
                 borderWidth: 1,
                 borderColor: colors.border
               }}
             >
               <Text
-                style={{ fontSize: 12, color: colors.label, marginBottom: 2 }}
+                style={{ fontSize: s(12), color: colors.label, marginBottom: s(2) }}
               >
                 {refundablePayments.length} payment
                 {refundablePayments.length !== 1 ? 's' : ''} to reverse
               </Text>
               <Text
-                style={{
-                  fontSize: 24,
+              style={{
+                  fontSize: s(24),
                   fontWeight: '700',
                   color: colors.danger
                 }}
               >
                 ${maxRefundable?.toFixed(2)}
               </Text>
-              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+              <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}>
                 Full refund of collected amount
               </Text>
             </View>
@@ -2878,25 +2905,25 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
 
         {/* Items Selection View */}
         {refundType === 'items' && (
-          <View style={{ paddingHorizontal: 14 }}>
+          <View style={{ paddingHorizontal: s(14) }}>
             <Text
-              style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}
+              style={{ fontSize: s(12), color: colors.muted, marginBottom: s(10) }}
             >
               Select items to refund
             </Text>
             {itemsDisabled && (
               <View
                 style={{
-                  marginBottom: 10,
+                  marginBottom: s(10),
                   backgroundColor: colors.screen,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 8,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8
+                  borderRadius: s(8),
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(8)
                 }}
               >
-                <Text style={{ fontSize: 12, color: colors.label }}>
+                <Text style={{ fontSize: s(12), color: colors.label }}>
                   Clear custom refund amounts to refund by items.
                 </Text>
               </View>
@@ -2918,7 +2945,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        paddingVertical: 10,
+                        paddingVertical: s(10),
                         borderBottomWidth: 1,
                         borderBottomColor: colors.border,
                         backgroundColor: isSelected
@@ -2932,11 +2959,11 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                         }
                         disabled={itemsDisabled || maxQty <= 0}
                         style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 6,
+                          width: s(22),
+                          height: s(22),
+                          borderRadius: s(6),
                           borderWidth: 1.5,
-                          marginRight: 10,
+                          marginRight: s(10),
                           alignItems: 'center',
                           justifyContent: 'center',
                           backgroundColor: isSelected
@@ -2946,14 +2973,14 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                         }}
                       >
                         {isSelected && (
-                          <Check size={13} color={colors.onSolid} />
+                          <Check size={s(13)} color={colors.onSolid} />
                         )}
                       </TouchableOpacity>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 13, color: colors.heading }}>
+                        <Text style={{ fontSize: s(13), color: colors.heading }}>
                           {item.name}
                         </Text>
-                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>
                           {(() => {
                             const isCash = coveringPayment?.isCashPriced || coveringPayment?.method === 'Cash'
                             const effSub = isCash ? (item.cashSubtotal ?? item.subtotal ?? 0) : (item.subtotal ?? 0)
@@ -2966,29 +2993,29 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                         {maxQty <= 0 && (
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               color: colors.muted,
-                              marginTop: 2
+                              marginTop: s(2)
                             }}
                           >
                             Fully refunded
                           </Text>
                         )}
                         {coveringPayment && (
-                          <View style={{ marginTop: 4 }}>
+                          <View style={{ marginTop: s(4) }}>
                             <View
                               style={{
                                 backgroundColor: colors.screen,
                                 borderWidth: 1,
                                 borderColor: colors.border,
-                                borderRadius: 20,
-                                paddingHorizontal: 8,
-                                paddingVertical: 2,
+                                borderRadius: s(20),
+                                paddingHorizontal: s(8),
+                                paddingVertical: s(2),
                                 alignSelf: 'flex-start'
                               }}
                             >
                               <Text
-                                style={{ fontSize: 10, color: colors.muted }}
+                                style={{ fontSize: s(10), color: colors.muted }}
                               >
                                 Covered by {getPaymentLabel(coveringPayment)}
                               </Text>
@@ -3010,9 +3037,9 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                             }
                             disabled={itemsDisabled}
                             style={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: 8,
+                              width: s(28),
+                              height: s(28),
+                              borderRadius: s(8),
                               backgroundColor: colors.card,
                               borderWidth: 1,
                               borderColor: colors.border,
@@ -3024,7 +3051,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                               style={{
                                 color: colors.heading,
                                 fontWeight: '700',
-                                fontSize: 14
+                                fontSize: s(14)
                               }}
                             >
                               -
@@ -3034,8 +3061,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                             style={{
                               color: colors.heading,
                               fontWeight: '600',
-                              fontSize: 13,
-                              marginHorizontal: 10
+                              fontSize: s(13),
+                              marginHorizontal: s(10)
                             }}
                           >
                             {selectedQty}
@@ -3050,9 +3077,9 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                             }
                             disabled={itemsDisabled || selectedQty >= maxQty}
                             style={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: 8,
+                              width: s(28),
+                              height: s(28),
+                              borderRadius: s(8),
                               backgroundColor: colors.card,
                               borderWidth: 1,
                               borderColor: colors.border,
@@ -3065,7 +3092,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                               style={{
                                 color: colors.heading,
                                 fontWeight: '700',
-                                fontSize: 14
+                                fontSize: s(14)
                               }}
                             >
                               +
@@ -3074,7 +3101,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                         </View>
                       )}
                       {!isSelected && (
-                        <Text style={{ fontSize: 12, color: colors.muted }}>
+                        <Text style={{ fontSize: s(12), color: colors.muted }}>
                           max {maxQty}
                         </Text>
                       )}
@@ -3084,9 +3111,9 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                     {needsAssignment && !itemsDisabled && (
                       <View
                         style={{
-                          paddingLeft: 42,
-                          paddingRight: 14,
-                          paddingVertical: 8,
+                          paddingLeft: s(42),
+                          paddingRight: s(14),
+                          paddingVertical: s(8),
                           borderBottomWidth: 1,
                           borderBottomColor: colors.border,
                           backgroundColor: colors.screen
@@ -3094,9 +3121,9 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       >
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: s(11),
                             color: colors.label,
-                            marginBottom: 6
+                            marginBottom: s(6)
                           }}
                         >
                           Select refund destination:
@@ -3119,10 +3146,10 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                                     [item.db_order_item_id || '']: pIdx
                                   }))
                                 }
-                                style={{
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 5,
-                                  borderRadius: 20,
+                              style={{
+                                  paddingHorizontal: s(10),
+                                  paddingVertical: s(5),
+                                  borderRadius: s(20),
                                   borderWidth: 1,
                                   backgroundColor: isAssigned
                                     ? colors.teal + '15'
@@ -3134,7 +3161,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                               >
                                 <Text
                                   style={{
-                                    fontSize: 11,
+                                    fontSize: s(11),
                                     fontWeight: '600',
                                     color: isAssigned
                                       ? colors.teal
@@ -3156,20 +3183,20 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             {selectedItemsTotal > 0 && (
               <View
                 style={{
-                  marginTop: 12,
+                  marginTop: s(12),
                   backgroundColor: colors.card,
-                  borderRadius: 12,
-                  padding: 14,
+                  borderRadius: s(12),
+                  padding: s(14),
                   borderWidth: 1,
                   borderColor: colors.border
                 }}
               >
-                <Text style={{ fontSize: 12, color: colors.label }}>
+                <Text style={{ fontSize: s(12), color: colors.label }}>
                   Refund Amount
                 </Text>
                 <Text
                   style={{
-                    fontSize: 22,
+                    fontSize: s(22),
                     fontWeight: '700',
                     color: colors.danger
                   }}
@@ -3183,28 +3210,28 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
 
         {/* By Payment View */}
         {refundType === 'payments' && (
-          <View style={{ paddingHorizontal: 14 }}>
+          <View style={{ paddingHorizontal: s(14) }}>
             <Text
-              style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}
+              style={{ fontSize: s(12), color: colors.muted, marginBottom: s(10) }}
             >
               Enter refund amounts per payment
             </Text>
             {refundablePayments.length === 0 ? (
-              <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+              <View style={{ paddingVertical: s(32), alignItems: 'center' }}>
                 <View
                   style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 20,
+                    width: s(40),
+                    height: s(40),
+                    borderRadius: s(20),
                     backgroundColor: colors.card,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: 10
+                    marginBottom: s(10)
                   }}
                 >
-                  <CreditCard size={18} color={colors.muted} />
+                  <CreditCard size={s(18)} color={colors.muted} />
                 </View>
-                <Text style={{ fontSize: 13, color: colors.muted }}>
+                <Text style={{ fontSize: s(13), color: colors.muted }}>
                   No refundable payments
                 </Text>
               </View>
@@ -3215,16 +3242,16 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    paddingVertical: 8,
+                    paddingVertical: s(8),
                     borderBottomWidth: 1,
                     borderBottomColor: colors.border,
-                    marginBottom: 6
+                    marginBottom: s(6)
                   }}
                 >
                   <Text
                     style={{
                       flex: 1,
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: '600',
                       color: colors.muted,
                       textTransform: 'uppercase',
@@ -3235,8 +3262,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                   </Text>
                   <Text
                     style={{
-                      width: 88,
-                      fontSize: 11,
+                      width: s(88),
+                      fontSize: s(11),
                       fontWeight: '600',
                       color: colors.muted,
                       textTransform: 'uppercase',
@@ -3248,8 +3275,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                   </Text>
                   <Text
                     style={{
-                      width: 88,
-                      fontSize: 11,
+                      width: s(88),
+                      fontSize: s(11),
                       fontWeight: '600',
                       color: colors.muted,
                       textTransform: 'uppercase',
@@ -3261,8 +3288,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                   </Text>
                   <Text
                     style={{
-                      width: 88,
-                      fontSize: 11,
+                      width: s(88),
+                      fontSize: s(11),
                       fontWeight: '600',
                       color: colors.muted,
                       textTransform: 'uppercase',
@@ -3274,8 +3301,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                   </Text>
                   <Text
                     style={{
-                      width: 56,
-                      fontSize: 11,
+                      width: s(56),
+                      fontSize: s(11),
                       fontWeight: '600',
                       color: colors.muted,
                       textTransform: 'uppercase',
@@ -3305,11 +3332,11 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        paddingVertical: 10,
+                        paddingVertical: s(10),
                         borderWidth: 1,
                         borderColor: colors.border,
-                        borderRadius: 12,
-                        marginBottom: 6,
+                        borderRadius: s(12),
+                        marginBottom: s(6),
                         backgroundColor: colors.card
                       }}
                     >
@@ -3318,29 +3345,29 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                           flex: 1,
                           flexDirection: 'row',
                           alignItems: 'center',
-                          paddingLeft: 10
+                          paddingLeft: s(10)
                         }}
                       >
                         <View
                           style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: 8,
+                            width: s(32),
+                            height: s(32),
+                            borderRadius: s(8),
                             backgroundColor: colors.teal + '15',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            marginRight: 8
+                            marginRight: s(8)
                           }}
                         >
                           {payment.method === 'Card' ? (
-                            <CreditCard size={16} color={colors.teal} />
+                            <CreditCard size={s(16)} color={colors.teal} />
                           ) : (
-                            <Banknote size={16} color={colors.teal} />
+                            <Banknote size={s(16)} color={colors.teal} />
                           )}
                         </View>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: '600',
                             color: colors.heading
                           }}
@@ -3351,7 +3378,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       </View>
 
                       {/* Order amount input */}
-                      <View style={{ width: 88, paddingHorizontal: 4 }}>
+                      <View style={{ width: s(88), paddingHorizontal: s(4) }}>
                         <TextInput
                           value={amounts.orderAmount}
                           onChangeText={v =>
@@ -3361,11 +3388,11 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                           placeholderTextColor={colors.muted}
                           keyboardType='decimal-pad'
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             textAlign: 'center',
-                            paddingVertical: 6,
-                            paddingHorizontal: 8,
-                            borderRadius: 8,
+                            paddingVertical: s(6),
+                            paddingHorizontal: s(8),
+                            borderRadius: s(8),
                             borderWidth: 1,
                             color: orderExceeds
                               ? colors.danger
@@ -3381,7 +3408,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       </View>
 
                       {/* Tip amount input */}
-                      <View style={{ width: 88, paddingHorizontal: 4 }}>
+                      <View style={{ width: s(88), paddingHorizontal: s(4) }}>
                         <TextInput
                           value={amounts.tipAmount}
                           onChangeText={v =>
@@ -3391,11 +3418,11 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                           placeholderTextColor={colors.muted}
                           keyboardType='decimal-pad'
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             textAlign: 'center',
-                            paddingVertical: 6,
-                            paddingHorizontal: 8,
-                            borderRadius: 8,
+                            paddingVertical: s(6),
+                            paddingHorizontal: s(8),
+                            borderRadius: s(8),
                             borderWidth: 1,
                             color: tipExceeds ? colors.danger : colors.heading,
                             backgroundColor: tipExceeds
@@ -3411,8 +3438,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       {/* Collected */}
                       <Text
                         style={{
-                          width: 88,
-                          fontSize: 13,
+                          width: s(88),
+                          fontSize: s(13),
                           color: colors.label,
                           textAlign: 'center'
                         }}
@@ -3424,9 +3451,9 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       <TouchableOpacity
                         onPress={() => handleFillAllForPayment(index)}
                         style={{
-                          width: 56,
+                          width: s(56),
                           alignItems: 'center',
-                          paddingRight: 6
+                          paddingRight: s(6)
                         }}
                       >
                         <View
@@ -3434,14 +3461,14 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                             backgroundColor: colors.teal + '15',
                             borderWidth: 1,
                             borderColor: colors.teal + '40',
-                            borderRadius: 8,
-                            paddingHorizontal: 10,
-                            paddingVertical: 5
+                            borderRadius: s(8),
+                            paddingHorizontal: s(10),
+                            paddingVertical: s(5)
                           }}
                         >
                           <Text
                             style={{
-                              fontSize: 11,
+                              fontSize: s(11),
                               fontWeight: '700',
                               color: colors.teal
                             }}
@@ -3457,20 +3484,20 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 {paymentRefundTotal > 0 && (
                   <View
                     style={{
-                      marginTop: 12,
+                      marginTop: s(12),
                       backgroundColor: colors.card,
-                      borderRadius: 12,
-                      padding: 14,
+                      borderRadius: s(12),
+                      padding: s(14),
                       borderWidth: 1,
                       borderColor: colors.border
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: colors.label }}>
+                    <Text style={{ fontSize: s(12), color: colors.label }}>
                       Total Refund
                     </Text>
                     <Text
                       style={{
-                        fontSize: 22,
+                        fontSize: s(22),
                         fontWeight: '700',
                         color: colors.danger
                       }}
@@ -3485,10 +3512,10 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         )}
 
         {/* Reason Input */}
-        <View style={{ paddingHorizontal: 14, marginTop: 14 }}>
+        <View style={{ paddingHorizontal: s(14), marginTop: s(14) }}>
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               fontWeight: '600',
               color: colors.muted,
               textTransform: 'uppercase',
@@ -3518,10 +3545,10 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 <TouchableOpacity
                   key={preset}
                   onPress={() => setRefundReason(isActive ? '' : preset)}
-                  style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 20,
+              style={{
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(6),
+                    borderRadius: s(20),
                     borderWidth: 1,
                     backgroundColor: isActive
                       ? colors.teal + '15'
@@ -3531,7 +3558,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 >
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: '600',
                       color: isActive ? colors.teal : colors.label
                     }}
@@ -3551,23 +3578,23 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             numberOfLines={1}
             style={{
               backgroundColor: colors.screen,
-              borderRadius: 10,
-              padding: 12,
+              borderRadius: s(10),
+              padding: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               color: colors.heading,
-              fontSize: 13,
-              minHeight: 72,
+              fontSize: s(13),
+              minHeight: s(72),
               textAlignVertical: 'top'
             }}
           />
         </View>
 
         {refundLogs.length > 0 && (
-          <View style={{ paddingHorizontal: 14, marginTop: 14 }}>
+          <View style={{ paddingHorizontal: s(14), marginTop: s(14) }}>
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '600',
                 color: colors.muted,
                 textTransform: 'uppercase',
@@ -3580,7 +3607,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             <View
               style={{
                 backgroundColor: colors.card,
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: colors.border
               }}
@@ -3589,8 +3616,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 <View
                   key={log.id || index}
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(10),
                     borderTopWidth: index !== 0 ? 1 : 0,
                     borderTopColor: colors.border
                   }}
@@ -3604,7 +3631,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                   >
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '600',
                         color: colors.heading
                       }}
@@ -3613,7 +3640,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                     </Text>
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '600',
                         color: colors.danger
                       }}
@@ -3622,12 +3649,12 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                     </Text>
                   </View>
                   <Text
-                    style={{ fontSize: 11, color: colors.label, marginTop: 2 }}
+                    style={{ fontSize: s(11), color: colors.label, marginTop: s(2) }}
                   >
                     {log.reason_description || log.reason_code || '—'}
                   </Text>
                   <Text
-                    style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}
                   >
                     {log.requested_at
                       ? new Date(log.requested_at).toLocaleString()
@@ -3648,8 +3675,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           bottom: 0,
           left: 0,
           right: 0,
-          paddingHorizontal: 14,
-          paddingVertical: 12,
+          paddingHorizontal: s(14),
+          paddingVertical: s(12),
           backgroundColor: colors.panel,
           borderTopWidth: 1,
           borderTopColor: colors.border
@@ -3788,6 +3815,8 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   {}
 > = (props, ref) => {
   const { show } = useToast()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const router = useRouter()
   const pathname = usePathname()
   const supabase = useSupabaseClient()
@@ -3818,6 +3847,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     open: boolean
     method: SendReceiptDeliveryMethod
   }>({ open: false, method: 'email' })
+  const [splitSelectorOpen, setSplitSelectorOpen] = useState(false)
 
   // Get order data - first try active orders, then previous orders
   const activeOrder = useOrderStore(state => {
@@ -3863,7 +3893,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     (isPaymentsPending || isPaymentsFetching)
 
   // Map previousOrder to OrderProfile format (same as PreviousOrdersSection)
-  const order = useMemo((): OrderProfile | null => {
+  const resolvedOrder = useMemo((): OrderProfile | null => {
     if (activeOrder) {
       // Merge fetched details into active order if it's missing reversals
       if (fetchedReversals.length > 0 && !activeOrder.reversals?.length) {
@@ -3938,6 +3968,27 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     fetchedRefundItems,
     hydratedPayments
   ])
+
+  // Retain the last-known order so a transient eviction from the store doesn't
+  // blank the sheet. When the app is foregrounded after >2min, PosSyncProvider
+  // invalidates the active-orders query → hydrateWorkspace replaces ordersById,
+  // which can evict a closed/previous order this sheet is showing. Without this
+  // fallback, `order` flips to null and the sheet is stuck on "Loading order...".
+  const lastOrderRef = useRef<{ orderId: string; order: OrderProfile } | null>(
+    null
+  )
+  if (resolvedOrder && orderId) {
+    lastOrderRef.current = { orderId, order: resolvedOrder }
+  } else if (!isOpen || !orderId) {
+    // Clear once the sheet is closed (or has no target) so reopening a
+    // different order can't flash the previous one.
+    lastOrderRef.current = null
+  }
+  const order: OrderProfile | null =
+    resolvedOrder ??
+    (lastOrderRef.current?.orderId === orderId
+      ? lastOrderRef.current.order
+      : null)
 
   // Check if active terminal matches the order's payment terminal type
   const { canProcess: terminalCanProcess, blockReason: terminalBlockReason } =
@@ -4688,28 +4739,44 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           style={{
             height: '90%',
             backgroundColor: colors.screen,
-            borderTopLeftRadius: 16,
-            borderTopRightRadius: 16
+            borderTopLeftRadius: s(16),
+            borderTopRightRadius: s(16)
           }}
         >
           {!order ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: colors.muted, fontSize: 13 }}>Loading order...</Text>
+            <View style={{ flex: 1 }}>
+              {/* Header with an always-available escape hatch — never trap the
+                  user on the loading state if the order can't be resolved. */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: s(14), paddingVertical: s(12), borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Text style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}>Payment Details</Text>
+                <TouchableOpacity
+                  onPress={close}
+                  style={{
+                    paddingHorizontal: s(14), paddingVertical: s(7), borderRadius: s(8),
+                    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border
+                  }}
+                >
+                  <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.label }}>CLOSE</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: colors.muted, fontSize: s(13) }}>Loading order...</Text>
+              </View>
             </View>
           ) : (
             <View style={{ flex: 1 }}>
               {/* Header */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}>Payment Details</Text>
-                  <Text style={{ fontSize: 14, color: colors.label }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: s(14), paddingVertical: s(12), borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
+                  <Text style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}>Payment Details</Text>
+                  <Text style={{ fontSize: s(14), color: colors.label }}>
                     #{order.display_number || order.order_number?.slice(-6) || '—'}
                   </Text>
-                  <Text style={{ fontSize: 12, color: colors.muted }}>
+                  <Text style={{ fontSize: s(12), color: colors.muted }}>
                     {order.opened_at ? formatTimestamp(order.opened_at) : '—'}
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
                   {/* Delivery Platform / Online Badge */}
                   <DeliveryPlatformBadge
                     deliveryPlatform={order.delivery_platform}
@@ -4718,13 +4785,13 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   />
                   {/* Status Badge */}
                   <View style={{
-                    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, gap: 6,
+                    flexDirection: 'row', alignItems: 'center', paddingHorizontal: s(10), paddingVertical: s(4), borderRadius: s(20), gap: s(6),
                     backgroundColor: order.check_status === 'Opened' ? colors.success + '20' : colors.card,
                     borderWidth: 1,
                     borderColor: order.check_status === 'Opened' ? colors.success + '50' : colors.border,
                   }}>
-                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: order.check_status === 'Opened' ? colors.success : colors.muted }} />
-                    <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', color: order.check_status === 'Opened' ? colors.success : colors.muted }}>
+                    <View style={{ width: s(6), height: s(6), borderRadius: s(3), backgroundColor: order.check_status === 'Opened' ? colors.success : colors.muted }} />
+                    <Text style={{ fontSize: s(11), fontWeight: '700', textTransform: 'uppercase', color: order.check_status === 'Opened' ? colors.success : colors.muted }}>
                       {order.check_status === 'Opened' ? 'Open' : 'Closed'}
                     </Text>
                   </View>
@@ -4733,12 +4800,12 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     onPress={close}
                     disabled={refundMutation.isPending || tipProcessing}
                     style={{
-                      paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
+                      paddingHorizontal: s(14), paddingVertical: s(7), borderRadius: s(8),
                       backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
                       opacity: refundMutation.isPending || tipProcessing ? 0.3 : 1
                     }}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.label }}>CLOSE</Text>
+                    <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.label }}>CLOSE</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -4770,6 +4837,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     onSendReceipt={() =>
                       setReceiptSheet({ open: true, method: 'email' })
                     }
+                    onPrintSplitReceipts={() => setSplitSelectorOpen(true)}
                     onPrintKitchenTicket={handlePrintKitchenTicket}
                     onTipAdjust={handleTipAdjust}
                     onRefund={handleRefund}
@@ -4827,6 +4895,13 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         defaultMethod={receiptSheet.method}
         defaultEmail={(order as any)?.customer_email}
         defaultPhone={(order as any)?.customer_phone}
+      />
+
+      <SplitReceiptSelectorModal
+        isOpen={splitSelectorOpen}
+        onClose={() => setSplitSelectorOpen(false)}
+        order={(order as OrderProfile) ?? null}
+        location={selectedStore ?? null}
       />
     </Modal>
   )

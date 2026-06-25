@@ -6,6 +6,7 @@ import { iosOnly } from "@/lib/safeAnimations";
 import { NotifyContext, TemplateKey } from "@/lib/notifyTemplates";
 import { formatUsPhone, normalizeUsPhoneDigits } from "@/lib/phone";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { getCachedCustomers } from "@/services/customer";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useReservationStore } from "@/stores/useReservationStore";
@@ -206,27 +207,6 @@ function formatPreset(t: string): string {
   return `${h12}:${m} ${ampm}`;
 }
 
-// ─── Shared input style ───────────────────────────────────────────────────────
-
-const inputStyle = {
-  backgroundColor: colors.inset,
-  color: colors.heading,
-  fontSize: 13,
-  paddingHorizontal: 10,
-  paddingVertical: 10,
-  borderRadius: 8,
-  borderWidth: 1,
-  borderColor: colors.border,
-};
-
-const labelStyle = {
-  fontSize: 10,
-  fontWeight: "700" as const,
-  color: colors.muted,
-  letterSpacing: 0.25,
-  marginBottom: 6,
-};
-
 // ─── AddReservationModal ─────────────────────────────────────────────────────
 
 interface AddReservationData {
@@ -364,6 +344,9 @@ const AddReservationModal: React.FC<{
   subtitle = "Create and assign a booking in one step",
   submitLabel = "Reserve",
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
   const [name, setName] = useState("");
   const [partySize, setPartySize] = useState(2);
   const [phone, setPhone] = useState("");
@@ -622,23 +605,31 @@ const AddReservationModal: React.FC<{
   const formInputSurface = isLightTheme ? colors.card : colors.inset;
   const formControlSurface = isLightTheme ? colors.card : colors.inset;
   const formActionSurface = isLightTheme ? colors.card : colors.screen;
-  // Re-read theme-dependent colors on every render. The module-level
-  // `inputStyle` captures `colors.heading` once at load time, which freezes
-  // the value to whatever theme was active when the module evaluated; on
-  // light theme the captured dark-theme heading color is near-white and
-  // becomes invisible against the light input surface.
   const themedInputStyle = {
-    ...inputStyle,
     backgroundColor: formInputSurface,
     color: colors.heading,
+    fontSize: s(13),
+    paddingHorizontal: s(10),
+    paddingVertical: s(10),
+    borderRadius: s(8),
+    borderWidth: 1,
+    borderColor: colors.border,
   } as const;
 
+  const labelStyle = {
+    fontSize: s(10),
+    fontWeight: "700" as const,
+    color: colors.muted,
+    letterSpacing: 0.25,
+    marginBottom: s(6),
+  };
+
   const surfaceCard = {
-    borderRadius: 12,
+    borderRadius: s(12),
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
-    padding: 10,
+    padding: s(10),
   } as const;
 
   return (
@@ -658,14 +649,14 @@ const AddReservationModal: React.FC<{
               width: "100%",
               alignItems: "center",
               justifyContent: "flex-start",
-              paddingTop: 28,
+              paddingTop: s(28),
             }}
           >
             <Pressable
               onPress={() => {}}
               style={{
                 backgroundColor: colors.panel,
-                borderRadius: 20,
+                borderRadius: s(20),
                 width: "96%",
                 maxWidth: 980,
                 borderWidth: 1,
@@ -673,8 +664,8 @@ const AddReservationModal: React.FC<{
                 overflow: "hidden",
                 shadowColor: "#000000",
                 shadowOpacity: 0.25,
-                shadowRadius: 18,
-                shadowOffset: { width: 0, height: 10 },
+                shadowRadius: s(18),
+                shadowOffset: { width: 0, height: s(10) },
                 elevation: 10,
               }}
             >
@@ -684,9 +675,9 @@ const AddReservationModal: React.FC<{
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  paddingHorizontal: 20,
-                  paddingTop: 16,
-                  paddingBottom: 12,
+                  paddingHorizontal: s(20),
+                  paddingTop: s(16),
+                  paddingBottom: s(12),
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
                 }}
@@ -694,7 +685,7 @@ const AddReservationModal: React.FC<{
                 <View>
                   <Text
                     style={{
-                      fontSize: 17,
+                      fontSize: s(17),
                       fontWeight: "800",
                       color: colors.heading,
                     }}
@@ -702,7 +693,7 @@ const AddReservationModal: React.FC<{
                     {title}
                   </Text>
                   <Text
-                    style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
+                    style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}
                   >
                     {subtitle}
                   </Text>
@@ -710,9 +701,9 @@ const AddReservationModal: React.FC<{
                 <TouchableOpacity
                   onPress={handleClose}
                   style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 10,
+                    width: s(34),
+                    height: s(34),
+                    borderRadius: s(10),
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: colors.danger + "15",
@@ -720,11 +711,16 @@ const AddReservationModal: React.FC<{
                     borderColor: colors.danger + "35",
                   }}
                 >
-                  <X size={14} color={colors.danger} />
+                  <X size={s(14)} color={colors.danger} />
                 </TouchableOpacity>
               </View>
 
-              <View style={{ padding: 14, gap: 10 }}>
+              <ScrollView
+                style={{ maxHeight: s(520) }}
+                contentContainerStyle={{ padding: s(14), gap: s(10) }}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
                 {/* Customer search — full width at top */}
                 <View style={[surfaceCard, { zIndex: 30 }]}>
                   <Text style={labelStyle}>Customer (Optional)</Text>
@@ -734,20 +730,20 @@ const AddReservationModal: React.FC<{
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        borderRadius: 8,
+                        borderRadius: s(8),
                         borderWidth: 1,
                         borderColor: colors.teal + "50",
                         backgroundColor: colors.teal + "10",
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        gap: 10,
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(8),
+                        gap: s(10),
                       }}
                     >
                       <View
                         style={{
-                          width: 30,
-                          height: 30,
-                          borderRadius: 15,
+                          width: s(30),
+                          height: s(30),
+                          borderRadius: s(15),
                           backgroundColor: colors.teal + "20",
                           borderWidth: 1,
                           borderColor: colors.teal + "40",
@@ -757,7 +753,7 @@ const AddReservationModal: React.FC<{
                       >
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: "700",
                             color: colors.teal,
                           }}
@@ -768,14 +764,14 @@ const AddReservationModal: React.FC<{
                       <View style={{ flex: 1 }}>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: "600",
                             color: colors.heading,
                           }}
                         >
                           {linkedCustomer.name}
                         </Text>
-                        <Text style={{ fontSize: 11, color: colors.label }}>
+                        <Text style={{ fontSize: s(11), color: colors.label }}>
                           {linkedCustomer.phone ??
                             linkedCustomer.phoneNumber ??
                             ""}
@@ -784,15 +780,15 @@ const AddReservationModal: React.FC<{
                       {(linkedCustomer.total_orders ?? 0) > 0 && (
                         <View
                           style={{
-                            paddingHorizontal: 7,
-                            paddingVertical: 3,
-                            borderRadius: 5,
+                            paddingHorizontal: s(7),
+                            paddingVertical: s(3),
+                            borderRadius: s(5),
                             backgroundColor: colors.teal + "20",
                           }}
                         >
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               fontWeight: "700",
                               color: colors.teal,
                             }}
@@ -804,9 +800,9 @@ const AddReservationModal: React.FC<{
                       <TouchableOpacity
                         onPress={clearCustomer}
                         style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 5,
-                          borderRadius: 6,
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(5),
+                          borderRadius: s(6),
                           backgroundColor: formActionSurface,
                           borderWidth: 1,
                           borderColor: colors.border,
@@ -814,7 +810,7 @@ const AddReservationModal: React.FC<{
                       >
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: s(11),
                             fontWeight: "700",
                             color: colors.label,
                           }}
@@ -831,11 +827,11 @@ const AddReservationModal: React.FC<{
                           flexDirection: "row",
                           alignItems: "center",
                           ...themedInputStyle,
-                          paddingHorizontal: 10,
-                          gap: 8,
+                          paddingHorizontal: s(10),
+                          gap: s(8),
                         }}
                       >
-                        <Search size={14} color={colors.muted} />
+                        <Search size={s(14)} color={colors.muted} />
                         <TextInput
                           value={customerQuery}
                           onChangeText={(value) => {
@@ -857,14 +853,14 @@ const AddReservationModal: React.FC<{
                           style={{
                             flex: 1,
                             color: colors.heading,
-                            fontSize: 13,
+                            fontSize: s(13),
                           }}
                         />
                         {customerQuery.length > 0 && (
                           <TouchableOpacity
                             onPress={() => setCustomerQuery("")}
                           >
-                            <X size={12} color={colors.muted} />
+                            <X size={s(12)} color={colors.muted} />
                           </TouchableOpacity>
                         )}
                       </View>
@@ -874,10 +870,10 @@ const AddReservationModal: React.FC<{
                           <View
                             style={{
                               position: "absolute",
-                              top: 42,
+                              top: s(42),
                               left: 0,
                               right: 0,
-                              borderRadius: 8,
+                              borderRadius: s(8),
                               borderWidth: 1,
                               borderColor: colors.border,
                               backgroundColor: colors.card,
@@ -885,9 +881,9 @@ const AddReservationModal: React.FC<{
                               zIndex: 40,
                               elevation: 8,
                               shadowColor: "#000",
-                              shadowOffset: { width: 0, height: 6 },
+                              shadowOffset: { width: 0, height: s(6) },
                               shadowOpacity: 0.18,
-                              shadowRadius: 12,
+                              shadowRadius: s(12),
                             }}
                           >
                             {customerResults.map((c, i) => (
@@ -897,18 +893,18 @@ const AddReservationModal: React.FC<{
                                 style={{
                                   flexDirection: "row",
                                   alignItems: "center",
-                                  gap: 8,
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 9,
+                                  gap: s(8),
+                                  paddingHorizontal: s(10),
+                                  paddingVertical: s(9),
                                   borderTopWidth: i > 0 ? 1 : 0,
                                   borderTopColor: colors.border,
                                 }}
                               >
                                 <View
                                   style={{
-                                    width: 26,
-                                    height: 26,
-                                    borderRadius: 13,
+                                    width: s(26),
+                                    height: s(26),
+                                    borderRadius: s(13),
                                     backgroundColor: colors.teal + "16",
                                     alignItems: "center",
                                     justifyContent: "center",
@@ -916,7 +912,7 @@ const AddReservationModal: React.FC<{
                                 >
                                   <Text
                                     style={{
-                                      fontSize: 10,
+                                      fontSize: s(10),
                                       fontWeight: "700",
                                       color: colors.teal,
                                     }}
@@ -927,7 +923,7 @@ const AddReservationModal: React.FC<{
                                 <View style={{ flex: 1 }}>
                                   <Text
                                     style={{
-                                      fontSize: 12,
+                                      fontSize: s(12),
                                       fontWeight: "700",
                                       color: colors.heading,
                                     }}
@@ -937,7 +933,7 @@ const AddReservationModal: React.FC<{
                                   </Text>
                                   <Text
                                     style={{
-                                      fontSize: 11,
+                                      fontSize: s(11),
                                       color: colors.muted,
                                     }}
                                     numberOfLines={1}
@@ -947,7 +943,7 @@ const AddReservationModal: React.FC<{
                                 </View>
                                 <Text
                                   style={{
-                                    fontSize: 10,
+                                    fontSize: s(10),
                                     fontWeight: "700",
                                     color: colors.teal,
                                   }}
@@ -963,9 +959,9 @@ const AddReservationModal: React.FC<{
                         customerResults.length === 0 && (
                           <Text
                             style={{
-                              fontSize: 11,
+                              fontSize: s(11),
                               color: colors.muted,
-                              marginTop: 6,
+                              marginTop: s(6),
                             }}
                           >
                             No matching customer. Continue as new guest.
@@ -976,12 +972,12 @@ const AddReservationModal: React.FC<{
                 </View>
 
                 {/* Main Two-Column Layout */}
-                <View style={{ flexDirection: "row", gap: 10 }}>
-                  <View style={[surfaceCard, { flex: 0.48, gap: 10 }]}>
+                <View style={{ flexDirection: "row", gap: s(10) }}>
+                  <View style={[surfaceCard, { flex: 0.48, gap: s(10) }]}>
                     <View
                       style={{
                         flexDirection: "row",
-                        gap: 8,
+                        gap: s(8),
                         alignItems: "flex-end",
                       }}
                     >
@@ -999,9 +995,9 @@ const AddReservationModal: React.FC<{
                       <TouchableOpacity
                         onPress={() => setIsVip((v) => !v)}
                         style={{
-                          width: 54,
-                          height: 40,
-                          borderRadius: 8,
+                          width: s(54),
+                          height: s(40),
+                          borderRadius: s(8),
                           alignItems: "center",
                           justifyContent: "center",
                           borderWidth: 1,
@@ -1011,16 +1007,16 @@ const AddReservationModal: React.FC<{
                           borderColor: isVip
                             ? colors.warning + "50"
                             : colors.border,
-                          gap: 1,
+                          gap: s(1),
                         }}
                       >
                         <Star
-                          size={15}
+                          size={s(15)}
                           color={isVip ? colors.warning : colors.muted}
                         />
                         <Text
                           style={{
-                            fontSize: 9,
+                            fontSize: s(9),
                             fontWeight: "700",
                             color: isVip ? colors.warning : colors.muted,
                           }}
@@ -1030,7 +1026,7 @@ const AddReservationModal: React.FC<{
                       </TouchableOpacity>
                     </View>
 
-                    <View style={{ flexDirection: "row", gap: 10 }}>
+                    <View style={{ flexDirection: "row", gap: s(10) }}>
                       <View style={{ flex: 1 }}>
                         <Text style={labelStyle}>Phone</Text>
                         <TextInput
@@ -1045,16 +1041,16 @@ const AddReservationModal: React.FC<{
                           style={themedInputStyle}
                         />
                       </View>
-                      <View style={{ width: 170 }}>
+                      <View style={{ width: s(170) }}>
                         <Text style={labelStyle}>Party Size</Text>
                         <View
                           style={{
                             flexDirection: "row",
-                            borderRadius: 8,
+                            borderRadius: s(8),
                             borderWidth: 1,
                             borderColor: colors.border,
                             overflow: "hidden",
-                            height: 40,
+                            height: s(40),
                           }}
                         >
                           <TouchableOpacity
@@ -1062,7 +1058,7 @@ const AddReservationModal: React.FC<{
                               setPartySize((n) => Math.max(1, n - 1))
                             }
                             style={{
-                              width: 40,
+                              width: s(40),
                               alignItems: "center",
                               justifyContent: "center",
                               borderRightWidth: 1,
@@ -1071,9 +1067,9 @@ const AddReservationModal: React.FC<{
                           >
                             <Text
                               style={{
-                                fontSize: 18,
+                                fontSize: s(18),
                                 color: colors.label,
-                                lineHeight: 22,
+                                lineHeight: s(22),
                               }}
                             >
                               −
@@ -1089,7 +1085,7 @@ const AddReservationModal: React.FC<{
                           >
                             <Text
                               style={{
-                                fontSize: 13,
+                                fontSize: s(13),
                                 fontWeight: "700",
                                 color: colors.heading,
                               }}
@@ -1100,7 +1096,7 @@ const AddReservationModal: React.FC<{
                           <TouchableOpacity
                             onPress={() => setPartySize((n) => n + 1)}
                             style={{
-                              width: 40,
+                              width: s(40),
                               alignItems: "center",
                               justifyContent: "center",
                               borderLeftWidth: 1,
@@ -1109,9 +1105,9 @@ const AddReservationModal: React.FC<{
                           >
                             <Text
                               style={{
-                                fontSize: 18,
+                                fontSize: s(18),
                                 color: colors.teal,
-                                lineHeight: 22,
+                                lineHeight: s(22),
                               }}
                             >
                               +
@@ -1127,15 +1123,15 @@ const AddReservationModal: React.FC<{
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
-                          gap: 6,
+                          gap: s(6),
                         }}
                       >
                         <TouchableOpacity
                           onPress={() => setSelectedDate((d) => addDays(d, -1))}
                           style={{
-                            width: 34,
-                            height: 40,
-                            borderRadius: 8,
+                            width: s(34),
+                            height: s(40),
+                            borderRadius: s(8),
                             alignItems: "center",
                             justifyContent: "center",
                             borderWidth: 1,
@@ -1143,7 +1139,7 @@ const AddReservationModal: React.FC<{
                             backgroundColor: formControlSurface,
                           }}
                         >
-                          <ChevronLeft size={14} color={colors.label} />
+                          <ChevronLeft size={s(14)} color={colors.label} />
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => {
@@ -1153,8 +1149,8 @@ const AddReservationModal: React.FC<{
                           activeOpacity={0.8}
                           style={{
                             flex: 1,
-                            height: 40,
-                            borderRadius: 8,
+                            height: s(40),
+                            borderRadius: s(8),
                             alignItems: "center",
                             justifyContent: "center",
                             borderWidth: 1,
@@ -1164,7 +1160,7 @@ const AddReservationModal: React.FC<{
                         >
                           <Text
                             style={{
-                              fontSize: 13,
+                              fontSize: s(13),
                               fontWeight: "600",
                               color: colors.heading,
                             }}
@@ -1175,9 +1171,9 @@ const AddReservationModal: React.FC<{
                         <TouchableOpacity
                           onPress={() => setSelectedDate((d) => addDays(d, 1))}
                           style={{
-                            width: 34,
-                            height: 40,
-                            borderRadius: 8,
+                            width: s(34),
+                            height: s(40),
+                            borderRadius: s(8),
                             alignItems: "center",
                             justifyContent: "center",
                             borderWidth: 1,
@@ -1185,7 +1181,7 @@ const AddReservationModal: React.FC<{
                             backgroundColor: formControlSurface,
                           }}
                         >
-                          <ChevronRight size={14} color={colors.label} />
+                          <ChevronRight size={s(14)} color={colors.label} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -1194,28 +1190,28 @@ const AddReservationModal: React.FC<{
                       <Text style={labelStyle}>Time</Text>
                       <View
                         style={{
-                          borderRadius: 10,
+                          borderRadius: s(10),
                           borderWidth: 1,
                           borderColor: colors.border,
                           backgroundColor: formControlSurface,
-                          padding: 8,
-                          gap: 8,
+                          padding: s(8),
+                          gap: s(8),
                         }}
                       >
                         <View
                           style={{
                             flexDirection: "row",
                             alignItems: "center",
-                            gap: 6,
+                            gap: s(6),
                           }}
                         >
                           <TouchableOpacity
                             onPress={() => shiftTime(-1)}
                             disabled={selectedTimeIndex <= 0}
                             style={{
-                              width: 34,
-                              height: 34,
-                              borderRadius: 8,
+                              width: s(34),
+                              height: s(34),
+                              borderRadius: s(8),
                               alignItems: "center",
                               justifyContent: "center",
                               borderWidth: 1,
@@ -1224,13 +1220,13 @@ const AddReservationModal: React.FC<{
                               opacity: selectedTimeIndex <= 0 ? 0.4 : 1,
                             }}
                           >
-                            <ChevronLeft size={14} color={colors.label} />
+                            <ChevronLeft size={s(14)} color={colors.label} />
                           </TouchableOpacity>
                           <View
                             style={{
                               flex: 1,
-                              height: 34,
-                              borderRadius: 8,
+                              height: s(34),
+                              borderRadius: s(8),
                               alignItems: "center",
                               justifyContent: "center",
                               borderWidth: 1,
@@ -1240,7 +1236,7 @@ const AddReservationModal: React.FC<{
                           >
                             <Text
                               style={{
-                                fontSize: 15,
+                                fontSize: s(15),
                                 fontWeight: "800",
                                 color: colors.teal,
                               }}
@@ -1254,9 +1250,9 @@ const AddReservationModal: React.FC<{
                               selectedTimeIndex >= timeOptions.length - 1
                             }
                             style={{
-                              width: 34,
-                              height: 34,
-                              borderRadius: 8,
+                              width: s(34),
+                              height: s(34),
+                              borderRadius: s(8),
                               alignItems: "center",
                               justifyContent: "center",
                               borderWidth: 1,
@@ -1268,13 +1264,13 @@ const AddReservationModal: React.FC<{
                                   : 1,
                             }}
                           >
-                            <ChevronRight size={14} color={colors.label} />
+                            <ChevronRight size={s(14)} color={colors.label} />
                           </TouchableOpacity>
                         </View>
                         <View
                           style={{
                             flexDirection: "row",
-                            borderRadius: 8,
+                            borderRadius: s(8),
                             borderWidth: 1,
                             borderColor: colors.border,
                             backgroundColor: formControlSurface,
@@ -1286,7 +1282,7 @@ const AddReservationModal: React.FC<{
                             items={HOURS.map((h) => h.value)}
                             selected={selHour}
                             onSelect={setSelHour}
-                            width={118}
+                            width={s(118)}
                             renderItem={(value, active) => {
                               const label =
                                 HOURS.find((h) => h.value === value)?.label ??
@@ -1294,7 +1290,7 @@ const AddReservationModal: React.FC<{
                               return (
                                 <Text
                                   style={{
-                                    fontSize: 14,
+                                    fontSize: s(14),
                                     fontWeight: active ? "700" : "500",
                                     color: active
                                       ? colors.heading
@@ -1313,7 +1309,7 @@ const AddReservationModal: React.FC<{
                             items={MINUTES.map((m) => m.value)}
                             selected={selMin}
                             onSelect={setSelMin}
-                            width={86}
+                            width={s(86)}
                             renderItem={(value, active) => {
                               const label =
                                 MINUTES.find((m) => m.value === value)?.label ??
@@ -1321,7 +1317,7 @@ const AddReservationModal: React.FC<{
                               return (
                                 <Text
                                   style={{
-                                    fontSize: 14,
+                                    fontSize: s(14),
                                     fontWeight: active ? "700" : "500",
                                     color: active
                                       ? colors.heading
@@ -1338,18 +1334,18 @@ const AddReservationModal: React.FC<{
                     </View>
                   </View>
 
-                  <View style={[surfaceCard, { flex: 0.52, gap: 10 }]}>
+                  <View style={[surfaceCard, { flex: 0.52, gap: s(10) }]}>
                     {availableTables.length > 0 && (
                       <View>
                         <Text style={labelStyle}>Table (Optional)</Text>
                         <View
                           style={{
-                            borderRadius: 10,
+                            borderRadius: s(10),
                             borderWidth: 1,
                             borderColor: colors.border,
                             backgroundColor: formControlSurface,
-                            padding: 8,
-                            gap: 8,
+                            padding: s(8),
+                            gap: s(8),
                           }}
                         >
                           <View
@@ -1359,7 +1355,7 @@ const AddReservationModal: React.FC<{
                               justifyContent: "space-between",
                             }}
                           >
-                            <Text style={{ fontSize: 11, color: colors.muted }}>
+                            <Text style={{ fontSize: s(11), color: colors.muted }}>
                               {selectedTableIds.length === 0
                                 ? "No table selected"
                                 : `${selectedTableIds.length} table${
@@ -1372,7 +1368,7 @@ const AddReservationModal: React.FC<{
                               >
                                 <Text
                                   style={{
-                                    fontSize: 11,
+                                    fontSize: s(11),
                                     fontWeight: "700",
                                     color: colors.teal,
                                   }}
@@ -1386,7 +1382,7 @@ const AddReservationModal: React.FC<{
                             style={{
                               flexDirection: "row",
                               flexWrap: "wrap",
-                              gap: 6,
+                              gap: s(6),
                             }}
                           >
                             {availableTables.map((t) => {
@@ -1396,10 +1392,10 @@ const AddReservationModal: React.FC<{
                                   key={t.id}
                                   onPress={() => toggleTable(t.id)}
                                   style={{
-                                    minWidth: 52,
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 7,
-                                    borderRadius: 8,
+                                    minWidth: s(52),
+                                    paddingHorizontal: s(10),
+                                    paddingVertical: s(7),
+                                    borderRadius: s(8),
                                     borderWidth: 1,
                                     backgroundColor: active
                                       ? colors.teal + "20"
@@ -1416,7 +1412,7 @@ const AddReservationModal: React.FC<{
                                 >
                                   <Text
                                     style={{
-                                      fontSize: 12,
+                                      fontSize: s(12),
                                       fontWeight: "700",
                                       color: active
                                         ? colors.teal
@@ -1453,13 +1449,13 @@ const AddReservationModal: React.FC<{
                 </View>
 
                 {/* Actions */}
-                <View style={{ flexDirection: "row", gap: 10 }}>
+                <View style={{ flexDirection: "row", gap: s(10) }}>
                   <TouchableOpacity
                     onPress={handleClose}
                     style={{
                       flex: 1,
-                      height: 46,
-                      borderRadius: 10,
+                      height: s(46),
+                      borderRadius: s(10),
                       alignItems: "center",
                       justifyContent: "center",
                       borderWidth: 1,
@@ -1469,7 +1465,7 @@ const AddReservationModal: React.FC<{
                   >
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: "600",
                         color: colors.label,
                       }}
@@ -1482,8 +1478,8 @@ const AddReservationModal: React.FC<{
                     disabled={isLoading}
                     style={{
                       flex: 2,
-                      height: 46,
-                      borderRadius: 10,
+                      height: s(46),
+                      borderRadius: s(10),
                       alignItems: "center",
                       justifyContent: "center",
                       backgroundColor: colors.teal,
@@ -1497,7 +1493,7 @@ const AddReservationModal: React.FC<{
                     ) : (
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: "700",
                           color: "#ffffff",
                         }}
@@ -1507,7 +1503,7 @@ const AddReservationModal: React.FC<{
                     )}
                   </TouchableOpacity>
                 </View>
-              </View>
+              </ScrollView>
             </Pressable>
           </View>
         </Pressable>
@@ -1529,15 +1525,15 @@ const AddReservationModal: React.FC<{
               flex: 1,
               alignItems: "center",
               justifyContent: "center",
-              paddingHorizontal: 16,
+              paddingHorizontal: s(16),
             }}
           >
             <Pressable
               onPress={() => {}}
               style={{
                 width: "100%",
-                maxWidth: 460,
-                borderRadius: 16,
+                maxWidth: s(460),
+                borderRadius: s(16),
                 borderWidth: 1,
                 borderColor: colors.border,
                 backgroundColor: colors.panel,
@@ -1546,16 +1542,16 @@ const AddReservationModal: React.FC<{
             >
               <View
                 style={{
-                  paddingHorizontal: 16,
-                  paddingTop: 14,
-                  paddingBottom: 10,
+                  paddingHorizontal: s(16),
+                  paddingTop: s(14),
+                  paddingBottom: s(10),
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: "700",
                     color: colors.heading,
                   }}
@@ -1563,13 +1559,13 @@ const AddReservationModal: React.FC<{
                   Select Reservation Date
                 </Text>
                 <Text
-                  style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
+                  style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}
                 >
                   {formatDateLabel(calendarDraftDate)}
                 </Text>
               </View>
 
-              <View style={{ paddingHorizontal: 10, paddingTop: 10 }}>
+              <View style={{ paddingHorizontal: s(10), paddingTop: s(10) }}>
                 <Calendar
                   current={calendarDraftKey}
                   onDayPress={(day: DateData) => {
@@ -1596,10 +1592,10 @@ const AddReservationModal: React.FC<{
               <View
                 style={{
                   flexDirection: "row",
-                  gap: 10,
-                  paddingHorizontal: 14,
-                  paddingTop: 10,
-                  paddingBottom: 14,
+                  gap: s(10),
+                  paddingHorizontal: s(14),
+                  paddingTop: s(10),
+                  paddingBottom: s(14),
                   borderTopWidth: 1,
                   borderTopColor: colors.border,
                 }}
@@ -1608,8 +1604,8 @@ const AddReservationModal: React.FC<{
                   onPress={() => setShowDatePicker(false)}
                   style={{
                     flex: 1,
-                    height: 40,
-                    borderRadius: 10,
+                    height: s(40),
+                    borderRadius: s(10),
                     alignItems: "center",
                     justifyContent: "center",
                     borderWidth: 1,
@@ -1619,7 +1615,7 @@ const AddReservationModal: React.FC<{
                 >
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: "600",
                       color: colors.label,
                     }}
@@ -1634,8 +1630,8 @@ const AddReservationModal: React.FC<{
                   }}
                   style={{
                     flex: 1,
-                    height: 40,
-                    borderRadius: 10,
+                    height: s(40),
+                    borderRadius: s(10),
                     alignItems: "center",
                     justifyContent: "center",
                     borderWidth: 1,
@@ -1645,7 +1641,7 @@ const AddReservationModal: React.FC<{
                 >
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: "700",
                       color: "#000000",
                     }}
@@ -1683,6 +1679,9 @@ const SeatReservationTablePickerModal: React.FC<{
   onClose,
   onSelectTable,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
   return (
     <Modal
       visible={visible}
@@ -1701,10 +1700,10 @@ const SeatReservationTablePickerModal: React.FC<{
       >
         <View
           style={{
-            width: 420,
+            width: s(420),
             maxWidth: "92%",
             backgroundColor: colors.panel,
-            borderRadius: 20,
+            borderRadius: s(20),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: "hidden",
@@ -1712,29 +1711,29 @@ const SeatReservationTablePickerModal: React.FC<{
         >
           <View
             style={{
-              paddingHorizontal: 20,
-              paddingTop: 18,
-              paddingBottom: 14,
+              paddingHorizontal: s(20),
+              paddingTop: s(18),
+              paddingBottom: s(14),
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
             }}
           >
             <Text
-              style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}
+              style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}
             >
               Select a Table
             </Text>
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
+            <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(4) }}>
               Choose a table for {reservationName} to seat now.
             </Text>
           </View>
 
           <ScrollView
-            style={{ maxHeight: 320 }}
-            contentContainerStyle={{ padding: 12, gap: 8 }}
+            style={{ maxHeight: s(320) }}
+            contentContainerStyle={{ padding: s(12), gap: s(8) }}
           >
             {isLoading ? (
-              <View style={{ paddingVertical: 24, alignItems: "center" }}>
+              <View style={{ paddingVertical: s(24), alignItems: "center" }}>
                 <ActivityIndicator size="small" color={colors.teal} />
               </View>
             ) : tables.length > 0 ? (
@@ -1743,9 +1742,9 @@ const SeatReservationTablePickerModal: React.FC<{
                   key={table.id}
                   onPress={() => onSelectTable(table)}
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 12,
-                    borderRadius: 12,
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(12),
+                    borderRadius: s(12),
                     backgroundColor: colors.card,
                     borderWidth: 1,
                     borderColor: colors.border,
@@ -1756,7 +1755,7 @@ const SeatReservationTablePickerModal: React.FC<{
                 >
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: "700",
                       color: colors.heading,
                     }}
@@ -1765,9 +1764,9 @@ const SeatReservationTablePickerModal: React.FC<{
                   </Text>
                   <View
                     style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 4,
-                      borderRadius: 999,
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(4),
+                      borderRadius: s(999),
                       backgroundColor: colors.teal + "18",
                       borderWidth: 1,
                       borderColor: colors.teal + "35",
@@ -1775,7 +1774,7 @@ const SeatReservationTablePickerModal: React.FC<{
                   >
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         fontWeight: "700",
                         color: colors.teal,
                       }}
@@ -1787,11 +1786,11 @@ const SeatReservationTablePickerModal: React.FC<{
               ))
             ) : (
               <View
-                style={{ paddingVertical: 24, alignItems: "center", gap: 6 }}
+                style={{ paddingVertical: s(24), alignItems: "center", gap: s(6) }}
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "700",
                     color: colors.heading,
                   }}
@@ -1800,7 +1799,7 @@ const SeatReservationTablePickerModal: React.FC<{
                 </Text>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.muted,
                     textAlign: "center",
                   }}
@@ -1820,10 +1819,10 @@ const SeatReservationTablePickerModal: React.FC<{
           >
             <TouchableOpacity
               onPress={onClose}
-              style={{ flex: 1, paddingVertical: 15, alignItems: "center" }}
+              style={{ flex: 1, paddingVertical: s(15), alignItems: "center" }}
             >
               <Text
-                style={{ fontSize: 14, fontWeight: "600", color: colors.label }}
+                style={{ fontSize: s(14), fontWeight: "600", color: colors.label }}
               >
                 Cancel
               </Text>
@@ -1860,8 +1859,10 @@ const ReservationCard: React.FC<{
   tableNames,
   hasOccupiedTable = false,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const statusColor = getStatusColor(r.status);
-  const isActionable = ![
+  const isActionable = ![ 
     "seated",
     "completed",
     "cancelled",
@@ -1872,8 +1873,8 @@ const ReservationCard: React.FC<{
     <Animated.View
       layout={LinearTransition.duration(200)}
       style={{
-        marginBottom: 8,
-        borderRadius: 10,
+        marginBottom: s(8),
+        borderRadius: s(10),
         overflow: "hidden",
         backgroundColor: colors.card,
         borderWidth: 1,
@@ -1886,16 +1887,16 @@ const ReservationCard: React.FC<{
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 10,
-          paddingVertical: 10,
+          paddingHorizontal: s(10),
+          paddingVertical: s(10),
         }}
       >
         {/* Time badge */}
         <View
           style={{
-            width: 44,
-            height: 40,
-            borderRadius: 8,
+            width: s(44),
+            height: s(40),
+            borderRadius: s(8),
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: statusColor + "18",
@@ -1905,11 +1906,11 @@ const ReservationCard: React.FC<{
         >
           <Text
             style={{
-              fontSize: 10,
+              fontSize: s(10),
               fontWeight: "700",
               color: statusColor,
               textAlign: "center",
-              lineHeight: 13,
+              lineHeight: s(13),
             }}
           >
             {formatTime(r.reservation_time)}
@@ -1917,11 +1918,11 @@ const ReservationCard: React.FC<{
         </View>
 
         {/* Name + size */}
-        <View style={{ flex: 1, marginLeft: 10, minWidth: 0 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+        <View style={{ flex: 1, marginLeft: s(10), minWidth: 0 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: s(5) }}>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: "600",
                 color: colors.heading,
                 flex: 1,
@@ -1930,20 +1931,20 @@ const ReservationCard: React.FC<{
             >
               {r.party_name}
             </Text>
-            {r.is_vip && <Star size={11} color={colors.warning} />}
+            {r.is_vip && <Star size={s(11)} color={colors.warning} />}
           </View>
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
-              marginTop: 2,
-              gap: 8,
+              marginTop: s(2),
+              gap: s(8),
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Users size={11} color={colors.muted} />
+              <Users size={s(11)} color={colors.muted} />
               <Text
-                style={{ fontSize: 11, color: colors.muted, marginLeft: 3 }}
+                style={{ fontSize: s(11), color: colors.muted, marginLeft: s(3) }}
               >
                 {r.party_size}
               </Text>
@@ -1951,16 +1952,16 @@ const ReservationCard: React.FC<{
             {/* Status pill */}
             <View
               style={{
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-                borderRadius: 4,
+                paddingHorizontal: s(6),
+                paddingVertical: s(2),
+                borderRadius: s(4),
                 backgroundColor: statusColor + "20",
                 borderWidth: 1,
                 borderColor: statusColor + "40",
               }}
             >
               <Text
-                style={{ fontSize: 10, fontWeight: "700", color: statusColor }}
+                style={{ fontSize: s(10), fontWeight: "700", color: statusColor }}
               >
                 {getStatusLabel(r.status)}
               </Text>
@@ -1969,9 +1970,9 @@ const ReservationCard: React.FC<{
         </View>
 
         {isExpanded ? (
-          <ChevronUp size={14} color={colors.muted} />
+          <ChevronUp size={s(14)} color={colors.muted} />
         ) : (
-          <ChevronDown size={14} color={colors.muted} />
+          <ChevronDown size={s(14)} color={colors.muted} />
         )}
       </Pressable>
 
@@ -1981,18 +1982,18 @@ const ReservationCard: React.FC<{
           entering={iosOnly(FadeIn.duration(150))}
           exiting={iosOnly(FadeOut.duration(100))}
           style={{
-            paddingHorizontal: 10,
-            paddingBottom: 10,
+            paddingHorizontal: s(10),
+            paddingBottom: s(10),
             borderTopWidth: 1,
             borderTopColor: colors.border,
           }}
         >
-          <View style={{ marginTop: 8, gap: 6 }}>
+          <View style={{ marginTop: s(8), gap: s(6) }}>
             {r.phone && (
               <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Phone size={12} color={colors.label} />
+                <Phone size={s(12)} color={colors.label} />
                 <Text
-                  style={{ fontSize: 12, color: colors.label, marginLeft: 6 }}
+                  style={{ fontSize: s(12), color: colors.label, marginLeft: s(6) }}
                 >
                   {r.phone}
                 </Text>
@@ -2000,9 +2001,9 @@ const ReservationCard: React.FC<{
             )}
             {tableNames.length > 0 && (
               <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <MapPin size={12} color={colors.label} />
+                <MapPin size={s(12)} color={colors.label} />
                 <Text
-                  style={{ fontSize: 12, color: colors.label, marginLeft: 6 }}
+                  style={{ fontSize: s(12), color: colors.label, marginLeft: s(6) }}
                 >
                   {tableNames.join(", ")}
                 </Text>
@@ -2011,15 +2012,15 @@ const ReservationCard: React.FC<{
             {(r.notes || r.special_requests) && (
               <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
                 <StickyNote
-                  size={12}
+                  size={s(12)}
                   color={colors.label}
-                  style={{ marginTop: 1 }}
+                  style={{ marginTop: s(1) }}
                 />
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     color: colors.label,
-                    marginLeft: 6,
+                    marginLeft: s(6),
                     fontStyle: "italic",
                     flex: 1,
                   }}
@@ -2031,33 +2032,33 @@ const ReservationCard: React.FC<{
           </View>
 
           {isActionable && (
-            <View style={{ marginTop: 10, gap: 6 }}>
+            <View style={{ marginTop: s(10), gap: s(6) }}>
               {/* Occupied table warning */}
               {hasOccupiedTable && r.status === "arrived" && (
                 <View
                   style={{
                     flexDirection: "row",
                     alignItems: "flex-start",
-                    gap: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    borderRadius: 8,
+                    gap: s(8),
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
                     backgroundColor: colors.warning + "15",
                     borderWidth: 1,
                     borderColor: colors.warning + "40",
                   }}
                 >
                   <AlertCircle
-                    size={14}
+                    size={s(14)}
                     color={colors.warning}
-                    style={{ marginTop: 2 }}
+                    style={{ marginTop: s(2) }}
                   />
                   <Text
                     style={{
                       flex: 1,
-                      fontSize: 12,
+                      fontSize: s(12),
                       color: colors.warning,
-                      lineHeight: 16,
+                      lineHeight: s(16),
                     }}
                   >
                     One or more assigned tables are currently occupied. Wait for
@@ -2067,21 +2068,21 @@ const ReservationCard: React.FC<{
               )}
 
               {/* Row 1: Edit + Confirm + Arrived */}
-              <View style={{ flexDirection: "row", gap: 6 }}>
+              <View style={{ flexDirection: "row", gap: s(6) }}>
                 <TouchableOpacity
                   onPress={onEdit}
                   style={{
-                    width: 34,
-                    height: 34,
+                    width: s(34),
+                    height: s(34),
                     alignItems: "center",
                     justifyContent: "center",
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     backgroundColor: colors.teal + "15",
                     borderWidth: 1,
                     borderColor: colors.teal + "30",
                   }}
                 >
-                  <Edit3 size={13} color={colors.teal} />
+                  <Edit3 size={s(13)} color={colors.teal} />
                 </TouchableOpacity>
                 {r.status === "pending" && (
                   <TouchableOpacity
@@ -2091,18 +2092,18 @@ const ReservationCard: React.FC<{
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "center",
-                      gap: 5,
-                      paddingVertical: 7,
-                      borderRadius: 8,
+                      gap: s(5),
+                      paddingVertical: s(7),
+                      borderRadius: s(8),
                       backgroundColor: colors.teal + "20",
                       borderWidth: 1,
                       borderColor: colors.teal + "50",
                     }}
                   >
-                    <Check size={12} color={colors.teal} />
+                    <Check size={s(12)} color={colors.teal} />
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "600",
                         color: colors.teal,
                       }}
@@ -2119,18 +2120,18 @@ const ReservationCard: React.FC<{
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "center",
-                      gap: 5,
-                      paddingVertical: 7,
-                      borderRadius: 8,
+                      gap: s(5),
+                      paddingVertical: s(7),
+                      borderRadius: s(8),
                       backgroundColor: colors.success + "20",
                       borderWidth: 1,
                       borderColor: colors.success + "50",
                     }}
                   >
-                    <UserCheck size={12} color={colors.success} />
+                    <UserCheck size={s(12)} color={colors.success} />
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "600",
                         color: colors.success,
                       }}
@@ -2148,9 +2149,9 @@ const ReservationCard: React.FC<{
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "center",
-                      gap: 5,
-                      paddingVertical: 7,
-                      borderRadius: 8,
+                      gap: s(5),
+                      paddingVertical: s(7),
+                      borderRadius: s(8),
                       backgroundColor: hasOccupiedTable
                         ? colors.muted + "10"
                         : colors.teal + "20",
@@ -2162,12 +2163,12 @@ const ReservationCard: React.FC<{
                     }}
                   >
                     <Check
-                      size={12}
+                      size={s(12)}
                       color={hasOccupiedTable ? colors.muted : colors.teal}
                     />
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "600",
                         color: hasOccupiedTable ? colors.muted : colors.teal,
                       }}
@@ -2179,17 +2180,17 @@ const ReservationCard: React.FC<{
                 <TouchableOpacity
                   onPress={onCancel}
                   style={{
-                    width: 34,
-                    height: 34,
+                    width: s(34),
+                    height: s(34),
                     alignItems: "center",
                     justifyContent: "center",
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     backgroundColor: colors.danger + "15",
                     borderWidth: 1,
                     borderColor: colors.danger + "30",
                   }}
                 >
-                  <X size={13} color={colors.danger} />
+                  <X size={s(13)} color={colors.danger} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -2203,6 +2204,9 @@ const ReservationCard: React.FC<{
 // ─── ReservationsPanel ────────────────────────────────────────────────────────
 
 const ReservationsPanel: React.FC = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
   const {
     reservations,
     isLoading,
@@ -2655,9 +2659,9 @@ const ReservationsPanel: React.FC = () => {
       {/* Header */}
       <View
         style={{
-          paddingHorizontal: 12,
-          paddingTop: 10,
-          paddingBottom: 8,
+          paddingHorizontal: s(12),
+          paddingTop: s(10),
+          paddingBottom: s(8),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
         }}
@@ -2668,20 +2672,20 @@ const ReservationsPanel: React.FC = () => {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: 8,
+            marginBottom: s(8),
           }}
         >
           <Text
-            style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}
+            style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
           >
             Reservations
           </Text>
           <TouchableOpacity
             onPress={() => setShowAddModal(true)}
             style={{
-              width: 30,
-              height: 30,
-              borderRadius: 8,
+              width: s(30),
+              height: s(30),
+              borderRadius: s(8),
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: colors.teal + "15",
@@ -2689,25 +2693,25 @@ const ReservationsPanel: React.FC = () => {
               borderColor: colors.teal + "30",
             }}
           >
-            <UserPlus size={14} color={colors.teal} />
+            <UserPlus size={s(14)} color={colors.teal} />
           </TouchableOpacity>
         </View>
 
         {/* Date navigator */}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
           <TouchableOpacity
             onPress={() => handleDateChange(-1)}
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
+              width: s(28),
+              height: s(28),
+              borderRadius: s(8),
               alignItems: "center",
               justifyContent: "center",
               borderWidth: 1,
               borderColor: colors.border,
             }}
           >
-            <ChevronLeft size={14} color={colors.label} />
+            <ChevronLeft size={s(14)} color={colors.label} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
@@ -2719,8 +2723,8 @@ const ReservationsPanel: React.FC = () => {
             }}
             style={{
               flex: 1,
-              paddingVertical: 6,
-              borderRadius: 8,
+              paddingVertical: s(6),
+              borderRadius: s(8),
               borderWidth: 1,
               borderColor: colors.border,
               alignItems: "center",
@@ -2728,7 +2732,7 @@ const ReservationsPanel: React.FC = () => {
             }}
           >
             <Text
-              style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}
+              style={{ fontSize: s(12), fontWeight: "600", color: colors.heading }}
             >
               {formatDateLabel(selectedDate)}
             </Text>
@@ -2736,21 +2740,21 @@ const ReservationsPanel: React.FC = () => {
           <TouchableOpacity
             onPress={() => handleDateChange(1)}
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
+              width: s(28),
+              height: s(28),
+              borderRadius: s(8),
               alignItems: "center",
               justifyContent: "center",
               borderWidth: 1,
               borderColor: colors.border,
             }}
           >
-            <ChevronRight size={14} color={colors.label} />
+            <ChevronRight size={s(14)} color={colors.label} />
           </TouchableOpacity>
         </View>
 
         {/* Summary */}
-        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 6 }}>
+        <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(6) }}>
           {dateReservations.length} upcoming{" "}
           {formatDateLabel(selectedDate).toLowerCase()}
         </Text>
@@ -2759,18 +2763,18 @@ const ReservationsPanel: React.FC = () => {
       {/* List */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 8, paddingBottom: 20 }}
+        contentContainerStyle={{ padding: s(8), paddingBottom: s(20) }}
       >
         {isLoading && reservations.length === 0 ? (
           <View
             style={{
               alignItems: "center",
               justifyContent: "center",
-              paddingVertical: 40,
+              paddingVertical: s(40),
             }}
           >
             <ActivityIndicator size="small" color={colors.teal} />
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>
+            <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(8) }}>
               Loading reservations...
             </Text>
           </View>
@@ -2808,14 +2812,14 @@ const ReservationsPanel: React.FC = () => {
             style={{
               alignItems: "center",
               justifyContent: "center",
-              paddingVertical: 40,
+              paddingVertical: s(40),
             }}
           >
-            <CalendarClock size={28} color={colors.muted} />
-            <Text style={{ fontSize: 13, color: colors.label, marginTop: 10 }}>
+            <CalendarClock size={s(28)} color={colors.muted} />
+            <Text style={{ fontSize: s(13), color: colors.label, marginTop: s(10) }}>
               No reservations {formatDateLabel(selectedDate).toLowerCase()}
             </Text>
-            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+            <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(4) }}>
               Tap + to add one
             </Text>
           </View>
@@ -2877,31 +2881,31 @@ const ReservationsPanel: React.FC = () => {
             backgroundColor: "rgba(0,0,0,0.45)",
             alignItems: "center",
             justifyContent: "center",
-            paddingHorizontal: 24,
+            paddingHorizontal: s(24),
           }}
         >
           <View
             style={{
               width: "100%",
-              maxWidth: 420,
+              maxWidth: s(420),
               backgroundColor: colors.card,
-              borderRadius: 14,
+              borderRadius: s(14),
               borderWidth: 1,
               borderColor: colors.border,
-              padding: 16,
+              padding: s(16),
             }}
           >
             <Text
-              style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}
+              style={{ fontSize: s(16), fontWeight: "700", color: colors.heading }}
             >
               {failureModal.title}
             </Text>
             <Text
               style={{
-                marginTop: 8,
-                fontSize: 13,
+                marginTop: s(8),
+                fontSize: s(13),
                 color: colors.label,
-                lineHeight: 18,
+                lineHeight: s(18),
               }}
             >
               {failureModal.message}
@@ -2911,15 +2915,15 @@ const ReservationsPanel: React.FC = () => {
                 setFailureModal((prev) => ({ ...prev, visible: false }))
               }
               style={{
-                marginTop: 14,
+                marginTop: s(14),
                 alignSelf: "flex-end",
                 backgroundColor: colors.danger,
-                borderRadius: 8,
-                paddingHorizontal: 14,
-                paddingVertical: 9,
+                borderRadius: s(8),
+                paddingHorizontal: s(14),
+                paddingVertical: s(9),
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>
+              <Text style={{ color: "#fff", fontSize: s(12), fontWeight: "700" }}>
                 OK
               </Text>
             </TouchableOpacity>

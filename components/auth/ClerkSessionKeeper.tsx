@@ -1,112 +1,96 @@
-import { useAuth, useSession } from "@clerk/clerk-expo";
+import { getRawIsOnline } from "@/services/offlineSyncService";
+import { isClerkRuntimeError, useAuth } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 
 /**
- * Component that keeps the Clerk session active by periodically touching it
- * AND proactively refreshing the token when the device wakes from sleep.
+ * Keeps the Clerk session warm on always-on POS/KDS tablets.
  *
- * IMPORTANT: The effect depends on `session?.id`, NOT the `session` object
- * itself. `session.touch()` causes Clerk to return a new session reference
- * each time it resolves, which would cause the effect to tear down and
- * re-run on every touch — producing a tight loop. We read the latest
- * session from a ref inside the interval callback so we always call touch()
- * on the current session without re-running the effect.
+ * Why NOT session.touch(): per Clerk's React Native guidance, touch() relies on
+ * browser page-focus events and "may not behave as expected in Expo." It also
+ * cannot extend Clerk's server-side Maximum lifetime — only the dashboard
+ * setting does that. So touch() gave false confidence while doing nothing for
+ * the failure the field actually sees.
+ *
+ * What we do instead — the Clerk-recommended pattern: drive the refresh-token
+ * exchange with getToken({ skipCache: true }) on foreground wake AND on a
+ * periodic interval while the app sits foregrounded 24/7. That keeps the client
+ * token fresh so isSignedIn never goes stale during the (long, dashboard-
+ * configured) Maximum lifetime window.
  */
+
+// Re-exchange the refresh token roughly this often while foregrounded.
+const WARM_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+
 export function ClerkSessionKeeper() {
   const { isSignedIn, getToken } = useAuth();
-  const { session } = useSession();
-  const touchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sessionRef = useRef(session);
 
-  // Keep the ref pointing at the latest session without retriggering the effect.
+  // Keep the latest getToken in a ref so the AppState/interval effects don't
+  // re-subscribe on every render (getToken identity can change between renders).
+  const getTokenRef = useRef(getToken);
   useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
-
-  // Proactive token refresh on foreground wake.
-  // When the device sleeps overnight, the JWT expires. session.touch() can't
-  // revive an expired session — it only extends active ones. getToken() triggers
-  // Clerk's internal refresh-token flow, which obtains a new JWT and updates
-  // isSignedIn. This runs before routing checks fire, giving Clerk time to
-  // rehydrate before ClerkGate evaluates the session state.
-  useEffect(() => {
-    const handleAppState = (state: AppStateStatus) => {
-      if (state !== "active") return;
-      // Force a token refresh — this triggers Clerk's internal refresh flow
-      getToken()
-        .then((token) => {
-          if (token) {
-            console.log("[SessionKeeper] ✓ Foreground token refresh succeeded");
-            // Also touch to extend the session server-side
-            sessionRef.current?.touch().catch(() => {});
-          }
-        })
-        .catch((err) => {
-          Sentry.captureException(err, {
-            tags: { source: "session_keeper", op: "foreground_token_refresh" },
-          });
-          console.warn("[SessionKeeper] Foreground token refresh failed:", err);
-        });
-    };
-
-    const sub = AppState.addEventListener("change", handleAppState);
-    return () => sub.remove();
+    getTokenRef.current = getToken;
   }, [getToken]);
 
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // TRUE forced refresh. Returns early when offline — the resource cache serves
+  // the token there and a network refresh would just fail noisily.
+  const refresh = useCallback(async (reason: string) => {
+    if (!getRawIsOnline()) return;
+    try {
+      await getTokenRef.current?.({ skipCache: true });
+    } catch (err) {
+      if (isClerkRuntimeError(err) && err.code === "network_error") {
+        // Transient — never escalate; the session is still valid server-side.
+        Sentry.addBreadcrumb({
+          category: "auth.keeper",
+          level: "info",
+          message: `transient refresh failure (${reason})`,
+        });
+        return;
+      }
+      Sentry.captureException(err, {
+        tags: { source: "session_keeper", op: reason },
+      });
+    }
+  }, []);
+
+  // Proactive refresh on foreground wake — runs before routing checks fire so
+  // isSignedIn is back true before ClerkGate / index.tsx evaluate it.
   useEffect(() => {
-    if (!isSignedIn || !session) {
-      if (touchIntervalRef.current) {
-        clearInterval(touchIntervalRef.current);
-        touchIntervalRef.current = null;
+    const onState = (state: AppStateStatus) => {
+      if (state === "active") void refresh("foreground");
+    };
+    const sub = AppState.addEventListener("change", onState);
+    return () => sub.remove();
+  }, [refresh]);
+
+  // Periodic warm-keep while signed in AND foregrounded.
+  useEffect(() => {
+    if (!isSignedIn) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
       return;
     }
 
-    console.log("[SessionKeeper] Starting session keep-alive");
+    // Warm immediately on (re)sign-in.
+    void refresh("signin");
 
-    // Touch the session immediately on sign-in
-    sessionRef.current
-      ?.touch()
-      .then(() => {
-        console.log("[SessionKeeper] ✓ Session touched successfully");
-      })
-      .catch((error) => {
-        Sentry.captureException(error, {
-          tags: { source: "session_keeper", op: "touch_on_signin" },
-        });
-        console.error("[SessionKeeper] ✗ Failed to touch session:", error);
-      });
-
-    // Touch the session every 5 minutes to keep it active.
-    // Read session from ref so the interval always uses the latest reference.
-    touchIntervalRef.current = setInterval(
-      () => {
-        const current = sessionRef.current;
-        if (!current) return;
-        console.log("[SessionKeeper] Touching session to keep it active...");
-        current
-          .touch()
-          .then(() => {
-            console.log("[SessionKeeper] ✓ Session touched successfully");
-          })
-          .catch((error) => {
-            console.error("[SessionKeeper] ✗ Failed to touch session:", error);
-          });
-      },
-      5 * 60 * 1000,
-    );
+    intervalRef.current = setInterval(() => {
+      if (AppState.currentState === "active") void refresh("warm_interval");
+    }, WARM_REFRESH_INTERVAL_MS);
 
     return () => {
-      if (touchIntervalRef.current) {
-        console.log("[SessionKeeper] Stopping session keep-alive");
-        clearInterval(touchIntervalRef.current);
-        touchIntervalRef.current = null;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-    // Depend on session?.id (stable per session), not the session object.
-  }, [isSignedIn, session?.id]);
+  }, [isSignedIn, refresh]);
 
   return null;
 }

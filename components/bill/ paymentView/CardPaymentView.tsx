@@ -1,140 +1,145 @@
-import { PaymentErrorModal } from '@/components/bill/paymentView/PaymentErrorModal'
-import { TerminalDetachedModal } from '@/components/payment/TerminalDetachedModal'
-import { TerminalStatusBanner } from '@/components/payment/TerminalStatusBanner'
-import { TerminalWedgedModal } from '@/components/payment/TerminalWedgedModal'
-import { useCFD } from '@/contexts/CFDProvider'
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
-import { useTerminalStatus } from '@/hooks/useTerminalStatus'
+import { PaymentErrorModal } from "@/components/bill/paymentView/PaymentErrorModal";
+import { TerminalDetachedModal } from "@/components/payment/TerminalDetachedModal";
+import { TerminalStatusBanner } from "@/components/payment/TerminalStatusBanner";
+import { TerminalWedgedModal } from "@/components/payment/TerminalWedgedModal";
+import { useCFD } from "@/contexts/CFDProvider";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import {
   categorizeError,
   getErrorTitle,
   getTerminalErrorMessage,
-  isTerminalConnectivityError
-} from '@/lib/payments/dejavoo-error-detector'
-import { DejavooSpinAPI } from '@/lib/payments/dejavoo-spin-api'
-import { iosOnly } from '@/lib/safeAnimations'
-import { colors } from '@/lib/theme'
-import { toastService } from '@/lib/toastService'
+  isTerminalConnectivityError,
+} from "@/lib/payments/dejavoo-error-detector";
+import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
+import { iosOnly } from "@/lib/safeAnimations";
+import { colors } from "@/lib/theme";
+import { toastService } from "@/lib/toastService";
+import { useUiScale } from "@/lib/uiScale";
 import {
   failPaymentJournal,
   updatePaymentJournal,
-  writePaymentJournal
-} from '@/services/paymentJournal'
+  writePaymentJournal,
+} from "@/services/paymentJournal";
 import {
   extractLast4,
-  parseCastlesReturnCode
-} from '@/services/terminals/castles-response-mapper'
-import { getSharedCastlesService } from '@/services/terminals/castles-service'
-import { getOrCreateCounter } from '@/services/terminals/castles-txn-counter'
+  parseCastlesReturnCode,
+} from "@/services/terminals/castles-response-mapper";
+import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import {
   useActiveOrder,
-  useActiveOrderTotals
-} from '@/stores/selectors/orderSelectors'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
-import { useOrderStore } from '@/stores/useOrderStore'
-import { usePaymentStore } from '@/stores/usePaymentStore'
-import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
-import { useTipAdjustStore } from '@/stores/useTipAdjustStore'
-import { CASTLES_DEFAULT_PORT } from '@/types/castles'
-import { generateRefId } from '@/types/dejavoo-spin-api'
-import { CheckCircle2, Clock, Wifi } from 'lucide-react-native'
-import { useEffect, useRef, useState } from 'react'
-import { v4 as uuidv4 } from 'uuid'
+  useActiveOrderTotals,
+} from "@/stores/selectors/orderSelectors";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentStore } from "@/stores/usePaymentStore";
+import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore";
+import { useTipAdjustStore } from "@/stores/useTipAdjustStore";
+import { CASTLES_DEFAULT_PORT } from "@/types/castles";
+import { generateRefId } from "@/types/dejavoo-spin-api";
+import { CheckCircle2, Clock, Wifi } from "lucide-react-native";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
-  View
-} from 'react-native'
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated'
+  View,
+} from "react-native";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { v4 as uuidv4 } from "uuid";
 const CardPaymentView = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   // Refresh order data on mount and realtime reconnection
   // useRefreshActiveOrder(); -> REMOVED to prevent overwriting local discount state with stale backend data
-  const supabase = useSupabaseClient()
-  const activeOrderId = useOrderStore(s => s.activeOrderId)
-  const orderTotals = useActiveOrderTotals()
-  const activeOrderDiscount = orderTotals?.discount ?? 0
-  const activeOrderOutstandingSubtotal = orderTotals?.outstandingSubtotal ?? 0
-  const activeOrderOutstandingTax = orderTotals?.outstandingTax ?? 0
-  const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0
-  const activeOrderTotal = orderTotals?.total ?? 0
+  const supabase = useSupabaseClient();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const orderTotals = useActiveOrderTotals();
+  const activeOrderDiscount = orderTotals?.discount ?? 0;
+  const activeOrderOutstandingSubtotal = orderTotals?.outstandingSubtotal ?? 0;
+  const activeOrderOutstandingTax = orderTotals?.outstandingTax ?? 0;
+  const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0;
+  const activeOrderTotal = orderTotals?.total ?? 0;
 
-  const close = usePaymentStore(s => s.close)
+  const close = usePaymentStore((s) => s.close);
   const handlePaymentCompletion = usePaymentStore(
-    s => s.handlePaymentCompletion
-  )
-  const activeSplitId = usePaymentStore(s => s.activeSplitId)
-  const splits = usePaymentStore(s => s.splits)
-  const expandSheetToFull = usePaymentStore(s => s.expandSheetToFull)
+    (s) => s.handlePaymentCompletion,
+  );
+  const activeSplitId = usePaymentStore((s) => s.activeSplitId);
+  const splits = usePaymentStore((s) => s.splits);
+  const expandSheetToFull = usePaymentStore((s) => s.expandSheetToFull);
   const setTransactionProcessing = usePaymentStore(
-    s => s.setTransactionProcessing
-  )
+    (s) => s.setTransactionProcessing,
+  );
   // Live connect sub-step ("Connecting…", "Verifying…") during a cold-start sale.
   const terminalConnectActivity = useTerminalConnectionStore(
-    s => s.connectActivity
-  )
+    (s) => s.connectActivity,
+  );
 
   // Expand bottom sheet to full height when entering card payment view
   useEffect(() => {
-    expandSheetToFull()
-  }, [expandSheetToFull])
+    expandSheetToFull();
+  }, [expandSheetToFull]);
   const [status, setStatus] = useState<
-    'ready' | 'processing' | 'rejected' | 'success' | 'tip_adjusting'
-  >('ready')
-  const [tipInput, setTipInput] = useState('')
+    "ready" | "processing" | "rejected" | "success" | "tip_adjusting"
+  >("ready");
+  const [tipInput, setTipInput] = useState("");
   const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(
-    null
-  )
-  const [dejavooError, setDejavooError] = useState<string | null>(null)
+    null,
+  );
+  const [dejavooError, setDejavooError] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<{
-    visible: boolean
-    title: string
-    message: string
+    visible: boolean;
+    title: string;
+    message: string;
   }>({
     visible: false,
-    title: '',
-    message: ''
-  })
-  const currentRefIdRef = useRef<string | null>(null)
-  const [isCancelling, setIsCancelling] = useState(false)
+    title: "",
+    message: "",
+  });
+  const currentRefIdRef = useRef<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // Post-capture tip adjust: store payment details after successful charge
   const capturedPaymentRef = useRef<{
-    referenceId: string
-    rrn?: string
-    stan?: string
-    dbPaymentId?: string
-    last4?: string
-    amount: number
-    tipAmount: number
-    terminalType: 'castles' | 'dejavoo'
-  } | null>(null)
-  const tipAdjustTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    referenceId: string;
+    rrn?: string;
+    stan?: string;
+    dbPaymentId?: string;
+    last4?: string;
+    amount: number;
+    tipAmount: number;
+    terminalType: "castles" | "dejavoo";
+  } | null>(null);
+  const tipAdjustTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // Sync isTransactionProcessing with status and error modal
   useEffect(() => {
     setTransactionProcessing(
-      status === 'processing' ||
-        status === 'tip_adjusting' ||
-        errorModal.visible
-    )
+      status === "processing" ||
+        status === "tip_adjusting" ||
+        errorModal.visible,
+    );
     return () => {
-      setTransactionProcessing(false)
-    }
-  }, [status, errorModal.visible, setTransactionProcessing])
+      setTransactionProcessing(false);
+    };
+  }, [status, errorModal.visible, setTransactionProcessing]);
 
   // Signal health check service to skip during active terminal interaction
   useEffect(() => {
-    const isActive = status === 'processing'
-    usePaymentTerminalStore.getState().setProcessingPayment(isActive)
+    const isActive = status === "processing";
+    usePaymentTerminalStore.getState().setProcessingPayment(isActive);
     return () => {
-      usePaymentTerminalStore.getState().setProcessingPayment(false)
-    }
-  }, [status])
+      usePaymentTerminalStore.getState().setProcessingPayment(false);
+    };
+  }, [status]);
 
   const {
     showTipSelection,
@@ -145,46 +150,46 @@ const CardPaymentView = () => {
     showApproved,
     showDeclined,
     showIdle,
-    activeScreenState
-  } = useCFD()
+    activeScreenState,
+  } = useCFD();
 
   // Owns the post-tip-adjust 3s setTimeout so we can cancel it when the
   // loyalty flow takes over the CFD. Without this, the bare setTimeout
   // races and calls showIdle() while the customer is typing on the
   // loyalty number pad, dismissing the prompt mid-input.
-  const postTipAdjustIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  )
+  const postTipAdjustIdleTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const clearPostTipAdjustIdle = () => {
     if (postTipAdjustIdleTimerRef.current) {
-      clearTimeout(postTipAdjustIdleTimerRef.current)
-      postTipAdjustIdleTimerRef.current = null
+      clearTimeout(postTipAdjustIdleTimerRef.current);
+      postTipAdjustIdleTimerRef.current = null;
     }
-  }
+  };
   const schedulePostTipAdjustIdle = (ms: number) => {
-    clearPostTipAdjustIdle()
+    clearPostTipAdjustIdle();
     postTipAdjustIdleTimerRef.current = setTimeout(() => {
-      postTipAdjustIdleTimerRef.current = null
-      showIdle()
-    }, ms)
-  }
+      postTipAdjustIdleTimerRef.current = null;
+      showIdle();
+    }, ms);
+  };
   useEffect(() => {
     // The loyalty flow drives screenState directly. Once it owns the CFD,
     // surrender our auto-idle timer so the prompt isn't dismissed
     // before the customer presses Skip / submits a phone number.
     if (
-      activeScreenState === 'loyalty_prompt' ||
-      activeScreenState === 'loyalty_confirmation'
+      activeScreenState === "loyalty_prompt" ||
+      activeScreenState === "loyalty_confirmation"
     ) {
-      clearPostTipAdjustIdle()
+      clearPostTipAdjustIdle();
     }
-  }, [activeScreenState])
+  }, [activeScreenState]);
   useEffect(() => {
-    return () => clearPostTipAdjustIdle()
-  }, [])
+    return () => clearPostTipAdjustIdle();
+  }, []);
 
-  const selectedStation = useStoreSettingsStore(s => s.selectedStation)
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   // console.log('selectedStation', selectedStation);
 
   // Check terminal status on mount
@@ -194,35 +199,35 @@ const CardPaymentView = () => {
     errorMessage: terminalErrorMessage,
     reason: terminalReason,
     consecutiveFailures: terminalConsecutiveFailures,
-    recheckStatus
+    recheckStatus,
   } = useTerminalStatus(
     selectedStation?.payment_terminal?.id,
-    selectedStation?.payment_terminal
-  )
+    selectedStation?.payment_terminal,
+  );
 
-  const tipsConfig = useLocationConfigStore(s => s.config.tips)
-  const TIP_PRESETS = tipsConfig.presetPercentages
-  const tipAdjustTimeoutMs = (tipsConfig.tipAdjustTimeoutSeconds ?? 30) * 1000
+  const tipsConfig = useLocationConfigStore((s) => s.config.tips);
+  const TIP_PRESETS = tipsConfig.presetPercentages;
+  const tipAdjustTimeoutMs = (tipsConfig.tipAdjustTimeoutSeconds ?? 30) * 1000;
 
   // Get the active order for backend amount_due
-  const activeOrder = useActiveOrder()
+  const activeOrder = useActiveOrder();
 
   const handleTipPreset = (percentage: number) => {
-    const calculatedTip = (percentage / 100) * totalToPay
-    setTipInput(calculatedTip.toFixed(2))
-    setSelectedTipPreset(percentage)
-  }
+    const calculatedTip = (percentage / 100) * totalToPay;
+    setTipInput(calculatedTip.toFixed(2));
+    setSelectedTipPreset(percentage);
+  };
 
   const handleTipInputChange = (value: string) => {
     // Only allow valid currency format (numbers and one decimal point)
-    if (/^\d*\.?\d{0,2}$/.test(value) || value === '') {
-      setTipInput(value)
-      setSelectedTipPreset(null) // Clear preset when manually typing
+    if (/^\d*\.?\d{0,2}$/.test(value) || value === "") {
+      setTipInput(value);
+      setSelectedTipPreset(null); // Clear preset when manually typing
     }
-  }
+  };
 
   // --- LOGIC: DETERMINE AMOUNT TO PAY ---
-  const activeSplit = splits.find(s => s.id === activeSplitId)
+  const activeSplit = splits.find((s) => s.id === activeSplitId);
   // Priority: local store outstanding total (has discounts) > backend amount_due > full order total
   // Note: useRefreshActiveOrder ensures data is fresh on mount and reconnection
   // But local store has the most up-to-date discount calculations
@@ -230,32 +235,32 @@ const CardPaymentView = () => {
     activeOrderOutstandingTotal > 0
       ? activeOrderOutstandingTotal
       : activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0.01
-      ? activeOrder.amount_due
-      : activeOrderTotal
+        ? activeOrder.amount_due
+        : activeOrderTotal;
   const totalToPay = activeSplit
     ? activeSplit.amount
-    : effectiveOutstandingTotal
-  console.log('CardPaymentView', activeOrderOutstandingTotal)
-  const tipAmount = parseFloat(tipInput) || 0
-  const grandTotal = totalToPay + tipAmount
+    : effectiveOutstandingTotal;
+  console.log("CardPaymentView", activeOrderOutstandingTotal);
+  const tipAmount = parseFloat(tipInput) || 0;
+  const grandTotal = totalToPay + tipAmount;
 
   useEffect(() => {
-    clearTipResponse()
-    updateTip(0, null)
+    clearTipResponse();
+    updateTip(0, null);
 
     return () => {
-      updateTip(0, null)
-      setBaseAmount(null)
+      updateTip(0, null);
+      setBaseAmount(null);
       if (tipAdjustTimeoutRef.current) {
-        clearTimeout(tipAdjustTimeoutRef.current)
-        tipAdjustTimeoutRef.current = null
+        clearTimeout(tipAdjustTimeoutRef.current);
+        tipAdjustTimeoutRef.current = null;
       }
-    }
-  }, [clearTipResponse, setBaseAmount, updateTip]) // Only run once on mount
+    };
+  }, [clearTipResponse, setBaseAmount, updateTip]); // Only run once on mount
 
   useEffect(() => {
-    updateTip(tipAmount, selectedTipPreset)
-  }, [tipAmount, selectedTipPreset, updateTip])
+    updateTip(tipAmount, selectedTipPreset);
+  }, [tipAmount, selectedTipPreset, updateTip]);
 
   // Post-capture tip-adjust now lives in CFDProvider's runner (which is
   // always mounted). We just observe useTipAdjustStore.lastCompletedAt to
@@ -263,106 +268,109 @@ const CardPaymentView = () => {
   // bill UI was waiting on that transition. If this component unmounted
   // before completion, that's fine: the runner still fires and updates
   // the CFD/DB independently.
-  const tipAdjustLastCompletedAt = useTipAdjustStore(s => s.lastCompletedAt)
+  const tipAdjustLastCompletedAt = useTipAdjustStore((s) => s.lastCompletedAt);
   useEffect(() => {
-    if (!tipAdjustLastCompletedAt) return
-    if (status !== 'tip_adjusting') return
+    if (!tipAdjustLastCompletedAt) return;
+    if (status !== "tip_adjusting") return;
     // Clear the local 30s safety timer if still pending — the runner
     // already handled the customer's pick.
     if (tipAdjustTimeoutRef.current) {
-      clearTimeout(tipAdjustTimeoutRef.current)
-      tipAdjustTimeoutRef.current = null
+      clearTimeout(tipAdjustTimeoutRef.current);
+      tipAdjustTimeoutRef.current = null;
     }
-    schedulePostTipAdjustIdle(3000)
-    setStatus('success')
-  }, [tipAdjustLastCompletedAt, status])
+    schedulePostTipAdjustIdle(3000);
+    setStatus("success");
+  }, [tipAdjustLastCompletedAt, status]);
 
   // Logic: Process terminal payment (Castles or Dejavoo)
   useEffect(() => {
-    if (status === 'processing') {
+    if (status === "processing") {
       const processPayment = async () => {
         if (!selectedStation?.payment_terminal) {
-          throw new Error('No payment terminal selected')
+          throw new Error("No payment terminal selected");
         }
-        const terminal = selectedStation.payment_terminal
-        const tipAmount = parseFloat(tipInput) || 0
+        const terminal = selectedStation.payment_terminal;
+        const tipAmount = parseFloat(tipInput) || 0;
 
         try {
           // ============ CASTLES BRANCH ============
-          if (terminal.terminal_type === 'castles') {
-            const isUsb = terminal.connection_type === 'usb'
-            const host = isUsb ? undefined : terminal.ip_address
+          if (terminal.terminal_type === "castles") {
+            const isUsb = terminal.connection_type === "usb";
+            const host = isUsb ? undefined : terminal.ip_address;
             if (!isUsb && !host)
-              throw new Error('Castles terminal has no IP address configured')
-            const port = isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT)
+              throw new Error("Castles terminal has no IP address configured");
+            const port = isUsb
+              ? undefined
+              : (terminal.port ?? CASTLES_DEFAULT_PORT);
 
-            console.log('[CardPayment] Castles sale flow:', {
-              transport: isUsb ? 'usb' : 'local_socket',
+            console.log("[CardPayment] Castles sale flow:", {
+              transport: isUsb ? "usb" : "local_socket",
               host,
               port,
               totalToPay,
               tipAmount,
-              grandTotal
-            })
+              grandTotal,
+            });
 
             // 1. Connect + reset (shared singleton — one socket to the terminal)
-            const service = getSharedCastlesService()
+            const service = getSharedCastlesService();
             await service.connect({
-              connectionType: isUsb ? 'usb' : 'local_socket',
+              connectionType: isUsb ? "usb" : "local_socket",
               host,
               port,
               timeout: 120_000,
-              terminalId: terminal.id
-            })
-            await service.resetTerminalState()
+              terminalId: terminal.id,
+            });
+            await service.resetTerminalState();
 
             // 2. Get counter for txnPosTxnId
             const counter = getOrCreateCounter({
               terminalId: terminal.id,
-              supabaseClient: supabase
-            })
-            if (!counter.isInitialized) await counter.initialize()
-            const referenceId = counter.next()
-            currentRefIdRef.current = referenceId
+              supabaseClient: supabase,
+            });
+            if (!counter.isInitialized) await counter.initialize();
+            const referenceId = counter.next();
+            currentRefIdRef.current = referenceId;
 
             // Wave Cat-B (TCP-in-flight crash recovery): write journal as
             // 'initiated' BEFORE the TCP send. If the app dies during the
             // socket exchange, the relaunch hook surfaces this entry and
             // the operator can manually reconcile against the terminal display.
             // MUST complete synchronously before processSale awaits.
-            const activeOrderForJournal = useOrderStore.getState().activeOrderId
+            const activeOrderForJournal =
+              useOrderStore.getState().activeOrderId;
             const orderForJournal = activeOrderForJournal
               ? useOrderStore.getState().ordersById[activeOrderForJournal]
-              : undefined
-            const paymentJournalKey = uuidv4()
+              : undefined;
+            const paymentJournalKey = uuidv4();
             const paymentJournalId = writePaymentJournal({
-              orderId: activeOrderForJournal ?? 'unknown',
+              orderId: activeOrderForJournal ?? "unknown",
               dbOrderId: orderForJournal?.db_order_id,
               amount: totalToPay,
               tipAmount,
-              paymentMethod: 'Card',
-              idempotencyKey: paymentJournalKey
-            })
+              paymentMethod: "Card",
+              idempotencyKey: paymentJournalKey,
+            });
 
-            console.log('[CardPayment] Castles processSale:', {
+            console.log("[CardPayment] Castles processSale:", {
               amount: totalToPay,
               tipAmount,
               referenceId,
-              journalId: paymentJournalId
-            })
+              journalId: paymentJournalId,
+            });
 
             // 3. Execute sale — amount is base (without tip); terminal adds tip separately
-            let result
+            let result;
             try {
               result = await service.processSale({
                 amount: totalToPay,
                 tipAmount,
-                referenceId
-              })
+                referenceId,
+              });
             } catch (err) {
               // Terminal call threw before returning — leave journal in
               // 'initiated' so the relaunch reconciliation surface picks it up.
-              throw err
+              throw err;
             }
 
             // 3a. Promote journal to 'terminal_approved' the instant the
@@ -370,21 +378,21 @@ const CardPaymentView = () => {
             // From here on, a crash is recoverable via the existing
             // crash_recovery flow (Wave 2/Gap 1).
             updatePaymentJournal(paymentJournalId, {
-              status: 'terminal_approved',
+              status: "terminal_approved",
               terminalTxnId: referenceId,
               ...(orderForJournal?.db_order_id && {
-                dbOrderId: orderForJournal.db_order_id
-              })
-            })
+                dbOrderId: orderForJournal.db_order_id,
+              }),
+            });
 
-            console.log('[CardPayment] Castles sale result:', {
+            console.log("[CardPayment] Castles sale result:", {
               success: result.success,
               error: result.error,
               hasRaw: !!result.raw,
               txnRrn: result.raw?.txnRrn,
               txnRRN: result.raw?.txnRRN,
-              txnStan: result.raw?.txnStan
-            })
+              txnStan: result.raw?.txnStan,
+            });
 
             // 4. Handle failure
             if (!result.success) {
@@ -392,38 +400,38 @@ const CardPaymentView = () => {
               // Mark journal failed so it's not surfaced for recovery.
               const errorInfo = result.raw?.txnReturnCode
                 ? parseCastlesReturnCode(result.raw.txnReturnCode)
-                : { message: result.error || 'Transaction failed' }
+                : { message: result.error || "Transaction failed" };
               failPaymentJournal(
                 paymentJournalId,
-                `terminal_declined: ${errorInfo.message}`
-              )
-              showDeclined()
+                `terminal_declined: ${errorInfo.message}`,
+              );
+              showDeclined();
               setErrorModal({
                 visible: true,
-                title: 'Payment Declined',
-                message: errorInfo.message
-              })
-              return
+                title: "Payment Declined",
+                message: errorInfo.message,
+              });
+              return;
             }
 
             // 5. Handle success — complete payment, then transition to CFD tip adjust
             const castlesTx = result.terminalResponse?.castles_transaction as
               | Record<string, string>
-              | undefined
+              | undefined;
             const castlesLast4 =
               castlesTx?.cardLast4 ??
               (result.raw
                 ? extractLast4(
                     result.raw.txnMaskedCardNum ??
                       result.raw.txnCardMaskedPan ??
-                      ''
+                      "",
                   )
-                : undefined)
+                : undefined);
             const completionResult = await handlePaymentCompletion({
-              method: 'Card',
+              method: "Card",
               tipAmount,
               transactionDetails: {
-                terminalType: 'castles',
+                terminalType: "castles",
                 isCashPriced: false,
                 authorizationCode: castlesTx?.approvalCode,
                 cardType: castlesTx?.cardType,
@@ -437,11 +445,11 @@ const CardPaymentView = () => {
                 // the create-and-write branch and uses ours instead.
                 paymentJournalHandle: {
                   id: paymentJournalId,
-                  idempotencyKey: paymentJournalKey
-                }
+                  idempotencyKey: paymentJournalKey,
+                },
               },
-              amountOverride: totalToPay
-            })
+              amountOverride: totalToPay,
+            });
 
             // Store captured payment details for potential tip adjust.
             // Writing to BOTH the local ref (UI) and the app-scope
@@ -457,8 +465,8 @@ const CardPaymentView = () => {
               last4: castlesLast4,
               amount: totalToPay,
               tipAmount,
-              terminalType: 'castles'
-            }
+              terminalType: "castles",
+            };
             useTipAdjustStore.getState().setCaptured({
               referenceId,
               rrn: result.raw?.txnRrn ?? result.raw?.txnRRN,
@@ -467,146 +475,146 @@ const CardPaymentView = () => {
               last4: castlesLast4,
               amount: totalToPay,
               tipAmount,
-              terminalType: 'castles',
+              terminalType: "castles",
               localOrderId: activeOrderId ?? undefined,
               dbOrderId:
                 (activeOrderId
                   ? useOrderStore.getState().ordersById[activeOrderId]
                       ?.db_order_id
                   : undefined) ?? undefined,
-              capturedAt: Date.now()
-            })
+              capturedAt: Date.now(),
+            });
 
             // Transition to post-capture CFD tip adjust
-            showTipSelection(totalToPay, TIP_PRESETS, 'card')
-            setStatus('tip_adjusting')
+            showTipSelection(totalToPay, TIP_PRESETS, "card");
+            setStatus("tip_adjusting");
 
             // Auto-timeout: 30s — if customer doesn't respond, skip tip adjust
             tipAdjustTimeoutRef.current = setTimeout(() => {
-              console.log('[CardPayment] CFD tip adjust timed out — skipping')
+              console.log("[CardPayment] CFD tip adjust timed out — skipping");
               // Clear any captured payment from the store so the runner
               // doesn't fire on a stale tip if the customer eventually
               // taps. Mirrors what the lastCompletedAt observer would do.
-              useTipAdjustStore.getState().clear()
-              showApproved()
-              schedulePostTipAdjustIdle(3000)
-              setStatus('success')
-              tipAdjustTimeoutRef.current = null
-            }, tipAdjustTimeoutMs)
-            return
+              useTipAdjustStore.getState().clear();
+              showApproved();
+              schedulePostTipAdjustIdle(3000);
+              setStatus("success");
+              tipAdjustTimeoutRef.current = null;
+            }, tipAdjustTimeoutMs);
+            return;
           }
 
           // ============ DEJAVOO BRANCH (default) ============
-          const DejavooAPI = new DejavooSpinAPI(supabase)
-          console.log('[CardPayment] Loading Dejavoo terminal:', terminal)
+          const DejavooAPI = new DejavooSpinAPI(supabase);
+          console.log("[CardPayment] Loading Dejavoo terminal:", terminal);
           const loaded = await DejavooAPI.loadTerminal(
-            terminal.id || '',
-            terminal
-          )
-          console.log('[CardPayment] Terminal loaded:', loaded)
+            terminal.id || "",
+            terminal,
+          );
+          console.log("[CardPayment] Terminal loaded:", loaded);
 
           if (!loaded) {
-            throw new Error('Failed to load terminal credentials')
+            throw new Error("Failed to load terminal credentials");
           }
 
           // Generate unique RefId
-          const locSuffix = selectedStore?.id?.slice(-4) ?? ''
-          const staSuffix = selectedStation?.id?.slice(-4) ?? ''
+          const locSuffix = selectedStore?.id?.slice(-4) ?? "";
+          const staSuffix = selectedStation?.id?.slice(-4) ?? "";
           const refId = activeSplit
             ? generateRefId(
-                'CARD',
-                parseInt(activeSplitId?.split('_')[1] || '0'),
+                "CARD",
+                parseInt(activeSplitId?.split("_")[1] || "0"),
                 locSuffix,
-                staSuffix
+                staSuffix,
               )
-            : generateRefId('CARD', undefined, locSuffix, staSuffix)
-          currentRefIdRef.current = refId
+            : generateRefId("CARD", undefined, locSuffix, staSuffix);
+          currentRefIdRef.current = refId;
 
-          console.log('[CardPayment] Executing Dejavoo sale transaction...', {
+          console.log("[CardPayment] Executing Dejavoo sale transaction...", {
             grandTotal: grandTotal,
             amount: totalToPay,
             tip: tipAmount,
             refId,
-            split: activeSplit?.customerName
-          })
+            split: activeSplit?.customerName,
+          });
 
           const result = await DejavooAPI.sale()
             .amount(grandTotal)
             .tip(tipAmount)
-            .paymentType('Credit')
+            .paymentType("Credit")
             .refId(refId)
-            .execute()
+            .execute();
 
           // Log complete response
-          console.log('=== DEJAVOO SALE RESPONSE ===')
-          console.log('Success:', result.success)
+          console.log("=== DEJAVOO SALE RESPONSE ===");
+          console.log("Success:", result.success);
           console.log(
-            'Raw Response:',
-            JSON.stringify(result.rawResponse, null, 2)
-          )
+            "Raw Response:",
+            JSON.stringify(result.rawResponse, null, 2),
+          );
 
           if (result.helpers) {
-            console.log('=== RESPONSE HELPERS ===')
-            console.log('Reference ID:', result.helpers.getReferenceId())
+            console.log("=== RESPONSE HELPERS ===");
+            console.log("Reference ID:", result.helpers.getReferenceId());
             console.log(
-              'Transaction Number:',
-              result.helpers.getTransactionNumber()
-            )
-            console.log('Invoice Number:', result.helpers.getInvoiceNumber())
-            console.log('RRN:', result.helpers.getRRN())
+              "Transaction Number:",
+              result.helpers.getTransactionNumber(),
+            );
+            console.log("Invoice Number:", result.helpers.getInvoiceNumber());
+            console.log("RRN:", result.helpers.getRRN());
 
-            console.log('Batch Number:', result.helpers.getBatchNumber())
-            console.log('Auth Number:', result.helpers.getAuthCode())
-            console.log('Total Amount:', result.helpers.getTotalAmount())
-            console.log('Base Amount:', result.helpers.getBaseAmount())
-            console.log('Tip Amount:', result.helpers.getTipAmount())
-            console.log('Card Type:', result.helpers.getCardType())
-            console.log('Card Last 4:', result.helpers.getCardLast4())
-            console.log('Entry Mode:', result.helpers.getEntryMode())
-            console.log('Cardholder Name:', result.helpers.getCardholderName())
-            console.log('Is Approved:', result.helpers.isApproved())
-            console.log('Result Code:', result.helpers.getResultCode())
-            console.log('Status Code:', result.helpers.getStatusCode())
-            console.log('Message:', result.helpers.getMessage())
+            console.log("Batch Number:", result.helpers.getBatchNumber());
+            console.log("Auth Number:", result.helpers.getAuthCode());
+            console.log("Total Amount:", result.helpers.getTotalAmount());
+            console.log("Base Amount:", result.helpers.getBaseAmount());
+            console.log("Tip Amount:", result.helpers.getTipAmount());
+            console.log("Card Type:", result.helpers.getCardType());
+            console.log("Card Last 4:", result.helpers.getCardLast4());
+            console.log("Entry Mode:", result.helpers.getEntryMode());
+            console.log("Cardholder Name:", result.helpers.getCardholderName());
+            console.log("Is Approved:", result.helpers.isApproved());
+            console.log("Result Code:", result.helpers.getResultCode());
+            console.log("Status Code:", result.helpers.getStatusCode());
+            console.log("Message:", result.helpers.getMessage());
           }
-          console.log('=== END DEJAVOO RESPONSE ===')
+          console.log("=== END DEJAVOO RESPONSE ===");
 
           // Handle result
           // Check for terminal connectivity error first
           if (!result.success && isTerminalConnectivityError(result)) {
-            const errorMsg = getTerminalErrorMessage(result)
+            const errorMsg = getTerminalErrorMessage(result);
             toastService.show({
-              title: 'Terminal Disconnected',
+              title: "Terminal Disconnected",
               message: errorMsg,
-              type: 'error',
-              duration: 5000
-            })
-            showIdle()
-            close() // Immediate safe close
-            return
+              type: "error",
+              duration: 5000,
+            });
+            showIdle();
+            close(); // Immediate safe close
+            return;
           }
 
           // Handle all other transaction errors (declined, timeout, etc.)
           if (!result.success) {
-            const errorType = categorizeError(result)
-            showDeclined()
+            const errorType = categorizeError(result);
+            showDeclined();
             setErrorModal({
               visible: true,
               title: getErrorTitle(errorType),
-              message: getTerminalErrorMessage(result)
-            })
-            return
+              message: getTerminalErrorMessage(result),
+            });
+            return;
           }
 
           // Success
           if (result.success) {
             const rawResponse = result.rawResponse as
               | Record<string, any>
-              | undefined
-            const generalResponse = rawResponse?.GeneralResponse
-            const cardData = rawResponse?.CardData
-            const emvRaw = rawResponse?.EMVData
-            const amountsRaw = rawResponse?.Amounts
+              | undefined;
+            const generalResponse = rawResponse?.GeneralResponse;
+            const cardData = rawResponse?.CardData;
+            const emvRaw = rawResponse?.EMVData;
+            const amountsRaw = rawResponse?.Amounts;
             const amounts = {
               totalAmount:
                 amountsRaw?.TotalAmount ?? result.helpers?.getTotalAmount(),
@@ -614,8 +622,8 @@ const CardPaymentView = () => {
               tipAmount:
                 amountsRaw?.TipAmount ?? result.helpers?.getTipAmount(),
               feeAmount: amountsRaw?.FeeAmount,
-              taxAmount: amountsRaw?.TaxAmount
-            }
+              taxAmount: amountsRaw?.TaxAmount,
+            };
             const emvData = emvRaw
               ? {
                   applicationName: emvRaw?.ApplicationName,
@@ -623,9 +631,9 @@ const CardPaymentView = () => {
                   tvr: emvRaw?.TVR,
                   tsi: emvRaw?.TSI,
                   iad: emvRaw?.IAD,
-                  arc: emvRaw?.ARC
+                  arc: emvRaw?.ARC,
                 }
-              : undefined
+              : undefined;
             const dejavooTransaction = {
               referenceId:
                 result.helpers?.getReferenceId() ?? rawResponse?.ReferenceId,
@@ -664,22 +672,22 @@ const CardPaymentView = () => {
                 generalResponse?.Message,
               resultMessage: generalResponse?.Message,
               amounts,
-              emvData
-            }
+              emvData,
+            };
             const completionResult = await handlePaymentCompletion({
-              method: 'Card',
+              method: "Card",
               tipAmount: tipAmount,
               transactionDetails: {
-                terminalType: 'dejavoo',
+                terminalType: "dejavoo",
                 isCashPriced: false, // Explicit card pricing
                 authorizationCode: dejavooTransaction.authCode,
                 cardType: dejavooTransaction.cardType,
                 last4: dejavooTransaction.cardLast4,
                 transactionId: dejavooTransaction.referenceId,
-                dejavooTransaction
+                dejavooTransaction,
               },
-              amountOverride: totalToPay
-            })
+              amountOverride: totalToPay,
+            });
 
             // Store captured payment details for potential tip adjust.
             // Mirrors to useTipAdjustStore so CFDProvider's runner can
@@ -691,8 +699,8 @@ const CardPaymentView = () => {
               last4: dejavooTransaction.cardLast4,
               amount: totalToPay,
               tipAmount,
-              terminalType: 'dejavoo'
-            }
+              terminalType: "dejavoo",
+            };
             useTipAdjustStore.getState().setCaptured({
               referenceId: dejavooTransaction.referenceId ?? refId,
               rrn: dejavooTransaction.rrn,
@@ -700,84 +708,84 @@ const CardPaymentView = () => {
               last4: dejavooTransaction.cardLast4,
               amount: totalToPay,
               tipAmount,
-              terminalType: 'dejavoo',
+              terminalType: "dejavoo",
               localOrderId: activeOrderId ?? undefined,
               dbOrderId:
                 (activeOrderId
                   ? useOrderStore.getState().ordersById[activeOrderId]
                       ?.db_order_id
                   : undefined) ?? undefined,
-              capturedAt: Date.now()
-            })
+              capturedAt: Date.now(),
+            });
 
             // Transition to post-capture CFD tip adjust
-            showTipSelection(totalToPay, TIP_PRESETS, 'card')
-            setStatus('tip_adjusting')
+            showTipSelection(totalToPay, TIP_PRESETS, "card");
+            setStatus("tip_adjusting");
 
             // Auto-timeout: 30s — if customer doesn't respond, skip tip adjust
             tipAdjustTimeoutRef.current = setTimeout(() => {
-              console.log('[CardPayment] CFD tip adjust timed out — skipping')
+              console.log("[CardPayment] CFD tip adjust timed out — skipping");
               // Clear any captured payment from the store so the runner
               // doesn't fire on a stale tip if the customer eventually
               // taps. Mirrors what the lastCompletedAt observer would do.
-              useTipAdjustStore.getState().clear()
-              showApproved()
-              schedulePostTipAdjustIdle(3000)
-              setStatus('success')
-              tipAdjustTimeoutRef.current = null
-            }, tipAdjustTimeoutMs)
+              useTipAdjustStore.getState().clear();
+              showApproved();
+              schedulePostTipAdjustIdle(3000);
+              setStatus("success");
+              tipAdjustTimeoutRef.current = null;
+            }, tipAdjustTimeoutMs);
           }
         } catch (error) {
-          console.error('[CardPayment] Error processing payment:', error)
+          console.error("[CardPayment] Error processing payment:", error);
           const errorMsg =
-            error instanceof Error ? error.message : 'Unknown error'
-          showDeclined()
+            error instanceof Error ? error.message : "Unknown error";
+          showDeclined();
           setErrorModal({
             visible: true,
-            title: 'Payment Failed',
-            message: errorMsg
-          })
-          return
+            title: "Payment Failed",
+            message: errorMsg,
+          });
+          return;
         }
-      }
-      processPayment()
+      };
+      processPayment();
     }
-  }, [status])
+  }, [status]);
 
   // Logic: Handle Success
   useEffect(() => {
-    if (status === 'success' && activeOrderId) {
+    if (status === "success" && activeOrderId) {
       // Use central handler instead of direct store call
       // Pass the tip amount and explicit card pricing flag
     }
-  }, [status, activeOrderId, handlePaymentCompletion, tipAmount])
+  }, [status, activeOrderId, handlePaymentCompletion, tipAmount]);
 
   const handleDismissErrorModal = () => {
-    setErrorModal({ visible: false, title: '', message: '' })
-    setDejavooError(null)
-    setStatus('ready')
-  }
+    setErrorModal({ visible: false, title: "", message: "" });
+    setDejavooError(null);
+    setStatus("ready");
+  };
 
   const handleChargeCard = () => {
-    updateTip(tipAmount, selectedTipPreset)
-    setStatus('processing')
-    showProcessing('card', tipAmount)
-  }
+    updateTip(tipAmount, selectedTipPreset);
+    setStatus("processing");
+    showProcessing("card", tipAmount);
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.panel }}>
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,
-          justifyContent: 'space-between',
-          padding: 16
+          justifyContent: "space-between",
+          padding: s(16),
         }}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps='handled'
+        keyboardShouldPersistTaps="handled"
       >
         {/* Terminal Status Banner */}
-        {terminalStatus !== 'online' && (
-          <View style={{ marginBottom: 16 }}>
+        {terminalStatus !== "online" && (
+          <View style={{ marginBottom: s(16) }}>
             <TerminalStatusBanner
               status={terminalStatus}
               errorMessage={terminalErrorMessage || undefined}
@@ -799,30 +807,30 @@ const CardPaymentView = () => {
 
         {/* Top Section */}
         <View
-          style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+          style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
         >
           {/* READY STATE */}
-          {status === 'ready' && (
-            <View style={{ width: '100%', maxWidth: 400 }}>
-              <View style={{ alignItems: 'center', marginBottom: 16 }}>
+          {status === "ready" && (
+            <View style={{ width: "100%", maxWidth: s(400) }}>
+              <View style={{ alignItems: "center", marginBottom: s(16) }}>
                 <Text
                   style={{
                     color: colors.muted,
-                    fontSize: 11,
-                    fontWeight: '700',
-                    textTransform: 'uppercase',
+                    fontSize: s(11),
+                    fontWeight: "700",
+                    textTransform: "uppercase",
                     letterSpacing: 0.8,
-                    marginBottom: 4
+                    marginBottom: s(4),
                   }}
                 >
                   Total Due
                 </Text>
                 <Text
                   style={{
-                    fontSize: 36,
-                    fontWeight: '700',
+                    fontSize: s(36),
+                    fontWeight: "700",
                     color: colors.teal,
-                    marginBottom: 20
+                    marginBottom: s(20),
                   }}
                 >
                   ${totalToPay.toFixed(2)}
@@ -834,12 +842,12 @@ const CardPaymentView = () => {
                     <Text
                       style={{
                         color: colors.muted,
-                        fontSize: 11,
-                        fontWeight: '700',
-                        textTransform: 'uppercase',
+                        fontSize: s(11),
+                        fontWeight: "700",
+                        textTransform: "uppercase",
                         letterSpacing: 0.8,
-                        marginBottom: 6,
-                        alignSelf: 'flex-start'
+                        marginBottom: s(6),
+                        alignSelf: "flex-start",
                       }}
                     >
                       Add Tip
@@ -847,72 +855,74 @@ const CardPaymentView = () => {
                     {/* Preset Tip Buttons */}
                     <View
                       style={{
-                        flexDirection: 'row',
-                        gap: 6,
-                        width: '100%',
-                        marginBottom: 10
+                        flexDirection: "row",
+                        gap: s(6),
+                        width: "100%",
+                        marginBottom: s(10),
                       }}
                     >
-                      {TIP_PRESETS.map(percent => {
-                        const isActive = selectedTipPreset === percent
+                      {TIP_PRESETS.map((percent) => {
+                        const isActive = selectedTipPreset === percent;
                         return (
                           <TouchableOpacity
                             key={percent}
                             onPress={() => handleTipPreset(percent)}
                             style={{
                               flex: 1,
-                              paddingVertical: 8,
-                              borderRadius: 8,
+                              paddingVertical: s(8),
+                              borderRadius: s(8),
                               borderWidth: 1,
                               backgroundColor: isActive
                                 ? `${colors.teal}15`
                                 : colors.panel,
-                              borderColor: isActive ? colors.teal : colors.border,
-                              alignItems: 'center'
+                              borderColor: isActive
+                                ? colors.teal
+                                : colors.border,
+                              alignItems: "center",
                             }}
                           >
                             <Text
                               style={{
-                                fontSize: 13,
-                                fontWeight: '700',
-                                color: isActive ? colors.heading : colors.muted
+                                fontSize: s(13),
+                                fontWeight: "700",
+                                color: isActive ? colors.heading : colors.muted,
                               }}
                             >
                               {percent}%
                             </Text>
                             <Text
                               style={{
-                                fontSize: 10,
-                                marginTop: 1,
-                                color: isActive ? colors.teal : colors.muted
+                                fontSize: s(10),
+                                marginTop: s(1),
+                                color: isActive ? colors.teal : colors.muted,
                               }}
                             >
                               ${((percent / 100) * totalToPay).toFixed(2)}
                             </Text>
                           </TouchableOpacity>
-                        )
+                        );
                       })}
                     </View>
                     {/* Custom Tip Input */}
                     <View
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
+                        flexDirection: "row",
+                        alignItems: "center",
                         backgroundColor: colors.panel,
                         borderWidth: 1,
                         borderColor: colors.border,
-                        borderRadius: 8,
-                        paddingHorizontal: 12,
-                        height: 44,
-                        width: '100%',
-                        marginBottom: 16
+                        borderRadius: s(8),
+                        paddingHorizontal: s(12),
+                        height: s(44),
+                        width: "100%",
+                        marginBottom: s(16),
                       }}
                     >
                       <Text
                         style={{
                           color: colors.muted,
-                          fontSize: 15,
-                          marginRight: 4
+                          fontSize: s(15),
+                          marginRight: s(4),
                         }}
                       >
                         $
@@ -920,14 +930,14 @@ const CardPaymentView = () => {
                       <TextInput
                         value={tipInput}
                         onChangeText={handleTipInputChange}
-                        placeholder='0.00'
-                        keyboardType='numeric'
+                        placeholder="0.00"
+                        keyboardType="numeric"
                         placeholderTextColor={colors.muted}
                         style={{
                           flex: 1,
-                          fontSize: 16,
-                          fontWeight: '700',
-                          color: colors.heading
+                          fontSize: s(16),
+                          fontWeight: "700",
+                          color: colors.heading,
                         }}
                       />
                     </View>
@@ -938,83 +948,83 @@ const CardPaymentView = () => {
           )}
 
           {/* PROCESSING / TIP ADJUSTING / SUCCESS STATES */}
-          {(status === 'processing' ||
-            status === 'success' ||
-            status === 'tip_adjusting') && (
-            <View style={{ marginBottom: 24, alignItems: 'center' }}>
-              {status === 'processing' && (
+          {(status === "processing" ||
+            status === "success" ||
+            status === "tip_adjusting") && (
+            <View style={{ marginBottom: s(24), alignItems: "center" }}>
+              {status === "processing" && (
                 <Animated.View
                   entering={iosOnly(FadeIn)}
-                  style={{ alignItems: 'center' }}
+                  style={{ alignItems: "center" }}
                 >
                   <View
                     style={{
-                      width: 72,
-                      height: 72,
-                      borderRadius: 36,
+                      width: s(72),
+                      height: s(72),
+                      borderRadius: s(36),
                       backgroundColor: `${colors.teal}15`,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginBottom: 12,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: s(12),
                       borderWidth: 1,
-                      borderColor: `${colors.teal}30`
+                      borderColor: `${colors.teal}30`,
                     }}
                   >
-                    <ActivityIndicator size='large' color={colors.teal} />
+                    <ActivityIndicator size="large" color={colors.teal} />
                   </View>
                   <View
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(6),
                       backgroundColor: colors.panel,
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 20,
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(6),
+                      borderRadius: s(20),
                       borderWidth: 1,
-                      borderColor: colors.border
+                      borderColor: colors.border,
                     }}
                   >
-                    <Wifi size={13} color={colors.success} />
+                    <Wifi size={s(13)} color={colors.success} />
                     <Text
                       style={{
                         color: colors.muted,
-                        fontWeight: '600',
-                        fontSize: 12
+                        fontWeight: "600",
+                        fontSize: s(12),
                       }}
                       numberOfLines={1}
                     >
-                      {terminalConnectActivity ?? 'Terminal Connected'}
+                      {terminalConnectActivity ?? "Terminal Connected"}
                     </Text>
                   </View>
                 </Animated.View>
               )}
 
-              {status === 'tip_adjusting' && (
+              {status === "tip_adjusting" && (
                 <Animated.View
                   entering={iosOnly(FadeIn.duration(300))}
-                  style={{ alignItems: 'center' }}
+                  style={{ alignItems: "center" }}
                 >
                   <View
                     style={{
-                      width: 72,
-                      height: 72,
-                      borderRadius: 36,
+                      width: s(72),
+                      height: s(72),
+                      borderRadius: s(36),
                       backgroundColor: `${colors.teal}15`,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginBottom: 12,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: s(12),
                       borderWidth: 1,
-                      borderColor: `${colors.teal}30`
+                      borderColor: `${colors.teal}30`,
                     }}
                   >
-                    <Clock size={36} color={colors.teal} />
+                    <Clock size={s(36)} color={colors.teal} />
                   </View>
                   <Text
                     style={{
                       color: colors.teal,
-                      fontWeight: '700',
-                      fontSize: 13
+                      fontWeight: "700",
+                      fontSize: s(13),
                     }}
                   >
                     Payment Approved
@@ -1022,31 +1032,31 @@ const CardPaymentView = () => {
                 </Animated.View>
               )}
 
-              {status === 'success' && (
+              {status === "success" && (
                 <Animated.View
                   entering={iosOnly(FadeIn.duration(300))}
-                  style={{ alignItems: 'center' }}
+                  style={{ alignItems: "center" }}
                 >
                   <View
                     style={{
-                      width: 72,
-                      height: 72,
-                      borderRadius: 36,
+                      width: s(72),
+                      height: s(72),
+                      borderRadius: s(36),
                       backgroundColor: `${colors.success}15`,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginBottom: 12,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: s(12),
                       borderWidth: 1,
-                      borderColor: `${colors.success}30`
+                      borderColor: `${colors.success}30`,
                     }}
                   >
-                    <CheckCircle2 size={36} color={colors.success} />
+                    <CheckCircle2 size={s(36)} color={colors.success} />
                   </View>
                   <Text
                     style={{
                       color: colors.success,
-                      fontWeight: '700',
-                      fontSize: 13
+                      fontWeight: "700",
+                      fontSize: s(13),
                     }}
                   >
                     Approved
@@ -1054,34 +1064,34 @@ const CardPaymentView = () => {
                 </Animated.View>
               )}
 
-              <View style={{ marginTop: 16, alignItems: 'center' }}>
+              <View style={{ marginTop: s(16), alignItems: "center" }}>
                 <Text
                   style={{
-                    fontSize: 20,
-                    fontWeight: '700',
+                    fontSize: s(20),
+                    fontWeight: "700",
                     color: colors.heading,
-                    marginBottom: 4,
-                    textAlign: 'center'
+                    marginBottom: s(4),
+                    textAlign: "center",
                   }}
                 >
-                  {status === 'processing'
-                    ? 'Present Card'
-                    : status === 'tip_adjusting'
-                    ? 'Customer Selecting Tip...'
-                    : 'Payment Successful'}
+                  {status === "processing"
+                    ? "Present Card"
+                    : status === "tip_adjusting"
+                      ? "Customer Selecting Tip..."
+                      : "Payment Successful"}
                 </Text>
                 <Text
                   style={{
                     color: colors.muted,
-                    fontSize: 13,
-                    textAlign: 'center'
+                    fontSize: s(13),
+                    textAlign: "center",
                   }}
                 >
-                  {status === 'processing'
+                  {status === "processing"
                     ? `Charging $${grandTotal.toFixed(2)}`
-                    : status === 'tip_adjusting'
-                    ? 'Tip selection shown on customer display'
-                    : 'Transaction completed'}
+                    : status === "tip_adjusting"
+                      ? "Tip selection shown on customer display"
+                      : "Transaction completed"}
                 </Text>
               </View>
             </View>
@@ -1099,35 +1109,35 @@ const CardPaymentView = () => {
         {/* Bottom Section */}
         <Animated.View
           entering={iosOnly(FadeInDown.delay(200))}
-          style={{ width: '100%' }}
+          style={{ width: "100%" }}
         >
           {/* Receipt Breakdown */}
-          {status !== 'ready' && (
+          {status !== "ready" && (
             <View
               style={{
                 backgroundColor: colors.panel,
-                padding: 14,
-                borderRadius: 12,
+                padding: s(14),
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: colors.border,
-                marginBottom: 10
+                marginBottom: s(10),
               }}
             >
               {activeSplit ? (
                 <View
                   style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between'
+                    flexDirection: "row",
+                    justifyContent: "space-between",
                   }}
                 >
-                  <Text style={{ color: colors.muted, fontSize: 13 }}>
+                  <Text style={{ color: colors.muted, fontSize: s(13) }}>
                     {activeSplit.customerName} Share
                   </Text>
                   <Text
                     style={{
                       color: colors.heading,
-                      fontSize: 13,
-                      fontWeight: '600'
+                      fontSize: s(13),
+                      fontWeight: "600",
                     }}
                   >
                     ${activeSplit.amount.toFixed(2)}
@@ -1137,19 +1147,19 @@ const CardPaymentView = () => {
                 <>
                   <View
                     style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      marginBottom: 8
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      marginBottom: s(8),
                     }}
                   >
-                    <Text style={{ color: colors.muted, fontSize: 13 }}>
+                    <Text style={{ color: colors.muted, fontSize: s(13) }}>
                       Subtotal
                     </Text>
                     <Text
                       style={{
                         color: colors.heading,
-                        fontSize: 13,
-                        fontWeight: '600'
+                        fontSize: s(13),
+                        fontWeight: "600",
                       }}
                     >
                       ${activeOrderOutstandingSubtotal.toFixed(2)}
@@ -1158,19 +1168,19 @@ const CardPaymentView = () => {
                   {activeOrderDiscount > 0 && (
                     <View
                       style={{
-                        flexDirection: 'row',
-                        justifyContent: 'space-between',
-                        marginBottom: 8
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        marginBottom: s(8),
                       }}
                     >
-                      <Text style={{ color: colors.success, fontSize: 13 }}>
+                      <Text style={{ color: colors.success, fontSize: s(13) }}>
                         Discount
                       </Text>
                       <Text
                         style={{
                           color: colors.success,
-                          fontSize: 13,
-                          fontWeight: '600'
+                          fontSize: s(13),
+                          fontWeight: "600",
                         }}
                       >
                         -${activeOrderDiscount.toFixed(2)}
@@ -1179,21 +1189,21 @@ const CardPaymentView = () => {
                   )}
                   <View
                     style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      paddingTop: 8,
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      paddingTop: s(8),
                       borderTopWidth: 1,
-                      borderTopColor: colors.border
+                      borderTopColor: colors.border,
                     }}
                   >
-                    <Text style={{ color: colors.muted, fontSize: 13 }}>
+                    <Text style={{ color: colors.muted, fontSize: s(13) }}>
                       Tax
                     </Text>
                     <Text
                       style={{
                         color: colors.heading,
-                        fontSize: 13,
-                        fontWeight: '600'
+                        fontSize: s(13),
+                        fontWeight: "600",
                       }}
                     >
                       ${activeOrderOutstandingTax.toFixed(2)}
@@ -1204,20 +1214,20 @@ const CardPaymentView = () => {
               {tipAmount > 0 && (
                 <View
                   style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    paddingTop: 8,
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    paddingTop: s(8),
                     borderTopWidth: 1,
                     borderTopColor: colors.border,
-                    marginTop: 8
+                    marginTop: s(8),
                   }}
                 >
-                  <Text style={{ color: colors.muted, fontSize: 13 }}>Tip</Text>
+                  <Text style={{ color: colors.muted, fontSize: s(13) }}>Tip</Text>
                   <Text
                     style={{
                       color: colors.heading,
-                      fontSize: 13,
-                      fontWeight: '600'
+                      fontSize: s(13),
+                      fontWeight: "600",
                     }}
                   >
                     ${tipAmount.toFixed(2)}
@@ -1228,27 +1238,27 @@ const CardPaymentView = () => {
           )}
 
           {/* Charge Button */}
-          {status === 'ready' && (
+          {status === "ready" && (
             <TouchableOpacity
               onPress={handleChargeCard}
               disabled={!terminalReady}
               style={{
-                width: '100%',
-                paddingVertical: 11,
-                borderRadius: 8,
-                marginBottom: 8,
-                alignItems: 'center',
+                width: "100%",
+                paddingVertical: s(11),
+                borderRadius: s(8),
+                marginBottom: s(8),
+                alignItems: "center",
                 backgroundColor: terminalReady ? colors.teal : colors.panel,
                 borderWidth: terminalReady ? 0 : 1,
                 borderColor: colors.border,
-                opacity: terminalReady ? 1 : 0.5
+                opacity: terminalReady ? 1 : 0.5,
               }}
             >
               <Text
                 style={{
                   color: terminalReady ? colors.onSolid : colors.muted,
-                  fontWeight: '700',
-                  fontSize: 14
+                  fontWeight: "700",
+                  fontSize: s(14),
                 }}
               >
                 Charge Card ${grandTotal.toFixed(2)}
@@ -1256,95 +1266,98 @@ const CardPaymentView = () => {
             </TouchableOpacity>
           )}
 
-          {status === 'tip_adjusting' && (
+          {status === "tip_adjusting" && (
             <TouchableOpacity
               onPress={() => {
                 if (tipAdjustTimeoutRef.current) {
-                  clearTimeout(tipAdjustTimeoutRef.current)
-                  tipAdjustTimeoutRef.current = null
+                  clearTimeout(tipAdjustTimeoutRef.current);
+                  tipAdjustTimeoutRef.current = null;
                 }
                 // Operator-initiated skip: clear the captured payment so
                 // the CFDProvider runner doesn't fire on a late tap.
-                useTipAdjustStore.getState().clear()
-                showApproved()
-                schedulePostTipAdjustIdle(3000)
-                setStatus('success')
+                useTipAdjustStore.getState().clear();
+                showApproved();
+                schedulePostTipAdjustIdle(3000);
+                setStatus("success");
               }}
               style={{
-                width: '100%',
-                paddingVertical: 11,
-                borderRadius: 8,
-                marginBottom: 8,
-                alignItems: 'center',
+                width: "100%",
+                paddingVertical: s(11),
+                borderRadius: s(8),
+                marginBottom: s(8),
+                alignItems: "center",
                 backgroundColor: colors.panel,
                 borderWidth: 1,
-                borderColor: colors.border
+                borderColor: colors.border,
               }}
             >
               <Text
-                style={{ color: colors.muted, fontWeight: '700', fontSize: 14 }}
+                style={{ color: colors.muted, fontWeight: "700", fontSize: s(14) }}
               >
                 Skip Tip Adjust
               </Text>
             </TouchableOpacity>
           )}
 
-          {(status === 'processing' || status === 'ready') && (
+          {(status === "processing" || status === "ready") && (
             <TouchableOpacity
               disabled={isCancelling}
               onPress={async () => {
-                if (isCancelling) return
-                if (status === 'processing' && currentRefIdRef.current) {
-                  setIsCancelling(true)
-                  const terminal = selectedStation?.payment_terminal
+                if (isCancelling) return;
+                if (status === "processing" && currentRefIdRef.current) {
+                  setIsCancelling(true);
+                  const terminal = selectedStation?.payment_terminal;
                   try {
-                    if (terminal?.terminal_type === 'castles') {
-                      await getSharedCastlesService().gracefulDisconnect()
+                    if (terminal?.terminal_type === "castles") {
+                      await getSharedCastlesService().gracefulDisconnect();
                     } else if (terminal) {
-                      const DejavooAPI = new DejavooSpinAPI(supabase)
-                      await DejavooAPI.loadTerminal(terminal.id || '', terminal)
+                      const DejavooAPI = new DejavooSpinAPI(supabase);
+                      await DejavooAPI.loadTerminal(
+                        terminal.id || "",
+                        terminal,
+                      );
                       await DejavooAPI.abortTransaction()
                         .referenceId(currentRefIdRef.current)
-                        .execute()
+                        .execute();
                     }
                   } catch (err) {
-                    console.error('[CardPayment] Abort failed:', err)
+                    console.error("[CardPayment] Abort failed:", err);
                   }
-                  setIsCancelling(false)
-                  setStatus('ready')
+                  setIsCancelling(false);
+                  setStatus("ready");
                   // Release the CFD from the frozen "Processing payment"
                   // screen — the abort above leaves it stuck otherwise.
-                  showIdle()
+                  showIdle();
                 } else {
-                  close()
+                  close();
                 }
               }}
               style={{
-                width: '100%',
-                paddingVertical: 10,
+                width: "100%",
+                paddingVertical: s(10),
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 8,
-                opacity: isCancelling ? 0.5 : 1
+                borderRadius: s(8),
+                opacity: isCancelling ? 0.5 : 1,
               }}
             >
               <Text
                 style={{
-                  fontSize: 13,
-                  fontWeight: '600',
+                  fontSize: s(13),
+                  fontWeight: "600",
                   color: colors.muted,
-                  textAlign: 'center'
+                  textAlign: "center",
                 }}
               >
-                {isCancelling ? 'Cancelling...' : 'Cancel Transaction'}
+                {isCancelling ? "Cancelling..." : "Cancel Transaction"}
               </Text>
             </TouchableOpacity>
           )}
         </Animated.View>
       </ScrollView>
     </View>
-  )
-}
+  );
+};
 
-export default CardPaymentView
+export default CardPaymentView;

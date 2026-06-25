@@ -1,5 +1,6 @@
 import { deriveEffectivePaidStatus } from '@/lib/deriveEffectivePaidStatus'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { OrderProfile } from '@/lib/types'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { formatOrderStatus, formatPaymentStatus } from '@/utils/orderStatusHelpers'
@@ -14,18 +15,19 @@ interface OrderLineMinimalCardProps {
   onPrintReceipt?: () => void
 }
 
-const chipBase = {
-  paddingHorizontal: 8,
-  paddingVertical: 3,
-  borderRadius: 999
-} as const
-
 const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
   order,
   onMarkDone,
   onViewItems,
   onPrintReceipt
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  const chipBase = {
+    paddingHorizontal: s(8),
+    paddingVertical: s(3),
+    borderRadius: 999
+  } as const
   const tableName = useFloorPlanStore(s => {
     if (!order.service_location_id) return null
     return s.tablesById[order.service_location_id]?.name ?? order.service_location_id
@@ -81,14 +83,14 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
   return (
     <View
       style={{
-        borderRadius: 18,
+        borderRadius: s(18),
         borderWidth: 1,
         borderColor: colors.info + '55',
         overflow: 'hidden',
         backgroundColor: colors.panel
       }}
     >
-      <View style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 }}>
+      <View style={{ paddingHorizontal: s(12), paddingTop: s(10), paddingBottom: s(8) }}>
         <View
           style={{
             flexDirection: 'row',
@@ -99,7 +101,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
             <Text
               style={{
-                fontSize: 14,
+                fontSize: s(14),
                 fontWeight: '700',
                 color: colors.heading
               }}
@@ -110,8 +112,8 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
             {order.order_type ? (
               <Text
                 style={{
-                  marginLeft: 6,
-                  fontSize: 11,
+                  marginLeft: s(6),
+                  fontSize: s(11),
                   color: colors.muted,
                   textTransform: 'lowercase'
                 }}
@@ -130,7 +132,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 fontWeight: '700',
                 color: paidStatusColor
               }}
@@ -142,21 +144,21 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
 
         <View
           style={{
-            marginTop: 6,
+            marginTop: s(6),
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between'
           }}
         >
-          <Text style={{ fontSize: 10, color: colors.label }} numberOfLines={1}>
+          <Text style={{ fontSize: s(10), color: colors.label }} numberOfLines={1}>
             {order.customer_name || 'Walk-In'}
             {tableName ? ` . Table ${tableName}` : ''} . {itemCount} item
             {itemCount !== 1 ? 's' : ''}
           </Text>
-          <Text style={{ fontSize: 10, color: colors.muted }}>{openedAt}</Text>
+          <Text style={{ fontSize: s(10), color: colors.muted }}>{openedAt}</Text>
         </View>
 
-        <View style={{ marginTop: 8, flexDirection: 'row', gap: 6 }}>
+        <View style={{ marginTop: s(8), flexDirection: 'row', gap: s(6) }}>
           <View
             style={{
               ...chipBase,
@@ -167,7 +169,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 fontWeight: '600',
                 color: orderStatusColor
               }}
@@ -185,7 +187,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 fontWeight: '600',
                 color: colors.label
               }}
@@ -198,8 +200,8 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
 
       <View
         style={{
-          paddingHorizontal: 12,
-          paddingVertical: 10,
+          paddingHorizontal: s(12),
+          paddingVertical: s(10),
           borderTopWidth: 1,
           borderBottomWidth: 1,
           borderColor: colors.border,
@@ -213,44 +215,44 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
             justifyContent: 'space-between'
           }}
         >
-          <Text style={{ fontSize: 11, color: colors.muted }}>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>
             Cash ${cashDue.toFixed(2)}
           </Text>
           <Text
-            style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}
           >
             ${totalAmount.toFixed(2)}
           </Text>
         </View>
       </View>
 
-      <View style={{ paddingVertical: 4, backgroundColor: colors.screen }}>
+      <View style={{ paddingVertical: s(4), backgroundColor: colors.screen }}>
         {canMarkDone && (
           <TouchableOpacity
             onPress={onMarkDone}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: 10,
-              paddingVertical: 8
+              paddingHorizontal: s(10),
+              paddingVertical: s(8)
             }}
           >
             <View
               style={{
-                width: 30,
-                height: 30,
-                borderRadius: 9,
+                width: s(30),
+                height: s(30),
+                borderRadius: s(9),
                 backgroundColor: colors.success + '25',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 8
+                marginRight: s(8)
               }}
             >
-              <CheckCircle2 size={15} color={colors.success} />
+              <CheckCircle2 size={s(15)} color={colors.success} />
             </View>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '600',
                 color: colors.success,
                 flex: 1
@@ -258,7 +260,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
             >
               Mark as Done
             </Text>
-            <ChevronRight size={16} color={colors.label} />
+            <ChevronRight size={s(16)} color={colors.label} />
           </TouchableOpacity>
         )}
 
@@ -282,7 +284,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
               marginRight: 8
             }}
           >
-            <Eye size={15} color={colors.info} />
+            <Eye size={s(15)} color={colors.info} />
           </View>
           <Text
             style={{
@@ -303,26 +305,26 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: 10,
-              paddingVertical: 8
+              paddingHorizontal: s(10),
+              paddingVertical: s(8)
             }}
           >
             <View
               style={{
-                width: 30,
-                height: 30,
-                borderRadius: 9,
+                width: s(30),
+                height: s(30),
+                borderRadius: s(9),
                 backgroundColor: colors.muted + '20',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 8
+                marginRight: s(8)
               }}
             >
-              <Printer size={15} color={colors.muted} />
+              <Printer size={s(15)} color={colors.muted} />
             </View>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '600',
                 color: colors.heading,
                 flex: 1
@@ -330,7 +332,7 @@ const OrderLineMinimalCard: React.FC<OrderLineMinimalCardProps> = ({
             >
               Print Receipt
             </Text>
-            <ChevronRight size={16} color={colors.label} />
+            <ChevronRight size={s(16)} color={colors.label} />
           </TouchableOpacity>
         )}
       </View>

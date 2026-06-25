@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { Shift } from '@/stores/useTimeclockStore' // Assuming this type is in types.ts
 import { Clock } from 'lucide-react-native'
 import React from 'react'
@@ -31,6 +32,8 @@ const BreakEndedModal: React.FC<BreakEndedModalProps> = ({
   onClockIn,
   shift
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   // All data now comes from the `shift` object that was captured when the break ended.
   const endTime = shift?.breakEndTime || new Date()
   const startTime = shift?.breakStartTime || null
@@ -50,23 +53,23 @@ const BreakEndedModal: React.FC<BreakEndedModalProps> = ({
     <Dialog open={isOpen}>
       <DialogContent
         className='p-0 overflow-hidden'
-        style={{ width: 400, borderRadius: 16, borderColor: colors.border }}
+        style={{ width: s(400), borderRadius: s(16), borderColor: colors.border }}
       >
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 16,
+            borderRadius: s(16),
             overflow: 'hidden',
             alignItems: 'center',
-            padding: 28,
-            gap: 12
+            padding: s(28),
+            gap: s(12)
           }}
         >
           <View
             style={{
-              width: 64,
-              height: 64,
-              borderRadius: 32,
+              width: s(64),
+              height: s(64),
+              borderRadius: s(32),
               backgroundColor: colors.info + '20',
               borderWidth: 2,
               borderColor: colors.info + '40',
@@ -74,15 +77,15 @@ const BreakEndedModal: React.FC<BreakEndedModalProps> = ({
               justifyContent: 'center'
             }}
           >
-            <Clock color={colors.info} size={28} />
+            <Clock color={colors.info} size={s(28)} />
           </View>
 
           <Text
             style={{
-              fontSize: 22,
+              fontSize: s(22),
               fontWeight: '700',
               color: colors.heading,
-              marginTop: 4
+              marginTop: s(4)
             }}
           >
             Break Ended
@@ -90,10 +93,10 @@ const BreakEndedModal: React.FC<BreakEndedModalProps> = ({
 
           <Text
             style={{
-              fontSize: 14,
+              fontSize: s(14),
               color: colors.label,
               textAlign: 'center',
-              lineHeight: 20
+              lineHeight: s(20)
             }}
           >
             Break started at {breakDetails.start} and ended at{' '}
@@ -105,15 +108,15 @@ const BreakEndedModal: React.FC<BreakEndedModalProps> = ({
             onPress={onClockIn}
             style={{
               width: '100%',
-              marginTop: 8,
-              paddingVertical: 14,
+              marginTop: s(8),
+              paddingVertical: s(14),
               backgroundColor: colors.teal,
-              borderRadius: 10,
+              borderRadius: s(10),
               alignItems: 'center'
             }}
           >
             <Text
-              style={{ fontWeight: '700', color: colors.onSolid, fontSize: 15 }}
+              style={{ fontWeight: '700', color: colors.onSolid, fontSize: s(15) }}
             >
               Clock In
             </Text>

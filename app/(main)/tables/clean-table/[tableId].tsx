@@ -4,8 +4,11 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Info } from "lucide-react-native";
 import { useEffect, useMemo, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { useUiScale } from "@/lib/uiScale";
 
 const CleanTableScreen = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
   const tables = useFloorPlanStore((s) => s.tables);
@@ -116,7 +119,7 @@ const CleanTableScreen = () => {
 
           {/* Info Banner - NOW DISPLAYS MERGED INFO */}
           <View className="flex-row items-center p-4 bg-panel rounded-lg my-4">
-            <Info color="#f97316" size={20} />
+            <Info color="#f97316" size={s(20)} />
             <Text className="ml-2 font-semibold text-lg text-white">
               Tables: {displayNames} (Capacity: {totalCapacity})
             </Text>

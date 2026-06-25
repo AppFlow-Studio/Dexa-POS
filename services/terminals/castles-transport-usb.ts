@@ -7,6 +7,7 @@
 // Saturn1000 auto-detected by vendorId 0x0CA6 (Castles Tech).
 // ============================================================
 
+import * as Sentry from '@sentry/react-native';
 import type { EventSubscription } from 'expo-modules-core';
 import {
   listDevices,
@@ -127,6 +128,19 @@ export class CastlesUsbTransport implements ICastlesTransport {
 
     this._subscriptions.push(
       addErrorListener((event) => {
+        // Record a breadcrumb the instant the native read thread errors (e.g.
+        // "USB get_status request failed" when a terminal hangs mid-transaction).
+        // The native read-thread fault is a candidate cause of hard app crashes
+        // that otherwise leave no JS stack; this breadcrumb makes the next crash
+        // report correlatable to a specific USB failure. See S1-0002.
+        try {
+          Sentry.addBreadcrumb({
+            category: "hardware.usb",
+            level: "error",
+            message: `Castles USB read-thread error: ${event.message}`,
+            data: { deviceId: this._connectedDeviceId },
+          });
+        } catch { /* breadcrumb failures are non-fatal */ }
         const error = new Error(event.message);
         for (const cb of [...this._errorCallbacks]) {
           try { cb(error); } catch { /* ignore callback errors */ }

@@ -1,6 +1,7 @@
 import Slider from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { Map, MapPin, Plus, TrendingUp, Truck } from 'lucide-react-native'
 import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native'
@@ -25,41 +26,43 @@ const getPartnerLogo = (name: string) => {
 const DeliveryManagementScreen = () => {
   const insets = useSafeAreaInsets()
   const settings = useSettingsStore()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   return (
     <View
       style={{
         flex: 1,
         backgroundColor: colors.screen,
-        paddingHorizontal: 14,
-        paddingVertical: 10
+        paddingHorizontal: s(14),
+        paddingVertical: s(10)
       }}
     >
       {/* Header */}
-      <View style={{ marginBottom: 10 }}>
+      <View style={{ marginBottom: s(10) }}>
         <Text
-          style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
         >
           Delivery Management
         </Text>
-        <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
+        <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
           Optimize delivery operations and manage third-party integrations.
         </Text>
       </View>
 
       <View
-        style={{ height: 1, backgroundColor: colors.border, marginBottom: 10 }}
+        style={{ height: 1, backgroundColor: colors.border, marginBottom: s(10) }}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 12, gap: 10 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + s(12), gap: s(10) }}
       >
         {/* ── Delivery Zones ── */}
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden'
@@ -70,28 +73,28 @@ const DeliveryManagementScreen = () => {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 10,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
+              gap: s(10),
+              paddingHorizontal: s(14),
+              paddingVertical: s(12),
               borderBottomWidth: 1,
               borderBottomColor: colors.border
             }}
           >
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
+                width: s(32),
+                height: s(32),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + '15',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <Map size={16} color={colors.teal} />
+              <Map size={s(16)} color={colors.teal} />
             </View>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '700',
                 color: colors.heading
               }}
@@ -100,14 +103,14 @@ const DeliveryManagementScreen = () => {
             </Text>
           </View>
 
-          <View style={{ padding: 12, gap: 10 }}>
+          <View style={{ padding: s(12), gap: s(10) }}>
             {/* Map Placeholder */}
             <View
               style={{
                 width: '100%',
-                height: 160,
+                height: s(160),
                 backgroundColor: colors.screen,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
                 borderStyle: 'dashed',
@@ -116,24 +119,24 @@ const DeliveryManagementScreen = () => {
                 overflow: 'hidden'
               }}
             >
-              <MapPin size={32} color={colors.teal} />
+              <MapPin size={s(32)} color={colors.teal} />
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   color: colors.label,
                   fontWeight: '700',
                   textTransform: 'uppercase',
                   letterSpacing: 1,
-                  marginTop: 8
+                  marginTop: s(8)
                 }}
               >
                 [Map View]
               </Text>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   color: colors.muted,
-                  marginTop: 4,
+                  marginTop: s(4),
                   textAlign: 'center'
                 }}
               >
@@ -145,7 +148,7 @@ const DeliveryManagementScreen = () => {
             <View
               style={{
                 backgroundColor: colors.screen,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
                 overflow: 'hidden'
@@ -156,8 +159,8 @@ const DeliveryManagementScreen = () => {
                 style={{
                   flexDirection: 'row',
                   backgroundColor: colors.screen,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(8),
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border
                 }}
@@ -165,7 +168,7 @@ const DeliveryManagementScreen = () => {
                 <Text
                   style={{
                     flex: 1,
-                    fontSize: 10,
+                    fontSize: s(10),
                     color: colors.muted,
                     fontWeight: '700',
                     textTransform: 'uppercase',
@@ -177,7 +180,7 @@ const DeliveryManagementScreen = () => {
                 <Text
                   style={{
                     flex: 1,
-                    fontSize: 10,
+                    fontSize: s(10),
                     color: colors.muted,
                     fontWeight: '700',
                     textTransform: 'uppercase',
@@ -188,8 +191,8 @@ const DeliveryManagementScreen = () => {
                 </Text>
                 <Text
                   style={{
-                    width: 64,
-                    fontSize: 10,
+                    width: s(64),
+                    fontSize: s(10),
                     color: colors.muted,
                     fontWeight: '700',
                     textTransform: 'uppercase',
@@ -201,8 +204,8 @@ const DeliveryManagementScreen = () => {
                 </Text>
                 <Text
                   style={{
-                    width: 64,
-                    fontSize: 10,
+                    width: s(64),
+                    fontSize: s(10),
                     color: colors.muted,
                     fontWeight: '700',
                     textTransform: 'uppercase',
@@ -218,8 +221,8 @@ const DeliveryManagementScreen = () => {
                   key={zone.id}
                   style={{
                     flexDirection: 'row',
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
                     borderBottomWidth:
                       index < settings.zones.length - 1 ? 1 : 0,
                     borderBottomColor: colors.border,
@@ -229,20 +232,20 @@ const DeliveryManagementScreen = () => {
                   <Text
                     style={{
                       flex: 1,
-                      fontSize: 13,
+                      fontSize: s(13),
                       color: colors.heading,
                       fontWeight: '500'
                     }}
                   >
                     {zone.name}
                   </Text>
-                  <Text style={{ flex: 1, fontSize: 13, color: colors.label }}>
+                  <Text style={{ flex: 1, fontSize: s(13), color: colors.label }}>
                     {zone.distanceRange}
                   </Text>
                   <Text
                     style={{
-                      width: 64,
-                      fontSize: 13,
+                      width: s(64),
+                      fontSize: s(13),
                       color: colors.heading,
                       textAlign: 'right'
                     }}
@@ -251,8 +254,8 @@ const DeliveryManagementScreen = () => {
                   </Text>
                   <Text
                     style={{
-                      width: 64,
-                      fontSize: 13,
+                      width: s(64),
+                      fontSize: s(13),
                       color: colors.heading,
                       textAlign: 'right'
                     }}
@@ -269,7 +272,7 @@ const DeliveryManagementScreen = () => {
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden'
@@ -281,30 +284,30 @@ const DeliveryManagementScreen = () => {
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              paddingHorizontal: 14,
-              paddingVertical: 12,
+              paddingHorizontal: s(14),
+              paddingVertical: s(12),
               borderBottomWidth: 1,
               borderBottomColor: colors.border
             }}
           >
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}
             >
               <View
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
+                  width: s(32),
+                  height: s(32),
+                  borderRadius: s(8),
                   backgroundColor: colors.teal + '15',
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}
               >
-                <Truck size={16} color={colors.teal} />
+                <Truck size={s(16)} color={colors.teal} />
               </View>
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '700',
                   color: colors.heading
                 }}
@@ -316,25 +319,25 @@ const DeliveryManagementScreen = () => {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
+                gap: s(4),
+                paddingHorizontal: s(10),
+                paddingVertical: s(6),
                 backgroundColor: colors.teal + '20',
                 borderWidth: 1,
                 borderColor: colors.teal + '50',
-                borderRadius: 8
+                borderRadius: s(8)
               }}
             >
-              <Plus size={12} color={colors.teal} />
+              <Plus size={s(12)} color={colors.teal} />
               <Text
-                style={{ fontSize: 12, color: colors.teal, fontWeight: '500' }}
+                style={{ fontSize: s(12), color: colors.teal, fontWeight: '500' }}
               >
                 Add Partner
               </Text>
             </TouchableOpacity>
           </View>
 
-          <View style={{ padding: 12, gap: 8 }}>
+          <View style={{ padding: s(12), gap: s(8) }}>
             {settings.partners.map(partner => {
               const logoSource = getPartnerLogo(partner.name)
               const isActive = partner.status === 'Active'
@@ -343,8 +346,8 @@ const DeliveryManagementScreen = () => {
                   key={partner.id}
                   style={{
                     backgroundColor: colors.screen,
-                    padding: 12,
-                    borderRadius: 10,
+                    padding: s(12),
+                    borderRadius: s(10),
                     borderWidth: 1,
                     borderColor: colors.border
                   }}
@@ -354,22 +357,22 @@ const DeliveryManagementScreen = () => {
                       flexDirection: 'row',
                       justifyContent: 'space-between',
                       alignItems: 'flex-start',
-                      marginBottom: 12
+                      marginBottom: s(12)
                     }}
                   >
                     <View
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: 10
+                        gap: s(10)
                       }}
                     >
                       <View
                         style={{
-                          width: 40,
-                          height: 40,
+                          width: s(40),
+                          height: s(40),
                           backgroundColor: '#FFFFFF',
-                          borderRadius: 8,
+                          borderRadius: s(8),
                           alignItems: 'center',
                           justifyContent: 'center',
                           overflow: 'hidden'
@@ -386,7 +389,7 @@ const DeliveryManagementScreen = () => {
                             style={{
                               color: '#000000',
                               fontWeight: '700',
-                              fontSize: 14
+                              fontSize: s(14)
                             }}
                           >
                             {partner.name.substring(0, 2).toUpperCase()}
@@ -396,7 +399,7 @@ const DeliveryManagementScreen = () => {
                       <View>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: '700',
                             color: colors.heading
                           }}
@@ -406,8 +409,8 @@ const DeliveryManagementScreen = () => {
                         <View
                           style={{
                             alignSelf: 'flex-start',
-                            paddingHorizontal: 8,
-                            paddingVertical: 3,
+                            paddingHorizontal: s(8),
+                            paddingVertical: s(3),
                             backgroundColor: isActive
                               ? colors.teal + '20'
                               : colors.border,
@@ -415,13 +418,13 @@ const DeliveryManagementScreen = () => {
                             borderColor: isActive
                               ? colors.teal + '50'
                               : colors.border,
-                            borderRadius: 20,
-                            marginTop: 4
+                            borderRadius: s(20),
+                            marginTop: s(4)
                           }}
                         >
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               fontWeight: '700',
                               textTransform: 'uppercase',
                               color: isActive ? colors.teal : colors.label
@@ -432,24 +435,24 @@ const DeliveryManagementScreen = () => {
                         </View>
                       </View>
                     </View>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flexDirection: 'row', gap: s(8) }}>
                       {partner.status === 'Paused' ? (
                         <TouchableOpacity
                           onPress={() =>
                             settings.toggleDeliveryPartnerStatus(partner.id)
                           }
                           style={{
-                            paddingHorizontal: 12,
-                            paddingVertical: 6,
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(6),
                             backgroundColor: colors.teal + '20',
                             borderWidth: 1,
                             borderColor: colors.teal + '50',
-                            borderRadius: 8
+                            borderRadius: s(8)
                           }}
                         >
                           <Text
                             style={{
-                              fontSize: 12,
+                              fontSize: s(12),
                               color: colors.teal,
                               fontWeight: '600'
                             }}
@@ -460,17 +463,17 @@ const DeliveryManagementScreen = () => {
                       ) : (
                         <TouchableOpacity
                           style={{
-                            paddingHorizontal: 12,
-                            paddingVertical: 6,
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(6),
                             backgroundColor: 'transparent',
                             borderWidth: 1,
                             borderColor: colors.border,
-                            borderRadius: 8
+                            borderRadius: s(8)
                           }}
                         >
                           <Text
                             style={{
-                              fontSize: 12,
+                              fontSize: s(12),
                               color: colors.label,
                               fontWeight: '600'
                             }}
@@ -488,24 +491,24 @@ const DeliveryManagementScreen = () => {
                       flexDirection: 'row',
                       borderTopWidth: 1,
                       borderTopColor: colors.border,
-                      paddingTop: 10
+                      paddingTop: s(10)
                     }}
                   >
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: s(10),
                           color: colors.muted,
                           textTransform: 'uppercase',
                           letterSpacing: 0.5,
-                          marginBottom: 4
+                          marginBottom: s(4)
                         }}
                       >
                         Commission
                       </Text>
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           color: colors.heading,
                           fontWeight: '700'
                         }}
@@ -516,18 +519,18 @@ const DeliveryManagementScreen = () => {
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: s(10),
                           color: colors.muted,
                           textTransform: 'uppercase',
                           letterSpacing: 0.5,
-                          marginBottom: 4
+                          marginBottom: s(4)
                         }}
                       >
                         Orders
                       </Text>
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           color: colors.heading,
                           fontWeight: '700'
                         }}
@@ -538,18 +541,18 @@ const DeliveryManagementScreen = () => {
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: s(10),
                           color: colors.muted,
                           textTransform: 'uppercase',
                           letterSpacing: 0.5,
-                          marginBottom: 4
+                          marginBottom: s(4)
                         }}
                       >
                         Revenue
                       </Text>
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           color: colors.heading,
                           fontWeight: '700'
                         }}
@@ -568,7 +571,7 @@ const DeliveryManagementScreen = () => {
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden'
@@ -579,28 +582,28 @@ const DeliveryManagementScreen = () => {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 10,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
+              gap: s(10),
+              paddingHorizontal: s(14),
+              paddingVertical: s(12),
               borderBottomWidth: 1,
               borderBottomColor: colors.border
             }}
           >
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
+                width: s(32),
+                height: s(32),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + '15',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <TrendingUp size={16} color={colors.teal} />
+              <TrendingUp size={s(16)} color={colors.teal} />
             </View>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '700',
                 color: colors.heading
               }}
@@ -609,22 +612,22 @@ const DeliveryManagementScreen = () => {
             </Text>
           </View>
 
-          <View style={{ padding: 12, gap: 2 }}>
+          <View style={{ padding: s(12), gap: s(2) }}>
             {/* Batch Orders by Zone */}
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                paddingVertical: 10,
+                paddingVertical: s(10),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border
               }}
             >
-              <View style={{ flex: 1, marginRight: 16 }}>
+              <View style={{ flex: 1, marginRight: s(16) }}>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     color: colors.heading,
                     fontWeight: '500'
                   }}
@@ -632,7 +635,7 @@ const DeliveryManagementScreen = () => {
                   Batch Orders by Zone
                 </Text>
                 <Text
-                  style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                  style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
                 >
                   Group nearby orders for single delivery
                 </Text>
@@ -649,12 +652,12 @@ const DeliveryManagementScreen = () => {
             <View
               style={{
                 backgroundColor: colors.screen,
-                padding: 12,
-                borderRadius: 10,
+                padding: s(12),
+                borderRadius: s(10),
                 borderWidth: 1,
                 borderColor: colors.border,
-                marginTop: 8,
-                gap: 4
+                marginTop: s(8),
+                gap: s(4)
               }}
             >
               <View
@@ -662,13 +665,13 @@ const DeliveryManagementScreen = () => {
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  paddingVertical: 4
+                  paddingVertical: s(4)
                 }}
               >
-                <View style={{ flex: 1, marginRight: 16 }}>
+                <View style={{ flex: 1, marginRight: s(16) }}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       color: colors.heading,
                       fontWeight: '500'
                     }}
@@ -676,7 +679,7 @@ const DeliveryManagementScreen = () => {
                     Delay Orders to Batch
                   </Text>
                   <Text
-                    style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
                   >
                     Wait for potential batch matches
                   </Text>
@@ -690,7 +693,7 @@ const DeliveryManagementScreen = () => {
               </View>
 
               {settings.delayOrdersToBatch && (
-                <View style={{ paddingTop: 8, gap: 8 }}>
+                <View style={{ paddingTop: s(8), gap: s(8) }}>
                   <View
                     style={{
                       flexDirection: 'row',
@@ -700,7 +703,7 @@ const DeliveryManagementScreen = () => {
                   >
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         color: colors.label,
                         fontWeight: '500'
                       }}
@@ -709,7 +712,7 @@ const DeliveryManagementScreen = () => {
                     </Text>
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         color: colors.teal,
                         fontWeight: '700'
                       }}
@@ -727,10 +730,10 @@ const DeliveryManagementScreen = () => {
                         maxBatchDelayMinutes: v
                       })
                     }
-                    width={280}
+                    width={s(280)}
                   />
                   <Text
-                    style={{ fontSize: 10, color: colors.teal, marginTop: 4 }}
+                    style={{ fontSize: s(10), color: colors.teal, marginTop: s(4) }}
                   >
                     Average Savings: $2.40 per order
                   </Text>
@@ -744,14 +747,14 @@ const DeliveryManagementScreen = () => {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                paddingVertical: 10,
-                marginTop: 4
+                paddingVertical: s(10),
+                marginTop: s(4)
               }}
             >
-              <View style={{ flex: 1, marginRight: 16 }}>
+              <View style={{ flex: 1, marginRight: s(16) }}>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     color: colors.heading,
                     fontWeight: '500'
                   }}
@@ -759,7 +762,7 @@ const DeliveryManagementScreen = () => {
                   Prioritize Delivery Orders
                 </Text>
                 <Text
-                  style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                  style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
                 >
                   Delivery orders prepared before dine-in
                 </Text>

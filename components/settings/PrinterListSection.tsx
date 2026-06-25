@@ -23,6 +23,7 @@ import type {
   PrinterRole,
 } from "@/types/printer";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { getPrinterReachability } from "@/stores/selectors/printerSelectors";
 import { triggerHealthCheckNow } from "@/services/hardware/starPrinterHealthCheck";
 
@@ -72,12 +73,13 @@ function getPrinterStatusLabel(printer: PrinterConfig): string {
   }
 }
 
-function getPrinterStatusIcon(printer: PrinterConfig): React.ReactNode {
+function getPrinterStatusIcon(printer: PrinterConfig, scale: number): React.ReactNode {
+  const s = (n: number) => Math.round(n * scale);
   switch (getPrinterReachability(printer)) {
-    case "connectable": return <CheckCircle2 size={13} color={colors.success} />;
-    case "in_use": return <Lock size={13} color={colors.warning} />;
-    case "offline": return <XCircle size={13} color={colors.danger} />;
-    case "unknown": return <HelpCircle size={13} color={colors.muted} />;
+    case "connectable": return <CheckCircle2 size={s(13)} color={colors.success} />;
+    case "in_use": return <Lock size={s(13)} color={colors.warning} />;
+    case "offline": return <XCircle size={s(13)} color={colors.danger} />;
+    case "unknown": return <HelpCircle size={s(13)} color={colors.muted} />;
   }
 }
 
@@ -125,6 +127,8 @@ export function PrinterListSection({
   onDeletePrinter,
   onOpenRouting,
 }: PrinterListSectionProps) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   // Local state
   const [retryingPrinterId, setRetryingPrinterId] = useState<string | null>(null);
   const [testPrintingId, setTestPrintingId] = useState<string | null>(null);
@@ -178,16 +182,16 @@ export function PrinterListSection({
       {visiblePrinters.length === 0 ? (
         <View style={{
           backgroundColor: colors.card,
-          borderRadius: 10,
+          borderRadius: s(10),
           borderWidth: 1,
           borderColor: colors.border,
-          paddingHorizontal: 14,
-          paddingVertical: 20,
+          paddingHorizontal: s(14),
+          paddingVertical: s(20),
           alignItems: "center",
-          gap: 6,
+          gap: s(6),
         }}>
-          <Printer size={20} color={colors.muted} />
-          <Text style={{ fontSize: 12, color: colors.muted }}>
+          <Printer size={s(20)} color={colors.muted} />
+          <Text style={{ fontSize: s(12), color: colors.muted }}>
             No printers configured
           </Text>
         </View>
@@ -215,49 +219,49 @@ export function PrinterListSection({
               key={printer.id}
               style={{
                 backgroundColor: colors.card,
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: printer.isActive ? colors.border : colors.border + "60",
-                marginBottom: 8,
+                marginBottom: s(8),
                 opacity: printer.isActive ? 1 : 0.65,
               }}
             >
               {/* Card row */}
               <View style={{
-                paddingHorizontal: 12,
-                paddingVertical: 10,
+                paddingHorizontal: s(12),
+                paddingVertical: s(10),
                 flexDirection: "row",
                 alignItems: "center",
                 overflow: "hidden",
               }}>
                 {/* Col 1 -- Printer icon */}
                 <View style={{
-                  width: 30, height: 30, borderRadius: 7,
+                  width: s(30), height: s(30), borderRadius: s(7),
                   backgroundColor: colors.teal + "15",
                   alignItems: "center", justifyContent: "center",
-                  marginRight: 10, flexShrink: 0,
+                  marginRight: s(10), flexShrink: 0,
                 }}>
-                  <Printer size={14} color={colors.teal} />
+                  <Printer size={s(14)} color={colors.teal} />
                 </View>
 
                 {/* Col 2 -- Name + status badge + address */}
-                <View style={{ width: 180, flexShrink: 0, marginRight: 16 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                <View style={{ width: s(180), flexShrink: 0, marginRight: s(16) }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: s(5) }}>
                     <Text
-                      style={{ fontSize: 12, fontWeight: "700", color: colors.heading, flexShrink: 1 }}
+                      style={{ fontSize: s(12), fontWeight: "700", color: colors.heading, flexShrink: 1 }}
                       numberOfLines={1}
                     >
                       {printer.printerName}
                     </Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 3, flexShrink: 0 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: s(3), flexShrink: 0 }}>
                       <View style={{
-                        flexDirection: "row", alignItems: "center", gap: 3,
+                        flexDirection: "row", alignItems: "center", gap: s(3),
                         backgroundColor: statusColor + "20",
                         borderWidth: 1, borderColor: statusColor + "50",
-                        paddingHorizontal: 6, paddingVertical: 1, borderRadius: 20,
+                        paddingHorizontal: s(6), paddingVertical: s(1), borderRadius: s(20),
                       }}>
-                        {getPrinterStatusIcon(printer)}
-                        <Text style={{ fontSize: 10, fontWeight: "600", color: statusColor }}>
+                        {getPrinterStatusIcon(printer, uiScale)}
+                        <Text style={{ fontSize: s(10), fontWeight: "600", color: statusColor }}>
                           {statusLabel}
                         </Text>
                       </View>
@@ -265,18 +269,18 @@ export function PrinterListSection({
                         <View style={{
                           backgroundColor: colors.warning + "25",
                           borderWidth: 1, borderColor: colors.warning + "60",
-                          borderRadius: 20, minWidth: 16, height: 16,
+                          borderRadius: s(20), minWidth: s(16), height: s(16),
                           alignItems: "center", justifyContent: "center",
-                          paddingHorizontal: 4,
+                          paddingHorizontal: s(4),
                         }}>
-                          <Text style={{ fontSize: 9, fontWeight: "700", color: colors.warning }}>
+                          <Text style={{ fontSize: s(9), fontWeight: "700", color: colors.warning }}>
                             {printer.errorCount}
                           </Text>
                         </View>
                       )}
                     </View>
                   </View>
-                  <Text style={{ fontSize: 10, color: colors.label, marginTop: 2 }} numberOfLines={1}>
+                  <Text style={{ fontSize: s(10), color: colors.label, marginTop: s(2) }} numberOfLines={1}>
                     {printer.networkAddress || printer.connectionType.toUpperCase()}
                     {printer.printerModel ? ` \u00B7 ${getTypeBadge(printer.printerType)}` : ""}
                   </Text>
@@ -288,16 +292,16 @@ export function PrinterListSection({
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "flex-end",
-                  gap: 6,
+                  gap: s(6),
                   overflow: "hidden",
                 }}>
                   <View style={{
                     flexShrink: 0,
                     backgroundColor: role.bg,
                     borderWidth: 1, borderColor: role.text + "60",
-                    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20,
+                    paddingHorizontal: s(8), paddingVertical: s(2), borderRadius: s(20),
                   }}>
-                    <Text style={{ fontSize: 10, fontWeight: "600", color: role.text }}>
+                    <Text style={{ fontSize: s(10), fontWeight: "600", color: role.text }}>
                       {role.label}
                     </Text>
                   </View>
@@ -306,9 +310,9 @@ export function PrinterListSection({
                       flexShrink: 0,
                       backgroundColor: colors.success + "20",
                       borderWidth: 1, borderColor: colors.success + "55",
-                      paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20,
+                      paddingHorizontal: s(8), paddingVertical: s(2), borderRadius: s(20),
                     }}>
-                      <Text style={{ fontSize: 10, fontWeight: "700", color: colors.success }}>
+                      <Text style={{ fontSize: s(10), fontWeight: "700", color: colors.success }}>
                         Your station
                       </Text>
                     </View>
@@ -318,9 +322,9 @@ export function PrinterListSection({
                       flexShrink: 0,
                       backgroundColor: colors.muted + "20",
                       borderWidth: 1, borderColor: colors.muted + "55",
-                      paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20,
+                      paddingHorizontal: s(8), paddingVertical: s(2), borderRadius: s(20),
                     }}>
-                      <Text style={{ fontSize: 10, fontWeight: "600", color: colors.muted }}>
+                      <Text style={{ fontSize: s(10), fontWeight: "600", color: colors.muted }}>
                         {otherClaimCount === 1
                           ? "Used by 1 other station"
                           : `Used by ${otherClaimCount} other stations`}
@@ -331,43 +335,43 @@ export function PrinterListSection({
                     <View style={{
                       flexShrink: 0, backgroundColor: colors.teal + "15",
                       borderWidth: 1, borderColor: colors.teal + "40",
-                      paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20,
+                      paddingHorizontal: s(8), paddingVertical: s(2), borderRadius: s(20),
                     }}>
-                      <Text style={{ fontSize: 10, fontWeight: "600", color: colors.teal }}>Receipt</Text>
+                      <Text style={{ fontSize: s(10), fontWeight: "600", color: colors.teal }}>Receipt</Text>
                     </View>
                   )}
                   {printer.isDefaultKitchen && printer.printerRole !== "kitchen" && (
                     <View style={{
                       flexShrink: 0, backgroundColor: colors.teal + "15",
                       borderWidth: 1, borderColor: colors.teal + "40",
-                      paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20,
+                      paddingHorizontal: s(8), paddingVertical: s(2), borderRadius: s(20),
                     }}>
-                      <Text style={{ fontSize: 10, fontWeight: "600", color: colors.teal }}>Kitchen</Text>
+                      <Text style={{ fontSize: s(10), fontWeight: "600", color: colors.teal }}>Kitchen</Text>
                     </View>
                   )}
                   {printer.lastPrintAt && (
-                    <Text style={{ fontSize: 10, color: colors.muted, flexShrink: 1 }} numberOfLines={1}>
+                    <Text style={{ fontSize: s(10), color: colors.muted, flexShrink: 1 }} numberOfLines={1}>
                       Last: {getRelativeTime(printer.lastPrintAt)}
                     </Text>
                   )}
                 </View>
 
                 {/* Col 4 -- Action buttons */}
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: s(6), flexShrink: 0, marginLeft: s(10) }}>
                   {getPrinterReachability(printer) !== "connectable" && (
                     <TouchableOpacity
                       onPress={() => handleRetryConnection(printer)}
                       disabled={retryingPrinterId === printer.id}
                       style={{
-                        padding: 6,
+                        padding: s(6),
                         backgroundColor: colors.teal + "15",
                         borderWidth: 1, borderColor: colors.teal + "40",
-                        borderRadius: 7,
+                        borderRadius: s(7),
                       }}
                     >
                       {retryingPrinterId === printer.id
                         ? <ActivityIndicator size="small" color={colors.teal} />
-                        : <RefreshCw size={12} color={colors.teal} />}
+                        : <RefreshCw size={s(12)} color={colors.teal} />}
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity
@@ -379,16 +383,16 @@ export function PrinterListSection({
                       }
                     }}
                     style={{
-                      flexDirection: "row", alignItems: "center", gap: 4,
-                      paddingHorizontal: 9, paddingVertical: 5,
+                      flexDirection: "row", alignItems: "center", gap: s(4),
+                      paddingHorizontal: s(9), paddingVertical: s(5),
                       backgroundColor: isEditing ? colors.teal + "30" : colors.teal + "15",
                       borderWidth: 1,
                       borderColor: isEditing ? colors.teal + "70" : colors.teal + "40",
-                      borderRadius: 7,
+                      borderRadius: s(7),
                     }}
                   >
-                    <Settings2 size={12} color={colors.teal} />
-                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>
+                    <Settings2 size={s(12)} color={colors.teal} />
+                    <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.teal }}>
                       {isEditing ? "Close" : "Configure"}
                     </Text>
                   </TouchableOpacity>
@@ -396,17 +400,17 @@ export function PrinterListSection({
                     onPress={() => handleTestPrint(printer)}
                     disabled={isTestPrinting}
                     style={{
-                      flexDirection: "row", alignItems: "center", gap: 4,
-                      paddingHorizontal: 9, paddingVertical: 5,
+                      flexDirection: "row", alignItems: "center", gap: s(4),
+                      paddingHorizontal: s(9), paddingVertical: s(5),
                       backgroundColor: colors.teal + "15",
                       borderWidth: 1, borderColor: colors.teal + "40",
-                      borderRadius: 7,
+                      borderRadius: s(7),
                     }}
                   >
                     {isTestPrinting
                       ? <ActivityIndicator size="small" color={colors.teal} />
-                      : <Printer size={12} color={colors.teal} />}
-                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Test Print</Text>
+                      : <Printer size={s(12)} color={colors.teal} />}
+                    <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.teal }}>Test Print</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -414,15 +418,15 @@ export function PrinterListSection({
               {/* Expandable quick-actions panel (when editing) */}
               {isEditing && (
                 <View style={{
-                  paddingHorizontal: 12,
-                  paddingBottom: 12,
+                  paddingHorizontal: s(12),
+                  paddingBottom: s(12),
                   borderTopWidth: 1,
                   borderTopColor: colors.border,
-                  paddingTop: 10,
-                  gap: 8,
+                  paddingTop: s(10),
+                  gap: s(8),
                 }}>
                   {/* Quick action row: Configure full settings + Routing + Delete */}
-                  <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View style={{ flexDirection: "row", gap: s(8) }}>
                     <TouchableOpacity
                       onPress={() => {
                         setEditingPrinterId(null);
@@ -433,16 +437,16 @@ export function PrinterListSection({
                         flexDirection: "row",
                         alignItems: "center",
                         justifyContent: "center",
-                        gap: 6,
-                        paddingVertical: 9,
-                        borderRadius: 8,
+                        gap: s(6),
+                        paddingVertical: s(9),
+                        borderRadius: s(8),
                         backgroundColor: colors.teal + "15",
                         borderWidth: 1,
                         borderColor: colors.teal + "40",
                       }}
                     >
-                      <Settings2 size={13} color={colors.teal} />
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
+                      <Settings2 size={s(13)} color={colors.teal} />
+                      <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}>
                         Full Settings
                       </Text>
                     </TouchableOpacity>
@@ -458,16 +462,16 @@ export function PrinterListSection({
                           flexDirection: "row",
                           alignItems: "center",
                           justifyContent: "center",
-                          gap: 6,
-                          paddingVertical: 9,
-                          borderRadius: 8,
+                          gap: s(6),
+                          paddingVertical: s(9),
+                          borderRadius: s(8),
                           backgroundColor: colors.teal + "15",
                           borderWidth: 1,
                           borderColor: colors.teal + "40",
                         }}
                       >
-                        <Route size={13} color={colors.teal} />
-                        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
+                        <Route size={s(13)} color={colors.teal} />
+                        <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}>
                           Routing
                         </Text>
                       </TouchableOpacity>
@@ -479,19 +483,19 @@ export function PrinterListSection({
                         onDeletePrinter(printer);
                       }}
                       style={{
-                        paddingHorizontal: 14,
-                        paddingVertical: 9,
-                        borderRadius: 8,
+                        paddingHorizontal: s(14),
+                        paddingVertical: s(9),
+                        borderRadius: s(8),
                         backgroundColor: colors.danger + "10",
                         borderWidth: 1,
                         borderColor: colors.danger + "30",
                         flexDirection: "row",
                         alignItems: "center",
-                        gap: 5,
+                        gap: s(5),
                       }}
                     >
-                      <Trash2 size={13} color={colors.danger} />
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.danger }}>Delete</Text>
+                      <Trash2 size={s(13)} color={colors.danger} />
+                      <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.danger }}>Delete</Text>
                     </TouchableOpacity>
                   </View>
                 </View>

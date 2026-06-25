@@ -14,5 +14,5 @@ export const useSidePanelStore = create<SidePanelState>((set) => ({
   isOpen: false,
   setContent: (content) => set({ content, isOpen: true }),
   open: () => set({ isOpen: true }),
-  close: () => set({ isOpen: false }),
+  close: () => set({ isOpen: false, content: null }),
 }));

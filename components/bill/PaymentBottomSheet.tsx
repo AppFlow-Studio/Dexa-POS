@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useActiveOrder } from '@/stores/selectors/orderSelectors'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { AlertTriangle } from 'lucide-react-native'
 import React, { useState } from 'react'
@@ -24,35 +25,69 @@ import SplitByItemView from './paymentView/SplitByItemView'
 import SplitEvenlyView from './paymentView/SplitEvenlyView'
 import SplitOptionsView from './paymentView/SplitOptionsView'
 import SplitPaymentSuccessView from './SplitPaymentSuccessView'
+import { useUiScale } from '@/lib/uiScale'
 
 const PaymentBottomSheet: React.FC = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const view = usePaymentStore(s => s.view)
   const isOpen = usePaymentStore(s => s.isOpen)
   const close = usePaymentStore(s => s.close)
+  const cancelInProgressPayment = usePaymentStore(
+    s => s.cancelInProgressPayment
+  )
   const isDirty = usePaymentStore(s => s.isDirty)
   const setIsDirty = usePaymentStore(s => s.setIsDirty)
   const handleSuccessClose = usePaymentStore(s => s.handleSuccessClose)
   const isTransactionProcessing = usePaymentStore(
     s => s.isTransactionProcessing
   )
+
+  // A split is "in progress" once a portion has been captured — even though the
+  // sheet is no longer `isDirty` (advancing to the next portion clears the dirty
+  // flag, see usePaymentStore.startSplitPaymentFlow). Closing here must still
+  // prompt Keep/Discard so an abandoned split gets voided rather than silently
+  // left on the order (which double-charged on the next re-split).
+  const activeOrder = useActiveOrder()
+  const hasInProgressSplit =
+    !!activeOrder?.split_payment_path ||
+    (activeOrder?.payments?.length ?? 0) > 0
+
   const [showConfirmation, setShowConfirmation] = useState(false)
 
-  const handleConfirmClose = () => {
+  // "Discard": abandon the whole split. Roll back any captured-but-unconfirmed
+  // portions and defer to the backend's authoritative balance before tearing
+  // down the sheet. close() here was the leak that left a phantom payment / a
+  // manufactured residual on the next attempt.
+  const handleDiscard = () => {
+    setIsDirty(false)
+    setShowConfirmation(false)
+    cancelInProgressPayment()
+  }
+
+  // "Keep Changes": retain the captured (backend-confirmed) portions and exit.
+  // A plain close() — no rollback — so finished split portions stay paid.
+  const handleKeepChanges = () => {
     setIsDirty(false)
     setShowConfirmation(false)
     close()
   }
 
-  const handleCancelClose = () => {
+  // Dismiss the prompt and stay in the sheet (backdrop tap).
+  const handleDismissConfirmation = () => {
     setShowConfirmation(false)
   }
 
   const handleAttemptClose = () => {
     if (isTransactionProcessing) return
-    if (isDirty) {
-      setShowConfirmation(true)
-    } else if (view === 'success') {
+    // `success` = a completed payment, not an abandon — take the clean finalize
+    // path even if captured portions exist.
+    if (view === 'success') {
       handleSuccessClose()
+    } else if (isDirty || hasInProgressSplit) {
+      // Dirty edits OR a partially-captured split → prompt Keep/Discard so the
+      // abandoned portions are explicitly voided, never silently left behind.
+      setShowConfirmation(true)
     } else {
       close()
     }
@@ -91,7 +126,7 @@ const PaymentBottomSheet: React.FC = () => {
       case 'success':
         return <PaymentSuccessView />
       default:
-        return <Text style={{ color: colors.heading }}>Unknown View</Text>
+        return <Text style={{ color: colors.heading, fontSize: s(14) }}>Unknown View</Text>
     }
   }
 
@@ -120,7 +155,7 @@ const PaymentBottomSheet: React.FC = () => {
               <View
                 style={{
                   backgroundColor: colors.panel,
-                  padding: 16,
+                  padding: s(16),
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -130,7 +165,7 @@ const PaymentBottomSheet: React.FC = () => {
               >
                 <Text
                   style={{
-                    fontSize: 24,
+                    fontSize: s(24),
                     fontWeight: 'bold',
                     color: colors.heading
                   }}
@@ -141,9 +176,9 @@ const PaymentBottomSheet: React.FC = () => {
                   onPress={handleAttemptClose}
                   disabled={isTransactionProcessing}
                   style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    borderRadius: 8,
+                    paddingHorizontal: s(16),
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
                     backgroundColor: colors.muted + '20',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -152,7 +187,7 @@ const PaymentBottomSheet: React.FC = () => {
                 >
                   <Text
                     style={{
-                      fontSize: 14,
+                      fontSize: s(14),
                       fontWeight: '600',
                       color: colors.label
                     }}
@@ -172,124 +207,126 @@ const PaymentBottomSheet: React.FC = () => {
         </View>
         {/* Inline confirmation overlay — cannot use Dialog/Portal here since it portals behind the native Modal */}
         {showConfirmation && (
-          <View
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={handleDismissConfirmation}
             style={[
               StyleSheet.absoluteFill,
               {
                 backgroundColor: 'rgba(0,0,0,0.5)',
                 justifyContent: 'center',
                 alignItems: 'center',
-                padding: 24
+                padding: s(24)
               }
             ]}
           >
             <View
               style={{
                 backgroundColor: colors.panel,
-                borderRadius: 20,
-                padding: 28,
+                borderRadius: s(20),
+                padding: s(28),
                 width: '100%',
-                maxWidth: 400,
+                maxWidth: s(400),
                 borderWidth: 1,
                 borderColor: colors.border,
                 shadowColor: '#000',
-                shadowOffset: { width: 0, height: 8 },
+                shadowOffset: { width: 0, height: s(8) },
                 shadowOpacity: 0.3,
-                shadowRadius: 16,
+                shadowRadius: s(16),
                 elevation: 10
               }}
             >
-              <View style={{ alignItems: 'center', marginBottom: 20 }}>
+              <View style={{ alignItems: 'center', marginBottom: s(20) }}>
                 <View
                   style={{
-                    width: 60,
-                    height: 60,
-                    borderRadius: 14,
+                    width: s(60),
+                    height: s(60),
+                    borderRadius: s(14),
                     backgroundColor: colors.danger + '20',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: 16
+                    marginBottom: s(16)
                   }}
                 >
                   <AlertTriangle
-                    size={28}
+                    size={s(28)}
                     color={colors.danger}
                     strokeWidth={2.5}
                   />
                 </View>
                 <Text
                   style={{
-                    fontSize: 18,
+                    fontSize: s(18),
                     fontWeight: '800',
                     color: colors.heading,
-                    marginBottom: 8,
+                    marginBottom: s(8),
                     textAlign: 'center'
                   }}
                 >
-                  Close Payment Sheet?
+                  Exit Payment Sheet?
                 </Text>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     color: colors.label,
                     textAlign: 'center',
-                    lineHeight: 20
+                    lineHeight: s(20)
                   }}
                 >
-                  You have unsaved payment changes. This action cannot be
-                  undone.
+                  Keep the portions you've already captured, or discard the
+                  whole split. Discard cannot be undone.
                 </Text>
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+              <View style={{ flexDirection: 'row', gap: s(10), marginTop: s(8) }}>
                 <TouchableOpacity
-                  onPress={handleCancelClose}
+                  onPress={handleKeepChanges}
                   style={{
                     flex: 1,
                     backgroundColor: colors.teal + '15',
-                    borderRadius: 12,
+                    borderRadius: s(12),
                     borderWidth: 1.5,
                     borderColor: colors.teal + '50',
-                    paddingVertical: 13,
+                    paddingVertical: s(13),
                     alignItems: 'center'
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 14,
+                      fontSize: s(14),
                       color: colors.teal,
                       fontWeight: '700'
                     }}
                   >
-                    Cancel
+                    Keep Changes
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={handleConfirmClose}
+                  onPress={handleDiscard}
                   style={{
                     flex: 1,
                     backgroundColor: colors.danger + '15',
-                    borderRadius: 12,
+                    borderRadius: s(12),
                     borderWidth: 1.5,
                     borderColor: colors.danger + '50',
-                    paddingVertical: 13,
+                    paddingVertical: s(13),
                     alignItems: 'center'
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 14,
+                      fontSize: s(14),
                       color: colors.danger,
                       fontWeight: '700'
                     }}
                   >
-                    Close Sheet
+                    Discard
                   </Text>
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </TouchableOpacity>
         )}
       </Modal>
     </>

@@ -346,13 +346,21 @@ export function useOrdersRealtime ({
         const orderSource = broadcastOrder?.order_source?.toLowerCase()
 
         if (orderId && (event === 'INSERT' || event === 'UPDATE')) {
-          // Invalidate for ALL orders: unmounted queries are merely marked
-          // stale (no network), while an open payment sheet refetches right
-          // away. This is what lets useOrderPayments run staleTime 60s
-          // without a cross-station payment-freshness gap.
-          void queryClient.invalidateQueries({
-            queryKey: orderPaymentsQueryKey(orderId)
-          })
+          // Only invalidate the payments query when it actually has an active
+          // observer (an open payment sheet for THIS order). On a busy floor,
+          // every order mutation across the location broadcasts here; blindly
+          // invalidating walked the query cache for orders nobody is viewing.
+          // An open sheet still refetches immediately, preserving the
+          // cross-station payment-freshness guarantee; unmounted queries
+          // refetch on next mount regardless.
+          const paymentsKey = orderPaymentsQueryKey(orderId)
+          const hasActiveObserver = queryClient
+            .getQueryCache()
+            .find({ queryKey: paymentsKey })
+            ?.getObserversCount()
+          if (hasActiveObserver) {
+            void queryClient.invalidateQueries({ queryKey: paymentsKey })
+          }
 
           // Prefetch stays online-only — eagerly fetching payments for every
           // POS broadcast would add a round trip per order mutation.

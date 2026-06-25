@@ -13,6 +13,7 @@ import {
   distributeDiscountToItems,
   calculatePaidStatus,
   calculateEvenSplit,
+  calculateEvenSplitSpread,
   calculatePaymentPreview,
   applyPaymentToItems,
 } from "@/lib/order-calculator";
@@ -422,6 +423,54 @@ describe("Scenario 12: Even Split Payment", () => {
     const split = calculateEvenSplit(100.0, 1);
 
     expect(split.perPerson).toBe(100.0);
+    expect(split.amounts).toEqual([100.0]);
+  });
+});
+
+// ============================================================================
+// SCENARIO 12b: Even Split (largest-remainder spread)
+// ============================================================================
+
+describe("Scenario 12b: calculateEvenSplitSpread", () => {
+  // Acceptance matrix: every set sums EXACTLY to the total, and no portion
+  // differs from another by more than one cent.
+  const matrix: Array<[number, number]> = [
+    [0.02, 2],
+    [0.05, 3],
+    [0.1, 3],
+    [0.11, 3],
+    [1.01, 3],
+    [1.04, 3],
+    [100.0, 3],
+    [100.01, 3],
+  ];
+
+  it.each(matrix)("splits %p across %p exactly, spread <= 1 cent", (total, n) => {
+    const { amounts } = calculateEvenSplitSpread(total, n);
+
+    const sum = amounts.reduce((a, b) => a + b, 0);
+    expect(round2(sum)).toBe(round2(total));
+
+    const max = Math.max(...amounts);
+    const min = Math.min(...amounts);
+    expect(round2(max - min)).toBeLessThanOrEqual(0.01);
+  });
+
+  it("never produces multiple $0 portions when total >= n cents", () => {
+    // $0.05 across 3 was the regression case: floor-last gave [0,0,0.03]-style
+    // results; the spread gives every guest a non-zero portion.
+    const { amounts } = calculateEvenSplitSpread(0.05, 3);
+    expect(amounts).toEqual([0.02, 0.02, 0.01]);
+    expect(amounts.filter((a) => a === 0)).toHaveLength(0);
+  });
+
+  it("distributes the remainder to the FIRST portions, not the last", () => {
+    const { amounts } = calculateEvenSplitSpread(1.0, 3);
+    expect(amounts).toEqual([0.34, 0.33, 0.33]);
+  });
+
+  it("handles single person (no split)", () => {
+    const split = calculateEvenSplitSpread(100.0, 1);
     expect(split.amounts).toEqual([100.0]);
   });
 });

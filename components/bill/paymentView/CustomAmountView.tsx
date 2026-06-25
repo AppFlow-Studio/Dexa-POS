@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { colors } from '@/lib/theme'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -24,6 +25,8 @@ import {
 import NumericPad from './NumericPad'
 
 const CustomAmountView = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [focusedSplitId, setFocusedSplitId] = useState<string | null>(null)
   const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({})
   const inputRefs = useRef<Record<string, TextInput | null>>({})
@@ -111,8 +114,8 @@ const CustomAmountView = () => {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 14,
-          paddingVertical: 12,
+          paddingHorizontal: s(14),
+          paddingVertical: s(12),
           borderBottomWidth: 1,
           borderBottomColor: colors.border
         }}
@@ -120,39 +123,39 @@ const CustomAmountView = () => {
         <TouchableOpacity
           onPress={() => setView('split-options')}
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 10,
+            width: s(32),
+            height: s(32),
+            borderRadius: s(10),
             backgroundColor: `${colors.teal}10`,
             alignItems: 'center',
             justifyContent: 'center',
-            marginRight: 10
+            marginRight: s(10)
           }}
         >
-          <ArrowLeft size={16} color={colors.teal} />
+          <ArrowLeft size={s(16)} color={colors.teal} />
         </TouchableOpacity>
         <View>
           <Text
-            style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
           >
             Custom Amounts
           </Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>
             Manually assign amounts to each guest.
           </Text>
         </View>
       </View>
 
-      <View style={{ flex: 1, flexDirection: 'row', padding: 14, gap: 12 }}>
+      <View style={{ flex: 1, flexDirection: 'row', padding: s(14), gap: s(12) }}>
         {/* LEFT: Summary */}
         <View
           style={{
             width: '33%',
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            padding: 14,
+            padding: s(14),
             justifyContent: 'space-between'
           }}
         >
@@ -160,11 +163,11 @@ const CustomAmountView = () => {
             <Text
               style={{
                 color: colors.muted,
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '700',
                 textTransform: 'uppercase',
                 letterSpacing: 0.8,
-                marginBottom: 14
+                marginBottom: s(14)
               }}
             >
               Summary
@@ -174,17 +177,17 @@ const CustomAmountView = () => {
               style={{
                 flexDirection: 'row',
                 justifyContent: 'space-between',
-                marginBottom: 10
+                marginBottom: s(10)
               }}
             >
-              <Text style={{ color: colors.muted, fontSize: 13 }}>
+              <Text style={{ color: colors.muted, fontSize: s(13) }}>
                 Total Bill
               </Text>
               <Text
                 style={{
                   color: colors.heading,
                   fontWeight: '700',
-                  fontSize: 13
+                  fontSize: s(13)
                 }}
               >
                 ${effectiveTotal.toFixed(2)}
@@ -194,13 +197,13 @@ const CustomAmountView = () => {
               style={{
                 flexDirection: 'row',
                 justifyContent: 'space-between',
-                marginBottom: 10
+                marginBottom: s(10)
               }}
             >
-              <Text style={{ color: colors.muted, fontSize: 12 }}>
+              <Text style={{ color: colors.muted, fontSize: s(12) }}>
                 Cash Total
               </Text>
-              <Text style={{ color: colors.success, fontSize: 12 }}>
+              <Text style={{ color: colors.success, fontSize: s(12) }}>
                 ${effectiveCashTotal.toFixed(2)}
               </Text>
             </View>
@@ -209,17 +212,17 @@ const CustomAmountView = () => {
               style={{
                 flexDirection: 'row',
                 justifyContent: 'space-between',
-                marginBottom: 10,
-                paddingBottom: 10,
+                marginBottom: s(10),
+                paddingBottom: s(10),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border
               }}
             >
-              <Text style={{ color: colors.muted, fontSize: 13 }}>
+              <Text style={{ color: colors.muted, fontSize: s(13) }}>
                 Allocated
               </Text>
               <Text
-                style={{ color: colors.teal, fontWeight: '700', fontSize: 13 }}
+                style={{ color: colors.teal, fontWeight: '700', fontSize: s(13) }}
               >
                 ${totalAllocated.toFixed(2)}
               </Text>
@@ -227,13 +230,13 @@ const CustomAmountView = () => {
 
             <View>
               <Text
-                style={{ color: colors.muted, fontSize: 12, marginBottom: 4 }}
+                style={{ color: colors.muted, fontSize: s(12), marginBottom: s(4) }}
               >
                 Remaining
               </Text>
               <Text
                 style={{
-                  fontSize: 24,
+                  fontSize: s(24),
                   fontWeight: '700',
                   color: isPerfect
                     ? colors.success
@@ -245,20 +248,20 @@ const CustomAmountView = () => {
                 ${Math.abs(remaining).toFixed(2)}
               </Text>
               <Text
-                style={{ color: colors.success, fontSize: 11, marginTop: 4 }}
+                style={{ color: colors.success, fontSize: s(11), marginTop: s(4) }}
               >
                 Cash remaining ${Math.max(0, remainingCash).toFixed(2)}
               </Text>
               {isOver && (
                 <Text
-                  style={{ color: colors.danger, fontSize: 11, marginTop: 4 }}
+                  style={{ color: colors.danger, fontSize: s(11), marginTop: s(4) }}
                 >
                   Exceeds bill by ${Math.abs(remaining).toFixed(2)}
                 </Text>
               )}
               {isPerfect && (
                 <Text
-                  style={{ color: colors.success, fontSize: 11, marginTop: 4 }}
+                  style={{ color: colors.success, fontSize: s(11), marginTop: s(4) }}
                 >
                   Perfectly split!
                 </Text>
@@ -266,19 +269,19 @@ const CustomAmountView = () => {
             </View>
           </View>
 
-          <View style={{ gap: 8 }}>
+          <View style={{ gap: s(8) }}>
             {!canProceed && (
               <View
                 style={{
                   backgroundColor: colors.screen,
-                  padding: 10,
-                  borderRadius: 8
+                  padding: s(10),
+                  borderRadius: s(8)
                 }}
               >
                 <Text
                   style={{
                     color: colors.muted,
-                    fontSize: 11,
+                    fontSize: s(11),
                     textAlign: 'center'
                   }}
                 >
@@ -290,14 +293,14 @@ const CustomAmountView = () => {
               <View
                 style={{
                   backgroundColor: colors.screen,
-                  padding: 10,
-                  borderRadius: 8
+                  padding: s(10),
+                  borderRadius: s(8)
                 }}
               >
                 <Text
                   style={{
                     color: colors.warning,
-                    fontSize: 11,
+                    fontSize: s(11),
                     textAlign: 'center'
                   }}
                 >
@@ -311,12 +314,12 @@ const CustomAmountView = () => {
               disabled={!canProceed}
               style={{
                 width: '100%',
-                paddingVertical: 10,
-                borderRadius: 8,
+                paddingVertical: s(10),
+                borderRadius: s(8),
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
+                gap: s(6),
                 backgroundColor: canProceed ? colors.teal : colors.screen,
                 borderWidth: canProceed ? 0 : 1,
                 borderColor: colors.border,
@@ -324,14 +327,14 @@ const CustomAmountView = () => {
               }}
             >
               {canProceed ? (
-                <Check size={15} color={colors.onSolid} />
+                <Check size={s(15)} color={colors.onSolid} />
               ) : (
-                <ArrowRight size={15} color={colors.muted} />
+                <ArrowRight size={s(15)} color={colors.muted} />
               )}
               <Text
                 style={{
                   fontWeight: '700',
-                  fontSize: 13,
+                  fontSize: s(13),
                   color: canProceed ? colors.onSolid : colors.muted
                 }}
               >
@@ -346,7 +349,7 @@ const CustomAmountView = () => {
           style={{
             flex: 1,
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden'
@@ -354,7 +357,7 @@ const CustomAmountView = () => {
         >
           <View
             style={{
-              padding: 12,
+              padding: s(12),
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
               flexDirection: 'row',
@@ -365,7 +368,7 @@ const CustomAmountView = () => {
             <Text
               style={{
                 color: colors.muted,
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '700',
                 textTransform: 'uppercase',
                 letterSpacing: 0.8
@@ -376,22 +379,22 @@ const CustomAmountView = () => {
             <TouchableOpacity
               onPress={handleAddGuest}
               style={{
-                width: 28,
-                height: 28,
+                width: s(28),
+                height: s(28),
                 backgroundColor: colors.screen,
-                borderRadius: 7,
+                borderRadius: s(7),
                 borderWidth: 1,
                 borderColor: colors.border,
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <Plus size={15} color={colors.teal} />
+              <Plus size={s(15)} color={colors.teal} />
             </TouchableOpacity>
           </View>
 
           <ScrollView
-            contentContainerStyle={{ padding: 12 }}
+            contentContainerStyle={{ padding: s(12) }}
             showsVerticalScrollIndicator={false}
           >
             {splits.map(split => (
@@ -400,10 +403,10 @@ const CustomAmountView = () => {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  marginBottom: 8,
+                  marginBottom: s(8),
                   backgroundColor: colors.screen,
-                  padding: 10,
-                  borderRadius: 10,
+                  padding: s(10),
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.border
                 }}
@@ -413,25 +416,25 @@ const CustomAmountView = () => {
                     flexDirection: 'row',
                     alignItems: 'center',
                     flex: 1,
-                    marginRight: 10
+                    marginRight: s(10)
                   }}
                 >
                   <View
                     style={{
-                      width: 28,
-                      height: 28,
+                      width: s(28),
+                      height: s(28),
                       backgroundColor: colors.panel,
-                      borderRadius: 12,
+                      borderRadius: s(12),
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginRight: 8
+                      marginRight: s(8)
                     }}
                   >
-                    <User size={13} color={colors.muted} />
+                    <User size={s(13)} color={colors.muted} />
                   </View>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '700',
                       color: colors.label,
                       flex: 1
@@ -443,16 +446,16 @@ const CustomAmountView = () => {
                 </View>
 
                 <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}
                 >
                   {remaining > 0 && (
                     <TouchableOpacity
                       onPress={() => handleFillRemaining(split.id)}
                       style={{
                         backgroundColor: `${colors.teal}15`,
-                        paddingHorizontal: 8,
-                        paddingVertical: 5,
-                        borderRadius: 6,
+                        paddingHorizontal: s(8),
+                        paddingVertical: s(5),
+                        borderRadius: s(6),
                         borderWidth: 1,
                         borderColor: `${colors.teal}40`
                       }}
@@ -460,7 +463,7 @@ const CustomAmountView = () => {
                       <Text
                         style={{
                           color: colors.teal,
-                          fontSize: 11,
+                          fontSize: s(11),
                           fontWeight: '700'
                         }}
                       >
@@ -474,20 +477,20 @@ const CustomAmountView = () => {
                       flexDirection: 'row',
                       alignItems: 'center',
                       backgroundColor: colors.screen,
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
+                      borderRadius: s(8),
+                      paddingHorizontal: s(10),
                       borderWidth: 1,
                       borderColor: colors.border,
-                      width: 120,
-                      height: 40
+                      width: s(120),
+                      height: s(40)
                     }}
                   >
                     <Text
                       style={{
                         fontWeight: '700',
-                        fontSize: 14,
+                        fontSize: s(14),
                         color: colors.muted,
-                        marginRight: 3
+                        marginRight: s(3)
                       }}
                     >
                       $
@@ -498,7 +501,7 @@ const CustomAmountView = () => {
                       }}
                       style={{
                         flex: 1,
-                        fontSize: 14,
+                        fontSize: s(14),
                         fontWeight: '700',
                         color: colors.heading,
                         textAlign: 'right',
@@ -519,16 +522,16 @@ const CustomAmountView = () => {
                   </View>
 
                   {split.amount > 0 && (
-                    <View style={{ width: 78, gap: 2 }}>
+                    <View style={{ width: s(78), gap: s(2) }}>
                       <View
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
-                          gap: 3
+                          gap: s(3)
                         }}
                       >
-                        <CreditCard size={11} color={colors.teal} />
-                        <Text style={{ color: colors.teal, fontSize: 11 }}>
+                        <CreditCard size={s(11)} color={colors.teal} />
+                        <Text style={{ color: colors.teal, fontSize: s(11) }}>
                           ${split.amount.toFixed(2)}
                         </Text>
                       </View>
@@ -536,11 +539,11 @@ const CustomAmountView = () => {
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
-                          gap: 3
+                          gap: s(3)
                         }}
                       >
-                        <Banknote size={11} color={colors.success} />
-                        <Text style={{ color: colors.success, fontSize: 11 }}>
+                        <Banknote size={s(11)} color={colors.success} />
+                        <Text style={{ color: colors.success, fontSize: s(11) }}>
                           ${(split.amount * cashRatio).toFixed(2)}
                         </Text>
                       </View>
@@ -550,35 +553,35 @@ const CustomAmountView = () => {
                   <TouchableOpacity
                     onPress={() => removeSplit(split.id)}
                     style={{
-                      padding: 7,
+                      padding: s(7),
                       backgroundColor: colors.screen,
-                      borderRadius: 8
+                      borderRadius: s(8)
                     }}
                   >
-                    <Trash2 size={15} color={colors.muted} />
+                    <Trash2 size={s(15)} color={colors.muted} />
                   </TouchableOpacity>
                 </View>
               </View>
             ))}
 
             {splits.length === 0 && (
-              <View style={{ alignItems: 'center', paddingVertical: 60 }}>
+              <View style={{ alignItems: 'center', paddingVertical: s(60) }}>
                 <Text style={{ color: colors.muted }}>No guests added.</Text>
                 <TouchableOpacity
                   onPress={handleAddGuest}
                   style={{
-                    marginTop: 12,
+                    marginTop: s(12),
                     backgroundColor: colors.teal,
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    borderRadius: 8
+                    paddingHorizontal: s(16),
+                    paddingVertical: s(8),
+                    borderRadius: s(8)
                   }}
                 >
                   <Text
                     style={{
                       color: colors.onSolid,
                       fontWeight: '700',
-                      fontSize: 13
+                      fontSize: s(13)
                     }}
                   >
                     Add Guest
@@ -592,12 +595,12 @@ const CustomAmountView = () => {
         {/* RIGHT: Numeric Pad */}
         <View
           style={{
-            width: 260,
+            width: s(260),
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            padding: 12,
+            padding: s(12),
             justifyContent: 'center',
             alignItems: 'center'
           }}

@@ -1,3 +1,4 @@
+import { useUiScale } from "@/lib/uiScale";
 import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
@@ -6,6 +7,8 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import BillItem from "../BillItem";
 
 const ItemsReviewView = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const orderTotals = useActiveOrderTotals();
   const activeOrderSubtotal = orderTotals?.subtotal ?? 0;
   const activeOrderTax = orderTotals?.tax ?? 0;
@@ -19,13 +22,14 @@ const ItemsReviewView = () => {
   const items = activeOrder?.items || [];
 
   return (
-    <View className="bg-panel p-4 rounded-2xl border border-gray-700 w-[550px]">
+    <View className="bg-panel p-4 rounded-2xl border border-gray-700" style={{ width: s(550) }}>
       <Text className="text-2xl font-bold text-center mb-4 text-white">
         Review Items
       </Text>
       <ScrollView
-        className="max-h-[400px] mb-4"
+        className="mb-4"
         contentContainerClassName="gap-y-2"
+        style={{ maxHeight: s(400) }}
       >
         {items.map((item) => (
           // FIXED: Removed invalid props (expandedItemId, onToggleExpand, showStatus)

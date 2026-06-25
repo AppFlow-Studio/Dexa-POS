@@ -1,5 +1,6 @@
 import { ShiftHistoryEntry } from "@/lib/types";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { toastService } from "@/lib/toastService";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -22,110 +23,120 @@ const formatTime = (isoString: string): string => {
   }
 };
 
-const HistoryTableHeader = () => (
-  <View
-    style={{
-      flexDirection: "row",
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      backgroundColor: colors.screen,
-    }}
-  >
-    {TABLE_HEADERS.map((h) => (
-      <Text
-        key={h}
-        style={{
-          flex: 1,
-          fontSize: 10,
-          fontWeight: "700",
-          color: colors.muted,
-          textTransform: "uppercase",
-          letterSpacing: 0.8,
-        }}
-      >
-        {h}
-      </Text>
-    ))}
-  </View>
-);
+const HistoryTableHeader = ({ scale }: { scale: number }) => {
+  const s = (n: number) => Math.round(n * scale);
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        paddingHorizontal: s(14),
+        paddingVertical: s(8),
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        backgroundColor: colors.screen,
+      }}
+    >
+      {TABLE_HEADERS.map((h) => (
+        <Text
+          key={h}
+          style={{
+            flex: 1,
+            fontSize: s(10),
+            fontWeight: "700",
+            color: colors.muted,
+            textTransform: "uppercase",
+            letterSpacing: 0.8,
+          }}
+        >
+          {h}
+        </Text>
+      ))}
+    </View>
+  );
+};
 
 const HistoryTableRow = ({
   item,
   index,
+  scale,
 }: {
   item: ShiftHistoryEntry;
   index: number;
-}) => (
-  <View
-    style={{
-      flexDirection: "row",
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      backgroundColor: index % 2 === 0 ? colors.card : "transparent",
-      alignItems: "center",
-    }}
-  >
-    {/* Date */}
-    <Text style={{ flex: 1, fontSize: 12, color: colors.label }}>{item.date}</Text>
-
-    {/* Clock In */}
-    <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: colors.heading }}>
-      {formatTime(item.clockIn)}
-    </Text>
-
-    {/* Break */}
-    <View style={{ flex: 1 }}>
-      {item.breakInitiated !== "N/A" ? (
-        <>
-          <Text style={{ fontSize: 11, color: colors.teal }}>{formatTime(item.breakInitiated)}</Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>– {formatTime(item.breakEnded)}</Text>
-        </>
-      ) : (
-        <Text style={{ fontSize: 11, color: colors.muted, fontStyle: "italic" }}>No break</Text>
-      )}
-    </View>
-
-    {/* Clock Out */}
-    <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: colors.heading }}>
-      {item.clockOut === "N/A" ? (
-        <Text style={{ color: colors.teal, fontStyle: "italic" }}>Active</Text>
-      ) : (
-        formatTime(item.clockOut)
-      )}
-    </Text>
-
-    {/* Duration */}
+  scale: number;
+}) => {
+  const s = (n: number) => Math.round(n * scale);
+  return (
     <View
       style={{
-        flex: 1,
         flexDirection: "row",
+        paddingHorizontal: s(14),
+        paddingVertical: s(10),
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        backgroundColor: index % 2 === 0 ? colors.card : "transparent",
         alignItems: "center",
-        gap: 4,
       }}
     >
+      {/* Date */}
+      <Text style={{ flex: 1, fontSize: s(12), color: colors.label }}>{item.date}</Text>
+
+      {/* Clock In */}
+      <Text style={{ flex: 1, fontSize: s(12), fontWeight: "600", color: colors.heading }}>
+        {formatTime(item.clockIn)}
+      </Text>
+
+      {/* Break */}
+      <View style={{ flex: 1 }}>
+        {item.breakInitiated !== "N/A" ? (
+          <>
+            <Text style={{ fontSize: s(11), color: colors.teal }}>{formatTime(item.breakInitiated)}</Text>
+            <Text style={{ fontSize: s(11), color: colors.muted }}>– {formatTime(item.breakEnded)}</Text>
+          </>
+        ) : (
+          <Text style={{ fontSize: s(11), color: colors.muted, fontStyle: "italic" }}>No break</Text>
+        )}
+      </View>
+
+      {/* Clock Out */}
+      <Text style={{ flex: 1, fontSize: s(12), fontWeight: "600", color: colors.heading }}>
+        {item.clockOut === "N/A" ? (
+          <Text style={{ color: colors.teal, fontStyle: "italic" }}>Active</Text>
+        ) : (
+          formatTime(item.clockOut)
+        )}
+      </Text>
+
+      {/* Duration */}
       <View
         style={{
-          paddingHorizontal: 8,
-          paddingVertical: 3,
-          borderRadius: 6,
-          backgroundColor: colors.teal + "15",
-          borderWidth: 1,
-          borderColor: colors.teal + "30",
+          flex: 1,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: s(4),
         }}
       >
-        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
-          {item.duration}
-        </Text>
+        <View
+          style={{
+            paddingHorizontal: s(8),
+            paddingVertical: s(3),
+            borderRadius: s(6),
+            backgroundColor: colors.teal + "15",
+            borderWidth: 1,
+            borderColor: colors.teal + "30",
+          }}
+        >
+          <Text style={{ fontSize: s(11), fontWeight: "700", color: colors.teal }}>
+            {item.duration}
+          </Text>
+        </View>
       </View>
     </View>
-  </View>
-);
+  );
+};
 
 const HistoryTab = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const { shiftHistory, historyLoading, fetchShiftHistory } = useTimeclockStore();
   const { activeEmployeeId, getEmployeeById } = useEmployeeStore();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
@@ -234,19 +245,19 @@ const HistoryTab = () => {
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}
+      contentContainerStyle={{ paddingHorizontal: s(16), paddingTop: s(16), paddingBottom: s(24) }}
     >
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          marginBottom: 10,
+          marginBottom: s(10),
         }}
       >
         <Text
           style={{
-            fontSize: 11,
+            fontSize: s(11),
             fontWeight: "700",
             color: colors.muted,
             textTransform: "uppercase",
@@ -255,25 +266,25 @@ const HistoryTab = () => {
         >
           Shift History (Last 30 Days)
         </Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: s(8) }}>
           <TouchableOpacity
             onPress={handleRefresh}
             disabled={historyLoading}
             style={{
               flexDirection: "row",
               alignItems: "center",
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 8,
+              paddingHorizontal: s(10),
+              paddingVertical: s(6),
+              borderRadius: s(8),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
               opacity: historyLoading ? 0.6 : 1,
-              gap: 5,
+              gap: s(5),
             }}
           >
-            <RefreshCw size={12} color={colors.label} />
-            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label }}>
+            <RefreshCw size={s(12)} color={colors.label} />
+            <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.label }}>
               Refresh
             </Text>
           </TouchableOpacity>
@@ -283,25 +294,25 @@ const HistoryTab = () => {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 8,
+              paddingHorizontal: s(10),
+              paddingVertical: s(6),
+              borderRadius: s(8),
               borderWidth: 1,
               borderColor:
                 myHistory.length === 0 ? colors.border : colors.teal + "50",
               backgroundColor:
                 myHistory.length === 0 ? "transparent" : colors.teal + "15",
               opacity: isPrinting ? 0.6 : 1,
-              gap: 5,
+              gap: s(5),
             }}
           >
             <Printer
-              size={12}
+              size={s(12)}
               color={myHistory.length === 0 ? colors.muted : colors.teal}
             />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "600",
                 color: myHistory.length === 0 ? colors.muted : colors.teal,
               }}
@@ -315,26 +326,26 @@ const HistoryTab = () => {
       <View
         style={{
           backgroundColor: colors.card,
-          borderRadius: 12,
+          borderRadius: s(12),
           borderWidth: 1,
           borderColor: colors.border,
           overflow: "hidden",
         }}
       >
-        <HistoryTableHeader />
+        <HistoryTableHeader scale={uiScale} />
         {historyLoading && myHistory.length === 0 ? (
-          <View style={{ alignItems: "center", paddingVertical: 40, gap: 8 }}>
+          <View style={{ alignItems: "center", paddingVertical: s(40), gap: s(8) }}>
             <ActivityIndicator size="small" color={colors.teal} />
-            <Text style={{ color: colors.muted, fontSize: 13 }}>Loading shift history...</Text>
+            <Text style={{ color: colors.muted, fontSize: s(13) }}>Loading shift history...</Text>
           </View>
         ) : myHistory.length === 0 ? (
-          <View style={{ alignItems: "center", paddingVertical: 40, gap: 8 }}>
-            <Clock size={28} color={colors.muted} />
-            <Text style={{ color: colors.muted, fontSize: 13 }}>No shift history yet.</Text>
+          <View style={{ alignItems: "center", paddingVertical: s(40), gap: s(8) }}>
+            <Clock size={s(28)} color={colors.muted} />
+            <Text style={{ color: colors.muted, fontSize: s(13) }}>No shift history yet.</Text>
           </View>
         ) : (
           myHistory.map((item, index) => (
-            <HistoryTableRow key={item.id} item={item} index={index} />
+            <HistoryTableRow key={item.id} item={item} index={index} scale={uiScale} />
           ))
         )}
       </View>

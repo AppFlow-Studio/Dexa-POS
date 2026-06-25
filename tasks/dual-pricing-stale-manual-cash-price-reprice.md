@@ -44,6 +44,7 @@ Out of scope:
 - Created this task record and added it to `tasks/ticket-log.md`.
 - Added a guarded Supabase data migration for the 4 known stale Milk Shakes rows:
   - `supabase/migrations/20260623120000_reprice_charcoal_gardenia_stale_cash_prices.sql`
+- After the first Supabase run found no matching Charcoal Gardenia target rows, adjusted the migration to no-op with a notice when target data is absent in that environment. It still aborts on partial/ambiguous matches.
 - Confirmed schema has the required tables and fields:
   - `menu_items.cash_price`
   - `location_menu_item_overrides.custom_cash_price`
@@ -202,5 +203,5 @@ Manual QA still required:
 
 ## Open QA
 
-- Migration not executed from this workspace due missing DB/web-dashboard credentials. Run it in Supabase, then run the verification queries in this file.
+- Migration was adjusted to be environment-safe after Supabase could not find the Charcoal Gardenia target rows. If it prints the no-op notice, the data correction did not happen in that environment and the ticket still needs either the correct target IDs or website re-price flow.
 - Physical POS/web verification and screen recording still need to be completed after the data correction.

@@ -1,6 +1,7 @@
 import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useUiScale } from "@/lib/uiScale";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -13,41 +14,91 @@ const ManagerApprovalModal = ({
   onClose: () => void;
   onApprove: () => void;
 }) => {
+  const scale = useUiScale();
+  const s = (value: number) => Math.round(value * scale);
   const [pin, setPin] = useState("");
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="min-w-[480px] p-0 rounded-2xl overflow-hidden bg-white">
-        <View className="p-4 w-full">
-          <DialogTitle className="">
-            <Text className="text-accent-500 font-bold text-center text-2xl">
+      <DialogContent
+        style={{
+          minWidth: s(480),
+          paddingHorizontal: 0,
+          paddingVertical: 0,
+          borderRadius: s(16),
+          overflow: "hidden",
+          backgroundColor: "white",
+        }}
+      >
+        <View style={{ paddingHorizontal: s(16), paddingVertical: s(16), width: "100%" }}>
+          <DialogTitle>
+            <Text
+              style={{
+                color: "#0ea5e9",
+                fontWeight: "bold",
+                textAlign: "center",
+                fontSize: s(24),
+              }}
+            >
               Manager Approval Required
             </Text>
           </DialogTitle>
         </View>
-        <View className="bg-white p-4 w-full">
-          <Text className="text-xl font-semibold text-gray-600 mb-1.5">
+        <View style={{ backgroundColor: "white", paddingHorizontal: s(16), paddingVertical: s(16), width: "100%" }}>
+          <Text
+            style={{
+              fontSize: s(20),
+              fontWeight: "600",
+              color: "#4b5563",
+              marginBottom: s(6),
+            }}
+          >
             Enter your pin (Manager Only)
           </Text>
           <PinDisplay pinLength={pin.length} maxLength={4} />
           <PinNumpad onKeyPress={() => {}} />
-          <TouchableOpacity className="self-end my-3">
-            <Text className="font-semibold text-primary-400 text-lg">
+          <TouchableOpacity style={{ alignSelf: "flex-end", marginVertical: s(12) }}>
+            <Text style={{ fontWeight: "600", color: "#06b6d4", fontSize: s(16) }}>
               Forgot Pin
             </Text>
           </TouchableOpacity>
-          <View className="flex-row space-x-2 border-t border-gray-200 pt-4">
+          <View
+            style={{
+              flexDirection: "row",
+              gap: s(8),
+              borderTopWidth: 1,
+              borderTopColor: "#e5e7eb",
+              paddingTop: s(16),
+            }}
+          >
             <TouchableOpacity
               onPress={onClose}
-              className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
+              style={{
+                flex: 1,
+                paddingVertical: s(12),
+                borderWidth: 1,
+                borderColor: "#d1d5db",
+                borderRadius: s(8),
+                alignItems: "center",
+              }}
             >
-              <Text className="font-bold text-gray-700 text-xl">Cancel</Text>
+              <Text style={{ fontWeight: "bold", color: "#374151", fontSize: s(20) }}>
+                Cancel
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={onApprove}
-              className="flex-1 py-3 bg-primary-400 rounded-lg items-center"
+              style={{
+                flex: 1,
+                paddingVertical: s(12),
+                backgroundColor: "#06b6d4",
+                borderRadius: s(8),
+                alignItems: "center",
+              }}
             >
-              <Text className="font-bold text-white text-xl">Approve</Text>
+              <Text style={{ fontWeight: "bold", color: "white", fontSize: s(20) }}>
+                Approve
+              </Text>
             </TouchableOpacity>
           </View>
         </View>

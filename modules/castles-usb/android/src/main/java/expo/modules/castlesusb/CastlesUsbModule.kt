@@ -49,7 +49,29 @@ class CastlesUsbModule : Module() {
   private val lock = Object()
   private var serialPort: UsbSerialPort? = null
   private var ioManager: SerialInputOutputManager? = null
-  private val ioExecutor = Executors.newSingleThreadExecutor()
+
+  // Background read thread. The thread factory installs an UncaughtExceptionHandler
+  // so a fault on the read loop (e.g. an exception escaping the SerialInputOutputManager
+  // listener / a JSI emit failure during teardown) can NEVER reach the JVM default
+  // handler, which would crash the whole process. This is the defensive net behind
+  // the per-listener try/catch in open(). See the S1-0002 USB refund crash.
+  private val ioExecutor = Executors.newSingleThreadExecutor { r ->
+    Thread(r, "castles-usb-io").apply {
+      setUncaughtExceptionHandler { t, e ->
+        android.util.Log.e("CastlesUsbModule", "Uncaught on ${t.name}: ${e.message}", e)
+      }
+    }
+  }
+
+  // Dedicated thread for blocking port teardown. closeInternal()'s DTR/RTS
+  // de-assert + close() are USB control transfers that can each block up to ~5s
+  // on a dead/glitching device. Running them here keeps that blocking OFF the
+  // main/UI thread (which would ANR — the detach broadcast is delivered on main)
+  // and off the read thread.
+  private val cleanupExecutor = Executors.newSingleThreadExecutor { r ->
+    Thread(r, "castles-usb-cleanup")
+  }
+
   private var permissionPromise: Promise? = null
 
   // ── Helpers ──
@@ -102,12 +124,16 @@ class CastlesUsbModule : Module() {
         val device = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
         val deviceId = device?.deviceId ?: -1
 
-        // If the detached device is the one we have open, clean up
-        synchronized(lock) {
+        // If the detached device is the one we have open, clean up. This receiver
+        // is delivered on the MAIN thread, and closeInternal() can block on up-to-5s
+        // control transfers — so post the teardown to the cleanup thread instead of
+        // blocking main (which would ANR).
+        val isOurDevice = synchronized(lock) {
           val currentDevice = serialPort?.device
-          if (currentDevice != null && currentDevice.deviceId == deviceId) {
-            closeInternal()
-          }
+          currentDevice != null && currentDevice.deviceId == deviceId
+        }
+        if (isOurDevice) {
+          cleanupExecutor.submit { closeInternal() }
         }
 
         sendEvent("onCastlesUsbDetached", mapOf("deviceId" to deviceId))
@@ -149,6 +175,8 @@ class CastlesUsbModule : Module() {
     OnDestroy {
       closeInternal()
       unregisterReceivers()
+      try { cleanupExecutor.shutdownNow() } catch (_: Exception) {}
+      try { ioExecutor.shutdownNow() } catch (_: Exception) {}
     }
 
     // ── listDevices() ──
@@ -266,13 +294,32 @@ class CastlesUsbModule : Module() {
         // Start background read thread with larger buffer for JSON payloads
         val manager = SerialInputOutputManager(port, object : SerialInputOutputManager.Listener {
           override fun onNewData(data: ByteArray) {
-            val str = String(data, Charsets.UTF_8)
-            sendEvent("onCastlesUsbData", mapOf("data" to str))
+            // MUST NOT throw: this runs on the read thread inside
+            // SerialInputOutputManager.run(), whose exception handling around the
+            // listener call is not guaranteed to contain a throw — an escaping
+            // exception would propagate off the read thread and crash the process.
+            try {
+              val str = String(data, Charsets.UTF_8)
+              sendEvent("onCastlesUsbData", mapOf("data" to str))
+            } catch (t: Throwable) {
+              android.util.Log.e("CastlesUsbModule", "onNewData handler threw (swallowed): ${t.message}", t)
+            }
           }
 
           override fun onRunError(e: Exception) {
-            sendEvent("onCastlesUsbError", mapOf("message" to (e.message ?: "Unknown read error")))
-            closeInternal()
+            // Same contract as onNewData — never let a throw escape the read thread.
+            // Emit the error, then run the (potentially blocking) teardown on the
+            // cleanup thread rather than synchronously here on the read thread.
+            try {
+              sendEvent("onCastlesUsbError", mapOf("message" to (e.message ?: "Unknown read error")))
+            } catch (t: Throwable) {
+              android.util.Log.e("CastlesUsbModule", "onRunError emit threw (swallowed): ${t.message}", t)
+            }
+            try {
+              cleanupExecutor.submit { closeInternal() }
+            } catch (t: Throwable) {
+              android.util.Log.e("CastlesUsbModule", "onRunError cleanup submit failed: ${t.message}", t)
+            }
           }
         })
         manager.readBufferSize = READ_BUFFER_SIZE
@@ -330,19 +377,26 @@ class CastlesUsbModule : Module() {
   // ── Internal helpers ──
 
   private fun closeInternal() {
+    // Capture-and-null the handles UNDER the lock, then do the blocking native
+    // calls OUTSIDE it. This makes the method non-reentrant (a concurrent second
+    // caller sees null handles and no-ops) AND ensures the up-to-5s-each DTR/RTS/
+    // close control transfers never hold `lock` — so a concurrent open()/write()
+    // is never blocked waiting on a dead device's teardown.
+    val mgr: SerialInputOutputManager?
+    val port: UsbSerialPort?
     synchronized(lock) {
-      try { ioManager?.stop() } catch (_: Exception) {}
+      mgr = ioManager
       ioManager = null
-
-      try {
-        // De-assert DTR/RTS before closing to signal disconnect cleanly
-        serialPort?.dtr = false
-        serialPort?.rts = false
-      } catch (_: Exception) {}
-
-      try { serialPort?.close() } catch (_: Exception) {}
+      port = serialPort
       serialPort = null
     }
+
+    try { mgr?.stop() } catch (_: Exception) {}
+    // De-assert DTR then RTS to signal disconnect cleanly. Each is guarded
+    // separately so a failure on one still attempts the next and the close().
+    try { port?.dtr = false } catch (_: Exception) {}
+    try { port?.rts = false } catch (_: Exception) {}
+    try { port?.close() } catch (_: Exception) {}
   }
 
   private fun registerReceivers() {

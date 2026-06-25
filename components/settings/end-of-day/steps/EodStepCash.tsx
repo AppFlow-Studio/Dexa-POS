@@ -1,5 +1,6 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { ChecklistItem, ChecklistItemId, DrawerBreakdownItem } from '@/stores/useEndOfDayStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { formatCurrency } from '@/utils/currency'
@@ -34,6 +35,9 @@ export default function EodStepCash ({
   onOpenCashDrawer,
   onRefresh
 }: EodStepCashProps) {
+  const scale = useUiScale()
+  const s = (value: number) => Math.round(value * scale)
+
   const supabase = useSupabaseClient()
   const locationId = useStoreSettingsStore(s => s.selectedStore?.id)
   const drawerItem = resolveItem(checklist, 'cash_drawer_closed')
@@ -135,30 +139,30 @@ export default function EodStepCash ({
   const drawerBreakdown = externalBreakdown || localBreakdown
 
   return (
-    <View style={{ flex: 1, justifyContent: 'space-between', gap: 10 }}>
+    <View style={{ flex: 1, justifyContent: 'space-between', gap: s(10) }}>
       <View
         style={{
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 12,
-          gap: 10
+          padding: s(12),
+          gap: s(10)
         }}
       >
         <View
           style={{
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
             backgroundColor: colors.card,
-            padding: 10,
-            gap: 4
+            padding: s(10),
+            gap: s(4)
           }}
         >
           <Text
             style={{
-              fontSize: 10,
+              fontSize: s(10),
               fontWeight: '700',
               color: colors.teal,
               textTransform: 'uppercase',
@@ -168,12 +172,12 @@ export default function EodStepCash ({
             Cash drawer status
           </Text>
           <Text
-            style={{ fontSize: 20, fontWeight: '800', color: colors.heading }}
+            style={{ fontSize: s(20), fontWeight: '800', color: colors.heading }}
           >
             {isPassed ? 'Closed' : 'Needs review'}
           </Text>
           <Text
-            style={{ fontSize: 10.5, color: colors.label }}
+            style={{ fontSize: s(10.5), color: colors.label }}
             numberOfLines={1}
           >
             {drawerItem?.detail ||
@@ -181,25 +185,25 @@ export default function EodStepCash ({
           </Text>
         </View>
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}>
           <TouchableOpacity
             onPress={onOpenCashDrawer}
             style={{
               flexGrow: 1,
               flexBasis: 220,
-              minHeight: 42,
-              borderRadius: 12,
+              minHeight: s(42),
+              borderRadius: s(12),
               backgroundColor: colors.teal + '20',
               borderWidth: 1,
               borderColor: colors.teal + '50',
-              paddingHorizontal: 10,
-              paddingVertical: 8,
+              paddingHorizontal: s(10),
+              paddingVertical: s(8),
               alignItems: 'center',
               justifyContent: 'center'
             }}
           >
             <Text
-              style={{ fontSize: 11.5, fontWeight: '700', color: colors.teal }}
+              style={{ fontSize: s(11.5), fontWeight: '700', color: colors.teal }}
             >
               Open Cash Drawer Sheet
             </Text>
@@ -213,19 +217,19 @@ export default function EodStepCash ({
             style={{
               flexGrow: 1,
               flexBasis: 160,
-              minHeight: 42,
-              borderRadius: 12,
+              minHeight: s(42),
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              paddingHorizontal: 10,
-              paddingVertical: 8,
+              paddingHorizontal: s(10),
+              paddingVertical: s(8),
               alignItems: 'center',
               justifyContent: 'center'
             }}
           >
             <Text
-              style={{ fontSize: 11.5, fontWeight: '600', color: colors.label }}
+              style={{ fontSize: s(11.5), fontWeight: '600', color: colors.label }}
             >
               Refresh status
             </Text>
@@ -235,16 +239,16 @@ export default function EodStepCash ({
 
       {/* Per-drawer breakdown cards */}
       {loading && (
-        <View style={{ padding: 20, alignItems: 'center' }}>
+        <View style={{ padding: s(20), alignItems: 'center' }}>
           <ActivityIndicator color={colors.teal} />
-          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 6 }}>Loading drawer sessions...</Text>
+          <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(6) }}>Loading drawer sessions...</Text>
         </View>
       )}
 
       {drawerBreakdown && drawerBreakdown.length > 0 && (
         <ScrollView
-          style={{ flex: 1, marginTop: 4 }}
-          contentContainerStyle={{ gap: 8, paddingBottom: 8 }}
+          style={{ flex: 1, marginTop: s(4) }}
+          contentContainerStyle={{ gap: s(8), paddingBottom: s(8) }}
           showsVerticalScrollIndicator={false}
         >
           {drawerBreakdown.map((drawer, idx) => {
@@ -256,7 +260,7 @@ export default function EodStepCash ({
               <View
                 key={drawer.sessionId || idx}
                 style={{
-                  borderRadius: 12,
+                  borderRadius: s(12),
                   borderWidth: 1,
                   borderColor: hasFlags
                     ? colors.danger + '50'
@@ -264,23 +268,23 @@ export default function EodStepCash ({
                       ? '#fbbf2450'
                       : colors.border,
                   backgroundColor: colors.panel,
-                  padding: 10,
+                  padding: s(10),
                 }}
               >
                 {/* Drawer header */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: s(6) }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
+                    <Text style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}>
                       {drawer.drawerName}
                     </Text>
                     <View style={{
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 6,
+                      paddingHorizontal: s(6),
+                      paddingVertical: s(2),
+                      borderRadius: s(6),
                       backgroundColor: (drawer as any).status === 'closed' ? colors.teal + '20' : '#fbbf2420',
                     }}>
                       <Text style={{
-                        fontSize: 9,
+                        fontSize: s(9),
                         fontWeight: '700',
                         color: (drawer as any).status === 'closed' ? colors.teal : '#fbbf24',
                       }}>
@@ -290,7 +294,7 @@ export default function EodStepCash ({
                   </View>
                   {hasVariance && (
                     <Text style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: '700',
                       color: drawer.variance < 0 ? colors.danger : colors.teal,
                     }}>
@@ -300,19 +304,19 @@ export default function EodStepCash ({
                 </View>
 
                 {/* Key numbers */}
-                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 6 }}>
+                <View style={{ flexDirection: 'row', gap: s(12), marginBottom: s(6) }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 9, color: colors.muted }}>Expected</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.heading }}>{formatCurrency(drawer.expected)}</Text>
+                    <Text style={{ fontSize: s(9), color: colors.muted }}>Expected</Text>
+                    <Text style={{ fontSize: s(11), fontWeight: '600', color: colors.heading }}>{formatCurrency(drawer.expected)}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 9, color: colors.muted }}>Actual</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.heading }}>{formatCurrency(drawer.closing)}</Text>
+                    <Text style={{ fontSize: s(9), color: colors.muted }}>Actual</Text>
+                    <Text style={{ fontSize: s(11), fontWeight: '600', color: colors.heading }}>{formatCurrency(drawer.closing)}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 9, color: colors.muted }}>No-Sales</Text>
+                    <Text style={{ fontSize: s(9), color: colors.muted }}>No-Sales</Text>
                     <Text style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: '600',
                       color: drawer.noSaleCount > 0 ? '#fbbf24' : colors.heading,
                     }}>
@@ -324,19 +328,19 @@ export default function EodStepCash ({
                 {/* Suspicious patterns */}
                 {hasFlags && (
                   <View style={{
-                    paddingHorizontal: 8,
-                    paddingVertical: 6,
+                    paddingHorizontal: s(8),
+                    paddingVertical: s(6),
                     backgroundColor: colors.danger + '10',
                     borderWidth: 1,
                     borderColor: colors.danger + '30',
-                    borderRadius: 8,
-                    marginBottom: 6,
+                    borderRadius: s(8),
+                    marginBottom: s(6),
                   }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: colors.danger, marginBottom: 2 }}>
+                    <Text style={{ fontSize: s(10), fontWeight: '700', color: colors.danger, marginBottom: s(2) }}>
                       {drawer.suspiciousPatterns!.length} suspicious pattern(s) detected
                     </Text>
                     {drawer.suspiciousPatterns!.map((sp, i) => (
-                      <Text key={i} style={{ fontSize: 10, color: colors.danger, marginTop: 2 }}>
+                      <Text key={i} style={{ fontSize: s(10), color: colors.danger, marginTop: s(2) }}>
                         {sp.description}
                       </Text>
                     ))}
@@ -350,33 +354,33 @@ export default function EodStepCash ({
                       isExpanded ? null : (drawer.sessionId || String(idx))
                     )}
                     style={{
-                      paddingVertical: 4,
-                      paddingHorizontal: 6,
+                      paddingVertical: s(4),
+                      paddingHorizontal: s(6),
                       backgroundColor: '#fbbf2410',
-                      borderRadius: 6,
+                      borderRadius: s(6),
                     }}
                   >
-                    <Text style={{ fontSize: 10, fontWeight: '600', color: '#fbbf24' }}>
+                    <Text style={{ fontSize: s(10), fontWeight: '600', color: '#fbbf24' }}>
                       {isExpanded ? 'Hide' : 'Show'} No-Sale Details ({drawer.noSaleCount})
                     </Text>
                   </TouchableOpacity>
                 )}
 
                 {isExpanded && drawer.noSaleEvents && (
-                  <View style={{ marginTop: 6, gap: 3 }}>
+                  <View style={{ marginTop: s(6), gap: s(3) }}>
                     {drawer.noSaleEvents.map((ev) => (
                       <View key={ev.id} style={{
                         flexDirection: 'row',
                         justifyContent: 'space-between',
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
+                        paddingHorizontal: s(8),
+                        paddingVertical: s(4),
                         backgroundColor: '#fbbf2408',
-                        borderRadius: 6,
+                        borderRadius: s(6),
                       }}>
-                        <Text style={{ fontSize: 10, color: '#fbbf24', fontWeight: '600' }}>
+                        <Text style={{ fontSize: s(10), color: '#fbbf24', fontWeight: '600' }}>
                           {formatTime(ev.performedAt)} — {ev.performedByName || 'Staff'}
                         </Text>
-                        <Text style={{ fontSize: 10, color: colors.muted }}>
+                        <Text style={{ fontSize: s(10), color: colors.muted }}>
                           {ev.reason || 'No reason'}
                           {ev.approvedBy ? ' (approved)' : ''}
                         </Text>
@@ -391,33 +395,33 @@ export default function EodStepCash ({
       )}
 
       {!loading && drawerBreakdown && drawerBreakdown.length === 0 && (
-        <View style={{ padding: 16, alignItems: 'center' }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>No drawer sessions found for today</Text>
+        <View style={{ paddingHorizontal: s(16), paddingVertical: s(16), alignItems: 'center' }}>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>No drawer sessions found for today</Text>
         </View>
       )}
 
-      <View style={{ height: 92 }}>
+      <View style={{ height: s(92) }}>
         <EodChecklistRow
           title='Cash drawer close'
           description={drawerItem?.description}
           status={drawerItem?.status || 'pending'}
           detail={drawerItem?.detail}
           centerContent
-          containerStyle={{ flex: 1, paddingVertical: 6 }}
+          containerStyle={{ flex: 1, paddingVertical: s(6) }}
         />
       </View>
 
       <View
         style={{
-          borderRadius: 14,
+          borderRadius: s(14),
           borderWidth: 1,
           borderColor: colors.teal + '50',
           backgroundColor: colors.teal + '15',
-          paddingHorizontal: 12,
-          paddingVertical: 10
+          paddingHorizontal: s(12),
+          paddingVertical: s(10)
         }}
       >
-        <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.teal }}>
+        <Text style={{ fontSize: s(12.5), fontWeight: '700', color: colors.teal }}>
           {isPassed
             ? 'Cash drawer checks are complete.'
             : 'This step resolves when drawers are reconciled and closed.'}

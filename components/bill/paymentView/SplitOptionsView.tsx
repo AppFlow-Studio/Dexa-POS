@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { colors } from '@/lib/theme'
 import { SPLIT_PATH_LABELS, SplitPaymentPath } from '@/lib/types'
 import {
@@ -22,72 +23,74 @@ import {
   View
 } from 'react-native'
 
-const getStyles = () =>
-  StyleSheet.create({
+const getStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale)
+  return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.screen },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      paddingHorizontal: s(14),
+      paddingVertical: s(12),
       borderBottomWidth: 1,
       borderBottomColor: colors.border
     },
     backBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: 10,
+      width: s(32),
+      height: s(32),
+      borderRadius: s(10),
       backgroundColor: `${colors.teal}10`,
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: 10
+      marginRight: s(10)
     },
-    headerTitle: { fontSize: 15, fontWeight: '700', color: colors.heading },
-    headerSub: { fontSize: 11, color: colors.muted, marginTop: 1 },
-    grid: { flexDirection: 'row', gap: 10 },
+    headerTitle: { fontSize: s(15), fontWeight: '700', color: colors.heading },
+    headerSub: { fontSize: s(11), color: colors.muted, marginTop: 1 },
+    grid: { flexDirection: 'row', gap: s(10) },
     card: {
       flex: 1,
       backgroundColor: colors.panel,
-      borderRadius: 12,
-      padding: 14,
+      borderRadius: s(12),
+      padding: s(14),
       borderWidth: 1,
       borderColor: colors.border,
       justifyContent: 'space-between',
-      minHeight: 110
+      minHeight: s(110)
     },
     iconBox: {
-      width: 32,
-      height: 32,
-      borderRadius: 8,
+      width: s(32),
+      height: s(32),
+      borderRadius: s(8),
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 10
+      marginBottom: s(10)
     },
     cardTitle: {
-      fontSize: 13,
+      fontSize: s(13),
       fontWeight: '700',
       color: colors.heading,
-      marginBottom: 3
+      marginBottom: s(3)
     },
-    cardDesc: { fontSize: 11, color: colors.muted, lineHeight: 15 },
+    cardDesc: { fontSize: s(11), color: colors.muted, lineHeight: s(15) },
     lockBanner: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
+      gap: s(10),
       backgroundColor: `${colors.warning}15`,
       borderWidth: 1,
       borderColor: `${colors.warning}40`,
-      borderRadius: 10,
-      padding: 12,
-      marginBottom: 4
+      borderRadius: s(10),
+      padding: s(12),
+      marginBottom: s(4)
     },
     lockBannerText: {
       flex: 1,
-      fontSize: 12,
+      fontSize: s(12),
       color: colors.heading,
-      lineHeight: 17
+      lineHeight: s(17)
     }
   })
+}
 
 type OptionDef = {
   title: string
@@ -99,25 +102,28 @@ type OptionDef = {
 }
 
 const SplitOptionsView: React.FC = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const setView = usePaymentStore(state => state.setView)
   const activeOrder = useActiveOrder()
   const hasPreAuth = useHasActivePreAuth(activeOrder?.id)
   const lockedPath = activeOrder?.split_payment_path
+  const styles = getStyles(uiScale)
 
   // Guard: pre-auth active → disable split options
   if (hasPreAuth) {
     return (
-      <View style={getStyles().container}>
-        <View style={getStyles().header}>
+      <View style={styles.container}>
+        <View style={styles.header}>
           <TouchableOpacity
-            style={getStyles().backBtn}
+            style={styles.backBtn}
             onPress={() => setView('payment-method-selection')}
           >
-            <ArrowLeft size={16} color={colors.teal} />
+            <ArrowLeft size={s(16)} color={colors.teal} />
           </TouchableOpacity>
           <View>
-            <Text style={getStyles().headerTitle}>Split Bill</Text>
-            <Text style={getStyles().headerSub}>
+            <Text style={styles.headerTitle}>Split Bill</Text>
+            <Text style={styles.headerSub}>
               Choose how to divide the payment.
             </Text>
           </View>
@@ -127,16 +133,16 @@ const SplitOptionsView: React.FC = () => {
             flex: 1,
             justifyContent: 'center',
             alignItems: 'center',
-            padding: 30
+            padding: s(30)
           }}
         >
-          <Lock size={32} color={colors.muted} />
+          <Lock size={s(32)} color={colors.muted} />
           <Text
             style={{
               color: colors.heading,
-              fontSize: 15,
+              fontSize: s(15),
               fontWeight: '700',
-              marginTop: 12,
+              marginTop: s(12),
               textAlign: 'center'
             }}
           >
@@ -145,10 +151,10 @@ const SplitOptionsView: React.FC = () => {
           <Text
             style={{
               color: colors.muted,
-              fontSize: 13,
-              marginTop: 6,
+              fontSize: s(13),
+              marginTop: s(6),
               textAlign: 'center',
-              lineHeight: 18
+              lineHeight: s(18)
             }}
           >
             This order has an open tab (pre-authorization). Close or release the
@@ -204,14 +210,14 @@ const SplitOptionsView: React.FC = () => {
     return (
       <TouchableOpacity
         key={opt.title}
-        style={[getStyles().card, isLocked && { opacity: 0.35 }]}
+        style={[styles.card, isLocked && { opacity: 0.35 }]}
         onPress={() => setView(opt.view)}
         activeOpacity={0.8}
         disabled={isLocked}
       >
         <View
           style={[
-            getStyles().iconBox,
+            styles.iconBox,
             {
               backgroundColor: isLocked
                 ? `${colors.muted}15`
@@ -219,28 +225,28 @@ const SplitOptionsView: React.FC = () => {
             }
           ]}
         >
-          <Icon size={18} color={isLocked ? colors.muted : opt.color} />
+          <Icon size={s(18)} color={isLocked ? colors.muted : opt.color} />
         </View>
         <View>
-          <Text style={getStyles().cardTitle}>{opt.title}</Text>
-          <Text style={getStyles().cardDesc}>{desc}</Text>
+          <Text style={styles.cardTitle}>{opt.title}</Text>
+          <Text style={styles.cardDesc}>{desc}</Text>
         </View>
       </TouchableOpacity>
     )
   }
 
   return (
-    <View style={getStyles().container}>
-      <View style={getStyles().header}>
+    <View style={styles.container}>
+      <View style={styles.header}>
         <TouchableOpacity
-          style={getStyles().backBtn}
+          style={styles.backBtn}
           onPress={() => setView('payment-method-selection')}
         >
-          <ArrowLeft size={18} color={colors.teal} />
+          <ArrowLeft size={s(18)} color={colors.teal} />
         </TouchableOpacity>
         <View>
-          <Text style={getStyles().headerTitle}>Split Bill</Text>
-          <Text style={getStyles().headerSub}>
+          <Text style={styles.headerTitle}>Split Bill</Text>
+          <Text style={styles.headerSub}>
             Choose how to divide the payment.
           </Text>
         </View>
@@ -248,13 +254,13 @@ const SplitOptionsView: React.FC = () => {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 14, gap: 10 }}
+        contentContainerStyle={{ padding: s(14), gap: s(10) }}
         showsVerticalScrollIndicator={false}
       >
         {lockedPath && (
-          <View style={getStyles().lockBanner}>
-            <Lock size={16} color={colors.warning} />
-            <Text style={getStyles().lockBannerText}>
+          <View style={styles.lockBanner}>
+            <Lock size={s(16)} color={colors.warning} />
+            <Text style={styles.lockBannerText}>
               Split method locked to{' '}
               <Text style={{ fontWeight: '700' }}>
                 {SPLIT_PATH_LABELS[lockedPath]}
@@ -263,10 +269,10 @@ const SplitOptionsView: React.FC = () => {
             </Text>
           </View>
         )}
-        <View style={getStyles().grid}>
+        <View style={styles.grid}>
           {options.slice(0, 2).map(renderCard)}
         </View>
-        <View style={getStyles().grid}>
+        <View style={styles.grid}>
           {options.slice(2, 4).map(renderCard)}
         </View>
       </ScrollView>
