@@ -54,6 +54,9 @@ export interface KdsConfig {
 export interface PrintingConfig {
   autoPrintKitchenTickets: boolean
   autoPrintReceipt: boolean
+  // When true, split-payment orders auto-print one receipt per portion as each
+  // portion completes (instead of the single combined receipt).
+  autoPrintSplitReceipts: boolean
   autoPrintVoidReceipt: boolean
   printVoidTickets: boolean
   printRefundTickets: boolean
@@ -229,6 +232,7 @@ export const DEFAULT_KDS_CONFIG: KdsConfig = {
 export const DEFAULT_PRINTING_CONFIG: PrintingConfig = {
   autoPrintKitchenTickets: true,
   autoPrintReceipt: false,
+  autoPrintSplitReceipts: false,
   autoPrintVoidReceipt: true,
   printVoidTickets: true,
   printRefundTickets: true,

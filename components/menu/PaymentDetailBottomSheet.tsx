@@ -26,6 +26,7 @@ import type {
 import { OrderService } from '@/services/orderService'
 import { PrinterService } from '@/services/printing/PrinterService'
 import SendReceiptSheet from '@/components/receipts/SendReceiptSheet'
+import SplitReceiptSelectorModal from '@/components/bill/SplitReceiptSelectorModal'
 import type { SendReceiptDeliveryMethod } from '@/services/messaging/sendReceiptService'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useNoPrinterModalStore } from '@/stores/useNoPrinterModalStore'
@@ -751,6 +752,7 @@ interface RightPaneSummaryProps {
   onContinueCharging: () => void
   onIssueReceipt: () => void
   onSendReceipt?: () => void
+  onPrintSplitReceipts?: () => void
   onPrintKitchenTicket: () => void
   onTipAdjust: () => void
   onRefund: () => void
@@ -772,6 +774,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   onContinueCharging,
   onIssueReceipt,
   onSendReceipt,
+  onPrintSplitReceipts,
   onPrintKitchenTicket,
   onTipAdjust,
   onRefund,
@@ -1254,6 +1257,16 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               variant='primary'
             />
           )}
+          {paymentSummary.collected > 0 &&
+            !!order?.split_payment_path &&
+            onPrintSplitReceipts && (
+              <ActionButton
+                icon={<Printer size={s(16)} />}
+                label='Split Receipts'
+                onPress={onPrintSplitReceipts}
+                variant='primary'
+              />
+            )}
           {paymentSummary.collected > 0 && onSendReceipt && (
             <ActionButton
               icon={<Send size={s(16)} />}
@@ -3834,6 +3847,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     open: boolean
     method: SendReceiptDeliveryMethod
   }>({ open: false, method: 'email' })
+  const [splitSelectorOpen, setSplitSelectorOpen] = useState(false)
 
   // Get order data - first try active orders, then previous orders
   const activeOrder = useOrderStore(state => {
@@ -4823,6 +4837,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     onSendReceipt={() =>
                       setReceiptSheet({ open: true, method: 'email' })
                     }
+                    onPrintSplitReceipts={() => setSplitSelectorOpen(true)}
                     onPrintKitchenTicket={handlePrintKitchenTicket}
                     onTipAdjust={handleTipAdjust}
                     onRefund={handleRefund}
@@ -4880,6 +4895,13 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         defaultMethod={receiptSheet.method}
         defaultEmail={(order as any)?.customer_email}
         defaultPhone={(order as any)?.customer_phone}
+      />
+
+      <SplitReceiptSelectorModal
+        isOpen={splitSelectorOpen}
+        onClose={() => setSplitSelectorOpen(false)}
+        order={(order as OrderProfile) ?? null}
+        location={selectedStore ?? null}
       />
     </Modal>
   )

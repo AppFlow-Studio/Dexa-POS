@@ -5,6 +5,7 @@ import { useUiScale } from '@/lib/uiScale'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { formatPaymentStatus } from '@/utils/orderStatusHelpers'
 import { FlashList } from '@shopify/flash-list'
+
 import {
   ArrowDown,
   ArrowUp,

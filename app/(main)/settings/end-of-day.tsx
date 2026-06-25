@@ -29,11 +29,13 @@ import {
   runChecklistValidations
 } from '@/services/endOfDayService'
 import { EOD_STEPS, useEndOfDayStore } from '@/stores/useEndOfDayStore'
+import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { Printer, RotateCcw } from 'lucide-react-native'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 
 /** Steps 0..7 are EOD_STEPS; step 8 is the final summary. */
@@ -75,6 +77,9 @@ export default function EndOfDayScreen () {
   const completionOverrideReason = useEndOfDayStore(
     s => s.completionOverrideReason
   )
+  const employees = useEmployeeStore(s => s.employees)
+  const activeEmployeeId = useEmployeeStore(s => s.activeEmployeeId)
+  const timeclockSessions = useTimeclockStore(s => s.sessions)
 
   // ── Store selectors (open orders for floor step) ─────────────────────
   const openOrders = useEndOfDayStore(s => s.openOrders)
@@ -113,7 +118,14 @@ export default function EndOfDayScreen () {
 
   // ── Deep-link callbacks ──────────────────────────────────────────────
   const onSafeNavigate = useCallback(
-    (route: string) => {
+    (
+      route:
+        | string
+        | {
+          pathname: string
+          params?: Record<string, string>
+        }
+    ) => {
       try {
         router.push(route as any)
       } catch (error) {
@@ -130,9 +142,38 @@ export default function EndOfDayScreen () {
     () => onSafeNavigate('/(main)/previous-orders'),
     [onSafeNavigate]
   )
+  const unresolvedReviewEmployeeIds = useMemo(() => {
+    const knownEmployeeIds = new Set(employees.map(employee => employee.id))
+    return Object.keys(timeclockSessions).filter(
+      employeeId =>
+        employeeId !== activeEmployeeId && knownEmployeeIds.has(employeeId)
+    )
+  }, [activeEmployeeId, employees, timeclockSessions])
+  const unresolvedReviewStaffProfileIds = useMemo(
+    () =>
+      employees
+        .filter(employee => unresolvedReviewEmployeeIds.includes(employee.id))
+        .map(employee => employee.profileId)
+        .filter(Boolean),
+    [employees, unresolvedReviewEmployeeIds]
+  )
+  const timeclockReviewHref = useMemo(() => {
+    if (unresolvedReviewEmployeeIds.length === 0) {
+      return '/(profiles-and-timeclock)/timeclock'
+    }
+
+    return {
+      pathname: '/(profiles-and-timeclock)/timeclock',
+      params: {
+        reviewMode: 'unresolved',
+        focusEmployeeIds: unresolvedReviewEmployeeIds.join(','),
+        focusStaffProfileIds: unresolvedReviewStaffProfileIds.join(',')
+      }
+    }
+  }, [unresolvedReviewEmployeeIds, unresolvedReviewStaffProfileIds])
   const onOpenTimeclock = useCallback(
-    () => onSafeNavigate('/(profiles-and-timeclock)/timeclock'),
-    [onSafeNavigate]
+    () => onSafeNavigate(timeclockReviewHref as any),
+    [onSafeNavigate, timeclockReviewHref]
   )
   const onGoToSettlement = useCallback(
     () => onSafeNavigate('/(main)/settings/end-of-day/settlement'),
