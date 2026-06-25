@@ -16,7 +16,6 @@ import {
   MenuItemType,
   ModifierCategory,
   Notification,
-  OnlineOrder,
   Order,
   PaymentTerminal,
   PreviousOrder,
@@ -3353,105 +3352,6 @@ const sampleOrderItems: CartItem[] = [
   },
 ];
 
-export const MOCK_ONLINE_ORDERS: OnlineOrder[] = [
-  // Add a variety of orders with different statuses and partners
-  {
-    id: "#45654",
-    status: "New Orders",
-    deliveryPartner: "Door Dash",
-    customerName: "John Jones",
-    total: 520,
-    itemCount: 10,
-    timestamp: "02/03/25, 05:36 PM",
-    customerDetails: {
-      id: "#54568",
-      phone: "+560934856",
-      email: "john@gmail.com",
-    },
-    paymentStatus: "Paid",
-    items: sampleOrderItems,
-  },
-  {
-    id: "#45655",
-    status: "New Orders",
-    deliveryPartner: "Uber-Eats",
-    customerName: "Jane Smith",
-    total: 350,
-    itemCount: 5,
-    timestamp: "02/03/25, 05:38 PM",
-    customerDetails: {
-      id: "#54569",
-      phone: "+123456789",
-      email: "jane@gmail.com",
-    },
-    paymentStatus: "Paid",
-    items: sampleOrderItems,
-  },
-  {
-    id: "#45656",
-    status: "Confirmed/In-Process",
-    deliveryPartner: "Food Panda",
-    customerName: "Alex Ray",
-    total: 410,
-    itemCount: 8,
-    timestamp: "02/03/25, 05:30 PM",
-    customerDetails: {
-      id: "#54570",
-      phone: "+987654321",
-      email: "alex@gmail.com",
-    },
-    paymentStatus: "Paid",
-    items: sampleOrderItems,
-  },
-  {
-    id: "#45657",
-    status: "Confirmed/In-Process",
-    deliveryPartner: "grubhub",
-    customerName: "Emily Clark",
-    total: 600,
-    itemCount: 12,
-    timestamp: "02/03/25, 05:25 PM",
-    customerDetails: {
-      id: "#54571",
-      phone: "+555555555",
-      email: "emily@gmail.com",
-    },
-    paymentStatus: "Paid",
-    items: sampleOrderItems,
-  },
-  {
-    id: "#45658",
-    status: "Ready to Dispatch",
-    deliveryPartner: "Uber-Eats",
-    customerName: "Michael Bee",
-    total: 220,
-    itemCount: 3,
-    timestamp: "02/03/25, 05:20 PM",
-    customerDetails: {
-      id: "#54572",
-      phone: "+444444444",
-      email: "michael@gmail.com",
-    },
-    paymentStatus: "Paid",
-    items: sampleOrderItems,
-  },
-  {
-    id: "#45659",
-    status: "Dispatched",
-    deliveryPartner: "Food Panda",
-    customerName: "Sarah Day",
-    total: 750,
-    itemCount: 15,
-    timestamp: "02/03/25, 05:15 PM",
-    customerDetails: {
-      id: "#54573",
-      phone: "+666666666",
-      email: "sarah@gmail.com",
-    },
-    paymentStatus: "Paid",
-    items: sampleOrderItems,
-  },
-];
 
 export const MOCK_PREVIOUS_ORDERS: PreviousOrder[] = [
   {

@@ -1,116 +1,199 @@
-import { PARTNER_LOGO_MAP } from "@/lib/mockData";
-import { OnlineOrder } from "@/lib/types";
-import { useOnlineOrderStore } from "@/stores/useOnlineOrderStore";
+import { useOnlineOrderActions } from "@/hooks/orders/useOnlineOrderActions";
+import { useOrder } from "@/stores/selectors/orderSelectors";
 import { Href, Link } from "expo-router";
-import React from "react";
-import { Image, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-const partnerColors: { [key: string]: string } = {
-  "Door Dash": "bg-red-500/20",
-  "Uber-Eats": "bg-green-500/20",
-  grubhub: "bg-orange-500/20",
-  "Food Panda": "bg-pink-500/20",
-};
+export type OnlineColumnVariant = "new" | "kitchen" | "ready" | "done";
 
-const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
-  // 2. Get the actions from the store
-  const { updateOrderStatus, rejectOrder, archiveOrder } =
-    useOnlineOrderStore();
+interface OnlineOrderCardProps {
+  /** Store key OR db_order_id — resolved via useOrder/getOrder. */
+  orderId: string;
+  variant: OnlineColumnVariant;
+}
 
-  // 3. --- This is the new conditional logic for the footer ---
-  const renderFooter = () => {
-    switch (order.status) {
-      case "New Orders":
-        return (
+function formatTime(iso: string | null): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const d = new Date(t);
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${h}:${m.toString().padStart(2, "0")} ${ampm}`;
+}
+
+function sourceLabel(
+  deliveryPlatform: string | null | undefined,
+  orderType: string | null | undefined,
+  tableLabel: string | null | undefined,
+): string {
+  // QR dine-in orders carry the table label (website sets table_number =
+  // table_label → transformed to service_location_name). order_type can't tell
+  // them apart — it collapses to 'takeout' — so key on the label's presence.
+  if (tableLabel) return `${tableLabel} · QR`;
+  if (deliveryPlatform) return deliveryPlatform;
+  // Website storefront orders have no delivery platform.
+  return orderType === "delivery" ? "Online · Delivery" : "Online";
+}
+
+/**
+ * A single online-order card.
+ *
+ * Wave 2.7 perf: takes only a stable `orderId` string + `variant`, then
+ * subscribes to its own order via `useOrder(orderId)`. Combined with the
+ * `React.memo` boundary below, one card's optimistic flip (or a sibling's)
+ * never re-renders the others — only the card whose order actually changed
+ * re-renders. Submit/error are LOCAL state, so they stay off the order object.
+ */
+const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
+  orderId,
+  variant,
+}) => {
+  const order = useOrder(orderId);
+  const { acceptOrder, declineOrder } = useOnlineOrderActions();
+  const [submitting, setSubmitting] = useState<null | "accept" | "decline">(
+    null,
+  );
+  const [retryable, setRetryable] = useState(false);
+
+  const onAccept = useCallback(async () => {
+    setSubmitting("accept");
+    setRetryable(false);
+    const res = await acceptOrder(orderId);
+    setSubmitting(null);
+    // Only offer Retry for transient failures (offline / network). Terminal
+    // outcomes (already declined/cancelled) reconcile the card away instead.
+    setRetryable(!res.ok && (res.reason === "offline" || res.reason === "network"));
+  }, [acceptOrder, orderId]);
+
+  const onDecline = useCallback(async () => {
+    setSubmitting("decline");
+    setRetryable(false);
+    const res = await declineOrder(orderId);
+    setSubmitting(null);
+    setRetryable(!res.ok && (res.reason === "offline" || res.reason === "network"));
+  }, [declineOrder, orderId]);
+
+  if (!order) return null;
+
+  const itemCount = order.items?.reduce((n, i) => n + (i.quantity || 0), 0) ?? 0;
+  const label = order.display_number || order.order_number || order.id;
+  const total = order.total_amount ?? 0;
+
+  return (
+    <View className="bg-surface p-4 rounded-2xl border border-gray-600 w-full">
+      {/* Header */}
+      <View className="flex-row justify-between items-center">
+        <Text className="text-sm text-gray-300">Items: {itemCount}</Text>
+        <Text className="text-sm text-gray-300">
+          {formatTime(order.opened_at)}
+        </Text>
+      </View>
+
+      {/* Body */}
+      <View className="flex-row items-center my-3">
+        <View className="flex-1">
+          <Text className="text-base font-bold text-white">#{label}</Text>
+          <Text className="text-sm text-gray-300" numberOfLines={1}>
+            {order.customer_name || "Guest"}
+          </Text>
+          <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>
+            {sourceLabel(
+              order.delivery_platform,
+              order.order_type,
+              order.service_location_name,
+            )}
+          </Text>
+        </View>
+        <Text className="text-2xl font-bold text-white">
+          ${total.toFixed(2)}
+        </Text>
+      </View>
+
+      <Link
+        href={`/online-orders/${(order.db_order_id || order.id).replace("#", "")}` as Href}
+        asChild
+      >
+        <TouchableOpacity>
+          <Text className="font-bold text-blue-400">View Order Details</Text>
+        </TouchableOpacity>
+      </Link>
+
+      {/* Footer */}
+      {variant === "new" ? (
+        <View className="mt-4">
           <View className="flex-row gap-2">
             <TouchableOpacity
-              onPress={() => rejectOrder(order.id)}
+              onPress={onDecline}
+              disabled={submitting !== null}
               className="flex-1 py-2.5 border border-gray-500 rounded-xl items-center"
             >
-              <Text className="font-bold text-gray-300">Reject</Text>
+              {submitting === "decline" ? (
+                <ActivityIndicator color="#d1d5db" />
+              ) : (
+                <Text className="font-bold text-gray-300">Decline</Text>
+              )}
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() =>
-                updateOrderStatus(order.id, "Confirmed/In-Process")
-              }
+              onPress={onAccept}
+              disabled={submitting !== null}
               className="flex-1 py-2.5 bg-blue-500 rounded-xl items-center"
             >
-              <Text className="font-bold text-white">Accept</Text>
+              {submitting === "accept" ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text className="font-bold text-white">Accept</Text>
+              )}
             </TouchableOpacity>
           </View>
-        );
-      case "Confirmed/In-Process":
-        return (
-          <TouchableOpacity
-            onPress={() => updateOrderStatus(order.id, "Ready to Dispatch")}
-            className="w-full py-2.5 bg-blue-500 rounded-xl items-center"
-          >
-            <Text className="font-bold text-white">Mark as Ready</Text>
-          </TouchableOpacity>
-        );
-      case "Ready to Dispatch":
-        return (
-          <TouchableOpacity
-            onPress={() => updateOrderStatus(order.id, "Dispatched")}
-            className="w-full py-2.5 bg-blue-500 rounded-xl items-center"
-          >
-            <Text className="font-bold text-white">Dispatch</Text>
-          </TouchableOpacity>
-        );
-      case "Dispatched":
-        return (
-          <TouchableOpacity
-            onPress={() => archiveOrder(order.id)}
-            className="py-2.5 bg-green-500/20 rounded-xl items-center"
-          >
-            <Text className="font-bold text-green-400">Archive</Text>
-          </TouchableOpacity>
-        );
-      default:
-        return null;
-    }
-  };
-  return (
-    <Link href={`/online-orders/${order.id.replace("#", "")}` as Href}>
-      <View className="bg-surface p-4 rounded-2xl border border-gray-600 w-full">
-        {/* Header */}
-        <View className="flex-row justify-between items-center">
-          <View>
-            <Text className="text-sm text-gray-300">
-              Items: {order.itemCount}
-            </Text>
-            <Text className="font-bold text-blue-400 mt-1">
-              View Order Details
-            </Text>
-          </View>
-          <Text className="text-sm text-gray-300">{order.timestamp}</Text>
+          {retryable && (
+            <View className="mt-2 flex-row items-center justify-between">
+              <Text className="text-xs text-red-400 flex-1">
+                Server unreachable.
+              </Text>
+              <TouchableOpacity
+                onPress={onAccept}
+                className="px-3 py-1.5 rounded-lg bg-blue-600/20 border border-blue-500/40"
+              >
+                <Text className="text-blue-300 text-xs font-semibold">
+                  Retry
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
-        {/* Body */}
-        <View className="flex-row items-center my-4">
-          <View
-            className={`w-12 h-12 rounded-full items-center justify-center ${
-              partnerColors[order.deliveryPartner]
-            }`}
-          >
-            <Image
-              source={PARTNER_LOGO_MAP[order.deliveryPartner]}
-              className="w-8 h-8"
-              resizeMode="contain"
-            />
-          </View>
-          <View className="ml-3 flex-1">
-            <Text className="text-base font-bold text-white">{order.id}</Text>
-            <Text className="text-base text-gray-300">
-              {order.customerName}
+      ) : (
+        <View className="mt-4">
+          <View className="self-start px-3 py-1.5 rounded-lg bg-blue-900/30 border border-blue-500/30">
+            <Text className="text-blue-300 text-xs font-semibold capitalize">
+              {variant === "kitchen"
+                ? "In kitchen"
+                : variant === "ready"
+                  ? "Ready"
+                  : "Done"}
             </Text>
           </View>
-          <Text className="text-2xl font-bold text-white">${order.total}</Text>
         </View>
-        {/* Footer */}
-        <View className="mt-4">{renderFooter()}</View>
-      </View>
-    </Link>
+      )}
+    </View>
   );
 };
+
+/**
+ * Explicit memo boundary (mirrors KDSTicketCard). Props are primitive
+ * (orderId + variant), so the default shallow compare is exactly the bail
+ * condition we want: the card re-renders only when its own order changes
+ * (via the internal useOrder subscription) or its column variant changes —
+ * never because a sibling card or the parent list re-rendered.
+ */
+const OnlineOrderCard = React.memo(OnlineOrderCardImpl);
+OnlineOrderCard.displayName = "OnlineOrderCard";
 
 export default OnlineOrderCard;

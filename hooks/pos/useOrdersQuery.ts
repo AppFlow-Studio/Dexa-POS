@@ -199,11 +199,13 @@ function hydrateWorkspace(
   const STATUS_RANK: Record<string, number> = {
     draft: 0,
     pending: 0,
+    accepted: 1, // online-order accept — kitchen bucket, so a stale pending/draft can't revert it
     sent_to_kitchen: 1,
     preparing: 1,
     ready: 2,
     completed: 3,
     closed: 3,
+    declined: 4, // terminal
     void: 4,
   };
   const serverMap: Record<string, OrderProfile> = {};

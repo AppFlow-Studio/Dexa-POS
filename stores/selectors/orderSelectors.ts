@@ -532,7 +532,13 @@ export function useWorkingSetOrders(): OrderProfile[] {
 // - order_status NOT IN ('completed', 'voided', 'cancelled', 'void')
 // - Must have items
 
-const INACTIVE_STATUSES = new Set(["completed", "voided", "cancelled", "void"]);
+const INACTIVE_STATUSES = new Set([
+  "completed",
+  "voided",
+  "cancelled",
+  "void",
+  "declined", // online-order manual-decline is terminal
+]);
 export function useStationOrders(): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
   const orderIds = useOrderStore((s) => s.orderIds);
@@ -685,6 +691,7 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
       "voided",
       "cancelled",
       "void",
+      "declined",
     ]);
     const dineInTypes = new Set(["Dine In", "dine_in"]);
     const workingSet = new Set(workingSetOrderIds);
@@ -965,4 +972,88 @@ export function useIsOwnStationOrder(order: OrderProfile | null): boolean {
     if (!order || !currentStationId) return false;
     return order.station_id === currentStationId;
   }, [order, currentStationId]);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Pending Online Orders (online-orders Kanban "New" column)
+// ═══════════════════════════════════════════════════════════════════════════
+// Incoming online/QR orders awaiting manual Accept/Decline.
+//
+// Keyed on order_source==='online' + order_status==='pending' — NOT order_type.
+// QR dine-in orders transform to order_type='takeout' (mapOrderType has no
+// qr_dine_in case), so order_type cannot distinguish them. order_source is set
+// to 'online' by process_online_order for ALL ingress paths (website/QR +
+// Orderout aggregators), so this queue surfaces every pending online order.
+// Auto-accepted aggregator orders are never 'pending', so they won't appear.
+
+export function usePendingOnlineOrders(): OrderProfile[] {
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
+
+  const filtered = useMemo(() => {
+    const result: OrderProfile[] = [];
+    for (let i = 0; i < orderIds.length; i++) {
+      const o = ordersById[orderIds[i]];
+      if (!o) continue;
+      if (o.order_source !== "online") continue;
+      if (o.order_status !== "pending") continue;
+      result.push(o);
+    }
+    // Newest first
+    result.sort((a, b) => getOrderTime(b.opened_at) - getOrderTime(a.opened_at));
+    return result;
+  }, [ordersById, orderIds]);
+
+  return useStableOrderList(filtered);
+}
+
+// Online orders we never show on the Kanban (terminal / dropped).
+// `completed` is intentionally KEPT so it can fill the "Done" column.
+const ONLINE_EXCLUDED_STATUSES = new Set([
+  "declined",
+  "cancelled",
+  "void",
+  "voided",
+  "refunded",
+]);
+
+/**
+ * All active online orders (any non-terminal status), newest first.
+ * The Kanban buckets these into its columns by order_status. Stable reference
+ * via useStableOrderList so unrelated store mutations don't churn the board.
+ */
+export function useOnlineOrders(): OrderProfile[] {
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
+
+  const filtered = useMemo(() => {
+    const result: OrderProfile[] = [];
+    for (let i = 0; i < orderIds.length; i++) {
+      const o = ordersById[orderIds[i]];
+      if (!o) continue;
+      if (o.order_source !== "online") continue;
+      if (ONLINE_EXCLUDED_STATUSES.has(o.order_status ?? "")) continue;
+      result.push(o);
+    }
+    result.sort((a, b) => getOrderTime(b.opened_at) - getOrderTime(a.opened_at));
+    return result;
+  }, [ordersById, orderIds]);
+
+  return useStableOrderList(filtered);
+}
+
+/**
+ * Count of pending online orders for the nav/header badge.
+ * Returns a primitive number, so subscribers re-render only when the count
+ * changes — not when any order in the store mutates.
+ */
+export function usePendingOnlineOrderCount(): number {
+  return useOrderStore((s) => {
+    let n = 0;
+    for (let i = 0; i < s.orderIds.length; i++) {
+      const o = s.ordersById[s.orderIds[i]];
+      if (o && o.order_source === "online" && o.order_status === "pending") n++;
+    }
+    return n;
+  });
 }

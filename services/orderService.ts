@@ -30,6 +30,20 @@ import {
 } from "@/types/db-order-management-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
+/**
+ * JSON envelope returned by accept_online_order / decline_online_order.
+ * These RPCs return HTTP 200 with success:false on guard failures (e.g. the
+ * order is no longer pending), so outcome detection reads this shape, not the
+ * transport `error`.
+ */
+export type OnlineOrderActionResult = {
+  success: boolean;
+  error?: string;
+  order_id?: string;
+  accepted_at?: string;
+  declined_at?: string;
+};
+
 export type AddOpenItemParams = {
   p_order_id: string;
   p_item_name: string;
@@ -400,6 +414,57 @@ export class OrderService {
     // console.log(`[OrderService:addOrderItem] Item ID: ${data.order_item_id}`);
 
     return { data, error };
+  }
+
+  /**
+   * Accept an incoming online/QR order — fires every item to the kitchen (KDS).
+   *
+   * accept_online_order is pending-guarded and returns a JSON envelope at
+   * HTTP 200 even on the "not pending" branch:
+   *   { success: false, error: 'Order is not in pending status (current: X)' }
+   * (NOT a thrown/transport error). Callers MUST branch on data.success /
+   * data.error rather than relying on `error`. The server normalizes accept to
+   * status='sent_to_kitchen', so a benign "already accepted" race reports a
+   * current status of sent_to_kitchen/preparing/ready/accepted.
+   */
+  static async acceptOnlineOrder(
+    client: SupabaseClient,
+    dbOrderId: string,
+  ): Promise<{ data: OnlineOrderActionResult | null; error: any }> {
+    return _runWithDeadline<OnlineOrderActionResult>(
+      "accept_online_order",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("accept_online_order", { p_order_id: dbOrderId })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
+  }
+
+  /**
+   * Decline an incoming online/QR order (terminal). Same JSON-envelope contract
+   * as acceptOnlineOrder — inspect data.success / data.error.
+   */
+  static async declineOnlineOrder(
+    client: SupabaseClient,
+    dbOrderId: string,
+    reason?: string,
+  ): Promise<{ data: OnlineOrderActionResult | null; error: any }> {
+    return _runWithDeadline<OnlineOrderActionResult>(
+      "decline_online_order",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("decline_online_order", {
+            p_order_id: dbOrderId,
+            p_reason: reason ?? null,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
   }
 
   /**

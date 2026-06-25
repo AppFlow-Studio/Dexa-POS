@@ -40,6 +40,7 @@ import type {
   AddOrderItemParams,
   CreateOrderParams,
   OrderType as DbOrderType,
+  OrderStatus as DbOrderStatus,
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
 import type {
@@ -5719,11 +5720,13 @@ export const useOrderStore = create<OrderState>()(
                         ...(() => {
                           const STATUS_RANK: Record<string, number> = {
                             draft: 0,
+                            accepted: 1, // online-order accept — kitchen bucket
                             sent_to_kitchen: 1,
                             preparing: 1,
                             ready: 2,
                             completed: 3,
                             closed: 3,
+                            declined: 4, // terminal
                             void: 4,
                           };
                           const localStatusRank =
@@ -5919,10 +5922,12 @@ export const useOrderStore = create<OrderState>()(
                     if (localOrder.order_status !== backendOrder.status) {
                       const ORDER_STATUS_RANK: Record<string, number> = {
                         draft: 0,
+                        accepted: 1, // online-order accept — kitchen bucket
                         sent_to_kitchen: 1,
                         preparing: 1,
                         ready: 2,
                         closed: 3,
+                        declined: 4, // terminal
                         void: 4,
                       };
                       const localRank =
@@ -11124,13 +11129,17 @@ export const useOrderStore = create<OrderState>()(
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order?.db_order_id) {
               const dbOrderId = order.db_order_id;
-              OrderService.updateOrderStatus(supabase, dbOrderId, status).catch(
+              // This generic lifecycle path only handles standard backend
+              // statuses; online-order accept/decline route through the
+              // dedicated accept_online_order/decline_online_order RPCs instead.
+              const dbStatus = status as DbOrderStatus;
+              OrderService.updateOrderStatus(supabase, dbOrderId, dbStatus).catch(
                 async (err) => {
                   console.error("Failed to sync status:", err);
                   // Queue for offline retry
                   await queueOperation({
                     type: "update_order_status",
-                    params: { orderId: dbOrderId, status },
+                    params: { orderId: dbOrderId, status: dbStatus },
                     localOrderId: orderId,
                   });
                 },

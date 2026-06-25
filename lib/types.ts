@@ -346,17 +346,6 @@ export interface Layout {
   tables: TableType[]
 }
 
-export type OnlineOrderStatus =
-  | 'New Orders'
-  | 'Confirmed/In-Process'
-  | 'Ready to Dispatch'
-  | 'Dispatched'
-export type DeliveryPartner =
-  | 'Door Dash'
-  | 'grubhub'
-  | 'Uber-Eats'
-  | 'Food Panda'
-
 export interface CartItem {
   id: string // Unique ID for this cart instance (e.g., menuItemId + timestamp)
   menuItemId: string // The original ID from the menu data
@@ -455,24 +444,6 @@ export interface CartItem {
 
   // Seat management (for per-seat ordering)
   seatNumber?: number | null // Which seat (1..N), null = shared/unassigned
-}
-
-export interface OnlineOrder {
-  id: string // e.g., #45654
-  status: OnlineOrderStatus
-  deliveryPartner: DeliveryPartner
-  customerName: string
-  total: number
-  itemCount: number
-  timestamp: string // e.g., '02/03/25, 05:36 PM'
-  // Detailed info for the details page
-  customerDetails: {
-    id: string
-    phone: string
-    email: string
-  }
-  paymentStatus: 'Paid' | 'Pending'
-  items: CartItem[]
 }
 
 export type PaymentStatus =
@@ -932,10 +903,12 @@ export interface OrderProfile {
   order_status:
     | 'draft'
     | 'pending'
+    | 'accepted' // online-order manual-accept; server normalizes to sent_to_kitchen, modeled as a safety net
     | 'sent_to_kitchen'
     | 'preparing'
     | 'ready'
     | 'completed'
+    | 'declined' // online-order manual-decline (terminal)
     | 'cancelled'
     | 'refunded'
     | 'void'
