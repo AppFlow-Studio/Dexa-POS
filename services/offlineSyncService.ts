@@ -648,24 +648,6 @@ function startAppStateListener(): void {
         connectionQuality.reset();
       }
       _lastBackgroundedAt = null;
-      // Evict stale business day cache on foreground (handles rollover)
-      try {
-        const { getCurrentBusinessDay } = require("@/lib/businessDay");
-        const { todayOrdersCache } = require("@/stores/todayOrdersCache");
-        const {
-          useStoreSettingsStore,
-        } = require("@/stores/useStoreSettingsStore");
-        const store = useStoreSettingsStore.getState().selectedStore;
-        if (store?.id && store?.timezone) {
-          const config = {
-            timezone: store.timezone,
-            rolloverHour: store.business_day_start_hour ?? 0,
-          };
-          todayOrdersCache.evictStale(store.id, getCurrentBusinessDay(config));
-        }
-      } catch {
-        /* non-critical */
-      }
 
       NetInfo.fetch()
         .then(handleNetworkChange)

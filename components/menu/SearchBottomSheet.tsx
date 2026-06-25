@@ -76,7 +76,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   const [isOpen, setIsOpen] = useState(false)
 
   const { menus } = useMenuStore(state => state)
-  const { closeSearch, setSearchSheetRef } = useSearchStore()
+  const { closeSearch, setSearchSheetRef, clearSearchSheetRef } = useSearchStore()
 
   // Menu-Aware Search Logic. Skip all work while the sheet is closed — there's
   // nothing to display, and an empty search would otherwise materialize the
@@ -183,8 +183,10 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   }, [searchResults])
 
   useLayoutEffect(() => {
-    setSearchSheetRef(searchSheetRef as React.RefObject<BottomSheetMethods>)
-  }, [setSearchSheetRef])
+    const ref = searchSheetRef as React.RefObject<BottomSheetMethods>
+    setSearchSheetRef(ref)
+    return () => clearSearchSheetRef(ref)
+  }, [setSearchSheetRef, clearSearchSheetRef])
 
   const renderBackdrop = useMemo(
     () => (props: any) =>

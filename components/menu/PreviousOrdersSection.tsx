@@ -1,11 +1,13 @@
 import { usePreviousOrdersListSync } from '@/hooks/pos/usePreviousOrdersListSync'
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
 import { useUiScale } from '@/lib/uiScale'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
+import { useShallow } from 'zustand/react/shallow'
 import { RefreshCw, Search, X } from 'lucide-react-native'
 import React, { useCallback, useMemo, useState } from 'react'
 import {
@@ -16,7 +18,6 @@ import {
   View
 } from 'react-native'
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
-import { useShallow } from 'zustand/react/shallow'
 import OrderLineItemsModal from '../order/OrderLineItemsModal'
 import DatePillRow, { type DatePillDef } from './DatePillRow'
 import OrderActionsMenu from './OrderActionsMenu'
@@ -124,94 +125,58 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 // Old OrderRow and RetrieveButton components removed - replaced by OrdersTable
 
 const PreviousOrdersSection = () => {
-  // Read the resolved date-window bounds at the component level so the
-  // `liveOrders` selector below can gate on them. These bounds come from
-  // `get_business_day_bounds` (or the Luxon fallback) — same source used to
-  // fetch `previousOrders`, so the live and history sides agree on what
-  // "Today" / "Yesterday" / "Last 7 days" mean.
-  const liveDateBounds = usePreviousOrdersStore(
-    useShallow(s => ({
-      startTs: s.dateWindow?._resolvedStartTs ?? null,
-      endTs: s.dateWindow?._resolvedEndTs ?? null
-    }))
-  )
+  // Previous Orders is server-fetched ONLY — it renders exactly what
+  // `previousOrders` (date-bounded fetch from the backend) returns. We do NOT
+  // merge in live in-memory orders from useOrderStore anymore: a just-created /
+  // unsynced order is not a "previous order" and was previously pinned to the
+  // top of every date window (it has no backend row yet, so it bypassed the
+  // date filter). It now appears here only once it syncs and a fetch/broadcast
+  // surfaces it.
+  const { previousOrders, newOrdersCount } = usePreviousOrdersStore()
+  const { rawIsOnline } = useNetworkStatus()
 
-  // Narrow selector: active order + working set + station-visible, in-window,
-  // non-final orders. History comes from previousOrders (date-bounded). Do NOT
-  // scan all orderIds blindly — useOrderStore can have 1500+ stale non-final
-  // orders from useOrdersQuery (which has no date bound today).
-  //
-  // Date window: skip orders whose `opened_at` falls outside the active pill's
-  // resolved bounds. The `useOrdersQuery` fetch is status-only with no date
-  // bound, so without this filter the user sees months of stale "ready" /
-  // "preparing" orders piled up in the list. The active order + working set
-  // bypass the date filter — the cashier is mid-edit on those, regardless of
-  // when they were opened.
-  //
-  // Station visibility honours `view_scope` (mirrors `isOrderVisible` in
-  // useOrderStore):
-  //   own      → only this station's orders
-  //   location → any station at this location
-  //   online   → this station + delivery/takeout from any station
-  const liveOrders = useOrderStore(
+  // OFFLINE ONLY: the backend is unreachable, so previousOrders can't refresh.
+  // Surface the device's own non-final orders (active + working set + own-station
+  // open) so staff still see everything pending — including open/unpaid orders
+  // created while offline — each badged "Offline". When online this is empty and
+  // the list stays server-fetched only.
+  const offlineLiveOrders = useOrderStore(
     useShallow(s => {
-      const ids = new Set<string>()
-      if (s.activeOrderId) ids.add(s.activeOrderId)
-      for (const wsId of s.workingSetOrderIds || []) {
-        const localId = s.dbOrderIdIndex[wsId] || wsId
-        ids.add(localId)
-      }
+      if (rawIsOnline) return [] as OrderProfile[]
       const finalStatuses = new Set([
         'completed',
         'void',
         'cancelled',
         'voided'
       ])
-      const viewScope = s.currentStation?.view_scope ?? 'own'
-      const startTs = liveDateBounds.startTs
-      const endTs = liveDateBounds.endTs
+      const ids = new Set<string>()
+      if (s.activeOrderId) ids.add(s.activeOrderId)
+      for (const wsId of s.workingSetOrderIds || []) {
+        ids.add(s.dbOrderIdIndex[wsId] || wsId)
+      }
       for (const id of s.orderIds) {
         if (ids.has(id)) continue
         const o = s.ordersById[id]
         if (!o) continue
-        if (viewScope === 'own') {
-          if (o.station_id !== s.currentStationId) continue
-        } else if (viewScope === 'online') {
-          const isOnlineType =
-            o.order_type === 'delivery' || o.order_type === 'takeout'
-          if (o.station_id !== s.currentStationId && !isOnlineType) continue
-        }
-        // viewScope === 'location' → no station gate
+        if (o.station_id !== s.currentStationId) continue // own station only
         if (finalStatuses.has(o.order_status ?? '')) continue
-        if (o.order_status === 'draft' && o.items.length === 0) continue
-        // Date-window gate (skip when bounds aren't resolved yet — initial
-        // render before the RPC returns). `opened_at` can be null on brand-
-        // new drafts; let those through so the user sees what they're
-        // currently typing.
-        if (startTs && endTs && o.opened_at) {
-          if (o.opened_at < startTs || o.opened_at >= endTs) continue
-        }
         ids.add(id)
       }
       const result: OrderProfile[] = []
-      const seenOrderIds = new Set<string>()
+      const seen = new Set<string>()
       for (const id of ids) {
         const o = s.ordersById[id]
         if (!o) continue
-        // Hide empty drafts — including the active order / working set, which
-        // were added to `ids` unconditionally above and so bypass the
-        // empty-draft skip in the scan loop. A draft with no items is nothing
-        // the cashier needs to see in the history list.
         if (o.order_status === 'draft' && o.items.length === 0) continue
-        const canonicalId = o.db_order_id ?? o.id
-        if (seenOrderIds.has(canonicalId)) continue
-        seenOrderIds.add(canonicalId)
-        result.push(o)
+        const canonical = o.db_order_id ?? o.id
+        if (seen.has(canonical)) continue
+        seen.add(canonical)
+        // Tag as offline/unsynced when it has no backend row yet.
+        result.push(o.db_order_id ? o : { ...o, _offlineUnsynced: true })
       }
       return result
     })
   )
-  const { previousOrders, newOrdersCount } = usePreviousOrdersStore()
   const dateWindowLabel = usePreviousOrdersStore(
     s => s.dateWindow?.label ?? 'today'
   )
@@ -227,6 +192,33 @@ const PreviousOrdersSection = () => {
   const loadMoreOrders = usePreviousOrdersStore(s => s.loadMoreOrders)
   const isLoadingMore = usePreviousOrdersStore(s => s._isLoadingMore)
   const hasMore = usePreviousOrdersStore(s => s._hasMore)
+  // Store-driven loading flag: true during the initial fetch AND on every
+  // filter/date-window switch (setDateWindow clears the list + flags a refetch).
+  // Drives the empty-state spinner so a switch never shows "No orders found".
+  const isFetching = usePreviousOrdersStore(s => s._isRefreshing)
+
+  // Release previous orders from memory when navigating away. Nothing is
+  // persisted locally — the list is re-fetched from the backend on next entry
+  // via usePreviousOrdersListSync. Pagination + refresh-throttle state is reset
+  // so a re-entry starts from a clean keyset cursor and always re-fetches.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        usePreviousOrdersStore.setState({
+          previousOrders: [],
+          _orderLookup: {},
+          newOrdersCount: 0,
+          _isRefreshing: false,
+          _currentOffset: 0,
+          _hasMore: false,
+          _isLoadingMore: false,
+          _oldestCursor: null,
+          lastHistoryRefreshAt: null,
+          _lastRefreshLocationId: null
+        })
+      }
+    }, [])
+  )
 
   const handleDatePillSelect = useCallback(
     (pill: DatePillDef) => {
@@ -253,82 +245,84 @@ const PreviousOrdersSection = () => {
     height: number
   } | null>(null)
 
-  // Get all orders - combine live orders with history for compatibility
+  // Server-fetched history mapped to OrderProfile. Online: this is exactly the
+  // date-bounded backend fetch. Offline: offlineLiveOrders (the device's own
+  // pending orders) is prepended so open/unpaid offline orders are visible too.
   const allOrders: OrderProfile[] = useMemo(() => {
-    // liveOrders already filtered to non-empty drafts + active/working set
-    const activeOrders = liveOrders
+    const mappedHistory: OrderProfile[] = previousOrders.map(
+      po =>
+        ({
+          id: po.orderId,
+          db_order_id: po.db_order_id,
+          // Helper fields
+          display_number: po.display_number,
+          order_number: po.display_number,
+          customer_name: po.customer,
+          server_name: po.server,
 
-    // Create sets for O(1) lookup of active orders to prevent duplicates
-    const activeIds = new Set(activeOrders.map(o => o.id))
-    const activeDbIds = new Set(
-      activeOrders.map(o => o.db_order_id).filter(Boolean)
+          // Status mapping
+          order_status: po.voided
+            ? 'void'
+            : po.refunded
+            ? 'refunded'
+            : po.closed_at
+            ? 'completed'
+            : 'pending', // Best guess mapping
+          check_status: po.checkStatus || 'Opened',
+          paid_status: po.paymentStatus,
+
+          // Type mapping
+          order_type: po.type,
+
+          // Items and totals
+          items: po.items,
+          total_amount: po.total,
+          total_cash_amount: po.total_cash_amount,
+          total_tax: po.tax,
+          service_charge: po.service_charge,
+          service_charge_name: po.service_charge_name,
+          service_charge_rate: po.service_charge_rate,
+          service_charge_is_taxable: po.service_charge_is_taxable,
+          amount_paid: po.amount_paid,
+          amount_due: po.amount_due,
+          cash_amount_due: po.cash_amount_due,
+
+          // Timestamps
+          opened_at: po.timestamp || po.opened_at,
+          created_at: po.timestamp, // Ensure sort works if it uses created_at
+          closed_at: po.closed_at,
+
+          // Location/Station
+          service_location_id: po.service_location_id || null, // strict null for type safety
+          service_location_name: po.service_location_name,
+          station_id: po.station_id || null,
+          _sourceStationName: po.station_name,
+
+          // Extras
+          notes: po.notes,
+          payments: po.payments,
+          order_source: po.order_source ?? null,
+          delivery_platform: po.delivery_platform ?? null,
+          reversals: po.reversals,
+          order_refund_items: po.order_refund_items,
+          _offlineUnsynced: po._offlineUnsynced
+        } as OrderProfile)
     )
 
-    // 2. Map Previous Orders to OrderProfile format
-    // Filter out any that are already in activeOrders to avoid duplicates
-    const mappedHistoryOrders: OrderProfile[] = previousOrders
-      .filter(po => {
-        // Exclude if ID matches or DB_ID matches an active order
-        if (activeIds.has(po.orderId)) return false
-        if (po.db_order_id && activeDbIds.has(po.db_order_id)) return false
-        return true
-      })
-      .map(
-        po =>
-          ({
-            id: po.orderId,
-            db_order_id: po.db_order_id,
-            // Helper fields
-            display_number: po.display_number,
-            order_number: po.display_number,
-            customer_name: po.customer,
-            server_name: po.server,
+    if (offlineLiveOrders.length === 0) return mappedHistory
 
-            // Status mapping
-            order_status: po.voided
-              ? 'void'
-              : po.refunded
-              ? 'refunded'
-              : po.closed_at
-              ? 'completed'
-              : 'pending', // Best guess mapping
-            check_status: po.checkStatus || 'Opened',
-            paid_status: po.paymentStatus,
-
-            // Type mapping
-            order_type: po.type,
-
-            // Items and totals
-            items: po.items,
-            total_amount: po.total,
-            amount_paid: po.amount_paid,
-            amount_due: po.amount_due,
-            cash_amount_due: po.cash_amount_due,
-
-            // Timestamps
-            opened_at: po.timestamp || po.opened_at,
-            created_at: po.timestamp, // Ensure sort works if it uses created_at
-            closed_at: po.closed_at,
-
-            // Location/Station
-            service_location_id: po.service_location_id || null, // strict null for type safety
-            service_location_name: po.service_location_name,
-            station_id: po.station_id || null,
-            _sourceStationName: po.station_name,
-
-            // Extras
-            notes: po.notes,
-            payments: po.payments,
-            order_source: po.order_source ?? null,
-            delivery_platform: po.delivery_platform ?? null,
-            reversals: po.reversals,
-            order_refund_items: po.order_refund_items
-          } as OrderProfile)
-      )
-
-    // Combined list: Active Orders + Missing History Orders
-    return [...activeOrders, ...mappedHistoryOrders]
-  }, [liveOrders, previousOrders])
+    // Offline: prepend live pending orders, deduped against history (a finalized
+    // order can be in both the cache and the live store). Live copy wins.
+    const liveIds = new Set<string>()
+    for (const o of offlineLiveOrders) {
+      liveIds.add(o.id)
+      if (o.db_order_id) liveIds.add(o.db_order_id)
+    }
+    const historyMinusLive = mappedHistory.filter(
+      o => !liveIds.has(o.id) && !(o.db_order_id && liveIds.has(o.db_order_id))
+    )
+    return [...offlineLiveOrders, ...historyMinusLive]
+  }, [previousOrders, offlineLiveOrders])
 
   // Compute per-tab counts
   const tabCounts = useMemo<TabCounts>(() => {
@@ -541,6 +535,7 @@ const PreviousOrdersSection = () => {
           onRefresh={handleRefresh}
           onEndReached={handleLoadMore}
           isLoadingMore={isLoadingMore}
+          isInitialLoading={isFetching}
         />
 
         {/* New Orders Banner - Floating */}

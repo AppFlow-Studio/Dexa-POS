@@ -45,6 +45,9 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
 
   const paymentSummary = useMemo(() => {
     const isCashPricing = usesCashPricing(order.payments);
+    const serviceCharge = order.service_charge ?? 0;
+
+    // Subtotal in the displayed pricing (cash when paid-by-cash, else card).
     const subtotal = order.items.reduce((sum, item) => {
       if (isCashPricing) {
         return (
@@ -54,12 +57,18 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
       }
       return sum + (item.subtotal ?? item.price * item.quantity);
     }, 0);
-    const tax = isCashPricing
-      ? order.items.reduce(
-          (sum, item) => sum + (item.cashTaxAmount ?? item.taxAmount ?? 0),
-          0,
-        )
-      : (order.total_tax ?? 0);
+
+    // Grand total in the displayed pricing — server-authoritative, so it
+    // already includes the service charge AND the SC tax (when taxable).
+    const total = getCashPricedOrderTotal(order) ?? order.total_amount ?? 0;
+
+    // Tax shown = total − subtotal − SC. Deriving it from the (authoritative)
+    // total guarantees the breakdown reconciles (Subtotal + Tax + SC = Total)
+    // AND that the SC tax is included, instead of summing only per-item tax
+    // (which omits SC tax and previously showed $0 / an unbalanced breakdown).
+    const taxRaw = total - subtotal - serviceCharge;
+    const tax = taxRaw > 0.005 ? taxRaw : 0;
+
     const tip = (order.payments || [])
       .filter((p) => !p.isVoided)
       .reduce((sum, p) => sum + (p.tip_amount || 0), 0);
@@ -67,9 +76,44 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
       (sum, p) => sum + (p.refundedAmount ?? 0),
       0,
     );
-    const total = getCashPricedOrderTotal(order) ?? order.total_amount ?? 0;
     const netRaw = total - refund;
     const net = Math.abs(netRaw) < 0.005 ? 0 : netRaw;
+
+    // Alternate-pricing total for the "Cash price" note (shown on card/unpaid
+    // breakdowns). Prefer the server cash total (authoritative; already reflects
+    // whether SC was taxed). Only when it's absent do we reconstruct it from the
+    // per-item cash fields + SC + (SC tax IFF the SC is flagged taxable).
+    const cashItemsSubtotal = order.items.reduce(
+      (sum, item) =>
+        sum + (item.cashSubtotal ?? item.subtotal ?? item.price * item.quantity),
+      0,
+    );
+    const cashItemsTax = order.items.reduce(
+      (sum, item) => sum + (item.cashTaxAmount ?? item.taxAmount ?? 0),
+      0,
+    );
+    // Effective blended tax rate the order actually used = itemTax / itemTaxable.
+    // Applied to SC only when service_charge_is_taxable is true, so a non-taxable
+    // SC adds no tax in the fallback (matches the calculator + server behaviour).
+    const cardTaxable = order.items.reduce(
+      (sum, item) => sum + (item.subtotal ?? item.price * item.quantity),
+      0,
+    );
+    const cardItemsTax = order.items.reduce(
+      (sum, item) => sum + (item.taxAmount ?? 0),
+      0,
+    );
+    const effectiveTaxRate = cardTaxable > 0 ? cardItemsTax / cardTaxable : 0;
+    const scTax =
+      order.service_charge_is_taxable === true
+        ? serviceCharge * effectiveTaxRate
+        : 0;
+    const cashTotal =
+      (order.total_cash_amount ?? 0) > 0
+        ? (order.total_cash_amount as number)
+        : cashItemsSubtotal + cashItemsTax + serviceCharge + scTax;
+    const cashSavings = total - cashTotal;
+    const showCashPrice = !isCashPricing && cashSavings > 0.005;
 
     const activePayments = (order.payments || []).filter(
       (p) => !p.isPreAuth && (!p.isVoided || (p.refundedAmount ?? 0) > 0),
@@ -93,9 +137,13 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
     return {
       subtotal,
       tax,
+      serviceCharge,
       tip,
       refund,
       net,
+      cashTotal,
+      cashSavings,
+      showCashPrice,
       paymentMethodLabel,
       isCashPayment,
       isCashPricing,
@@ -320,6 +368,12 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
           </View>
           <PaymentLine label="Subtotal" amount={paymentSummary.subtotal} />
           <PaymentLine label="Tax" amount={paymentSummary.tax} />
+          {paymentSummary.serviceCharge > 0 && (
+            <PaymentLine
+              label={order.service_charge_name || "Service Charge"}
+              amount={paymentSummary.serviceCharge}
+            />
+          )}
           {paymentSummary.tip > 0 && (
             <PaymentLine
               label="Tip"
@@ -347,6 +401,20 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
               ${paymentSummary.net.toFixed(2)}
             </Text>
           </View>
+          {paymentSummary.showCashPrice ? (
+            <View
+              className="flex-row justify-between"
+              style={{ marginTop: s(2) }}
+            >
+              <Text style={{ fontSize: s(11), color: colors.muted }}>
+                Cash price
+              </Text>
+              <Text style={{ fontSize: s(11), color: colors.muted }}>
+                ${paymentSummary.cashTotal.toFixed(2)} (save $
+                {paymentSummary.cashSavings.toFixed(2)})
+              </Text>
+            </View>
+          ) : null}
           {paymentSummary.paymentMethodLabel ? (
             <View className="flex-row items-center" style={{ gap: s(2), marginTop: s(3) }}>
               {paymentSummary.isCashPayment ? (
