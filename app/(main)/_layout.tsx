@@ -34,12 +34,14 @@ import { StatusBar } from 'expo-status-bar'
 import React, { useCallback, useEffect, useRef } from 'react'
 import {
   ActivityIndicator,
+  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
   unstable_batchedUpdates,
   View
 } from 'react-native'
+import { hintNativeGc } from '@/lib/nativeMemory'
 import { SafeAreaView } from 'react-native-safe-area-context'
 /** Side-effect component: keeps POS orders in sync when realtime drops */
 function OrderSyncRecoveryBridge ({ locationId }: { locationId: string }) {
@@ -65,6 +67,17 @@ export default function MainLayout () {
   const setSheetRef = useNotificationSheetStore(state => state.setSheetRef)
   const clearSheetRef = useNotificationSheetStore(state => state.clearSheetRef)
   const { setSearchSheetRef, clearSearchSheetRef } = useMenuManagementSearchStore()
+
+  // Complementary mitigation to the screens animation fix (lib/screenConfig.ts):
+  // hint a GC after every navigation so native cleaners for the just-removed
+  // screen's worklets/views drain promptly. Debounced + safe no-op when global.gc
+  // is unavailable (see lib/nativeMemory.ts).
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      hintNativeGc(pathname)
+    })
+    return () => task.cancel()
+  }, [pathname])
 
   useEffect(() => {
     if (!isKDS) {
