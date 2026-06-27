@@ -728,9 +728,7 @@ const TablesScreen = () => {
           borderColor: colors.border
         }}
       >
-        {/* NEW: Sidebar Component */}
         <Sidebar
-          // layouts={layouts} REMOVED
           activeLayoutId={activeFloorPlanId}
           setActiveLayout={setActiveFloorPlan}
         />

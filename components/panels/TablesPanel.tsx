@@ -19,7 +19,6 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import Animated, { Easing, Layout } from "react-native-reanimated";
 
 /**
  * Wave 3.3: memoized row that binds parent's stable callbacks to the row's
@@ -76,8 +75,7 @@ const Section: React.FC<SectionProps> = ({
   const s = (n: number) => Math.round(n * uiScale)
 
   return (
-    <Animated.View
-      layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)}
+    <View
       style={{ flex: 1 }}
     >
       <TouchableOpacity
@@ -109,14 +107,13 @@ const Section: React.FC<SectionProps> = ({
         </Text>
       </TouchableOpacity>
       {isOpen && (
-        <Animated.View
-          layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)}
+        <View
           style={{ flex: 1, paddingLeft: s(4) }}
         >
           {children}
-        </Animated.View>
+        </View>
       )}
-    </Animated.View>
+    </View>
   );
 };
 

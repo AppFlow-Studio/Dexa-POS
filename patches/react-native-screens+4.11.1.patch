@@ -1,8 +1,32 @@
 diff --git a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenFragment.kt b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenFragment.kt
-index 65c6e30..cc7d2f3 100644
+index 65c6e30..71868bc 100644
 --- a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenFragment.kt
 +++ b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenFragment.kt
-@@ -315,6 +315,17 @@ open class ScreenFragment :
+@@ -115,6 +115,23 @@ open class ScreenFragment :
+         }
+     }
+ 
++    override fun onDestroyView() {
++        // LOCAL PATCH (patch-package): release any child views still parked in
++        // ViewGroup.mTransitioningViews by startRemovalTransition() *before* the
++        // fragment's view is torn down. onViewAnimationEnd() -> endRemovalTransition()
++        // is driven by View#onAnimationEnd, which never fires when a transition is
++        // INTERRUPTED — e.g. a fast navigation that starts the next screen change
++        // before the current animation completes. The result is the removed screen's
++        // entire view tree (incl. SVG / ReactViewGroup subtrees) staying strongly
++        // retained, so the native heap climbs under fast navigation and only drops
++        // when you navigate slowly enough for the animation to finish.
++        // onDestroyView runs on every view teardown regardless of animation state,
++        // and endRemovalTransition() guards on isBeingRemoved, so this is a safe
++        // no-op when the transition already ended normally.
++        screen.endRemovalTransition()
++        super.onDestroyView()
++    }
++
+     override fun onContainerUpdate() {
+         updateWindowTraits()
+     }
+@@ -315,6 +332,17 @@ open class ScreenFragment :
  
      override fun onDestroy() {
          super.onDestroy()
