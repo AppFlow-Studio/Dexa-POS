@@ -318,7 +318,7 @@ const OrderProcessing = () => {
     }
 
     if (
-      !useStoreSettingsStore.getState().disableAutoCreateOrder &&
+      useStoreSettingsStore.getState().autoCreateOrder &&
       currentActiveOrder &&
       isReusableEmptyDraftOrder(currentActiveOrder)
     ) {
@@ -345,11 +345,11 @@ const OrderProcessing = () => {
       return;
     }
 
-    // Setting: don't auto-create/select a draft when none is active. The screen
-    // shows an empty state until the operator explicitly starts an order. We've
-    // already resumed any in-progress order above; from here we'd only be
-    // fabricating a fresh draft, so bail.
-    if (useStoreSettingsStore.getState().disableAutoCreateOrder) {
+    // Setting: when auto-create is OFF, don't auto-create/select a draft when
+    // none is active. The screen shows an empty state until the operator
+    // explicitly starts an order. We've already resumed any in-progress order
+    // above; from here we'd only be fabricating a fresh draft, so bail.
+    if (!useStoreSettingsStore.getState().autoCreateOrder) {
       return;
     }
 
@@ -469,8 +469,8 @@ const OrderProcessing = () => {
     // Per-order PIN: the order must be eager-created BEFORE items (the
     // "Creating order" gate stays intact). When the PIN is required, eager
     // creation is driven by the PIN entry — it waits for a verified staff and
-    // then creates. This deliberately runs even when disableAutoCreateOrder is
-    // on, because the PIN entry IS the explicit "start this order" action, and
+    // then creates. This deliberately runs even when auto-create is OFF,
+    // because the PIN entry IS the explicit "start this order" action, and
     // without it the create-before-add gate would deadlock.
     const pinRequired = settings.requirePinPerOrder;
     if (pinRequired) {
@@ -479,9 +479,9 @@ const OrderProcessing = () => {
       if (orderAttributionOrderId !== activeOrderId) return;
       // fall through to create
     } else {
-      // No PIN: respect the auto-create setting. When disabled, let the first
+      // No PIN: respect the auto-create setting. When OFF, let the first
       // item-add create the order on demand instead of eager-creating here.
-      if (settings.disableAutoCreateOrder) return;
+      if (!settings.autoCreateOrder) return;
     }
     // Defer the eager backend create off the screen-entry frame: it's an RPC
     // whose broadcast/re-render can land mid-first-interaction. The local draft

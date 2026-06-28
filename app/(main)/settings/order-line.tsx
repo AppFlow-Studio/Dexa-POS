@@ -133,9 +133,7 @@ const OrderLineSettingsScreen = () => {
   )
   const orderCompletionMode = useStoreSettingsStore(s => s.orderCompletionMode)
   const requirePinPerOrder = useStoreSettingsStore(s => s.requirePinPerOrder)
-  const disableAutoCreateOrder = useStoreSettingsStore(
-    s => s.disableAutoCreateOrder
-  )
+  const autoCreateOrder = useStoreSettingsStore(s => s.autoCreateOrder)
   const updateField = useStoreSettingsStore(s => s.updateField)
 
   const [expandedSections, setExpandedSections] = useState({
@@ -210,7 +208,7 @@ const OrderLineSettingsScreen = () => {
         <Text
           style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
         >
-          Order Line Settings
+          Orders Processing Settings
         </Text>
         <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
           Configure how orders appear in the order line.
@@ -800,15 +798,15 @@ const OrderLineSettingsScreen = () => {
                   paddingHorizontal: s(2)
                 }}
               >
-                By default the register auto-creates an order when you open the
-                order screen and after each payment. Turn this on to require the
+                When on, the register auto-creates an order when you open the
+                order screen and after each payment. Turn this off to require the
                 operator to explicitly start an order — the screen stays empty
                 until then, and no order is created until the first item is added.
               </Text>
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() =>
-                  updateField('disableAutoCreateOrder', !disableAutoCreateOrder)
+                  updateField('autoCreateOrder', !autoCreateOrder)
                 }
                 style={{
                   flexDirection: 'row',
@@ -818,10 +816,10 @@ const OrderLineSettingsScreen = () => {
                   paddingVertical: s(9),
                   borderRadius: s(10),
                   borderWidth: 1,
-                  backgroundColor: disableAutoCreateOrder
+                  backgroundColor: autoCreateOrder
                     ? colors.teal + '10'
                     : colors.screen,
-                  borderColor: disableAutoCreateOrder
+                  borderColor: autoCreateOrder
                     ? colors.teal + '50'
                     : colors.border
                 }}
@@ -831,12 +829,10 @@ const OrderLineSettingsScreen = () => {
                     style={{
                       fontSize: s(13),
                       fontWeight: '600',
-                      color: disableAutoCreateOrder
-                        ? colors.teal
-                        : colors.heading
+                      color: autoCreateOrder ? colors.teal : colors.heading
                     }}
                   >
-                    Don&apos;t auto-create orders
+                    Auto-create orders
                   </Text>
                   <Text
                     style={{
@@ -845,13 +841,13 @@ const OrderLineSettingsScreen = () => {
                       marginTop: s(1)
                     }}
                   >
-                    Operator must explicitly start each order.
+                    Off: operator must explicitly start each order.
                   </Text>
                 </View>
                 <Switch
-                  value={disableAutoCreateOrder}
+                  value={autoCreateOrder}
                   onValueChange={value =>
-                    updateField('disableAutoCreateOrder', value)
+                    updateField('autoCreateOrder', value)
                   }
                   trackColor={{ false: colors.border, true: colors.teal }}
                   thumbColor={colors.onSolid}

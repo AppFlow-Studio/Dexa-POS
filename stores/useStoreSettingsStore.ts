@@ -162,11 +162,11 @@ export interface StoreSettings {
   // backend location setting; defaults false (no behavior change when unset).
   requirePinPerOrder: boolean;
 
-  // When true, the register does NOT auto-create orders: no eager backend
-  // create on screen entry, and no auto local draft when none is active. The
-  // operator must explicitly start an order (e.g. "New Order"). Defaults false
-  // (legacy auto-create behavior).
-  disableAutoCreateOrder: boolean;
+  // When true (default, legacy behavior), the register auto-creates orders:
+  // eager backend create on screen entry, auto local draft when none is active,
+  // and auto-start the next order after payment. When false, the operator must
+  // explicitly start each order (e.g. "New Order").
+  autoCreateOrder: boolean;
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -338,7 +338,7 @@ const initialData: StoreSettings = {
   requirePinPerOrder: false,
 
   // Auto-create orders on by default (legacy behavior)
-  disableAutoCreateOrder: false,
+  autoCreateOrder: true,
 };
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -655,7 +655,7 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         // Per-order staff PIN attribution
         requirePinPerOrder: state.requirePinPerOrder,
         // Auto-create orders
-        disableAutoCreateOrder: state.disableAutoCreateOrder,
+        autoCreateOrder: state.autoCreateOrder,
       }),
     },
   ),

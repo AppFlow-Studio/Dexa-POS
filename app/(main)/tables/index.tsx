@@ -1175,6 +1175,14 @@ const TablesScreen = () => {
             void handleGuestCountSubmit(count)
           }
         }}
+        onCancel={() => {
+          // Abort seating entirely: drop the pending seat and clear selection.
+          setSeatingPinGateOpen(false)
+          pendingSeatGuestCountRef.current = null
+          clearSelection()
+          setMergeMode(false)
+          setPendingReservation(null)
+        }}
       />
 
       {/* Server Section Manager */}

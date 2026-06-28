@@ -8,7 +8,7 @@ import { useUiScale } from "@/lib/uiScale";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -29,6 +29,7 @@ export default function OrderPinGate({
   open,
   attributionOrderId,
   onVerified,
+  onCancel,
 }: {
   open: boolean;
   /**
@@ -39,6 +40,12 @@ export default function OrderPinGate({
   attributionOrderId: string | null;
   /** Called with the verified staff_profile_id after a successful PIN. */
   onVerified?: (staffProfileId: string) => void;
+  /**
+   * Called when the operator cancels the PIN entry to abort the process. When
+   * provided, a Cancel button is shown. The caller is responsible for backing
+   * out (e.g. closing the gate, discarding the pending order/seat).
+   */
+  onCancel?: () => void;
 }) {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
@@ -154,6 +161,38 @@ export default function OrderPinGate({
           <View style={{ marginTop: s(4) }}>
             <PinNumpad onKeyPress={handleKeyPress} />
           </View>
+
+          {onCancel ? (
+            <TouchableOpacity
+              onPress={() => {
+                if (verifying) return;
+                setPin("");
+                setError(null);
+                onCancel();
+              }}
+              disabled={verifying}
+              style={{
+                alignSelf: "center",
+                marginTop: s(12),
+                paddingHorizontal: s(18),
+                paddingVertical: s(9),
+                borderRadius: s(10),
+                borderWidth: 1,
+                borderColor: colors.border,
+                opacity: verifying ? 0.5 : 1,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: s(12),
+                  fontWeight: "600",
+                  color: colors.label,
+                }}
+              >
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </Animated.View>
       </DialogContent>
     </Dialog>

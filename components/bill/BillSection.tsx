@@ -1702,6 +1702,15 @@ const BillSectionContent = ({
 
   // OPTIMIZED: Wrap callback with useCallback
   // Explicit New Order action should always create a fresh order number.
+  // Cancel the per-order PIN: abort starting this order. Drop any pending
+  // attribution and deactivate the draft so the screen returns to the empty
+  // state (no order in progress) instead of staying stuck behind the gate.
+  const handleCancelPinGate = useCallback(() => {
+    useEmployeeStore.getState().clearOrderAttributionStaff();
+    clearSelectedTable();
+    setActiveOrder(null);
+  }, [clearSelectedTable, setActiveOrder]);
+
   const handleStartNewOrder = useCallback(() => {
     clearSelectedTable();
 
@@ -1890,7 +1899,11 @@ const BillSectionContent = ({
             </View>
           </View>
         </View>
-        <OrderPinGate open={pinGateOpen} attributionOrderId={activeOrderId} />
+        <OrderPinGate
+          open={pinGateOpen}
+          attributionOrderId={activeOrderId}
+          onCancel={handleCancelPinGate}
+        />
       </View>
     );
   // Handle retry failed syncs
@@ -2579,7 +2592,11 @@ const BillSectionContent = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <OrderPinGate open={pinGateOpen} attributionOrderId={activeOrderId} />
+      <OrderPinGate
+        open={pinGateOpen}
+        attributionOrderId={activeOrderId}
+        onCancel={handleCancelPinGate}
+      />
     </View>
   );
 };

@@ -184,7 +184,7 @@ const PaymentSuccessView = () => {
     }
 
     // NOTE: handleDone is the explicit "Start New Order" button — it always
-    // creates, even when disableAutoCreateOrder is on. The auto-create
+    // creates, even when auto-create is off. The auto-create
     // suppression lives in the AUTOMATIC post-payment path
     // (usePaymentStore.handleSuccessClose), not here.
 
