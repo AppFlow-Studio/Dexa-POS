@@ -1,3 +1,4 @@
+import OrderPinGate from '@/components/auth/OrderPinGate'
 import ServerSectionManager from '@/components/floor-plan/ServerSectionManager'
 import { GuestCountModal } from '@/components/tables/GuestCountModal'
 import MergeActionBar from '@/components/tables/MergeActionBar'
@@ -19,7 +20,10 @@ import { useColorScheme } from '@/lib/useColorScheme'
 import { useUiScale } from '@/lib/uiScale'
 import { transferTableServer } from '@/services/serverAssignmentService'
 import { ensureOrderPrefetched } from '@/services/tableOrderPrefetch'
-import { useEmployeeStore } from '@/stores/useEmployeeStore'
+import {
+  PENDING_SEAT_ATTRIBUTION,
+  useEmployeeStore
+} from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import {
   registerPendingOrderCreation,
@@ -121,6 +125,10 @@ const TablesScreen = () => {
   const [searchInput, setSearchInput] = useState('')
   const [searchText, setSearchText] = useState('')
   const [isGuestModalOpen, setGuestModalOpen] = useState(false)
+  // Per-order PIN gate for dine-in seating: when required, hold the pending
+  // guest count until a PIN is verified, then resume seating.
+  const [isSeatingPinGateOpen, setSeatingPinGateOpen] = useState(false)
+  const pendingSeatGuestCountRef = useRef<number | null>(null)
   const [seatingErrorMessage, setSeatingErrorMessage] = useState<string | null>(
     null
   )
@@ -628,6 +636,26 @@ const TablesScreen = () => {
     setSeatingErrorMessage(null)
     const primaryTableId = selectedTableIds[0]
     if (!primaryTableId) return
+
+    // Per-order PIN: when required and no staff has been verified yet, capture
+    // the PIN BEFORE seating (which creates the dine-in order) so the order's
+    // creator + assigned server are the staff who actually rang it. Stash the
+    // guest count, open the PIN gate, and resume seating once verified.
+    const requirePinPerOrder =
+      useStoreSettingsStore.getState().requirePinPerOrder
+    // Only a seat-specific verification counts here — a leftover QSR order's
+    // attribution (bound to a real order id) must NOT satisfy seating.
+    const empState = useEmployeeStore.getState()
+    const hasSeatAttribution =
+      !!empState.orderAttributionStaffId &&
+      empState.orderAttributionOrderId === PENDING_SEAT_ATTRIBUTION
+    if (requirePinPerOrder && !hasSeatAttribution) {
+      pendingSeatGuestCountRef.current = guestCount
+      setGuestModalOpen(false)
+      setSeatingPinGateOpen(true)
+      return
+    }
+
     const activeReservation = pendingReservation
     setPendingReservation(null)
 
@@ -684,6 +712,11 @@ const TablesScreen = () => {
         serverId: assignedServerId,
         reservationId: activeReservation?.id
       })
+
+      // Per-order PIN: seating captured the verified staff for this table's
+      // order. Clear it so seating the NEXT table re-prompts for a PIN (the
+      // attribution value is global, not per-table).
+      useEmployeeStore.getState().clearOrderAttributionStaff()
 
       if (activeReservation?.id && orderId) {
         const sessionId =
@@ -1127,6 +1160,21 @@ const TablesScreen = () => {
         defaultCount={pendingReservation?.party_size}
         errorMessage={seatingErrorMessage}
         onClearError={() => setSeatingErrorMessage(null)}
+      />
+
+      {/* Per-order PIN gate for dine-in seating */}
+      <OrderPinGate
+        open={isSeatingPinGateOpen}
+        attributionOrderId={PENDING_SEAT_ATTRIBUTION}
+        onVerified={() => {
+          setSeatingPinGateOpen(false)
+          const count = pendingSeatGuestCountRef.current
+          pendingSeatGuestCountRef.current = null
+          if (count != null) {
+            // Attribution is now set; this call passes the PIN check and seats.
+            void handleGuestCountSubmit(count)
+          }
+        }}
       />
 
       {/* Server Section Manager */}

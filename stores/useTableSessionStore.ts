@@ -1076,8 +1076,12 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           // 2. Resolve staff/merchant/device/station context
           const storeSettings = useStoreSettingsStore.getState();
           const merchantId = storeSettings.selectedStore?.merchant_id ?? "";
+          // Per-order PIN: when on, the seating staff is the PIN-verified staff
+          // (getEffectiveCreatorStaffId), so the dine-in order's creator +
+          // assigned server are the person who actually rang it. Falls back to
+          // the signed-in shift user when the setting is off.
           const staffId =
-            useEmployeeStore.getState().loggedInEmployee?.profileId ?? null;
+            useEmployeeStore.getState().getEffectiveCreatorStaffId() ?? null;
           const serverStaffId = params.serverId ?? staffId;
           const deviceId = params.device_id ?? null;
           const stationId =

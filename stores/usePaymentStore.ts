@@ -525,6 +525,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       setActiveOrder,
     } = useOrderStore.getState();
 
+    // Per-order PIN attribution: the order is now fully paid/closed. Drop the
+    // verified staff so the NEXT order re-opens the PIN gate. Held through
+    // payment so the order AND its payment were credited to the same person.
+    useEmployeeStore.getState().clearOrderAttributionStaff();
+
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
@@ -545,6 +550,13 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       ? finalizeDineInPaymentClear({ tableId }).cleared
       : false;
     if (tableId && !dineInCleared) {
+      get().close();
+      return;
+    }
+
+    // Setting: don't auto-start the next order after payment — leave the screen
+    // empty until the operator explicitly starts one.
+    if (useStoreSettingsStore.getState().disableAutoCreateOrder) {
       get().close();
       return;
     }

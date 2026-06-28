@@ -7,6 +7,14 @@ import { createJSONStorage, persist } from "zustand/middleware";
 /** Sentinel value stored in pendingAuthError to signal STATION_IN_USE (not a user-visible message). */
 export const STATION_IN_USE_AUTH_ERROR = "STATION_IN_USE" as const;
 
+/**
+ * Sentinel orderAttributionOrderId for a dine-in seating PIN: the order doesn't
+ * exist yet at PIN time, so the verification is "pending the next seat". Only the
+ * seating flow accepts this token, so a QSR order's attribution (bound to a real
+ * order id) can't satisfy a seating gate and vice-versa.
+ */
+export const PENDING_SEAT_ATTRIBUTION = "__pending_seat__" as const;
+
 export interface EmployeeProfile {
   id: string; // location_members.id
   profileId: string; // staff_profiles.id
@@ -57,6 +65,19 @@ interface EmployeeState {
   // Ready flag: true when employees[] is populated from MMKV or fresh sync
   isEmployeesReady: boolean;
 
+  // Per-order attribution: the staff verified to ring a specific order.
+  // Distinct from loggedInEmployee (the shift session). Set via the per-order
+  // PIN gate, never touches clock-in / station_session. In-memory only.
+  //
+  // orderAttributionOrderId binds the verified staff to ONE target so a stale
+  // verification from a different/unfinished order can't satisfy the gate for
+  // another order. Conventions:
+  //   - QSR: orderAttributionOrderId = the local order id the PIN was for.
+  //   - Dine-in seating: orderAttributionOrderId = PENDING_SEAT_ATTRIBUTION
+  //     (no order exists yet; consumed by the next seat, then cleared).
+  orderAttributionStaffId: string | null;
+  orderAttributionOrderId: string | null;
+
   // Actions
   setEmployees: (employees: EmployeeProfile[]) => void;
   setSyncState: (state: { isLoading: boolean; error: string | null }) => void;
@@ -92,6 +113,19 @@ interface EmployeeState {
   removeStationLoginFromQueue: (id: string) => void;
   setStationLoginSyncing: (syncing: boolean) => void;
 
+  // Per-order attribution
+  setOrderAttributionStaff: (
+    staffProfileId: string | null,
+    orderId: string | null,
+  ) => void;
+  clearOrderAttributionStaff: () => void;
+  /**
+   * The staff_profiles.id to credit as the creator of the next/current order.
+   * When per-order PIN is ON, prefers the gate-verified staff; otherwise falls
+   * back to the shift session's loggedInEmployee. Safe to call anywhere.
+   */
+  getEffectiveCreatorStaffId: () => string | null;
+
   // Helpers
   getEmployeeById: (id: string) => EmployeeProfile | undefined;
   getEmployeeByStaffId: (staffId: string) => EmployeeProfile | undefined;
@@ -113,6 +147,35 @@ export const useEmployeeStore = create<EmployeeState>()(
       pendingStationLogins: [],
       isStationLoginSyncing: false,
       isEmployeesReady: false,
+      orderAttributionStaffId: null,
+      orderAttributionOrderId: null,
+
+      setOrderAttributionStaff: (staffProfileId, orderId) =>
+        set({
+          orderAttributionStaffId: staffProfileId,
+          orderAttributionOrderId: staffProfileId ? orderId : null,
+        }),
+
+      clearOrderAttributionStaff: () =>
+        set({
+          orderAttributionStaffId: null,
+          orderAttributionOrderId: null,
+        }),
+
+      getEffectiveCreatorStaffId: () => {
+        const { orderAttributionStaffId, loggedInEmployee } = get();
+        const {
+          useStoreSettingsStore,
+        } = require("./useStoreSettingsStore") as {
+          useStoreSettingsStore: typeof import("./useStoreSettingsStore").useStoreSettingsStore;
+        };
+        const requirePinPerOrder =
+          useStoreSettingsStore.getState().requirePinPerOrder;
+        if (requirePinPerOrder && orderAttributionStaffId) {
+          return orderAttributionStaffId;
+        }
+        return loggedInEmployee?.profileId ?? null;
+      },
 
       getEmployeeById: (id) => get().employees.find((e) => e.id === id),
 

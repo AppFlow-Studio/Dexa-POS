@@ -2,6 +2,7 @@
 
 import { captureRpcError } from "@/lib/supabase";
 import { OrderService } from "@/services/orderService";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 import type { ProcessPaymentV2Params } from "@/types/db-order-management-types";
 import { round2 } from "@/utils/money";
@@ -62,9 +63,25 @@ async function processPaymentOutcome(
   idempotencyKey: string,
 ): Promise<PaymentRpcOutcome<ProcessPaymentV2Result>> {
   const supabase = getSupabase();
-  const { data, error } = await OrderService.processPayment(supabase, params, {
-    keyOverride: idempotencyKey,
-  });
+  // Attribute the payment to the staff who rang the order. When per-order PIN is
+  // ON this is the PIN-verified staff; otherwise it falls back to the signed-in
+  // shift user. Without this, process_payment records processed_by_staff_id =
+  // NULL (the client previously never sent p_staff_id). Helpers may still pass
+  // an explicit p_staff_id, which takes precedence.
+  const paramsWithStaff: ProcessPaymentV2Params = {
+    ...params,
+    p_staff_id:
+      params.p_staff_id ??
+      useEmployeeStore.getState().getEffectiveCreatorStaffId() ??
+      null,
+  };
+  const { data, error } = await OrderService.processPayment(
+    supabase,
+    paramsWithStaff,
+    {
+      keyOverride: idempotencyKey,
+    },
+  );
 
   if (error) {
     const code = (error as any)?.code;

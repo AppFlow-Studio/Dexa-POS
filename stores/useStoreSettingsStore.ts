@@ -155,6 +155,18 @@ export interface StoreSettings {
 
   // Order completion mode
   orderCompletionMode: "manual" | "auto" | "auto_on_payment";
+
+  // Per-order staff PIN attribution. When true, the register requires a PIN
+  // (attribution-only — no session/clock side effects) before each new order,
+  // crediting the PIN-entered staff as that order's creator. Synced from the
+  // backend location setting; defaults false (no behavior change when unset).
+  requirePinPerOrder: boolean;
+
+  // When true, the register does NOT auto-create orders: no eager backend
+  // create on screen entry, and no auto local draft when none is active. The
+  // operator must explicitly start an order (e.g. "New Order"). Defaults false
+  // (legacy auto-create behavior).
+  disableAutoCreateOrder: boolean;
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -321,6 +333,12 @@ const initialData: StoreSettings = {
 
   // Order completion mode
   orderCompletionMode: "manual",
+
+  // Per-order staff PIN attribution (off until backend setting hydrates it)
+  requirePinPerOrder: false,
+
+  // Auto-create orders on by default (legacy behavior)
+  disableAutoCreateOrder: false,
 };
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -634,6 +652,10 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         managerOverrideTimeoutMinutes: state.managerOverrideTimeoutMinutes,
         // Order completion mode
         orderCompletionMode: state.orderCompletionMode,
+        // Per-order staff PIN attribution
+        requirePinPerOrder: state.requirePinPerOrder,
+        // Auto-create orders
+        disableAutoCreateOrder: state.disableAutoCreateOrder,
       }),
     },
   ),
