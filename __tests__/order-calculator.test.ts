@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 /**
  * Order Calculator Tests
  *
@@ -6,20 +7,19 @@
  */
 
 import {
-  round2,
+  applyPaymentToItems,
+  calculateEvenSplit,
+  calculateEvenSplitSpread,
   calculateItemEffectiveCashPrice,
   calculateOrderTotals,
   calculateOrderTotalsWithDetails,
-  distributeDiscountToItems,
   calculatePaidStatus,
-  calculateEvenSplit,
-  calculateEvenSplitSpread,
   calculatePaymentPreview,
-  applyPaymentToItems,
+  distributeDiscountToItems,
+  round2,
 } from "@/lib/order-calculator";
 import { CartItem, Discount } from "@/lib/types";
 import { TaxRatesMap } from "@/types/menu";
-import { PaymentPreviewInput } from "@/types/order-calculations";
 
 // ============================================================================
 // TEST FIXTURES
@@ -35,6 +35,8 @@ const createMockItem = (overrides: Partial<CartItem> = {}): CartItem => ({
   price: 10.0,
   unitPrice: 10.0,
   cashPrice: 10.0,
+  baseCardPrice: 10.0,
+  baseCashPrice: 10.0,
   image: undefined,
   customizations: {},
   subtotal: 10.0,
@@ -203,8 +205,8 @@ describe("Scenario 5: Item with Modifiers", () => {
       originalPrice: 10.0,
       customizations: {
         addOns: [
-          { id: "a1", name: "Bacon", price: 3.0, quantity: 1 },
-          { id: "a2", name: "Avocado", price: 2.0, quantity: 1 },
+          { id: "a1", name: "Bacon", price: 3.0 },
+          { id: "a2", name: "Avocado", price: 2.0 },
         ],
       },
     });
@@ -221,7 +223,9 @@ describe("Scenario 5: Item with Modifiers", () => {
 
 describe("Scenario 6: Partially Paid Order", () => {
   it("calculates outstanding amount for partially paid items", () => {
-    const items = [createMockItem({ price: 10.0, quantity: 3, paidQuantity: 1 })];
+    const items = [
+      createMockItem({ price: 10.0, quantity: 3, paidQuantity: 1 }),
+    ];
 
     const result = calculateOrderTotals({
       items,
@@ -239,7 +243,9 @@ describe("Scenario 6: Partially Paid Order", () => {
   });
 
   it("shows zero outstanding when fully paid", () => {
-    const items = [createMockItem({ price: 10.0, quantity: 2, paidQuantity: 2 })];
+    const items = [
+      createMockItem({ price: 10.0, quantity: 2, paidQuantity: 2 }),
+    ];
 
     const result = calculateOrderTotals({
       items,
@@ -445,16 +451,19 @@ describe("Scenario 12b: calculateEvenSplitSpread", () => {
     [100.01, 3],
   ];
 
-  it.each(matrix)("splits %p across %p exactly, spread <= 1 cent", (total, n) => {
-    const { amounts } = calculateEvenSplitSpread(total, n);
+  it.each(matrix)(
+    "splits %p across %p exactly, spread <= 1 cent",
+    (total, n) => {
+      const { amounts } = calculateEvenSplitSpread(total, n);
 
-    const sum = amounts.reduce((a, b) => a + b, 0);
-    expect(round2(sum)).toBe(round2(total));
+      const sum = amounts.reduce((a, b) => a + b, 0);
+      expect(round2(sum)).toBe(round2(total));
 
-    const max = Math.max(...amounts);
-    const min = Math.min(...amounts);
-    expect(round2(max - min)).toBeLessThanOrEqual(0.01);
-  });
+      const max = Math.max(...amounts);
+      const min = Math.min(...amounts);
+      expect(round2(max - min)).toBeLessThanOrEqual(0.01);
+    },
+  );
 
   it("never produces multiple $0 portions when total >= n cents", () => {
     // $0.05 across 3 was the regression case: floor-last gave [0,0,0.03]-style
@@ -533,7 +542,7 @@ describe("Scenario 14: Paid Status Calculation", () => {
     expect(calculatePaidStatus([{ amount: 100 }], 100)).toBe("Paid");
     expect(calculatePaidStatus([{ amount: 99.99 }], 100)).toBe("Paid"); // Within tolerance
     expect(calculatePaidStatus([{ amount: 50, isVoided: true }], 100)).toBe(
-      "Pending"
+      "Pending",
     );
   });
 
@@ -543,10 +552,7 @@ describe("Scenario 14: Paid Status Calculation", () => {
   });
 
   it("excludes voided payments", () => {
-    const payments = [
-      { amount: 50 },
-      { amount: 50, isVoided: true },
-    ];
+    const payments = [{ amount: 50 }, { amount: 50, isVoided: true }];
     expect(calculatePaidStatus(payments, 100)).toBe("Partial");
   });
 });
@@ -651,9 +657,7 @@ describe("Empty Order", () => {
   });
 
   it("returns zero totals for order with only voided items", () => {
-    const items = [
-      createMockItem({ id: "i1", price: 100.0, is_voided: true }),
-    ];
+    const items = [createMockItem({ id: "i1", price: 100.0, is_voided: true })];
 
     const result = calculateOrderTotals({
       items,
@@ -722,7 +726,9 @@ describe("Payment Preview Edge Cases", () => {
     });
 
     expect(preview.isValid).toBe(false);
-    expect(preview.validationErrors).toContain("Split count must be at least 2");
+    expect(preview.validationErrors).toContain(
+      "Split count must be at least 2",
+    );
   });
 
   it("validates custom amount bounds", () => {
@@ -772,9 +778,7 @@ describe("Payment Preview Edge Cases", () => {
     });
 
     expect(preview.tipAmount).toBe(20.0);
-    expect(preview.totalToCollect).toBe(
-      round2(preview.amountToCharge + 20.0)
-    );
+    expect(preview.totalToCollect).toBe(round2(preview.amountToCharge + 20.0));
   });
 });
 
@@ -789,16 +793,21 @@ describe("Scenario 17: Dual Pricing with Percentage Discount", () => {
       createMockItem({
         unitPrice: 5.25,
         price: 5.25,
-        cashPrice: 5.00,
-        baseCashPrice: 5.00,
-        originalPrice: 5.00,
+        cashPrice: 5.0,
+        baseCashPrice: 5.0,
+        originalPrice: 5.0,
         quantity: 2,
-        subtotal: 10.50,
-        cashSubtotal: 10.00,
+        subtotal: 10.5,
+        cashSubtotal: 10.0,
       }),
     ];
 
-    const discount: Discount = { id: "d1", type: "percentage", value: 0.5, label: "50% off" };
+    const discount: Discount = {
+      id: "d1",
+      type: "percentage",
+      value: 0.5,
+      label: "50% off",
+    };
 
     const result = calculateOrderTotals({
       items,
@@ -809,7 +818,7 @@ describe("Scenario 17: Dual Pricing with Percentage Discount", () => {
     // Card: $10.50 * 50% = $5.25 discount
     expect(result.discount_amount).toBe(5.25);
     // Cash: $10.00 * 50% = $5.00 discount (NOT $5.25)
-    expect(result.cash_discount_amount).toBe(5.00);
+    expect(result.cash_discount_amount).toBe(5.0);
 
     // Card total: $5.25 + ($5.25 * 8.875%) = $5.25 + $0.47 = $5.72
     expect(result.total_amount).toBe(5.72);
@@ -821,18 +830,23 @@ describe("Scenario 17: Dual Pricing with Percentage Discount", () => {
     // Item: $10 card, $9.50 cash
     const items = [
       createMockItem({
-        unitPrice: 10.00,
-        price: 10.00,
-        cashPrice: 9.50,
-        baseCashPrice: 9.50,
-        originalPrice: 9.50,
+        unitPrice: 10.0,
+        price: 10.0,
+        cashPrice: 9.5,
+        baseCashPrice: 9.5,
+        originalPrice: 9.5,
         quantity: 1,
-        subtotal: 10.00,
-        cashSubtotal: 9.50,
+        subtotal: 10.0,
+        cashSubtotal: 9.5,
       }),
     ];
 
-    const discount: Discount = { id: "d2", type: "fixed", value: 5.00, label: "$5 off" };
+    const discount: Discount = {
+      id: "d2",
+      type: "fixed",
+      value: 5.0,
+      label: "$5 off",
+    };
 
     const result = calculateOrderTotals({
       items,
@@ -841,7 +855,7 @@ describe("Scenario 17: Dual Pricing with Percentage Discount", () => {
     });
 
     // Card discount: $5.00
-    expect(result.discount_amount).toBe(5.00);
+    expect(result.discount_amount).toBe(5.0);
     // Cash discount: $5.00 * (9.50 / 10.00) = $4.75
     expect(result.cash_discount_amount).toBe(4.75);
 
@@ -855,29 +869,34 @@ describe("Scenario 17: Dual Pricing with Percentage Discount", () => {
     const items = [
       createMockItem({
         id: "i1",
-        unitPrice: 20.00,
-        price: 20.00,
-        cashPrice: 19.00,
-        baseCashPrice: 19.00,
-        originalPrice: 19.00,
+        unitPrice: 20.0,
+        price: 20.0,
+        cashPrice: 19.0,
+        baseCashPrice: 19.0,
+        originalPrice: 19.0,
         quantity: 1,
-        subtotal: 20.00,
-        cashSubtotal: 19.00,
+        subtotal: 20.0,
+        cashSubtotal: 19.0,
       }),
       createMockItem({
         id: "i2",
-        unitPrice: 10.00,
-        price: 10.00,
-        cashPrice: 9.50,
-        baseCashPrice: 9.50,
-        originalPrice: 9.50,
+        unitPrice: 10.0,
+        price: 10.0,
+        cashPrice: 9.5,
+        baseCashPrice: 9.5,
+        originalPrice: 9.5,
         quantity: 1,
-        subtotal: 10.00,
-        cashSubtotal: 9.50,
+        subtotal: 10.0,
+        cashSubtotal: 9.5,
       }),
     ];
 
-    const discount: Discount = { id: "d3", type: "percentage", value: 0.25, label: "25% off" };
+    const discount: Discount = {
+      id: "d3",
+      type: "percentage",
+      value: 0.25,
+      label: "25% off",
+    };
 
     const result = calculateOrderTotals({
       items,
@@ -886,7 +905,7 @@ describe("Scenario 17: Dual Pricing with Percentage Discount", () => {
     });
 
     // Card: $30 * 25% = $7.50 discount, net = $22.50
-    expect(result.discount_amount).toBe(7.50);
+    expect(result.discount_amount).toBe(7.5);
     // Cash: $28.50 * 25% = $7.13 discount (rounded), net = $21.37
     expect(result.cash_discount_amount).toBe(7.13);
 
