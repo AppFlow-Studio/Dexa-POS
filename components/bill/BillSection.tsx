@@ -481,14 +481,36 @@ const BillSectionContent = ({
     activeOrderPaidStatus !== "Paid" &&
     activeOrder?.check_status !== "Closed";
 
-  // Name of the staff this order is credited to: the per-order PIN-verified
-  // staff when set, otherwise the signed-in shift user.
+  // Name of the staff THIS order is credited to. Resolve from the order's own
+  // stored creator first (durable, per-order) so each order shows its real
+  // creator — not the last PIN entered globally. Before the order is stamped
+  // (pre-create window), use the live attribution only if it's bound to THIS
+  // order. Fall back to the signed-in shift user.
+  const orderCreatorStaffId =
+    activeOrder?.created_by_staff_profile_id ?? null;
   const createdByName = useEmployeeStore((s) => {
-    const staffId = s.orderAttributionStaffId;
-    if (staffId) {
-      const emp = s.employees.find((e) => e.profileId === staffId);
-      if (emp) return emp.displayName || emp.fullName;
+    const resolve = (id: string | null) =>
+      id
+        ? (() => {
+            const emp = s.employees.find((e) => e.profileId === id);
+            return emp ? emp.displayName || emp.fullName : null;
+          })()
+        : null;
+
+    // 1. The order's stored creator.
+    const fromOrder = resolve(orderCreatorStaffId);
+    if (fromOrder) return fromOrder;
+
+    // 2. Live attribution, but only if verified for this exact order.
+    if (
+      s.orderAttributionStaffId &&
+      s.orderAttributionOrderId === activeOrderId
+    ) {
+      const fromLive = resolve(s.orderAttributionStaffId);
+      if (fromLive) return fromLive;
     }
+
+    // 3. Signed-in shift user.
     return s.loggedInEmployee?.displayName ?? s.loggedInEmployee?.fullName ?? null;
   });
 

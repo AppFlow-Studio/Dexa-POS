@@ -1365,6 +1365,21 @@ const ensureOrderCreated = async (
             orderData.sync_version, // Pass sync_version from backend response
           );
 
+          // Persist the creator on the local order so "Created by" reflects the
+          // staff who actually rang THIS order (the per-order PIN staff when on),
+          // not the live/last-PIN global value. backendId is the post-rekey key.
+          {
+            const creatorId =
+              useEmployeeStore.getState().getEffectiveCreatorStaffId() || null;
+            if (creatorId) {
+              useOrderStore.setState((state) => {
+                const o =
+                  state.ordersById[backendId] ?? state.ordersById[order.id];
+                if (o) o.created_by_staff_profile_id = creatorId;
+              });
+            }
+          }
+
           // Re-seed local counter to match DB-assigned sequence (prevents drift from abandoned drafts)
           const dbSeq = parseSequenceFromDisplayNumber(
             orderData.display_number,
