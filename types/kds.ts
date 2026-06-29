@@ -39,6 +39,8 @@ export interface KDSTicket {
   order_type: string | null
   order_source?: string | null
   delivery_platform?: string | null
+  server_id?: string | null
+  server_name?: string | null
   table_name: string | null
   customer_name: string | null
   order_notes?: string | null

@@ -659,6 +659,11 @@ function normalizeKdsTicket(ticket: KDSTicket): KDSTicket {
   return {
     ...ticket,
     items,
+    server_id: ticket.server_id ?? null,
+    server_name:
+      typeof ticket.server_name === "string" && ticket.server_name.trim()
+        ? ticket.server_name.trim()
+        : null,
     table_name: resolveKdsTableName(ticket.table_name),
     delivery_platform:
       normalizePlatform(ticket.delivery_platform) ??
@@ -968,6 +973,13 @@ function ticketDeepEqual(a: KDSTicket, b: KDSTicket): boolean {
     return false;
   if (a.display_number !== b.display_number || a.table_name !== b.table_name)
     return false;
+  if (a.server_id !== b.server_id || a.server_name !== b.server_name)
+    return false;
+  if (
+    a.order_source !== b.order_source ||
+    a.delivery_platform !== b.delivery_platform
+  )
+    return false;
   if (a.order_notes !== b.order_notes) return false;
   if (a.customer_name !== b.customer_name || a.start_time !== b.start_time)
     return false;
@@ -1096,18 +1108,34 @@ function mergeTickets(
     const prevRaw = existingById[ticket.ticket_id];
     const prev = prevRaw ? normalizeKdsTicket(prevRaw) : undefined;
     // Preserve customer_name/table_name from existing ticket when broadcast omits them
+    const incomingHasServerId = Object.prototype.hasOwnProperty.call(
+      ticket,
+      "server_id",
+    );
+    const incomingHasServerName = Object.prototype.hasOwnProperty.call(
+      ticket,
+      "server_name",
+    );
     const normalizedIncoming = normalizeKdsTicket(ticket);
     const enriched =
       prev &&
       (ticket.customer_name === null ||
         ticket.table_name === null ||
-        ticket.order_notes == null)
+        ticket.order_notes == null ||
+        !incomingHasServerId ||
+        !incomingHasServerName)
         ? {
             ...normalizedIncoming,
             customer_name:
               normalizedIncoming.customer_name ?? prev.customer_name,
             table_name: normalizedIncoming.table_name ?? prev.table_name,
             order_notes: normalizedIncoming.order_notes ?? prev.order_notes,
+            server_id: incomingHasServerId
+              ? normalizedIncoming.server_id
+              : prev.server_id,
+            server_name: incomingHasServerName
+              ? normalizedIncoming.server_name
+              : prev.server_name,
           }
         : normalizedIncoming;
     const stabilized = prev ? preserveCompletedItems(prev, enriched) : enriched;

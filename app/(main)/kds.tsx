@@ -485,6 +485,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     );
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
+    const serverName = ticket.server_name?.trim();
     const hasRush = ticketItems.some((item) => item.rush);
     const hasRefire = ticketItems.some((item) => item.recalled);
     const orderNote = ticket.order_notes?.trim() ?? "";
@@ -802,6 +803,19 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   size="kds"
                 />
               </View>
+
+              {serverName ? (
+                <Text
+                  style={{
+                    color: headerSecondaryTextColor,
+                    fontSize: s(11),
+                    fontWeight: "600",
+                  }}
+                  numberOfLines={1}
+                >
+                  Server: {serverName}
+                </Text>
+              ) : null}
 
               {/* Order Type */}
               <View
@@ -1341,6 +1355,10 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       pt.customer_name !== nt.customer_name ||
       pt.order_notes !== nt.order_notes ||
       pt.order_type !== nt.order_type ||
+      pt.order_source !== nt.order_source ||
+      pt.delivery_platform !== nt.delivery_platform ||
+      pt.server_id !== nt.server_id ||
+      pt.server_name !== nt.server_name ||
       pt.start_time_epoch !== nt.start_time_epoch ||
       // Re-render when the frozen "Served" time lands/changes (optimistic
       // Date.now() → server completed_at) so the timer snaps to the shared value.
@@ -1389,6 +1407,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
     const hasMetaInfo = Boolean(
       ticket.customer_name || displayTableName || ticket.course_number > 1,
     );
+    const serverName = ticket.server_name?.trim();
 
     return (
       <Pressable onPress={() => onRecall(ticket.ticket_id)}>
@@ -1441,6 +1460,15 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                   size="kds"
                 />
               </View>
+
+              {serverName ? (
+                <Text
+                  style={{ color: "#6B7280", fontSize: s(11), fontWeight: "600" }}
+                  numberOfLines={1}
+                >
+                  Server: {serverName}
+                </Text>
+              ) : null}
 
               {/* Order Type */}
               <View
