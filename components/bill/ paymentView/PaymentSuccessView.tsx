@@ -12,6 +12,7 @@ import {
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
@@ -91,6 +92,11 @@ const PaymentSuccessView = () => {
       archiveOrder,
       sendNewItemsToKitchenForOrder,
     } = useOrderStore.getState();
+
+    // Per-order PIN attribution: the order is now fully paid/closed. Drop the
+    // verified staff so the next order re-opens the PIN gate. Held through
+    // payment so the order AND its payment were credited to the same person.
+    useEmployeeStore.getState().clearOrderAttributionStaff();
 
     // Analytics...
     // const saleEvents = items.map((item) => ({
@@ -176,6 +182,11 @@ const PaymentSuccessView = () => {
       close();
       return;
     }
+
+    // NOTE: handleDone is the explicit "Start New Order" button — it always
+    // creates, even when auto-create is off. The auto-create
+    // suppression lives in the AUTOMATIC post-payment path
+    // (usePaymentStore.handleSuccessClose), not here.
 
     // For quick service / takeout, start a new order immediately
     setTimeout(() => {

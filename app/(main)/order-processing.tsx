@@ -35,6 +35,7 @@ import { useUiScale } from "@/lib/uiScale";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useSearchStore } from "@/stores/searchStore";
 import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
@@ -147,6 +148,12 @@ const OrderProcessing = () => {
   useActiveOrderOwnershipRecheck();
   // FIXED: Use individual selectors to prevent subscribing to entire ordersById
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  // Re-trigger the eager backend create once the per-order PIN is verified for
+  // the active order, so a QSR order that was blocked pre-PIN gets created
+  // instead of sticking on "Creating order".
+  const orderAttributionOrderId = useEmployeeStore(
+    (s) => s.orderAttributionOrderId,
+  );
   const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
   const startNewOrder = useOrderStore((s) => s.startNewOrder);
   const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
@@ -310,7 +317,11 @@ const OrderProcessing = () => {
       return;
     }
 
-    if (currentActiveOrder && isReusableEmptyDraftOrder(currentActiveOrder)) {
+    if (
+      useStoreSettingsStore.getState().autoCreateOrder &&
+      currentActiveOrder &&
+      isReusableEmptyDraftOrder(currentActiveOrder)
+    ) {
       if (selectedStore) {
         const refreshedNumbers = getRefreshedReusableDraftNumbers({
           draftId: currentActiveOrder.id,
@@ -331,6 +342,14 @@ const OrderProcessing = () => {
       }
 
       setActiveOrder(currentActiveOrder.id);
+      return;
+    }
+
+    // Setting: when auto-create is OFF, don't auto-create/select a draft when
+    // none is active. The screen shows an empty state until the operator
+    // explicitly starts an order. We've already resumed any in-progress order
+    // above; from here we'd only be fabricating a fresh draft, so bail.
+    if (!useStoreSettingsStore.getState().autoCreateOrder) {
       return;
     }
 
@@ -441,10 +460,29 @@ const OrderProcessing = () => {
   // (see addItemToActiveOrder + BillSection's isCreatingOrder gate).
   useEffect(() => {
     if (!activeOrderId) return;
+    const settings = useStoreSettingsStore.getState();
     const order = useOrderStore.getState().ordersById[activeOrderId];
     if (!order || order.db_order_id) return;
     // Dine-in orders create at seating; only eager-create non-dine-in here.
     if (order.order_type === "dine_in" || order.order_type === "Dine In") return;
+
+    // Per-order PIN: the order must be eager-created BEFORE items (the
+    // "Creating order" gate stays intact). When the PIN is required, eager
+    // creation is driven by the PIN entry — it waits for a verified staff and
+    // then creates. This deliberately runs even when auto-create is OFF,
+    // because the PIN entry IS the explicit "start this order" action, and
+    // without it the create-before-add gate would deadlock.
+    const pinRequired = settings.requirePinPerOrder;
+    if (pinRequired) {
+      // Wait until the PIN was verified for THIS order; effect re-runs when
+      // orderAttributionOrderId changes.
+      if (orderAttributionOrderId !== activeOrderId) return;
+      // fall through to create
+    } else {
+      // No PIN: respect the auto-create setting. When OFF, let the first
+      // item-add create the order on demand instead of eager-creating here.
+      if (!settings.autoCreateOrder) return;
+    }
     // Defer the eager backend create off the screen-entry frame: it's an RPC
     // whose broadcast/re-render can land mid-first-interaction. The local draft
     // is already usable; this just pre-persists it so the first item-add is
@@ -454,7 +492,7 @@ const OrderProcessing = () => {
       void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
     });
     return () => task.cancel();
-  }, [activeOrderId]);
+  }, [activeOrderId, orderAttributionOrderId]);
 
   const handleViewItems = useCallback((orderId: string) => {
     setSelectedOrderId(orderId);

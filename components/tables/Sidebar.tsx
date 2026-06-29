@@ -12,13 +12,6 @@ import {
 } from 'lucide-react-native'
 import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
-import Animated, {
-  cancelAnimation,
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming
-} from 'react-native-reanimated'
 import PinDisplay from '../auth/PinDisplay'
 import PinNumpad from '../auth/PinNumpad'
 import HistoryPanel from '../panels/HistoryPanel'
@@ -32,7 +25,6 @@ type TabMode = 'tables' | 'waitlist' | 'reservations' | 'history'
 interface SidebarProps {
   activeLayoutId: string | null
   setActiveLayout: (id: string) => void
-  // layouts prop removed
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -50,10 +42,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [pinDialogOpen, setPinDialogOpen] = useState(false)
   const [currentPin, setCurrentPin] = useState('')
   const [targetTab, setTargetTab] = useState<TabMode | null>(null)
-
-  // Shared values for animations
-  const widthSV = useSharedValue(EXPANDED_WIDTH)
-  const opacitySV = useSharedValue(1)
 
   // Get actual Realtime Channel status (not store status)
   const { floor } = useLocationRealtime()
@@ -104,37 +92,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     // Refetch floor plan data to recover missed events during connection drop
     useFloorPlanStore.getState().loadFloorPlanStatus()
   }
-
-  useEffect(() => {
-    const config = {
-      duration: 200,
-      easing: Easing.out(Easing.quad)
-    }
-
-    widthSV.value = withTiming(
-      isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH,
-      config
-    )
-    opacitySV.value = withTiming(isExpanded ? 1 : 0, { duration: 150 })
-  }, [isExpanded])
-
-  // Cancel in-flight width/opacity animations on unmount so they don't pin
-  // their shared-value UI-thread mappings past teardown.
-  useEffect(() => {
-    return () => {
-      cancelAnimation(widthSV)
-      cancelAnimation(opacitySV)
-    }
-  }, [])
-
-  const containerStyle = useAnimatedStyle(() => ({
-    width: widthSV.value
-  }))
-
-  const textStyle = useAnimatedStyle(() => ({
-    opacity: opacitySV.value,
-    display: opacitySV.value === 0 ? 'none' : 'flex'
-  }))
 
   const toggleSidebar = () => {
     setIsExpanded(prev => !prev)
@@ -188,17 +145,15 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      <Animated.View
-        style={[
-          containerStyle,
-          {
-            height: '100%',
-            zIndex: 20,
-            backgroundColor: colors.panel,
-            borderRightWidth: 1,
-            borderRightColor: colors.border
-          }
-        ]}
+      <View
+        style={{
+          width: isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH,
+          height: '100%',
+          zIndex: 20,
+          backgroundColor: colors.panel,
+          borderRightWidth: 1,
+          borderRightColor: colors.border
+        }}
       >
         {/* Floating Toggle Button */}
         <TouchableOpacity
@@ -227,8 +182,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             <ChevronRight size={s(16)} color={colors.label} />
           )}
         </TouchableOpacity>
-
-        {/* Header removed for density */}
 
         {/* Navigation Tabs */}
         <View
@@ -279,19 +232,18 @@ const Sidebar: React.FC<SidebarProps> = ({
                   size={s(13)}
                   color={isActive ? colors.teal : colors.label}
                 />
-                <Animated.Text
-                  style={[
-                    textStyle,
-                    {
+                {isExpanded && (
+                  <Text
+                    style={{
                       fontSize: s(10),
                       fontWeight: '600',
                       color: isActive ? colors.teal : colors.label
-                    }
-                  ]}
-                  numberOfLines={1}
-                >
-                  {item.label}
-                </Animated.Text>
+                    }}
+                    numberOfLines={1}
+                  >
+                    {item.label}
+                  </Text>
+                )}
                 {item.isLocked && !isActive && (
                   <Lock size={s(11)} color={colors.muted} />
                 )}
@@ -301,15 +253,14 @@ const Sidebar: React.FC<SidebarProps> = ({
         </View>
 
         {/* Panel Content */}
-        <Animated.View
+        <View
           style={{
             flex: 1,
-            opacity: opacitySV,
             backgroundColor: colors.screen
           }}
         >
           {isExpanded && renderPanel()}
-        </Animated.View>
+        </View>
 
         {/* Live Status Indicator */}
         <TouchableOpacity
@@ -338,21 +289,18 @@ const Sidebar: React.FC<SidebarProps> = ({
             }}
           />
           {isExpanded && (
-            <Animated.Text
-              style={[
-                textStyle,
-                { marginLeft: s(7), fontSize: s(11), color: colors.muted }
-              ]}
+            <Text
+              style={{ marginLeft: s(7), fontSize: s(11), color: colors.muted }}
             >
               {floor.isConnected
                 ? 'Live'
                 : isSyncing
                 ? 'Syncing...'
                 : 'Offline · Tap to retry'}
-            </Animated.Text>
+            </Text>
           )}
         </TouchableOpacity>
-      </Animated.View>
+      </View>
 
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
         <DialogContent

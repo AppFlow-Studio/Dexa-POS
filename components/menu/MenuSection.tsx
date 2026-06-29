@@ -90,6 +90,7 @@ import { useColorScheme } from "@/lib/useColorScheme";
 import { useSearchStore } from "@/stores/searchStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { StyleSheet, ViewStyle } from "react-native";
 
 const menuSectionStyles = StyleSheet.create({
@@ -338,15 +339,45 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // ONLINE, otherwise the overlay would stick on "Creating order" forever offline.
   const { isOnline } = useNetworkStatus();
   const isCreatingOrder = isOnline && !!activeOrderId && !currentOrderDbId;
-  const isMenuAddDisabled = isTableSeating || isCreatingOrder;
+  // Per-order PIN attribution: block adding items (which is what creates the
+  // backend order row) until the staff who's ringing has been verified. This
+  // closes the timing gap where an order could be created — and attributed —
+  // before the PIN is entered. The PIN prompt itself (OrderPinGate) is rendered
+  // by BillSection; here we only gate adds and surface the right message.
+  const requirePinPerOrder = useStoreSettingsStore(
+    (s) => s.requirePinPerOrder,
+  );
+  const orderAttributionOrderId = useEmployeeStore(
+    (s) => s.orderAttributionOrderId,
+  );
+  const currentOrderPaidStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.paid_status ?? null;
+  });
+  // Block adds until a PIN was verified for THIS specific order. Order-bound so
+  // a stale verification from another order can't unblock this one. Skips once
+  // the order is created (db_order_id) — seated dine-in / mid-order — and never
+  // on the empty / just-paid state.
+  const isAwaitingOrderPin =
+    requirePinPerOrder &&
+    !!activeOrderId &&
+    orderAttributionOrderId !== activeOrderId &&
+    !currentOrderDbId &&
+    currentOrderPaidStatus !== "Paid";
+  const isMenuAddDisabled =
+    isTableSeating || isCreatingOrder || isAwaitingOrderPin;
   // Seating takes precedence over "creating" in the label (a dine-in order is
   // also db_order_id-less while seating, but "Seating in progress" is clearer).
   const menuDisabledTitle = isTableSeating
     ? "Seating in progress"
-    : "Creating order";
+    : isAwaitingOrderPin
+      ? "Enter PIN to start"
+      : "Creating order";
   const menuDisabledMessage = isTableSeating
     ? "Items can be added once the table is seated."
-    : "Items can be added once the order is ready.";
+    : isAwaitingOrderPin
+      ? "Enter your PIN to start this order."
+      : "Items can be added once the order is ready.";
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails,
   );

@@ -136,7 +136,7 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
       },
       {
         id: 'order-line',
-        label: 'Order Line',
+        label: 'Orders Processing',
         icon: List,
         route: '/settings/order-line'
       },
