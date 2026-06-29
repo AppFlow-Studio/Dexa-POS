@@ -11,10 +11,12 @@
  *   updateConfig('dining', { enableCoursing: true })
  */
 
+import { resolveEffectivePosConfig } from "@/lib/posConfigResolution";
 import { createLazyPersistStorage } from "@/lib/storage";
 import type {
     ConfigForNamespace,
     ConfigNamespace,
+    LocationPosConfigPatch,
     LocationPosConfig,
 } from "@/types/locationConfig";
 import { DEFAULT_POS_CONFIG } from "@/types/locationConfig";
@@ -31,12 +33,14 @@ import { immer } from "zustand/middleware/immer";
 interface LocationConfigState {
   config: LocationPosConfig;
   _locationId: string | null;
+  _stationId: string | null;
   _lastSyncedAt: number | null;
 
   // Actions
   hydrateConfig: (
     locationId: string,
-    fullConfig: Partial<LocationPosConfig>,
+    fullConfig: LocationPosConfigPatch,
+    stationId?: string | null,
   ) => void;
   updateConfig: <N extends ConfigNamespace>(
     namespace: N,
@@ -129,6 +133,7 @@ export const useLocationConfigStore = create<LocationConfigState>()(
     immer((set, get) => ({
       config: { ...DEFAULT_POS_CONFIG },
       _locationId: null,
+      _stationId: null,
       _lastSyncedAt: null,
 
       _setSupabase: (client: SupabaseClient, stationId: string | null) => {
@@ -138,42 +143,16 @@ export const useLocationConfigStore = create<LocationConfigState>()(
 
       hydrateConfig: (
         locationId: string,
-        fullConfig: Partial<LocationPosConfig>,
+        fullConfig: LocationPosConfigPatch,
+        stationId: string | null = null,
       ) => {
         set((state) => {
           state._locationId = locationId;
+          state._stationId = stationId;
           state._lastSyncedAt = Date.now();
 
-          // Deep merge each namespace: defaults ← backend values
-          const namespaces: ConfigNamespace[] = [
-            "dining",
-            "kds",
-            "printing",
-            "cashDrawer",
-            "onlineOrdering",
-            "tips",
-            "preAuth",
-            "waitlist",
-            "payment",
-            "notifications",
-            "fraudDetection",
-          ];
-
-          for (const ns of namespaces) {
-            if (fullConfig[ns]) {
-              state.config[ns] = {
-                ...DEFAULT_POS_CONFIG[ns],
-                ...fullConfig[ns],
-              } as any;
-            }
-          }
-
-          if (fullConfig._version != null) {
-            state.config._version = fullConfig._version;
-          }
-          if (fullConfig._updated_at != null) {
-            state.config._updated_at = fullConfig._updated_at;
-          }
+          // Resolve defaults plus backend/effective values in one place.
+          state.config = resolveEffectivePosConfig(fullConfig);
 
           // Temporary kill switch: per-seat ordering is force-disabled
           // regardless of backend/persisted value while the feature is being
@@ -233,39 +212,13 @@ export const useLocationConfigStore = create<LocationConfigState>()(
       partialize: (state) => ({
         config: state.config,
         _locationId: state._locationId,
+        _stationId: state._stationId,
         _lastSyncedAt: state._lastSyncedAt,
       }),
       // Deep-merge persisted config against defaults so newly-added namespaces
       // are always present even if the stored blob pre-dates them.
       merge: (persistedState: any, currentState: LocationConfigState) => {
-        const namespaces: ConfigNamespace[] = [
-          "dining",
-          "kds",
-          "printing",
-          "cashDrawer",
-          "onlineOrdering",
-          "tips",
-          "preAuth",
-          "waitlist",
-          "payment",
-          "notifications",
-          "fraudDetection",
-        ];
-        const mergedConfig = { ...DEFAULT_POS_CONFIG };
-        for (const ns of namespaces) {
-          if (persistedState?.config?.[ns]) {
-            mergedConfig[ns] = {
-              ...DEFAULT_POS_CONFIG[ns],
-              ...persistedState.config[ns],
-            } as any;
-          }
-        }
-        if (persistedState?.config?._version != null) {
-          mergedConfig._version = persistedState.config._version;
-        }
-        if (persistedState?.config?._updated_at != null) {
-          mergedConfig._updated_at = persistedState.config._updated_at;
-        }
+        const mergedConfig = resolveEffectivePosConfig(persistedState?.config);
         // Temporary kill switch (mirrors hydrateConfig): force-disable per-seat
         // ordering even if a previously-persisted blob has it on.
         mergedConfig.dining = {

@@ -16603,6 +16603,7 @@ export type Database = {
           network_ssid: string | null
           network_type: string | null
           os_version: string | null
+          pos_config_overrides: Json
           ram_free_mb: number | null
           screen_density: number | null
           screen_height: number | null
@@ -16652,6 +16653,7 @@ export type Database = {
           network_ssid?: string | null
           network_type?: string | null
           os_version?: string | null
+          pos_config_overrides?: Json
           ram_free_mb?: number | null
           screen_density?: number | null
           screen_height?: number | null
@@ -16701,6 +16703,7 @@ export type Database = {
           network_ssid?: string | null
           network_type?: string | null
           os_version?: string | null
+          pos_config_overrides?: Json
           ram_free_mb?: number | null
           screen_density?: number | null
           screen_height?: number | null
@@ -22310,6 +22313,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_effective_pos_config: {
+        Args: { p_station_id: string }
+        Returns: Json
+      }
       get_items_for_location: {
         Args: { p_location_id?: string; p_merchant_id: string }
         Returns: Json
@@ -24249,6 +24256,10 @@ export type Database = {
       }
       update_location_pos_config: {
         Args: { p_config: Json; p_location_id: string; p_namespace: string }
+        Returns: Json
+      }
+      update_station_pos_config_overrides: {
+        Args: { p_overrides: Json; p_station_id: string }
         Returns: Json
       }
       update_order_details_v1: {

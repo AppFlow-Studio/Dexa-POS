@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document summarizes the POS tickets handled on branch `alidika-dev-pos` so far. There are 8 POS tickets in scope:
+This document summarizes the POS tickets handled on branch `alidika-dev-pos` so far. There are 9 POS tickets in scope:
 
 | # | Ticket | Current status | Migration needed |
 | --- | --- | --- | --- |
@@ -14,12 +14,14 @@ This document summarizes the POS tickets handled on branch `alidika-dev-pos` so 
 | 6 | KDS tickets show server / creator | Code and migration ready, staging QA pending | Yes |
 | 7 | Order numbers reset at UTC midnight + Previous Orders newest-first | Migration ready, staging QA pending | Yes |
 | 8 | POS platform logos on KDS and Previous Orders | Code complete, on-device QA pending | No |
+| 9 | POS/Web location POS settings + station overrides | POS/schema code ready, web UI and QA pending | Yes |
 
 The migrations currently added for these tickets are:
 
 - `supabase/migrations/20260623120000_reprice_charcoal_gardenia_stale_cash_prices.sql`
 - `supabase/migrations/20260629120000_kds_ticket_server_name.sql`
 - `supabase/migrations/20260629130000_order_numbers_location_timezone.sql`
+- `supabase/migrations/20260630120000_station_pos_config_overrides.sql`
 
 Important note on the stale cash-price migration: the first Supabase run could not find the expected Charcoal Gardenia rows, so that migration was changed to no-op with a notice when target rows are absent. If it no-ops, the stale cash-price ticket is not corrected yet and still needs the correct target IDs or a website re-price flow.
 
@@ -426,6 +428,73 @@ Manual QA still required:
 - Unresolved online order shows generic Online badge.
 - POS/in-store order shows no badge.
 
+## 9. POS/Web Location POS Settings + Station Overrides
+
+## Summary
+
+Ticket: keep `locations.pos_config` as the location-level POS settings source, add `stations.pos_config_overrides`, and let POS stations resolve their effective config as defaults -> location config -> station override.
+
+This branch covers the POS/schema side. Web dashboard settings UI is intentionally left to the parallel web work.
+
+## What Changed
+
+- Added `stations.pos_config_overrides jsonb NOT NULL DEFAULT '{}'`.
+- Added recursive JSONB deep merge helper for nested config blocks.
+- Added `get_effective_pos_config(p_station_id)` with:
+  - pinned `search_path`
+  - `SECURITY DEFINER`
+  - `user_location_ids()` scope guard
+  - legacy fallback from `public_metadata.dining_settings` and `locations.kds_workflow_mode`
+  - station metadata stripping so overrides cannot replace `_version` / `_updated_at`
+- Added `update_station_pos_config_overrides(p_station_id, p_overrides)` as a guarded station-override write helper.
+- Added shared client deep merge utility mirroring the server precedence.
+- POS config sync now calls the effective-config RPC when a station ID exists and falls back to the old location-only read if the migration is not applied.
+- POS sync now rehydrates config on station switch.
+- KDS manual refresh now fetches station-effective config.
+- Added targeted unit coverage for nested merge and station metadata guard.
+
+## Files
+
+- `supabase/migrations/20260630120000_station_pos_config_overrides.sql`
+- `lib/posConfigResolution.ts`
+- `types/locationConfig.ts`
+- `services/locationConfigSync.ts`
+- `contexts/PosSyncProvider.tsx`
+- `app/(main)/kds.tsx`
+- `database.types.ts`
+- `__tests__/pos-config-resolution.test.ts`
+- `tasks/pos-effective-config-station-overrides.md`
+- `tasks/ticket-log.md`
+- `tasks/pos-ticket-senior-summary-2026-06-27.md`
+
+## Migration
+
+Migration exists:
+
+```text
+supabase/migrations/20260630120000_station_pos_config_overrides.sql
+```
+
+This migration should be applied before validating station overrides in POS. The POS client still falls back to the old location-only config read if the RPC is not present, so older environments should not hard-fail.
+
+## Verification Status
+
+Targeted automated verification:
+
+```powershell
+npx jest --runTestsByPath __tests__/pos-config-resolution.test.ts
+```
+
+Manual QA still required:
+
+- Apply migration on staging.
+- Confirm `stations.pos_config_overrides` exists and defaults to `{}`.
+- Confirm `get_effective_pos_config` returns defaults plus `locations.pos_config`.
+- Set a nested station override and confirm only that station sees it.
+- Confirm sibling stations inherit the location default.
+- Confirm station switching in POS rehydrates the correct station-effective config.
+- Confirm previously non-persisting settings persist after the web settings UI is wired to `locations.pos_config`.
+
 ## Migration Inventory
 
 | File | Ticket | Behavior | Current risk |
@@ -433,6 +502,7 @@ Manual QA still required:
 | `supabase/migrations/20260623120000_reprice_charcoal_gardenia_stale_cash_prices.sql` | Stale manual cash prices | Clears `cash_price` only when exactly 4 known stale rows match; no-ops if 0 rows match; aborts on partial match | If target rows are absent, nothing is corrected and manual/web re-price or correct IDs are still required |
 | `supabase/migrations/20260629120000_kds_ticket_server_name.sql` | KDS tickets show server / creator | Replaces `get_kds_tickets_v2` to include show-server-name-gated `server_id` and `server_name` | Must be applied after any other pending `get_kds_tickets_v2` migration to avoid overwriting newer RPC changes |
 | `supabase/migrations/20260629130000_order_numbers_location_timezone.sql` | Order numbers local midnight | Replaces both order-number generators so sequence date keys use `locations.timezone` instead of UTC `CURRENT_DATE` | Must be applied after confirming the live RPC bodies still match the contract, because `CREATE OR REPLACE FUNCTION` replaces the full body |
+| `supabase/migrations/20260630120000_station_pos_config_overrides.sql` | POS settings station overrides | Adds `stations.pos_config_overrides`, effective config resolver, deep merge helper, and guarded station override write RPC | Must be applied before station override QA; coordinate with web settings UI branch so UI writes use the same contract |
 
 No migrations are required for:
 
@@ -468,6 +538,7 @@ Repo-wide TypeScript/build checks were intentionally not run because the repo ha
 - KDS server name: staging order from POS staff shows server name, online/no-staff order falls back to source/platform, and `show_server_name = false` hides the field.
 - Order numbers: staging orders across UTC midnight do not reset, local midnight does reset, and Previous Orders remains newest-first.
 - POS platform logos: KDS all active states/Done and POS Previous Orders show marketplace, first-party, and generic-online badges correctly; POS orders show no badge.
+- POS settings station overrides: migration applies cleanly, station override affects only one station, sibling stations inherit location defaults, and POS station switching rehydrates the correct effective config.
 
 ## PR Notes For Senior Review
 
@@ -478,3 +549,4 @@ Repo-wide TypeScript/build checks were intentionally not run because the repo ha
 - The KDS server-name migration touches the same RPC as other KDS server-authoritative work, so sequence it carefully if another branch also replaces `get_kds_tickets_v2`.
 - The order-number migration replaces full RPC bodies. If production/staging functions have newer changes than the ticket contract, rebase the migration body before applying.
 - The platform-logo ticket is POS-only in this repo. Web Orders list/details remain outside this change and should be coordinated separately.
+- The POS settings/station override ticket is POS/schema-only in this branch. Web dashboard UI must coordinate with `update_station_pos_config_overrides` or the same guarded write contract before QA.

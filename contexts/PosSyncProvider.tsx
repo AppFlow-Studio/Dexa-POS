@@ -831,9 +831,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     const locationId = selectedStore?.id;
     if (!locationId || !supabase) return;
 
-    const myStationId =
-      useStoreSettingsStore.getState().selectedStation?.id ?? null;
-    const cleanup = initLocationConfigSync(supabase, locationId, myStationId);
+    const stationId = selectedStation?.id ?? null;
+    const cleanup = initLocationConfigSync(supabase, locationId, stationId);
 
     // Backward compat: still hydrate dining settings into old store during migration
     if (selectedStore?.public_metadata?.dining_settings) {
@@ -846,7 +845,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
 
     return cleanup;
-  }, [selectedStore?.id, supabase]);
+  }, [selectedStore?.id, selectedStation?.id, supabase]);
 
   // Background queue processor for station logins queued during offline sign-in
   useStationLoginSync();

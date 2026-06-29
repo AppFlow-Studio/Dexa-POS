@@ -1812,7 +1812,13 @@ const KitchenDisplayScreen = () => {
       if (selectedStation?.id)
         promises.push(fetchKDSDisplay(selectedStation.id));
       if (supabase && selectedStore?.id)
-        promises.push(refreshLocationConfig(supabase, selectedStore.id));
+        promises.push(
+          refreshLocationConfig(
+            supabase,
+            selectedStore.id,
+            selectedStation?.id ?? null,
+          ),
+        );
       await Promise.all(promises);
     } finally {
       setRefreshing(false);
