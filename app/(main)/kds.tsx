@@ -576,9 +576,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       displaySettings.showServerName && ticket.server_name;
     const hasMetaInfo = Boolean(
       ticket.customer_name ||
-        displayTableName ||
-        ticket.course_number > 1 ||
-        displayServerName,
+      displayTableName ||
+      ticket.course_number > 1 ||
+      displayServerName,
     );
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
@@ -1105,9 +1105,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 {ticket.customer_name ? ticket.customer_name : ""}
                 {ticket.customer_name && displayTableName ? " · " : ""}
                 {displayTableName ? `Table ${displayTableName}` : ""}
-                {(ticket.customer_name || displayTableName) && displayServerName ? " · " : ""}
+                {(ticket.customer_name || displayTableName) && displayServerName
+                  ? " · "
+                  : ""}
                 {displayServerName ? `Server: ${ticket.server_name}` : ""}
-                {(ticket.customer_name || displayTableName || displayServerName) &&
+                {(ticket.customer_name ||
+                  displayTableName ||
+                  displayServerName) &&
                 ticket.course_number > 1
                   ? ` · Course ${ticket.course_number}`
                   : ticket.course_number > 1
@@ -1689,9 +1693,9 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
     const displayServerName = showServerName && ticket.server_name;
     const hasMetaInfo = Boolean(
       ticket.customer_name ||
-        displayTableName ||
-        ticket.course_number > 1 ||
-        displayServerName,
+      displayTableName ||
+      ticket.course_number > 1 ||
+      displayServerName,
     );
 
     const handlePress = () => {
@@ -1880,9 +1884,13 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                 {ticket.customer_name ? ticket.customer_name : ""}
                 {ticket.customer_name && displayTableName ? " · " : ""}
                 {displayTableName ? `Table ${displayTableName}` : ""}
-                {(ticket.customer_name || displayTableName) && displayServerName ? " · " : ""}
+                {(ticket.customer_name || displayTableName) && displayServerName
+                  ? " · "
+                  : ""}
                 {displayServerName ? `Server: ${ticket.server_name}` : ""}
-                {(ticket.customer_name || displayTableName || displayServerName) &&
+                {(ticket.customer_name ||
+                  displayTableName ||
+                  displayServerName) &&
                 ticket.course_number > 1
                   ? ` · Course ${ticket.course_number}`
                   : ticket.course_number > 1
