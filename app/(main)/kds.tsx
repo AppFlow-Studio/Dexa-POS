@@ -1,4 +1,3 @@
-import KDSSettingsModal from "@/components/kds/KDSSettingsModal";
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
 import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
@@ -339,6 +338,7 @@ interface KDSTicketDisplaySettings {
   exclusionsAtTop: boolean;
   alphabeticalSort: boolean;
   aggregateIdenticalItems: boolean;
+  showServerName: boolean;
 }
 
 // ─── Ticket Timer (isolated re-render boundary) ─────────────────
@@ -572,8 +572,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       ticket.order_type?.toLowerCase() === "dine in" ||
       !ticket.order_type;
     const displayTableName = getDisplayTableName(ticket.table_name);
+    const displayServerName =
+      displaySettings.showServerName && ticket.server_name;
     const hasMetaInfo = Boolean(
-      ticket.customer_name || displayTableName || ticket.course_number > 1,
+      ticket.customer_name ||
+        displayTableName ||
+        ticket.course_number > 1 ||
+        displayServerName,
     );
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
@@ -1082,7 +1087,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             )}
           </View>
 
-          {/* Row 3: Customer + Table + Course (only shown when populated) */}
+          {/* Row 3: Customer + Table + Course + Server (only shown when populated) */}
           {hasMetaInfo && (
             <View
               style={{
@@ -1100,9 +1105,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 {ticket.customer_name ? ticket.customer_name : ""}
                 {ticket.customer_name && displayTableName ? " · " : ""}
                 {displayTableName ? `Table ${displayTableName}` : ""}
-                {ticket.course_number > 1
+                {(ticket.customer_name || displayTableName) && displayServerName ? " · " : ""}
+                {displayServerName ? `Server: ${ticket.server_name}` : ""}
+                {(ticket.customer_name || displayTableName || displayServerName) &&
+                ticket.course_number > 1
                   ? ` · Course ${ticket.course_number}`
-                  : ""}
+                  : ticket.course_number > 1
+                    ? `Course ${ticket.course_number}`
+                    : ""}
               </Text>
             </View>
           )}
@@ -1661,10 +1671,11 @@ interface KDSDoneTicketCardProps {
   onRecall: (ticketId: string) => void;
   isFocused: boolean;
   onSelectTicket?: (ticketId: string) => void;
+  showServerName?: boolean;
 }
 
 const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
-  ({ ticket, onRecall, isFocused, onSelectTicket }) => {
+  ({ ticket, onRecall, isFocused, onSelectTicket, showServerName }) => {
     const uiScale = useUiScale();
     const s = (n: number) => Math.round(n * uiScale);
     const timeElapsed = useMemo(
@@ -1675,8 +1686,12 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
     const orderTypeIcon = getOrderTypeIcon(ticket.order_type);
     const displayTableName = getDisplayTableName(ticket.table_name);
+    const displayServerName = showServerName && ticket.server_name;
     const hasMetaInfo = Boolean(
-      ticket.customer_name || displayTableName || ticket.course_number > 1,
+      ticket.customer_name ||
+        displayTableName ||
+        ticket.course_number > 1 ||
+        displayServerName,
     );
 
     const handlePress = () => {
@@ -1848,7 +1863,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
             )}
           </View>
 
-          {/* Customer + Table + Course Info (only shown when populated) */}
+          {/* Customer + Table + Course + Server Info (only shown when populated) */}
           {hasMetaInfo && (
             <View
               style={{
@@ -1865,9 +1880,14 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                 {ticket.customer_name ? ticket.customer_name : ""}
                 {ticket.customer_name && displayTableName ? " · " : ""}
                 {displayTableName ? `Table ${displayTableName}` : ""}
-                {ticket.course_number > 1
+                {(ticket.customer_name || displayTableName) && displayServerName ? " · " : ""}
+                {displayServerName ? `Server: ${ticket.server_name}` : ""}
+                {(ticket.customer_name || displayTableName || displayServerName) &&
+                ticket.course_number > 1
                   ? ` · Course ${ticket.course_number}`
-                  : ""}
+                  : ticket.course_number > 1
+                    ? `Course ${ticket.course_number}`
+                    : ""}
               </Text>
             </View>
           )}
@@ -1950,7 +1970,8 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
     prev.ticket === next.ticket &&
     prev.onRecall === next.onRecall &&
     prev.isFocused === next.isFocused &&
-    prev.onSelectTicket === next.onSelectTicket,
+    prev.onSelectTicket === next.onSelectTicket &&
+    prev.showServerName === next.showServerName,
 );
 
 // ─── Main Screen ──────────────────────────────────────────────────
@@ -2047,6 +2068,8 @@ const KitchenDisplayScreen = () => {
     ],
   );
 
+  const kdsShowServerName = kdsDisplayConfig?.showServerName ?? false;
+
   const displaySettings = useMemo<KDSTicketDisplaySettings>(
     () => ({
       highlightNotes: kdsHighlightNotes,
@@ -2056,6 +2079,7 @@ const KitchenDisplayScreen = () => {
       exclusionsAtTop: kdsDisplayExclusionsAtTop,
       alphabeticalSort: kdsAlphabeticalSort,
       aggregateIdenticalItems: kdsAggregateIdenticalItems,
+      showServerName: kdsShowServerName,
     }),
     [
       kdsHighlightNotes,
@@ -2065,6 +2089,7 @@ const KitchenDisplayScreen = () => {
       kdsDisplayExclusionsAtTop,
       kdsAlphabeticalSort,
       kdsAggregateIdenticalItems,
+      kdsShowServerName,
     ],
   );
 
@@ -2101,9 +2126,6 @@ const KitchenDisplayScreen = () => {
       hour12: true,
     }),
   );
-
-  // Settings modal state
-  const [settingsVisible, setSettingsVisible] = useState(false);
 
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false);
@@ -2876,9 +2898,10 @@ const KitchenDisplayScreen = () => {
         onRecall={recallDoneTicket}
         isFocused={focusedTicketId === item.ticket_id}
         onSelectTicket={handleSelectTicket}
+        showServerName={kdsShowServerName}
       />
     ),
-    [recallDoneTicket, focusedTicketId, handleSelectTicket],
+    [recallDoneTicket, focusedTicketId, handleSelectTicket, kdsShowServerName],
   );
 
   const activeTabTickets = listDataByStatus[activeStatus];
@@ -3171,10 +3194,9 @@ const KitchenDisplayScreen = () => {
             />
 
             {/* Refresh Button — tap = fetch latest tickets + config.
-                Long-press = KDS display settings (columns/sounds/fonts). */}
+                Settings are accessed via the Settings button (PIN-gated). */}
             <TouchableOpacity
               onPress={handleRefresh}
-              onLongPress={() => setSettingsVisible(true)}
               delayLongPress={400}
               accessibilityLabel="Refresh KDS"
               style={{
@@ -3913,10 +3935,8 @@ const KitchenDisplayScreen = () => {
       )}
 
       {/* ─── KDS Settings Modal ─── */}
-      <KDSSettingsModal
-        visible={settingsVisible}
-        onClose={() => setSettingsVisible(false)}
-      />
+      {/* Settings are now accessed via the Settings button in the header,
+          which opens the full KDS settings page (gated by manager PIN). */}
 
       {/* ─── PIN Modal ─── */}
       <PinInputModal

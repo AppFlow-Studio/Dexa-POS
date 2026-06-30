@@ -669,6 +669,26 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                 onToggle={(val) => updateField("kdsAggregateToExistingTickets", val)}
               />
 
+              <ToggleRow
+                label="Display Server Name"
+                subtitle="Show the server's name on each ticket"
+                value={kdsDisplayConfig?.showServerName ?? false}
+                onToggle={async (val) => {
+                  if (!kdsDisplayId) return;
+                  try {
+                    await supabase
+                      .from("kds_displays")
+                      .update({ show_server_name: val })
+                      .eq("id", kdsDisplayId);
+                    if (selectedStation?.id) {
+                      fetchKDSDisplay(selectedStation.id);
+                    }
+                  } catch (err) {
+                    console.error("[KDSSettings] saveShowServerName error:", err);
+                  }
+                }}
+              />
+
               {/* SOUND Section */}
               <SectionHeader title="Sound" />
 

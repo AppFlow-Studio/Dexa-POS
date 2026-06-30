@@ -50,6 +50,7 @@ export interface KDSTicket {
   items: KDSTicketItem[]
   prioritized?: boolean
   session_id?: string | null
+  server_name?: string | null
 }
 
 export interface KDSDisplayConfig {
