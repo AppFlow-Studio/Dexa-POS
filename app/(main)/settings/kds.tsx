@@ -230,6 +230,20 @@ const KdsSettingsScreen = () => {
           onChange={(v) => updateConfig("kds", { ticketTapMode: v })}
         />
 
+        {/* ── Acknowledgment Mode ──────────────────────────────────── */}
+        <SectionHeader title="Void / Refund Acknowledgment" />
+        <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(8), paddingHorizontal: s(2) }}>
+          How the KDS handles tickets with unacknowledged voided or refunded items.
+        </Text>
+        <OptionCards
+          options={[
+            { value: "block-advance", label: "Block Advance", desc: "Cook must tap each item to acknowledge before bumping" },
+            { value: "ack-on-advance", label: "Auto-Ack on Bump", desc: "Bumping auto-acknowledges all & advances the ticket" },
+          ]}
+          value={kdsConfig.acknowledgmentMode ?? "block-advance"}
+          onChange={(v) => updateConfig("kds", { acknowledgmentMode: v })}
+        />
+
         {/* ── Workflow Mode ────────────────────────────────────────── */}
         <SectionHeader title="Workflow Mode" />
         <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(8), paddingHorizontal: s(2) }}>

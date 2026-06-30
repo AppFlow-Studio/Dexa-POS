@@ -442,9 +442,34 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     );
 
     const ticketItems = getTicketItems(ticket);
-    const hasUnacknowledgedNotices = ticketItems.some(
+    const unacknowledgedItems = ticketItems.filter(
       (i) => (i.is_voided || i.is_refunded) && !i.acknowledged,
     );
+    const hasUnacknowledgedNotices = unacknowledgedItems.length > 0;
+    const acknowledgmentMode = useLocationConfigStore(
+      (s) => s.config.kds.acknowledgmentMode ?? "block-advance",
+    );
+
+    // Ack all unacknowledged items before advancing (ack-on-advance mode).
+    const acknowledgeAllAndAdvance = useCallback(() => {
+      if (!onAcknowledgeNotice) return;
+      for (const item of unacknowledgedItems) {
+        onAcknowledgeNotice(ticket.ticket_id, item.id);
+      }
+    }, [ticket.ticket_id, onAcknowledgeNotice, unacknowledgedItems]);
+
+    // Shared advance logic — determines next status and calls onAdvance.
+    const performAdvance = useCallback(() => {
+      const refire = ticketItems.some((i) => i.recalled);
+      const itemIds = ticketItems.map((i) => i.id);
+      let newStatus: "preparing" | "ready" | "served" | undefined;
+      if (refire) newStatus = "served";
+      else if (ticket.status === "pending") newStatus = "preparing";
+      else if (ticket.status === "cooking") newStatus = "ready";
+      else if (ticket.status === "ready") newStatus = "served";
+      if (!newStatus) return;
+      onAdvance(ticket.ticket_id, itemIds, newStatus);
+    }, [ticketItems, ticket.status, ticket.ticket_id, onAdvance]);
 
     // Double-tap detection
     const lastTapRef = useRef(0);
@@ -467,8 +492,16 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         return;
       }
 
-      // Block card advance until all void/refund notices are acknowledged
-      if (hasUnacknowledgedNotices) return;
+      // ── Unacknowledged notices handling ──────────────────────────
+      if (hasUnacknowledgedNotices) {
+        if (acknowledgmentMode === "ack-on-advance") {
+          // Auto-acknowledge all, then proceed with the double-tap advance
+          acknowledgeAllAndAdvance();
+        } else {
+          // block-advance: card is inert until notices are acknowledged manually
+          return;
+        }
+      }
 
       const now = Date.now();
       const isDoubleTap = now - lastTapRef.current < KDS_DOUBLE_TAP_MS;
@@ -483,9 +516,17 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       const capturedStatus = firstTapStatusRef.current;
       firstTapStatusRef.current = null;
 
-      const itemIds = getTicketItems(ticket).map((i) => i.id);
+      // Re-check status in case acknowledgeAllAndAdvance mutated items.
+      // If we already called acknowledgeAllAndAdvance above, this still
+      // captures the correct status from before the ack, so the double-tap
+      // transition is consistent.
+      const currentItems = getTicketItems(
+        useKDSStore.getState()._ticketsById[ticket.ticket_id] ?? ticket,
+      );
+      const refire = currentItems.some((i) => i.recalled);
+      const itemIds = currentItems.map((i) => i.id);
       let newStatus: "preparing" | "ready" | "served" | undefined;
-      if (hasRefire) newStatus = "served";
+      if (refire) newStatus = "served";
       else if (capturedStatus === "pending") newStatus = "preparing";
       else if (capturedStatus === "cooking") newStatus = "ready";
       else if (capturedStatus === "ready") newStatus = "served";
@@ -499,19 +540,18 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       onLongPress?.(ticket.ticket_id, ticket, e);
     };
 
-    // Bump one stage — shared by the focused-header "Bump" action. Same rules as
-    // the double-tap path: blocked by unacknowledged notices, refire → served.
+    // Bump one stage — shared by the focused-header "Bump" action.
+    // In "ack-on-advance" mode: acknowledges all unacknowledged notices first,
+    // then advances. In "block-advance" mode: blocked until acknowledged.
     const handleBumpOneStep = () => {
-      if (hasUnacknowledgedNotices) return;
-      const refire = ticketItems.some((i) => i.recalled);
-      const itemIds = ticketItems.map((i) => i.id);
-      let newStatus: "preparing" | "ready" | "served" | undefined;
-      if (refire) newStatus = "served";
-      else if (ticket.status === "pending") newStatus = "preparing";
-      else if (ticket.status === "cooking") newStatus = "ready";
-      else if (ticket.status === "ready") newStatus = "served";
-      if (!newStatus) return;
-      onAdvance(ticket.ticket_id, itemIds, newStatus);
+      if (hasUnacknowledgedNotices) {
+        if (acknowledgmentMode === "ack-on-advance") {
+          acknowledgeAllAndAdvance();
+        } else {
+          return;
+        }
+      }
+      performAdvance();
     };
 
     // Determine border color based on state
@@ -766,17 +806,21 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               <View style={{ flex: 1, height: s(44), flexDirection: "row", alignItems: "center", gap: s(6) }}>
                 <TouchableOpacity
                   onPress={handleBumpOneStep}
-                  disabled={hasUnacknowledgedNotices}
+                  disabled={acknowledgmentMode === "block-advance" && hasUnacknowledgedNotices}
                   style={{
                     flex: 1,
                     height: s(32),
                     borderRadius: s(8),
                     alignItems: "center",
                     justifyContent: "center",
-                    backgroundColor: hasUnacknowledgedNotices
-                      ? "#9CA3AF"
-                      : colors.teal,
-                    opacity: hasUnacknowledgedNotices ? 0.5 : 1,
+                    backgroundColor:
+                      hasUnacknowledgedNotices && acknowledgmentMode === "block-advance"
+                        ? "#9CA3AF"
+                        : colors.teal,
+                    opacity:
+                      hasUnacknowledgedNotices && acknowledgmentMode === "block-advance"
+                        ? 0.5
+                        : 1,
                   }}
                 >
                   <Text style={{ color: "#FFFFFF", fontSize: s(11), fontWeight: "700" }}>
@@ -1385,8 +1429,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             )}
           </View>
 
-          {/* Acknowledge required banner */}
-          {hasUnacknowledgedNotices && (
+          {/* Acknowledge required banner — only shown in block-advance mode */}
+          {hasUnacknowledgedNotices && acknowledgmentMode === "block-advance" && (
             <View
               style={{
                 backgroundColor: "#FEF2F2",
@@ -1401,6 +1445,26 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             >
               <Text style={{ fontSize: s(9), color: "#DC2626", fontWeight: "700", letterSpacing: 0.4 }}>
                 ACK REQUIRED — tap voided/refunded items before advancing
+              </Text>
+            </View>
+          )}
+
+          {/* Auto-acknowledge hint banner — shown in ack-on-advance mode */}
+          {hasUnacknowledgedNotices && acknowledgmentMode === "ack-on-advance" && (
+            <View
+              style={{
+                backgroundColor: "#FFFBEB",
+                borderTopWidth: 1,
+                borderTopColor: "#FDE68A",
+                paddingHorizontal: s(10),
+                paddingVertical: s(5),
+                flexDirection: "row",
+                alignItems: "center",
+                gap: s(5),
+              }}
+            >
+              <Text style={{ fontSize: s(9), color: "#92400E", fontWeight: "700", letterSpacing: 0.4 }}>
+                Void/refund items will be auto-acknowledged on bump
               </Text>
             </View>
           )}
@@ -2400,6 +2464,27 @@ const KitchenDisplayScreen = () => {
       }
 
       if (isForceDoneAction) {
+        // In ack-on-advance mode: pre-acknowledge all unacknowledged notices
+        // so bulkMarkTicketsDone doesn't skip those tickets.
+        const acknowledgmentMode =
+          useLocationConfigStore.getState().config.kds.acknowledgmentMode ??
+          "block-advance";
+        if (acknowledgmentMode === "ack-on-advance") {
+          const ticketsById = useKDSStore.getState()._ticketsById;
+          for (const tid of ticketIdsToAdvance) {
+            const ticket = ticketsById[tid];
+            if (!ticket) continue;
+            for (const item of ticket.items) {
+              if (
+                (item.is_voided || item.refunded_quantity) &&
+                !item.acknowledged
+              ) {
+                acknowledgeNoticeItem(tid, item.id);
+              }
+            }
+          }
+        }
+
         const { done, skippedNotice } = bulkMarkTicketsDone(ticketIdsToAdvance);
         if (skippedNotice > 0) {
           toast.show({
@@ -2430,6 +2515,7 @@ const KitchenDisplayScreen = () => {
       activeFilteredTickets,
       bulkMarkTicketsDone,
       bulkAdvanceTickets,
+      acknowledgeNoticeItem,
       locationId,
       toast,
       router,

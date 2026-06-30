@@ -49,6 +49,10 @@ export interface KdsConfig {
   newOrderPosition: 'left' | 'right'
   servedOrderSort: 'newest-first' | 'oldest-first'
   ticketTapMode: 'double-tap' | 'single-select'
+  /** When "block-advance" (default), tickets with unacknowledged void/refund
+   *  items cannot be bumped. When "ack-on-advance", bumping a ticket
+   *  auto-acknowledges all unacknowledged items and then advances. */
+  acknowledgmentMode: 'block-advance' | 'ack-on-advance'
 }
 
 export interface PrintingConfig {
@@ -227,6 +231,7 @@ export const DEFAULT_KDS_CONFIG: KdsConfig = {
   newOrderPosition: 'right',
   servedOrderSort: 'newest-first',
   ticketTapMode: 'double-tap',
+  acknowledgmentMode: 'block-advance',
 }
 
 export const DEFAULT_PRINTING_CONFIG: PrintingConfig = {
