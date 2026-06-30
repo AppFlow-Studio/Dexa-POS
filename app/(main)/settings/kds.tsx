@@ -5,7 +5,6 @@ import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { KdsConfig } from "@/types/locationConfig";
 import { Minus, Plus } from "lucide-react-native";
-import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Switch } from "~/components/ui/switch";
 
@@ -61,10 +60,20 @@ function ToggleRow({
       }}
     >
       <View style={{ flex: 1, marginRight: s(10) }}>
-        <Text style={{ fontSize: s(13), color: colors.heading, marginBottom: subtitle ? s(2) : 0 }}>
+        <Text
+          style={{
+            fontSize: s(13),
+            color: colors.heading,
+            marginBottom: subtitle ? s(2) : 0,
+          }}
+        >
           {label}
         </Text>
-        {subtitle && <Text style={{ fontSize: s(11), color: colors.muted }}>{subtitle}</Text>}
+        {subtitle && (
+          <Text style={{ fontSize: s(11), color: colors.muted }}>
+            {subtitle}
+          </Text>
+        )}
       </View>
       <Switch checked={value} onCheckedChange={onToggle} />
     </View>
@@ -100,22 +109,54 @@ function StepperRow({
         marginBottom: s(4),
       }}
     >
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <Text style={{ fontSize: s(12), color: colors.label, fontWeight: "500" }}>{label}</Text>
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <Text
+          style={{ fontSize: s(12), color: colors.label, fontWeight: "500" }}
+        >
+          {label}
+        </Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
           <TouchableOpacity
             onPress={() => onChange(Math.max(min, value - 1))}
-            style={{ backgroundColor: colors.panel, width: s(28), height: s(28), borderRadius: s(6), alignItems: "center", justifyContent: "center" }}
+            style={{
+              backgroundColor: colors.panel,
+              width: s(28),
+              height: s(28),
+              borderRadius: s(6),
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             <Minus size={s(12)} color={colors.heading} />
           </TouchableOpacity>
-          <Text style={{ fontSize: s(12), fontWeight: "700", color: colors.teal, minWidth: s(40), textAlign: "center" }}>
+          <Text
+            style={{
+              fontSize: s(12),
+              fontWeight: "700",
+              color: colors.teal,
+              minWidth: s(40),
+              textAlign: "center",
+            }}
+          >
             {value}
             {suffix ?? ""}
           </Text>
           <TouchableOpacity
             onPress={() => onChange(Math.min(max, value + 1))}
-            style={{ backgroundColor: colors.panel, width: s(28), height: s(28), borderRadius: s(6), alignItems: "center", justifyContent: "center" }}
+            style={{
+              backgroundColor: colors.panel,
+              width: s(28),
+              height: s(28),
+              borderRadius: s(6),
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             <Plus size={s(12)} color={colors.heading} />
           </TouchableOpacity>
@@ -154,11 +195,23 @@ function OptionCards<T extends string>({
               backgroundColor: isSelected ? colors.teal + "15" : colors.panel,
             }}
           >
-            <Text style={{ fontSize: s(12), fontWeight: "700", color: isSelected ? colors.teal : colors.heading }}>
+            <Text
+              style={{
+                fontSize: s(12),
+                fontWeight: "700",
+                color: isSelected ? colors.teal : colors.heading,
+              }}
+            >
               {opt.label}
             </Text>
             {opt.desc && (
-              <Text style={{ fontSize: s(10), marginTop: s(2), color: isSelected ? colors.teal + "CC" : colors.muted }}>
+              <Text
+                style={{
+                  fontSize: s(10),
+                  marginTop: s(2),
+                  color: isSelected ? colors.teal + "CC" : colors.muted,
+                }}
+              >
                 {opt.desc}
               </Text>
             )}
@@ -173,7 +226,10 @@ function OptionCards<T extends string>({
 // SCREEN
 // ---------------------------------------------------------------------------
 
-const MODIFIER_GROUP_OPTIONS: { value: KdsConfig["displayModifierGroupName"]; label: string }[] = [
+const MODIFIER_GROUP_OPTIONS: {
+  value: KdsConfig["displayModifierGroupName"];
+  label: string;
+}[] = [
   { value: "for_group_priced", label: "Priced" },
   { value: "always", label: "Always" },
   { value: "never", label: "Never" },
@@ -197,34 +253,77 @@ const KdsSettingsScreen = () => {
       ...selectedStore,
       kds_workflow_mode: mode,
     });
-    await supabase.from("locations").update({ kds_workflow_mode: mode }).eq("id", selectedStore.id);
+    await supabase
+      .from("locations")
+      .update({ kds_workflow_mode: mode })
+      .eq("id", selectedStore.id);
     if (mode === "2-step") {
-      await supabase.rpc("migrate_pending_to_preparing", { p_location_id: selectedStore.id });
+      await supabase.rpc("migrate_pending_to_preparing", {
+        p_location_id: selectedStore.id,
+      });
     }
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: s(14), paddingVertical: s(10) }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.screen,
+        paddingHorizontal: s(14),
+        paddingVertical: s(10),
+      }}
+    >
       {/* Page Header */}
       <View style={{ marginBottom: s(2) }}>
-        <Text style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}>Kitchen Display (KDS)</Text>
+        <Text
+          style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}
+        >
+          Kitchen Display (KDS)
+        </Text>
         <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
-          Configure how kitchen tickets flow, look, and behave on the KDS screen.
+          Configure how kitchen tickets flow, look, and behave on the KDS
+          screen.
         </Text>
       </View>
 
-      <View style={{ height: 1, backgroundColor: colors.border, marginVertical: s(10) }} />
+      <View
+        style={{
+          height: 1,
+          backgroundColor: colors.border,
+          marginVertical: s(10),
+        }}
+      />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: s(24) }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: s(24) }}
+      >
         {/* ── Ticket Interaction ───────────────────────────────────── */}
         <SectionHeader title="Ticket Interaction" />
-        <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(8), paddingHorizontal: s(2) }}>
-          How a cook acts on a ticket. Double-tap bumps directly; single-select reveals Bump / Rush / Prioritize in the KDS header for the chosen ticket.
+        <Text
+          style={{
+            fontSize: s(11),
+            color: colors.muted,
+            marginBottom: s(8),
+            paddingHorizontal: s(2),
+          }}
+        >
+          How a cook acts on a ticket. Double-tap bumps directly; single-select
+          reveals Bump / Rush / Prioritize in the KDS header for the chosen
+          ticket.
         </Text>
         <OptionCards
           options={[
-            { value: "double-tap", label: "Double-Tap", desc: "Double-tap a ticket to bump it" },
-            { value: "single-select", label: "Single-Select", desc: "Tap to select, act from header" },
+            {
+              value: "double-tap",
+              label: "Double-Tap",
+              desc: "Double-tap a ticket to bump it",
+            },
+            {
+              value: "single-select",
+              label: "Single-Select",
+              desc: "Tap to select, act from header",
+            },
           ]}
           value={tapMode}
           onChange={(v) => updateConfig("kds", { ticketTapMode: v })}
@@ -232,13 +331,29 @@ const KdsSettingsScreen = () => {
 
         {/* ── Acknowledgment Mode ──────────────────────────────────── */}
         <SectionHeader title="Void / Refund Acknowledgment" />
-        <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(8), paddingHorizontal: s(2) }}>
-          How the KDS handles tickets with unacknowledged voided or refunded items.
+        <Text
+          style={{
+            fontSize: s(11),
+            color: colors.muted,
+            marginBottom: s(8),
+            paddingHorizontal: s(2),
+          }}
+        >
+          How the KDS handles tickets with unacknowledged voided or refunded
+          items.
         </Text>
         <OptionCards
           options={[
-            { value: "block-advance", label: "Block Advance", desc: "Cook must tap each item to acknowledge before bumping" },
-            { value: "ack-on-advance", label: "Auto-Ack on Bump", desc: "Bumping auto-acknowledges all & advances the ticket" },
+            {
+              value: "block-advance",
+              label: "Block Advance",
+              desc: "Cook must tap each item to acknowledge before bumping",
+            },
+            {
+              value: "ack-on-advance",
+              label: "Auto-Ack on Bump",
+              desc: "Bumping auto-acknowledges all & advances the ticket",
+            },
           ]}
           value={kdsConfig.acknowledgmentMode ?? "block-advance"}
           onChange={(v) => updateConfig("kds", { acknowledgmentMode: v })}
@@ -246,12 +361,24 @@ const KdsSettingsScreen = () => {
 
         {/* ── Workflow Mode ────────────────────────────────────────── */}
         <SectionHeader title="Workflow Mode" />
-        <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(8), paddingHorizontal: s(2) }}>
-          3-Step requires cooks to acknowledge orders before cooking. 2-Step skips the Pending stage.
+        <Text
+          style={{
+            fontSize: s(11),
+            color: colors.muted,
+            marginBottom: s(8),
+            paddingHorizontal: s(2),
+          }}
+        >
+          3-Step requires cooks to acknowledge orders before cooking. 2-Step
+          skips the Pending stage.
         </Text>
         <OptionCards
           options={[
-            { value: "3-step", label: "3-Step", desc: "Pending → Cooking → Served" },
+            {
+              value: "3-step",
+              label: "3-Step",
+              desc: "Pending → Cooking → Served",
+            },
             { value: "2-step", label: "2-Step", desc: "Cooking → Served" },
           ]}
           value={workflowMode}
@@ -274,7 +401,9 @@ const KdsSettingsScreen = () => {
                 min={1}
                 max={30}
                 suffix=" min"
-                onChange={(v) => updateConfig("kds", { autoFireDelayMinutes: v })}
+                onChange={(v) =>
+                  updateConfig("kds", { autoFireDelayMinutes: v })
+                }
               />
             )}
           </>
@@ -283,13 +412,28 @@ const KdsSettingsScreen = () => {
         {/* ── Layout ───────────────────────────────────────────────── */}
         <SectionHeader title="Layout" />
         <View style={{ marginBottom: s(8) }}>
-          <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(6), paddingHorizontal: s(2) }}>
+          <Text
+            style={{
+              fontSize: s(11),
+              color: colors.muted,
+              marginBottom: s(6),
+              paddingHorizontal: s(2),
+            }}
+          >
             Served Tickets Sort
           </Text>
           <OptionCards
             options={[
-              { value: "newest-first", label: "Newest First", desc: "Most recently served on top" },
-              { value: "oldest-first", label: "Oldest First", desc: "Earliest served on top" },
+              {
+                value: "newest-first",
+                label: "Newest First",
+                desc: "Most recently served on top",
+              },
+              {
+                value: "oldest-first",
+                label: "Oldest First",
+                desc: "Earliest served on top",
+              },
             ]}
             value={kdsConfig.servedOrderSort ?? "newest-first"}
             onChange={(v) => updateConfig("kds", { servedOrderSort: v })}
@@ -327,13 +471,22 @@ const KdsSettingsScreen = () => {
         {/* ── Item Formatting ──────────────────────────────────────── */}
         <SectionHeader title="Item Formatting" />
         <View style={{ marginBottom: s(8) }}>
-          <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(6), paddingHorizontal: s(2) }}>
+          <Text
+            style={{
+              fontSize: s(11),
+              color: colors.muted,
+              marginBottom: s(6),
+              paddingHorizontal: s(2),
+            }}
+          >
             Show Modifier Group Name
           </Text>
           <OptionCards
             options={MODIFIER_GROUP_OPTIONS}
             value={kdsConfig.displayModifierGroupName ?? "for_group_priced"}
-            onChange={(v) => updateConfig("kds", { displayModifierGroupName: v })}
+            onChange={(v) =>
+              updateConfig("kds", { displayModifierGroupName: v })
+            }
           />
         </View>
         <ToggleRow
@@ -351,7 +504,9 @@ const KdsSettingsScreen = () => {
           label="Aggregate to Existing Tickets"
           subtitle="Single Ticket Mode"
           value={kdsConfig.aggregateToExistingTickets ?? false}
-          onToggle={(v) => updateConfig("kds", { aggregateToExistingTickets: v })}
+          onToggle={(v) =>
+            updateConfig("kds", { aggregateToExistingTickets: v })
+          }
         />
 
         {/* ── Ticket Color Thresholds ──────────────────────────────── */}

@@ -4,10 +4,10 @@ import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import {
-  getBucketedElapsed,
-  getUrgencyLevel,
-  useKDSTimer,
-  type UrgencyThresholds,
+    getBucketedElapsed,
+    getUrgencyLevel,
+    useKDSTimer,
+    type UrgencyThresholds,
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
@@ -16,10 +16,10 @@ import { replaceRoute } from "@/lib/rootNavigation";
 import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { clearStationData } from "@/services/cacheService";
-import { refreshLocationConfig } from "@/services/locationConfigSync";
 import KDSSoundService, {
-  DEFAULT_SOUND_CONFIG,
+    DEFAULT_SOUND_CONFIG,
 } from "@/services/kds/kdsSoundService";
+import { refreshLocationConfig } from "@/services/locationConfigSync";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
@@ -27,33 +27,33 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import { useRouter } from "expo-router";
 import {
-  ArrowUpToLine,
-  CheckSquare,
-  Flame,
-  RotateCcw,
-  Settings,
-  ShoppingBag,
-  Square,
-  Star,
-  Truck,
-  UtensilsCrossed,
+    ArrowUpToLine,
+    CheckSquare,
+    Flame,
+    RotateCcw,
+    Settings,
+    ShoppingBag,
+    Square,
+    Star,
+    Truck,
+    UtensilsCrossed,
 } from "lucide-react-native";
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  Dimensions,
-  GestureResponderEvent,
-  Pressable,
-  Animated as RNAnimated,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    GestureResponderEvent,
+    Pressable,
+    Animated as RNAnimated,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // ─── Status Tab Config ────────────────────────────────────────────
@@ -222,7 +222,11 @@ const KDSSkeletonCard = () => {
       </View>
       <View style={{ padding: s(12), flex: 1 }}>
         <View
-          style={{ flexDirection: "row", alignItems: "center", marginBottom: s(12) }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: s(12),
+          }}
         >
           <SkeletonBar
             width={24}
@@ -232,7 +236,11 @@ const KDSSkeletonCard = () => {
           <SkeletonBar width={120} height={16} />
         </View>
         <View
-          style={{ flexDirection: "row", alignItems: "center", marginBottom: s(12) }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: s(12),
+          }}
         >
           <SkeletonBar
             width={24}
@@ -435,10 +443,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const hasUrgencyColor = urgencyLevel > 0;
 
     const isRushPending = useKDSStore(
-      useCallback(
-        (s) => s.isRushPending(ticket.ticket_id),
-        [ticket.ticket_id],
-      ),
+      useCallback((s) => s.isRushPending(ticket.ticket_id), [ticket.ticket_id]),
     );
 
     const ticketItems = getTicketItems(ticket);
@@ -757,9 +762,17 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             borderRightWidth: 1,
             borderLeftWidth: hasUnacknowledgedNotices || isDineIn ? s(4) : 1,
             borderTopColor: hasUnacknowledgedNotices ? "#FECACA" : borderColor,
-            borderBottomColor: hasUnacknowledgedNotices ? "#FECACA" : borderColor,
-            borderRightColor: hasUnacknowledgedNotices ? "#FECACA" : borderColor,
-            borderLeftColor: hasUnacknowledgedNotices ? "#DC2626" : isDineIn ? colors.teal : borderColor,
+            borderBottomColor: hasUnacknowledgedNotices
+              ? "#FECACA"
+              : borderColor,
+            borderRightColor: hasUnacknowledgedNotices
+              ? "#FECACA"
+              : borderColor,
+            borderLeftColor: hasUnacknowledgedNotices
+              ? "#DC2626"
+              : isDineIn
+                ? colors.teal
+                : borderColor,
             shadowColor: "#000",
             shadowOffset: { width: 0, height: s(2) },
             shadowOpacity: 0.08,
@@ -778,7 +791,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               }}
             >
               {isSelected ? (
-                <CheckSquare size={s(20)} color={colors.info} fill={colors.info} />
+                <CheckSquare
+                  size={s(20)}
+                  color={colors.info}
+                  fill={colors.info}
+                />
               ) : (
                 <Square size={s(20)} color={colors.label} />
               )}
@@ -803,10 +820,21 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               // Focused in single-select mode: header is replaced by quick actions.
               // Height matches the original two-row layout (order number + order type)
               // so the card doesn't jump when focusing/unfocusing.
-              <View style={{ flex: 1, height: s(44), flexDirection: "row", alignItems: "center", gap: s(6) }}>
+              <View
+                style={{
+                  flex: 1,
+                  height: s(44),
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(6),
+                }}
+              >
                 <TouchableOpacity
                   onPress={handleBumpOneStep}
-                  disabled={acknowledgmentMode === "block-advance" && hasUnacknowledgedNotices}
+                  disabled={
+                    acknowledgmentMode === "block-advance" &&
+                    hasUnacknowledgedNotices
+                  }
                   style={{
                     flex: 1,
                     height: s(32),
@@ -814,16 +842,24 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor:
-                      hasUnacknowledgedNotices && acknowledgmentMode === "block-advance"
+                      hasUnacknowledgedNotices &&
+                      acknowledgmentMode === "block-advance"
                         ? "#9CA3AF"
                         : colors.teal,
                     opacity:
-                      hasUnacknowledgedNotices && acknowledgmentMode === "block-advance"
+                      hasUnacknowledgedNotices &&
+                      acknowledgmentMode === "block-advance"
                         ? 0.5
                         : 1,
                   }}
                 >
-                  <Text style={{ color: "#FFFFFF", fontSize: s(11), fontWeight: "700" }}>
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: s(11),
+                      fontWeight: "700",
+                    }}
+                  >
                     Bump
                   </Text>
                 </TouchableOpacity>
@@ -836,11 +872,19 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                     borderRadius: s(8),
                     alignItems: "center",
                     justifyContent: "center",
-                    backgroundColor: isRushPending ? colors.muted : colors.warning,
+                    backgroundColor: isRushPending
+                      ? colors.muted
+                      : colors.warning,
                     opacity: isRushPending ? 0.6 : 1,
                   }}
                 >
-                  <Text style={{ color: "#FFFFFF", fontSize: s(11), fontWeight: "700" }}>
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: s(11),
+                      fontWeight: "700",
+                    }}
+                  >
                     {isRushPending ? "..." : hasRush ? "Unrush" : "Rush"}
                   </Text>
                 </TouchableOpacity>
@@ -855,7 +899,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                     backgroundColor: colors.info,
                   }}
                 >
-                  <Text style={{ color: "#FFFFFF", fontSize: s(11), fontWeight: "700" }}>
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: s(11),
+                      fontWeight: "700",
+                    }}
+                  >
                     {ticket.prioritized ? "Unstar" : "Prioritize"}
                   </Text>
                 </TouchableOpacity>
@@ -870,147 +920,165 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                     backgroundColor: colors.danger,
                   }}
                 >
-                  <Text style={{ color: "#FFFFFF", fontSize: s(14), fontWeight: "700" }}>
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: s(14),
+                      fontWeight: "700",
+                    }}
+                  >
                     ✕
                   </Text>
                 </TouchableOpacity>
               </View>
             ) : (
-            <>
-            <View style={{ flex: 1, gap: s(4) }}>
-              {/* Order Number */}
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
-              >
-                <Text
-                  style={{
-                    color: headerPrimaryTextColor,
-                    fontSize: s(16),
-                    fontWeight: "700",
-                  }}
-                  numberOfLines={1}
-                >
-                  {ticket.display_number ||
-                    ticket.order_number?.slice(-4) ||
-                    "----"}
-                </Text>
-                {ticket.prioritized && (
-                  <Star
-                    size={s(16)}
-                    color={colors.warning}
-                    fill={colors.warning}
-                  />
-                )}
-                <DeliveryPlatformBadge
-                  deliveryPlatform={ticket.delivery_platform}
-                  orderSource={ticket.order_source}
-                  size="kds"
-                />
-              </View>
-
-              {/* Order Type */}
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: s(4) }}
-              >
-                {ticket.order_type?.toLowerCase() === "delivery" ? (
+              <>
+                <View style={{ flex: 1, gap: s(4) }}>
+                  {/* Order Number */}
                   <View
                     style={{
-                      width: s(6),
-                      height: s(6),
-                      borderRadius: s(3),
-                      backgroundColor: headerDotColor ?? "#EF4444",
-                    }}
-                  />
-                ) : ticket.order_type?.toLowerCase() === "takeout" ||
-                  ticket.order_type?.toLowerCase() === "to_go" ? (
-                  <View
-                    style={{
-                      width: s(6),
-                      height: s(6),
-                      borderRadius: s(3),
-                      backgroundColor: headerDotColor ?? "#3B82F6",
-                    }}
-                  />
-                ) : (
-                  <View
-                    style={{
-                      width: s(6),
-                      height: s(6),
-                      borderRadius: s(3),
-                      backgroundColor: headerDotColor ?? "#22C55E",
-                    }}
-                  />
-                )}
-                <Text
-                  style={{
-                    color: headerSecondaryTextColor,
-                    fontSize: s(11),
-                    fontWeight: "600",
-                  }}
-                >
-                  {orderTypeLabel}
-                </Text>
-              </View>
-            </View>
-
-            {/* Timer + Badges column (right side) */}
-            <View style={{ alignItems: "flex-end", gap: s(4) }}>
-              <KDSTicketTimer
-                startTimeEpoch={ticket.start_time_epoch}
-                textColor={headerPrimaryTextColor}
-                doneTimeEpoch={ticket.status === "ready" ? ticket.ready_time_epoch : undefined}
-              />
-              {hasRush && (
-                <View
-                  style={{
-                    backgroundColor: "#FEF08A",
-                    borderWidth: 1,
-                    borderColor: colors.warning + "50",
-                    paddingHorizontal: s(8),
-                    paddingVertical: s(3),
-                    borderRadius: s(12),
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: s(4),
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: "#78350F",
-                      fontSize: s(10),
-                      fontWeight: "800",
-                      letterSpacing: 0.5,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(6),
                     }}
                   >
-                    RUSHED
-                  </Text>
-                </View>
-              )}
-              {hasRefire && (
-                <View
-                  style={{
-                    backgroundColor: "#FEF3C7",
-                    borderWidth: 1,
-                    borderColor: "#F59E0B66",
-                    paddingHorizontal: s(8),
-                    paddingVertical: s(3),
-                    borderRadius: s(12),
-                  }}
-                >
-                  <Text
+                    <Text
+                      style={{
+                        color: headerPrimaryTextColor,
+                        fontSize: s(16),
+                        fontWeight: "700",
+                      }}
+                      numberOfLines={1}
+                    >
+                      {ticket.display_number ||
+                        ticket.order_number?.slice(-4) ||
+                        "----"}
+                    </Text>
+                    {ticket.prioritized && (
+                      <Star
+                        size={s(16)}
+                        color={colors.warning}
+                        fill={colors.warning}
+                      />
+                    )}
+                    <DeliveryPlatformBadge
+                      deliveryPlatform={ticket.delivery_platform}
+                      orderSource={ticket.order_source}
+                      size="kds"
+                    />
+                  </View>
+
+                  {/* Order Type */}
+                  <View
                     style={{
-                      color: "#92400E",
-                      fontSize: s(10),
-                      fontWeight: "800",
-                      letterSpacing: 0.5,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(4),
                     }}
                   >
-                    RECALLED
-                  </Text>
+                    {ticket.order_type?.toLowerCase() === "delivery" ? (
+                      <View
+                        style={{
+                          width: s(6),
+                          height: s(6),
+                          borderRadius: s(3),
+                          backgroundColor: headerDotColor ?? "#EF4444",
+                        }}
+                      />
+                    ) : ticket.order_type?.toLowerCase() === "takeout" ||
+                      ticket.order_type?.toLowerCase() === "to_go" ? (
+                      <View
+                        style={{
+                          width: s(6),
+                          height: s(6),
+                          borderRadius: s(3),
+                          backgroundColor: headerDotColor ?? "#3B82F6",
+                        }}
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          width: s(6),
+                          height: s(6),
+                          borderRadius: s(3),
+                          backgroundColor: headerDotColor ?? "#22C55E",
+                        }}
+                      />
+                    )}
+                    <Text
+                      style={{
+                        color: headerSecondaryTextColor,
+                        fontSize: s(11),
+                        fontWeight: "600",
+                      }}
+                    >
+                      {orderTypeLabel}
+                    </Text>
+                  </View>
                 </View>
-              )}
-            </View>
-            </>
+
+                {/* Timer + Badges column (right side) */}
+                <View style={{ alignItems: "flex-end", gap: s(4) }}>
+                  <KDSTicketTimer
+                    startTimeEpoch={ticket.start_time_epoch}
+                    textColor={headerPrimaryTextColor}
+                    doneTimeEpoch={
+                      ticket.status === "ready"
+                        ? ticket.ready_time_epoch
+                        : undefined
+                    }
+                  />
+                  {hasRush && (
+                    <View
+                      style={{
+                        backgroundColor: "#FEF08A",
+                        borderWidth: 1,
+                        borderColor: colors.warning + "50",
+                        paddingHorizontal: s(8),
+                        paddingVertical: s(3),
+                        borderRadius: s(12),
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: s(4),
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: "#78350F",
+                          fontSize: s(10),
+                          fontWeight: "800",
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        RUSHED
+                      </Text>
+                    </View>
+                  )}
+                  {hasRefire && (
+                    <View
+                      style={{
+                        backgroundColor: "#FEF3C7",
+                        borderWidth: 1,
+                        borderColor: "#F59E0B66",
+                        paddingHorizontal: s(8),
+                        paddingVertical: s(3),
+                        borderRadius: s(12),
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: "#92400E",
+                          fontSize: s(10),
+                          fontWeight: "800",
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        RECALLED
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </>
             )}
           </View>
 
@@ -1091,7 +1159,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 const isAcknowledged = isInactive && Boolean(item.acknowledged);
                 const needsAck = isInactive && !isAcknowledged;
                 const shouldStrike = isItemDone || isAcknowledged;
-                const itemOpacity = isAcknowledged ? 0.25 : isItemDone ? 0.5 : 1;
+                const itemOpacity = isAcknowledged
+                  ? 0.25
+                  : isItemDone
+                    ? 0.5
+                    : 1;
 
                 // Quantity badge color — unacknowledged notices stay vivid
                 const qtyBg = isVoided
@@ -1115,7 +1187,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   <Pressable
                     key={rowKey}
                     onPress={() => {
-                      if (isInactive && !item.acknowledged && onAcknowledgeNotice) {
+                      if (
+                        isInactive &&
+                        !item.acknowledged &&
+                        onAcknowledgeNotice
+                      ) {
                         onAcknowledgeNotice(ticket.ticket_id, item.id);
                         return;
                       }
@@ -1195,7 +1271,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                             VOIDED
                           </Text>
                           {needsAck && (
-                            <Text style={{ color: "#DC2626", fontSize: s(8), fontWeight: "600" }}>
+                            <Text
+                              style={{
+                                color: "#DC2626",
+                                fontSize: s(8),
+                                fontWeight: "600",
+                              }}
+                            >
                               · TAP ✓
                             </Text>
                           )}
@@ -1225,7 +1307,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                             REFUNDED
                           </Text>
                           {needsAck && (
-                            <Text style={{ color: "#D97706", fontSize: s(8), fontWeight: "600" }}>
+                            <Text
+                              style={{
+                                color: "#D97706",
+                                fontSize: s(8),
+                                fontWeight: "600",
+                              }}
+                            >
                               · TAP ✓
                             </Text>
                           )}
@@ -1430,44 +1518,60 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           </View>
 
           {/* Acknowledge required banner — only shown in block-advance mode */}
-          {hasUnacknowledgedNotices && acknowledgmentMode === "block-advance" && (
-            <View
-              style={{
-                backgroundColor: "#FEF2F2",
-                borderTopWidth: 1,
-                borderTopColor: "#FECACA",
-                paddingHorizontal: s(10),
-                paddingVertical: s(5),
-                flexDirection: "row",
-                alignItems: "center",
-                gap: s(5),
-              }}
-            >
-              <Text style={{ fontSize: s(9), color: "#DC2626", fontWeight: "700", letterSpacing: 0.4 }}>
-                ACK REQUIRED — tap voided/refunded items before advancing
-              </Text>
-            </View>
-          )}
+          {hasUnacknowledgedNotices &&
+            acknowledgmentMode === "block-advance" && (
+              <View
+                style={{
+                  backgroundColor: "#FEF2F2",
+                  borderTopWidth: 1,
+                  borderTopColor: "#FECACA",
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(5),
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(5),
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: s(9),
+                    color: "#DC2626",
+                    fontWeight: "700",
+                    letterSpacing: 0.4,
+                  }}
+                >
+                  ACK REQUIRED — tap voided/refunded items before advancing
+                </Text>
+              </View>
+            )}
 
           {/* Auto-acknowledge hint banner — shown in ack-on-advance mode */}
-          {hasUnacknowledgedNotices && acknowledgmentMode === "ack-on-advance" && (
-            <View
-              style={{
-                backgroundColor: "#FFFBEB",
-                borderTopWidth: 1,
-                borderTopColor: "#FDE68A",
-                paddingHorizontal: s(10),
-                paddingVertical: s(5),
-                flexDirection: "row",
-                alignItems: "center",
-                gap: s(5),
-              }}
-            >
-              <Text style={{ fontSize: s(9), color: "#92400E", fontWeight: "700", letterSpacing: 0.4 }}>
-                Void/refund items will be auto-acknowledged on bump
-              </Text>
-            </View>
-          )}
+          {hasUnacknowledgedNotices &&
+            acknowledgmentMode === "ack-on-advance" && (
+              <View
+                style={{
+                  backgroundColor: "#FFFBEB",
+                  borderTopWidth: 1,
+                  borderTopColor: "#FDE68A",
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(5),
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(5),
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: s(9),
+                    color: "#92400E",
+                    fontWeight: "700",
+                    letterSpacing: 0.4,
+                  }}
+                >
+                  Void/refund items will be auto-acknowledged on bump
+                </Text>
+              </View>
+            )}
 
           {/* Progress bar at bottom */}
           <View
@@ -1617,7 +1721,14 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
           >
             {isFocused ? (
               // Focused: show X button + prominent Recall button.
-              <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: s(6) }}>
+              <View
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(6),
+                }}
+              >
                 <TouchableOpacity
                   onPress={() => onRecall(ticket.ticket_id)}
                   style={{
@@ -1632,7 +1743,13 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                   }}
                 >
                   <RotateCcw size={s(16)} color="#FFFFFF" />
-                  <Text style={{ color: "#FFFFFF", fontSize: s(13), fontWeight: "700" }}>
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: s(13),
+                      fontWeight: "700",
+                    }}
+                  >
                     Recall
                   </Text>
                 </TouchableOpacity>
@@ -1647,59 +1764,87 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                     backgroundColor: colors.danger,
                   }}
                 >
-                  <Text style={{ color: "#FFFFFF", fontSize: s(18), fontWeight: "700" }}>
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: s(18),
+                      fontWeight: "700",
+                    }}
+                  >
                     ✕
                   </Text>
                 </TouchableOpacity>
               </View>
             ) : (
-            <>
-            <View style={{ flex: 1, gap: s(4) }}>
-              {/* Order Number */}
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
-              >
-                <Text
-                  style={{ color: "#6B7280", fontSize: s(16), fontWeight: "700" }}
-                  numberOfLines={1}
-                >
-                  #
-                  {ticket.display_number ||
-                    ticket.order_number?.slice(-4) ||
-                    "----"}
-                </Text>
-                <DeliveryPlatformBadge
-                  deliveryPlatform={ticket.delivery_platform}
-                  orderSource={ticket.order_source}
-                  size="kds"
-                />
-              </View>
+              <>
+                <View style={{ flex: 1, gap: s(4) }}>
+                  {/* Order Number */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(6),
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#6B7280",
+                        fontSize: s(16),
+                        fontWeight: "700",
+                      }}
+                      numberOfLines={1}
+                    >
+                      #
+                      {ticket.display_number ||
+                        ticket.order_number?.slice(-4) ||
+                        "----"}
+                    </Text>
+                    <DeliveryPlatformBadge
+                      deliveryPlatform={ticket.delivery_platform}
+                      orderSource={ticket.order_source}
+                      size="kds"
+                    />
+                  </View>
 
-              {/* Order Type */}
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: s(4) }}
-              >
-                <View
+                  {/* Order Type */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(4),
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: s(6),
+                        height: s(6),
+                        borderRadius: s(3),
+                        backgroundColor: "#D1D5DB",
+                      }}
+                    />
+                    <Text
+                      style={{
+                        color: "#9CA3AF",
+                        fontSize: s(11),
+                        fontWeight: "600",
+                      }}
+                    >
+                      {orderTypeLabel}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Timer */}
+                <Text
                   style={{
-                    width: s(6),
-                    height: s(6),
-                    borderRadius: s(3),
-                    backgroundColor: "#D1D5DB",
+                    color: "#9CA3AF",
+                    fontSize: s(16),
+                    fontWeight: "800",
                   }}
-                />
-                <Text
-                  style={{ color: "#9CA3AF", fontSize: s(11), fontWeight: "600" }}
                 >
-                  {orderTypeLabel}
+                  {timeElapsed}
                 </Text>
-              </View>
-            </View>
-
-            {/* Timer */}
-            <Text style={{ color: "#9CA3AF", fontSize: s(16), fontWeight: "800" }}>
-              {timeElapsed}
-            </Text>
-            </>
+              </>
             )}
           </View>
 
@@ -2237,13 +2382,7 @@ const KitchenDisplayScreen = () => {
     // readyTickets intentionally NOT a dep — read via getState() inside the
     // interval so a bucket change doesn't re-arm (and reset) the 30s timer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    autoBumpMinutes,
-    isReady,
-    advanceTicketStatus,
-    isTicketRecalled,
-    toast,
-  ]);
+  }, [autoBumpMinutes, isReady, advanceTicketStatus, isTicketRecalled, toast]);
 
   // ─── Sound notifications on new orders ────────────────────────
   const soundServiceRef = useRef<KDSSoundService | null>(null);
@@ -2625,7 +2764,13 @@ const KitchenDisplayScreen = () => {
         },
       });
     },
-    [advanceTicketStatus, recallTicket, recallDoneTicket, toast, setFocusedTicketId],
+    [
+      advanceTicketStatus,
+      recallTicket,
+      recallDoneTicket,
+      toast,
+      setFocusedTicketId,
+    ],
   );
 
   // ─── Single-Select Mode (header action bar) ─────────────────────
@@ -2754,7 +2899,7 @@ const KitchenDisplayScreen = () => {
           // "Served" tab (ready) — used in both 2-step and 3-step modes
           if (activeStatus === "ready") {
             return kdsServedOrderSort === "newest-first"
-              ? bTs - aTs  // newest first (descending)
+              ? bTs - aTs // newest first (descending)
               : aTs - bTs; // oldest first (ascending)
           }
           return aTs - bTs; // default: oldest first
@@ -2816,7 +2961,9 @@ const KitchenDisplayScreen = () => {
           }}
         >
           {/* LEFT: Status tabs */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
+          >
             {visibleStatusTabs.map((tab) => {
               const isActive = activeStatus === tab.key;
               return (
@@ -2884,7 +3031,9 @@ const KitchenDisplayScreen = () => {
           </View>
 
           {/* RIGHT: Order types + display badge + station/time */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
+          >
             {/* Order type filters */}
             {TYPE_TABS.map((tab) => {
               const isActive = activeType === tab.key;
@@ -3014,7 +3163,11 @@ const KitchenDisplayScreen = () => {
 
             {/* Divider */}
             <View
-              style={{ width: 1, height: s(20), backgroundColor: colors.border }}
+              style={{
+                width: 1,
+                height: s(20),
+                backgroundColor: colors.border,
+              }}
             />
 
             {/* Refresh Button — tap = fetch latest tickets + config.
@@ -3135,7 +3288,11 @@ const KitchenDisplayScreen = () => {
 
             {/* Divider */}
             <View
-              style={{ width: 1, height: s(20), backgroundColor: colors.border }}
+              style={{
+                width: 1,
+                height: s(20),
+                backgroundColor: colors.border,
+              }}
             />
 
             {/* Station Name + EXPO tag | Time + Dot */}
@@ -3146,7 +3303,11 @@ const KitchenDisplayScreen = () => {
                 <TouchableOpacity
                   onPress={handleStationTripleTap}
                   activeOpacity={1}
-                  style={{ flexDirection: "row", alignItems: "center", gap: s(4) }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(4),
+                  }}
                 >
                   <Text
                     style={{
@@ -3174,7 +3335,11 @@ const KitchenDisplayScreen = () => {
                 <Text style={{ color: colors.muted, fontSize: s(12) }}>|</Text>
               )}
               <Text
-                style={{ color: colors.label, fontSize: s(12), fontWeight: "500" }}
+                style={{
+                  color: colors.label,
+                  fontSize: s(12),
+                  fontWeight: "500",
+                }}
               >
                 {currentTime}
               </Text>
@@ -3210,7 +3375,9 @@ const KitchenDisplayScreen = () => {
             justifyContent: "space-between",
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: s(12) }}>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: s(12) }}
+          >
             <Text style={{ color: colors.label, fontSize: s(13) }}>
               {selectionCount} selected
             </Text>
@@ -3226,7 +3393,11 @@ const KitchenDisplayScreen = () => {
               }}
             >
               <Text
-                style={{ color: colors.teal, fontSize: s(12), fontWeight: "600" }}
+                style={{
+                  color: colors.teal,
+                  fontSize: s(12),
+                  fontWeight: "600",
+                }}
               >
                 Select All
               </Text>
@@ -3243,13 +3414,19 @@ const KitchenDisplayScreen = () => {
               }}
             >
               <Text
-                style={{ color: colors.label, fontSize: s(12), fontWeight: "600" }}
+                style={{
+                  color: colors.label,
+                  fontSize: s(12),
+                  fontWeight: "600",
+                }}
               >
                 Clear
               </Text>
             </TouchableOpacity>
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}
+          >
             <TouchableOpacity
               onPress={() => handleBulkAction("selected")}
               disabled={selectionCount === 0}
@@ -3403,22 +3580,22 @@ const KitchenDisplayScreen = () => {
               if (focusedTicketId) setFocusedTicketId(null);
             }}
           >
-          <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-            {columnizedTickets.map((colTickets, col) => (
-              <View
-                key={`col-${activeStatus}-${col}`}
-                style={{ flex: 1, paddingHorizontal: s(2) }}
-              >
-                {colTickets.map((ticket) => (
-                  <View key={ticket.ticket_id}>
-                    {isDoneTab
-                      ? renderDoneTicketCard(ticket)
-                      : renderTicketCard(ticket)}
-                  </View>
-                ))}
-              </View>
-            ))}
-          </View>
+            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+              {columnizedTickets.map((colTickets, col) => (
+                <View
+                  key={`col-${activeStatus}-${col}`}
+                  style={{ flex: 1, paddingHorizontal: s(2) }}
+                >
+                  {colTickets.map((ticket) => (
+                    <View key={ticket.ticket_id}>
+                      {isDoneTab
+                        ? renderDoneTicketCard(ticket)
+                        : renderTicketCard(ticket)}
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </View>
           </Pressable>
         </ScrollView>
       )}
@@ -3532,7 +3709,11 @@ const KitchenDisplayScreen = () => {
                 </View>
 
                 <Text
-                  style={{ color: "#6B7280", fontSize: s(10), marginBottom: s(8) }}
+                  style={{
+                    color: "#6B7280",
+                    fontSize: s(10),
+                    marginBottom: s(8),
+                  }}
                   numberOfLines={1}
                 >
                   {getOrderTypeLabel(actionMenu.ticket.order_type)}
