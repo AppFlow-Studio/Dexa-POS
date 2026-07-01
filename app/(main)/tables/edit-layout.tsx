@@ -194,7 +194,9 @@ const LayoutEditorScreenContent = () => {
   const tables = storeTables;
   const tablesRef = useRef(tables);
   const isOpeningLayout =
-    !!layoutId && isLoading && (activeFloorPlanId !== layoutId || !tables.length);
+    !!layoutId &&
+    isLoading &&
+    (activeFloorPlanId !== layoutId || !tables.length);
 
   useEffect(() => {
     tablesRef.current = tables;
@@ -808,59 +810,59 @@ const LayoutEditorScreenContent = () => {
                   table={table}
                   layoutId={activeLayout?.id ?? layoutId ?? ""}
                   isEditMode={true}
-                isSelected={selectedTableIds.includes(table.id)}
-                onSelect={() => handleEditModeSelect(table.id)}
-                onPress={() => handleEditModeSelect(table.id)}
-                canvasScale={scale}
-                interactionMode="normal"
-              />
-            ))}
-          </Animated.View>
+                  isSelected={selectedTableIds.includes(table.id)}
+                  onSelect={() => handleEditModeSelect(table.id)}
+                  onPress={() => handleEditModeSelect(table.id)}
+                  canvasScale={scale}
+                  interactionMode="normal"
+                />
+              ))}
+            </Animated.View>
 
-          {/* ── Zoom Controls ── */}
-          <View
-            style={{
-              position: "absolute",
-              bottom: s(14),
-              right: s(14),
-              gap: s(6),
-              zIndex: 20,
-            }}
-          >
-            {[
-              {
-                icon: <Plus size={s(15)} color={colors.label} />,
-                onPress: () => handleZoom("in"),
-              },
-              {
-                icon: <Minus size={s(15)} color={colors.label} />,
-                onPress: () => handleZoom("out"),
-              },
-              {
-                icon: <Maximize2 size={s(15)} color={colors.label} />,
-                onPress: recenterCanvas,
-              },
-            ].map((btn, i) => (
-              <TouchableOpacity
-                key={i}
-                onPress={btn.onPress}
-                style={{
-                  width: s(36),
-                  height: s(36),
-                  borderRadius: s(8),
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: colors.card,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                {btn.icon}
-              </TouchableOpacity>
-            ))}
+            {/* ── Zoom Controls ── */}
+            <View
+              style={{
+                position: "absolute",
+                bottom: s(14),
+                right: s(14),
+                gap: s(6),
+                zIndex: 20,
+              }}
+            >
+              {[
+                {
+                  icon: <Plus size={s(15)} color={colors.label} />,
+                  onPress: () => handleZoom("in"),
+                },
+                {
+                  icon: <Minus size={s(15)} color={colors.label} />,
+                  onPress: () => handleZoom("out"),
+                },
+                {
+                  icon: <Maximize2 size={s(15)} color={colors.label} />,
+                  onPress: recenterCanvas,
+                },
+              ].map((btn, i) => (
+                <TouchableOpacity
+                  key={i}
+                  onPress={btn.onPress}
+                  style={{
+                    width: s(36),
+                    height: s(36),
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.card,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  {btn.icon}
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        </View>
-      </GestureDetector>
+        </GestureDetector>
       )}
 
       <QuickSetupPanel
