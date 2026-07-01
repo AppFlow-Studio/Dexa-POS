@@ -7,7 +7,6 @@ import Sidebar from "@/components/tables/Sidebar";
 import TableContextSheet from "@/components/tables/TableContextSheet";
 import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
 import TableLayoutView from "@/components/tables/TableLayoutView";
-import TableOrderOverlay from "@/components/tables/TableOrderOverlay";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
@@ -21,18 +20,18 @@ import { useColorScheme } from "@/lib/useColorScheme";
 import { transferTableServer } from "@/services/serverAssignmentService";
 import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
 import {
-    PENDING_SEAT_ATTRIBUTION,
-    useEmployeeStore,
+  PENDING_SEAT_ATTRIBUTION,
+  useEmployeeStore,
 } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import {
-    registerPendingOrderCreation,
-    useOrderStore,
+  registerPendingOrderCreation,
+  useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import {
-    setReservationSupabaseClient,
-    useReservationStore,
+  setReservationSupabaseClient,
+  useReservationStore,
 } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
@@ -41,20 +40,20 @@ import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import { FloorPlanObject, Reservation } from "@/types/db-floor-plan-types";
 import { Href, useFocusEffect, useRouter } from "expo-router";
 import {
-    GitMerge,
-    HelpCircle,
-    Pencil,
-    Search,
-    Users,
-    X,
+  GitMerge,
+  HelpCircle,
+  Pencil,
+  Search,
+  Users,
+  X,
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    InteractionManager,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  InteractionManager,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 
@@ -115,7 +114,7 @@ const TablesScreen = () => {
   const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
   const getOrderByDbId = useOrderStore((s) => s.getOrderByDbId);
   const getOrder = useOrderStore((s) => s.getOrder);
-  const openTable = usePendingTableOverlay((s) => s.openTable);
+  // openTable removed — using router.push(`/tables/${id}`) instead
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
@@ -181,13 +180,14 @@ const TablesScreen = () => {
   }, [supabaseClient, location_id]);
 
   // Consume pending table overlay from waitlist seating flow
+  // Waitlist seating handoff: consume pending table ID and navigate directly.
   useFocusEffect(
     useCallback(() => {
       const pendingId = usePendingTableOverlay.getState().consume();
       if (pendingId) {
-        openTable(pendingId);
+        router.push(`/tables/${pendingId}` as Href);
       }
-    }, [openTable]),
+    }, [router]),
   );
 
   // Pause background timer ticks when screen loses focus
@@ -352,7 +352,7 @@ const TablesScreen = () => {
           setActiveOrder(existingOrder.id);
         }
         const prefetch = ensureOrderPrefetched(orderId);
-        openTable(tableId);
+        router.push(`/tables/${tableId}` as Href);
         // Background sync for fresh data if order wasn't cached
         if (!existingOrder) {
           prefetch
@@ -362,10 +362,10 @@ const TablesScreen = () => {
             .catch(() => {});
         }
       } else {
-        openTable(tableId);
+        router.push(`/tables/${tableId}` as Href);
       }
     },
-    [tables, getOrder, openTable, setActiveOrder],
+    [tables, getOrder, router, setActiveOrder],
   );
 
   const handleTransferServer = useCallback(
@@ -450,7 +450,7 @@ const TablesScreen = () => {
 
           // Show overlay immediately — no routing latency
           const prefetch = ensureOrderPrefetched(orderId);
-          openTable(table.id);
+          router.push(`/tables/${table.id}` as Href);
 
           // Background sync for fresh data (no-op if order already current)
           prefetch
@@ -459,7 +459,7 @@ const TablesScreen = () => {
             })
             .catch(() => {});
         } else {
-          openTable(table.id);
+          router.push(`/tables/${table.id}` as Href);
         }
         return;
       }
@@ -477,7 +477,7 @@ const TablesScreen = () => {
       isClockedIn,
       showClockInWall,
       selectMultipleTables,
-      openTable,
+      router,
       setActiveOrder,
     ],
   );
@@ -709,7 +709,7 @@ const TablesScreen = () => {
     setGuestModalOpen(false);
     clearSelection();
     setMergeMode(false);
-    openTable(primaryTableId);
+    router.push(`/tables/${primaryTableId}` as Href);
 
     // 4. Seat guests in background
     try {
@@ -1216,9 +1216,8 @@ const TablesScreen = () => {
         currentServer={currentTransferServerName}
       />
 
-      {/* Table order overlay — mounts TableOrderView on top of the floor plan
-          instead of routing, so the floor never unmounts (instant close). */}
-      <TableOrderOverlay />
+      {/* Table order overlay removed — now uses router.push to /tables/[tableId]
+          so the tables screen fully unmounts and doesn't stack underneath. */}
     </View>
   );
 };

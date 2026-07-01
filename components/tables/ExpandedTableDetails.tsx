@@ -8,7 +8,6 @@ import { colors } from "@/lib/theme";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject as TableType } from "@/types/db-floor-plan-types";
@@ -248,8 +247,9 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
   );
   const foreignOwnedOrder = useMemo(() => {
     const directMatch =
-      tableData.orders.find((order) => isOrderReadOnly(order, currentStationId)) ??
-      null;
+      tableData.orders.find((order) =>
+        isOrderReadOnly(order, currentStationId),
+      ) ?? null;
     if (directMatch) return directMatch;
 
     const liveSessions = useTableSessionStore.getState().sessions;
@@ -258,7 +258,8 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
       tableId: tableData.primaryTableId,
       currentStationId,
       getSession: (id) => liveSessions[id] ?? tablesById[id]?.session,
-      getOrder: (orderId) => getOrder(orderId) ?? getOrderByDbId(orderId) ?? null,
+      getOrder: (orderId) =>
+        getOrder(orderId) ?? getOrderByDbId(orderId) ?? null,
     });
 
     if (!readOnlyAccess) return null;
@@ -281,8 +282,7 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
     foreignOwnedOrder?.station_name?.trim() || "Another Station";
 
   const handleNavigate = () => {
-    usePendingTableOverlay.getState().openTable(tableData.primaryTableId);
-    router.push(`/tables`);
+    router.push(`/tables/${tableData.primaryTableId}`);
   };
 
   const closeConfirmCopy = useMemo(() => {
