@@ -194,9 +194,7 @@ const LayoutEditorScreenContent = () => {
   const tables = storeTables;
   const tablesRef = useRef(tables);
   const isOpeningLayout =
-    !!layoutId &&
-    (loadingFloorPlanId === layoutId ||
-      (isLoading && activeFloorPlanId === layoutId));
+    !!layoutId && isLoading && (activeFloorPlanId !== layoutId || !tables.length);
 
   useEffect(() => {
     tablesRef.current = tables;
@@ -567,37 +565,6 @@ const LayoutEditorScreenContent = () => {
   const hasHistory = past.length > 0;
   const hasFuture = future.length > 0;
 
-  if (!activeLayout) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: colors.screen,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Text style={{ color: colors.label, fontSize: s(14) }}>
-          Loading floor plan…
-        </Text>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{
-            marginTop: s(16),
-            paddingHorizontal: s(16),
-            paddingVertical: s(10),
-            borderRadius: s(8),
-            backgroundColor: colors.card,
-            borderWidth: 1,
-            borderColor: colors.border,
-          }}
-        >
-          <Text style={{ color: colors.label, fontSize: s(13) }}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   return (
     <View
       ref={outerViewRef}
@@ -609,7 +576,7 @@ const LayoutEditorScreenContent = () => {
         })
       }
     >
-      {/* ── Top Bar ── */}
+      {/* ── Loading Overlay ── */}
       {isOpeningLayout && (
         <View
           style={{
@@ -688,7 +655,7 @@ const LayoutEditorScreenContent = () => {
                 fontWeight: "700",
               }}
             >
-              {activeLayout.name}
+              {activeLayout?.name ?? "Loading…"}
             </Text>
             <Text
               style={{ color: colors.muted, fontSize: s(10), marginTop: s(1) }}
@@ -803,41 +770,44 @@ const LayoutEditorScreenContent = () => {
       </View>
 
       {/* ── Canvas ── */}
-      <GestureDetector gesture={canvasInteractionGesture}>
-        <View
-          ref={canvasRef}
-          style={{
-            flex: 1,
-            position: "relative",
-            overflow: "hidden",
-            backgroundColor: colors.screen,
-          }}
-          onLayout={() =>
-            canvasRef.current?.measureInWindow((x, y, w, h) => {
-              canvasOriginXSV.value = x;
-              canvasOriginYSV.value = y;
-              canvasWidthSV.value = w;
-              canvasHeightSV.value = h;
-            })
-          }
-        >
-          <Animated.View
-            style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
-            pointerEvents="none"
+      {isOpeningLayout ? (
+        <View style={{ flex: 1, backgroundColor: colors.screen }} />
+      ) : (
+        <GestureDetector gesture={canvasInteractionGesture}>
+          <View
+            ref={canvasRef}
+            style={{
+              flex: 1,
+              position: "relative",
+              overflow: "hidden",
+              backgroundColor: colors.screen,
+            }}
+            onLayout={() =>
+              canvasRef.current?.measureInWindow((x, y, w, h) => {
+                canvasOriginXSV.value = x;
+                canvasOriginYSV.value = y;
+                canvasWidthSV.value = w;
+                canvasHeightSV.value = h;
+              })
+            }
           >
-            <GridPattern />
-          </Animated.View>
+            <Animated.View
+              style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
+              pointerEvents="none"
+            >
+              <GridPattern />
+            </Animated.View>
 
-          <Animated.View
-            style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
-            pointerEvents="box-none"
-          >
-            {tables.map((table) => (
-              <DraggableTable
-                key={table.id}
-                table={table}
-                layoutId={activeLayout.id}
-                isEditMode={true}
+            <Animated.View
+              style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
+              pointerEvents="box-none"
+            >
+              {tables.map((table) => (
+                <DraggableTable
+                  key={table.id}
+                  table={table}
+                  layoutId={activeLayout?.id ?? layoutId ?? ""}
+                  isEditMode={true}
                 isSelected={selectedTableIds.includes(table.id)}
                 onSelect={() => handleEditModeSelect(table.id)}
                 onPress={() => handleEditModeSelect(table.id)}
@@ -891,6 +861,7 @@ const LayoutEditorScreenContent = () => {
           </View>
         </View>
       </GestureDetector>
+      )}
 
       <QuickSetupPanel
         isOpen={isQuickSetupOpen}

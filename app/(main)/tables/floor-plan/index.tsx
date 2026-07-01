@@ -3,21 +3,21 @@ import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { FloorPlanService } from "@/services/floorPlanService";
 import {
-    getFloorPlanClient,
-    useFloorPlanStore,
+  getFloorPlanClient,
+  useFloorPlanStore,
 } from "@/stores/useFloorPlanStore";
 import { Href, useRouter } from "expo-router";
 import { Edit2, LayoutGrid, Plus, Trash2 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
-    FlatList,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const LayoutNameModal = ({
@@ -184,7 +184,6 @@ const FloorPlanManagementScreen = () => {
     createFloorPlan,
     updateFloorPlan,
     deleteFloorPlan,
-    setActiveFloorPlan,
     activeFloorPlanId,
   } = useFloorPlanStore();
   const activeTables = useFloorPlanStore((s) => s.tables);
@@ -312,10 +311,9 @@ const FloorPlanManagementScreen = () => {
             : item.table_count || 0;
           return (
             <TouchableOpacity
-              onPress={() => {
-                void setActiveFloorPlan(item.id);
-                router.push(`/tables/edit-layout?layoutId=${item.id}` as Href);
-              }}
+              onPress={() =>
+                router.push(`/tables/edit-layout?layoutId=${item.id}` as Href)
+              }
               style={{
                 flexDirection: "row",
                 alignItems: "center",
