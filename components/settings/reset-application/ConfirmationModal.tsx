@@ -1,15 +1,15 @@
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
 } from "@/components/ui/dialog";
 import { colors } from "@/lib/theme";
 import { AlertTriangle } from "lucide-react-native";
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -19,6 +19,7 @@ interface ConfirmationModalProps {
   description: string;
   confirmText: string;
   variant?: "default" | "destructive";
+  loading?: boolean;
 }
 
 const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
@@ -29,6 +30,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   description,
   confirmText,
   variant = "default",
+  loading = false,
 }) => {
   const isDestructive = variant === "destructive";
 
@@ -121,8 +123,13 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={onConfirm}
+              disabled={loading}
               style={{
                 flex: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
                 paddingHorizontal: 14,
                 paddingVertical: 8,
                 borderRadius: 8,
@@ -133,8 +140,15 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                 backgroundColor: isDestructive
                   ? colors.danger + "15"
                   : colors.teal + "20",
+                opacity: loading ? 0.6 : 1,
               }}
             >
+              {loading && (
+                <ActivityIndicator
+                  size={13}
+                  color={isDestructive ? colors.danger : colors.teal}
+                />
+              )}
               <Text
                 style={{
                   fontWeight: "600",
@@ -143,7 +157,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                   textAlign: "center",
                 }}
               >
-                {confirmText}
+                {loading ? "Deleting…" : confirmText}
               </Text>
             </TouchableOpacity>
           </DialogFooter>

@@ -56,7 +56,7 @@ const PROGRESSIVE_RENDER_DELAY_MS = 8;
 // Viewport windowing: keep all tables mounted but hide off-screen ones via
 // opacity/pointerEvents to avoid React mount/unmount churn on scroll.
 const VIEWPORT_WINDOW_THRESHOLD = 20;
-const VIEWPORT_OVERSCAN_PX = 600;
+const VIEWPORT_OVERSCAN_PX = 800;
 
 const getMedian = (values: number[]) => {
   if (values.length === 0) return 0;
