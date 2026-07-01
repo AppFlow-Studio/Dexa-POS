@@ -967,6 +967,14 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           if (!locationId) throw new Error("No location set");
           if (!supabase) throw new Error("Supabase client not available");
 
+          // Collect table IDs before deletion so we can clean up orphaned
+          // sessions in useTableSessionStore after the floorplan is gone.
+          const isActive = get().activeFloorPlanId === id;
+          const cachedEntry = get().floorPlanCache[id];
+          const deletedTableIds: string[] = isActive
+            ? get().tables.map((t) => t.id)
+            : (cachedEntry?.tables.map((t) => t.id) ?? []);
+
           // Use the SECURITY DEFINER RPC to cascade-delete the floor plan.
           // This bypasses RLS on online_order_sessions and handles all FK
           // cleanup server-side (table_qr_codes, online_order_sessions,
@@ -989,7 +997,6 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             await FloorPlanService.getLocationFloorPlans(supabase, locationId);
 
           const newPlans = floorPlans || [];
-          const isActive = get().activeFloorPlanId === id;
           const nextCache = { ...get().floorPlanCache };
           delete nextCache[id];
 
@@ -1010,6 +1017,27 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               isLoading: false,
               loadingFloorPlanId: null,
             });
+          }
+
+          // Clean up orphaned sessions in useTableSessionStore for tables
+          // that no longer exist. This prevents stale sessions from being
+          // counted by activeSessionCount or persisting in MMKV.
+          if (deletedTableIds.length > 0) {
+            const sessionStore = getTableSessionStore();
+            const actions = deletedTableIds
+              .filter((tableId) => !!sessionStore.getState().sessions[tableId])
+              .map((tableId) => ({
+                tableId,
+                action: { type: "CLEAR" as const },
+              }));
+            if (actions.length > 0) {
+              sessionStore.getState().batchDispatch(actions);
+              console.log(
+                "[deleteFloorPlan] Cleaned up",
+                actions.length,
+                "orphaned sessions for deleted floor plan tables",
+              );
+            }
           }
         },
 
