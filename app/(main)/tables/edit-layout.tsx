@@ -237,9 +237,16 @@ const LayoutEditorScreenContent = () => {
   const outerOffsetY = useSharedValue(0);
 
   useEffect(() => {
-    const nextWidth = activeLayout?.canvas_width || DEFAULT_CANVAS_WORLD_WIDTH;
-    const nextHeight =
-      activeLayout?.canvas_height || DEFAULT_CANVAS_WORLD_HEIGHT;
+    const rawWidth = activeLayout?.canvas_width;
+    const rawHeight = activeLayout?.canvas_height;
+    console.log("[edit-layout] activeLayout canvas dimensions:", {
+      rawWidth,
+      rawHeight,
+      activeLayoutId: activeLayout?.id,
+      layoutId,
+    });
+    const nextWidth = rawWidth ?? DEFAULT_CANVAS_WORLD_WIDTH;
+    const nextHeight = rawHeight ?? DEFAULT_CANVAS_WORLD_HEIGHT;
     canvasWorldWidthSV.value = nextWidth;
     canvasWorldHeightSV.value = nextHeight;
     setCanvasWidthInput(String(nextWidth));
@@ -410,8 +417,8 @@ const LayoutEditorScreenContent = () => {
   const handleAddMultipleTables = (
     items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[],
   ) => {
-    const canvasW = activeLayout?.canvas_width || DEFAULT_CANVAS_WORLD_WIDTH;
-    const canvasH = activeLayout?.canvas_height || DEFAULT_CANVAS_WORLD_HEIGHT;
+    const canvasW = activeLayout?.canvas_width ?? DEFAULT_CANVAS_WORLD_WIDTH;
+    const canvasH = activeLayout?.canvas_height ?? DEFAULT_CANVAS_WORLD_HEIGHT;
 
     // Compute a column count that fits within the canvas with padding
     const PADDING = 40;
@@ -495,8 +502,8 @@ const LayoutEditorScreenContent = () => {
     // canvasCenterX/Y are the canvas-space center of the drop, computed on the UI thread.
     const shapeW = shapeDef.width || 80;
     const shapeH = shapeDef.height || 80;
-    const canvasW = activeLayout?.canvas_width || DEFAULT_CANVAS_WORLD_WIDTH;
-    const canvasH = activeLayout?.canvas_height || DEFAULT_CANVAS_WORLD_HEIGHT;
+    const canvasW = activeLayout?.canvas_width ?? DEFAULT_CANVAS_WORLD_WIDTH;
+    const canvasH = activeLayout?.canvas_height ?? DEFAULT_CANVAS_WORLD_HEIGHT;
     const finalX = Math.max(
       0,
       Math.min(canvasCenterX - shapeW / 2, canvasW - shapeW),

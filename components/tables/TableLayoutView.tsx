@@ -264,21 +264,21 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   );
 
   const worldDims = useMemo(() => {
-    let contentWidth = activeLayout?.canvas_width || DEFAULT_CANVAS_WORLD_WIDTH;
-    let contentHeight =
-      activeLayout?.canvas_height || DEFAULT_CANVAS_WORLD_HEIGHT;
-
-    for (const table of tables) {
-      const shapeDef =
-        TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
-      const tableWidth = table.width ?? shapeDef?.width ?? 100;
-      const tableHeight = table.height ?? shapeDef?.height ?? 100;
-      contentWidth = Math.max(contentWidth, table.x + tableWidth);
-      contentHeight = Math.max(contentHeight, table.y + tableHeight);
+    const cw = activeLayout?.canvas_width;
+    const ch = activeLayout?.canvas_height;
+    if (__DEV__) {
+      console.log("[TableLayoutView] worldDims canvas dims:", {
+        cw,
+        ch,
+        activeLayoutId: activeLayout?.id,
+        layoutId,
+      });
     }
+    const contentWidth = cw ?? DEFAULT_CANVAS_WORLD_WIDTH;
+    const contentHeight = ch ?? DEFAULT_CANVAS_WORLD_HEIGHT;
 
     return { width: contentWidth, height: contentHeight };
-  }, [activeLayout, tables]);
+  }, [activeLayout]);
 
   const objectMedian = useMemo(() => {
     const medianSourceTables = tables.filter((table) => {

@@ -1,7 +1,6 @@
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
-import { FloorPlanService } from "@/services/floorPlanService";
 import {
   getFloorPlanClient,
   useFloorPlanStore,
@@ -192,14 +191,10 @@ const FloorPlanManagementScreen = () => {
   const s = (n: number) => Math.round(n * uiScale);
 
   useEffect(() => {
-    const { locationId, setFloorPlans } = useFloorPlanStore.getState();
     const supabase = getFloorPlanClient();
+    const locationId = useFloorPlanStore.getState().locationId;
     if (!locationId || !supabase) return;
-    FloorPlanService.getLocationFloorPlans(supabase, locationId).then(
-      ({ data }) => {
-        if (data) setFloorPlans(data);
-      },
-    );
+    useFloorPlanStore.getState().loadFloorPlans();
   }, []);
 
   const [isAddModalOpen, setAddModalOpen] = useState(false);

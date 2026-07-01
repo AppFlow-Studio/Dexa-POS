@@ -538,7 +538,26 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         // ====================================================================
 
         setFloorPlans: (floorPlans: FloorPlan[]) => {
-          set({ floorPlans });
+          // Merge incoming data with existing floor plans to preserve local-only
+          // fields (e.g., canvas_width, canvas_height) that the RPC may not return.
+          set((state) => {
+            const existingById = new Map(
+              state.floorPlans.map((fp) => [fp.id, fp]),
+            );
+            const merged = floorPlans.map((fp) => {
+              const existing = existingById.get(fp.id);
+              return existing ? { ...existing, ...fp } : fp;
+            });
+            const first = merged[0];
+            if (first) {
+              console.log("[setFloorPlans] merged plan canvas dims:", {
+                cw: first.canvas_width,
+                ch: first.canvas_height,
+                id: first.id,
+              });
+            }
+            return { floorPlans: merged };
+          });
         },
 
         setActiveFloorPlanId: (floorPlanId: string | null) => {
@@ -817,7 +836,46 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             set({ error: error.message });
             return;
           }
-          set({ floorPlans: data || [] });
+
+          let plans = data || [];
+
+          // The get_location_floor_plans RPC may not include canvas_width /
+          // canvas_height. Patch them from the direct table if missing.
+          const needsPatch = plans.some(
+            (fp) => fp.canvas_width == null || fp.canvas_height == null,
+          );
+          if (needsPatch) {
+            const { data: fullRows } = await supabase
+              .from("floor_plans")
+              .select("id, canvas_width, canvas_height")
+              .in(
+                "id",
+                plans.map((fp) => fp.id),
+              );
+            if (fullRows) {
+              const dimsById = new Map(
+                fullRows.map((r: any) => [
+                  r.id,
+                  {
+                    canvas_width: r.canvas_width,
+                    canvas_height: r.canvas_height,
+                  },
+                ]),
+              );
+              plans = plans.map((fp) => {
+                const dims = dimsById.get(fp.id);
+                return dims
+                  ? {
+                      ...fp,
+                      canvas_width: dims.canvas_width,
+                      canvas_height: dims.canvas_height,
+                    }
+                  : fp;
+              });
+            }
+          }
+
+          set({ floorPlans: plans });
           // Warm the cache for inactive plans in the background so subsequent
           // switches are instant (cache-hit path in setActiveFloorPlan).
           void get().prefetchFloorPlans();
@@ -854,6 +912,13 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const locationId = get().locationId;
           if (!locationId) throw new Error("No location set");
 
+          console.log(
+            "[updateFloorPlan] Saving updates:",
+            updates,
+            "for id:",
+            id,
+          );
+
           const { error } = await FloorPlanService.updateFloorPlan(
             supabase,
             id,
@@ -861,34 +926,32 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           );
           if (error) throw error;
 
-          // Reload
-          const { data: floorPlans } =
-            await FloorPlanService.getLocationFloorPlans(supabase, locationId);
+          // Proactively merge the updates into the local floorPlans array so the
+          // UI reflects changes immediately — the get_location_floor_plans RPC
+          // may not return canvas_width / canvas_height, so a full reload can
+          // silently drop those fields.
+          const state = get();
+          const updatedPlans = state.floorPlans.map((fp) =>
+            fp.id === id ? { ...fp, ...updates } : fp,
+          );
 
-          // Also update the floorPlanCache with new canvas dimensions so the
-          // layout editor sees the change immediately after the reload — the
-          // cached entry is what worldDims / activeLayout read from on next render.
-          const newPlans = floorPlans || [];
-          const updatedPlan = newPlans.find((p) => p.id === id);
-          if (updatedPlan) {
-            const state = get();
-            const existingCache = state.floorPlanCache[id];
-            if (existingCache) {
-              set({
-                floorPlans: newPlans,
-                floorPlanCache: {
-                  ...state.floorPlanCache,
-                  [id]: {
-                    ...existingCache,
-                    lastSyncAt: new Date().toISOString(),
-                  },
+          // Also patch the floorPlanCache so the layout viewer picks up the
+          // new canvas dimensions on next render.
+          const existingCache = state.floorPlanCache[id];
+          if (existingCache) {
+            set({
+              floorPlans: updatedPlans,
+              floorPlanCache: {
+                ...state.floorPlanCache,
+                [id]: {
+                  ...existingCache,
+                  lastSyncAt: new Date().toISOString(),
                 },
-              });
-              return;
-            }
+              },
+            });
+          } else {
+            set({ floorPlans: updatedPlans });
           }
-
-          set({ floorPlans: newPlans });
         },
 
         deleteFloorPlan: async (id: string) => {
