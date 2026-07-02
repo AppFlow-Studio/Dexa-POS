@@ -140,7 +140,16 @@ const RECENTLY_CLEARED_TTL_MS = 30_000;
 const recentlyClearedSessions = new Map<string, number>();
 
 function _recordCleared(sessionId: string) {
-  recentlyClearedSessions.set(sessionId, Date.now());
+  const now = Date.now();
+  // Opportunistic TTL sweep: wasSessionRecentlyCleared only evicts the entry it
+  // is asked about, so a cleared session that's never re-queried would linger
+  // forever. Session ids are unique per seating, so over a long shift this Map
+  // grows with throughput (not table count). Sweep expired entries on each
+  // write — cheap, no timer, bounded to the active-clear window.
+  for (const [sid, t] of recentlyClearedSessions) {
+    if (now - t > RECENTLY_CLEARED_TTL_MS) recentlyClearedSessions.delete(sid);
+  }
+  recentlyClearedSessions.set(sessionId, now);
 }
 
 export function wasSessionRecentlyCleared(sessionId: string): boolean {
@@ -1067,8 +1076,12 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           // 2. Resolve staff/merchant/device/station context
           const storeSettings = useStoreSettingsStore.getState();
           const merchantId = storeSettings.selectedStore?.merchant_id ?? "";
+          // Per-order PIN: when on, the seating staff is the PIN-verified staff
+          // (getEffectiveCreatorStaffId), so the dine-in order's creator +
+          // assigned server are the person who actually rang it. Falls back to
+          // the signed-in shift user when the setting is off.
           const staffId =
-            useEmployeeStore.getState().loggedInEmployee?.profileId ?? null;
+            useEmployeeStore.getState().getEffectiveCreatorStaffId() ?? null;
           const serverStaffId = params.serverId ?? staffId;
           const deviceId = params.device_id ?? null;
           const stationId =

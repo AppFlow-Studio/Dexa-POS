@@ -2,7 +2,6 @@ import CashierStand from "@/components/tables/svg/CashierStand";
 import TableSquare2Chair from "@/components/tables/svg/TableSquare2Chair";
 import TableSquare4Chair from "@/components/tables/svg/TableSquare4Chair";
 import TableSquare8Chair from "@/components/tables/svg/TableSquare8Chair";
-import { Customer } from "@/stores/useCustomerStore";
 import {
   AddOn,
   CartItem,
@@ -910,30 +909,42 @@ export const MOCK_VENDORS: Vendor[] = [
   {
     id: "vendor_1",
     name: "Sysco Foods",
-    contactPerson: "John Smith",
+    contactName: "John Smith",
     email: "john.smith@sysco.com",
     phone: "123-456-7890",
+    address: null,
+    website: null,
+
   },
   {
     id: "vendor_2",
     name: "Restaurant Depot",
-    contactPerson: "Jane Doe",
+    contactName: "Jane Doe",
     email: "jane.doe@restaurantdepot.com",
     phone: "098-765-4321",
+    address: null,
+    website: null,
+
   },
   {
     id: "vendor_3",
     name: "Local Produce Market",
-    contactPerson: "Mike Johnson",
+    contactName: "Mike Johnson",
     email: "mike@localproduce.com",
     phone: "555-123-4567",
+    address: null,
+    website: null,
+
   },
   {
     id: "vendor_4",
     name: "Ocean Seafood Co.",
-    contactPerson: "Sarah Wilson",
+    contactName: "Sarah Wilson",
     email: "sarah@oceanseafood.com",
     phone: "555-987-6543",
+    address: null,
+
+    website: null,
   },
 ];
 
@@ -947,6 +958,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 50,
     cost: 1.25,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_2",
@@ -957,6 +970,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 75,
     cost: 0.3,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_3",
@@ -967,6 +982,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 100,
     cost: 0.15,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_4",
@@ -977,6 +994,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 100,
     cost: 0.35,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_5",
@@ -987,6 +1006,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 2.5,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_6",
@@ -997,6 +1018,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 50,
     cost: 0.25,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_7",
@@ -1007,6 +1030,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 3.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_8",
@@ -1017,6 +1042,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 20,
     cost: 1.5,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_9",
@@ -1027,6 +1054,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 30,
     cost: 1.0,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_10",
@@ -1037,6 +1066,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 2.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_11",
@@ -1047,6 +1078,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 4.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_12",
@@ -1057,6 +1090,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 4,
     cost: 1.0,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_13",
@@ -1067,6 +1102,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 1.2,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_14",
@@ -1077,6 +1114,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 25,
     cost: 3.5,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_15",
@@ -1087,6 +1126,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 2.8,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_16",
@@ -1097,6 +1138,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 1.5,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_17",
@@ -1107,6 +1150,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 5.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_18",
@@ -1117,6 +1162,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 30,
     cost: 0.5,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_19",
@@ -1127,6 +1174,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 0.4,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_20",
@@ -1137,6 +1186,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 3,
     cost: 15.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_21",
@@ -1147,6 +1198,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 3,
     cost: 15.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_22",
@@ -1157,6 +1210,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 2.5,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_23",
@@ -1167,6 +1222,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 3.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_24",
@@ -1177,6 +1234,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 2.0,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_25",
@@ -1187,6 +1246,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 4,
     cost: 4.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_26",
@@ -1197,6 +1258,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 60,
     cost: 0.15,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_27",
@@ -1207,6 +1270,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 12,
     cost: 4.5,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_28",
@@ -1217,6 +1282,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 30,
     cost: 0.4,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_29",
@@ -1227,6 +1294,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 3,
     cost: 3.5,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_30",
@@ -1237,6 +1306,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 3.8,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_31",
@@ -1247,6 +1318,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 1.2,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_32",
@@ -1257,6 +1330,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 2.8,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_33",
@@ -1267,6 +1342,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 25,
     cost: 2.5,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_34",
@@ -1277,6 +1354,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 2.2,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_35",
@@ -1287,6 +1366,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 7,
     cost: 4.5,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_36",
@@ -1297,6 +1378,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 1.8,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_37",
@@ -1307,6 +1390,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 1.5,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_38",
@@ -1317,6 +1402,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 7,
     cost: 1.8,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_39",
@@ -1327,6 +1414,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 3.2,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_40",
@@ -1337,6 +1426,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 1.5,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_41",
@@ -1347,6 +1438,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 1.2,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_42",
@@ -1357,6 +1450,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 12,
     cost: 1.4,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_43",
@@ -1367,6 +1462,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 5.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_44",
@@ -1377,6 +1474,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 30,
     cost: 0.1,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_45",
@@ -1387,6 +1486,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 1.8,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_46",
@@ -1397,6 +1498,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 1.6,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_47",
@@ -1407,6 +1510,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 0.6,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_48",
@@ -1417,6 +1522,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 7,
     cost: 1.4,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_49",
@@ -1427,6 +1534,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 0.8,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_50",
@@ -1437,6 +1546,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 1.5,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_51",
@@ -1447,6 +1558,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 12,
     cost: 2.5,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_52",
@@ -1457,6 +1570,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 2.0,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_53",
@@ -1467,6 +1582,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 12,
     cost: 0.8,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_54",
@@ -1477,6 +1594,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 1.5,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_55",
@@ -1487,6 +1606,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 7,
     cost: 3.8,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_56",
@@ -1497,6 +1618,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 2.8,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_57",
@@ -1507,6 +1630,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 6,
     cost: 2.2,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_58",
@@ -1517,6 +1642,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 4.5,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_59",
@@ -1527,6 +1654,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 4,
     cost: 3.0,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_60",
@@ -1537,6 +1666,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 2.2,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_61",
@@ -1547,6 +1678,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 6,
     cost: 2.5,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_62",
@@ -1557,6 +1690,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 8.5,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_63",
@@ -1567,6 +1702,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 3,
     cost: 2.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_64",
@@ -1577,6 +1714,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 3.2,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_65",
@@ -1587,6 +1726,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 12,
     cost: 7.0,
     vendorId: "vendor_4",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_66",
@@ -1597,6 +1738,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 0.3,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_67",
@@ -1607,6 +1750,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 4,
     cost: 1.0,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_68",
@@ -1617,6 +1762,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 5.5,
     vendorId: "vendor_4",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_69",
@@ -1627,6 +1774,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 60,
     cost: 0.15,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_70",
@@ -1637,6 +1786,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 1.2,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_71",
@@ -1647,6 +1798,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 2.5,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_72",
@@ -1657,6 +1810,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 6,
     cost: 2.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_73",
@@ -1667,6 +1822,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 2.8,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_74",
@@ -1677,6 +1834,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 1.6,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_75",
@@ -1687,6 +1846,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 1.8,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_76",
@@ -1697,6 +1858,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 4.2,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_77",
@@ -1707,6 +1870,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 6,
     cost: 0.8,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_78",
@@ -1717,6 +1882,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 7,
     cost: 1.7,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_79",
@@ -1727,6 +1894,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 1.5,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_80",
@@ -1737,6 +1906,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 6,
     cost: 0.9,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_81",
@@ -1747,6 +1918,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 1.2,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_82",
@@ -1757,6 +1930,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 20,
     cost: 1.4,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_83",
@@ -1767,6 +1942,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 30,
     cost: 0.1,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_84",
@@ -1777,6 +1954,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 3.5,
     vendorId: "vendor_4",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_85",
@@ -1787,6 +1966,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 12,
     cost: 0.4,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_86",
@@ -1797,6 +1978,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 12,
     cost: 6.0,
     vendorId: "vendor_4",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_87",
@@ -1807,6 +1990,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 4,
     cost: 2.2,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_88",
@@ -1817,6 +2002,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 30,
     cost: 0.8,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_89",
@@ -1827,6 +2014,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 6,
     cost: 2.3,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_90",
@@ -1837,6 +2026,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 5.5,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_91",
@@ -1847,6 +2038,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 2.4,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_92",
@@ -1857,6 +2050,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 12,
     cost: 2.0,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_93",
@@ -1867,6 +2062,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 0.9,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_94",
@@ -1877,6 +2074,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 4,
     cost: 2.6,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_95",
@@ -1887,6 +2086,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 12,
     cost: 4.0,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_96",
@@ -1897,6 +2098,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 40,
     cost: 0.4,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_97",
@@ -1907,6 +2110,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 1.5,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_98",
@@ -1917,6 +2122,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 60,
     cost: 0.2,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_99",
@@ -1927,6 +2134,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 7,
     cost: 1.8,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_100",
@@ -1937,6 +2146,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 6,
     cost: 3.0,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_101",
@@ -1947,6 +2158,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 50,
     cost: 0.15,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_102",
@@ -1957,6 +2170,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 10,
     cost: 4.5,
     vendorId: "vendor_4",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_103",
@@ -1967,6 +2182,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 4,
     cost: 2.3,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_104",
@@ -1977,6 +2194,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 8,
     cost: 2.0,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_105",
@@ -1987,6 +2206,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 6,
     cost: 3.2,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_106",
@@ -1997,6 +2218,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 1.2,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_107",
@@ -2007,6 +2230,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 0.7,
     vendorId: "vendor_3",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_108",
@@ -2017,6 +2242,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 15,
     cost: 1.1,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_109",
@@ -2027,6 +2254,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 6,
     cost: 2.5,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_110",
@@ -2037,6 +2266,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 3,
     cost: 4.0,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_111",
@@ -2047,6 +2278,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 4,
     cost: 3.5,
     vendorId: "vendor_2",
+    unitType: "unit",
+    locationId: null,
   },
   {
     id: "inv_112",
@@ -2057,6 +2290,8 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     reorderThreshold: 5,
     cost: 1.2,
     vendorId: "vendor_1",
+    unitType: "unit",
+    locationId: null,
   },
 ];
 
@@ -2103,7 +2338,7 @@ const generateShiftTimes = (
   };
 };
 
-export const MOCK_WORK_HISTORY: CompletedShift[] = [
+export const MOCK_WORK_HISTORY: any[] = [
   // Manager (12 months of history - 240 shifts spread over 365 days)
   ...Array.from({ length: 240 }).map((_, i) => {
     const daysAgo = Math.floor((365 * i) / 240);
@@ -3310,7 +3545,7 @@ export const PARTNER_LOGO_MAP = {
   "Food Panda": require("@/assets/images/food-panda.png"),
 };
 
-const sampleOrderItems: CartItem[] = [
+const sampleOrderItems: any[] = [
   {
     id: "burger_1",
     menuItemId: "1",
@@ -3318,6 +3553,15 @@ const sampleOrderItems: CartItem[] = [
     quantity: 1,
     originalPrice: 7.25,
     price: 13.25,
+    paidQuantity: 1,
+    unitPrice: 13.25,
+    cashPrice: 13.25,
+    cashSubtotal: 13.25,
+    subtotal: 13.25,
+    taxRate: 0,
+    itemDiscount: 0,
+    baseCardPrice: 13.25,
+    baseCashPrice: 13.25,
     customizations: {
       size: { id: "size_lg", name: "Large", priceModifier: 2.0 },
       addOns: [
@@ -3334,10 +3578,21 @@ const sampleOrderItems: CartItem[] = [
     menuItemId: "1",
     name: "Double Cheeseburger",
     quantity: 1,
-    originalPrice: 7.25, // Assuming originalPrice is the base price
-    price: 7.25, // Assuming price is the final price after customizations
+    originalPrice: 7.25,
+    price: 7.25,
+    paidQuantity: 1,
+    unitPrice: 7.25,
+    cashPrice: 7.25,
+    cashSubtotal: 7.25,
+    subtotal: 7.25,
+    taxRate: 0,
+    itemDiscount: 0,
+    baseCardPrice: 7.25,
+    baseCashPrice: 7.25,
     customizations: {
       size: { id: "size_reg", name: "Regular", priceModifier: 0 },
+      addOns: [],
+      notes: "",
     },
     image: "classic_burger.png",
   },
@@ -3346,13 +3601,21 @@ const sampleOrderItems: CartItem[] = [
     menuItemId: "8",
     name: "Coca-Cola",
     quantity: 1,
-    originalPrice: 1.99, // Assuming originalPrice is the base price
-    price: 1.99, // Assuming price is the final price after customizations
+    originalPrice: 1.99,
+    price: 1.99,
+    paidQuantity: 1,
+    unitPrice: 1.99,
+    cashPrice: 1.99,
+    cashSubtotal: 1.99,
+    subtotal: 1.99,
+    taxRate: 0,
+    itemDiscount: 0,
+    baseCardPrice: 1.99,
+    baseCashPrice: 1.99,
     customizations: {},
     image: "coke.png",
   },
 ];
-
 export const MOCK_ONLINE_ORDERS: OnlineOrder[] = [
   // Add a variety of orders with different statuses and partners
   {
@@ -3453,12 +3716,21 @@ export const MOCK_ONLINE_ORDERS: OnlineOrder[] = [
   },
 ];
 
-export const MOCK_PREVIOUS_ORDERS: PreviousOrder[] = [
+export const MOCK_PREVIOUS_ORDERS: any[] = [
   {
     serialNo: "001",
     orderDate: "Oct 16, 2024",
     orderTime: "09:31 AM",
     orderId: "#2010E10",
+    timestamp: new Date().toISOString(),
+    display_number: "ORD-001",
+    opened_at: new Date().toISOString(),
+    closed_at: new Date().toISOString(),
+    sent_to_kitchen_at: new Date().toISOString(),
+    last_activity_at: new Date().toISOString(),
+    amount_paid: 0,
+    amount_due: 0,
+    cash_amount_due: 0,
     paymentStatus: "In Progress",
     customer: "John Doe",
     server: "Jake Carter",
@@ -3472,6 +3744,15 @@ export const MOCK_PREVIOUS_ORDERS: PreviousOrder[] = [
     orderDate: "Oct 16, 2024",
     orderTime: "09:35 AM",
     orderId: "#2010E11",
+    timestamp: new Date().toISOString(),
+    display_number: "ORD-001",
+    opened_at: new Date().toISOString(),
+    closed_at: new Date().toISOString(),
+    sent_to_kitchen_at: new Date().toISOString(),
+    last_activity_at: new Date().toISOString(),
+    amount_paid: 0,
+    amount_due: 0,
+    cash_amount_due: 0,
     paymentStatus: "Paid",
     customer: "Jane Smith",
     server: "Jessica",
@@ -3485,6 +3766,15 @@ export const MOCK_PREVIOUS_ORDERS: PreviousOrder[] = [
     orderDate: "Oct 16, 2024",
     orderTime: "09:40 AM",
     orderId: "#2010E12",
+    timestamp: new Date().toISOString(),
+    display_number: "ORD-001",
+    opened_at: new Date().toISOString(),
+    closed_at: new Date().toISOString(),
+    sent_to_kitchen_at: new Date().toISOString(),
+    last_activity_at: new Date().toISOString(),
+    amount_paid: 0,
+    amount_due: 0,
+    cash_amount_due: 0,
     paymentStatus: "Paid",
     customer: "Alex Johnson",
     server: "Jake Carter",
@@ -3498,6 +3788,15 @@ export const MOCK_PREVIOUS_ORDERS: PreviousOrder[] = [
     orderDate: "Oct 15, 2024",
     orderTime: "08:15 PM",
     orderId: "#2009E95",
+    timestamp: new Date().toISOString(),
+    display_number: "ORD-001",
+    opened_at: new Date().toISOString(),
+    closed_at: new Date().toISOString(),
+    sent_to_kitchen_at: new Date().toISOString(),
+    last_activity_at: new Date().toISOString(),
+    amount_paid: 0,
+    amount_due: 0,
+    cash_amount_due: 0,
     paymentStatus: "Refunded",
     customer: "Sarah Wilson",
     server: "Jessica",
@@ -3529,11 +3828,12 @@ export const MOCK_SHIFT_STATUS: ShiftStatus = {
   clockInTime: "08:01 AM",
 };
 
-export const MOCK_SHIFT_HISTORY: ShiftHistoryEntry[] = Array.from(
+export const MOCK_SHIFT_HISTORY: any[] = Array.from(
   { length: 7 },
   (_, i) => ({
     id: i.toString(),
     date: "02/03/2025",
+    employeeId: "emp_1759078476073_0",
     clockIn: "10:30 AM",
     breakInitiated: "12:30 PM",
     breakEnded: "01:30 PM",
@@ -3621,7 +3921,7 @@ export const MOCK_TERMINALS: PaymentTerminal[] = [
   },
 ];
 
-export const MOCK_FOUND_TERMINALS = [
+export const MOCK_FOUND_TERMINALS: { id: string; name: string }[] = [
   { id: "Epson-TM", name: "Epson TM-m30II-NT" },
   { id: "PIXMA-E3470", name: "PIXMA E3470" },
   { id: "HP-9025", name: "HP OfficeJet Pro 9025" },
@@ -3674,7 +3974,6 @@ export const MOCK_TRACKED_ORDERS: TrackedOrder[] = [
     items: [
       { name: "Cheese pizza", quantity: 1 },
       { name: "Coffee", quantity: 1 },
-      { name: "Cheese pizza", quantity: 1 },
       { name: "Cheese pizza", quantity: 1 },
       { name: "Fries", quantity: 1 },
     ],
@@ -4033,7 +4332,7 @@ export const MOCK_PTO_REQUESTS: PTORequest[] = [
   },
 ];
 
-export const MOCK_EMPLOYEE_SHIFTS: EmployeeShift[] = [
+export const MOCK_EMPLOYEE_SHIFTS: any[] = [
   {
     id: "1",
     name: "Ethan Brooks",
@@ -4127,46 +4426,7 @@ export const MOCK_EMPLOYEE_SHIFTS: EmployeeShift[] = [
   // ... add more employees to fill the list
 ];
 
-export const MOCK_CUSTOMERS: Customer[] = [
-  {
-    id: "cust_1",
-    name: "John Smith",
-    phoneNumber: "555-123-4567",
-    address: "123 Main St, Anytown, USA",
-    email: "john.smith@example.com",
-    createdAt: new Date(),
-    totalOrders: 5,
-  },
-  {
-    id: "cust_2",
-    name: "Jane Doe",
-    phoneNumber: "555-987-6543",
-    address: "456 Oak Ave, Sometown, USA",
-    email: "jane.doe@example.com",
-    createdAt: new Date(),
-    totalOrders: 2,
-  },
-  {
-    id: "cust_3",
-    name: "Mike Johnson",
-    phoneNumber: "555-555-1212",
-    address: "", // No address for this customer
-    email: "mike.j@example.com",
-    createdAt: new Date(),
-    totalOrders: 12,
-  },
-  {
-    id: "cust_4",
-    name: "Jessica Williams",
-    phoneNumber: "555-333-4444",
-    address: "789 Pine Ln, Otherville, USA",
-    email: "jess.w@example.com",
-    createdAt: new Date(),
-    totalOrders: 1,
-  },
-];
-
-export const MOCK_NOTIFICATIONS: Notification[] = [
+export const MOCK_NOTIFICATIONS: any[] = [
   {
     id: "notif-1",
     type: "swap_request",

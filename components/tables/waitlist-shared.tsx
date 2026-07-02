@@ -36,11 +36,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming
-} from 'react-native-reanimated'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -130,15 +125,10 @@ export const WaitlistCard: React.FC<{
     const badgeBorder = isOverdue ? colors.danger + '45' : colors.teal + '45'
     const badgeLabel = isOverdue ? colors.danger : colors.teal
 
-    const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
+    const [expandedVisible, setExpandedVisible] = useState(false)
     useEffect(() => {
-      expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
+      setExpandedVisible(isExpanded)
     }, [isExpanded])
-    const expandedStyle = useAnimatedStyle(() => ({
-      opacity: expandedHeight.value,
-      maxHeight: expandedHeight.value * 300,
-      overflow: 'hidden'
-    }))
 
     return (
       <View
@@ -273,7 +263,8 @@ export const WaitlistCard: React.FC<{
           )}
         </Pressable>
 
-        <Animated.View style={expandedStyle}>
+        {expandedVisible && (
+          <View>
           <View className='px-4 pb-4 border-t border-border'>
             <View className='mt-3 gap-2'>
               {entry.phone ? (
@@ -387,7 +378,8 @@ export const WaitlistCard: React.FC<{
               </TouchableOpacity>
             </View>
           </View>
-        </Animated.View>
+          </View>
+        )}
       </View>
     )
   }

@@ -10,6 +10,7 @@ import { bottomSheetTheme, colors } from "@/lib/theme";
 import { ExternalExpenseLineItem } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
@@ -54,6 +55,7 @@ const CreateExternalExpenseScreen = () => {
   const router = useRouter();
   const { inventoryItems, addExternalExpense, purchaseOrders, addInventoryItem } = useInventoryStore();
   const { activeEmployeeId, employees } = useEmployeeStore();
+  const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const { show } = useToast();
 
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(activeEmployeeId);
@@ -82,7 +84,7 @@ const CreateExternalExpenseScreen = () => {
 
   useEffect(() => {
     if (activeEmployeeId && !selectedEmployeeId) setSelectedEmployeeId(activeEmployeeId);
-  }, [activeEmployeeId]);
+  }, [activeEmployeeId, selectedEmployeeId]);
 
   const filteredInventoryItems = useMemo(() => {
     const q = itemSearch.trim().toLowerCase();
@@ -125,16 +127,22 @@ const CreateExternalExpenseScreen = () => {
     if (!newItemName.trim()) { show({ title: "Missing Name", message: "Enter a name for the new item.", type: "error" }); return; }
     const costNum = Number(newItemCost || 0);
     const poQty = Math.max(1, Number(newItemPOQty || 1));
+    if (!selectedStore?.id) {
+      show({ title: "No Store Selected", message: "Select a store before creating an inventory item.", type: "error" });
+      return;
+    }
     addInventoryItem({
       name: newItemName.trim(),
       category: "Uncategorized",
       stockQuantity: Math.max(0, Number(newItemStock || 0)),
       unit: newItemUnit as any,
+      unitType: "unit",
       reorderThreshold: Math.max(0, Number(newItemReorder || 0)),
       cost: costNum,
       vendorId: "",
+      locationId: selectedStore.id,
       stockTrackingMode: "quantity",
-    });
+    }, selectedStore.id);
     const created = useInventoryStore.getState().inventoryItems[0];
     if (created) {
       setExpenseItems((prev) => [...prev, { inventoryItemId: created.id, itemName: created.name, quantity: poQty, unitPrice: costNum, totalAmount: poQty * costNum, notes: itemNotes.trim() || undefined }]);

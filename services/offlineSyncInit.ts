@@ -286,7 +286,7 @@ async function reconcileLostOrderCreations(): Promise<number> {
           p_special_instructions: null,
           p_device_id: getDeviceId(),
           p_created_by_staff_id:
-            useEmployeeStore.getState().loggedInEmployee?.profileId || null,
+            useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
           p_station_id:
             useStoreSettingsStore.getState().selectedStation?.id || null,
         },
@@ -1762,6 +1762,9 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             p_customer_phone: localOrder?.customer_phone || null,
             p_special_instructions: null,
             p_device_id: getDeviceId(),
+            // Lost-params rebuild fallback: the per-order attribution staff is
+            // likely stale by replay time, so fall back to the shift session
+            // rather than getEffectiveCreatorStaffId().
             p_created_by_staff_id:
               useEmployeeStore.getState().loggedInEmployee?.profileId || null,
             p_station_id:

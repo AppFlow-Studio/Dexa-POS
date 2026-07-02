@@ -20,11 +20,9 @@ import {
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   cancelAnimation,
-  Easing,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
 } from "react-native-reanimated";
 import Svg, {
   Line,
@@ -166,9 +164,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const sortedTables = useMemo(() => {
     return [...tables].sort((a, b) => (a.z_index ?? 0) - (b.z_index ?? 0));
   }, [tables]);
-
-  const enableEntryAnimation =
-    isEditMode && sortedTables.length <= ENTRY_ANIMATION_OBJECT_LIMIT;
 
   // Stable geometry key — only changes when position/size/section assignment changes,
   // not when session status/order changes. Prevents sectionOverlays from recomputing
@@ -435,10 +430,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
-  const opacity = useSharedValue(0);
-
-  const skeletonOpacity = useSharedValue(1);
-  const contentOpacity = useSharedValue(0);
 
   const initialLoadDone = useRef(false);
   const lastCenterKey = useRef("");
@@ -514,12 +505,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         };
         lastCenterKey.current = centerKey;
         setIsLoading(false);
-        opacity.value = withTiming(1);
-        skeletonOpacity.value = withTiming(0, { duration: 200 });
-        contentOpacity.value = withTiming(1, {
-          duration: 300,
-          easing: Easing.out(Easing.quad),
-        });
         return;
       }
 
@@ -574,32 +559,19 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       lastCenterKey.current = centerKey;
 
       setIsLoading(false);
-      opacity.value = withTiming(1);
-      // Crossfade: fade out skeleton, fade in content
-      skeletonOpacity.value = withTiming(0, { duration: 200 });
-      contentOpacity.value = withTiming(1, {
-        duration: 300,
-        easing: Easing.out(Easing.quad),
-      });
     } else if (containerDims.width > 0) {
       // Handle case with no tables
       setIsLoading(false);
-      opacity.value = withTiming(1);
-      skeletonOpacity.value = withTiming(0, { duration: 200 });
-      contentOpacity.value = withTiming(1, { duration: 300 });
     }
   }, [
     containerDims,
     layoutId,
     objectMedian,
     worldDims,
-    contentOpacity,
-    opacity,
     scale,
     savedScale,
     savedTranslateX,
     savedTranslateY,
-    skeletonOpacity,
     translateX,
     translateY,
   ]);
@@ -670,22 +642,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       { translateY: translateY.value },
       { scale: scale.value },
     ],
-  }));
-
-  // Crossfade animated styles
-  const skeletonAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: skeletonOpacity.value,
-    position: "absolute" as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: skeletonOpacity.value > 0 ? 30 : -1,
-  }));
-
-  const contentAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: contentOpacity.value,
-    flex: 1,
   }));
 
   // ── Lock toggle ──
@@ -760,12 +716,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     };
   }, []);
 
-  // Cancel all in-flight canvas animations on unmount. The mount fade-in
-  // (opacity / skeletonOpacity / contentOpacity withTiming, 200-300ms) is
-  // routinely still running when the floor unmounts — an uncancelled Reanimated
-  // animation pins its shared value's UI-thread mapping past unmount, leaking
-  // native memory on every Tables visit (Views flat, Native/PSS climb). The
-  // gesture values (scale/translate) also carry withSpring/withDecay momentum.
+  // Cancel all in-flight canvas animations on unmount.
+  // Keep the gesture shared values (scale/translate/saved*) cancellation
+  // because they may have in-flight withSpring momentum.
   useEffect(() => {
     return () => {
       cancelAnimation(scale);
@@ -774,11 +727,16 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       cancelAnimation(translateY);
       cancelAnimation(savedTranslateX);
       cancelAnimation(savedTranslateY);
-      cancelAnimation(opacity);
-      cancelAnimation(skeletonOpacity);
-      cancelAnimation(contentOpacity);
     };
   }, []);
+
+  const [skeletonVisible, setSkeletonVisible] = useState(true);
+  useEffect(() => {
+    if (!isLoading) {
+      const id = setTimeout(() => setSkeletonVisible(false), 300);
+      return () => clearTimeout(id);
+    }
+  }, [isLoading]);
 
   return (
     <View
@@ -786,15 +744,28 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       className={`flex-1 relative overflow-hidden ${className}`}
       style={{ backgroundColor: "transparent" }}
     >
-      {/* Skeleton Crossfade Layer */}
-      <Animated.View style={skeletonAnimatedStyle}>
-        <TableLayoutSkeleton tableCount={8} showControls={false} />
-      </Animated.View>
+      {/* Skeleton - shown only while loading, no Reanimated crossfade */}
+      {skeletonVisible && (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 30,
+            opacity: isLoading ? 1 : 0,
+          }}
+          pointerEvents="none"
+        >
+          <TableLayoutSkeleton tableCount={8} showControls={false} />
+        </View>
+      )}
 
       {/* Gesture Detector wraps entire canvas - must be at top level to catch touches */}
       <GestureDetector gesture={combinedGesture}>
-        {/* Main Content with Crossfade */}
-        <Animated.View style={contentAnimatedStyle}>
+        {/* Main Content */}
+        <Animated.View style={{ flex: 1 }}>
           <Animated.View
             style={[
               canvasAnimatedStyle,
@@ -954,8 +925,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 onPress={handleTableSelect}
                 canvasScale={scale}
                 index={index}
-                enableEntryAnimation={enableEntryAnimation}
-                disableEntryAnimation={prioritizedTables.length > 20}
+                enableEntryAnimation={false}
+                disableEntryAnimation={true}
                 sectionColor={
                   table.section_id
                     ? sectionsById?.[table.section_id]?.color

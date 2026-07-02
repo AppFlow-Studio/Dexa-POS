@@ -391,6 +391,13 @@ interface KDSTicketCardProps {
   onAcknowledgeNotice?: (ticketId: string, itemId: string) => void;
   hideDoneItems: boolean;
   displaySettings: KDSTicketDisplaySettings;
+  // Interaction mode. "double-tap" (default) bumps on double tap. "single-select"
+  // makes a single tap select the ticket so its actions appear in the KDS header.
+  tapMode: "double-tap" | "single-select";
+  isFocused: boolean;
+  onSelectTicket?: (ticketId: string) => void;
+  onRush?: (ticketId: string) => void;
+  onPrioritize?: (ticketId: string) => void;
 }
 
 const KDSTicketCard = React.memo<KDSTicketCardProps>(
@@ -404,6 +411,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     onAcknowledgeNotice,
     hideDoneItems,
     displaySettings,
+    tapMode,
+    isFocused,
+    onSelectTicket,
+    onRush,
+    onPrioritize,
   }) => {
     const uiScale = useUiScale();
     const s = (n: number) => Math.round(n * uiScale);
@@ -422,6 +434,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     );
     const hasUrgencyColor = urgencyLevel > 0;
 
+    const isRushPending = useKDSStore(
+      useCallback(
+        (s) => s.isRushPending(ticket.ticket_id),
+        [ticket.ticket_id],
+      ),
+    );
+
     const ticketItems = getTicketItems(ticket);
     const hasUnacknowledgedNotices = ticketItems.some(
       (i) => (i.is_voided || i.is_refunded) && !i.acknowledged,
@@ -434,6 +453,17 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const handlePress = () => {
       if (bulkMode) {
         onToggleSelect(ticket.ticket_id);
+        return;
+      }
+
+      // Single-select mode: a single tap selects the ticket so its actions
+      // (Bump / Rush / Prioritize) appear in the KDS header. No double-tap advance.
+      // While already focused, the card body is inert — the header's action
+      // buttons handle taps, and tapping outside the card clears the selection.
+      // (Without this, the root Pressable would re-fire and toggle focus off,
+      // so a Rush/Unrush tap that grazed the card body couldn't be repeated.)
+      if (tapMode === "single-select") {
+        if (!isFocused) onSelectTicket?.(ticket.ticket_id);
         return;
       }
 
@@ -469,9 +499,26 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       onLongPress?.(ticket.ticket_id, ticket, e);
     };
 
+    // Bump one stage — shared by the focused-header "Bump" action. Same rules as
+    // the double-tap path: blocked by unacknowledged notices, refire → served.
+    const handleBumpOneStep = () => {
+      if (hasUnacknowledgedNotices) return;
+      const refire = ticketItems.some((i) => i.recalled);
+      const itemIds = ticketItems.map((i) => i.id);
+      let newStatus: "preparing" | "ready" | "served" | undefined;
+      if (refire) newStatus = "served";
+      else if (ticket.status === "pending") newStatus = "preparing";
+      else if (ticket.status === "cooking") newStatus = "ready";
+      else if (ticket.status === "ready") newStatus = "served";
+      if (!newStatus) return;
+      onAdvance(ticket.ticket_id, itemIds, newStatus);
+    };
+
     // Determine border color based on state
     let borderColor = "#E5E7EB"; // default light gray
     if (bulkMode && isSelected) {
+      borderColor = colors.info;
+    } else if (isFocused) {
       borderColor = colors.info;
     }
 
@@ -699,67 +746,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </View>
           )}
 
-          {/* RUSH badge (yellow pill, under timer) */}
-          {hasRush && (
-            <View
-              style={{
-                position: "absolute",
-                top: s(34),
-                right: s(12),
-                zIndex: 10,
-                backgroundColor: "#FEF08A",
-                borderWidth: 1,
-                borderColor: colors.warning + "50",
-                paddingHorizontal: s(8),
-                paddingVertical: s(3),
-                borderRadius: s(12),
-                flexDirection: "row",
-                alignItems: "center",
-                gap: s(4),
-              }}
-            >
-              <Text
-                style={{
-                  color: "#78350F",
-                  fontSize: s(10),
-                  fontWeight: "800",
-                  letterSpacing: 0.5,
-                }}
-              >
-                RUSHED
-              </Text>
-            </View>
-          )}
-
-          {hasRefire && (
-            <View
-              style={{
-                position: "absolute",
-                top: hasRush ? s(66) : s(34),
-                right: s(12),
-                zIndex: 10,
-                backgroundColor: "#FEF3C7",
-                borderWidth: 1,
-                borderColor: "#F59E0B66",
-                paddingHorizontal: s(8),
-                paddingVertical: s(3),
-                borderRadius: s(12),
-              }}
-            >
-              <Text
-                style={{
-                  color: "#92400E",
-                  fontSize: s(10),
-                  fontWeight: "800",
-                  letterSpacing: 0.5,
-                }}
-              >
-                RECALLED
-              </Text>
-            </View>
-          )}
-
-          {/* Card Header: Order Number + Order Type + Timer (darker background) */}
+          {/* Card Header: Order Number + Order Type + Timer + Badges (darker background) */}
           <View
             style={{
               backgroundColor: headerBackgroundColor,
@@ -773,6 +760,80 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               gap: s(12),
             }}
           >
+            {tapMode === "single-select" && isFocused ? (
+              // Focused in single-select mode: header is replaced by quick actions.
+              // Height matches the original two-row layout (order number + order type)
+              // so the card doesn't jump when focusing/unfocusing.
+              <View style={{ flex: 1, height: s(44), flexDirection: "row", alignItems: "center", gap: s(6) }}>
+                <TouchableOpacity
+                  onPress={handleBumpOneStep}
+                  disabled={hasUnacknowledgedNotices}
+                  style={{
+                    flex: 1,
+                    height: s(32),
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: hasUnacknowledgedNotices
+                      ? "#9CA3AF"
+                      : colors.teal,
+                    opacity: hasUnacknowledgedNotices ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ color: "#FFFFFF", fontSize: s(11), fontWeight: "700" }}>
+                    Bump
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onRush?.(ticket.ticket_id)}
+                  disabled={isRushPending}
+                  style={{
+                    flex: 1,
+                    height: s(32),
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: isRushPending ? colors.muted : colors.warning,
+                    opacity: isRushPending ? 0.6 : 1,
+                  }}
+                >
+                  <Text style={{ color: "#FFFFFF", fontSize: s(11), fontWeight: "700" }}>
+                    {isRushPending ? "..." : hasRush ? "Unrush" : "Rush"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onPrioritize?.(ticket.ticket_id)}
+                  style={{
+                    flex: 1,
+                    height: s(32),
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.info,
+                  }}
+                >
+                  <Text style={{ color: "#FFFFFF", fontSize: s(11), fontWeight: "700" }}>
+                    {ticket.prioritized ? "Unstar" : "Prioritize"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onSelectTicket?.(ticket.ticket_id)}
+                  style={{
+                    width: s(32),
+                    height: s(32),
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.danger,
+                  }}
+                >
+                  <Text style={{ color: "#FFFFFF", fontSize: s(14), fontWeight: "700" }}>
+                    ✕
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+            <>
             <View style={{ flex: 1, gap: s(4) }}>
               {/* Order Number */}
               <View
@@ -862,12 +923,65 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               </View>
             </View>
 
-            {/* Timer (isolated re-render — only this component updates per second) */}
-            <KDSTicketTimer
-              startTimeEpoch={ticket.start_time_epoch}
-              textColor={headerPrimaryTextColor}
-              doneTimeEpoch={ticket.status === "ready" ? ticket.ready_time_epoch : undefined}
-            />
+            {/* Timer + Badges column (right side) */}
+            <View style={{ alignItems: "flex-end", gap: s(4) }}>
+              <KDSTicketTimer
+                startTimeEpoch={ticket.start_time_epoch}
+                textColor={headerPrimaryTextColor}
+                doneTimeEpoch={ticket.status === "ready" ? ticket.ready_time_epoch : undefined}
+              />
+              {hasRush && (
+                <View
+                  style={{
+                    backgroundColor: "#FEF08A",
+                    borderWidth: 1,
+                    borderColor: colors.warning + "50",
+                    paddingHorizontal: s(8),
+                    paddingVertical: s(3),
+                    borderRadius: s(12),
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(4),
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#78350F",
+                      fontSize: s(10),
+                      fontWeight: "800",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    RUSHED
+                  </Text>
+                </View>
+              )}
+              {hasRefire && (
+                <View
+                  style={{
+                    backgroundColor: "#FEF3C7",
+                    borderWidth: 1,
+                    borderColor: "#F59E0B66",
+                    paddingHorizontal: s(8),
+                    paddingVertical: s(3),
+                    borderRadius: s(12),
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#92400E",
+                      fontSize: s(10),
+                      fontWeight: "800",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    RECALLED
+                  </Text>
+                </View>
+              )}
+            </View>
+            </>
+            )}
           </View>
 
           {/* Row 3: Customer + Table + Course (only shown when populated) */}
@@ -1335,7 +1449,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       prev.onItemPress !== next.onItemPress ||
       prev.onAcknowledgeNotice !== next.onAcknowledgeNotice ||
       prev.hideDoneItems !== next.hideDoneItems ||
-      prev.displaySettings !== next.displaySettings
+      prev.displaySettings !== next.displaySettings ||
+      prev.tapMode !== next.tapMode ||
+      prev.isFocused !== next.isFocused ||
+      prev.onSelectTicket !== next.onSelectTicket ||
+      prev.onRush !== next.onRush ||
+      prev.onPrioritize !== next.onPrioritize
     )
       return false;
 
@@ -1390,10 +1509,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 interface KDSDoneTicketCardProps {
   ticket: KDSTicket;
   onRecall: (ticketId: string) => void;
+  isFocused: boolean;
+  onSelectTicket?: (ticketId: string) => void;
 }
 
 const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
-  ({ ticket, onRecall }) => {
+  ({ ticket, onRecall, isFocused, onSelectTicket }) => {
     const uiScale = useUiScale();
     const s = (n: number) => Math.round(n * uiScale);
     const timeElapsed = useMemo(
@@ -1409,8 +1530,17 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
     );
     const serverName = ticket.server_name?.trim();
 
+    const handlePress = () => {
+      // Single tap selects the ticket so a Recall button appears in the header
+      if (isFocused) {
+        // Already focused — tap again to dismiss
+        return;
+      }
+      onSelectTicket?.(ticket.ticket_id);
+    };
+
     return (
-      <Pressable onPress={() => onRecall(ticket.ticket_id)}>
+      <Pressable onPress={handlePress}>
         <View
           style={{
             margin: 0,
@@ -1429,17 +1559,56 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
           {/* Card Header: Order Number + Order Type + Time */}
           <View
             style={{
-              backgroundColor: "#F3F4F6",
+              backgroundColor: isFocused ? colors.teal + "15" : "#F3F4F6",
               paddingHorizontal: s(12),
               paddingVertical: s(10),
               borderBottomWidth: 1,
-              borderBottomColor: "#D1D5DB",
+              borderBottomColor: isFocused ? colors.teal + "40" : "#D1D5DB",
               flexDirection: "row",
               justifyContent: "space-between",
               alignItems: "flex-start",
               gap: s(12),
             }}
           >
+            {isFocused ? (
+              // Focused: show X button + prominent Recall button.
+              <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: s(6) }}>
+                <TouchableOpacity
+                  onPress={() => onRecall(ticket.ticket_id)}
+                  style={{
+                    flex: 1,
+                    height: s(44),
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: s(8),
+                    backgroundColor: colors.teal,
+                    gap: s(6),
+                  }}
+                >
+                  <RotateCcw size={s(16)} color="#FFFFFF" />
+                  <Text style={{ color: "#FFFFFF", fontSize: s(13), fontWeight: "700" }}>
+                    Recall
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onSelectTicket?.(ticket.ticket_id)}
+                  style={{
+                    width: s(44),
+                    height: s(44),
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.danger,
+                  }}
+                >
+                  <Text style={{ color: "#FFFFFF", fontSize: s(18), fontWeight: "700" }}>
+                    ✕
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+            <>
             <View style={{ flex: 1, gap: s(4) }}>
               {/* Order Number */}
               <View
@@ -1494,6 +1663,8 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
             <Text style={{ color: "#9CA3AF", fontSize: s(16), fontWeight: "800" }}>
               {timeElapsed}
             </Text>
+            </>
+            )}
           </View>
 
           {/* Customer + Table + Course Info (only shown when populated) */}
@@ -1595,7 +1766,10 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
     );
   },
   (prev, next) =>
-    prev.ticket === next.ticket && prev.onRecall === next.onRecall,
+    prev.ticket === next.ticket &&
+    prev.onRecall === next.onRecall &&
+    prev.isFocused === next.isFocused &&
+    prev.onSelectTicket === next.onSelectTicket,
 );
 
 // ─── Main Screen ──────────────────────────────────────────────────
@@ -1615,8 +1789,8 @@ const KitchenDisplayScreen = () => {
   const kdsAutoFireEnabled = kdsConfig.autoFireEnabled;
   const kdsAutoFireDelayMinutes = kdsConfig.autoFireDelayMinutes;
   const kdsHideDoneItems = kdsConfig.hideDoneItems;
-  const kdsNewOrderPosition = kdsConfig.newOrderPosition ?? "right";
-  const setNewOrderPosition = useKDSStore((s) => s.setNewOrderPosition);
+  const kdsServedOrderSort = kdsConfig.servedOrderSort ?? "newest-first";
+  const kdsTicketTapMode = kdsConfig.ticketTapMode ?? "double-tap";
 
   const countPending = useKDSStore((s) => s.counts.pending);
   const countCooking = useKDSStore((s) => s.counts.cooking);
@@ -1649,6 +1823,8 @@ const KitchenDisplayScreen = () => {
   const recallDoneTicket = useKDSStore((s) => s.recallDoneTicket);
   const prioritizeTicket = useKDSStore((s) => s.prioritizeTicket);
   const toggleRush = useKDSStore((s) => s.toggleRush);
+  const focusedTicketId = useKDSStore((s) => s.focusedTicketId);
+  const setFocusedTicketId = useKDSStore((s) => s.setFocusedTicketId);
   const markItemDone = useKDSStore((s) => s.markItemDone);
   const acknowledgeNoticeItem = useKDSStore((s) => s.acknowledgeNoticeItem);
   const isTicketRecalled = useKDSStore((s) => s.isTicketRecalled);
@@ -1656,11 +1832,6 @@ const KitchenDisplayScreen = () => {
 
   // Cleanup retries + pending actions on unmount
   useEffect(() => () => kdsCleanup(), [kdsCleanup]);
-
-  // Sync new order position config into KDS store
-  useEffect(() => {
-    setNewOrderPosition(kdsNewOrderPosition);
-  }, [kdsNewOrderPosition, setNewOrderPosition]);
 
   // Realtime connection status for adaptive polling
   const { orders: ordersChannel } = useLocationRealtime();
@@ -1765,6 +1936,12 @@ const KitchenDisplayScreen = () => {
     ticket: KDSTicket;
     position: { x: number; y: number };
   } | null>(null);
+  const isActionMenuRushPending = useKDSStore(
+    useCallback(
+      (s) => (actionMenu ? s.isRushPending(actionMenu.ticketId) : false),
+      [actionMenu?.ticketId],
+    ),
+  );
 
   // KDS logout handler
   const handleKDSLogout = useCallback(async () => {
@@ -1883,6 +2060,13 @@ const KitchenDisplayScreen = () => {
     isRealtimeConnectedRef.current = isRealtimeConnected;
   }, [isRealtimeConnected]);
 
+  // Cleanup KDS store module-level state on unmount
+  useEffect(() => {
+    return () => {
+      useKDSStore.getState()._cleanup();
+    };
+  }, []);
+
   // Debounce disconnected indicator — only show after 2s of being disconnected
   useEffect(() => {
     if (isRealtimeConnected) {
@@ -1902,20 +2086,27 @@ const KitchenDisplayScreen = () => {
 
     fetchTickets(locationId);
 
-    let timeoutId: ReturnType<typeof setTimeout>;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
     const schedulePoll = () => {
       // No poll needed when realtime is healthy and no display filter —
       // broadcasts cover all updates. Only poll when offline or display-filtered.
       if (isRealtimeConnectedRef.current && !hasDisplayFilter) return;
       const interval = isRealtimeConnectedRef.current ? 30_000 : 15_000;
       timeoutId = setTimeout(() => {
+        if (cancelled) return;
         backgroundFetchTickets(locationId);
-        schedulePoll();
+        if (!cancelled) {
+          schedulePoll();
+        }
       }, interval);
     };
     schedulePoll();
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [
     isReady,
     locationId,
@@ -2220,7 +2411,7 @@ const KitchenDisplayScreen = () => {
       // Settings navigation is gated by the same manager PIN as bulk ops.
       if (pendingBulkAction === "settings") {
         setPendingBulkAction(null);
-        router.push("/settings");
+        router.push("/settings/kds");
         return;
       }
 
@@ -2243,18 +2434,28 @@ const KitchenDisplayScreen = () => {
       }
 
       if (isForceDoneAction) {
-        bulkMarkTicketsDone(ticketIdsToAdvance);
+        const { done, skippedNotice } = bulkMarkTicketsDone(ticketIdsToAdvance);
+        if (skippedNotice > 0) {
+          toast.show({
+            title: "Some tickets kept",
+            message: `${done} marked done by ${employee.fullName}. ${skippedNotice} kept — unacknowledged void/refund needs review.`,
+            type: "warning",
+          });
+        } else {
+          toast.show({
+            title: "Marked Done",
+            message: `${done} ticket(s) marked done by ${employee.fullName}.`,
+            type: "success",
+          });
+        }
       } else {
         bulkAdvanceTickets(ticketIdsToAdvance, locationId || "");
+        toast.show({
+          title: "Bulk Advance",
+          message: `${ticketIdsToAdvance.length} ticket(s) advanced by ${employee.fullName}.`,
+          type: "success",
+        });
       }
-
-      toast.show({
-        title: isForceDoneAction ? "Marked Done" : "Bulk Advance",
-        message: isForceDoneAction
-          ? `${ticketIdsToAdvance.length} ticket(s) marked done by ${employee.fullName}.`
-          : `${ticketIdsToAdvance.length} ticket(s) advanced by ${employee.fullName}.`,
-        type: "success",
-      });
       setPendingBulkAction(null);
     },
     [
@@ -2345,6 +2546,11 @@ const KitchenDisplayScreen = () => {
       // Fire store update FIRST — this is the critical path
       advanceTicketStatus(ticketId, itemIds, newStatus);
 
+      // Clear single-select focus if the bumped ticket was the focused one.
+      if (useKDSStore.getState().focusedTicketId === ticketId) {
+        setFocusedTicketId(null);
+      }
+
       // Build rich context for undo toast subtitle
       const displayTableName = getDisplayTableName(ticket?.table_name);
       const tablePart = displayTableName ? `Table ${displayTableName}` : "";
@@ -2367,8 +2573,46 @@ const KitchenDisplayScreen = () => {
         },
       });
     },
-    [advanceTicketStatus, recallTicket, recallDoneTicket, toast],
+    [advanceTicketStatus, recallTicket, recallDoneTicket, toast, setFocusedTicketId],
   );
+
+  // ─── Single-Select Mode (header action bar) ─────────────────────
+  // Tapping a ticket focuses it; tapping the focused ticket again clears it.
+  const handleSelectTicket = useCallback(
+    (ticketId: string) => {
+      setFocusedTicketId(
+        useKDSStore.getState().focusedTicketId === ticketId ? null : ticketId,
+      );
+    },
+    [setFocusedTicketId],
+  );
+
+  // Rush / Prioritize from the focused-card header. Mirror the long-press menu,
+  // including its prioritize "alert" sound, so both entry points behave alike.
+  const handleFocusedRush = useCallback(
+    (ticketId: string) => {
+      toggleRush(ticketId);
+      setFocusedTicketId(null);
+    },
+    [toggleRush, setFocusedTicketId],
+  );
+
+  const handleFocusedPrioritize = useCallback(
+    (ticketId: string) => {
+      prioritizeTicket(ticketId);
+      soundServiceRef.current?.playPreview("alert");
+      setFocusedTicketId(null);
+    },
+    [prioritizeTicket, setFocusedTicketId],
+  );
+
+  // Clear focus when leaving single-select mode, switching tabs, or when the
+  // focused ticket leaves the active list (e.g. bumped from another station).
+  useEffect(() => {
+    if (kdsTicketTapMode !== "single-select" && focusedTicketId) {
+      setFocusedTicketId(null);
+    }
+  }, [kdsTicketTapMode, focusedTicketId, setFocusedTicketId]);
 
   const _updateKdsConfig = useLocationConfigStore((s) => s.updateConfig);
   const handleToggleHideDone = useCallback(() => {
@@ -2399,6 +2643,14 @@ const KitchenDisplayScreen = () => {
         onAcknowledgeNotice={handleAcknowledgeNotice}
         hideDoneItems={kdsHideDoneItems}
         displaySettings={displaySettings}
+        tapMode={kdsTicketTapMode}
+        isFocused={
+          kdsTicketTapMode === "single-select" &&
+          focusedTicketId === item.ticket_id
+        }
+        onSelectTicket={handleSelectTicket}
+        onRush={handleFocusedRush}
+        onPrioritize={handleFocusedPrioritize}
       />
     ),
     [
@@ -2412,14 +2664,24 @@ const KitchenDisplayScreen = () => {
       displaySettings,
       urgencyThresholds,
       nowEpochMs,
+      kdsTicketTapMode,
+      focusedTicketId,
+      handleSelectTicket,
+      handleFocusedRush,
+      handleFocusedPrioritize,
     ],
   );
 
   const renderDoneTicketCard = useCallback(
     (item: KDSTicket) => (
-      <KDSDoneTicketCard ticket={item} onRecall={recallDoneTicket} />
+      <KDSDoneTicketCard
+        ticket={item}
+        onRecall={recallDoneTicket}
+        isFocused={focusedTicketId === item.ticket_id}
+        onSelectTicket={handleSelectTicket}
+      />
     ),
-    [recallDoneTicket],
+    [recallDoneTicket, focusedTicketId, handleSelectTicket],
   );
 
   const activeTabTickets = listDataByStatus[activeStatus];
@@ -2427,6 +2689,7 @@ const KitchenDisplayScreen = () => {
   const ticketsForLayout = useMemo(
     () =>
       [...dedupeTicketsForRender(activeTabTickets)].sort((a, b) => {
+        // For non-active tabs, use ticket_id tiebreaker only (don't re-sort)
         const aTs =
           activeStatus === "done"
             ? (a.done_time_epoch ?? a.start_time_epoch ?? 0)
@@ -2435,10 +2698,18 @@ const KitchenDisplayScreen = () => {
           activeStatus === "done"
             ? (b.done_time_epoch ?? b.start_time_epoch ?? 0)
             : (b.start_time_epoch ?? 0);
-        if (aTs !== bTs) return aTs - bTs;
+        if (aTs !== bTs) {
+          // "Served" tab (ready) — used in both 2-step and 3-step modes
+          if (activeStatus === "ready") {
+            return kdsServedOrderSort === "newest-first"
+              ? bTs - aTs  // newest first (descending)
+              : aTs - bTs; // oldest first (ascending)
+          }
+          return aTs - bTs; // default: oldest first
+        }
         return a.ticket_id.localeCompare(b.ticket_id);
       }),
-    [activeTabTickets, activeStatus],
+    [activeTabTickets, activeStatus, kdsServedOrderSort],
   );
 
   const columnizedTickets = useMemo(() => {
@@ -3067,10 +3338,19 @@ const KitchenDisplayScreen = () => {
           contentContainerStyle={{
             padding: s(4),
             paddingBottom: s(20),
+            flexGrow: 1,
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={true}
         >
+          {/* Tapping empty space clears the single-select focus. Card Pressables
+              capture their own taps, so this only fires for the surrounding area. */}
+          <Pressable
+            style={{ flex: 1 }}
+            onPress={() => {
+              if (focusedTicketId) setFocusedTicketId(null);
+            }}
+          >
           <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
             {columnizedTickets.map((colTickets, col) => (
               <View
@@ -3087,6 +3367,7 @@ const KitchenDisplayScreen = () => {
               </View>
             ))}
           </View>
+          </Pressable>
         </ScrollView>
       )}
 
@@ -3293,6 +3574,7 @@ const KitchenDisplayScreen = () => {
                 {/* Rush / Un-Rush */}
                 <Pressable
                   onPress={handleToggleRush}
+                  disabled={isActionMenuRushPending}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
@@ -3304,6 +3586,7 @@ const KitchenDisplayScreen = () => {
                     borderColor: colors.teal + "66",
                     backgroundColor: colors.teal + "16",
                     marginBottom: s(6),
+                    opacity: isActionMenuRushPending ? 0.5 : 1,
                   }}
                 >
                   <View

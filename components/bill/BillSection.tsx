@@ -28,6 +28,7 @@ import { useReservationStore } from "@/stores/useReservationStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { SendToKitchenButton } from "@/components/bill/SendToKitchenButton";
+import OrderPinGate from "@/components/auth/OrderPinGate";
 import { useUiScale } from "@/lib/uiScale";
 import { useOrderSyncCounts } from "@/stores/useSyncStatusStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
@@ -456,6 +457,62 @@ const BillSectionContent = ({
   const activeOrder = useOrderStore((s) =>
     s.activeOrderId ? s.ordersById[s.activeOrderId] : null,
   );
+
+  // Per-order PIN attribution gate. When `requirePinPerOrder` is on, the
+  // register must verify a PIN (attribution-only) before each new order. The
+  // gate is shown whenever the setting is on and no staff is yet verified for
+  // the current order.
+  const requirePinPerOrder = useStoreSettingsStore((s) => s.requirePinPerOrder);
+  const orderAttributionOrderId = useEmployeeStore(
+    (s) => s.orderAttributionOrderId,
+  );
+  // Gate THIS order until a PIN was verified for THIS order specifically.
+  // Binding to the order id means a stale verification from a different/
+  // unfinished order can't satisfy the gate here (the leak that caused
+  // "sometimes shows, sometimes not"). Dine-in orders are attributed at
+  // seating (already have a db_order_id by the time they reach this screen), so
+  // the db_order_id check stops them re-prompting; the gate also never pops on
+  // the empty / just-paid state.
+  const pinGateOpen =
+    requirePinPerOrder &&
+    !!activeOrderId &&
+    orderAttributionOrderId !== activeOrderId &&
+    !activeOrder?.db_order_id &&
+    activeOrderPaidStatus !== "Paid" &&
+    activeOrder?.check_status !== "Closed";
+
+  // Name of the staff THIS order is credited to. Resolve from the order's own
+  // stored creator first (durable, per-order) so each order shows its real
+  // creator — not the last PIN entered globally. Before the order is stamped
+  // (pre-create window), use the live attribution only if it's bound to THIS
+  // order. Fall back to the signed-in shift user.
+  const orderCreatorStaffId =
+    activeOrder?.created_by_staff_profile_id ?? null;
+  const createdByName = useEmployeeStore((s) => {
+    const resolve = (id: string | null) =>
+      id
+        ? (() => {
+            const emp = s.employees.find((e) => e.profileId === id);
+            return emp ? emp.displayName || emp.fullName : null;
+          })()
+        : null;
+
+    // 1. The order's stored creator.
+    const fromOrder = resolve(orderCreatorStaffId);
+    if (fromOrder) return fromOrder;
+
+    // 2. Live attribution, but only if verified for this exact order.
+    if (
+      s.orderAttributionStaffId &&
+      s.orderAttributionOrderId === activeOrderId
+    ) {
+      const fromLive = resolve(s.orderAttributionStaffId);
+      if (fromLive) return fromLive;
+    }
+
+    // 3. Signed-in shift user.
+    return s.loggedInEmployee?.displayName ?? s.loggedInEmployee?.fullName ?? null;
+  });
 
   // Offline sync state — subscribe directly to offlineSyncService for reliable updates.
   // `isOnline` is the effective status (false during connection-quality slow-mode, used
@@ -1610,6 +1667,12 @@ const BillSectionContent = ({
       showClockInWall();
       return;
     }
+    // Per-order PIN: block sending until a staff is verified for this order.
+    // The gate overlay (pinGateOpen) is already visible in this state.
+    // (pinGateOpen already exempts dine-in.)
+    if (pinGateOpen) {
+      return;
+    }
     if (hasDraftItems) {
       show({
         title: "Unconfirmed Items",
@@ -1652,12 +1715,33 @@ const BillSectionContent = ({
     }
     // Auto-print is now handled centrally inside sendNewItemsToKitchen
     await sendNewItemsToKitchen();
+    // NOTE: per-order PIN attribution is intentionally NOT cleared here. The
+    // verified staff must stay attached through payment so the order AND its
+    // payment are credited to the same person. Clearing happens when the order
+    // is fully paid/closed (see the payment-complete effect below), which
+    // re-opens the gate for the next order.
   };
 
   // OPTIMIZED: Wrap callback with useCallback
   // Explicit New Order action should always create a fresh order number.
+  // Cancel the per-order PIN: abort starting this order. Drop any pending
+  // attribution and deactivate the draft so the screen returns to the empty
+  // state (no order in progress) instead of staying stuck behind the gate.
+  const handleCancelPinGate = useCallback(() => {
+    useEmployeeStore.getState().clearOrderAttributionStaff();
+    clearSelectedTable();
+    setActiveOrder(null);
+  }, [clearSelectedTable, setActiveOrder]);
+
   const handleStartNewOrder = useCallback(() => {
     clearSelectedTable();
+
+    // Per-order PIN: starting a fresh order must re-prompt, regardless of how
+    // the previous order ended (sent-to-kitchen, paid, or abandoned). The
+    // payment-complete clear only covers the pay path; this covers the rest so
+    // attribution can't leak from one order to the next. (Dine-in sets its
+    // attribution at seating, a separate path, so this QSR-side clear is safe.)
+    useEmployeeStore.getState().clearOrderAttributionStaff();
 
     if (isCurrentOrderEmptyDraft && activeOrder?.id) {
       setActiveOrder(activeOrder.id);
@@ -1787,6 +1871,8 @@ const BillSectionContent = ({
                   minWidth: s(176),
                 }}
                 onPress={() => {
+                  // Per-order PIN: fresh ticket must re-prompt (see handleStartNewOrder).
+                  useEmployeeStore.getState().clearOrderAttributionStaff();
                   const { orderIds, ordersById } = useOrderStore.getState();
                   const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
                     ordersById,
@@ -1835,6 +1921,11 @@ const BillSectionContent = ({
             </View>
           </View>
         </View>
+        <OrderPinGate
+          open={pinGateOpen}
+          attributionOrderId={activeOrderId}
+          onCancel={handleCancelPinGate}
+        />
       </View>
     );
   // Handle retry failed syncs
@@ -1860,13 +1951,20 @@ const BillSectionContent = ({
       >
         <View className="flex-row items-center justify-between mb-2">
           <View className="flex-row items-center gap-2">
-            <Text
-              style={{ color: colors.heading, fontWeight: "700", fontSize: s(18) }}
-            >
-              {activeOrderDisplayNumber
-                ? `Order ${activeOrderDisplayNumber}`
-                : "New Order"}
-            </Text>
+            <View>
+              <Text
+                style={{ color: colors.heading, fontWeight: "700", fontSize: s(18) }}
+              >
+                {activeOrderDisplayNumber
+                  ? `Order ${activeOrderDisplayNumber}`
+                  : "New Order"}
+              </Text>
+              {createdByName ? (
+                <Text style={{ color: colors.muted, fontSize: s(11) }}>
+                  Created by {createdByName}
+                </Text>
+              ) : null}
+            </View>
             <SendToKitchenButton
               onPress={handleSendToKitchen}
               extraDisabled={
@@ -2516,6 +2614,11 @@ const BillSectionContent = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <OrderPinGate
+        open={pinGateOpen}
+        attributionOrderId={activeOrderId}
+        onCancel={handleCancelPinGate}
+      />
     </View>
   );
 };

@@ -106,6 +106,21 @@ function _broadcastConfigUpdate(
   if (!_supabase) return;
 
   const channel = _supabase.channel(`location:${locationId}:settings`);
+
+  // Guarantee teardown exactly once, no matter how the subscription resolves.
+  // Previously removeChannel only ran inside the SUBSCRIBED branch, so a
+  // subscription that errored / timed out / closed (flaky network) leaked the
+  // channel — and its WebSocket subscription — for the app's lifetime.
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    clearTimeout(safetyTimer);
+    _supabase?.removeChannel(channel);
+  };
+  // Safety net: if the status callback never fires at all, still reclaim it.
+  const safetyTimer = setTimeout(cleanup, 5000);
+
   channel.subscribe((status: string) => {
     if (status === "SUBSCRIBED") {
       channel.send({
@@ -118,8 +133,15 @@ function _broadcastConfigUpdate(
           timestamp: Date.now(),
         },
       });
-      // Clean up after sending
-      setTimeout(() => _supabase?.removeChannel(channel), 1000);
+      // Give the send a moment to flush, then tear down.
+      setTimeout(cleanup, 1000);
+    } else if (
+      status === "CHANNEL_ERROR" ||
+      status === "TIMED_OUT" ||
+      status === "CLOSED"
+    ) {
+      // Terminal failure states — the send will never happen, reclaim now.
+      cleanup();
     }
   });
 }

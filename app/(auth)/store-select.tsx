@@ -233,7 +233,7 @@ const StoreSelectScreen = () => {
       // Resolve effective pricing: merchant defaults unless location overrides
       if (resolved.use_merchant_pricing_defaults && merchantPricing) {
         resolved.pricing_strategy = merchantPricing.pricing_strategy;
-        resolved.dual_pricing_percentage = parseFloat(merchantPricing.dual_pricing_percentage);
+        resolved.dual_pricing_percentage = merchantPricing.dual_pricing_percentage;
       }
       setSelectedStore(resolved as SelectedLocation);
     }

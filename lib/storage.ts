@@ -629,7 +629,6 @@ export const CLEARABLE_SYNC_KEYS = [
   "order_items_cache",
   "offline_orders",
   "offline_id_registry",
-  // today_orders:* keys are cleared per-location via todayOrdersCache.clearLocation()
 ] as const;
 
 /**
@@ -661,6 +660,23 @@ export function clearCacheData(): { clearedKeys: string[]; errors: string[] } {
     } catch (error) {
       errors.push(`Failed to clear ${key}: ${error}`);
     }
+  }
+
+  // Evict the Previous Orders offline-fallback snapshots (one per location),
+  // plus any legacy `today_orders:*` keys from a prior build. Both are
+  // best-effort caches, safe to drop on a full cache clear.
+  try {
+    for (const key of syncStorage.getAllKeys()) {
+      if (
+        key.startsWith("prev_orders_offline:") ||
+        key.startsWith("today_orders:")
+      ) {
+        syncStorage.remove(key);
+        clearedKeys.push(key);
+      }
+    }
+  } catch (error) {
+    errors.push(`Failed to clear previous-orders offline cache: ${error}`);
   }
 
   return { clearedKeys, errors };

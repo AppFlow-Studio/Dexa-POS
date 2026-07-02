@@ -68,6 +68,9 @@ interface OrdersTableProps {
   onRefresh?: () => void
   onEndReached?: () => void
   isLoadingMore?: boolean
+  /** True while the initial history fetch is in flight (shows a spinner in
+   *  place of the "No orders found" empty state). */
+  isInitialLoading?: boolean
 }
 
 // Status pill config — follows design_theme.md: bg=color+'20', border=color+'50'
@@ -453,7 +456,8 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   refreshing,
   onRefresh,
   onEndReached,
-  isLoadingMore
+  isLoadingMore,
+  isInitialLoading
 }) => {
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
@@ -574,13 +578,25 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         disableAutoLayout
         drawDistance={500}
         contentContainerStyle={{ backgroundColor: colors.screen }}
-        ListEmptyComponent={() => (
-          <View className='py-20 items-center justify-center'>
-            <Text style={{ color: colors.muted }} className='text-sm'>
-              No orders found
-            </Text>
-          </View>
-        )}
+        ListEmptyComponent={() =>
+          isInitialLoading ? (
+            <View className='py-20 items-center justify-center'>
+              <ActivityIndicator size='small' color={colors.teal} />
+              <Text
+                style={{ color: colors.muted, marginTop: s(8) }}
+                className='text-sm'
+              >
+                Loading orders…
+              </Text>
+            </View>
+          ) : (
+            <View className='py-20 items-center justify-center'>
+              <Text style={{ color: colors.muted }} className='text-sm'>
+                No orders found
+              </Text>
+            </View>
+          )
+        }
         showsVerticalScrollIndicator={true}
         refreshing={refreshing}
         onRefresh={onRefresh}

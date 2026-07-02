@@ -14,6 +14,7 @@ import {
   BadgeDollarSign,
   Banknote,
   Bell,
+  ChefHat,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -90,6 +91,12 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         icon: Receipt,
         route: '/settings/receipt-templates'
       },
+      {
+        id: 'kds',
+        label: 'Kitchen Display',
+        icon: ChefHat,
+        route: '/settings/kds'
+      },
       // {
       //   id: 'payment-systems',
       //   label: 'Payment & Pricing',
@@ -129,7 +136,7 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
       },
       {
         id: 'order-line',
-        label: 'Order Line',
+        label: 'Orders Processing',
         icon: List,
         route: '/settings/order-line'
       },

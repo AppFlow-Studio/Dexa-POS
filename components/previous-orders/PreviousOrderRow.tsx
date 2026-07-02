@@ -21,6 +21,7 @@ import {
     Truck,
     User,
     Utensils,
+    WifiOff,
     XCircle,
 } from "lucide-react-native";
 import React, { useCallback, useMemo, useRef, useState } from "react";
@@ -376,6 +377,28 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
 
         {/* Status badges */}
         <View style={{ alignItems: "flex-end", gap: s(4) }}>
+          {order._offlineUnsynced && (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: s(3),
+                paddingHorizontal: s(6),
+                paddingVertical: s(2),
+                borderRadius: 999,
+                backgroundColor: colors.muted + "20",
+                borderWidth: 1,
+                borderColor: colors.muted + "40",
+              }}
+            >
+              <WifiOff size={s(9)} color={colors.muted} />
+              <Text
+                style={{ fontSize: s(10), fontWeight: "600", color: colors.muted }}
+              >
+                Offline
+              </Text>
+            </View>
+          )}
           {!isVoided && (
             <View
               style={{
@@ -697,6 +720,7 @@ const PreviousOrderRow = React.memo(PreviousOrderRowContent, (prev, next) => {
     prev.order.delivery_address === next.order.delivery_address &&
     prev.order.customer_name === next.order.customer_name &&
     prev.order.server_name === next.order.server_name &&
+    prev.order._offlineUnsynced === next.order._offlineUnsynced &&
     prev.isExpanded === next.isExpanded &&
     prev.onContinue === next.onContinue
   );

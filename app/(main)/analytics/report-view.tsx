@@ -2,12 +2,26 @@ import FilterControls from "@/components/analytics/FilterControls";
 import KpiTooltip from "@/components/analytics/KpiTooltip";
 import ReportChart from "@/components/analytics/ReportChart";
 import ReportTable from "@/components/analytics/ReportTable";
+import { colors } from "@/lib/theme";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { colors } from "@/lib/theme";
-import { ArrowLeft, DollarSign, Download, Hash, Share, ShoppingBag, TrendingUp } from "lucide-react-native";
-import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import {
+  DollarSign,
+  Download,
+  Hash,
+  Share,
+  ShoppingBag,
+  TrendingUp
+} from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const ReportViewScreen = () => {
   const router = useRouter();
@@ -25,10 +39,12 @@ const ReportViewScreen = () => {
     }
 
     const dates = currentReportData.salesTrends.map(
-      (trend) => new Date(trend.date)
+      (trend: { date: string }) => new Date(trend.date),
     );
-    const startDate = new Date(Math.min(...dates.map((d) => d.getTime())));
-    const endDate = new Date(Math.max(...dates.map((d) => d.getTime())));
+    const startDate = new Date(
+      Math.min(...dates.map((d: Date) => d.getTime())),
+    );
+    const endDate = new Date(Math.max(...dates.map((d: Date) => d.getTime())));
 
     const startYear = startDate.getFullYear();
     const endYear = endDate.getFullYear();
@@ -42,7 +58,7 @@ const ReportViewScreen = () => {
 
   const [reportType, setReportType] = useState<string | null>(null);
   const [customConfig, setCustomConfig] = useState<any>(
-    params.customConfig || null
+    params.customConfig || null,
   );
   const [chartType, setChartType] = useState<"bar" | "line" | "pie">("bar");
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -151,11 +167,30 @@ const ReportViewScreen = () => {
 
   if (isLoading && !currentReportData) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.screen, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-        <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.screen,
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 12,
+        }}
+      >
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            backgroundColor: colors.teal + "15",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
           <ActivityIndicator color={colors.teal} size="small" />
         </View>
-        <Text style={{ fontSize: 13, color: colors.label }}>Loading report...</Text>
+        <Text style={{ fontSize: 13, color: colors.label }}>
+          Loading report...
+        </Text>
       </View>
     );
   }
@@ -190,7 +225,9 @@ const ReportViewScreen = () => {
   if (!currentReportData) {
     return (
       <View className="flex-1 bg-screen items-center justify-center">
-        <Text style={{ fontSize: 13, color: colors.label }}>No report data available</Text>
+        <Text style={{ fontSize: 13, color: colors.label }}>
+          No report data available
+        </Text>
       </View>
     );
   }
@@ -199,14 +236,14 @@ const ReportViewScreen = () => {
       {/* Header */}
       <View
         style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
           paddingHorizontal: 14,
           paddingVertical: 9,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
-          backgroundColor: colors.panel
+          backgroundColor: colors.panel,
         }}
       >
         <View className="flex-row items-center">
@@ -214,7 +251,9 @@ const ReportViewScreen = () => {
             <ArrowLeft color={colors.label} size={24} />
           </TouchableOpacity> */}
           <View>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
+            <Text
+              style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}
+            >
               {currentReportData.title}
             </Text>
             <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
@@ -228,10 +267,10 @@ const ReportViewScreen = () => {
             onPress={() => {}}
             style={{
               padding: 8,
-              backgroundColor: 'transparent',
+              backgroundColor: "transparent",
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 8
+              borderRadius: 8,
             }}
           >
             <Download color={colors.label} size={16} />
@@ -240,10 +279,10 @@ const ReportViewScreen = () => {
             onPress={handleRefresh}
             style={{
               padding: 8,
-              backgroundColor: 'transparent',
+              backgroundColor: "transparent",
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 8
+              borderRadius: 8,
             }}
             disabled={isLoading}
           >
@@ -258,70 +297,258 @@ const ReportViewScreen = () => {
 
         {/* KPIs Section */}
         <View style={{ marginTop: 12 }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: "700",
+              color: colors.heading,
+              marginBottom: 8,
+            }}
+          >
             Key Performance Indicators
           </Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
             {/* Gross Margin */}
-            <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                padding: 12,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 10,
+                }}
+              >
+                <View
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    backgroundColor: colors.teal + "15",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
                   <TrendingUp size={14} color={colors.teal} />
                 </View>
                 <KpiTooltip definition="Percentage of revenue remaining after subtracting cost of goods sold" />
               </View>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>{currentReportData.kpis.grossMargin.toFixed(1)}%</Text>
-              <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Gross Margin</Text>
+              <Text
+                style={{
+                  fontSize: 20,
+                  fontWeight: "700",
+                  color: colors.heading,
+                }}
+              >
+                {currentReportData.kpis.grossMargin.toFixed(1)}%
+              </Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.label,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  marginTop: 3,
+                }}
+              >
+                Gross Margin
+              </Text>
             </View>
 
             {/* Total Revenue */}
-            <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.success + '15', alignItems: 'center', justifyContent: 'center' }}>
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                padding: 12,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 10,
+                }}
+              >
+                <View
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    backgroundColor: colors.success + "15",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
                   <DollarSign size={14} color={colors.success} />
                 </View>
                 <KpiTooltip definition="Total sales revenue for the selected period" />
               </View>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>${currentReportData.kpis.totalRevenue.toFixed(0)}</Text>
-              <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Total Revenue</Text>
+              <Text
+                style={{
+                  fontSize: 20,
+                  fontWeight: "700",
+                  color: colors.heading,
+                }}
+              >
+                ${currentReportData.kpis.totalRevenue.toFixed(0)}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.label,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  marginTop: 3,
+                }}
+              >
+                Total Revenue
+              </Text>
             </View>
 
             {/* Avg Order Value */}
-            <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.info + '15', alignItems: 'center', justifyContent: 'center' }}>
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                padding: 12,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 10,
+                }}
+              >
+                <View
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    backgroundColor: colors.info + "15",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
                   <ShoppingBag size={14} color={colors.info} />
                 </View>
                 <KpiTooltip definition="Average value per order" />
               </View>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>${currentReportData.kpis.averageOrderValue.toFixed(2)}</Text>
-              <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Avg Order Value</Text>
+              <Text
+                style={{
+                  fontSize: 20,
+                  fontWeight: "700",
+                  color: colors.heading,
+                }}
+              >
+                ${currentReportData.kpis.averageOrderValue.toFixed(2)}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.label,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  marginTop: 3,
+                }}
+              >
+                Avg Order Value
+              </Text>
             </View>
 
             {/* Total Orders */}
-            <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.warning + '15', alignItems: 'center', justifyContent: 'center' }}>
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                padding: 12,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 10,
+                }}
+              >
+                <View
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    backgroundColor: colors.warning + "15",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
                   <Hash size={14} color={colors.warning} />
                 </View>
                 <KpiTooltip definition="Total number of orders placed" />
               </View>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>{currentReportData.kpis.totalOrders}</Text>
-              <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Total Orders</Text>
+              <Text
+                style={{
+                  fontSize: 20,
+                  fontWeight: "700",
+                  color: colors.heading,
+                }}
+              >
+                {currentReportData.kpis.totalOrders}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.label,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  marginTop: 3,
+                }}
+              >
+                Total Orders
+              </Text>
             </View>
           </View>
         </View>
 
         {/* Chart Section */}
         <View style={{ marginTop: 16 }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>Chart</Text>
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: "700",
+              color: colors.heading,
+              marginBottom: 8,
+            }}
+          >
+            Chart
+          </Text>
           <View
             style={{
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
               borderRadius: 12,
-              padding: 14
+              padding: 14,
             }}
           >
             <ReportChart
@@ -335,7 +562,14 @@ const ReportViewScreen = () => {
 
         {/* Table Section */}
         <View style={{ marginTop: 16 }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: "700",
+              color: colors.heading,
+              marginBottom: 8,
+            }}
+          >
             Detailed Data
           </Text>
           <View
@@ -344,7 +578,7 @@ const ReportViewScreen = () => {
               borderWidth: 1,
               borderColor: colors.border,
               borderRadius: 12,
-              overflow: 'hidden'
+              overflow: "hidden",
             }}
           >
             <ReportTable data={currentReportData.tableData} />

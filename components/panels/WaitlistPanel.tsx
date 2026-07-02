@@ -24,7 +24,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
-import Animated, { LinearTransition } from 'react-native-reanimated'
 
 const WaitlistPanel: React.FC = () => {
   const uiScale = useUiScale()
@@ -314,7 +313,7 @@ const WaitlistPanel: React.FC = () => {
             </Text>
           </View>
         ) : waitlist.length > 0 ? (
-          <Animated.View layout={LinearTransition.duration(200)}>
+          <View>
             {waitlist.map(entry => (
               <WaitlistCard
                 key={entry.id}
@@ -327,7 +326,7 @@ const WaitlistPanel: React.FC = () => {
                 onEdit={() => setEntryToEdit(entry)}
               />
             ))}
-          </Animated.View>
+          </View>
         ) : (
           <View
             style={{

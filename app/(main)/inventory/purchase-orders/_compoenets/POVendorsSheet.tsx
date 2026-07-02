@@ -150,7 +150,7 @@ const POVendorsSheet = forwardRef<BottomSheet, POVendorsSheetProps>(
       const q = query.trim().toLowerCase();
       if (!q) return vendors;
       return vendors.filter((v) =>
-        [v.name, v.contactPerson, v.email, v.phone, v.description]
+        [v.name, v.email, v.phone, v.description]
           .filter(Boolean)
           .some((s) => String(s).toLowerCase().includes(q))
       );

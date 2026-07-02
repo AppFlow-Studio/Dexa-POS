@@ -9,10 +9,12 @@ import {
   ChevronUp,
   LayoutGrid,
   List,
-  Lock
+  Lock,
+  PlusCircle,
+  UserCheck
 } from 'lucide-react-native'
 import React, { useState } from 'react'
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native'
 
 const DAY_OPTIONS = [
   { value: 0, label: 'Today Only', description: 'Only show orders from today' },
@@ -130,13 +132,17 @@ const OrderLineSettingsScreen = () => {
     s => s.managerOverrideTimeoutMinutes
   )
   const orderCompletionMode = useStoreSettingsStore(s => s.orderCompletionMode)
+  const requirePinPerOrder = useStoreSettingsStore(s => s.requirePinPerOrder)
+  const autoCreateOrder = useStoreSettingsStore(s => s.autoCreateOrder)
   const updateField = useStoreSettingsStore(s => s.updateField)
 
   const [expandedSections, setExpandedSections] = useState({
     visibility: true,
     viewMode: true,
     managerOverride: true,
-    orderCompletion: true
+    orderCompletion: true,
+    staffAttribution: true,
+    orderCreation: true
   })
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -202,7 +208,7 @@ const OrderLineSettingsScreen = () => {
         <Text
           style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
         >
-          Order Line Settings
+          Orders Processing Settings
         </Text>
         <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
           Configure how orders appear in the order line.
@@ -676,6 +682,177 @@ const OrderLineSettingsScreen = () => {
                   </TouchableOpacity>
                 )
               })}
+            </View>
+          )}
+        </View>
+
+        {/* ── Staff Attribution (per-order PIN) ──────────────────────── */}
+        <View
+          style={{
+            marginTop: s(16),
+            borderRadius: s(12),
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden',
+            backgroundColor: colors.panel
+          }}
+        >
+          {renderSectionHeader(
+            'Staff Attribution',
+            <UserCheck size={s(14)} color={colors.teal} />,
+            'staffAttribution'
+          )}
+          {expandedSections.staffAttribution && (
+            <View style={{ padding: s(12) }}>
+              <Text
+                style={{
+                  fontSize: s(11),
+                  color: colors.muted,
+                  marginBottom: s(10),
+                  paddingHorizontal: s(2)
+                }}
+              >
+                On shared registers, require a PIN before each new order so the
+                staff who rings it up is credited as that order&apos;s creator.
+                The PIN is attribution-only — it does not sign anyone in or clock
+                them in/out. When off, the signed-in user is credited for every
+                order.
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() =>
+                  updateField('requirePinPerOrder', !requirePinPerOrder)
+                }
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(9),
+                  borderRadius: s(10),
+                  borderWidth: 1,
+                  backgroundColor: requirePinPerOrder
+                    ? colors.teal + '10'
+                    : colors.screen,
+                  borderColor: requirePinPerOrder
+                    ? colors.teal + '50'
+                    : colors.border
+                }}
+              >
+                <View style={{ flex: 1, marginRight: s(10) }}>
+                  <Text
+                    style={{
+                      fontSize: s(13),
+                      fontWeight: '600',
+                      color: requirePinPerOrder ? colors.teal : colors.heading
+                    }}
+                  >
+                    Require PIN per order
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      color: colors.muted,
+                      marginTop: s(1)
+                    }}
+                  >
+                    Return to a PIN prompt after each order is sent.
+                  </Text>
+                </View>
+                <Switch
+                  value={requirePinPerOrder}
+                  onValueChange={value =>
+                    updateField('requirePinPerOrder', value)
+                  }
+                  trackColor={{ false: colors.border, true: colors.teal }}
+                  thumbColor={colors.onSolid}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* ── Order Creation ─────────────────────────────────────────── */}
+        <View
+          style={{
+            marginTop: s(16),
+            borderRadius: s(12),
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden',
+            backgroundColor: colors.panel
+          }}
+        >
+          {renderSectionHeader(
+            'Order Creation',
+            <PlusCircle size={s(14)} color={colors.teal} />,
+            'orderCreation'
+          )}
+          {expandedSections.orderCreation && (
+            <View style={{ padding: s(12) }}>
+              <Text
+                style={{
+                  fontSize: s(11),
+                  color: colors.muted,
+                  marginBottom: s(10),
+                  paddingHorizontal: s(2)
+                }}
+              >
+                When on, the register auto-creates an order when you open the
+                order screen and after each payment. Turn this off to require the
+                operator to explicitly start an order — the screen stays empty
+                until then, and no order is created until the first item is added.
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() =>
+                  updateField('autoCreateOrder', !autoCreateOrder)
+                }
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(9),
+                  borderRadius: s(10),
+                  borderWidth: 1,
+                  backgroundColor: autoCreateOrder
+                    ? colors.teal + '10'
+                    : colors.screen,
+                  borderColor: autoCreateOrder
+                    ? colors.teal + '50'
+                    : colors.border
+                }}
+              >
+                <View style={{ flex: 1, marginRight: s(10) }}>
+                  <Text
+                    style={{
+                      fontSize: s(13),
+                      fontWeight: '600',
+                      color: autoCreateOrder ? colors.teal : colors.heading
+                    }}
+                  >
+                    Auto-create orders
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      color: colors.muted,
+                      marginTop: s(1)
+                    }}
+                  >
+                    Off: operator must explicitly start each order.
+                  </Text>
+                </View>
+                <Switch
+                  value={autoCreateOrder}
+                  onValueChange={value =>
+                    updateField('autoCreateOrder', value)
+                  }
+                  trackColor={{ false: colors.border, true: colors.teal }}
+                  thumbColor={colors.onSolid}
+                />
+              </TouchableOpacity>
             </View>
           )}
         </View>
