@@ -1087,6 +1087,33 @@ const ensureOrderCreated = async (
   }
 
   // ========================================================================
+  // PER-ORDER PIN ATTRIBUTION GUARD
+  // ========================================================================
+  // This is the single true chokepoint for backend order creation. Guarding
+  // here covers EVERY trigger — adding items, AND taking payment (which
+  // materializes the order at pay-time) — so no order can be created and
+  // attributed before the ringing staff is PIN-verified. The cart-add guard in
+  // addItemToActiveOrder is the proactive/UX layer; this is the backstop that
+  // also catches the payment path. Only blocks NEW creation (early returns
+  // above already short-circuit orders that exist). Dine-in orders are created
+  // via seat_guests (guarded separately at the seating path), but if one ever
+  // reaches here pre-seating it should be gated too.
+  if (
+    useStoreSettingsStore.getState().requirePinPerOrder &&
+    useEmployeeStore.getState().orderAttributionOrderId !== order.id
+  ) {
+    console.log(
+      `[ensureOrderCreated] Blocked: per-order PIN required, no verified staff for ${order.id}`,
+    );
+    toastService.show({
+      title: "Enter PIN to start",
+      message: "Enter your PIN to start this order.",
+      type: "warning",
+    });
+    return null;
+  }
+
+  // ========================================================================
   // OFFLINE MODE: Queue order creation and return special marker
   // ========================================================================
   if (!supabase || !isNetworkOnline) {
@@ -1122,7 +1149,7 @@ const ensureOrderCreated = async (
       p_special_instructions: null,
       p_device_id: getDeviceId(),
       p_created_by_staff_id:
-        useEmployeeStore.getState().loggedInEmployee?.profileId || null,
+        useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
       p_station_id:
         useStoreSettingsStore.getState().selectedStation?.id || null,
     };
@@ -1254,7 +1281,7 @@ const ensureOrderCreated = async (
         p_special_instructions: null,
         p_device_id: getDeviceId(),
         p_created_by_staff_id:
-          useEmployeeStore.getState().loggedInEmployee?.profileId || null,
+          useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
         p_station_id:
           useStoreSettingsStore.getState().selectedStation?.id || null,
       };
@@ -1338,6 +1365,21 @@ const ensureOrderCreated = async (
             orderData.created_at || new Date().toISOString(),
             orderData.sync_version, // Pass sync_version from backend response
           );
+
+          // Persist the creator on the local order so "Created by" reflects the
+          // staff who actually rang THIS order (the per-order PIN staff when on),
+          // not the live/last-PIN global value. backendId is the post-rekey key.
+          {
+            const creatorId =
+              useEmployeeStore.getState().getEffectiveCreatorStaffId() || null;
+            if (creatorId) {
+              useOrderStore.setState((state) => {
+                const o =
+                  state.ordersById[backendId] ?? state.ordersById[order.id];
+                if (o) o.created_by_staff_profile_id = creatorId;
+              });
+            }
+          }
 
           // Re-seed local counter to match DB-assigned sequence (prevents drift from abandoned drafts)
           const dbSeq = parseSequenceFromDisplayNumber(
@@ -2789,6 +2831,10 @@ const syncPaymentToBackend = async (
         : null,
       p_item_allocations: itemAllocations,
       p_terminal_response: terminalResponse,
+      // Bake in the ringing staff at enqueue time so offline replay attributes
+      // the payment correctly (PIN-verified staff when per-order PIN is on).
+      p_staff_id:
+        useEmployeeStore.getState().getEffectiveCreatorStaffId() ?? null,
       p_split_count: paymentDetails.splitCount || null,
       p_split_portion_index: paymentDetails.splitPortionIndex || null,
       p_force_card_pricing: paymentDetails.forceCardPricing || false,
@@ -2891,7 +2937,10 @@ const syncPaymentToBackend = async (
           : null,
         p_item_allocations: itemAllocationsForRpc,
         p_terminal_response: terminalResponse,
-        p_staff_id: null, // Could get from employee store if needed
+        // Attribute the payment to the staff who rang the order (PIN-verified
+        // when per-order PIN is on, else the signed-in shift user).
+        p_staff_id:
+          useEmployeeStore.getState().getEffectiveCreatorStaffId() ?? null,
         p_split_count: paymentDetails.splitCount || null,
         p_split_portion_index: paymentDetails.splitPortionIndex || null,
         p_force_card_pricing: paymentDetails.forceCardPricing || false,
@@ -3125,6 +3174,8 @@ const syncPaymentToBackend = async (
           : null,
         p_item_allocations: itemAllocationsRetry,
         p_terminal_response: terminalResponseRetry,
+        p_staff_id:
+          useEmployeeStore.getState().getEffectiveCreatorStaffId() ?? null,
         p_split_count: paymentDetails.splitCount || null,
         p_split_portion_index: paymentDetails.splitPortionIndex || null,
         p_force_card_pricing: paymentDetails.forceCardPricing || false,
@@ -4073,6 +4124,21 @@ function releaseOrderState(
   // Clear the string-keyed module dicts under every id the order was keyed
   // under (its own id, db UUID, and the store key it was removed under).
   _cleanupOrderModuleState(orderId, dbId, storeKey);
+  // Prune the two order-keyed module Maps that aren't covered by
+  // _cleanupOrderModuleState: localIdToDbOrderId (PERSISTED — grew one entry
+  // per order for the app's lifetime across restarts) and lastOrderDetailSyncAt
+  // (in-mem sync cooldown — grew one entry per distinct synced order per shift).
+  // Both are dead once the order leaves ordersById: the local→db mapping only
+  // exists to dedupe creation/resolve queue keys for a LIVE order, and the
+  // cooldown only throttles syncs for an order still in memory. A re-open from
+  // history re-keys + re-syncs fresh, so dropping these loses nothing.
+  let localIdMapChanged = false;
+  for (const k of [orderId, dbId, storeKey]) {
+    if (!k) continue;
+    if (localIdToDbOrderId.delete(k)) localIdMapChanged = true;
+    lastOrderDetailSyncAt.delete(k);
+  }
+  if (localIdMapChanged) persistLocalIdMap();
   const items = order.items ?? [];
   for (const item of items) {
     if (item?.id) quantitySyncGenerations.delete(item.id);
@@ -7786,6 +7852,32 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
 
+            // Per-order PIN attribution: when the setting is ON, no items may be
+            // added until the ringing staff has been PIN-verified — but ONLY when
+            // this would create a NEW order. If the order already exists (has a
+            // db_order_id or a pending create), creation is done and its creator
+            // is already attributed, so adds proceed without re-prompting. This is
+            // what lets a seated dine-in order (created+attributed at seating,
+            // attribution since cleared) accept items without a second PIN, while
+            // still gating brand-new QSR orders. Covers every add surface since
+            // they all funnel through here.
+            const orderNotYetCreated =
+              !activeOrder.db_order_id &&
+              !getOrderCreationOperationId(activeOrder.id);
+            if (
+              orderNotYetCreated &&
+              useStoreSettingsStore.getState().requirePinPerOrder &&
+              useEmployeeStore.getState().orderAttributionOrderId !==
+                activeOrder.id
+            ) {
+              toastService.show({
+                title: "Enter PIN to start",
+                message: "Enter your PIN to start this order.",
+                type: "warning",
+              });
+              return;
+            }
+
             // Phase 5: Any visible order can be modified - no ownership guard needed
 
             // Perf Phase 0: tap→paint span; both paths below commit a set().
@@ -11446,26 +11538,24 @@ export const useOrderStore = create<OrderState>()(
                 ? Math.max(storedOutstanding, computedOutstanding)
                 : computedOutstanding;
 
-            // Does this payment actually collect what's still owed? True for an
-            // explicit final split portion AND for a normal full payment that
-            // covers the balance. A null amount means "pay the entire remaining
-            // balance" (the full-pay path), which collects by definition.
+            // A legitimate final even-split portion can be a sub-cent remainder
+            // (e.g. $0.05 split 3 ways → last portion is $0.03 but a $0.02 total
+            // can leave $0.01 owing). In that case outstanding == the portion we
+            // are about to collect, so this is NOT "already paid" — let it through.
+            // We only treat it as a true final portion when the explicit amount
+            // still covers what's owed.
+            const isFinalSplitPortion =
+              splitCount !== undefined &&
+              splitPortionIndex !== undefined &&
+              splitPortionIndex === splitCount;
             const collectsRemaining =
-              amount == null ||
-              (amount > 0 && amount >= outstandingBeforePayment - 0.001);
+              forceExplicitAmount &&
+              amount > 0 &&
+              amount >= outstandingBeforePayment - 0.001;
 
-            // Reject only when there is genuinely nothing left to collect.
-            // Sub-cent rounding dust (< $0.005) is "already paid", but a real 1¢
-            // balance is money the guest still owes and must be collectable —
-            // a $0.01 order, or a tiny final split remainder (e.g. $0.05 split 3
-            // ways leaves $0.01). Previously the <= $0.01 threshold rejected
-            // legitimate 1¢ checkouts because the escape only fired for explicit
-            // split portions; the by-item/full-pay paths don't set
-            // forceExplicitAmount, so a $0.01 charge falsely read as "paid".
-            const nothingLeftToCollect = outstandingBeforePayment < 0.005;
             if (
-              nothingLeftToCollect ||
-              (outstandingBeforePayment <= 0.01 && !collectsRemaining)
+              outstandingBeforePayment <= 0.01 &&
+              !(isFinalSplitPortion && collectsRemaining)
             ) {
               toastService.show({
                 title: "Already Paid",

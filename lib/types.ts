@@ -475,12 +475,17 @@ export interface PreviousOrder {
   cash_amount_due: number
   type: OrderType
   total: number
+  // Cash-priced grand total (card-equivalent is `total`). Server-authoritative
+  // (includes service charge + SC tax); read by getCashPricedOrderTotal so a
+  // cash-paid order's breakdown shows the real cash total, not an items-only sum.
+  total_cash_amount?: number
   tax?: number // Tax amount for bill display
   // Service charge snapshot — pinned when SC was applied on the live order
   // so the historical receipt shows the same SC line the customer paid.
   service_charge?: number
   service_charge_name?: string | null
   service_charge_rate?: number | null
+  service_charge_is_taxable?: boolean | null
   items: CartItem[] // The detailed list of items for the notes modal
   notes?: string // Order-level notes (customer requests, special instructions)
   payments?: OrderProfile['payments'] // Add payments array
@@ -503,6 +508,10 @@ export interface PreviousOrder {
   order_refund_items?: OrderRefundItemRecord[]
   // Staff attribution (for fraud detection — who created this order)
   created_by_staff_profile_id?: string | null
+  // True when this entry was archived to history while OFFLINE (not yet
+  // confirmed by the backend). Drives the "Offline" badge on the row. Cleared
+  // automatically once the order syncs and a server fetch replaces it.
+  _offlineUnsynced?: boolean
 }
 
 export type InventoryItemStatus =
@@ -1029,6 +1038,10 @@ export interface OrderProfile {
   // to skip per-order get_order_details fan-out when the bulk fetch already
   // delivered fresh data. Cleared on realtime/local writes that drift the order.
   _lastBulkFetchAt?: number
+
+  // Display-only: set on Previous Orders rows whose history entry was archived
+  // while offline (not yet confirmed by the backend). Drives the "Offline" badge.
+  _offlineUnsynced?: boolean
 }
 
 export type CheckStatus = 'Pending' | 'Cleared' | 'Voided'

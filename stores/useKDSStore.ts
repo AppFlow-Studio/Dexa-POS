@@ -134,6 +134,7 @@ interface KDSState {
   markItemDone: (ticketId: string, itemId: string) => void;
   acknowledgeNoticeItem: (ticketId: string, itemId: string) => void;
   isTicketRecalled: (ticketId: string) => boolean;
+  isRushPending: (ticketId: string) => boolean;
 
   // Done tickets
   recallDoneTicket: (ticketId: string) => void;
@@ -149,7 +150,9 @@ interface KDSState {
   selectAllVisible: (ids: string[]) => void;
   clearSelection: () => void;
   bulkAdvanceTickets: (ticketIds: string[], locationId: string) => void;
-  bulkMarkTicketsDone: (ticketIds: string[]) => void;
+  bulkMarkTicketsDone: (
+    ticketIds: string[],
+  ) => { done: number; skippedNotice: number };
 
   // Config
   setNewOrderPosition: (pos: "left" | "right") => void;
@@ -405,6 +408,14 @@ function bumpTicketMutationVersion(ticketId: string): number {
 
 function getTicketMutationVersion(ticketId: string): number {
   return _ticketMutationVersions.get(ticketId) ?? 0;
+}
+
+// Drop the version entry for a ticket that has left state. Without this the
+// Map only ever grows (bump on every mutation, never deleted) — one entry per
+// ticket id ever seen, for the whole KDS session. Called from every ticket-
+// removal site and on _cleanup.
+function deleteTicketMutationVersion(ticketId: string): void {
+  _ticketMutationVersions.delete(ticketId);
 }
 
 /** Track ticket IDs that have been recalled — survives server refetches */
@@ -693,8 +704,8 @@ function getEffectiveItemQuantity(
 function isActionableKitchenItem(
   item: Pick<
     KDSTicketItem,
-    "is_voided" | "refunded_quantity" | "quantity" | "kitchen_status"
-  >,
+    "is_voided" | "refunded_quantity" | "quantity"
+  > & { kitchen_status: string | null },
 ): boolean {
   const status = (item.kitchen_status ?? "").toLowerCase();
   const isTerminalKitchenStatus =
@@ -1951,6 +1962,7 @@ export const useKDSStore = create<KDSState>()(
           // Avoid shallow-copying entire map — use Object.create trick with deletion
           updatedById = Object.assign({}, _ticketsById);
           delete updatedById[ticketId];
+          deleteTicketMutationVersion(ticketId);
 
           if (ticket) {
             const updatedDone = dedupeTicketsByIdKeepFirst([
@@ -2762,6 +2774,10 @@ export const useKDSStore = create<KDSState>()(
       },
 
       isTicketRecalled: (ticketId: string) => _recalledTicketIds.has(ticketId),
+      isRushPending: (ticketId: string) => {
+        const pending = _pendingActions.get(ticketId);
+        return pending?.rushOverride != null;
+      },
 
       prioritizeTicket: (ticketId: string) => {
         const { tickets, _ticketsById, prioritizedTicketIds } = get();
@@ -2845,6 +2861,11 @@ export const useKDSStore = create<KDSState>()(
         const { tickets, _ticketsById } = get();
         const ticket = _ticketsById[ticketId];
         if (!ticket) return;
+
+        // Guard against rapid toggles: if a rush action is already pending for
+        // this ticket, wait for it to settle before allowing another toggle.
+        const existingPending = _pendingActions.get(ticketId);
+        if (existingPending?.rushOverride != null) return;
 
         const currentRush = ticket.items.some((i) => i.rush);
         const newRush = !currentRush;
@@ -3055,6 +3076,7 @@ export const useKDSStore = create<KDSState>()(
           updatedTickets = tickets.filter((t) => t.ticket_id !== ticketId);
           updatedById = { ..._ticketsById };
           delete updatedById[ticketId];
+          deleteTicketMutationVersion(ticketId);
         } else {
           const updatedTicket = { ...ticket, items: updatedItems };
           updatedTickets = tickets.map((t) =>
@@ -3079,7 +3101,13 @@ export const useKDSStore = create<KDSState>()(
           if (kdsDisplayId) params.p_kds_display_id = kdsDisplayId;
           scheduleRetry(
             `ack_notice_${ticketId}_${itemId}`,
-            () => client.rpc("acknowledge_kds_notice", params),
+            async () => {
+              const { error } = await client.rpc(
+                "acknowledge_kds_notice",
+                params,
+              );
+              if (error) throw error;
+            },
             0,
             () => {
               const lastLoc = get()._lastLocationId;
@@ -3506,13 +3534,26 @@ export const useKDSStore = create<KDSState>()(
         const matchedTickets = tickets.filter((t) =>
           ticketSet.has(t.ticket_id),
         );
-        if (matchedTickets.length === 0) return;
+        if (matchedTickets.length === 0) {
+          return { done: 0, skippedNotice: 0 };
+        }
 
         // Build single optimistic state update for ALL tickets at once
         const removedIds = new Set<string>();
         const newDoneTickets: KDSTicket[] = [];
+        let skippedNotice = 0;
 
         for (const ticket of matchedTickets) {
+          // Block bulk-done on any ticket carrying an unacknowledged void/refund.
+          // The void is a notice the cook must handle explicitly — and since
+          // bulk-done never acknowledges it, the server keeps returning the
+          // ticket, so it would just reappear on the next fetch anyway. Leave it
+          // on the board and report it so the caller can warn.
+          if (ticket.items.some((i) => isKitchenNoticeItem(i))) {
+            skippedNotice++;
+            continue;
+          }
+
           const actionableItemIds = ticket.items
             .filter((i) => isActionableKitchenItem(i))
             .map((i) => i.id);
@@ -3522,17 +3563,23 @@ export const useKDSStore = create<KDSState>()(
             cancelRetry(`item_${ticket.ticket_id}_${id}`);
           }
 
-          // Register pending action
+          // Register pending action. Cover EVERY item id (not just the
+          // currently-actionable ones) with target "served". The optimistic
+          // removal below is unconditional, so the suppression in
+          // overlayPendingActions must be too — otherwise a ticket whose items
+          // were all already served/voided (e.g. a concurrent broadcast bumped
+          // the last item moments before this bulk action) gets removed with no
+          // pending entry, and the next fetch/broadcast re-adds it to the board.
           const itemStatusMap = new Map<string, string>();
-          for (const id of actionableItemIds) itemStatusMap.set(id, "served");
-          if (actionableItemIds.length > 0) {
-            setPendingAction(ticket.ticket_id, {
-              ticketId: ticket.ticket_id,
-              targetStatus: "done",
-              itemStatuses: itemStatusMap,
-              timestamp: Date.now(),
-            });
+          for (const item of ticket.items) {
+            itemStatusMap.set(item.id, "served");
           }
+          setPendingAction(ticket.ticket_id, {
+            ticketId: ticket.ticket_id,
+            targetStatus: "done",
+            itemStatuses: itemStatusMap,
+            timestamp: Date.now(),
+          });
 
           removedIds.add(ticket.ticket_id);
           deleteRecalledTicketId(ticket.ticket_id);
@@ -3581,7 +3628,10 @@ export const useKDSStore = create<KDSState>()(
           (t) => !removedIds.has(t.ticket_id),
         );
         const updatedById = { ..._ticketsById };
-        for (const id of removedIds) delete updatedById[id];
+        for (const id of removedIds) {
+          delete updatedById[id];
+          deleteTicketMutationVersion(id);
+        }
         const updatedDone = dedupeTicketsByIdKeepFirst([
           ...newDoneTickets,
           ...get().doneTickets,
@@ -3603,6 +3653,8 @@ export const useKDSStore = create<KDSState>()(
           doneCount: updatedDone.length,
           selectedTicketIds: new Set<string>(),
         });
+
+        return { done: removedIds.size, skippedNotice };
       },
 
       // ─── Cleanup (for unmount) ──────────────────────────────────────
@@ -3613,6 +3665,7 @@ export const useKDSStore = create<KDSState>()(
         _recalledTicketIds.clear();
         _recalledCycleTicketIds.clear();
         _recalledTicketAt.clear();
+        _ticketMutationVersions.clear();
         _acknowledgedNoticeItemIds.clear();
         persistAcknowledgedNoticeItems();
         if (_refetchTimeout) {

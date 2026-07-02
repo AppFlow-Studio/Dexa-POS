@@ -45,11 +45,6 @@ import {
     View,
 } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
-import Animated, {
-    FadeIn,
-    FadeOut,
-    LinearTransition,
-} from "react-native-reanimated";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1870,8 +1865,7 @@ const ReservationCard: React.FC<{
   ].includes(r.status);
 
   return (
-    <Animated.View
-      layout={LinearTransition.duration(200)}
+    <View
       style={{
         marginBottom: s(8),
         borderRadius: s(10),
@@ -1978,9 +1972,7 @@ const ReservationCard: React.FC<{
 
       {/* Expanded */}
       {isExpanded && (
-        <Animated.View
-          entering={iosOnly(FadeIn.duration(150))}
-          exiting={iosOnly(FadeOut.duration(100))}
+        <View
           style={{
             paddingHorizontal: s(10),
             paddingBottom: s(10),
@@ -2195,9 +2187,9 @@ const ReservationCard: React.FC<{
               </View>
             </View>
           )}
-        </Animated.View>
+        </View>
       )}
-    </Animated.View>
+    </View>
   );
 };
 

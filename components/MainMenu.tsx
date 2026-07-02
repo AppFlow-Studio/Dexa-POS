@@ -178,10 +178,14 @@ const MainMenu: React.FC = () => {
   const [targetRoute, setTargetRoute] = useState<string | null>(null);
   const [pinError, setPinError] = useState("");
 
+  // Previous Orders is allowed offline: it falls back to the last
+  // successfully-fetched snapshot (previousOrdersOfflineCache) instead of going
+  // blank, so the tile stays usable without a connection.
   const offlineAllowedRoutes = new Set([
     "/order-processing",
     "/tables",
     "/settings",
+    "/previous-orders",
   ]);
 
   const handleLockedAccess = (route: string) => {

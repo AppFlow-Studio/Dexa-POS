@@ -15,9 +15,14 @@ function item(overrides: Partial<CartItem>): CartItem {
     price: 10,
     unitPrice: 10,
     cashPrice: 10,
+    baseCardPrice: 10,
+    baseCashPrice: 10,
+    taxRate: 0,
     customizations: {},
     subtotal: 10,
     cashSubtotal: 10,
+    taxAmount: 0,
+    cashTaxAmount: 0,
     ...overrides,
   };
 }
@@ -99,8 +104,20 @@ describe("reopened order outstanding totals", () => {
   it("zeroes the phantom balance on a fully-paid mixed card+cash reopened order", () => {
     const totals = calculateOrderTotals({
       items: [
-        item({ id: "a", unitPrice: 10, baseCashPrice: 8, quantity: 1, paidQuantity: 1 }),
-        item({ id: "b", unitPrice: 10, baseCashPrice: 8, quantity: 1, paidQuantity: 1 }),
+        item({
+          id: "a",
+          unitPrice: 10,
+          baseCashPrice: 8,
+          quantity: 1,
+          paidQuantity: 1,
+        }),
+        item({
+          id: "b",
+          unitPrice: 10,
+          baseCashPrice: 8,
+          quantity: 1,
+          paidQuantity: 1,
+        }),
       ],
       checkDiscount: null,
       taxRatesMap: { standard: 0 },
@@ -176,14 +193,22 @@ describe("reopened order outstanding totals", () => {
       _reopenedForOrdering: true,
     };
     expect(
-      resolveOutstandingAmount(reopened, backendAmountDue, totals.outstanding_total),
+      resolveOutstandingAmount(
+        reopened,
+        backendAmountDue,
+        totals.outstanding_total,
+      ),
     ).toBe(10.89);
 
     // If Fix B had shipped (drop _reopenedForOrdering): synced item →
     // hasPendingCartEdit false → gate closes → stale backend 0 wins. Money hidden.
     const fixBShipped: OrderLike = { ...reopened, _reopenedForOrdering: false };
     expect(
-      resolveOutstandingAmount(fixBShipped, backendAmountDue, totals.outstanding_total),
+      resolveOutstandingAmount(
+        fixBShipped,
+        backendAmountDue,
+        totals.outstanding_total,
+      ),
     ).toBe(0);
   });
 
@@ -223,7 +248,11 @@ describe("reopened order outstanding totals", () => {
       _reopenedForOrdering: true,
     };
     expect(
-      resolveOutstandingAmount(reopened, backendAmountDue, totals.outstanding_total),
+      resolveOutstandingAmount(
+        reopened,
+        backendAmountDue,
+        totals.outstanding_total,
+      ),
     ).toBe(5);
   });
 });

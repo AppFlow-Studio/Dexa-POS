@@ -34,12 +34,14 @@ import { StatusBar } from 'expo-status-bar'
 import React, { useCallback, useEffect, useRef } from 'react'
 import {
   ActivityIndicator,
+  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
   unstable_batchedUpdates,
   View
 } from 'react-native'
+import { hintNativeGc } from '@/lib/nativeMemory'
 import { SafeAreaView } from 'react-native-safe-area-context'
 /** Side-effect component: keeps POS orders in sync when realtime drops */
 function OrderSyncRecoveryBridge ({ locationId }: { locationId: string }) {
@@ -64,7 +66,16 @@ export default function MainLayout () {
   const menuSearchSheetRef = useRef<BottomSheetMethods>(null)
   const setSheetRef = useNotificationSheetStore(state => state.setSheetRef)
   const clearSheetRef = useNotificationSheetStore(state => state.clearSheetRef)
-  const { setSearchSheetRef } = useMenuManagementSearchStore()
+  const { setSearchSheetRef, clearSearchSheetRef } = useMenuManagementSearchStore()
+
+  // Complementary mitigation to the screens animation fix (lib/screenConfig.ts):
+  // hint a GC after every navigation so native cleaners drain promptly.
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      hintNativeGc(pathname)
+    })
+    return () => task.cancel()
+  }, [pathname])
 
   useEffect(() => {
     if (!isKDS) {
@@ -75,10 +86,11 @@ export default function MainLayout () {
   }, [setSheetRef, clearSheetRef, isKDS])
 
   useEffect(() => {
-    setSearchSheetRef(menuSearchSheetRef as React.RefObject<BottomSheetMethods>)
-  }, [setSearchSheetRef])
+    const ref = menuSearchSheetRef as React.RefObject<BottomSheetMethods>
+    setSearchSheetRef(ref)
+    return () => clearSearchSheetRef(ref)
+  }, [setSearchSheetRef, clearSearchSheetRef])
 
-  // DEBUG: Verify station context is initialized before broadcasts arrive (Step 4)
   useEffect(() => {
     if (__DEV__ && !isKDS) {
       const orderStore = useOrderStore.getState()
@@ -92,18 +104,14 @@ export default function MainLayout () {
     }
   }, [isKDS])
 
-  // Register PaymentDetailBottomSheet ref with store
   useEffect(() => {
     if (!isKDS) {
-      usePaymentDetailSheetStore
-        .getState()
-        .setBottomSheetRef(
-          paymentDetailSheetRef as React.RefObject<BottomSheetMethods>
-        )
+      const ref = paymentDetailSheetRef as React.RefObject<BottomSheetMethods>
+      usePaymentDetailSheetStore.getState().setBottomSheetRef(ref)
+      return () => usePaymentDetailSheetStore.getState().clearBottomSheetRef(ref)
     }
   }, [paymentDetailSheetRef, isKDS])
 
-  // --- POS Sound Notifications for external orders ---
   const soundServiceRef = useRef<KDSSoundService | null>(null)
 
   useEffect(() => {
@@ -117,7 +125,6 @@ export default function MainLayout () {
     }
   }, [isKDS])
 
-  // Sync sound config from location config store
   const notifConfig = useLocationConfigStore(s => s.config.notifications)
   useEffect(() => {
     if (isKDS || !soundServiceRef.current) return
@@ -127,15 +134,12 @@ export default function MainLayout () {
       kiosk: notifConfig.kioskOrderSound,
       third_party: notifConfig.thirdPartyOrderSound,
       pos: 'none',
-      default: notifConfig.thirdPartyOrderSound // unknown external sources use third-party sound
+      default: notifConfig.thirdPartyOrderSound
     })
   }, [isKDS, notifConfig])
 
-  // Initialize table order prefetch subscriber and session side effects (POS mode only)
   useTableSessionInit({ skip: isKDS })
 
-  // Hydrate cash drawer session on startup (POS mode only)
-  // If no active session found and a drawer exists, prompt user to open it
   useEffect(() => {
     if (isKDS || !selectedStation || !selectedStore) return
     const supabase = getOrderStoreSupabaseClient()
@@ -153,19 +157,14 @@ export default function MainLayout () {
       })
   }, [isKDS, selectedStation?.id, selectedStore?.id])
 
-  // KDS-only broadcast handler — only feeds useKDSStore, skips useOrderStore
   const handleOrderChangeKDS = useCallback((payload: OrderPayload) => {
     const broadcastPayload = payload as unknown as OrderBroadcastPayload
     useKDSStore.getState().handleOrderBroadcast(broadcastPayload)
   }, [])
 
-  // Realtime order syncing callbacks (POS mode)
   const handleOrderChange = useCallback((payload: OrderPayload) => {
-    // Backend sends OrderBroadcastPayload with full order data
     const broadcastPayload = payload as unknown as OrderBroadcastPayload
-
     if (__DEV__) {
-      // DEBUG: Log received broadcast
       console.log('🔔 [MainLayout] Broadcast received:', {
         operation: broadcastPayload.operation,
         orderId: broadcastPayload.data?.order?.id,
@@ -173,35 +172,13 @@ export default function MainLayout () {
         stationId: broadcastPayload.data?.order?.station_id,
         stationName: broadcastPayload.data?.order?.station_name
       })
-
-      // DEBUG: Log current station context
-      const orderStore = useOrderStore.getState()
-      console.log('📍 [MainLayout] Current station context:', {
-        currentStationId: orderStore.currentStationId,
-        stationName: orderStore.currentStation?.station_name,
-        viewScope: orderStore.currentStation?.view_scope
-      })
     }
-
-    // Batch store mutations so React processes them as a single render cycle.
-    //
-    // NOTE: the KDS store is intentionally NOT fed here. This is the POS handler
-    // (KDS stations use handleOrderChangeKDS). Feeding KDS broadcasts on a POS
-    // station kept the ticket list "warm" for the KDS screen, but a header-only
-    // broadcast makes _processOrderBroadcast fire scheduleRefetch → a
-    // get_kds_tickets NETWORK fetch for a screen nobody has open — once per
-    // kitchen order, per POS station, all shift. The KDS screen fetches fresh on
-    // mount anyway, so skipping the warm-up is correct and removes the waste.
     unstable_batchedUpdates(() => {
       useOrderStore.getState()._handleOrderBroadcast(broadcastPayload)
       usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload)
     })
-
-    // Play notification sound for external orders (not POS-originated)
     if (broadcastPayload.operation === 'INSERT') {
       const src = broadcastPayload.data?.order?.order_source
-      // Play sound for all external orders (online, delivery, kiosk, etc.)
-      // Only skip if order_source is 'pos' (originated from POS)
       if (src && src !== 'pos' && src !== 'in_store') {
         soundServiceRef.current?.playForSource(src)
       }
@@ -212,15 +189,12 @@ export default function MainLayout () {
     if (__DEV__) {
       console.log('[MainLayout] Payment changed:', payload)
     }
-    // Payment changes are handled through order updates
-    // The order store will receive an ORDER_UPDATE event with updated amount_paid
   }, [])
 
   if (!selectedStore || !selectedStore?.id) {
     return <Redirect href='/login' />
   }
 
-  // Show loading indicator while Clerk is loading
   if (!isLoaded) {
     return (
       <View className='flex-1 items-center justify-center bg-screen'>
@@ -229,12 +203,10 @@ export default function MainLayout () {
     )
   }
 
-  // Redirect to login if user is not signed in
   if (!isSignedIn) {
     return <Redirect href='/login' />
   }
 
-  // KDS stations get a minimal layout — no Header, no Payment sheets
   if (isKDS) {
     return (
       <LocationRealtimeProvider
@@ -289,9 +261,6 @@ export default function MainLayout () {
             className='flex-1 flex-row'
             style={{ backgroundColor: colors.screen }}
           >
-            {/* The Sidebar is now a self-contained component that handles its own state */}
-            {/* <Sidebar /> */}
-            {/* <ModifierSidebar /> */}
             <View
               className='flex-1 flex-col'
               style={{ backgroundColor: colors.screen }}
@@ -301,9 +270,6 @@ export default function MainLayout () {
                 style={{
                   backgroundColor: 'transparent',
                   borderBottomWidth: 0,
-                  // Render into the camera-cutout zone (don't reserve the full
-                  // safe-area inset) — just keep a flat margin so the title
-                  // clears the rounded screen corners.
                   paddingLeft: 16,
                   paddingRight: 16
                 }}
@@ -325,13 +291,9 @@ export default function MainLayout () {
             bottomSheetRef={
               notificationSheetRef as React.RefObject<BottomSheetMethods>
             }
-            onClose={() => {
-              /* sheet is already closed when onClose fires */
-            }}
+            onClose={() => {}}
           />
-          {/* Payment sheet — Modal-based, self-manages visibility via isOpen */}
           <PaymentBottomSheet />
-          {/* PaymentDetailBottomSheet in separate container with higher z-index */}
           <View
             style={{
               position: 'absolute',
@@ -344,7 +306,6 @@ export default function MainLayout () {
           >
             <PaymentDetailBottomSheet ref={paymentDetailSheetRef} />
           </View>
-          {/* MenuSearchSheet — absolute overlay so it covers the app header */}
           <View
             style={{
               position: 'absolute',
@@ -365,8 +326,6 @@ export default function MainLayout () {
             onRequestClose={closeProfile}
           >
             <MyProfilePanel onClose={closeProfile} />
-            {/* Portal host so Dialog-based modals (PIN entry) render ABOVE this
-                fullScreen Modal rather than behind the app root PortalHost. */}
             <PortalHost name='profile-overlay' />
           </Modal>
         </SafeAreaView>

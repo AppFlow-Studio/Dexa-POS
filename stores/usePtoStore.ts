@@ -5,6 +5,16 @@ import { devtools, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { useStoreSettingsStore } from "./useStoreSettingsStore";
 
+// accrualHistory is persisted and grows one entry per worked shift, per
+// employee, forever (recordPtoAccrual is called on every shift close). Without
+// a retention window the persisted Record grows unbounded over months/years.
+// Balances track "this year" semantics, so keep accrual entries for the current
+// calendar year only — older entries are already baked into balances.totalAccrued.
+const isCurrentYear = (dateStr: string): boolean => {
+  const year = new Date(dateStr).getFullYear();
+  return !Number.isNaN(year) && year === new Date().getFullYear();
+};
+
 interface PtoState {
   accrualHistory: Record<string, PTOAccrualEntry[]>;
   balances: Record<string, { totalAccrued: number; usedThisYear: number }>;
@@ -102,6 +112,13 @@ export const usePtoStore = create<PtoState>()(
             ) {
               state.accrualHistory[entry.employeeId].push(entry);
             }
+
+            // Retention: drop prior-year entries so the persisted history can't
+            // grow unbounded. balances.totalAccrued already includes them, so
+            // this only trims the auditable entry list, not the running balance.
+            state.accrualHistory[entry.employeeId] = state.accrualHistory[
+              entry.employeeId
+            ].filter((e) => isCurrentYear(e.date));
 
             if (!state.balances[entry.employeeId]) {
               state.balances[entry.employeeId] = {

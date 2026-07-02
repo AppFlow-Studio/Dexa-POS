@@ -14,6 +14,7 @@ interface PaymentDetailSheetState {
   open: (orderId: string, initialView?: PaymentDetailView) => void;
   close: () => void;
   setBottomSheetRef: (ref: React.RefObject<BottomSheetMethods>) => void;
+  clearBottomSheetRef: (ref: React.RefObject<BottomSheetMethods>) => void;
 }
 
 export const usePaymentDetailSheetStore = create<PaymentDetailSheetState>(
@@ -24,6 +25,12 @@ export const usePaymentDetailSheetStore = create<PaymentDetailSheetState>(
     bottomSheetRef: null,
 
     setBottomSheetRef: (ref) => set({ bottomSheetRef: ref }),
+
+    // Only clear if the stored ref is still the one this owner registered, so a
+    // stale owner unmounting after a newer owner mounted doesn't wipe the live ref.
+    clearBottomSheetRef: (ref) => {
+      if (get().bottomSheetRef === ref) set({ bottomSheetRef: null });
+    },
 
     open: (orderId: string, initialView?: PaymentDetailView) => {
       set({ isOpen: true, orderId, initialView: initialView || "summary" });
