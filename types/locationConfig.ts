@@ -144,8 +144,8 @@ export interface TimeclockConfig {
   clockInRequirePin: boolean
   preventEarlyClockIn: boolean
   preventOpenOrdersClockOut: boolean
-  autoCloseStaleShifts: boolean // Auto-close shifts open longer than maxShiftHours
-  maxShiftHours: number // Threshold for stale shift detection (default: 24)
+  autoCloseStaleShifts: boolean // Legacy only; auto clock-out is now locations.auto_clock_out_enabled/time
+  maxShiftHours: number // Legacy only; cutoff-time auto clock-out is handled server-side
 }
 
 export interface NotificationsConfig {

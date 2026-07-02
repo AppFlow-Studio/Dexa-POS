@@ -6396,6 +6396,8 @@ export type Database = {
         Row: {
           address_line1: string | null
           address_line2: string | null
+          auto_clock_out_enabled: boolean
+          auto_clock_out_time: string
           business_day_end_hour: number
           business_day_start_hour: number | null
           business_hours: Json | null
@@ -6442,6 +6444,8 @@ export type Database = {
         Insert: {
           address_line1?: string | null
           address_line2?: string | null
+          auto_clock_out_enabled?: boolean
+          auto_clock_out_time?: string
           business_day_end_hour?: number
           business_day_start_hour?: number | null
           business_hours?: Json | null
@@ -6488,6 +6492,8 @@ export type Database = {
         Update: {
           address_line1?: string | null
           address_line2?: string | null
+          auto_clock_out_enabled?: boolean
+          auto_clock_out_time?: string
           business_day_end_hour?: number
           business_day_start_hour?: number | null
           business_hours?: Json | null
@@ -20433,6 +20439,10 @@ export type Database = {
       }
       acknowledge_kds_notice: {
         Args: { p_kds_display_id?: string; p_order_item_id: string }
+        Returns: Json
+      }
+      auto_clock_out_stale_shifts: {
+        Args: { p_location_id?: string | null; p_now?: string }
         Returns: Json
       }
       activate_nmi_payment_device: {

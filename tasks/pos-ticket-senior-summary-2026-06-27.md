@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document summarizes the POS tickets handled on branch `alidika-dev-pos` so far. There are 9 POS tickets in scope:
+This document summarizes the POS tickets handled on branch `alidika-dev-pos` so far. There are 10 POS tickets in scope:
 
 | # | Ticket | Current status | Migration needed |
 | --- | --- | --- | --- |
@@ -15,6 +15,7 @@ This document summarizes the POS tickets handled on branch `alidika-dev-pos` so 
 | 7 | Order numbers reset at UTC midnight + Previous Orders newest-first | Migration ready, staging QA pending | Yes |
 | 8 | POS platform logos on KDS and Previous Orders | Code complete, on-device QA pending | No |
 | 9 | POS/Web location POS settings + station overrides | POS/schema code ready, web UI and QA pending | Yes |
+| 10 | Timesheets configurable auto clock-out | POS/backend migration ready, web UI separate, staging QA pending | Yes |
 
 The migrations currently added for these tickets are:
 
@@ -22,6 +23,7 @@ The migrations currently added for these tickets are:
 - `supabase/migrations/20260629120000_kds_ticket_server_name.sql`
 - `supabase/migrations/20260629130000_order_numbers_location_timezone.sql`
 - `supabase/migrations/20260630120000_station_pos_config_overrides.sql`
+- `supabase/migrations/20260702120000_auto_clock_out_stale_shifts.sql`
 
 Important note on the stale cash-price migration: the first Supabase run could not find the expected Charcoal Gardenia rows, so that migration was changed to no-op with a notice when target rows are absent. If it no-ops, the stale cash-price ticket is not corrected yet and still needs the correct target IDs or a website re-price flow.
 
@@ -495,6 +497,62 @@ Manual QA still required:
 - Confirm station switching in POS rehydrates the correct station-effective config.
 - Confirm previously non-persisting settings persist after the web settings UI is wired to `locations.pos_config`.
 
+## 10. Timesheets Configurable Auto Clock-Out
+
+## Summary
+
+Ticket: prevent forgotten POS clock-outs from running indefinitely by adding a per-location auto clock-out cutoff. Website Part 1 manual manager adjustment is separate; this branch handles the POS/backend prevention contract only.
+
+## What Changed
+
+- Added `locations.auto_clock_out_enabled` and `locations.auto_clock_out_time`.
+- Added `_auto_clock_out_close_break_logs` to close open break entries at the cutoff.
+- Added `auto_clock_out_stale_shifts(p_location_id, p_now)`:
+  - processes enabled locations
+  - computes the most recent past cutoff in `locations.timezone`
+  - closes only open `active` / `on_break` shifts with `clock_out_time IS NULL`
+  - closes open breaks at the cutoff
+  - leaves `is_verified = false`
+  - appends an auto-review note
+  - writes `audit_logs.action = 'shift_auto_closed'`, actor `System`
+  - is idempotent on repeated runs
+- Schedules the RPC every 15 minutes when `pg_cron` is installed; otherwise emits a migration notice so Supabase can schedule it externally.
+- POS timeclock hydration now calls the safe RPC before loading active shifts and no longer directly updates stale shifts using the old max-hours config.
+
+## Files
+
+- `supabase/migrations/20260702120000_auto_clock_out_stale_shifts.sql`
+- `stores/useTimeclockStore.ts`
+- `database.types.ts`
+- `types/locationConfig.ts`
+- `tasks/timesheets-auto-clock-out-pos.md`
+
+## Migration
+
+Migration exists:
+
+```text
+supabase/migrations/20260702120000_auto_clock_out_stale_shifts.sql
+```
+
+Website settings should write `locations.auto_clock_out_enabled` and `locations.auto_clock_out_time`; do not use legacy `locations.pos_config.timeclock.autoCloseStaleShifts` / `maxShiftHours`.
+
+## Verification Status
+
+No app-wide build was run. Staging Supabase verification is required.
+
+Manual QA still required:
+
+- Apply migration on staging.
+- Confirm `locations` has the two auto clock-out columns.
+- Turn the setting on for a test location with cutoff `03:00`.
+- Backdate/create an open `active` shift before the latest local cutoff and run `auto_clock_out_stale_shifts`.
+- Confirm the shift becomes `completed`, `clock_out_time` equals the cutoff, `is_verified = false`, and notes include auto clock-out.
+- Repeat with `status = 'on_break'` and an open break; confirm break `end` is set.
+- Re-run the RPC and confirm `closed_count = 0` for the same shift.
+- Confirm `audit_logs` has `shift_auto_closed`, actor `System`, cutoff metadata, and old/new changes.
+- Confirm web Part 1 can still manually adjust the auto-closed shift afterward.
+
 ## Migration Inventory
 
 | File | Ticket | Behavior | Current risk |
@@ -503,6 +561,7 @@ Manual QA still required:
 | `supabase/migrations/20260629120000_kds_ticket_server_name.sql` | KDS tickets show server / creator | Replaces `get_kds_tickets_v2` to include show-server-name-gated `server_id` and `server_name` | Must be applied after any other pending `get_kds_tickets_v2` migration to avoid overwriting newer RPC changes |
 | `supabase/migrations/20260629130000_order_numbers_location_timezone.sql` | Order numbers local midnight | Replaces both order-number generators so sequence date keys use `locations.timezone` instead of UTC `CURRENT_DATE` | Must be applied after confirming the live RPC bodies still match the contract, because `CREATE OR REPLACE FUNCTION` replaces the full body |
 | `supabase/migrations/20260630120000_station_pos_config_overrides.sql` | POS settings station overrides | Adds `stations.pos_config_overrides`, effective config resolver, deep merge helper, and guarded station override write RPC | Must be applied before station override QA; coordinate with web settings UI branch so UI writes use the same contract |
+| `supabase/migrations/20260702120000_auto_clock_out_stale_shifts.sql` | Timesheets auto clock-out | Adds location cutoff settings, idempotent auto-close RPC, break closure, audit logging, and optional pg_cron schedule | Must be applied before auto-clock-out QA; confirm pg_cron exists or schedule the RPC externally |
 
 No migrations are required for:
 
@@ -539,6 +598,7 @@ Repo-wide TypeScript/build checks were intentionally not run because the repo ha
 - Order numbers: staging orders across UTC midnight do not reset, local midnight does reset, and Previous Orders remains newest-first.
 - POS platform logos: KDS all active states/Done and POS Previous Orders show marketplace, first-party, and generic-online badges correctly; POS orders show no badge.
 - POS settings station overrides: migration applies cleanly, station override affects only one station, sibling stations inherit location defaults, and POS station switching rehydrates the correct effective config.
+- Timesheets auto clock-out: migration applies cleanly, enabled location closes stale active/on-break shifts at the local cutoff, audit logs are written, open breaks are closed, and re-running is a no-op.
 
 ## PR Notes For Senior Review
 
@@ -550,3 +610,4 @@ Repo-wide TypeScript/build checks were intentionally not run because the repo ha
 - The order-number migration replaces full RPC bodies. If production/staging functions have newer changes than the ticket contract, rebase the migration body before applying.
 - The platform-logo ticket is POS-only in this repo. Web Orders list/details remain outside this change and should be coordinated separately.
 - The POS settings/station override ticket is POS/schema-only in this branch. Web dashboard UI must coordinate with `update_station_pos_config_overrides` or the same guarded write contract before QA.
+- The Timesheets auto-clock-out ticket is POS/backend-only in this branch. Web dashboard settings should write the new `locations.auto_clock_out_enabled` and `locations.auto_clock_out_time` columns and render AUTO badges from the auto note/audit entry.
