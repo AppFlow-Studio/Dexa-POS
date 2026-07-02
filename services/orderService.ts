@@ -42,6 +42,9 @@ export type OnlineOrderActionResult = {
   order_id?: string;
   accepted_at?: string;
   declined_at?: string;
+  cancelled_at?: string;
+  ready_at?: string;
+  completed_at?: string;
 };
 
 export type AddOpenItemParams = {
@@ -461,6 +464,90 @@ export class OrderService {
             p_order_id: dbOrderId,
             p_reason: reason ?? null,
           })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
+  }
+
+  /**
+   * Cancel an already-accepted online/OrderOut order (post-acceptance).
+   *
+   * DB-only: writes the cancel state to `orders` + stamps the `orderout_orders`
+   * bridge row (cancel_source='pos', reject_reason). The external OrderOut
+   * backend relays the cancellation to the marketplace. `reason` MUST be one of
+   * the OrderOut enum codes (ITEM_UNAVAILABLE, STORE_CLOSED, TOO_BUSY,
+   * CUSTOMER_REQUEST, CANNOT_FULFILL); `details` is optional free text. Same
+   * JSON-envelope contract as accept/decline — inspect data.success / data.error.
+   */
+  static async cancelOnlineOrder(
+    client: SupabaseClient,
+    dbOrderId: string,
+    reason: string,
+    details?: string,
+  ): Promise<{ data: OnlineOrderActionResult | null; error: any }> {
+    return _runWithDeadline<OnlineOrderActionResult>(
+      "cancel_online_order",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("cancel_online_order", {
+            p_order_id: dbOrderId,
+            p_reason: reason,
+            p_details: details ?? null,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
+  }
+
+  /**
+   * Mark an already-accepted online/OrderOut order READY FOR PICKUP.
+   *
+   * DB-only: sets orders.status='ready' + ready_at; the AFTER UPDATE trigger
+   * stamps the orderout_orders bridge (ready_by='pos'). The external OrderOut
+   * backend observes that stamp and relays mark-ready to the marketplace
+   * (Uber Eats / DoorDash / Grubhub). Same JSON-envelope contract as
+   * accept/decline/cancel — inspect data.success / data.error (guard-fail
+   * branches return HTTP 200 with success:false, e.g. "not in-kitchen").
+   */
+  static async markOnlineOrderReady(
+    client: SupabaseClient,
+    dbOrderId: string,
+  ): Promise<{ data: OnlineOrderActionResult | null; error: any }> {
+    return _runWithDeadline<OnlineOrderActionResult>(
+      "mark_online_order_ready",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("mark_online_order_ready", { p_order_id: dbOrderId })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
+  }
+
+  /**
+   * Mark a READY online/OrderOut order DONE (status='completed') from the POS
+   * Online Orders "Mark done" button — used when the kitchen never bumps a ready
+   * order off the KDS, leaving it stuck in the "Ready" lane.
+   *
+   * DB-only: sets orders.status='completed' + bumps line items to 'served' so the
+   * KDS ticket clears. Same JSON-envelope contract as accept/decline/cancel/ready
+   * — inspect data.success / data.error (guard-fail branches return HTTP 200 with
+   * success:false, e.g. "not ready").
+   */
+  static async completeOnlineOrder(
+    client: SupabaseClient,
+    dbOrderId: string,
+  ): Promise<{ data: OnlineOrderActionResult | null; error: any }> {
+    return _runWithDeadline<OnlineOrderActionResult>(
+      "complete_online_order",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("complete_online_order", { p_order_id: dbOrderId })
           .abortSignal(signal);
         return { data, error };
       },

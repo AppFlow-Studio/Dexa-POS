@@ -41,11 +41,32 @@ export type OnlineOrderActionReason =
   | "no_db_id"
   | "in_flight"
   | "already_accepted"
-  | "already_declined_or_cancelled";
+  | "already_declined_or_cancelled"
+  | "already_completed";
 
 export interface OnlineOrderActionOutcome {
   ok: boolean;
   reason?: OnlineOrderActionReason;
+}
+
+type OnlineOrderActionKind =
+  | "accept"
+  | "decline"
+  | "cancel"
+  | "ready"
+  | "done";
+
+/** Human-friendly failure-toast title per action. */
+function actionFailedTitle(kind: OnlineOrderActionKind): string {
+  return kind === "accept"
+    ? "Accept failed"
+    : kind === "decline"
+      ? "Decline failed"
+      : kind === "cancel"
+        ? "Cancel failed"
+        : kind === "ready"
+          ? "Mark ready failed"
+          : "Mark done failed";
 }
 
 // Shared across every card instance — dedupes manual tap + realtime re-fire.
@@ -71,8 +92,9 @@ export function useOnlineOrderActions() {
   const run = useCallback(
     async (
       localOrderId: string,
-      kind: "accept" | "decline",
+      kind: OnlineOrderActionKind,
       reason?: string,
+      details?: string,
     ): Promise<OnlineOrderActionOutcome> => {
       const store = useOrderStore.getState();
       const order: OrderProfile | undefined = store.getOrder(localOrderId);
@@ -110,7 +132,13 @@ export function useOnlineOrderActions() {
           message:
             kind === "accept"
               ? "Accept must reach the server to send to the kitchen. Retry when back online."
-              : "Decline must reach the server. Retry when back online.",
+              : kind === "decline"
+                ? "Decline must reach the server. Retry when back online."
+                : kind === "cancel"
+                  ? "Cancel must reach the server. Retry when back online."
+                  : kind === "ready"
+                    ? "Mark ready must reach the server. Retry when back online."
+                    : "Mark done must reach the server. Retry when back online.",
           type: "warning",
         });
         return { ok: false, reason: "offline" };
@@ -120,13 +148,27 @@ export function useOnlineOrderActions() {
       const prevStatus = order.order_status;
       const prevSyncVersion = order.sync_version ?? 0;
       const optimisticStatus =
-        kind === "accept" ? "sent_to_kitchen" : "declined";
+        kind === "accept"
+          ? "sent_to_kitchen"
+          : kind === "decline"
+            ? "declined"
+            : kind === "cancel"
+              ? "cancelled"
+              : kind === "ready"
+                ? "ready"
+                : "completed";
 
       // Perf: tap → optimistic flip painted (matches the pos.* span convention).
       const interaction = startInteraction(
         kind === "accept"
           ? "pos.online_order_accept"
-          : "pos.online_order_decline",
+          : kind === "decline"
+            ? "pos.online_order_decline"
+            : kind === "cancel"
+              ? "pos.online_order_cancel"
+              : kind === "ready"
+                ? "pos.online_order_mark_ready"
+                : "pos.online_order_mark_done",
       );
 
       // Optimistic flip + sync_version bump.
@@ -159,13 +201,24 @@ export function useOnlineOrderActions() {
         const { data, error } =
           kind === "accept"
             ? await OrderService.acceptOnlineOrder(client, dbOrderId)
-            : await OrderService.declineOnlineOrder(client, dbOrderId, reason);
+            : kind === "decline"
+              ? await OrderService.declineOnlineOrder(client, dbOrderId, reason)
+              : kind === "cancel"
+                ? await OrderService.cancelOnlineOrder(
+                    client,
+                    dbOrderId,
+                    reason ?? "CANNOT_FULFILL",
+                    details,
+                  )
+                : kind === "ready"
+                  ? await OrderService.markOnlineOrderReady(client, dbOrderId)
+                  : await OrderService.completeOnlineOrder(client, dbOrderId);
 
         // Transport / deadline failure → real failure.
         if (error || !data) {
           rollback();
           showToast({
-            title: kind === "accept" ? "Accept failed" : "Decline failed",
+            title: actionFailedTitle(kind),
             message: "Couldn't reach the server. Retry.",
             type: "error",
           });
@@ -179,7 +232,7 @@ export function useOnlineOrderActions() {
       } catch {
         rollback();
         showToast({
-          title: kind === "accept" ? "Accept failed" : "Decline failed",
+          title: actionFailedTitle(kind),
           message: "Couldn't reach the server. Retry.",
           type: "error",
         });
@@ -200,8 +253,27 @@ export function useOnlineOrderActions() {
       run(localOrderId, "decline", reason),
     [run],
   );
+  const cancelOrder = useCallback(
+    (localOrderId: string, reason: string, details?: string) =>
+      run(localOrderId, "cancel", reason, details),
+    [run],
+  );
+  const markReadyOrder = useCallback(
+    (localOrderId: string) => run(localOrderId, "ready"),
+    [run],
+  );
+  const markDoneOrder = useCallback(
+    (localOrderId: string) => run(localOrderId, "done"),
+    [run],
+  );
 
-  return { acceptOrder, declineOrder };
+  return {
+    acceptOrder,
+    declineOrder,
+    cancelOrder,
+    markReadyOrder,
+    markDoneOrder,
+  };
 }
 
 /**
@@ -209,7 +281,7 @@ export function useOnlineOrderActions() {
  * card to the server's reported current status and decide benign-vs-real.
  */
 function resolveEnvelope(
-  kind: "accept" | "decline",
+  kind: OnlineOrderActionKind,
   data: OnlineOrderActionResult,
   storeKey: string,
   prevSyncVersion: number,
@@ -223,6 +295,32 @@ function resolveEnvelope(
       order_status: status,
       sync_version: prevSyncVersion + 1,
     });
+
+  if (kind === "cancel") {
+    // Already cancelled/declined → benign success (someone/something beat us).
+    if (current === "cancelled" || current === "declined") {
+      patchTo(current as OrderProfile["order_status"]);
+      return { ok: true };
+    }
+    // Already completed → too late to cancel; reconcile the card forward.
+    if (current === "completed") {
+      patchTo("completed" as OrderProfile["order_status"]);
+      ctx.showToast({
+        title: "Already completed",
+        message: "Order was already completed and can't be cancelled.",
+        type: "warning",
+      });
+      return { ok: false, reason: "already_completed" };
+    }
+    // Not found / unknown → roll back.
+    ctx.rollback();
+    ctx.showToast({
+      title: "Cancel failed",
+      message: data.error ?? "Order can no longer be cancelled.",
+      type: "error",
+    });
+    return { ok: false, reason: "not_found" };
+  }
 
   if (kind === "accept") {
     // The order is already moving / in the kitchen → benign success.
@@ -250,6 +348,58 @@ function resolveEnvelope(
     ctx.showToast({
       title: "Accept failed",
       message: data.error ?? "Order is no longer pending.",
+      type: "error",
+    });
+    return { ok: false, reason: "not_found" };
+  }
+
+  if (kind === "ready") {
+    // Already ready / completed → benign success (KDS or another station beat us).
+    if (current === "ready" || current === "completed") {
+      patchTo(current as OrderProfile["order_status"]);
+      return { ok: true };
+    }
+    // Already closed out → reconcile the card, don't imply a ready signal.
+    if (current === "cancelled" || current === "declined") {
+      patchTo(current as OrderProfile["order_status"]);
+      ctx.showToast({
+        title: "Already closed",
+        message: `Order was already ${current}.`,
+        type: "warning",
+      });
+      return { ok: false, reason: "already_declined_or_cancelled" };
+    }
+    // Not found / unknown / still pending → roll back.
+    ctx.rollback();
+    ctx.showToast({
+      title: "Mark ready failed",
+      message: data.error ?? "Order can't be marked ready.",
+      type: "error",
+    });
+    return { ok: false, reason: "not_found" };
+  }
+
+  if (kind === "done") {
+    // Already completed → benign success (KDS auto-complete or another station).
+    if (current === "completed") {
+      patchTo("completed" as OrderProfile["order_status"]);
+      return { ok: true };
+    }
+    // Already closed out → reconcile the card, don't imply completion.
+    if (current === "cancelled" || current === "declined") {
+      patchTo(current as OrderProfile["order_status"]);
+      ctx.showToast({
+        title: "Already closed",
+        message: `Order was already ${current}.`,
+        type: "warning",
+      });
+      return { ok: false, reason: "already_declined_or_cancelled" };
+    }
+    // Not found / unknown / not yet ready → roll back.
+    ctx.rollback();
+    ctx.showToast({
+      title: "Mark done failed",
+      message: data.error ?? "Order can't be marked done.",
       type: "error",
     });
     return { ok: false, reason: "not_found" };

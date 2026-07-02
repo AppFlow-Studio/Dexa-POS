@@ -1,9 +1,19 @@
+import MarkOrderReadyDialog from "@/components/online-orders/MarkOrderReadyDialog";
+import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
+import { useOnlineOrderActions } from "@/hooks/orders/useOnlineOrderActions";
 import { colors } from "@/lib/theme";
 import type { CartItem } from "@/lib/types";
 import { useOrder } from "@/stores/selectors/orderSelectors";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const DetailRow = ({ children }: { children: React.ReactNode }) => (
   <View className="flex-row gap-x-6">{children}</View>
@@ -13,16 +23,20 @@ const DetailItem = ({
   label,
   value,
   isTag = false,
+  children,
 }: {
   label: string;
-  value: string;
+  value?: string;
   isTag?: boolean;
+  children?: React.ReactNode;
 }) => (
   <View style={{ flex: 1 }}>
     <Text style={{ fontSize: 16, color: colors.muted, marginBottom: 4 }}>
       {label}
     </Text>
-    {isTag ? (
+    {children ? (
+      children
+    ) : isTag ? (
       <View
         style={{
           paddingHorizontal: 10,
@@ -58,21 +72,21 @@ function ItemRow({ item }: { item: CartItem }) {
     .join(", ");
   const lineTotal = (item.price ?? 0) * (item.quantity ?? 1);
   return (
-    <View className="flex-row items-center justify-between p-4 border border-gray-600 rounded-xl bg-panel">
+    <View className="flex-row items-center justify-between p-4 border border-border rounded-xl bg-panel">
       <View className="flex-1 pr-3">
-        <Text className="text-lg font-bold text-white">
+        <Text className="text-lg font-bold text-heading">
           {item.quantity}× {item.name}
         </Text>
         {mods ? (
-          <Text className="text-sm text-gray-300 mt-0.5">{mods}</Text>
+          <Text className="text-sm text-label mt-0.5">{mods}</Text>
         ) : null}
         {item.customizations?.notes ? (
-          <Text className="text-sm text-gray-400 mt-0.5">
+          <Text className="text-sm text-hint mt-0.5">
             {item.customizations.notes}
           </Text>
         ) : null}
       </View>
-      <Text className="text-lg font-bold text-white">
+      <Text className="text-lg font-bold text-heading">
         ${lineTotal.toFixed(2)}
       </Text>
     </View>
@@ -83,6 +97,29 @@ const OnlineOrderDetailsScreen = () => {
   const router = useRouter();
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const order = useOrder(orderId);
+  const [fetchingItems, setFetchingItems] = React.useState(false);
+  const { markReadyOrder, markDoneOrder } = useOnlineOrderActions();
+  const [showMarkReady, setShowMarkReady] = React.useState(false);
+  const [markingReady, setMarkingReady] = React.useState(false);
+  const [markingDone, setMarkingDone] = React.useState(false);
+
+  // Online/OrderOut orders arrive via the header-only realtime broadcast with
+  // `items: []` until a bulk refetch. Lazy-load full line items + totals from
+  // get_order_details on mount so the details screen isn't stuck at Items(0)/$0.
+  React.useEffect(() => {
+    if (!orderId) return;
+    let cancelled = false;
+    setFetchingItems(true);
+    useOrderStore
+      .getState()
+      .syncOrderFromBackendComplete(orderId, { force: true })
+      .finally(() => {
+        if (!cancelled) setFetchingItems(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
 
   if (!order) {
     return (
@@ -120,6 +157,31 @@ const OnlineOrderDetailsScreen = () => {
     ? `${order.service_location_name} · QR`
     : order.delivery_platform || "Online";
 
+  // Mark-ready only for delivery-platform (OrderOut) orders still in the kitchen —
+  // QR dine-in has no external platform to notify.
+  const canMarkReady =
+    !!order.delivery_platform &&
+    (order.order_status === "accepted" ||
+      order.order_status === "sent_to_kitchen" ||
+      order.order_status === "preparing");
+
+  const onMarkReadyConfirm = async () => {
+    setShowMarkReady(false);
+    setMarkingReady(true);
+    await markReadyOrder(orderId);
+    setMarkingReady(false);
+  };
+
+  // Mark-done pushes a stuck "Ready" online order to Done (completed) when the
+  // kitchen never bumped it off the KDS.
+  const canMarkDone = order.order_status === "ready";
+
+  const onMarkDone = async () => {
+    setMarkingDone(true);
+    await markDoneOrder(orderId);
+    setMarkingDone(false);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
       <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 120 }}>
@@ -131,11 +193,22 @@ const OnlineOrderDetailsScreen = () => {
             marginBottom: 24,
           }}
         >
-          <Text
-            style={{ fontSize: 30, fontWeight: "bold", color: colors.heading }}
-          >
-            Order Details #{label}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <Text
+              style={{
+                fontSize: 30,
+                fontWeight: "bold",
+                color: colors.heading,
+              }}
+            >
+              Order Details #{label}
+            </Text>
+            <DeliveryPlatformBadge
+              deliveryPlatform={order.delivery_platform}
+              orderSource={order.order_source}
+              size="md"
+            />
+          </View>
         </View>
 
         <View className="gap-y-4">
@@ -165,7 +238,27 @@ const OnlineOrderDetailsScreen = () => {
                   label="Customer Name"
                   value={order.customer_name || "Guest"}
                 />
-                <DetailItem label="Source" value={source} />
+                <DetailItem label="Source">
+                  {order.delivery_platform && !order.service_location_name ? (
+                    <View style={{ alignSelf: "flex-start", marginTop: 2 }}>
+                      <DeliveryPlatformBadge
+                        deliveryPlatform={order.delivery_platform}
+                        orderSource={order.order_source}
+                        size="kds"
+                      />
+                    </View>
+                  ) : (
+                    <Text
+                      style={{
+                        fontSize: 18,
+                        fontWeight: "600",
+                        color: colors.heading,
+                      }}
+                    >
+                      {source}
+                    </Text>
+                  )}
+                </DetailItem>
               </DetailRow>
             </View>
           </View>
@@ -229,19 +322,87 @@ const OnlineOrderDetailsScreen = () => {
               {items.map((item) => (
                 <ItemRow key={item.id} item={item} />
               ))}
+              {items.length === 0 ? (
+                <View className="flex-row items-center gap-x-2 py-2">
+                  {fetchingItems ? (
+                    <>
+                      <ActivityIndicator size="small" color={colors.muted} />
+                      <Text style={{ fontSize: 15, color: colors.muted }}>
+                        Loading items…
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={{ fontSize: 15, color: colors.muted }}>
+                      No items on this order.
+                    </Text>
+                  )}
+                </View>
+              ) : null}
             </View>
           </View>
         </View>
       </ScrollView>
 
-      <View className="p-4 bg-panel/90 border-t border-border">
+      <View className="p-4 bg-panel/90 border-t border-border flex-row gap-x-3">
+        {canMarkReady && (
+          <TouchableOpacity
+            onPress={() => setShowMarkReady(true)}
+            disabled={markingReady}
+            className="flex-1 py-3 rounded-xl items-center justify-center border"
+            style={{
+              backgroundColor: colors.teal + "20",
+              borderColor: colors.teal + "40",
+            }}
+          >
+            {markingReady ? (
+              <ActivityIndicator color={colors.teal} />
+            ) : (
+              <Text
+                className="text-lg font-bold"
+                style={{ color: colors.teal }}
+              >
+                Mark ready
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+        {canMarkDone && (
+          <TouchableOpacity
+            onPress={onMarkDone}
+            disabled={markingDone}
+            className="flex-1 py-3 rounded-xl items-center justify-center border"
+            style={{
+              backgroundColor: colors.success + "20",
+              borderColor: colors.success + "40",
+            }}
+          >
+            {markingDone ? (
+              <ActivityIndicator color={colors.success} />
+            ) : (
+              <Text
+                className="text-lg font-bold"
+                style={{ color: colors.success }}
+              >
+                Mark done
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           onPress={() => router.back()}
-          className="py-3 bg-blue-600 rounded-xl items-center"
+          className="flex-1 py-3 bg-blue-600 rounded-xl items-center"
         >
           <Text className="text-lg font-bold text-white">Close</Text>
         </TouchableOpacity>
       </View>
+
+      <MarkOrderReadyDialog
+        isOpen={showMarkReady}
+        orderLabel={String(label)}
+        platformLabel={order.delivery_platform}
+        onConfirm={onMarkReadyConfirm}
+        onCancel={() => setShowMarkReady(false)}
+      />
     </View>
   );
 };

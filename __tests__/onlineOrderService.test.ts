@@ -72,6 +72,92 @@ describe("OrderService online-order actions", () => {
     });
   });
 
+  it("cancelOnlineOrder passes p_order_id + enum reason + details", async () => {
+    const envelope = { success: true, order_id: "db-5", cancelled_at: "t" };
+    const { client, rpc } = makeClient({ data: envelope, error: null });
+
+    const res = await OrderService.cancelOnlineOrder(
+      client,
+      "db-5",
+      "ITEM_UNAVAILABLE",
+      "out of buns",
+    );
+
+    expect(rpc).toHaveBeenCalledWith("cancel_online_order", {
+      p_order_id: "db-5",
+      p_reason: "ITEM_UNAVAILABLE",
+      p_details: "out of buns",
+    });
+    expect(res.data).toEqual(envelope);
+  });
+
+  it("cancelOnlineOrder sends null details when omitted", async () => {
+    const { client, rpc } = makeClient({
+      data: { success: true },
+      error: null,
+    });
+
+    await OrderService.cancelOnlineOrder(client, "db-6", "TOO_BUSY");
+
+    expect(rpc).toHaveBeenCalledWith("cancel_online_order", {
+      p_order_id: "db-6",
+      p_reason: "TOO_BUSY",
+      p_details: null,
+    });
+  });
+
+  it("markOnlineOrderReady calls mark_online_order_ready with p_order_id and returns the envelope", async () => {
+    const envelope = { success: true, order_id: "db-7", ready_at: "t" };
+    const { client, rpc } = makeClient({ data: envelope, error: null });
+
+    const res = await OrderService.markOnlineOrderReady(client, "db-7");
+
+    expect(rpc).toHaveBeenCalledWith("mark_online_order_ready", {
+      p_order_id: "db-7",
+    });
+    expect(res.error).toBeNull();
+    expect(res.data).toEqual(envelope);
+  });
+
+  it("markOnlineOrderReady passes the success:false guard envelope back verbatim", async () => {
+    const envelope = {
+      success: false,
+      error: "Order cannot be marked ready (current: completed)",
+    };
+    const { client } = makeClient({ data: envelope, error: null });
+
+    const res = await OrderService.markOnlineOrderReady(client, "db-8");
+
+    expect(res.error).toBeNull();
+    expect(res.data).toEqual(envelope);
+  });
+
+  it("completeOnlineOrder calls complete_online_order with p_order_id and returns the envelope", async () => {
+    const envelope = { success: true, order_id: "db-9", completed_at: "t" };
+    const { client, rpc } = makeClient({ data: envelope, error: null });
+
+    const res = await OrderService.completeOnlineOrder(client, "db-9");
+
+    expect(rpc).toHaveBeenCalledWith("complete_online_order", {
+      p_order_id: "db-9",
+    });
+    expect(res.error).toBeNull();
+    expect(res.data).toEqual(envelope);
+  });
+
+  it("completeOnlineOrder passes the success:false guard envelope back verbatim", async () => {
+    const envelope = {
+      success: false,
+      error: "Order cannot be marked done (current: preparing)",
+    };
+    const { client } = makeClient({ data: envelope, error: null });
+
+    const res = await OrderService.completeOnlineOrder(client, "db-10");
+
+    expect(res.error).toBeNull();
+    expect(res.data).toEqual(envelope);
+  });
+
   it("passes the success:false envelope back without throwing (HTTP 200 guard branch)", async () => {
     const envelope = {
       success: false,

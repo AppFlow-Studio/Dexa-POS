@@ -1,7 +1,14 @@
+import CancelOnlineOrderDialog, {
+  type CancelReasonCode,
+} from "@/components/online-orders/CancelOnlineOrderDialog";
+import MarkOrderReadyDialog from "@/components/online-orders/MarkOrderReadyDialog";
+import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
 import { useOnlineOrderActions } from "@/hooks/orders/useOnlineOrderActions";
+import { colors } from "@/lib/theme";
 import { useOrder } from "@/stores/selectors/orderSelectors";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { Href, Link } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Text,
@@ -57,42 +64,134 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
   variant,
 }) => {
   const order = useOrder(orderId);
-  const { acceptOrder, declineOrder } = useOnlineOrderActions();
-  const [submitting, setSubmitting] = useState<null | "accept" | "decline">(
-    null,
-  );
+  const { acceptOrder, declineOrder, cancelOrder, markReadyOrder, markDoneOrder } =
+    useOnlineOrderActions();
+  const [submitting, setSubmitting] = useState<
+    null | "accept" | "decline" | "cancel" | "ready" | "done"
+  >(null);
   const [retryable, setRetryable] = useState(false);
+  const [showCancel, setShowCancel] = useState(false);
+  const [showMarkReady, setShowMarkReady] = useState(false);
+
+  // Realtime-only cards arrive header-only (items: []) until a get_order_details
+  // fetch. Lazy-load once so the preview populates; the store's cooldown /
+  // in-flight guard dedupes fetches across the whole column.
+  const dbOrderId = order?.db_order_id;
+  const itemsLoaded = (order?.items?.length ?? 0) > 0;
+  useEffect(() => {
+    if (dbOrderId && !itemsLoaded) {
+      useOrderStore.getState().syncOrderFromBackendComplete(orderId);
+    }
+  }, [orderId, dbOrderId, itemsLoaded]);
+
+  // Remembers the last attempt so the Retry chip repeats the right action.
+  const lastAttempt = useRef<
+    | null
+    | { kind: "accept" | "decline" | "ready" | "done" }
+    | { kind: "cancel"; reason: CancelReasonCode; details?: string }
+  >(null);
+
+  const isTransient = (reason?: string) =>
+    reason === "offline" || reason === "network";
 
   const onAccept = useCallback(async () => {
+    lastAttempt.current = { kind: "accept" };
     setSubmitting("accept");
     setRetryable(false);
     const res = await acceptOrder(orderId);
     setSubmitting(null);
     // Only offer Retry for transient failures (offline / network). Terminal
     // outcomes (already declined/cancelled) reconcile the card away instead.
-    setRetryable(!res.ok && (res.reason === "offline" || res.reason === "network"));
+    setRetryable(!res.ok && isTransient(res.reason));
   }, [acceptOrder, orderId]);
 
   const onDecline = useCallback(async () => {
+    lastAttempt.current = { kind: "decline" };
     setSubmitting("decline");
     setRetryable(false);
     const res = await declineOrder(orderId);
     setSubmitting(null);
-    setRetryable(!res.ok && (res.reason === "offline" || res.reason === "network"));
+    setRetryable(!res.ok && isTransient(res.reason));
   }, [declineOrder, orderId]);
+
+  const onCancelConfirm = useCallback(
+    async (reason: CancelReasonCode, details?: string) => {
+      lastAttempt.current = { kind: "cancel", reason, details };
+      setShowCancel(false);
+      setSubmitting("cancel");
+      setRetryable(false);
+      const res = await cancelOrder(orderId, reason, details);
+      setSubmitting(null);
+      setRetryable(!res.ok && isTransient(res.reason));
+    },
+    [cancelOrder, orderId],
+  );
+
+  const onMarkReadyConfirm = useCallback(async () => {
+    lastAttempt.current = { kind: "ready" };
+    setShowMarkReady(false);
+    setSubmitting("ready");
+    setRetryable(false);
+    const res = await markReadyOrder(orderId);
+    setSubmitting(null);
+    setRetryable(!res.ok && isTransient(res.reason));
+  }, [markReadyOrder, orderId]);
+
+  const onMarkDone = useCallback(async () => {
+    lastAttempt.current = { kind: "done" };
+    setSubmitting("done");
+    setRetryable(false);
+    const res = await markDoneOrder(orderId);
+    setSubmitting(null);
+    setRetryable(!res.ok && isTransient(res.reason));
+  }, [markDoneOrder, orderId]);
+
+  const onRetry = useCallback(() => {
+    const a = lastAttempt.current;
+    if (!a) return;
+    if (a.kind === "cancel") onCancelConfirm(a.reason, a.details);
+    else if (a.kind === "accept") onAccept();
+    else if (a.kind === "ready") onMarkReadyConfirm();
+    else if (a.kind === "done") onMarkDone();
+    else onDecline();
+  }, [onAccept, onDecline, onCancelConfirm, onMarkReadyConfirm, onMarkDone]);
 
   if (!order) return null;
 
-  const itemCount = order.items?.reduce((n, i) => n + (i.quantity || 0), 0) ?? 0;
+  const previewItems = (order.items ?? []).filter((i) => !i.is_voided);
+  const shownItems = previewItems.slice(0, 3);
+  const remainingItems = previewItems.length - shownItems.length;
+  const itemCount = itemsLoaded
+    ? order.items!.reduce((n, i) => n + (i.quantity || 0), 0)
+    : (order._broadcastItemCount ?? 0);
   const label = order.display_number || order.order_number || order.id;
   const total = order.total_amount ?? 0;
+  const canCancel = variant !== "done"; // New + In Kitchen + Ready
+  // Mark-ready only for delivery-platform (OrderOut) orders in the kitchen lane —
+  // QR dine-in has no external platform to notify.
+  const canMarkReady = variant === "kitchen" && !!order.delivery_platform;
+  // Mark-done pushes a stuck "Ready" order to the Done lane when the kitchen
+  // never bumped it off the KDS. Available for any online order in the ready lane.
+  const canMarkDone = variant === "ready";
+
+  const retryRow = retryable ? (
+    <View className="mt-2 flex-row items-center justify-between">
+      <Text className="text-xs text-red-400 flex-1">Server unreachable.</Text>
+      <TouchableOpacity
+        onPress={onRetry}
+        className="px-3 py-1.5 rounded-lg bg-blue-600/20 border border-blue-500/40"
+      >
+        <Text className="text-blue-300 text-xs font-semibold">Retry</Text>
+      </TouchableOpacity>
+    </View>
+  ) : null;
 
   return (
-    <View className="bg-surface p-4 rounded-2xl border border-gray-600 w-full">
+    <View className="bg-surface p-4 rounded-2xl border border-border w-full">
       {/* Header */}
       <View className="flex-row justify-between items-center">
-        <Text className="text-sm text-gray-300">Items: {itemCount}</Text>
-        <Text className="text-sm text-gray-300">
+        <Text className="text-sm text-label">Items: {itemCount}</Text>
+        <Text className="text-sm text-label">
           {formatTime(order.opened_at)}
         </Text>
       </View>
@@ -100,29 +199,56 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
       {/* Body */}
       <View className="flex-row items-center my-3">
         <View className="flex-1">
-          <Text className="text-base font-bold text-white">#{label}</Text>
-          <Text className="text-sm text-gray-300" numberOfLines={1}>
+          <Text className="text-base font-bold text-heading">#{label}</Text>
+          <Text className="text-sm text-label" numberOfLines={1}>
             {order.customer_name || "Guest"}
           </Text>
-          <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>
-            {sourceLabel(
-              order.delivery_platform,
-              order.order_type,
-              order.service_location_name,
-            )}
-          </Text>
+          <View className="flex-row items-center mt-1 gap-1.5">
+            <DeliveryPlatformBadge
+              deliveryPlatform={order.delivery_platform}
+              orderSource={order.order_source}
+              size="sm"
+            />
+            <Text className="text-xs text-hint flex-shrink" numberOfLines={1}>
+              {sourceLabel(
+                order.delivery_platform,
+                order.order_type,
+                order.service_location_name,
+              )}
+            </Text>
+          </View>
         </View>
-        <Text className="text-2xl font-bold text-white">
+        <Text className="text-2xl font-bold text-heading">
           ${total.toFixed(2)}
         </Text>
       </View>
+
+      {/* Item preview — first 3 + overflow */}
+      {shownItems.length > 0 && (
+        <View className="mb-3">
+          {shownItems.map((it) => (
+            <Text
+              key={it.id}
+              className="text-sm text-label"
+              numberOfLines={1}
+            >
+              {it.quantity}× {it.open_item_name || it.name}
+            </Text>
+          ))}
+          {remainingItems > 0 && (
+            <Text className="text-xs text-hint mt-0.5">
+              +{remainingItems} more
+            </Text>
+          )}
+        </View>
+      )}
 
       <Link
         href={`/online-orders/${(order.db_order_id || order.id).replace("#", "")}` as Href}
         asChild
       >
         <TouchableOpacity>
-          <Text className="font-bold text-blue-400">View Order Details</Text>
+          <Text className="font-bold text-teal">View Order Details</Text>
         </TouchableOpacity>
       </Link>
 
@@ -133,12 +259,12 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
             <TouchableOpacity
               onPress={onDecline}
               disabled={submitting !== null}
-              className="flex-1 py-2.5 border border-gray-500 rounded-xl items-center"
+              className="flex-1 py-2.5 border border-border rounded-xl items-center"
             >
               {submitting === "decline" ? (
-                <ActivityIndicator color="#d1d5db" />
+                <ActivityIndicator color={colors.label} />
               ) : (
-                <Text className="font-bold text-gray-300">Decline</Text>
+                <Text className="font-bold text-label">Decline</Text>
               )}
             </TouchableOpacity>
             <TouchableOpacity
@@ -153,35 +279,116 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
               )}
             </TouchableOpacity>
           </View>
-          {retryable && (
-            <View className="mt-2 flex-row items-center justify-between">
-              <Text className="text-xs text-red-400 flex-1">
-                Server unreachable.
-              </Text>
-              <TouchableOpacity
-                onPress={onAccept}
-                className="px-3 py-1.5 rounded-lg bg-blue-600/20 border border-blue-500/40"
+          {retryRow}
+          <TouchableOpacity
+            onPress={() => setShowCancel(true)}
+            disabled={submitting !== null}
+            className="mt-2 self-center"
+          >
+            {submitting === "cancel" ? (
+              <ActivityIndicator size="small" color={colors.danger} />
+            ) : (
+              <Text
+                className="text-xs font-semibold"
+                style={{ color: colors.danger }}
               >
-                <Text className="text-blue-300 text-xs font-semibold">
-                  Retry
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
+                Cancel order
+              </Text>
+            )}
+          </TouchableOpacity>
         </View>
       ) : (
         <View className="mt-4">
-          <View className="self-start px-3 py-1.5 rounded-lg bg-blue-900/30 border border-blue-500/30">
-            <Text className="text-blue-300 text-xs font-semibold capitalize">
-              {variant === "kitchen"
-                ? "In kitchen"
-                : variant === "ready"
-                  ? "Ready"
-                  : "Done"}
-            </Text>
+          <View className="flex-row items-center justify-between">
+            
+            <View className="flex-row items-center gap-2">
+              {canMarkReady && (
+                <TouchableOpacity
+                  onPress={() => setShowMarkReady(true)}
+                  disabled={submitting !== null}
+                  className="px-3 py-1.5 rounded-lg border"
+                  style={{
+                    backgroundColor: colors.teal + "14",
+                    borderColor: colors.teal + "40",
+                  }}
+                >
+                  {submitting === "ready" ? (
+                    <ActivityIndicator size="small" color={colors.teal} />
+                  ) : (
+                    <Text
+                      className="text-xs font-semibold"
+                      style={{ color: colors.teal }}
+                    >
+                      Mark ready
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+              {canMarkDone && (
+                <TouchableOpacity
+                  onPress={onMarkDone}
+                  disabled={submitting !== null}
+                  className="px-3 py-1.5 rounded-lg border"
+                  style={{
+                    backgroundColor: colors.success + "14",
+                    borderColor: colors.success + "40",
+                  }}
+                >
+                  {submitting === "done" ? (
+                    <ActivityIndicator size="small" color={colors.success} />
+                  ) : (
+                    <Text
+                      className="text-xs font-semibold"
+                      style={{ color: colors.success }}
+                    >
+                      Mark done
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+              {canCancel && (
+                <TouchableOpacity
+                  onPress={() => setShowCancel(true)}
+                  disabled={submitting !== null}
+                  className="px-3 py-1.5 rounded-lg border"
+                  style={{
+                    backgroundColor: colors.danger + "14",
+                    borderColor: colors.danger + "40",
+                  }}
+                >
+                  {submitting === "cancel" ? (
+                    <ActivityIndicator size="small" color={colors.danger} />
+                  ) : (
+                    <Text
+                      className="text-xs font-semibold"
+                      style={{ color: colors.danger }}
+                    >
+                      Cancel order
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
+          {retryRow}
         </View>
       )}
+
+      <CancelOnlineOrderDialog
+        isOpen={showCancel}
+        orderLabel={String(label)}
+        platformLabel={order.delivery_platform}
+        onConfirm={onCancelConfirm}
+        onCancel={() => setShowCancel(false)}
+      />
+
+      <MarkOrderReadyDialog
+        isOpen={showMarkReady}
+        orderLabel={String(label)}
+        platformLabel={order.delivery_platform}
+        onConfirm={onMarkReadyConfirm}
+        onCancel={() => setShowMarkReady(false)}
+      />
     </View>
   );
 };
