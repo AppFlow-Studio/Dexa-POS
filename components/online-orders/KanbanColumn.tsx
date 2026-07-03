@@ -1,10 +1,10 @@
+import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { FlashList } from "@shopify/flash-list";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useCallback } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import OnlineOrderCard, {
-  type OnlineColumnVariant,
-} from "./OnlineOrderCard";
+import OnlineOrderCard, { type OnlineColumnVariant } from "./OnlineOrderCard";
 
 interface KanbanColumnProps {
   title: string;
@@ -28,6 +28,8 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   isFocused,
   onHeaderPress,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const numColumns = isFocused ? 4 : 1;
 
   const keyExtractor = useCallback((item: string) => item, []);
@@ -37,27 +39,53 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
       <View
         style={{
           flex: 1,
-          paddingBottom: 12,
-          paddingHorizontal: isFocused ? 6 : 0,
+          paddingBottom: Math.round(12 * uiScale),
+          paddingHorizontal: isFocused ? Math.round(6 * uiScale) : 0,
         }}
       >
         <OnlineOrderCard orderId={item} variant={variant} />
       </View>
     ),
-    [isFocused, variant],
+    [isFocused, variant, uiScale],
   );
 
   return (
-    <View className="flex-1 flex-col bg-surface rounded-xl overflow-hidden border border-gray-700">
+    <View
+      style={{
+        flex: 1,
+        flexDirection: "column",
+        backgroundColor: colors.panel,
+        borderRadius: 12,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
       <TouchableOpacity
         onPress={onHeaderPress}
-        style={{ backgroundColor: color }}
-        className="p-3 flex-row items-center justify-center"
+        style={{
+          backgroundColor: color,
+          padding: s(12),
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
       >
         {isFocused && (
-          <ArrowLeft size={20} color="white" className="absolute left-4" />
+          <ArrowLeft
+            size={s(20)}
+            color="white"
+            style={{ position: "absolute", left: s(16) }}
+          />
         )}
-        <Text className="text-xl font-bold text-center text-white">
+        <Text
+          style={{
+            fontSize: s(20),
+            fontWeight: "700",
+            textAlign: "center",
+            color: "#FFFFFF",
+          }}
+        >
           {title} ({orderIds.length})
         </Text>
       </TouchableOpacity>
@@ -71,11 +99,18 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
         renderItem={renderItem}
         estimatedItemSize={ESTIMATED_CARD_HEIGHT}
         drawDistance={500}
-        contentContainerStyle={{ padding: 12 }}
+        contentContainerStyle={{ padding: s(12) }}
         showsVerticalScrollIndicator={false}
+        style={{ backgroundColor: "transparent" }}
         ListEmptyComponent={
-          <View className="h-40 items-center justify-center">
-            <Text className="text-gray-500 text-center">
+          <View
+            style={{
+              height: s(160),
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: colors.muted, textAlign: "center" }}>
               No orders in this status.
             </Text>
           </View>

@@ -14,24 +14,23 @@ import { useCFDOrderProcessingActivity } from "@/contexts/CFDProvider";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwnershipRecheck";
-import {
-    findLatestReusableEmptyDraftId,
-    getRefreshedReusableDraftNumbers,
-    isReusableEmptyDraftOrder,
-} from "@/lib/reusableEmptyDraft";
-import {
-    forceSetLocalSequence,
-    parseSequenceFromDisplayNumber,
-} from "@/lib/localOrderSequence";
-import { formatOrderStatus, formatPaymentStatus } from "@/utils/orderStatusHelpers";
-import { getHeaderHeight } from "@/lib/headerHeight";
-import { markEnd } from "@/lib/perf";
-import { iosOnly } from "@/lib/safeAnimations";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
+import { getHeaderHeight } from "@/lib/headerHeight";
+import {
+  forceSetLocalSequence,
+  parseSequenceFromDisplayNumber,
+} from "@/lib/localOrderSequence";
+import { markEnd } from "@/lib/perf";
+import {
+  findLatestReusableEmptyDraftId,
+  getRefreshedReusableDraftNumbers,
+  isReusableEmptyDraftOrder,
+} from "@/lib/reusableEmptyDraft";
+import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
-import { useColorScheme } from "@/lib/useColorScheme";
 import { useUiScale } from "@/lib/uiScale";
+import { useColorScheme } from "@/lib/useColorScheme";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useSearchStore } from "@/stores/searchStore";
 import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
@@ -41,48 +40,52 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import {
+  formatOrderStatus,
+  formatPaymentStatus,
+} from "@/utils/orderStatusHelpers";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import {
-    CheckCircle2,
-    ChevronLeft,
-    ChevronRight,
-    Eye,
-    Logs,
-    Plus,
-    Printer,
-    Search,
-    ShoppingBag,
-    Sofa,
-    UtensilsCrossed,
-    X,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Logs,
+  Plus,
+  Printer,
+  Search,
+  ShoppingBag,
+  Sofa,
+  UtensilsCrossed,
+  X,
 } from "lucide-react-native";
 import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    Dimensions,
-    InteractionManager,
-    Keyboard,
-    Modal,
-    PanResponder,
-    Pressable,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  Dimensions,
+  InteractionManager,
+  Keyboard,
+  Modal,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from "react-native";
 import Animated, {
-    LinearTransition,
-    SlideInLeft,
-    useAnimatedStyle,
-    useSharedValue,
+  LinearTransition,
+  SlideInLeft,
+  useAnimatedStyle,
+  useSharedValue,
 } from "react-native-reanimated";
 
 const EMPTY_ORDERS: OrderProfile[] = [];
@@ -131,14 +134,18 @@ const OrderProcessing = () => {
   const s = (n: number) => Math.round(n * uiScale);
   const markOrderProcessingActivity = useCFDOrderProcessingActivity();
   const measuredHeaderHeight = getHeaderHeight();
-  const overlayHeaderHeight = measuredHeaderHeight > 0 ? measuredHeaderHeight : 56;
+  const overlayHeaderHeight =
+    measuredHeaderHeight > 0 ? measuredHeaderHeight : 56;
   const customItemModalHeight = useMemo(() => {
     const screenHeight = Dimensions.get("screen").height;
     return Math.min(s(560), Math.max(s(420), screenHeight - 40));
   }, [uiScale]);
   const customItemModalTop = useMemo(() => {
     const screenHeight = Dimensions.get("screen").height;
-    return Math.max(s(20), Math.round((screenHeight - customItemModalHeight) / 2));
+    return Math.max(
+      s(20),
+      Math.round((screenHeight - customItemModalHeight) / 2),
+    );
   }, [customItemModalHeight, uiScale]);
 
   // Wave 2.7: per-order ownership recheck on screen focus + connectionQuality
@@ -464,7 +471,8 @@ const OrderProcessing = () => {
     const order = useOrderStore.getState().ordersById[activeOrderId];
     if (!order || order.db_order_id) return;
     // Dine-in orders create at seating; only eager-create non-dine-in here.
-    if (order.order_type === "dine_in" || order.order_type === "Dine In") return;
+    if (order.order_type === "dine_in" || order.order_type === "Dine In")
+      return;
 
     // Per-order PIN: the order must be eager-created BEFORE items (the
     // "Creating order" gate stays intact). When the PIN is required, eager
@@ -479,9 +487,16 @@ const OrderProcessing = () => {
       if (orderAttributionOrderId !== activeOrderId) return;
       // fall through to create
     } else {
-      // No PIN: respect the auto-create setting. When OFF, let the first
-      // item-add create the order on demand instead of eager-creating here.
-      if (!settings.autoCreateOrder) return;
+      // No PIN: always eager-create the backend order when an order becomes
+      // active, regardless of autoCreateOrder. When autoCreate is OFF, the
+      // order was started explicitly via "New Order" (or is an existing draft
+      // that was already active) — it still needs a backend row before items
+      // can be added. The "on demand" creation at add-item time was never
+      // implemented: MenuSection blocks adds when db_order_id is missing, and
+      // addItemToActiveOrder shows a toast and returns without triggering
+      // creation, leaving the UI permanently stuck on "Creating order".
+      // Always eager-creating here is safe because ensureActiveOrderCreated
+      // is idempotent and single-flight.
     }
     // Defer the eager backend create off the screen-entry frame: it's an RPC
     // whose broadcast/re-render can land mid-first-interaction. The local draft
@@ -887,7 +902,11 @@ const OrderProcessing = () => {
           }}
         >
           <View
-            style={{ paddingHorizontal: s(10), paddingTop: s(8), paddingBottom: s(7) }}
+            style={{
+              paddingHorizontal: s(10),
+              paddingTop: s(8),
+              paddingBottom: s(7),
+            }}
           >
             <View
               style={{
@@ -974,7 +993,9 @@ const OrderProcessing = () => {
             </Text>
 
             {!!openedAt && (
-              <Text style={{ color: colors.muted, fontSize: s(9), marginTop: s(2) }}>
+              <Text
+                style={{ color: colors.muted, fontSize: s(9), marginTop: s(2) }}
+              >
                 {openedAt}
               </Text>
             )}
@@ -1040,7 +1061,11 @@ const OrderProcessing = () => {
               Cash ${cashDue.toFixed(2)}
             </Text>
             <Text
-              style={{ color: colors.heading, fontSize: s(12), fontWeight: "700" }}
+              style={{
+                color: colors.heading,
+                fontSize: s(12),
+                fontWeight: "700",
+              }}
             >
               ${totalAmount.toFixed(2)}
             </Text>
@@ -1371,7 +1396,11 @@ const OrderProcessing = () => {
                       borderColor: colors.teal,
                     }}
                   >
-                    <Plus size={s(16)} color={colors.onSolid} strokeWidth={2.5} />
+                    <Plus
+                      size={s(16)}
+                      color={colors.onSolid}
+                      strokeWidth={2.5}
+                    />
                     <Text
                       style={{
                         color: colors.onSolid,
@@ -1641,36 +1670,36 @@ const OrderProcessing = () => {
         (moreOptionsOpenedOnce ||
           discountOpenedOnce ||
           serviceChargeOpenedOnce) && (
-        <View
-          pointerEvents="box-none"
-          style={[styles.sheetOverlayLayer, { top: -overlayHeaderHeight }]}
-        >
-          {moreOptionsOpenedOnce && (
-            <MoreOptionsBottomSheet
-              ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
-              discountSheetRef={lazyDiscountSheetRef}
-              serviceChargeSheetRef={lazyServiceChargeSheetRef}
-              onCloseCheck={handleCloseCheck}
-              onNoSale={handleNoSale}
-              onManageDrawer={() => setCashDrawerSheetOpen(true)}
-            />
-          )}
-          {discountOpenedOnce && (
-            <DiscountBottomSheet
-              ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
-              onClose={() => discountSheetRef?.current?.close()}
-            />
-          )}
-          {serviceChargeOpenedOnce && (
-            <ServiceChargeOverrideSheet
-              ref={
-                serviceChargeSheetRef as React.RefObject<BottomSheetMethods>
-              }
-              onClose={() => serviceChargeSheetRef?.current?.close()}
-            />
-          )}
-        </View>
-      )}
+          <View
+            pointerEvents="box-none"
+            style={[styles.sheetOverlayLayer, { top: -overlayHeaderHeight }]}
+          >
+            {moreOptionsOpenedOnce && (
+              <MoreOptionsBottomSheet
+                ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+                discountSheetRef={lazyDiscountSheetRef}
+                serviceChargeSheetRef={lazyServiceChargeSheetRef}
+                onCloseCheck={handleCloseCheck}
+                onNoSale={handleNoSale}
+                onManageDrawer={() => setCashDrawerSheetOpen(true)}
+              />
+            )}
+            {discountOpenedOnce && (
+              <DiscountBottomSheet
+                ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
+                onClose={() => discountSheetRef?.current?.close()}
+              />
+            )}
+            {serviceChargeOpenedOnce && (
+              <ServiceChargeOverrideSheet
+                ref={
+                  serviceChargeSheetRef as React.RefObject<BottomSheetMethods>
+                }
+                onClose={() => serviceChargeSheetRef?.current?.close()}
+              />
+            )}
+          </View>
+        )}
 
       <CashDrawerSheet
         isOpen={isCashDrawerSheetOpen}
@@ -1754,7 +1783,11 @@ const OrderProcessing = () => {
               }}
             >
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(8),
+                }}
               >
                 <Text
                   style={{
@@ -1790,7 +1823,11 @@ const OrderProcessing = () => {
                 </View>
               </View>
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(8),
+                }}
               >
                 {completableOrders.length > 0 && (
                   <TouchableOpacity
