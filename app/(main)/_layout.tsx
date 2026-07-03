@@ -8,6 +8,7 @@ import OnlineOrderEdgeTab from '@/components/online-orders/OnlineOrderEdgeTab'
 import MyProfilePanel from '@/components/profile/MyProfilePanel'
 import { PortalHost } from '@rn-primitives/portal'
 import { LocationRealtimeProvider } from '@/contexts/LocationRealtimeProvider'
+import { useKdsOnlineOrdersBootstrap } from '@/hooks/pos/useKdsOnlineOrdersBootstrap'
 import { useOrderSyncRecovery } from '@/hooks/pos/useOrderSyncRecovery'
 import type { OrderBroadcastPayload } from '@/hooks/realtime/useOrdersRealtime'
 import { useTableSessionInit } from '@/hooks/useTableSessionInit'
@@ -142,6 +143,13 @@ export default function MainLayout () {
 
   useTableSessionInit({ skip: isKDS })
 
+  // KDS skips useOrdersQuery, so seed the shared order store with active
+  // online orders for the edge tab/drawer (broadcasts keep them live after).
+  useKdsOnlineOrdersBootstrap({
+    locationId: selectedStore?.id,
+    enabled: isKDS
+  })
+
   useEffect(() => {
     if (isKDS || !selectedStation || !selectedStore) return
     const supabase = getOrderStoreSupabaseClient()
@@ -162,6 +170,21 @@ export default function MainLayout () {
   const handleOrderChangeKDS = useCallback((payload: OrderPayload) => {
     const broadcastPayload = payload as unknown as OrderBroadcastPayload
     useKDSStore.getState().handleOrderBroadcast(broadcastPayload)
+    // Also feed ONLINE orders into the shared order store so the online-orders
+    // edge tab/drawer stays live on KDS. Gated to online source (or orders the
+    // store already tracks, so status/DELETE updates land) — KDS doesn't need
+    // the full POS order workspace.
+    const order = broadcastPayload.data?.order
+    if (order) {
+      const orderStore = useOrderStore.getState()
+      if (
+        order.order_source === 'online' ||
+        orderStore.dbOrderIdIndex[order.id] ||
+        orderStore.ordersById[order.id]
+      ) {
+        orderStore._handleOrderBroadcast(broadcastPayload)
+      }
+    }
   }, [])
 
   const handleOrderChange = useCallback((payload: OrderPayload) => {
@@ -178,6 +201,11 @@ export default function MainLayout () {
     unstable_batchedUpdates(() => {
       useOrderStore.getState()._handleOrderBroadcast(broadcastPayload)
       usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload)
+      // Keep the KDS store warm on POS stations too — the /kds screen relies
+      // on broadcasts while realtime is connected (its polling is disabled
+      // then, see kds.tsx schedulePoll), and its own pre-gate skips
+      // non-kitchen-relevant broadcasts cheaply.
+      useKDSStore.getState().handleOrderBroadcast(broadcastPayload)
     })
     if (broadcastPayload.operation === 'INSERT') {
       const src = broadcastPayload.data?.order?.order_source
@@ -225,6 +253,23 @@ export default function MainLayout () {
         >
           <StatusBar style='light' translucent />
           <Slot />
+          {/* Online-orders edge tab + drawer on KDS too. kdsMode hides the
+              POS-only navigation (board/detail routes have no header/back
+              affordance in the KDS layout). */}
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 150
+            }}
+            pointerEvents='box-none'
+          >
+            <OnlineOrderEdgeTab />
+            <OnlineOrderDrawer kdsMode />
+          </View>
         </SafeAreaView>
       </LocationRealtimeProvider>
     )

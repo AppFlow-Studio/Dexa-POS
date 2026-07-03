@@ -43,6 +43,15 @@ const SECTION_DEFS: {
 
 type DrawerSection = (typeof SECTION_DEFS)[number] & { data: string[] };
 
+interface OnlineOrderDrawerProps {
+  /**
+   * KDS stations render without the shared header/back affordance, so the
+   * POS-only navigation (View board, card detail links) is hidden — the
+   * drawer is act-in-place there.
+   */
+  kdsMode?: boolean;
+}
+
 /**
  * Global right-hand slide-out drawer for triaging online orders without
  * leaving the current screen. Pre-mounted shell (AttachedModifierPanel
@@ -50,7 +59,9 @@ type DrawerSection = (typeof SECTION_DEFS)[number] & { data: string[] };
  * and stays mounted after. Open state lives in useOnlineOrderDrawerStore —
  * opening marks all active online orders "seen" (clears the edge-tab badge).
  */
-const OnlineOrderDrawer: React.FC = () => {
+const OnlineOrderDrawer: React.FC<OnlineOrderDrawerProps> = ({
+  kdsMode = false,
+}) => {
   const isOpen = useOnlineOrderDrawerStore(selectIsOpen);
   const uiScale = useUiScale();
   const panelWidth = Math.round(BASE_PANEL_WIDTH * uiScale);
@@ -183,19 +194,21 @@ const OnlineOrderDrawer: React.FC = () => {
                 Online Orders
               </Text>
               <View className="flex-row items-center gap-x-2">
-                <TouchableOpacity
-                  onPress={openBoard}
-                  className="flex-row items-center gap-x-1.5 px-3 py-2 rounded-xl border"
-                  style={{
-                    borderColor: colors.border,
-                    backgroundColor: colors.card,
-                  }}
-                >
-                  <LayoutGrid size={16} color={colors.label} />
-                  <Text className="text-sm font-semibold text-label">
-                    View board
-                  </Text>
-                </TouchableOpacity>
+                {!kdsMode && (
+                  <TouchableOpacity
+                    onPress={openBoard}
+                    className="flex-row items-center gap-x-1.5 px-3 py-2 rounded-xl border"
+                    style={{
+                      borderColor: colors.border,
+                      backgroundColor: colors.card,
+                    }}
+                  >
+                    <LayoutGrid size={16} color={colors.label} />
+                    <Text className="text-sm font-semibold text-label">
+                      View board
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   onPress={closeDrawer}
                   className="p-2 rounded-xl border"
@@ -248,6 +261,7 @@ const OnlineOrderDrawer: React.FC = () => {
                     <OnlineOrderCard
                       orderId={item}
                       variant={(section as DrawerSection).variant}
+                      hideDetailsLink={kdsMode}
                     />
                   </View>
                 )}

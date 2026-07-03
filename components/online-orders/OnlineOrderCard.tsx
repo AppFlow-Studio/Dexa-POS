@@ -17,6 +17,8 @@ interface OnlineOrderCardProps {
   /** Store key OR db_order_id — resolved via useOrder/getOrder. */
   orderId: string;
   variant: OnlineColumnVariant;
+  /** Suppress the detail-screen link (KDS has no header/back for that route). */
+  hideDetailsLink?: boolean;
 }
 
 function formatTime(iso: string | null): string {
@@ -57,6 +59,7 @@ function sourceLabel(
 const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
   orderId,
   variant,
+  hideDetailsLink = false,
 }) => {
   const order = useOrder(orderId);
   const {
@@ -289,18 +292,20 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
         </View>
       )}
 
-      <Link
-        href={
-          `/online-orders/${(order.db_order_id || order.id).replace("#", "")}` as Href
-        }
-        asChild
-      >
-        <TouchableOpacity>
-          <Text style={{ fontWeight: "700", color: colors.teal }}>
-            View Order Details
-          </Text>
-        </TouchableOpacity>
-      </Link>
+      {!hideDetailsLink && (
+        <Link
+          href={
+            `/online-orders/${(order.db_order_id || order.id).replace("#", "")}` as Href
+          }
+          asChild
+        >
+          <TouchableOpacity>
+            <Text style={{ fontWeight: "700", color: colors.teal }}>
+              View Order Details
+            </Text>
+          </TouchableOpacity>
+        </Link>
+      )}
 
       {/* Footer */}
       {variant === "new" ? (
