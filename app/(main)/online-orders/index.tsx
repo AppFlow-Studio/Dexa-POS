@@ -2,13 +2,14 @@ import KanbanColumn from "@/components/online-orders/KanbanColumn";
 import type { OnlineColumnVariant } from "@/components/online-orders/OnlineOrderCard";
 import { startInteraction } from "@/lib/perf";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import {
   useOnlineOrders,
   usePendingOnlineOrderCount,
 } from "@/stores/selectors/orderSelectors";
 import { Link } from "expo-router";
 import { Table } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 type ColumnKey = "new" | "kitchen" | "ready" | "done";
@@ -26,6 +27,7 @@ const COLUMNS: {
 ];
 
 const OnlineOrdersScreen = () => {
+  const uiScale = useUiScale();
   const [focusedColumn, setFocusedColumn] = useState<ColumnKey | null>(null);
 
   const onlineOrders = useOnlineOrders();
@@ -100,26 +102,76 @@ const OnlineOrdersScreen = () => {
   };
 
   return (
-    <View className="flex-1 px-4 bg-screen">
-      <View className="flex-row items-center justify-between my-3">
-        <View className="flex-row items-center gap-x-3">
-          <Text className="text-2xl font-bold text-heading">Online Orders</Text>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.screen,
+        paddingHorizontal: 16 * uiScale,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          marginVertical: 12 * uiScale,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12 * uiScale,
+          }}
+        >
           {pendingCount > 0 && (
-            <View className="px-2.5 py-1 rounded-full bg-blue-500">
-              <Text className="text-white text-sm font-bold">
+            <View
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 999,
+                backgroundColor: colors.teal,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.onSolid,
+                  fontSize: 14 * uiScale,
+                  fontWeight: "700",
+                }}
+              >
                 {pendingCount} new
               </Text>
             </View>
           )}
         </View>
         <Link href="/order-processing" asChild>
-          <TouchableOpacity className="flex-row items-center bg-panel rounded-xl border border-border p-3">
-            <Table color={colors.label} size={20} />
+          <TouchableOpacity
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.panel,
+              borderRadius: Math.round(12 * uiScale),
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: Math.round(12 * uiScale),
+            }}
+          >
+            <Table color={colors.label} size={Math.round(20 * uiScale)} />
           </TouchableOpacity>
         </Link>
       </View>
 
-      <View className="flex-1 flex-row gap-x-4 pb-4">{renderKanbanView()}</View>
+      <View
+        style={{
+          flex: 1,
+          flexDirection: "row",
+          gap: Math.round(16 * uiScale),
+          paddingBottom: Math.round(16 * uiScale),
+        }}
+      >
+        {renderKanbanView()}
+      </View>
     </View>
   );
 };
