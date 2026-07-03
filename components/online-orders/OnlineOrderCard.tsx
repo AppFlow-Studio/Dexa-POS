@@ -1,5 +1,5 @@
 import CancelOnlineOrderDialog, {
-  type CancelReasonCode,
+    type CancelReasonCode,
 } from "@/components/online-orders/CancelOnlineOrderDialog";
 import MarkOrderReadyDialog from "@/components/online-orders/MarkOrderReadyDialog";
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
@@ -9,12 +9,7 @@ import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Href, Link } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
 export type OnlineColumnVariant = "new" | "kitchen" | "ready" | "done";
 
@@ -64,8 +59,13 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
   variant,
 }) => {
   const order = useOrder(orderId);
-  const { acceptOrder, declineOrder, cancelOrder, markReadyOrder, markDoneOrder } =
-    useOnlineOrderActions();
+  const {
+    acceptOrder,
+    declineOrder,
+    cancelOrder,
+    markReadyOrder,
+    markDoneOrder,
+  } = useOnlineOrderActions();
   const [submitting, setSubmitting] = useState<
     null | "accept" | "decline" | "cancel" | "ready" | "done"
   >(null);
@@ -176,40 +176,84 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
 
   const retryRow = retryable ? (
     <View className="mt-2 flex-row items-center justify-between">
-      <Text className="text-xs text-red-400 flex-1">Server unreachable.</Text>
+      <Text className="text-xs text-danger flex-1">Server unreachable.</Text>
       <TouchableOpacity
         onPress={onRetry}
-        className="px-3 py-1.5 rounded-lg bg-blue-600/20 border border-blue-500/40"
+        className="px-3 py-1.5 rounded-lg"
+        style={{
+          backgroundColor: colors.info + "20",
+          borderWidth: 1,
+          borderColor: colors.info + "40",
+        }}
       >
-        <Text className="text-blue-300 text-xs font-semibold">Retry</Text>
+        <Text className="text-xs font-semibold" style={{ color: colors.info }}>
+          Retry
+        </Text>
       </TouchableOpacity>
     </View>
   ) : null;
 
   return (
-    <View className="bg-surface p-4 rounded-2xl border border-border w-full">
+    <View
+      style={{
+        backgroundColor: colors.card,
+        padding: 16,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: colors.border,
+        width: "100%",
+      }}
+    >
       {/* Header */}
-      <View className="flex-row justify-between items-center">
-        <Text className="text-sm text-label">Items: {itemCount}</Text>
-        <Text className="text-sm text-label">
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ fontSize: 14, color: colors.label }}>
+          Items: {itemCount}
+        </Text>
+        <Text style={{ fontSize: 14, color: colors.label }}>
           {formatTime(order.opened_at)}
         </Text>
       </View>
 
       {/* Body */}
-      <View className="flex-row items-center my-3">
-        <View className="flex-1">
-          <Text className="text-base font-bold text-heading">#{label}</Text>
-          <Text className="text-sm text-label" numberOfLines={1}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginVertical: 12,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}
+          >
+            #{label}
+          </Text>
+          <Text style={{ fontSize: 14, color: colors.label }} numberOfLines={1}>
             {order.customer_name || "Guest"}
           </Text>
-          <View className="flex-row items-center mt-1 gap-1.5">
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginTop: 4,
+              gap: 6,
+            }}
+          >
             <DeliveryPlatformBadge
               deliveryPlatform={order.delivery_platform}
               orderSource={order.order_source}
               size="sm"
             />
-            <Text className="text-xs text-hint flex-shrink" numberOfLines={1}>
+            <Text
+              style={{ fontSize: 12, color: colors.muted, flexShrink: 1 }}
+              numberOfLines={1}
+            >
               {sourceLabel(
                 order.delivery_platform,
                 order.order_type,
@@ -218,25 +262,27 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
             </Text>
           </View>
         </View>
-        <Text className="text-2xl font-bold text-heading">
+        <Text
+          style={{ fontSize: 24, fontWeight: "700", color: colors.heading }}
+        >
           ${total.toFixed(2)}
         </Text>
       </View>
 
       {/* Item preview — first 3 + overflow */}
       {shownItems.length > 0 && (
-        <View className="mb-3">
+        <View style={{ marginBottom: 12 }}>
           {shownItems.map((it) => (
             <Text
               key={it.id}
-              className="text-sm text-label"
+              style={{ fontSize: 14, color: colors.label }}
               numberOfLines={1}
             >
               {it.quantity}× {it.open_item_name || it.name}
             </Text>
           ))}
           {remainingItems > 0 && (
-            <Text className="text-xs text-hint mt-0.5">
+            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
               +{remainingItems} more
             </Text>
           )}
@@ -244,38 +290,59 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
       )}
 
       <Link
-        href={`/online-orders/${(order.db_order_id || order.id).replace("#", "")}` as Href}
+        href={
+          `/online-orders/${(order.db_order_id || order.id).replace("#", "")}` as Href
+        }
         asChild
       >
         <TouchableOpacity>
-          <Text className="font-bold text-teal">View Order Details</Text>
+          <Text style={{ fontWeight: "700", color: colors.teal }}>
+            View Order Details
+          </Text>
         </TouchableOpacity>
       </Link>
 
       {/* Footer */}
       {variant === "new" ? (
-        <View className="mt-4">
-          <View className="flex-row gap-2">
+        <View style={{ marginTop: 16 }}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
             <TouchableOpacity
               onPress={onDecline}
               disabled={submitting !== null}
-              className="flex-1 py-2.5 border border-border rounded-xl items-center"
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                alignItems: "center",
+              }}
             >
               {submitting === "decline" ? (
                 <ActivityIndicator color={colors.label} />
               ) : (
-                <Text className="font-bold text-label">Decline</Text>
+                <Text style={{ fontWeight: "700", color: colors.label }}>
+                  Decline
+                </Text>
               )}
             </TouchableOpacity>
             <TouchableOpacity
               onPress={onAccept}
               disabled={submitting !== null}
-              className="flex-1 py-2.5 bg-blue-500 rounded-xl items-center"
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 12,
+                alignItems: "center",
+                backgroundColor: colors.teal,
+              }}
             >
               {submitting === "accept" ? (
-                <ActivityIndicator color="white" />
+                <ActivityIndicator color={colors.onSolid} />
               ) : (
-                <Text className="font-bold text-white">Accept</Text>
+                <Text style={{ fontWeight: "700", color: colors.onSolid }}>
+                  Accept
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -283,14 +350,17 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           <TouchableOpacity
             onPress={() => setShowCancel(true)}
             disabled={submitting !== null}
-            className="mt-2 self-center"
+            style={{ marginTop: 8, alignSelf: "center" }}
           >
             {submitting === "cancel" ? (
               <ActivityIndicator size="small" color={colors.danger} />
             ) : (
               <Text
-                className="text-xs font-semibold"
-                style={{ color: colors.danger }}
+                style={{
+                  fontSize: 12,
+                  fontWeight: "600",
+                  color: colors.danger,
+                }}
               >
                 Cancel order
               </Text>
@@ -298,16 +368,26 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           </TouchableOpacity>
         </View>
       ) : (
-        <View className="mt-4">
-          <View className="flex-row items-center justify-between">
-            
-            <View className="flex-row items-center gap-2">
+        <View style={{ marginTop: 16 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+            >
               {canMarkReady && (
                 <TouchableOpacity
                   onPress={() => setShowMarkReady(true)}
                   disabled={submitting !== null}
-                  className="px-3 py-1.5 rounded-lg border"
                   style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    borderWidth: 1,
                     backgroundColor: colors.teal + "14",
                     borderColor: colors.teal + "40",
                   }}
@@ -316,8 +396,11 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                     <ActivityIndicator size="small" color={colors.teal} />
                   ) : (
                     <Text
-                      className="text-xs font-semibold"
-                      style={{ color: colors.teal }}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: "600",
+                        color: colors.teal,
+                      }}
                     >
                       Mark ready
                     </Text>
@@ -328,8 +411,11 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                 <TouchableOpacity
                   onPress={onMarkDone}
                   disabled={submitting !== null}
-                  className="px-3 py-1.5 rounded-lg border"
                   style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    borderWidth: 1,
                     backgroundColor: colors.success + "14",
                     borderColor: colors.success + "40",
                   }}
@@ -338,8 +424,11 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                     <ActivityIndicator size="small" color={colors.success} />
                   ) : (
                     <Text
-                      className="text-xs font-semibold"
-                      style={{ color: colors.success }}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: "600",
+                        color: colors.success,
+                      }}
                     >
                       Mark done
                     </Text>
@@ -350,8 +439,11 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                 <TouchableOpacity
                   onPress={() => setShowCancel(true)}
                   disabled={submitting !== null}
-                  className="px-3 py-1.5 rounded-lg border"
                   style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    borderWidth: 1,
                     backgroundColor: colors.danger + "14",
                     borderColor: colors.danger + "40",
                   }}
@@ -360,8 +452,11 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                     <ActivityIndicator size="small" color={colors.danger} />
                   ) : (
                     <Text
-                      className="text-xs font-semibold"
-                      style={{ color: colors.danger }}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: "600",
+                        color: colors.danger,
+                      }}
                     >
                       Cancel order
                     </Text>

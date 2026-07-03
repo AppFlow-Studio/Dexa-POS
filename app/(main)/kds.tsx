@@ -970,6 +970,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       deliveryPlatform={ticket.delivery_platform}
                       orderSource={ticket.order_source}
                       size="kds"
+                      uiScale={uiScale}
+                      solidBackground={hasUrgencyColor}
                     />
                   </View>
 
@@ -1822,6 +1824,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                       deliveryPlatform={ticket.delivery_platform}
                       orderSource={ticket.order_source}
                       size="kds"
+                      uiScale={uiScale}
                     />
                   </View>
 
