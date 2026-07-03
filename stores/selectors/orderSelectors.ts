@@ -13,6 +13,10 @@ import { calculateOrderTotals } from "@/lib/order-calculator";
 import type { CartItem, OrderProfile, OrderProfilePayment } from "@/lib/types";
 import { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
+import {
+  selectSeenOrderIds,
+  useOnlineOrderDrawerStore,
+} from "../useOnlineOrderDrawerStore";
 import { useOrderStore } from "../useOrderStore";
 import { useSeatingStore } from "../useSeatingStore";
 import { useServiceChargeRulesStore } from "../useServiceChargeRulesStore";
@@ -1056,4 +1060,75 @@ export function usePendingOnlineOrderCount(): number {
     }
     return n;
   });
+}
+
+// Statuses that make an online order "active" for the right-edge drawer tab.
+// Positive allowlist (unlike ONLINE_EXCLUDED_STATUSES): `completed` orders
+// stay on the Kanban's Done column but don't keep the edge tab visible.
+const TAB_ACTIVE_ONLINE_STATUSES = new Set([
+  "pending",
+  "accepted",
+  "sent_to_kitchen",
+  "preparing",
+  "ready",
+]);
+
+function isTabActiveOnlineOrder(o: OrderProfile | undefined): o is OrderProfile {
+  return (
+    !!o &&
+    o.order_source === "online" &&
+    TAB_ACTIVE_ONLINE_STATUSES.has(o.order_status ?? "")
+  );
+}
+
+/** The stable key used for online-order seen-tracking (matches the Kanban). */
+export function getOnlineOrderKey(o: OrderProfile): string {
+  return o.db_order_id ?? o.id;
+}
+
+/**
+ * Count of active (pending → ready) online orders. Drives edge-tab
+ * visibility. Primitive return — subscribers re-render only on count change.
+ */
+export function useActiveOnlineOrderCount(): number {
+  return useOrderStore((s) => {
+    let n = 0;
+    for (let i = 0; i < s.orderIds.length; i++) {
+      if (isTabActiveOnlineOrder(s.ordersById[s.orderIds[i]])) n++;
+    }
+    return n;
+  });
+}
+
+/**
+ * Count of active online orders NOT yet seen on this station (drawer store's
+ * seen set). Drives the edge-tab badge. Two-store combine: subscribing to the
+ * seen map re-renders on seen writes, and the order-store selector closure
+ * re-evaluates with the fresh map on that render.
+ */
+export function useUnseenOnlineOrderCount(): number {
+  const seen = useOnlineOrderDrawerStore(selectSeenOrderIds);
+  return useOrderStore((s) => {
+    let n = 0;
+    for (let i = 0; i < s.orderIds.length; i++) {
+      const o = s.ordersById[s.orderIds[i]];
+      if (isTabActiveOnlineOrder(o) && !seen[getOnlineOrderKey(o)]) n++;
+    }
+    return n;
+  });
+}
+
+/**
+ * Non-hook snapshot of active online order keys. Used by the edge tab's
+ * press handler to feed openDrawer/toggleDrawer without subscribing the tab
+ * to the full order list.
+ */
+export function getActiveOnlineOrderKeys(): string[] {
+  const s = useOrderStore.getState();
+  const keys: string[] = [];
+  for (let i = 0; i < s.orderIds.length; i++) {
+    const o = s.ordersById[s.orderIds[i]];
+    if (isTabActiveOnlineOrder(o)) keys.push(getOnlineOrderKey(o));
+  }
+  return keys;
 }

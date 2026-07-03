@@ -3,6 +3,8 @@ import Header from '@/components/Header'
 import MenuSearchSheet from '@/components/menu/MenuSearchSheet'
 import PaymentDetailBottomSheet from '@/components/menu/PaymentDetailBottomSheet'
 import NotificationBottomSheet from '@/components/notifications/NotificationBottomSheet'
+import OnlineOrderDrawer from '@/components/online-orders/OnlineOrderDrawer'
+import OnlineOrderEdgeTab from '@/components/online-orders/OnlineOrderEdgeTab'
 import MyProfilePanel from '@/components/profile/MyProfilePanel'
 import { PortalHost } from '@rn-primitives/portal'
 import { LocationRealtimeProvider } from '@/contexts/LocationRealtimeProvider'
@@ -305,6 +307,23 @@ export default function MainLayout () {
             pointerEvents='box-none'
           >
             <PaymentDetailBottomSheet ref={paymentDetailSheetRef} />
+          </View>
+          {/* Global online-orders edge tab + drawer. zIndex 150: above
+              PaymentDetail (100) so incoming orders stay reachable
+              mid-payment, below MenuSearchSheet (200). */}
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 150
+            }}
+            pointerEvents='box-none'
+          >
+            <OnlineOrderEdgeTab />
+            <OnlineOrderDrawer />
           </View>
           <View
             style={{
