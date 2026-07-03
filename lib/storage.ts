@@ -621,6 +621,7 @@ export const CLEARABLE_STORAGE_KEYS = [
   "order-store-storage",
   "floor-plan-db-storage",
   "dexa-pos-timeclock",
+  "online-order-drawer-storage",
 ] as const;
 
 export const CLEARABLE_SYNC_KEYS = [

@@ -1,9 +1,9 @@
-import { TABLE_SHAPES } from '@/lib/table-shapes'
-import React from 'react'
-import EditableTable from './cards/EditableTable'
-import ReadonlyStructure from './cards/ReadonlyStructure'
-import ReadonlyTable from './cards/ReadonlyTable'
-import { DraggableTableProps } from './cards/types'
+import { TABLE_SHAPES } from "@/lib/table-shapes";
+import React from "react";
+import EditableTable from "./cards/EditableTable";
+import ReadonlyStructure from "./cards/ReadonlyStructure";
+import ReadonlyTable from "./cards/ReadonlyTable";
+import { DraggableTableProps } from "./cards/types";
 
 /**
  * Thin dispatcher that picks one of three fully-separated render paths for a
@@ -24,14 +24,13 @@ import { DraggableTableProps } from './cards/types'
  * category never changes at runtime. So the conditional choice of which set of
  * hooks runs is stable and React-safe.
  */
-const DraggableTableInner: React.FC<DraggableTableProps> = props => {
-  const { table, isEditMode } = props
-  const isTableType =
-    table.category === 'table' || table.category === 'booth'
-  const isWall = table.shape_id === 'wall-section'
+const DraggableTableInner: React.FC<DraggableTableProps> = (props) => {
+  const { table, isEditMode } = props;
+  const isTableType = table.category === "table" || table.category === "booth";
+  const isWall = table.shape_id === "wall-section";
   const shapeDef =
     TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES] ||
-    TABLE_SHAPES['square-4']
+    TABLE_SHAPES["square-4"];
 
   if (isEditMode) {
     return (
@@ -41,7 +40,7 @@ const DraggableTableInner: React.FC<DraggableTableProps> = props => {
         isWall={isWall}
         shapeDef={shapeDef}
       />
-    )
+    );
   }
 
   // Non-table objects (walls, doors, pillars, plants, zones, labels) carry no
@@ -56,7 +55,7 @@ const DraggableTableInner: React.FC<DraggableTableProps> = props => {
         onSelect={props.onSelect}
         wallEdgeFlags={props.wallEdgeFlags}
       />
-    )
+    );
   }
 
   return (
@@ -66,8 +65,8 @@ const DraggableTableInner: React.FC<DraggableTableProps> = props => {
       isWall={isWall}
       shapeDef={shapeDef}
     />
-  )
-}
+  );
+};
 
 export default React.memo(DraggableTableInner, (prev, next) => {
   // Re-render if dimensions change
@@ -75,7 +74,7 @@ export default React.memo(DraggableTableInner, (prev, next) => {
     prev.table.width !== next.table.width ||
     prev.table.height !== next.table.height
   ) {
-    return false
+    return false;
   }
   // Re-render if position/rotation changes (for dragging)
   if (
@@ -83,20 +82,20 @@ export default React.memo(DraggableTableInner, (prev, next) => {
     prev.table.y !== next.table.y ||
     prev.table.rotation !== next.table.rotation
   ) {
-    return false
+    return false;
   }
   // Re-render if selected state changes
   if (prev.isSelected !== next.isSelected) {
-    return false
+    return false;
   }
   if (prev.interactionMode !== next.interactionMode) {
-    return false
+    return false;
   }
   if (prev.isEditMode !== next.isEditMode) {
-    return false
+    return false;
   }
   if (prev.disableEntryAnimation !== next.disableEntryAnimation) {
-    return false
+    return false;
   }
   if (
     prev.wallEdgeFlags?.hideTop !== next.wallEdgeFlags?.hideTop ||
@@ -104,26 +103,15 @@ export default React.memo(DraggableTableInner, (prev, next) => {
     prev.wallEdgeFlags?.hideBottom !== next.wallEdgeFlags?.hideBottom ||
     prev.wallEdgeFlags?.hideLeft !== next.wallEdgeFlags?.hideLeft
   ) {
-    return false
+    return false;
   }
-  // Re-render if session changed (status, party size, etc.)
-  // Session updates come from polling and should trigger visual updates
-  if (
-    prev.table.session?.id !== next.table.session?.id ||
-    prev.table.session?.status !== next.table.session?.status ||
-    prev.table.session?.party_size !== next.table.session?.party_size ||
-    prev.table.session?.guest_name !== next.table.session?.guest_name ||
-    prev.table.session?.server_staff_id !==
-      next.table.session?.server_staff_id ||
-    prev.table.session?.current_course !== next.table.session?.current_course ||
-    prev.table.session?.needs_attention !==
-      next.table.session?.needs_attention ||
-    prev.table.session?.is_vip !== next.table.session?.is_vip ||
-    prev.table.session?.merged_tables?.length !==
-      next.table.session?.merged_tables?.length
-  ) {
-    return false
-  }
+  // NOTE: table.session fields deliberately NOT compared here.
+  // ReadonlyTable reads live session data from useTableSessionStore directly
+  // via useTableCardData, not from the table.session prop. The canvas-level
+  // TableLayoutView.memo already ignores session fields. Adding session checks
+  // here would cause false-positive re-renders when the floor plan store's
+  // table.session prop changes but the actual rendered output is driven by
+  // granular per-table selectors that may not have changed.
   // Otherwise skip re-render
-  return true
-})
+  return true;
+});

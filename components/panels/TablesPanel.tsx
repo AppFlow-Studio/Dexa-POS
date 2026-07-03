@@ -2,7 +2,6 @@ import TableListItem from "@/components/tables/TableListItem";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
-import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -71,13 +70,11 @@ const Section: React.FC<SectionProps> = ({
   onToggle,
   children,
 }) => {
-  const uiScale = useUiScale()
-  const s = (n: number) => Math.round(n * uiScale)
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   return (
-    <View
-      style={{ flex: 1 }}
-    >
+    <View style={{ flex: 1 }}>
       <TouchableOpacity
         onPress={onToggle}
         style={{
@@ -106,13 +103,7 @@ const Section: React.FC<SectionProps> = ({
           {title}
         </Text>
       </TouchableOpacity>
-      {isOpen && (
-        <View
-          style={{ flex: 1, paddingLeft: s(4) }}
-        >
-          {children}
-        </View>
-      )}
+      {isOpen && <View style={{ flex: 1, paddingLeft: s(4) }}>{children}</View>}
     </View>
   );
 };
@@ -132,8 +123,8 @@ function InlineSelect<T extends string>({
   onSelect,
   nullable = true,
 }: InlineSelectProps<T>) {
-  const uiScale = useUiScale()
-  const s = (n: number) => Math.round(n * uiScale)
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const [open, setOpen] = useState(false);
   const selectedLabel = value
     ? (options.find((o) => o.value === value)?.label ?? value)
@@ -246,8 +237,8 @@ function InlineSelect<T extends string>({
 }
 
 const TablesPanel: React.FC = () => {
-  const uiScale = useUiScale()
-  const s = (n: number) => Math.round(n * uiScale)
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   const router = useRouter();
   const floorPlans = useFloorPlanStore((s) => s.floorPlans);
@@ -301,9 +292,7 @@ const TablesPanel: React.FC = () => {
       let changed = false;
       const next: Record<string, boolean> = {};
       for (const [tableId, expanded] of Object.entries(prev)) {
-        const status = (
-          liveSessions[tableId]?.status ?? ""
-        ).toLowerCase();
+        const status = (liveSessions[tableId]?.status ?? "").toLowerCase();
         if (expanded && !ACTIVE_STATUSES.has(status)) {
           changed = true; // drop it — no longer expandable/selected
         } else {
@@ -459,10 +448,8 @@ const TablesPanel: React.FC = () => {
       if (orderId) {
         ensureOrderPrefetched(orderId).catch(() => {});
       }
-      // Arm the overlay, then navigate to the tables floor; the overlay host
-      // there mounts TableOrderView on top (no per-table screen → no leak).
-      usePendingTableOverlay.getState().openTable(tableId);
-      router.push(`/tables`);
+      // Navigate directly to the table order screen instead of using overlay.
+      router.push(`/tables/${tableId}`);
     },
     [router],
   );
