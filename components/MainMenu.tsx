@@ -1,6 +1,7 @@
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { colors } from "@/lib/theme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { usePendingOnlineOrderCount } from "@/stores/selectors/orderSelectors";
 import { useRouter } from "expo-router";
 import {
   Award,
@@ -12,6 +13,7 @@ import {
   Lock,
   Package,
   Settings,
+  ShoppingBag,
   ShoppingCart,
   UtensilsCrossed,
 } from "lucide-react-native";
@@ -31,6 +33,8 @@ interface MenuCardProps {
   onLockPress?: () => void;
   isDisabled?: boolean;
   scale?: number;
+  /** Optional count badge (e.g. pending online orders). Hidden when 0. */
+  badgeCount?: number;
 }
 
 const MenuCard: React.FC<MenuCardProps> = ({
@@ -41,6 +45,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
   onLockPress,
   isDisabled = false,
   scale = 1,
+  badgeCount = 0,
 }) => {
   const s = (n: number) => Math.round(n * scale);
   const renderedIcon = React.isValidElement<{ color?: string; size?: number }>(
@@ -98,6 +103,30 @@ const MenuCard: React.FC<MenuCardProps> = ({
           </TouchableOpacity>
         )}
 
+        {badgeCount > 0 && (
+          <View
+            style={{
+              position: "absolute",
+              top: s(8),
+              right: s(8),
+              minWidth: s(20),
+              height: s(20),
+              paddingHorizontal: s(5),
+              borderRadius: s(10),
+              backgroundColor: "#3b82f6",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text
+              style={{ color: "#fff", fontSize: s(11), fontWeight: "700" }}
+              numberOfLines={1}
+            >
+              {badgeCount > 99 ? "99+" : badgeCount}
+            </Text>
+          </View>
+        )}
+
         {/* Icon */}
         <View
           style={{
@@ -142,6 +171,7 @@ const MainMenu: React.FC = () => {
   const rowGap = s(20);
   const sectionGap = s(50);
   const employees = useEmployeeStore((s) => s.employees);
+  const pendingOnlineCount = usePendingOnlineOrderCount();
   const { rawIsOnline } = useNetworkStatus();
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [currentPin, setCurrentPin] = useState("");
@@ -263,13 +293,13 @@ const MainMenu: React.FC = () => {
       subtitle: "Order History",
       route: "/previous-orders",
     },
-    // {
-    //   id: 'online-orders',
-    //   icon: <ShoppingBag color={colors.teal} size={20} />,
-    //   title: 'Online Orders',
-    //   subtitle: 'Web & App Orders',
-    //   route: '/online-orders'
-    // },
+    {
+      id: "online-orders",
+      icon: <ShoppingBag color={colors.teal} size={20} />,
+      title: "Online Orders",
+      subtitle: "Web & App Orders",
+      route: "/online-orders",
+    },
     {
       id: "kds",
       icon: <ChefHat color={colors.teal} size={20} />,
@@ -382,6 +412,9 @@ const MainMenu: React.FC = () => {
                   handleLockedAccess(item.route);
                 }}
                 isDisabled={isDisabled}
+                badgeCount={
+                  item.id === "online-orders" ? pendingOnlineCount : 0
+                }
               />
             );
           })()}

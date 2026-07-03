@@ -1,50 +1,51 @@
 import { getDeviceId } from "@/lib/deviceId";
 import {
-    getKitchenSentStatus,
-    getOrderSentStatus,
+  getKitchenSentStatus,
+  getOrderSentStatus,
 } from "@/lib/kitchenStatusUtils";
 import { payableQuantity } from "@/lib/payableQuantity";
 import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
-    createLazyPersistStorage,
-    getSyncJSON,
-    setSyncJSON,
+  createLazyPersistStorage,
+  getSyncJSON,
+  setSyncJSON,
 } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import {
-    CartItem,
-    Discount,
-    OrderAppliedDiscount,
-    OrderPaymentItemCoverage,
-    OrderPaymentTransactionDetails,
-    OrderProfile,
-    OrderProfilePayment,
-    PaymentType,
+  CartItem,
+  Discount,
+  OrderAppliedDiscount,
+  OrderPaymentItemCoverage,
+  OrderPaymentTransactionDetails,
+  OrderProfile,
+  OrderProfilePayment,
+  PaymentType,
 } from "@/lib/types";
 import {
-    decrementDiscountUsage,
-    incrementDiscountUsage,
+  decrementDiscountUsage,
+  incrementDiscountUsage,
 } from "@/services/discountUsageTracker";
 import { OrderService } from "@/services/orderService";
 import {
-    completePaymentJournal,
-    failPaymentJournal,
-    getJournalById,
-    updatePaymentJournal,
-    writePaymentJournal,
+  completePaymentJournal,
+  failPaymentJournal,
+  getJournalById,
+  updatePaymentJournal,
+  writePaymentJournal,
 } from "@/services/paymentJournal";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import type {
-    AddOrderItemParams,
-    CreateOrderParams,
-    OrderType as DbOrderType,
+  AddOrderItemParams,
+  CreateOrderParams,
+  OrderStatus as DbOrderStatus,
+  OrderType as DbOrderType,
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
 import type {
-    ItemPaymentAllocation,
-    OrderTotals,
+  ItemPaymentAllocation,
+  OrderTotals,
 } from "@/types/order-calculations";
 import type { Station } from "@/types/station";
 import * as Sentry from "@sentry/react-native";
@@ -68,33 +69,33 @@ import { useTableSessionStore } from "./useTableSessionStore";
 // Import pure calculation functions from order-calculator module
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
 import {
-    forceSetLocalSequence,
-    generateLocalOrderNumbers,
-    parseSequenceFromDisplayNumber,
-    seedLocalSequence,
+  forceSetLocalSequence,
+  generateLocalOrderNumbers,
+  parseSequenceFromDisplayNumber,
+  seedLocalSequence,
 } from "@/lib/localOrderSequence";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
 import {
-    rpcWithIdempotency,
-    toBulkUpdateStatusKey,
-    toIdempotencyKey,
-    toUpdateItemKey,
-    toUpdateQuantityKey,
+  rpcWithIdempotency,
+  toBulkUpdateStatusKey,
+  toIdempotencyKey,
+  toUpdateItemKey,
+  toUpdateQuantityKey,
 } from "@/lib/network/idempotencyKey";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { mapLocalToBackend, registerLocalId } from "@/lib/offlineIdRegistry";
 import { ITEM_BOUND_OPS } from "@/lib/offlineSyncSubtitles";
 import {
-    applyPaymentToItems,
-    calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
-    calculateOrderTotals as calculateOrderTotalsFromModule,
-    calculatePaidStatus,
-    distributeDiscountToItems as distributeDiscountToItemsFromModule,
-    invalidateCalculationCache,
-    round2,
-    scheduleCalculationCacheInvalidation,
+  applyPaymentToItems,
+  calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
+  calculateOrderTotals as calculateOrderTotalsFromModule,
+  calculatePaidStatus,
+  distributeDiscountToItems as distributeDiscountToItemsFromModule,
+  invalidateCalculationCache,
+  round2,
+  scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
 import { snapshotTableName } from "@/lib/orderDisplay";
 import { resolveInboundToGo } from "@/lib/pendingToGo";
@@ -103,42 +104,42 @@ import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
 import { normalizePlatform } from "@/lib/platformAliases";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
-    cancelOrderOperations,
-    cancelPendingByEntity,
-    dropQueuedOpsForItem,
-    getDeadLetterOperations,
-    getIsOnline,
-    getOperationsForOrder,
-    getOrderCreationOperationId,
-    getPendingOperations,
-    processQueueNow,
-    queueOperation,
-    removeOperation,
-    retryDeadLetterOperation,
-    retrySyncForItem as retrySyncForItemQueue,
-    updateOperationParams,
+  cancelOrderOperations,
+  cancelPendingByEntity,
+  dropQueuedOpsForItem,
+  getDeadLetterOperations,
+  getIsOnline,
+  getOperationsForOrder,
+  getOrderCreationOperationId,
+  getPendingOperations,
+  processQueueNow,
+  queueOperation,
+  removeOperation,
+  retryDeadLetterOperation,
+  retrySyncForItem as retrySyncForItemQueue,
+  updateOperationParams,
 } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { paymentPreviewService } from "@/services/paymentPreviewService";
 import {
-    deriveCashSavings,
-    isHeaderOnlyBroadcast,
-    mapBackendItemToCartItem,
-    mapOrderType,
-    mapPaymentStatus,
-    normalizeFetchedOrder,
-    transformBroadcastItems,
-    transformBroadcastPaymentsToProfile,
-    transformBroadcastToOrder,
-    type BackendItemInput,
-    type FetchedOrderData,
+  deriveCashSavings,
+  isHeaderOnlyBroadcast,
+  mapBackendItemToCartItem,
+  mapOrderType,
+  mapPaymentStatus,
+  normalizeFetchedOrder,
+  transformBroadcastItems,
+  transformBroadcastPaymentsToProfile,
+  transformBroadcastToOrder,
+  type BackendItemInput,
+  type FetchedOrderData,
 } from "@/utils/orderTransformers";
 import { useSyncStatusStore } from "./useSyncStatusStore";
 // import { queueFailedOperation } from "@/services/offlineSyncInit";
 // import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import {
-    BroadcastOrderData,
-    OrderBroadcastPayload,
+  BroadcastOrderData,
+  OrderBroadcastPayload,
 } from "@/hooks/realtime/useOrdersRealtime";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
@@ -147,21 +148,21 @@ import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
 import { isOrderReadOnly, isOwnershipError } from "@/lib/orderAccessControl";
 import {
-    clearItemPendingRemoval,
-    isItemPendingRemoval,
-    markItemPendingRemoval,
+  clearItemPendingRemoval,
+  isItemPendingRemoval,
+  markItemPendingRemoval,
 } from "@/lib/pendingItemRemovals";
 import {
-    clearOrderPendingVoid,
-    isOrderPendingVoid,
+  clearOrderPendingVoid,
+  isOrderPendingVoid,
 } from "@/lib/pendingVoidOrderIds";
 import { maybeFireTakeoverToast } from "@/lib/takeoverToast";
 import { detectConflict } from "@/services/conflictDetectionService";
 import { autoPrintKitchenTicketsIfEnabled } from "@/services/printing/autoPrintKitchen";
 import { useConflictStore } from "@/stores/useConflictStore";
 import {
-    generateConflictToast,
-    isConflictCritical,
+  generateConflictToast,
+  isConflictCritical,
 } from "@/types/conflict-resolution";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { restoreDiscountsFromBackend } from "@/utils/discountUtils";
@@ -5797,11 +5798,13 @@ export const useOrderStore = create<OrderState>()(
                         ...(() => {
                           const STATUS_RANK: Record<string, number> = {
                             draft: 0,
+                            accepted: 1, // online-order accept — kitchen bucket
                             sent_to_kitchen: 1,
                             preparing: 1,
                             ready: 2,
                             completed: 3,
                             closed: 3,
+                            declined: 4, // terminal
                             void: 4,
                           };
                           const localStatusRank =
@@ -5999,10 +6002,12 @@ export const useOrderStore = create<OrderState>()(
                     if (localOrder.order_status !== backendOrder.status) {
                       const ORDER_STATUS_RANK: Record<string, number> = {
                         draft: 0,
+                        accepted: 1, // online-order accept — kitchen bucket
                         sent_to_kitchen: 1,
                         preparing: 1,
                         ready: 2,
                         closed: 3,
+                        declined: 4, // terminal
                         void: 4,
                       };
                       const localRank =
@@ -11250,17 +11255,23 @@ export const useOrderStore = create<OrderState>()(
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order?.db_order_id) {
               const dbOrderId = order.db_order_id;
-              OrderService.updateOrderStatus(supabase, dbOrderId, status).catch(
-                async (err) => {
-                  console.error("Failed to sync status:", err);
-                  // Queue for offline retry
-                  await queueOperation({
-                    type: "update_order_status",
-                    params: { orderId: dbOrderId, status },
-                    localOrderId: orderId,
-                  });
-                },
-              );
+              // This generic lifecycle path only handles standard backend
+              // statuses; online-order accept/decline route through the
+              // dedicated accept_online_order/decline_online_order RPCs instead.
+              const dbStatus = status as DbOrderStatus;
+              OrderService.updateOrderStatus(
+                supabase,
+                dbOrderId,
+                dbStatus,
+              ).catch(async (err) => {
+                console.error("Failed to sync status:", err);
+                // Queue for offline retry
+                await queueOperation({
+                  type: "update_order_status",
+                  params: { orderId: dbOrderId, status: dbStatus },
+                  localOrderId: orderId,
+                });
+              });
             }
 
             set((state) => {
