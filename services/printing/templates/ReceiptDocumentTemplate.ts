@@ -850,6 +850,17 @@ function pushSingleItem(
         : `  ${prefix}${modName}`;
       nodes.push({ type: "text_line", content: truncate(modLine, w) });
     }
+    // Un-itemized modifier upcharge (priced modifier whose per-option price
+    // didn't round-trip) — shown in aggregate so it isn't invisible.
+    if (item.modifiersUpcharge && item.modifiersUpcharge > 0) {
+      nodes.push({
+        type: "text_line",
+        content: truncate(
+          `  Modifiers  +${safeCurrency(item.modifiersUpcharge)}`,
+          w,
+        ),
+      });
+    }
   }
 
   if (item.notes) {
