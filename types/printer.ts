@@ -282,6 +282,11 @@ export interface ReceiptItemData {
   cashPrice?: number;
   isVoided: boolean;
   modifiers: { name: string; price: number; isNo?: boolean }[];
+  // Aggregate modifier upcharge not already itemized by the per-option prices
+  // above — recovers a priced modifier (e.g. +$140) when its per-option price
+  // didn't round-trip onto a synced/reprinted item. 0/undefined = nothing extra.
+  modifiersUpcharge?: number;
+  cashModifiersUpcharge?: number;
   notes?: string;
   seatNumber?: number | null; // Which seat (1..N), null = shared/unassigned
 }

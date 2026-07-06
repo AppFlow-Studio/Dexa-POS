@@ -1,7 +1,8 @@
 import {
   calculateItemEffectiveCardPrice,
   calculateItemEffectiveCashPrice,
-  calculateOrderTotals
+  calculateOrderTotals,
+  round2
 } from '@/lib/order-calculator'
 import { toastService } from '@/lib/toastService'
 import { CartItem, OrderProfile, OrderProfilePayment } from '@/lib/types'
@@ -1219,6 +1220,9 @@ function buildReceiptTemplateData (
       : undefined
   })
 
+  // Calculator fallbacks — retained for the split-payment scope block, which
+  // backs tax out of inclusive per-portion amounts via a blended rate. The
+  // non-scope summary now prefers persisted totals (see reconciled block below).
   const subtotal = orderTotals.subtotal
   const cashSubtotal = orderTotals.cash_subtotal
   const tax = orderTotals.tax_amount
@@ -1226,11 +1230,17 @@ function buildReceiptTemplateData (
   const discount = orderTotals.discount_amount
   const tip =
     order.payments?.reduce((sum, p) => sum + (p.tip_amount || 0), 0) || 0
-  const total = order.total_amount || orderTotals.total_amount + tip
-  const cashTotal = orderTotals.cash_total_amount + tip
-  const weightedTaxRate = subtotal > 0 ? (tax / subtotal) * 100 : 0
 
-  // Map items
+  // Map items. Accumulate the exact per-line totals the rows print so the
+  // summary Subtotal reconciles to Σ(line rows) by construction — instead of
+  // re-deriving from base+modifier prices (which understate when a synced item
+  // lost its modifier price data). Also sum authoritative per-item tax.
+  let sumCardLine = 0
+  let sumCashLine = 0
+  let sumItemCardTax = 0
+  let sumItemCashTax = 0
+  let sumItemCardDiscount = 0
+  let sumItemCashDiscount = 0
   const items: ReceiptItemData[] = nonVoidedItems.map(item => {
     const modifiers: { name: string; price: number; isNo?: boolean }[] = []
 
@@ -1272,6 +1282,41 @@ function buildReceiptTemplateData (
         ? item.cashSubtotal
         : fallbackCashLine
 
+    sumCardLine += cardLineTotal
+    sumCashLine += cashLineTotal
+    sumItemCardTax += Number.isFinite(item.taxAmount) ? item.taxAmount : 0
+    sumItemCashTax += Number.isFinite(item.cashTaxAmount) ? item.cashTaxAmount : 0
+    sumItemCardDiscount += Number.isFinite(item.discount_amount)
+      ? item.discount_amount ?? 0
+      : 0
+    sumItemCashDiscount += Number.isFinite(item.discount_cash_amount)
+      ? item.discount_cash_amount ?? 0
+      : 0
+
+    // Un-itemized modifier upcharge: the part of the line total not explained by
+    // the base price or the per-option prices already shown. When option prices
+    // round-tripped intact this is ~0 (options print their own price inline);
+    // when they were lost on a synced/reprinted order this recovers the upcharge
+    // in aggregate so it never prints invisibly. Clamp ≥ 0.
+    const qtyN = item.quantity || 1
+    const baseCardLine = round2(
+      (item.baseCardPrice ?? item.unitPrice ?? 0) * qtyN
+    )
+    const baseCashLine = round2(
+      (item.baseCashPrice ?? item.baseCardPrice ?? item.unitPrice ?? 0) * qtyN
+    )
+    const shownOptTotal = round2(
+      modifiers.reduce((s, m) => s + (m.price || 0), 0) * qtyN
+    )
+    const cardUpcharge = Math.max(
+      0,
+      round2(cardLineTotal - baseCardLine - shownOptTotal)
+    )
+    const cashUpcharge = Math.max(
+      0,
+      round2(cashLineTotal - baseCashLine - shownOptTotal)
+    )
+
     return {
       name: item.is_open_item ? item.open_item_name || item.name : item.name,
       quantity: item.quantity,
@@ -1279,6 +1324,9 @@ function buildReceiptTemplateData (
       cashPrice: cashLineTotal !== cardLineTotal ? cashLineTotal : undefined,
       isVoided: item.is_voided ?? false,
       modifiers,
+      modifiersUpcharge: cardUpcharge,
+      cashModifiersUpcharge:
+        cashUpcharge !== cardUpcharge ? cashUpcharge : undefined,
       notes: item.customizations?.notes,
       seatNumber: item.seatNumber ?? null
     }
@@ -1326,22 +1374,75 @@ function buildReceiptTemplateData (
     scopePayment ? [scopePayment] : order.payments ?? []
   )
 
+  // ── Reconciled display sources ────────────────────────────────────────
+  // Prefer persisted order-level totals (set on close), else the summed
+  // authoritative per-item values, else the calculator. Subtotal is rebuilt
+  // GROSS (line-sum + discount) so the template's separate "-Discount" row
+  // nets back to Σ(line rows). Tax is never re-derived as subtotal × rate.
+  const isFinalized = !!order.closed_at || order.paid_status === 'Paid'
+  const persisted = (v?: number | null): v is number =>
+    Number.isFinite(v as number) && ((v as number) > 0 || isFinalized)
+
+  // Discount: persisted order field first, else the summed per-item discounts
+  // (recovers the value on reprints whose remap drops checkDiscount), else the
+  // calculator. Subtotal is rebuilt as line-sum + this, so the template's
+  // "-Discount" row always nets back to Σ(line rows) regardless of the source.
+  const dispDiscountCard = persisted(order.total_discount)
+    ? order.total_discount
+    : sumItemCardDiscount > 0
+    ? sumItemCardDiscount
+    : discount
+  const dispDiscountCash =
+    sumItemCashDiscount > 0
+      ? sumItemCashDiscount
+      : orderTotals.cash_discount_amount
+
+  const dispSubtotalCard = round2(sumCardLine + dispDiscountCard)
+  const dispSubtotalCash = round2(sumCashLine + dispDiscountCash)
+
+  const dispTaxCard = persisted(order.total_tax)
+    ? order.total_tax
+    : sumItemCardTax > 0
+    ? sumItemCardTax
+    : tax
+  const dispTaxCash = sumItemCashTax > 0 ? sumItemCashTax : cashTax
+
+  const dispSCCard = persisted(order.service_charge)
+    ? order.service_charge
+    : orderTotals.service_charge
+  const dispSCCash = orderTotals.cash_service_charge
+
+  const dispTotalCard = persisted(order.total_amount)
+    ? order.total_amount
+    : orderTotals.total_amount + tip
+  const dispTotalCash = persisted(order.total_cash_amount)
+    ? order.total_cash_amount
+    : orderTotals.cash_total_amount + tip
+
+  const dispRateCard =
+    dispSubtotalCard > 0 ? (dispTaxCard / dispSubtotalCard) * 100 : 0
+
   let displayItems = items
-  let displaySubtotal = subtotal
-  let displayTax = tax
-  let displayDiscount = discount
-  let displayTotal = total
-  let displayServiceCharge = orderTotals.service_charge
-  let displayCashServiceCharge: number | undefined =
-    orderTotals.cash_service_charge
-  let displayCashSubtotal = cashTotal !== total ? cashSubtotal : undefined
-  let displayCashTax = cashTotal !== total ? cashTax : undefined
-  let displayCashTotal = cashTotal !== total ? cashTotal : undefined
-  let displayTaxRate = weightedTaxRate
+  let displaySubtotal = dispSubtotalCard
+  let displayTax = dispTaxCard
+  let displayDiscount = dispDiscountCard
+  let displayTotal = dispTotalCard
+  let displayServiceCharge = dispSCCard
+  let displayCashServiceCharge: number | undefined = dispSCCash
+  let displayCashSubtotal =
+    dispTotalCash !== dispTotalCard ? dispSubtotalCash : undefined
+  let displayCashTax = dispTotalCash !== dispTotalCard ? dispTaxCash : undefined
+  let displayCashTotal =
+    dispTotalCash !== dispTotalCard ? dispTotalCash : undefined
+  let displayTaxRate = dispRateCard
 
   if (pricingMode === 'card') {
     // Card pricing only — strip all cash data so the template shows one Total.
-    displayItems = items.map(it => ({ ...it, cashPrice: undefined }))
+    displayItems = items.map(it => ({
+      ...it,
+      cashPrice: undefined,
+      cashModifiersUpcharge: undefined
+    }))
     displayCashSubtotal = undefined
     displayCashTax = undefined
     displayCashTotal = undefined
@@ -1352,18 +1453,21 @@ function buildReceiptTemplateData (
     displayItems = items.map(it => ({
       ...it,
       price: it.cashPrice ?? it.price,
-      cashPrice: undefined
+      cashPrice: undefined,
+      modifiersUpcharge: it.cashModifiersUpcharge ?? it.modifiersUpcharge,
+      cashModifiersUpcharge: undefined
     }))
-    displaySubtotal = cashSubtotal
-    displayTax = cashTax
-    displayDiscount = orderTotals.cash_discount_amount
-    displayTotal = cashTotal
-    displayServiceCharge = orderTotals.cash_service_charge
+    displaySubtotal = dispSubtotalCash
+    displayTax = dispTaxCash
+    displayDiscount = dispDiscountCash
+    displayTotal = dispTotalCash
+    displayServiceCharge = dispSCCash
     displayCashSubtotal = undefined
     displayCashTax = undefined
     displayCashTotal = undefined
     displayCashServiceCharge = undefined
-    displayTaxRate = cashSubtotal > 0 ? (cashTax / cashSubtotal) * 100 : 0
+    displayTaxRate =
+      dispSubtotalCash > 0 ? (dispTaxCash / dispSubtotalCash) * 100 : 0
   }
 
   let displayTip = tip

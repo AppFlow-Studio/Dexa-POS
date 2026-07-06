@@ -316,6 +316,13 @@ function pushEscPosSingleItem(
       b.textLine(modLine);
       b.bold(false);
     }
+    // Un-itemized modifier upcharge (priced modifier whose per-option price
+    // didn't round-trip) — shown in aggregate so it isn't invisible.
+    if (item.modifiersUpcharge && item.modifiersUpcharge > 0) {
+      b.bold(true);
+      b.textLine(`  Modifiers  +${formatCurrency(item.modifiersUpcharge)}`);
+      b.bold(false);
+    }
   }
 
   // Notes
