@@ -312,7 +312,9 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           asChild
         >
           <TouchableOpacity>
-            <Text style={{ fontWeight: "700", color: colors.teal }}>
+            <Text
+              style={{ fontWeight: "700", color: colors.teal, fontSize: s(14) }}
+            >
               View Order Details
             </Text>
           </TouchableOpacity>
