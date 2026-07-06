@@ -101,7 +101,6 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
         drawDistance={500}
         contentContainerStyle={{ padding: s(12) }}
         showsVerticalScrollIndicator={false}
-        style={{ backgroundColor: "transparent" }}
         ListEmptyComponent={
           <View
             style={{
