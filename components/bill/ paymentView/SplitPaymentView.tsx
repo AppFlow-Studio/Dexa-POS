@@ -1,6 +1,7 @@
 import { useUiScale } from "@/lib/uiScale";
 import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { colors } from "@/lib/theme";
+import { round2 } from "@/utils/money";
 import { getItemEffectiveSubtotal, useOrderStore } from "@/stores/useOrderStore";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
@@ -99,17 +100,24 @@ const SplitPaymentView = () => {
             return acc + getItemEffectiveSubtotal(tempItem);
           }, 0);
 
-          // Calculate tax on the post-discount subtotal
-          // Use item's taxRate if available, otherwise use a default
-          const splitTax = split.items.reduce((acc, splitItem) => {
+          // v6: aggregate tax per rate group (round ONCE per group), matching
+          // the server's group-by tax_rate. Group by the item's snapshotted
+          // taxRate; sum each group's net subtotal, then round its tax once.
+          const splitBaseByRate = new Map<number, number>();
+          for (const splitItem of split.items) {
             const tempItem = { ...splitItem.cartItem, quantity: splitItem.quantity };
             const itemSubtotal = getItemEffectiveSubtotal(tempItem);
-            const taxRate = splitItem.cartItem.taxRate || 0;
-            return acc + (itemSubtotal * taxRate / 100);
-          }, 0);
+            const rate = splitItem.cartItem.taxRate || 0;
+            if (rate <= 0) continue;
+            splitBaseByRate.set(rate, (splitBaseByRate.get(rate) ?? 0) + itemSubtotal);
+          }
+          let splitTax = 0;
+          for (const [rate, base] of splitBaseByRate) {
+            splitTax += round2((base * rate) / 100);
+          }
 
           // Calculate the final amount (subtotal already has discount removed, no need to subtract again)
-          const newAmount = Math.round((splitSubtotal + splitTax) * 100) / 100;
+          const newAmount = round2(splitSubtotal + splitTax);
 
           if (split.amount !== newAmount) {
             return { ...split, amount: newAmount };

@@ -3,7 +3,7 @@ import { useRefreshActiveOrder } from '@/hooks/pos/useRefreshActiveOrder'
 import { payableQuantity } from '@/lib/payableQuantity'
 import { colors } from '@/lib/theme'
 import { CartItem } from '@/lib/types'
-import { round2 } from '@/utils/money'
+import { aggregateTaxByCategory, round2 } from '@/utils/money'
 import {
   calculateItemEffectiveCashPrice,
   useOrderStore
@@ -66,21 +66,18 @@ function calculateSelectedTax (
   taxRatesMap: Record<string, number>
 ): { subtotal: number; tax: number; total: number } {
   let subtotal = 0
-  let tax = 0
+  const taxLines: Array<{ netSubtotal: number; taxCategory?: string | null; isTaxExempt?: boolean }> = []
 
   for (const { item, quantityToPay } of items) {
     const { subtotal: itemSubtotal } = getSelectedItemDiscountedValues(item, quantityToPay, false)
     subtotal += itemSubtotal
-    if (item.is_tax_exempt) continue
-    const taxCategory = item.tax_category || 'standard'
-    const taxRatePercent = taxRatesMap[taxCategory] ?? 0
-    const taxRateDecimal = taxRatePercent / 100
-    tax += itemSubtotal * taxRateDecimal
+    taxLines.push({ netSubtotal: itemSubtotal, taxCategory: item.tax_category, isTaxExempt: item.is_tax_exempt })
   }
 
-  subtotal = Math.round(subtotal * 100) / 100
-  tax = Math.round(tax * 100) / 100
-  const total = Math.round((subtotal + tax) * 100) / 100
+  subtotal = round2(subtotal)
+  // v6: aggregate tax per rate group (round once per group), matches server.
+  const tax = aggregateTaxByCategory(taxLines, taxRatesMap)
+  const total = round2(subtotal + tax)
   return { subtotal, tax, total }
 }
 
@@ -89,20 +86,17 @@ function calculateSelectedCashTax (
   taxRatesMap: Record<string, number>
 ): { subtotal: number; tax: number; total: number } {
   let subtotal = 0
-  let tax = 0
+  const taxLines: Array<{ netSubtotal: number; taxCategory?: string | null; isTaxExempt?: boolean }> = []
 
   for (const { item, quantityToPay } of items) {
     const { subtotal: itemSubtotal } = getSelectedItemDiscountedValues(item, quantityToPay, true)
     subtotal += itemSubtotal
-    if (item.is_tax_exempt) continue
-    const taxCategory = item.tax_category || 'standard'
-    const taxRatePercent = taxRatesMap[taxCategory] ?? 0
-    const taxRateDecimal = taxRatePercent / 100
-    tax += itemSubtotal * taxRateDecimal
+    taxLines.push({ netSubtotal: itemSubtotal, taxCategory: item.tax_category, isTaxExempt: item.is_tax_exempt })
   }
 
   subtotal = round2(subtotal)
-  tax = round2(tax)
+  // v6: aggregate tax per rate group on the cash base (round once per group).
+  const tax = aggregateTaxByCategory(taxLines, taxRatesMap)
   const total = round2(subtotal + tax)
   return { subtotal, tax, total }
 }
