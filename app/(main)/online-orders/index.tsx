@@ -351,8 +351,8 @@ const OnlineOrdersScreen = () => {
           {pendingCount > 0 && (
             <View
               style={{
-                paddingHorizontal: 10,
-                paddingVertical: 4,
+                paddingHorizontal: Math.round(10 * uiScale),
+                paddingVertical: Math.round(4 * uiScale),
                 borderRadius: 999,
                 backgroundColor: colors.teal,
               }}
@@ -360,7 +360,7 @@ const OnlineOrdersScreen = () => {
               <Text
                 style={{
                   color: colors.onSolid,
-                  fontSize: 14 * uiScale,
+                  fontSize: Math.round(14 * uiScale),
                   fontWeight: "700",
                 }}
               >
@@ -391,13 +391,15 @@ const OnlineOrdersScreen = () => {
         <View
           style={{
             backgroundColor: colors.danger + "18",
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            borderRadius: 8,
-            marginBottom: 8,
+            paddingHorizontal: Math.round(12 * uiScale),
+            paddingVertical: Math.round(8 * uiScale),
+            borderRadius: Math.round(8 * uiScale),
+            marginBottom: Math.round(8 * uiScale),
           }}
         >
-          <Text style={{ color: colors.danger, fontSize: 13 }}>
+          <Text
+            style={{ color: colors.danger, fontSize: Math.round(13 * uiScale) }}
+          >
             {fetchError}
           </Text>
         </View>

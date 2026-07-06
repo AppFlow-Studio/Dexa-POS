@@ -74,7 +74,11 @@ const OnlineOrderDrawer: React.FC<OnlineOrderDrawerProps> = ({
   useEffect(() => {
     if (isOpen) {
       if (!hasBeenShown) setHasBeenShown(true);
-      progress.value = withSpring(1, { damping: 25, stiffness: 400, mass: 0.6 });
+      progress.value = withSpring(1, {
+        damping: 25,
+        stiffness: 400,
+        mass: 0.6,
+      });
     } else {
       progress.value = withTiming(0, { duration: 160 });
     }
@@ -150,7 +154,10 @@ const OnlineOrderDrawer: React.FC<OnlineOrderDrawerProps> = ({
   };
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents={isOpen ? "auto" : "none"}>
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents={isOpen ? "auto" : "none"}
+    >
       {/* Backdrop */}
       <Animated.View
         style={[
@@ -187,48 +194,105 @@ const OnlineOrderDrawer: React.FC<OnlineOrderDrawerProps> = ({
           <>
             {/* Header */}
             <View
-              className="flex-row items-center justify-between px-4 py-3 border-b"
-              style={{ borderBottomColor: colors.border }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingHorizontal: Math.round(16 * uiScale),
+                paddingVertical: Math.round(12 * uiScale),
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+              }}
             >
-              <Text className="text-xl font-bold text-heading">
+              <Text
+                style={{
+                  fontSize: Math.round(20 * uiScale),
+                  fontWeight: "700",
+                  color: colors.heading,
+                }}
+              >
                 Online Orders
               </Text>
-              <View className="flex-row items-center gap-x-2">
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: Math.round(8 * uiScale),
+                }}
+              >
                 {!kdsMode && (
                   <TouchableOpacity
                     onPress={openBoard}
-                    className="flex-row items-center gap-x-1.5 px-3 py-2 rounded-xl border"
                     style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: Math.round(6 * uiScale),
+                      paddingHorizontal: Math.round(12 * uiScale),
+                      paddingVertical: Math.round(8 * uiScale),
+                      borderRadius: Math.round(12 * uiScale),
+                      borderWidth: 1,
                       borderColor: colors.border,
                       backgroundColor: colors.card,
                     }}
                   >
-                    <LayoutGrid size={16} color={colors.label} />
-                    <Text className="text-sm font-semibold text-label">
+                    <LayoutGrid
+                      size={Math.round(16 * uiScale)}
+                      color={colors.label}
+                    />
+                    <Text
+                      style={{
+                        fontSize: Math.round(14 * uiScale),
+                        fontWeight: "600",
+                        color: colors.label,
+                      }}
+                    >
                       View board
                     </Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
                   onPress={closeDrawer}
-                  className="p-2 rounded-xl border"
                   style={{
+                    padding: Math.round(8 * uiScale),
+                    borderRadius: Math.round(12 * uiScale),
+                    borderWidth: 1,
                     borderColor: colors.border,
                     backgroundColor: colors.card,
                   }}
                 >
-                  <X size={18} color={colors.label} />
+                  <X size={Math.round(18 * uiScale)} color={colors.label} />
                 </TouchableOpacity>
               </View>
             </View>
 
             {/* Sections */}
             {sections.length === 0 ? (
-              <View className="flex-1 items-center justify-center px-6">
-                <Text className="text-base font-semibold text-label text-center">
+              <View
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingHorizontal: Math.round(24 * uiScale),
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: Math.round(16 * uiScale),
+                    fontWeight: "600",
+                    color: colors.label,
+                    textAlign: "center",
+                  }}
+                >
                   No active online orders
                 </Text>
-                <Text className="text-sm text-muted text-center mt-1">
+                <Text
+                  style={{
+                    fontSize: Math.round(14 * uiScale),
+                    color: colors.muted,
+                    textAlign: "center",
+                    marginTop: Math.round(4 * uiScale),
+                  }}
+                >
                   New orders will appear here as they come in.
                 </Text>
               </View>
@@ -237,27 +301,50 @@ const OnlineOrderDrawer: React.FC<OnlineOrderDrawerProps> = ({
                 sections={sections}
                 keyExtractor={(item) => item}
                 stickySectionHeadersEnabled={false}
-                contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
+                contentContainerStyle={{
+                  padding: Math.round(12 * uiScale),
+                  paddingBottom: Math.round(24 * uiScale),
+                }}
                 renderSectionHeader={({ section }) => (
-                  <View className="flex-row items-center gap-x-2 mt-2 mb-2">
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: Math.round(8 * uiScale),
+                      marginTop: Math.round(8 * uiScale),
+                      marginBottom: Math.round(8 * uiScale),
+                    }}
+                  >
                     <View
                       style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 5,
+                        width: Math.round(10 * uiScale),
+                        height: Math.round(10 * uiScale),
+                        borderRadius: Math.round(5 * uiScale),
                         backgroundColor: (section as DrawerSection).color,
                       }}
                     />
-                    <Text className="text-base font-bold text-heading">
+                    <Text
+                      style={{
+                        fontSize: Math.round(16 * uiScale),
+                        fontWeight: "700",
+                        color: colors.heading,
+                      }}
+                    >
                       {(section as DrawerSection).title}
                     </Text>
-                    <Text className="text-sm font-semibold text-muted">
+                    <Text
+                      style={{
+                        fontSize: Math.round(14 * uiScale),
+                        fontWeight: "600",
+                        color: colors.muted,
+                      }}
+                    >
                       {(section as DrawerSection).data.length}
                     </Text>
                   </View>
                 )}
                 renderItem={({ item, section }) => (
-                  <View className="mb-3">
+                  <View style={{ marginBottom: Math.round(12 * uiScale) }}>
                     <OnlineOrderCard
                       orderId={item}
                       variant={(section as DrawerSection).variant}

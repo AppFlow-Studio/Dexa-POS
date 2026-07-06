@@ -181,18 +181,31 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
   const canMarkDone = variant === "ready";
 
   const retryRow = retryable ? (
-    <View className="mt-2 flex-row items-center justify-between">
-      <Text className="text-xs text-danger flex-1">Server unreachable.</Text>
+    <View
+      style={{
+        marginTop: Math.round(8 * uiScale),
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}
+    >
+      <Text style={{ fontSize: s(12), color: colors.danger, flex: 1 }}>
+        Server unreachable.
+      </Text>
       <TouchableOpacity
         onPress={onRetry}
-        className="px-3 py-1.5 rounded-lg"
         style={{
+          paddingHorizontal: Math.round(12 * uiScale),
+          paddingVertical: Math.round(6 * uiScale),
+          borderRadius: Math.round(8 * uiScale),
           backgroundColor: colors.info + "20",
           borderWidth: 1,
           borderColor: colors.info + "40",
         }}
       >
-        <Text className="text-xs font-semibold" style={{ color: colors.info }}>
+        <Text
+          style={{ fontSize: s(12), fontWeight: "600", color: colors.info }}
+        >
           Retry
         </Text>
       </TouchableOpacity>
