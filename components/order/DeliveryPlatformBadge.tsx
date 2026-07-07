@@ -24,6 +24,8 @@ interface DeliveryPlatformBadgeProps {
   onlineOrderProvider?: string | null;
   orderSource?: string | null;
   size?: "sm" | "md" | "kds";
+  uiScale?: number;
+  solidBackground?: boolean;
 }
 
 export default function DeliveryPlatformBadge({
@@ -33,6 +35,8 @@ export default function DeliveryPlatformBadge({
   onlineOrderProvider,
   orderSource,
   size = "sm",
+  uiScale,
+  solidBackground = false,
 }: DeliveryPlatformBadgeProps) {
   const resolved = resolveOrderPlatformLogo({
     deliveryPlatform,
@@ -44,36 +48,43 @@ export default function DeliveryPlatformBadge({
 
   if (resolved.kind === "none") return null;
 
+  const s =
+    size === "kds" && uiScale != null
+      ? (n: number) => Math.round(n * uiScale)
+      : (n: number) => n;
   const logo = resolved.provider ? PLATFORM_LOGOS[resolved.provider] : undefined;
   const accent =
     (resolved.provider ? PLATFORM_COLORS[resolved.provider] : undefined) ??
     colors.teal;
   const logoSize = size === "md" ? 20 : 14;
   const containerSize = size === "md" ? 28 : 20;
-  const fontSize = size === "kds" ? 11 : size === "md" ? 11 : 10;
+  const fontSize = size === "kds" ? s(11) : size === "md" ? 11 : 10;
 
   if (resolved.kind === "marketplace" && logo) {
     if (size === "kds") {
+      const badgeBg = solidBackground ? "#FFFFFF" : accent + "15";
+      const badgeBorder = solidBackground ? accent : accent + "40";
+
       return (
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: 4,
-            backgroundColor: accent + "15",
+            gap: s(4),
+            backgroundColor: badgeBg,
             borderWidth: 1,
-            borderColor: accent + "40",
-            borderRadius: 20,
-            paddingHorizontal: 8,
-            paddingVertical: 3,
+            borderColor: badgeBorder,
+            borderRadius: s(20),
+            paddingHorizontal: s(8),
+            paddingVertical: s(3),
           }}
         >
           <Image
             source={logo}
-            style={{ width: 16, height: 16 }}
+            style={{ width: s(16), height: s(16) }}
             resizeMode="contain"
           />
-          <Text style={{ fontSize: 11, fontWeight: "700", color: accent }}>
+          <Text style={{ fontSize: s(11), fontWeight: "700", color: accent }}>
             {resolved.label}
           </Text>
         </View>
@@ -104,23 +115,25 @@ export default function DeliveryPlatformBadge({
   }
 
   const FallbackIcon = resolved.kind === "first_party" ? ShoppingBag : Globe;
+  const badgeBg = solidBackground ? "#FFFFFF" : colors.teal + "20";
+  const badgeBorder = solidBackground ? colors.teal : colors.teal + "50";
 
   return (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: 3,
-        backgroundColor: colors.teal + "20",
+        gap: s(3),
+        backgroundColor: badgeBg,
         borderWidth: 1,
-        borderColor: colors.teal + "50",
-        borderRadius: 20,
-        paddingHorizontal: size === "kds" ? 8 : size === "md" ? 8 : 6,
-        paddingVertical: size === "kds" ? 3 : size === "md" ? 3 : 2,
+        borderColor: badgeBorder,
+        borderRadius: s(20),
+        paddingHorizontal: size === "kds" ? s(8) : size === "md" ? 8 : 6,
+        paddingVertical: size === "kds" ? s(3) : size === "md" ? 3 : 2,
       }}
     >
       <FallbackIcon
-        size={size === "kds" ? 12 : size === "md" ? 12 : 9}
+        size={size === "kds" ? s(12) : size === "md" ? 12 : 9}
         color={colors.teal}
       />
       <Text style={{ fontSize, fontWeight: "700", color: colors.teal }}>

@@ -1,17 +1,18 @@
 import { queryClient } from "@/contexts/TanstackProvider";
-import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
+import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
-import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
+import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
 import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
+import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import { getStorageSizeStats } from "@/lib/storage";
 import { MerchantRole } from "@/lib/types";
-import { FloorPlanService } from "@/services/floorPlanService";
+import { initLandiPrinter } from "@/native/LandiPrinter";
 import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
-import { useOrderReconcile } from "@/hooks/useOrderReconcile";
+import { FloorPlanService } from "@/services/floorPlanService";
 import {
     detectAndStoreCapabilities,
     startHeartbeat,
@@ -22,8 +23,6 @@ import {
     stopTerminalHealthCheck,
 } from "@/services/hardware";
 import { initLocationConfigSync } from "@/services/locationConfigSync";
-import { initLandiPrinter } from "@/native/LandiPrinter";
-import { getDriver } from "@/services/printing/DriverFactory";
 import {
     initializeOfflineSync,
     isServiceInitialized,
@@ -33,6 +32,7 @@ import {
     startStarPrinterDiscoveryService,
     stopStarPrinterDiscoveryService,
 } from "@/services/printing/discovery/StarPrinterDiscoveryService";
+import { getDriver } from "@/services/printing/DriverFactory";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import {
     startCastlesUsbAutoConnect,
@@ -53,7 +53,7 @@ import { setKDSSupabaseClient } from "@/stores/useKDSStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
     setOrderStoreSupabaseClient,
-    useOrderStore
+    useOrderStore,
 } from "@/stores/useOrderStore";
 import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
@@ -220,7 +220,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
                 (p) => p.printerType === "builtin_landi" && p.isActive,
               );
             const warmUp = landiPrinter
-              ? getDriver(landiPrinter).initialize(landiPrinter).then(() => true)
+              ? getDriver(landiPrinter)
+                  .initialize(landiPrinter)
+                  .then(() => true)
               : initLandiPrinter();
             warmUp
               .then((ok) =>
@@ -390,10 +392,21 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // Load status if we have a floor plan
         if (defaultPlan?.id) {
           await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id);
-          void useFloorPlanStore.getState().prefetchFloorPlans(
-            (floorPlans || []).map((floorPlan) => floorPlan.id),
-          );
+          // Await prefetch so all floorplans are cached before we strip
+          // orphaned sessions below.
+          await useFloorPlanStore
+            .getState()
+            .prefetchFloorPlans(
+              (floorPlans || []).map((floorPlan) => floorPlan.id),
+            );
         }
+
+        // Strip sessions for tables that no longer exist in ANY floorplan
+        // (e.g. after a floorplan was deleted). Safe to call now because all
+        // floorplans have been prefetched and cached.
+        const { useTableSessionStore } =
+          await import("@/stores/useTableSessionStore");
+        useTableSessionStore.getState()._stripOrphanedSessions();
 
         // Load waitlist and reservations
         await Promise.all([
@@ -564,17 +577,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           inventory_item_id: r.inventory_item_id,
           quantity: r.quantity,
         })),
-        modifierRecipes: (data.modifier_group_item_ingredients ?? []).map((r) => ({
-          modifier_group_item_id: r.modifier_group_item_id,
-          inventory_item_id: r.inventory_item_id,
-          quantity: r.quantity,
-        })),
+        modifierRecipes: (data.modifier_group_item_ingredients ?? []).map(
+          (r) => ({
+            modifier_group_item_id: r.modifier_group_item_id,
+            inventory_item_id: r.inventory_item_id,
+            quantity: r.quantity,
+          }),
+        ),
       });
     }
   };
 
   // --- END INVENTORY SYNC ---
-
 
   // Update menu store when sync data changes
   useEffect(() => {
@@ -663,7 +677,10 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Cleanup previous subscriptions if switching locations
-    if (realtimeLocationRef.current && realtimeLocationRef.current !== locationId) {
+    if (
+      realtimeLocationRef.current &&
+      realtimeLocationRef.current !== locationId
+    ) {
       useFloorPlanStore.getState().cleanup();
     }
 
@@ -735,12 +752,10 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           // queryKey now includes stationId, so use a prefix-matching cache lookup
           // (exact:false) instead of getQueryState (which is exact-match).
           if (storeSettings.selectedStore?.id) {
-            const cached = queryClient
-              .getQueryCache()
-              .find({
-                queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
-                exact: false,
-              });
+            const cached = queryClient.getQueryCache().find({
+              queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
+              exact: false,
+            });
             const dataAge = Date.now() - (cached?.state.dataUpdatedAt ?? 0);
             if (dataAge > 2 * 60 * 1000) {
               queryClient.invalidateQueries({

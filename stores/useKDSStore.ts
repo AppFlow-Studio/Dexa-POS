@@ -698,6 +698,29 @@ const TERMINAL_ORDER_STATUSES = new Set([
   "void",
 ]);
 
+/**
+ * Tickets removed by a REMOTE 'completed' broadcast (e.g. Online Orders
+ * "Mark done", or another station bumping the order) belong in the local
+ * Done tab, same as an on-device served-bump. Returns the doneTickets/
+ * doneCount patch to spread into the same set() as the removal. Cancelled/
+ * refunded/void removals should NOT call this — that work was never done.
+ */
+function buildRemoteDonePatch(
+  removed: KDSTicket[],
+  currentDone: KDSTicket[],
+): Partial<KDSState> {
+  if (removed.length === 0) return {};
+  const updatedDone = dedupeTicketsByIdKeepFirst([
+    ...removed.map((t) => ({
+      ...t,
+      status: "done" as KDSTicket["status"],
+      done_time_epoch: Date.now(),
+    })),
+    ...currentDone,
+  ]).slice(0, 50);
+  return { doneTickets: updatedDone, doneCount: updatedDone.length };
+}
+
 function getEffectiveItemQuantity(
   item: Pick<KDSTicketItem, "quantity">,
 ): number {
@@ -2326,13 +2349,23 @@ export const useKDSStore = create<KDSState>()(
               const filtered = tickets.filter(
                 (t) => !orderTids!.has(t.ticket_id),
               );
+              // Remote completion (e.g. Online Orders "Mark done") → Done tab;
+              // cancelled/refunded/void just disappear.
+              const removed =
+                order.status === "completed"
+                  ? tickets.filter((t) => orderTids!.has(t.ticket_id))
+                  : [];
               const bucketed = smartBucketTickets(
                 filtered,
                 get().ticketsByStatus,
                 get().prioritizedTicketIds,
                 get().newOrderPosition,
               );
-              set({ tickets: filtered, ...bucketed });
+              set({
+                tickets: filtered,
+                ...bucketed,
+                ...buildRemoteDonePatch(removed, get().doneTickets),
+              });
             }
             return;
           }
@@ -2394,13 +2427,22 @@ export const useKDSStore = create<KDSState>()(
               const filtered = tickets.filter(
                 (t) => !orderTids!.has(t.ticket_id),
               );
+              // Remote completion → Done tab (see header-only path above).
+              const removed =
+                order.status === "completed"
+                  ? tickets.filter((t) => orderTids!.has(t.ticket_id))
+                  : [];
               const bucketed = smartBucketTickets(
                 filtered,
                 get().ticketsByStatus,
                 get().prioritizedTicketIds,
                 get().newOrderPosition,
               );
-              set({ tickets: filtered, ...bucketed });
+              set({
+                tickets: filtered,
+                ...bucketed,
+                ...buildRemoteDonePatch(removed, get().doneTickets),
+              });
             }
             return;
           }

@@ -1,17 +1,17 @@
 import { getDeviceId } from "@/lib/deviceId";
-import { payableQuantity } from "@/lib/payableQuantity";
 import {
   getKitchenSentStatus,
   getOrderSentStatus,
 } from "@/lib/kitchenStatusUtils";
+import { payableQuantity } from "@/lib/payableQuantity";
+import { startInteraction } from "@/lib/perf";
+import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
   createLazyPersistStorage,
   getSyncJSON,
   setSyncJSON,
 } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
-import { startInteraction } from "@/lib/perf";
-import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
   CartItem,
   Discount,
@@ -22,11 +22,11 @@ import {
   OrderProfilePayment,
   PaymentType,
 } from "@/lib/types";
-import { OrderService } from "@/services/orderService";
 import {
   decrementDiscountUsage,
   incrementDiscountUsage,
 } from "@/services/discountUsageTracker";
+import { OrderService } from "@/services/orderService";
 import {
   completePaymentJournal,
   failPaymentJournal,
@@ -39,6 +39,7 @@ import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import type {
   AddOrderItemParams,
   CreateOrderParams,
+  OrderStatus as DbOrderStatus,
   OrderType as DbOrderType,
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
@@ -67,17 +68,13 @@ import { useTableSessionStore } from "./useTableSessionStore";
 // } from "@/lib/offlineIdRegistry";
 // Import pure calculation functions from order-calculator module
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
-import { resolveInboundToGo } from "@/lib/pendingToGo";
-import { snapshotTableName } from "@/lib/orderDisplay";
 import {
   forceSetLocalSequence,
   generateLocalOrderNumbers,
   parseSequenceFromDisplayNumber,
   seedLocalSequence,
 } from "@/lib/localOrderSequence";
-import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
 import { DEADLINES } from "@/lib/network/deadlines";
-import { withDeadline } from "@/lib/network/withDeadline";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
 import {
   rpcWithIdempotency,
@@ -87,6 +84,7 @@ import {
   toUpdateQuantityKey,
 } from "@/lib/network/idempotencyKey";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
+import { withDeadline } from "@/lib/network/withDeadline";
 import { mapLocalToBackend, registerLocalId } from "@/lib/offlineIdRegistry";
 import { ITEM_BOUND_OPS } from "@/lib/offlineSyncSubtitles";
 import {
@@ -99,6 +97,9 @@ import {
   round2,
   scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
+import { snapshotTableName } from "@/lib/orderDisplay";
+import { resolveInboundToGo } from "@/lib/pendingToGo";
+import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
 
 import { normalizePlatform } from "@/lib/platformAliases";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
@@ -140,8 +141,8 @@ import {
   BroadcastOrderData,
   OrderBroadcastPayload,
 } from "@/hooks/realtime/useOrdersRealtime";
-import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
+import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
@@ -166,9 +167,14 @@ import {
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { restoreDiscountsFromBackend } from "@/utils/discountUtils";
 
-const resolveTableNameForOrder = (tableIdOrName?: string | null): string | null => {
+const resolveTableNameForOrder = (
+  tableIdOrName?: string | null,
+): string | null => {
   if (!tableIdOrName) return null;
-  return useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ?? tableIdOrName;
+  return (
+    useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ??
+    tableIdOrName
+  );
 };
 
 function isOrderTableStillSeating(order?: OrderProfile | null): boolean {
@@ -308,8 +314,7 @@ function buildServiceChargeInputForOrder(
 > {
   if (!order) return {};
 
-  const locationId =
-    useStoreSettingsStore.getState().selectedStore?.id ?? null;
+  const locationId = useStoreSettingsStore.getState().selectedStore?.id ?? null;
   const rule =
     useServiceChargeRulesStore.getState().resolveRule(locationId) ?? null;
 
@@ -334,7 +339,12 @@ function buildServiceChargeInputForOrder(
       .getSessionBySessionId(order.session_id);
     partySize = found?.session?.party_size ?? null;
   }
-  if (partySize == null && !order.session_id && typeof order.guest_count === "number" && order.guest_count > 0) {
+  if (
+    partySize == null &&
+    !order.session_id &&
+    typeof order.guest_count === "number" &&
+    order.guest_count > 0
+  ) {
     partySize = order.guest_count;
   }
 
@@ -344,7 +354,7 @@ function buildServiceChargeInputForOrder(
   // rule-SC after recompute and before the next backend sync.
   const manualServiceCharge =
     order.service_charge_is_manual === true
-      ? order.service_charge ?? 0
+      ? (order.service_charge ?? 0)
       : null;
 
   // Wave D follow-up — server-confirmed SC fallback. When the server has
@@ -762,7 +772,10 @@ const syncArchivedOrderInventoryByLocation = async (
     stockQuantity: number;
   }>,
 ) => {
-  const deductions = buildRecipeInventoryDeductions(soldItems, inventorySnapshot);
+  const deductions = buildRecipeInventoryDeductions(
+    soldItems,
+    inventorySnapshot,
+  );
 
   if (deductions.length === 0) {
     return { success: true as const };
@@ -3743,9 +3756,7 @@ interface OrderState {
    * row-level OrderActionsMenu, and the PaymentDetailBottomSheet read-only
    * banner.
    */
-  claimOrderById: (
-    localOrderId: string,
-  ) => Promise<
+  claimOrderById: (localOrderId: string) => Promise<
     | { success: true }
     | {
         success: false;
@@ -3817,7 +3828,11 @@ interface OrderState {
   setOpenedAt: (orderId: string, openedAt: string) => void;
   setClosedAt: (orderId: string, closedAt: string) => void;
   updateActiveOrderDetails: (details: Partial<OrderProfile>) => Promise<void>;
-  applyDiscountToCheck: (orderId: string, discount: Discount, onError?: (msg: string) => void) => void;
+  applyDiscountToCheck: (
+    orderId: string,
+    discount: Discount,
+    onError?: (msg: string) => void,
+  ) => void;
   removeCheckDiscount: (orderId: string) => void;
   applyDiscountToItem: (orderId: string, itemId: string) => void;
   removeDiscountFromItem: (orderId: string, itemId: string) => void;
@@ -3833,7 +3848,11 @@ interface OrderState {
   ) => Promise<void>;
   markCheckReopenedLocally: (
     orderId: string,
-    backendTotals?: { amount_due?: number; cash_amount_due?: number; reopen_count?: number },
+    backendTotals?: {
+      amount_due?: number;
+      cash_amount_due?: number;
+      reopen_count?: number;
+    },
   ) => void;
   addPaymentToOrder: (details: {
     orderId: string;
@@ -4083,9 +4102,7 @@ const OWN_STATION_MUTATION_WINDOW_MS = 3000;
 // by dbOrderId at the write sites, so callers must pass every id the order was
 // keyed under (its store key AND its db_order_id). clearTimeout first so a
 // pending timer can't fire into a removed order.
-function _cleanupOrderModuleState(
-  ...ids: (string | null | undefined)[]
-): void {
+function _cleanupOrderModuleState(...ids: (string | null | undefined)[]): void {
   for (const id of ids) {
     if (!id) continue;
     const timer = throttleTimers[id];
@@ -4162,10 +4179,13 @@ function releaseOrderState(
     if (itemIds.length > 0) {
       (
         require("@/stores/useSyncStatusStore") as typeof import("@/stores/useSyncStatusStore")
-      ).useSyncStatusStore.getState().clearAllForOrder(itemIds);
+      ).useSyncStatusStore
+        .getState()
+        .clearAllForOrder(itemIds);
     }
   } catch (e) {
-    if (__DEV__) console.warn("[releaseOrderState] satellite cleanup failed", e);
+    if (__DEV__)
+      console.warn("[releaseOrderState] satellite cleanup failed", e);
   }
 }
 
@@ -4290,10 +4310,7 @@ function mergePayments(
         returnedBy: localHasMoreRefund
           ? (lp.returnedBy ?? bp.returnedBy)
           : (bp.returnedBy ?? lp.returnedBy),
-        returnAmount: Math.max(
-          lp.returnAmount ?? 0,
-          bp.returnAmount ?? 0,
-        ),
+        returnAmount: Math.max(lp.returnAmount ?? 0, bp.returnAmount ?? 0),
       };
     }
     return bp;
@@ -4777,7 +4794,8 @@ export const useOrderStore = create<OrderState>()(
                     const rule = useServiceChargeRulesStore
                       .getState()
                       .resolveRule(
-                        useStoreSettingsStore.getState().selectedStore?.id ?? null,
+                        useStoreSettingsStore.getState().selectedStore?.id ??
+                          null,
                       );
                     if (rule) {
                       o.service_charge_rule_id = rule.id;
@@ -4818,9 +4836,7 @@ export const useOrderStore = create<OrderState>()(
               lastServerConfirmed === undefined
                 ? totals.service_charge > 0 ||
                   order.service_charge_rule_id != null
-                : Math.abs(
-                    totals.service_charge - lastServerConfirmed,
-                  ) >= 0.01;
+                : Math.abs(totals.service_charge - lastServerConfirmed) >= 0.01;
             if (__DEV__ && _scChanged) {
               console.log("[SC-DIAG/_ensureTotalsFresh] gate", {
                 orderId,
@@ -4874,12 +4890,10 @@ export const useOrderStore = create<OrderState>()(
                       o2.service_charge = data.service_charge;
                       o2.service_charge_rule_id =
                         data.service_charge_rule_id ?? null;
-                      o2.service_charge_rate =
-                        data.service_charge_rate ?? null;
+                      o2.service_charge_rate = data.service_charge_rate ?? null;
                       o2.service_charge_applies_on =
                         data.service_charge_applies_on ?? null;
-                      o2.service_charge_name =
-                        data.service_charge_name ?? null;
+                      o2.service_charge_name = data.service_charge_name ?? null;
                       o2._serverConfirmedServiceCharge = data.service_charge;
 
                       const localSv = o2.sync_version ?? 0;
@@ -5566,8 +5580,7 @@ export const useOrderStore = create<OrderState>()(
                             const candidates = stamped
                               ? [stamped]
                               : bucket.filter(
-                                  (c) =>
-                                    !broadcastClaimedPendingIds.has(c.id),
+                                  (c) => !broadcastClaimedPendingIds.has(c.id),
                                 );
                             if (candidates.length === 0) continue;
 
@@ -5785,11 +5798,13 @@ export const useOrderStore = create<OrderState>()(
                         ...(() => {
                           const STATUS_RANK: Record<string, number> = {
                             draft: 0,
+                            accepted: 1, // online-order accept — kitchen bucket
                             sent_to_kitchen: 1,
                             preparing: 1,
                             ready: 2,
                             completed: 3,
                             closed: 3,
+                            declined: 4, // terminal
                             void: 4,
                           };
                           const localStatusRank =
@@ -5810,7 +5825,8 @@ export const useOrderStore = create<OrderState>()(
                                 check_status:
                                   existingOrder.check_status === "Closed" &&
                                   backendOrder.check_status !== "Closed" &&
-                                  (backendOrder.sync_version ?? 0) <= (existingOrder.sync_version ?? 0)
+                                  (backendOrder.sync_version ?? 0) <=
+                                    (existingOrder.sync_version ?? 0)
                                     ? existingOrder.check_status
                                     : backendOrder.check_status ||
                                       existingOrder.check_status ||
@@ -5908,7 +5924,8 @@ export const useOrderStore = create<OrderState>()(
                           check_status:
                             localOrder.check_status === "Closed" &&
                             backendOrder.check_status !== "Closed" &&
-                            (backendOrder.sync_version ?? 0) <= (localOrder.sync_version ?? 0)
+                            (backendOrder.sync_version ?? 0) <=
+                              (localOrder.sync_version ?? 0)
                               ? localOrder.check_status
                               : backendOrder.check_status ||
                                 localOrder.check_status ||
@@ -5985,10 +6002,12 @@ export const useOrderStore = create<OrderState>()(
                     if (localOrder.order_status !== backendOrder.status) {
                       const ORDER_STATUS_RANK: Record<string, number> = {
                         draft: 0,
+                        accepted: 1, // online-order accept — kitchen bucket
                         sent_to_kitchen: 1,
                         preparing: 1,
                         ready: 2,
                         closed: 3,
+                        declined: 4, // terminal
                         void: 4,
                       };
                       const localRank =
@@ -6488,7 +6507,10 @@ export const useOrderStore = create<OrderState>()(
                   (item) => item.isDraft,
                 );
 
-                if (localPendingItems.length > 0 || localDraftItems.length > 0) {
+                if (
+                  localPendingItems.length > 0 ||
+                  localDraftItems.length > 0
+                ) {
                   const claimedPendingIds = new Set<string>();
                   const pendingByKey = new Map<string, CartItem[]>();
 
@@ -6534,9 +6556,7 @@ export const useOrderStore = create<OrderState>()(
                       ...serverItem,
                       id: pendingItem.id,
                       seatNumber:
-                        serverItem.seatNumber ??
-                        pendingItem.seatNumber ??
-                        null,
+                        serverItem.seatNumber ?? pendingItem.seatNumber ?? null,
                     };
                   });
 
@@ -6661,8 +6681,7 @@ export const useOrderStore = create<OrderState>()(
                   existing.service_charge_is_taxable;
               }
               if (backendOrder.service_charge_rate === undefined) {
-                orderProfile.service_charge_rate =
-                  existing.service_charge_rate;
+                orderProfile.service_charge_rate = existing.service_charge_rate;
               }
               if (backendOrder.service_charge_applies_on === undefined) {
                 orderProfile.service_charge_applies_on =
@@ -6673,8 +6692,7 @@ export const useOrderStore = create<OrderState>()(
                   existing.service_charge_rule_id;
               }
               if (backendOrder.service_charge_name === undefined) {
-                orderProfile.service_charge_name =
-                  existing.service_charge_name;
+                orderProfile.service_charge_name = existing.service_charge_name;
               }
             }
 
@@ -6710,8 +6728,13 @@ export const useOrderStore = create<OrderState>()(
               // Without this guard, tableOrderIdIndex briefly points to the empty
               // broadcast shell, causing a one-frame flicker in the bill section.
               if (!existing && orderProfile.service_location_id) {
-                const currentIndexedId = state.tableOrderIdIndex[orderProfile.service_location_id];
-                if (currentIndexedId && currentIndexedId !== dbOrderId && state.ordersById[currentIndexedId]) {
+                const currentIndexedId =
+                  state.tableOrderIdIndex[orderProfile.service_location_id];
+                if (
+                  currentIndexedId &&
+                  currentIndexedId !== dbOrderId &&
+                  state.ordersById[currentIndexedId]
+                ) {
                   // A local order already owns this table — don't overwrite the index yet
                 } else {
                   syncTableOrderIdIndexForOrder(state, dbOrderId, existing);
@@ -7073,8 +7096,7 @@ export const useOrderStore = create<OrderState>()(
               paid_status: mapPaymentStatus(serverOrder.payment_status),
               service_location_id: serverOrder.table_number ?? null,
               service_location_name:
-                resolveTableNameForOrder(serverOrder.table_number) ||
-                undefined,
+                resolveTableNameForOrder(serverOrder.table_number) || undefined,
               session_id: serverOrder.session_id ?? undefined,
               customer_name: "",
 
@@ -7103,8 +7125,7 @@ export const useOrderStore = create<OrderState>()(
                 (serverOrder as any).service_charge_is_manual ?? false,
               service_charge_is_taxable:
                 (serverOrder as any).service_charge_is_taxable ?? null,
-              _serverConfirmedServiceCharge:
-                serverOrder.service_charge ?? 0,
+              _serverConfirmedServiceCharge: serverOrder.service_charge ?? 0,
 
               // Items + payments
               items,
@@ -7582,8 +7603,8 @@ export const useOrderStore = create<OrderState>()(
 
             const data = result.data as any;
             const ourStationName =
-              useStoreSettingsStore.getState().selectedStation
-                ?.station_name ?? undefined;
+              useStoreSettingsStore.getState().selectedStation?.station_name ??
+              undefined;
 
             // Helper: apply the same local-store mutation that a successful
             // claim does. Used by both the success path and the idempotent
@@ -7599,8 +7620,7 @@ export const useOrderStore = create<OrderState>()(
                 if (typeof syncVersion === "number") {
                   (o as any).sync_version = syncVersion;
                 } else {
-                  (o as any).sync_version =
-                    ((o as any).sync_version ?? 0) + 1;
+                  (o as any).sync_version = ((o as any).sync_version ?? 0) + 1;
                 }
               });
               // Reviewer #2 critical #2: the order-broadcast pipeline writes
@@ -7681,8 +7701,7 @@ export const useOrderStore = create<OrderState>()(
                 ? messages[errCode]
                 : { title: "Couldn't take over", message: "Unknown error." };
               toastService.show({ ...msg, type: "warning" });
-              if (__DEV__)
-                console.warn("[claimOrder] server rejected:", data);
+              if (__DEV__) console.warn("[claimOrder] server rejected:", data);
               return {
                 success: false,
                 error: errCode ?? ("NETWORK" as const),
@@ -7726,10 +7745,7 @@ export const useOrderStore = create<OrderState>()(
               );
             }
             const localNumbers = selectedStore
-              ? generateLocalOrderNumbers(
-                  selectedStore.id,
-                  stationNumber,
-                )
+              ? generateLocalOrderNumbers(selectedStore.id, stationNumber)
               : undefined;
 
             const newOrder: OrderProfile = {
@@ -7809,7 +7825,8 @@ export const useOrderStore = create<OrderState>()(
             if (isOrderTableStillSeating(activeOrder)) {
               toastService.show({
                 title: "Seating in progress",
-                message: "Please wait until the table is seated before adding items.",
+                message:
+                  "Please wait until the table is seated before adding items.",
                 type: "warning",
               });
               return;
@@ -7829,9 +7846,16 @@ export const useOrderStore = create<OrderState>()(
               !activeOrder.db_order_id &&
               !getOrderCreationOperationId(activeOrder.id)
             ) {
+              // No creation is in progress — fire it on-demand so the order
+              // gets a db_order_id. Without this, the UI would be permanently
+              // stuck on "Creating order" with nothing driving the creation
+              // (e.g. when autoCreateOrder is OFF and the eager-create effect
+              // in order-processing.tsx skipped).
+              get().ensureActiveOrderCreated(activeOrder.id);
               toastService.show({
                 title: "Creating order",
-                message: "Please wait until the order is ready before adding items.",
+                message:
+                  "Please wait until the order is ready before adding items.",
                 type: "warning",
               });
               return;
@@ -9092,7 +9116,8 @@ export const useOrderStore = create<OrderState>()(
                     const rule = useServiceChargeRulesStore
                       .getState()
                       .resolveRule(
-                        useStoreSettingsStore.getState().selectedStore?.id ?? null,
+                        useStoreSettingsStore.getState().selectedStore?.id ??
+                          null,
                       );
                     if (rule) {
                       order.service_charge_rule_id = rule.id;
@@ -9141,9 +9166,7 @@ export const useOrderStore = create<OrderState>()(
               lastServerConfirmed === undefined
                 ? totals.service_charge > 0 ||
                   order.service_charge_rule_id != null
-                : Math.abs(
-                    totals.service_charge - lastServerConfirmed,
-                  ) >= 0.01;
+                : Math.abs(totals.service_charge - lastServerConfirmed) >= 0.01;
             if (__DEV__ && _scChanged) {
               console.log("[SC-DIAG/applyBackendItemData] gate", {
                 activeOrderId,
@@ -9193,12 +9216,10 @@ export const useOrderStore = create<OrderState>()(
                       o2.service_charge = data.service_charge;
                       o2.service_charge_rule_id =
                         data.service_charge_rule_id ?? null;
-                      o2.service_charge_rate =
-                        data.service_charge_rate ?? null;
+                      o2.service_charge_rate = data.service_charge_rate ?? null;
                       o2.service_charge_applies_on =
                         data.service_charge_applies_on ?? null;
-                      o2.service_charge_name =
-                        data.service_charge_name ?? null;
+                      o2.service_charge_name = data.service_charge_name ?? null;
                       o2._serverConfirmedServiceCharge = data.service_charge;
 
                       const localSv = o2.sync_version ?? 0;
@@ -9618,7 +9639,9 @@ export const useOrderStore = create<OrderState>()(
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) {
               if (__DEV__)
-                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: no activeOrderId", { itemId });
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: no activeOrderId", {
+                  itemId,
+                });
               return;
             }
             if (!_checkCartEditable(get())) {
@@ -9650,11 +9673,14 @@ export const useOrderStore = create<OrderState>()(
             const item = order.items.find((i) => i.id === itemId);
             if (!item || item.is_voided) {
               if (__DEV__)
-                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: item missing/voided", {
-                  itemId,
-                  found: !!item,
-                  voided: item?.is_voided,
-                });
+                orderStoreDiagnosticLog(
+                  "[QTY-DIAG] EXIT: item missing/voided",
+                  {
+                    itemId,
+                    found: !!item,
+                    voided: item?.is_voided,
+                  },
+                );
               return;
             }
 
@@ -9728,12 +9754,15 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
             if (__DEV__)
-              orderStoreDiagnosticLog("[QTY-DIAG] LIVE-RPC-BRANCH (dbItemId resolved)", {
-                itemId,
-                dbItemId,
-                expectedQty: newQuantity,
-                hasExistingPromise: pendingSyncOperations.has(itemId),
-              });
+              orderStoreDiagnosticLog(
+                "[QTY-DIAG] LIVE-RPC-BRANCH (dbItemId resolved)",
+                {
+                  itemId,
+                  dbItemId,
+                  expectedQty: newQuantity,
+                  hasExistingPromise: pendingSyncOperations.has(itemId),
+                },
+              );
 
             // 2. Update quantity on DB — chain onto any existing in-flight promise
             //    for this item so rapid increments are serialized and the final
@@ -9766,11 +9795,15 @@ export const useOrderStore = create<OrderState>()(
                     quantitySyncGenerations.get(itemId) !== quantityGeneration
                   ) {
                     if (__DEV__)
-                      orderStoreDiagnosticLog("[QTY-DIAG] STALE-GENERATION-SKIPPED", {
-                        itemId,
-                        quantityGeneration,
-                        currentGeneration: quantitySyncGenerations.get(itemId),
-                      });
+                      orderStoreDiagnosticLog(
+                        "[QTY-DIAG] STALE-GENERATION-SKIPPED",
+                        {
+                          itemId,
+                          quantityGeneration,
+                          currentGeneration:
+                            quantitySyncGenerations.get(itemId),
+                        },
+                      );
                     return {
                       response: null,
                       latestQuantity: newQuantity,
@@ -9825,11 +9858,14 @@ export const useOrderStore = create<OrderState>()(
                 // corrupting waitForPendingSyncs.
                 if (response?.error?.code === "DEADLINE_EXCEEDED") {
                   if (__DEV__)
-                    orderStoreDiagnosticLog("[QTY-DIAG] DEADLINE-EXCEEDED-QUEUE", {
-                      itemId,
-                      dbItemId,
-                      latestQuantity,
-                    });
+                    orderStoreDiagnosticLog(
+                      "[QTY-DIAG] DEADLINE-EXCEEDED-QUEUE",
+                      {
+                        itemId,
+                        dbItemId,
+                        latestQuantity,
+                      },
+                    );
                   const latestQueuedQuantity =
                     get().ordersById[activeOrderId]?.items.find(
                       (i) => i.id === itemId,
@@ -9888,11 +9924,14 @@ export const useOrderStore = create<OrderState>()(
 
                   if (isStaleResponse) {
                     if (__DEV__)
-                      orderStoreDiagnosticLog("[QTY-DIAG] STALE-RESPONSE-IGNORED", {
-                        itemId,
-                        latestQuantity,
-                        currentQuantity,
-                      });
+                      orderStoreDiagnosticLog(
+                        "[QTY-DIAG] STALE-RESPONSE-IGNORED",
+                        {
+                          itemId,
+                          latestQuantity,
+                          currentQuantity,
+                        },
+                      );
                     return true;
                   }
 
@@ -11216,17 +11255,23 @@ export const useOrderStore = create<OrderState>()(
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order?.db_order_id) {
               const dbOrderId = order.db_order_id;
-              OrderService.updateOrderStatus(supabase, dbOrderId, status).catch(
-                async (err) => {
-                  console.error("Failed to sync status:", err);
-                  // Queue for offline retry
-                  await queueOperation({
-                    type: "update_order_status",
-                    params: { orderId: dbOrderId, status },
-                    localOrderId: orderId,
-                  });
-                },
-              );
+              // This generic lifecycle path only handles standard backend
+              // statuses; online-order accept/decline route through the
+              // dedicated accept_online_order/decline_online_order RPCs instead.
+              const dbStatus = status as DbOrderStatus;
+              OrderService.updateOrderStatus(
+                supabase,
+                dbOrderId,
+                dbStatus,
+              ).catch(async (err) => {
+                console.error("Failed to sync status:", err);
+                // Queue for offline retry
+                await queueOperation({
+                  type: "update_order_status",
+                  params: { orderId: dbOrderId, status: dbStatus },
+                  localOrderId: orderId,
+                });
+              });
             }
 
             set((state) => {
@@ -11366,7 +11411,8 @@ export const useOrderStore = create<OrderState>()(
               if (!order) return;
               order.check_status = "Opened";
               order._reopenedForOrdering = true;
-              order.reopen_count = backendTotals?.reopen_count ?? (order.reopen_count ?? 0) + 1;
+              order.reopen_count =
+                backendTotals?.reopen_count ?? (order.reopen_count ?? 0) + 1;
               if (order.paid_status === "Paid") {
                 order.paid_status = "Partial";
               }
@@ -12165,7 +12211,10 @@ export const useOrderStore = create<OrderState>()(
                 }
               } catch (err) {
                 if (__DEV__)
-                  console.warn("[archiveOrder] Inventory deduction error:", err);
+                  console.warn(
+                    "[archiveOrder] Inventory deduction error:",
+                    err,
+                  );
                 // Continue archiving despite error
               }
             }
@@ -13591,7 +13640,11 @@ export const useOrderStore = create<OrderState>()(
               const sentLocalIds = new Set(
                 newItemsForPrint.map((item) => item.id),
               );
-              await _commitKitchenSendForBatch(sendOrder, orderId, sentLocalIds);
+              await _commitKitchenSendForBatch(
+                sendOrder,
+                orderId,
+                sentLocalIds,
+              );
             }
 
             // Show toast after the state update
@@ -14890,7 +14943,7 @@ export const useOrderStore = create<OrderState>()(
                           (dbItem as any).base_cash_price ??
                           (dbItem.is_open_item
                             ? dbItem.open_item_price || 0
-                            : dbItem.unit_price ?? 0),
+                            : (dbItem.unit_price ?? 0)),
                       })) || [];
 
                   const allItems: CartItem[] = [
@@ -14912,7 +14965,9 @@ export const useOrderStore = create<OrderState>()(
                     allItems.map((i) => i.db_order_item_id).filter(Boolean),
                   );
                   const allItemsLocalIds = new Set(allItems.map((i) => i.id));
-                  for (const [key, candidate] of Object.entries(state.ordersById)) {
+                  for (const [key, candidate] of Object.entries(
+                    state.ordersById,
+                  )) {
                     if (key === localOrderId) continue;
                     if (
                       candidate.service_location_id !==
@@ -14924,11 +14979,16 @@ export const useOrderStore = create<OrderState>()(
                     for (const item of candidate.items) {
                       if (item.isDraft) continue;
                       if (allItemsLocalIds.has(item.id)) continue;
-                      if (item.db_order_item_id && allItemsDbIds.has(item.db_order_item_id)) continue;
+                      if (
+                        item.db_order_item_id &&
+                        allItemsDbIds.has(item.db_order_item_id)
+                      )
+                        continue;
                       // Pending or locally-synced item not yet in backend fetch — preserve it
                       allItems.push(item);
                       allItemsLocalIds.add(item.id);
-                      if (item.db_order_item_id) allItemsDbIds.add(item.db_order_item_id);
+                      if (item.db_order_item_id)
+                        allItemsDbIds.add(item.db_order_item_id);
                     }
                   }
 
@@ -14972,7 +15032,8 @@ export const useOrderStore = create<OrderState>()(
                       // refund didn't always advance `status`, so we have to
                       // carry refunded_amount + is_returned explicitly.
                       const localPmt = localPaymentsByDbId.get(p.id);
-                      const dbRefunded = Number((p as any).refunded_amount) || 0;
+                      const dbRefunded =
+                        Number((p as any).refunded_amount) || 0;
                       const localRefunded = localPmt?.refundedAmount ?? 0;
                       const localHasMoreRefund = localRefunded > dbRefunded;
                       const mergedRefundedAmount = Math.max(
@@ -15115,9 +15176,15 @@ export const useOrderStore = create<OrderState>()(
                     // Prefer DB value. Guard: if the local order was already
                     // reopened (_reopenedForOrdering=true) but the DB fetch
                     // raced and returned stale 'Closed', keep local 'Opened'.
-                    check_status: (localOrder?._reopenedForOrdering && (dbOrder.check_status === 'Closed' || !dbOrder.check_status))
-                      ? 'Opened'
-                      : ((dbOrder.check_status as "Opened" | "Closed" | undefined) ?? (isPaid ? "Closed" : "Opened")),
+                    check_status:
+                      localOrder?._reopenedForOrdering &&
+                      (dbOrder.check_status === "Closed" ||
+                        !dbOrder.check_status)
+                        ? "Opened"
+                        : ((dbOrder.check_status as
+                            | "Opened"
+                            | "Closed"
+                            | undefined) ?? (isPaid ? "Closed" : "Opened")),
                     // Session tracking - sync from database
                     session_id: dbOrder.session_id,
                     order_source: dbOrder.order_source ?? null,
@@ -15128,7 +15195,10 @@ export const useOrderStore = create<OrderState>()(
                       ) ??
                       null,
                     sync_status: "synced",
-                    reopen_count: (dbOrder as any).reopen_count ?? localOrder?.reopen_count ?? 0,
+                    reopen_count:
+                      (dbOrder as any).reopen_count ??
+                      localOrder?.reopen_count ??
+                      0,
                   };
 
                   state.ordersById[localOrderId] = updatedOrderProfile;
@@ -15521,10 +15591,14 @@ export const useOrderStore = create<OrderState>()(
             // repair below is still settling. Relative path avoids any @/ alias
             // resolution differences between metro and node-test contexts.
             try {
-              const prefetchMod = require("../services/tableOrderPrefetch") as typeof import("../services/tableOrderPrefetch");
+              const prefetchMod =
+                require("../services/tableOrderPrefetch") as typeof import("../services/tableOrderPrefetch");
               prefetchMod.markOrderRecentlyHydrated(dbOrderId);
             } catch (err) {
-              console.warn("[hydrateOrderFromSeat] markOrderRecentlyHydrated failed:", err);
+              console.warn(
+                "[hydrateOrderFromSeat] markOrderRecentlyHydrated failed:",
+                err,
+              );
             }
             if (localOrderId) {
               // Path A: Update existing local order with backend data
@@ -15956,14 +16030,13 @@ export const useOrderStore = create<OrderState>()(
             const finalOutstandingTotal = shouldUseCalculatedReopenBalance
               ? totals.outstanding_total
               : hasBackendAmountDue
-              ? order.amount_due!
-              : totals.outstanding_total;
+                ? order.amount_due!
+                : totals.outstanding_total;
 
-            const finalCashOutstandingTotal =
-              shouldUseCalculatedReopenBalance
-                ? totals.cash_outstanding_total
-                : order.cash_amount_due !== undefined &&
-                    order.cash_amount_due >= 0
+            const finalCashOutstandingTotal = shouldUseCalculatedReopenBalance
+              ? totals.cash_outstanding_total
+              : order.cash_amount_due !== undefined &&
+                  order.cash_amount_due >= 0
                 ? order.cash_amount_due
                 : totals.cash_outstanding_total;
 
@@ -16003,7 +16076,8 @@ export const useOrderStore = create<OrderState>()(
                     const rule = useServiceChargeRulesStore
                       .getState()
                       .resolveRule(
-                        useStoreSettingsStore.getState().selectedStore?.id ?? null,
+                        useStoreSettingsStore.getState().selectedStore?.id ??
+                          null,
                       );
                     if (rule) {
                       o.service_charge_rule_id = rule.id;
@@ -16099,12 +16173,10 @@ export const useOrderStore = create<OrderState>()(
                       o2.service_charge = data.service_charge;
                       o2.service_charge_rule_id =
                         data.service_charge_rule_id ?? null;
-                      o2.service_charge_rate =
-                        data.service_charge_rate ?? null;
+                      o2.service_charge_rate = data.service_charge_rate ?? null;
                       o2.service_charge_applies_on =
                         data.service_charge_applies_on ?? null;
-                      o2.service_charge_name =
-                        data.service_charge_name ?? null;
+                      o2.service_charge_name = data.service_charge_name ?? null;
                       // Mark the server has confirmed this SC. Drift gate
                       // compares against this on the next recalc, so we
                       // don't fire again until the computed SC actually
@@ -17003,22 +17075,28 @@ export const useOrderStore = create<OrderState>()(
                     service_charge: orderData.service_charge ?? 0,
                     service_charge_name:
                       (orderData as any).service_charge_name ??
-                      currentOrder.service_charge_name ?? null,
+                      currentOrder.service_charge_name ??
+                      null,
                     service_charge_rate:
                       (orderData as any).service_charge_rate ??
-                      currentOrder.service_charge_rate ?? null,
+                      currentOrder.service_charge_rate ??
+                      null,
                     service_charge_applies_on:
                       (orderData as any).service_charge_applies_on ??
-                      currentOrder.service_charge_applies_on ?? null,
+                      currentOrder.service_charge_applies_on ??
+                      null,
                     service_charge_rule_id:
                       (orderData as any).service_charge_rule_id ??
-                      currentOrder.service_charge_rule_id ?? null,
+                      currentOrder.service_charge_rule_id ??
+                      null,
                     service_charge_is_manual:
                       (orderData as any).service_charge_is_manual ??
-                      currentOrder.service_charge_is_manual ?? false,
+                      currentOrder.service_charge_is_manual ??
+                      false,
                     service_charge_is_taxable:
                       (orderData as any).service_charge_is_taxable ??
-                      currentOrder.service_charge_is_taxable ?? null,
+                      currentOrder.service_charge_is_taxable ??
+                      null,
                     _serverConfirmedServiceCharge:
                       orderData.service_charge ?? 0,
                     // Status fields — preserve local status when items are pending sync or payments are ahead
@@ -17067,8 +17145,7 @@ export const useOrderStore = create<OrderState>()(
                     (updatedOrder as any).card_total ??
                     0;
                   const _healAmountPaid = (updatedOrder.payments ?? []).reduce(
-                    (sum, p) =>
-                      sum + (p.amount ?? 0) - (p.refundedAmount ?? 0),
+                    (sum, p) => sum + (p.amount ?? 0) - (p.refundedAmount ?? 0),
                     0,
                   );
                   if (

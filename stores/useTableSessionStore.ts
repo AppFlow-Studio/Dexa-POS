@@ -388,6 +388,13 @@ interface TableSessionStoreState {
   /** Bridge: write session data back into useFloorPlanStore (removed in Phase 3) */
   _syncToFloorPlanStore: (changedTableId?: string | string[]) => void;
 
+  /**
+   * Strip sessions whose tableId does not exist in ANY cached floorplan.
+   * Safe to call only after all floorplans have been prefetched/cached.
+   * Handles orphaned sessions left behind by deleted floorplans.
+   */
+  _stripOrphanedSessions: () => void;
+
   // ---- Selectors ----
 
   getSession: (tableId: string) => TableSession | undefined;
@@ -760,7 +767,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           // Mark store as initialized — DraggableTable uses this to know the
           // session store is authoritative and should not fall back to stale
           // table.session props that TableLayoutView.memo blocks from updating.
-          set((state) => { state.isInitialized = true; });
+          set((state) => {
+            state.isInitialized = true;
+          });
 
           console.log(
             `[hydrateFromBackend] Synced ${
@@ -849,7 +858,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           if (actions.length > 0) {
             get().batchDispatch(actions);
           }
-          set((state) => { state.isInitialized = true; });
+          set((state) => {
+            state.isInitialized = true;
+          });
         },
 
         // ------------------------------------------------------------------
@@ -923,6 +934,61 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             tables: newTables,
             tablesById: buildTablesById(newTables),
           });
+        },
+
+        // ------------------------------------------------------------------
+        // _stripOrphanedSessions — remove sessions for non-existent tables
+        // ------------------------------------------------------------------
+
+        _stripOrphanedSessions: () => {
+          const sessionStore = get();
+          const sessionCount = Object.keys(sessionStore.sessions).length;
+          if (sessionCount === 0) return;
+
+          try {
+            // Lazy-require to avoid circular deps at module init time
+            const { useFloorPlanStore } =
+              require("@/stores/useFloorPlanStore") as typeof import("@/stores/useFloorPlanStore");
+            const fpState = useFloorPlanStore.getState();
+
+            // Collect all known table IDs from every cached floorplan
+            // plus the currently-active tables.
+            const knownTableIds = new Set<string>();
+            for (const table of fpState.tables) {
+              knownTableIds.add(table.id);
+            }
+            for (const cacheEntry of Object.values(fpState.floorPlanCache)) {
+              for (const table of cacheEntry.tables) {
+                knownTableIds.add(table.id);
+              }
+            }
+
+            if (knownTableIds.size === 0) return; // nothing to compare against
+
+            const actions: Array<{
+              tableId: string;
+              action: SessionAction;
+            }> = [];
+            for (const tableId of Object.keys(sessionStore.sessions)) {
+              if (!knownTableIds.has(tableId)) {
+                actions.push({
+                  tableId,
+                  action: { type: "CLEAR" },
+                });
+              }
+            }
+
+            if (actions.length > 0) {
+              get().batchDispatch(actions);
+              console.log(
+                "[_stripOrphanedSessions] Removed",
+                actions.length,
+                "orphaned sessions",
+              );
+            }
+          } catch {
+            // Non-fatal — will retry on next sync cycle
+          }
         },
 
         // ------------------------------------------------------------------
@@ -1139,11 +1205,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
             const existing =
               useOrderStore.getState().ordersById[params.localOrderId];
             if (existing && existing.guest_count !== params.partySize) {
-              useOrderStore
-                .getState()
-                .patchOrder(params.localOrderId, {
-                  guest_count: params.partySize,
-                });
+              useOrderStore.getState().patchOrder(params.localOrderId, {
+                guest_count: params.partySize,
+              });
             }
           }
 
@@ -1473,11 +1537,15 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           // converge via useFloorRealtime's reconcile — they don't apply the
           // raw broadcast.)
           const sessions = get().sessions;
-          const moving = Object.values(sessions).find((s) => s?.id === sessionId);
+          const moving = Object.values(sessions).find(
+            (s) => s?.id === sessionId,
+          );
           if (moving) {
             const targetSet = new Set(newTableIds);
-            const optimistic: Array<{ tableId: string; action: SessionAction }> =
-              [];
+            const optimistic: Array<{
+              tableId: string;
+              action: SessionAction;
+            }> = [];
             // Clear old source tables no longer in the new membership.
             for (const [tId, sess] of Object.entries(sessions)) {
               if (sess?.id === sessionId && !targetSet.has(tId)) {
@@ -1508,7 +1576,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               const orderStore = useOrderStore.getState();
               const localOrderId =
                 orderStore.dbOrderIdIndex[moving.order_id] ?? moving.order_id;
-              orderStore.transferOrderToTable?.(localOrderId, newPrimaryTableId);
+              orderStore.transferOrderToTable?.(
+                localOrderId,
+                newPrimaryTableId,
+              );
             }
           }
 
@@ -1914,7 +1985,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 useTableSessionStore.persist.onFinishHydration(() => {
   const sessions = useTableSessionStore.getState().sessions;
   if (Object.keys(sessions).length > 0) {
-    useTableSessionStore.setState((s) => { s.isInitialized = true; });
+    useTableSessionStore.setState((s) => {
+      s.isInitialized = true;
+    });
   }
   if (Object.keys(sessions).length === 0) return;
 
