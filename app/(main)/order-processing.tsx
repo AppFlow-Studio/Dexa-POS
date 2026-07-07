@@ -503,10 +503,32 @@ const OrderProcessing = () => {
     // is already usable; this just pre-persists it so the first item-add is
     // faster. ensureActiveOrderCreated is idempotent + single-flight, so the
     // add-item path still creates on demand if this hasn't run yet.
-    const task = InteractionManager.runAfterInteractions(() => {
-      void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(async () => {
+      if (cancelled) return;
+      const result = await useOrderStore
+        .getState()
+        .ensureActiveOrderCreated(activeOrderId);
+      if (cancelled) return;
+      // If the first attempt failed (returned null — not a db_order_id, not
+      // "pending_offline"), retry once after a short delay. This addresses
+      // transient network or RPC failures that would otherwise leave the
+      // order permanently stuck.
+      if (!result) {
+        if (__DEV__) {
+          console.log(
+            `[order-processing] Eager create returned null for ${activeOrderId}; retrying once in 2s`,
+          );
+        }
+        await new Promise((r) => setTimeout(r, 2_000));
+        if (cancelled) return;
+        void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+      }
     });
-    return () => task.cancel();
+    return () => {
+      cancelled = true;
+      task.cancel();
+    };
   }, [activeOrderId, orderAttributionOrderId]);
 
   const handleViewItems = useCallback((orderId: string) => {
