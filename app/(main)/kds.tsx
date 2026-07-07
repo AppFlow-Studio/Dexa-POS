@@ -2611,9 +2611,11 @@ const KitchenDisplayScreen = () => {
       setShowPinModal(false);
 
       // Settings navigation is gated by the same manager PIN as bulk ops.
+      // KDS devices navigate to a standalone page that bypasses the settings
+      // layout (which has the sidebar). Non-KDS devices use the normal path.
       if (pendingBulkAction === "settings") {
         setPendingBulkAction(null);
-        router.push("/settings/kds");
+        router.push("/kds-settings");
         return;
       }
 
