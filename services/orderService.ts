@@ -35,16 +35,7 @@ import { v4 as uuidv4 } from "uuid";
  * order is no longer pending), so outcome detection reads this shape, not the
  * transport `error`.
  */
-export type OnlineOrderActionResult = {
-  success: boolean;
-  error?: string;
-  order_id?: string;
-  accepted_at?: string;
-  declined_at?: string;
-  cancelled_at?: string;
-  ready_at?: string;
-  completed_at?: string;
-};
+
 
 /**
  * JSON envelope returned by accept_online_order / decline_online_order.
