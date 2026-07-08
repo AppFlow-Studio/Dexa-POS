@@ -840,64 +840,61 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   gap: s(6),
                 }}
               >
-                {ticket.status === "ready" ? (
-                  <TouchableOpacity
-                    onPress={handleMarkAsDone}
+                <TouchableOpacity
+                  onPress={handleBumpOneStep}
+                  disabled={
+                    acknowledgmentMode === "block-advance" &&
+                    hasUnacknowledgedNotices
+                  }
+                  style={{
+                    flex: 1,
+                    height: s(32),
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor:
+                      hasUnacknowledgedNotices &&
+                      acknowledgmentMode === "block-advance"
+                        ? "#9CA3AF"
+                        : colors.teal,
+                    opacity:
+                      hasUnacknowledgedNotices &&
+                      acknowledgmentMode === "block-advance"
+                        ? 0.5
+                        : 1,
+                  }}
+                >
+                  <Text
                     style={{
-                      flex: 1,
-                      height: s(32),
-                      borderRadius: s(8),
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: colors.success,
+                      color: "#FFFFFF",
+                      fontSize: s(11),
+                      fontWeight: "700",
                     }}
                   >
-                    <Text
-                      style={{
-                        color: "#FFFFFF",
-                        fontSize: s(11),
-                        fontWeight: "700",
-                      }}
-                    >
-                      Done
-                    </Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={handleBumpOneStep}
-                    disabled={
-                      acknowledgmentMode === "block-advance" &&
-                      hasUnacknowledgedNotices
-                    }
+                    Bump
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleMarkAsDone}
+                  style={{
+                    flex: 1,
+                    height: s(32),
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.success,
+                  }}
+                >
+                  <Text
                     style={{
-                      flex: 1,
-                      height: s(32),
-                      borderRadius: s(8),
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor:
-                        hasUnacknowledgedNotices &&
-                        acknowledgmentMode === "block-advance"
-                          ? "#9CA3AF"
-                          : colors.teal,
-                      opacity:
-                        hasUnacknowledgedNotices &&
-                        acknowledgmentMode === "block-advance"
-                          ? 0.5
-                          : 1,
+                      color: "#FFFFFF",
+                      fontSize: s(11),
+                      fontWeight: "700",
                     }}
                   >
-                    <Text
-                      style={{
-                        color: "#FFFFFF",
-                        fontSize: s(11),
-                        fontWeight: "700",
-                      }}
-                    >
-                      Bump
-                    </Text>
-                  </TouchableOpacity>
-                )}
+                    Done
+                  </Text>
+                </TouchableOpacity>
                 {(ticket.status === "pending" ||
                   ticket.status === "cooking") && (
                   <TouchableOpacity
@@ -3842,54 +3839,48 @@ const KitchenDisplayScreen = () => {
 
                 {/* Recall — only for ready tickets */}
 
-                {/* Mark Done — only for ready tickets */}
-                {actionMenu.ticket.status === "ready" && (
-                  <Pressable
-                    onPress={() => {
-                      const ticket = actionMenu.ticket;
-                      if (ticket) {
-                        const itemIds = getTicketItems(ticket).map((i) => i.id);
-                        advanceTicketStatus(
-                          ticket.ticket_id,
-                          itemIds,
-                          "served",
-                        );
-                        handleDismissActionMenu();
-                      }
-                    }}
+                {/* Mark Done — available from any stage */}
+                <Pressable
+                  onPress={() => {
+                    const ticket = actionMenu.ticket;
+                    if (ticket) {
+                      const itemIds = getTicketItems(ticket).map((i) => i.id);
+                      advanceTicketStatus(ticket.ticket_id, itemIds, "served");
+                      handleDismissActionMenu();
+                    }
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(8),
+                    borderRadius: s(8),
+                    borderWidth: 1,
+                    borderColor: colors.success + "66",
+                    backgroundColor: colors.success + "16",
+                    marginBottom: s(6),
+                  }}
+                >
+                  <View
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      justifyContent: "space-between",
-                      paddingHorizontal: s(12),
-                      paddingVertical: s(8),
-                      borderRadius: s(8),
-                      borderWidth: 1,
-                      borderColor: colors.success + "66",
-                      backgroundColor: colors.success + "16",
-                      marginBottom: s(6),
+                      gap: s(8),
                     }}
                   >
-                    <View
+                    <CheckSquare size={s(15)} color={colors.success} />
+                    <Text
                       style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: s(8),
+                        color: "#111827",
+                        fontSize: s(13),
+                        fontWeight: "700",
                       }}
                     >
-                      <CheckSquare size={s(15)} color={colors.success} />
-                      <Text
-                        style={{
-                          color: "#111827",
-                          fontSize: s(13),
-                          fontWeight: "700",
-                        }}
-                      >
-                        Mark Done
-                      </Text>
-                    </View>
-                  </Pressable>
-                )}
+                      Mark Done
+                    </Text>
+                  </View>
+                </Pressable>
 
                 {(actionMenu.ticket.status === "pending" ||
                   actionMenu.ticket.status === "cooking") && (
