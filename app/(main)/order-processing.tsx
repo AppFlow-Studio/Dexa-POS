@@ -17,14 +17,14 @@ import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwn
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { getHeaderHeight } from "@/lib/headerHeight";
 import {
-  forceSetLocalSequence,
-  parseSequenceFromDisplayNumber,
+    forceSetLocalSequence,
+    parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
 import { markEnd } from "@/lib/perf";
 import {
-  findLatestReusableEmptyDraftId,
-  getRefreshedReusableDraftNumbers,
-  isReusableEmptyDraftOrder,
+    findLatestReusableEmptyDraftId,
+    getRefreshedReusableDraftNumbers,
+    isReusableEmptyDraftOrder,
 } from "@/lib/reusableEmptyDraft";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
@@ -36,56 +36,57 @@ import { useSearchStore } from "@/stores/searchStore";
 import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import {
-  formatOrderStatus,
-  formatPaymentStatus,
+    formatOrderStatus,
+    formatPaymentStatus,
 } from "@/utils/orderStatusHelpers";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import {
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  Logs,
-  Plus,
-  Printer,
-  Search,
-  ShoppingBag,
-  Sofa,
-  UtensilsCrossed,
-  X,
+    CheckCircle2,
+    ChevronLeft,
+    ChevronRight,
+    Eye,
+    Logs,
+    Plus,
+    Printer,
+    Search,
+    ShoppingBag,
+    Sofa,
+    UtensilsCrossed,
+    X,
 } from "lucide-react-native";
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  Dimensions,
-  InteractionManager,
-  Keyboard,
-  Modal,
-  PanResponder,
-  Pressable,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    Dimensions,
+    InteractionManager,
+    Keyboard,
+    Modal,
+    PanResponder,
+    Pressable,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from "react-native";
 import Animated, {
-  LinearTransition,
-  SlideInLeft,
-  useAnimatedStyle,
-  useSharedValue,
+    LinearTransition,
+    SlideInLeft,
+    useAnimatedStyle,
+    useSharedValue,
 } from "react-native-reanimated";
 
 const EMPTY_ORDERS: OrderProfile[] = [];
@@ -535,6 +536,11 @@ const OrderProcessing = () => {
     setSelectedOrderId(orderId);
     setIsOrdersModuleOpen(false);
     setItemsModalOpen(true);
+  }, []);
+
+  const handleRefund = useCallback((orderId: string) => {
+    setItemsModalOpen(false);
+    usePaymentDetailSheetStore.getState().open(orderId, "refund");
   }, []);
 
   const handleMarkDone = useCallback(
@@ -1941,6 +1947,9 @@ const OrderProcessing = () => {
           orderId={selectedOrderId}
           onRetrieve={
             selectedOrderId ? () => handleRetrieve(selectedOrderId) : undefined
+          }
+          onRefund={
+            selectedOrderId ? () => handleRefund(selectedOrderId) : undefined
           }
         />
       )}
