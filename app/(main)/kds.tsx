@@ -868,52 +868,56 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                     Bump
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => onRush?.(ticket.ticket_id)}
-                  disabled={isRushPending}
-                  style={{
-                    flex: 1,
-                    height: s(32),
-                    borderRadius: s(8),
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: isRushPending
-                      ? colors.muted
-                      : colors.warning,
-                    opacity: isRushPending ? 0.6 : 1,
-                  }}
-                >
-                  <Text
+                {(ticket.status === "pending" || ticket.status === "cooking") && (
+                  <TouchableOpacity
+                    onPress={() => onRush?.(ticket.ticket_id)}
+                    disabled={isRushPending}
                     style={{
-                      color: "#FFFFFF",
-                      fontSize: s(11),
-                      fontWeight: "700",
+                      flex: 1,
+                      height: s(32),
+                      borderRadius: s(8),
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: isRushPending
+                        ? colors.muted
+                        : colors.warning,
+                      opacity: isRushPending ? 0.6 : 1,
                     }}
                   >
-                    {isRushPending ? "..." : hasRush ? "Unrush" : "Rush"}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => onPrioritize?.(ticket.ticket_id)}
-                  style={{
-                    flex: 1,
-                    height: s(32),
-                    borderRadius: s(8),
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: colors.info,
-                  }}
-                >
-                  <Text
+                    <Text
+                      style={{
+                        color: "#FFFFFF",
+                        fontSize: s(11),
+                        fontWeight: "700",
+                      }}
+                    >
+                      {isRushPending ? "..." : hasRush ? "Unrush" : "Rush"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {(ticket.status === "pending" || ticket.status === "cooking") && (
+                  <TouchableOpacity
+                    onPress={() => onPrioritize?.(ticket.ticket_id)}
                     style={{
-                      color: "#FFFFFF",
-                      fontSize: s(11),
-                      fontWeight: "700",
+                      flex: 1,
+                      height: s(32),
+                      borderRadius: s(8),
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.info,
                     }}
                   >
-                    {ticket.prioritized ? "Unstar" : "Prioritize"}
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={{
+                        color: "#FFFFFF",
+                        fontSize: s(11),
+                        fontWeight: "700",
+                      }}
+                    >
+                      {ticket.prioritized ? "Unstar" : "Prioritize"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   onPress={() => onSelectTicket?.(ticket.ticket_id)}
                   style={{
@@ -959,7 +963,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         ticket.order_number?.slice(-4) ||
                         "----"}
                     </Text>
-                    {ticket.prioritized && (
+                    {(ticket.status === "pending" || ticket.status === "cooking") && ticket.prioritized && (
                       <Star
                         size={s(16)}
                         color={colors.warning}
@@ -1035,7 +1039,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         : undefined
                     }
                   />
-                  {hasRush && (
+                  {(ticket.status === "pending" || ticket.status === "cooking") && hasRush && (
                     <View
                       style={{
                         backgroundColor: "#FEF08A",
@@ -3801,83 +3805,87 @@ const KitchenDisplayScreen = () => {
                 )}
 
                 {/* Recall — only for ready tickets */}
-                {/* Prioritize */}
-                <Pressable
-                  onPress={handlePrioritize}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingHorizontal: s(12),
-                    paddingVertical: s(8),
-                    borderRadius: s(8),
-                    borderWidth: 1,
-                    borderColor: colors.teal + "66",
-                    backgroundColor: colors.teal + "16",
-                    marginBottom: s(6),
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: s(8),
-                    }}
-                  >
-                    <ArrowUpToLine size={s(15)} color={colors.teal} />
-                    <Text
+                {(actionMenu.ticket.status === "pending" || actionMenu.ticket.status === "cooking") && (
+                  <>
+                    {/* Prioritize */}
+                    <Pressable
+                      onPress={handlePrioritize}
                       style={{
-                        color: "#111827",
-                        fontSize: s(13),
-                        fontWeight: "700",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(8),
+                        borderRadius: s(8),
+                        borderWidth: 1,
+                        borderColor: colors.teal + "66",
+                        backgroundColor: colors.teal + "16",
+                        marginBottom: s(6),
                       }}
                     >
-                      {actionMenu.ticket.prioritized
-                        ? "Unprioritize"
-                        : "Prioritize"}
-                    </Text>
-                  </View>
-                </Pressable>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: s(8),
+                        }}
+                      >
+                        <ArrowUpToLine size={s(15)} color={colors.teal} />
+                        <Text
+                          style={{
+                            color: "#111827",
+                            fontSize: s(13),
+                            fontWeight: "700",
+                          }}
+                        >
+                          {actionMenu.ticket.prioritized
+                            ? "Unprioritize"
+                            : "Prioritize"}
+                        </Text>
+                      </View>
+                    </Pressable>
 
-                {/* Rush / Un-Rush */}
-                <Pressable
-                  onPress={handleToggleRush}
-                  disabled={isActionMenuRushPending}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingHorizontal: s(12),
-                    paddingVertical: s(8),
-                    borderRadius: s(8),
-                    borderWidth: 1,
-                    borderColor: colors.teal + "66",
-                    backgroundColor: colors.teal + "16",
-                    marginBottom: s(6),
-                    opacity: isActionMenuRushPending ? 0.5 : 1,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: s(8),
-                    }}
-                  >
-                    <Flame size={s(15)} color={colors.teal} />
-                    <Text
+                    {/* Rush / Un-Rush */}
+                    <Pressable
+                      onPress={handleToggleRush}
+                      disabled={isActionMenuRushPending}
                       style={{
-                        color: "#111827",
-                        fontSize: s(13),
-                        fontWeight: "700",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(8),
+                        borderRadius: s(8),
+                        borderWidth: 1,
+                        borderColor: colors.teal + "66",
+                        backgroundColor: colors.teal + "16",
+                        marginBottom: s(6),
+                        opacity: isActionMenuRushPending ? 0.5 : 1,
                       }}
                     >
-                      {getTicketItems(actionMenu.ticket).some((i) => i.rush)
-                        ? "Remove Rush"
-                        : "Mark Rush"}
-                    </Text>
-                  </View>
-                </Pressable>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: s(8),
+                        }}
+                      >
+                        <Flame size={s(15)} color={colors.teal} />
+                        <Text
+                          style={{
+                            color: "#111827",
+                            fontSize: s(13),
+                            fontWeight: "700",
+                          }}
+                        >
+                          {getTicketItems(actionMenu.ticket).some((i) => i.rush)
+                            ? "Remove Rush"
+                            : "Mark Rush"}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  </>
+                )}
 
                 {/* Bump Order */}
                 <Pressable
