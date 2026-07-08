@@ -16,8 +16,8 @@ import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import {
-    getAutoRetryCount,
-    isAutoRetryInProgress,
+  getAutoRetryCount,
+  isAutoRetryInProgress,
 } from "@/services/offlineSyncService";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
@@ -36,9 +36,9 @@ import { useOrderSyncCounts } from "@/stores/useSyncStatusStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import type {
-    FloorPlanObject,
-    ServerSection,
-    TableSession,
+  FloorPlanObject,
+  ServerSection,
+  TableSession,
 } from "@/types/db-floor-plan-types";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useRouter } from "expo-router";
@@ -65,24 +65,24 @@ import React, {
     useState,
 } from "react";
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import {
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "../ui/dialog";
 import BillSummary from "./BillSummary";
 import DiscountOverlay from "./DiscountOverlay";
