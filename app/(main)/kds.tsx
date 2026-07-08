@@ -868,7 +868,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                     Bump
                   </Text>
                 </TouchableOpacity>
-                {(ticket.status === "pending" || ticket.status === "cooking") && (
+                {(ticket.status === "pending" ||
+                  ticket.status === "cooking") && (
                   <TouchableOpacity
                     onPress={() => onRush?.(ticket.ticket_id)}
                     disabled={isRushPending}
@@ -895,7 +896,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                     </Text>
                   </TouchableOpacity>
                 )}
-                {(ticket.status === "pending" || ticket.status === "cooking") && (
+                {(ticket.status === "pending" ||
+                  ticket.status === "cooking") && (
                   <TouchableOpacity
                     onPress={() => onPrioritize?.(ticket.ticket_id)}
                     style={{
@@ -963,13 +965,15 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         ticket.order_number?.slice(-4) ||
                         "----"}
                     </Text>
-                    {(ticket.status === "pending" || ticket.status === "cooking") && ticket.prioritized && (
-                      <Star
-                        size={s(16)}
-                        color={colors.warning}
-                        fill={colors.warning}
-                      />
-                    )}
+                    {(ticket.status === "pending" ||
+                      ticket.status === "cooking") &&
+                      ticket.prioritized && (
+                        <Star
+                          size={s(16)}
+                          color={colors.warning}
+                          fill={colors.warning}
+                        />
+                      )}
                     <DeliveryPlatformBadge
                       deliveryPlatform={ticket.delivery_platform}
                       orderSource={ticket.order_source}
@@ -1039,32 +1043,34 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         : undefined
                     }
                   />
-                  {(ticket.status === "pending" || ticket.status === "cooking") && hasRush && (
-                    <View
-                      style={{
-                        backgroundColor: "#FEF08A",
-                        borderWidth: 1,
-                        borderColor: colors.warning + "50",
-                        paddingHorizontal: s(8),
-                        paddingVertical: s(3),
-                        borderRadius: s(12),
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: s(4),
-                      }}
-                    >
-                      <Text
+                  {(ticket.status === "pending" ||
+                    ticket.status === "cooking") &&
+                    hasRush && (
+                      <View
                         style={{
-                          color: "#78350F",
-                          fontSize: s(10),
-                          fontWeight: "800",
-                          letterSpacing: 0.5,
+                          backgroundColor: "#FEF08A",
+                          borderWidth: 1,
+                          borderColor: colors.warning + "50",
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(3),
+                          borderRadius: s(12),
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: s(4),
                         }}
                       >
-                        RUSHED
-                      </Text>
-                    </View>
-                  )}
+                        <Text
+                          style={{
+                            color: "#78350F",
+                            fontSize: s(10),
+                            fontWeight: "800",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          RUSHED
+                        </Text>
+                      </View>
+                    )}
                   {hasRefire && (
                     <View
                       style={{
@@ -3805,7 +3811,8 @@ const KitchenDisplayScreen = () => {
                 )}
 
                 {/* Recall — only for ready tickets */}
-                {(actionMenu.ticket.status === "pending" || actionMenu.ticket.status === "cooking") && (
+                {(actionMenu.ticket.status === "pending" ||
+                  actionMenu.ticket.status === "cooking") && (
                   <>
                     {/* Prioritize */}
                     <Pressable
