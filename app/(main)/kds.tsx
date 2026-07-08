@@ -840,40 +840,42 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   gap: s(6),
                 }}
               >
-                <TouchableOpacity
-                  onPress={handleBumpOneStep}
-                  disabled={
-                    acknowledgmentMode === "block-advance" &&
-                    hasUnacknowledgedNotices
-                  }
-                  style={{
-                    flex: 1,
-                    height: s(32),
-                    borderRadius: s(8),
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor:
-                      hasUnacknowledgedNotices &&
-                      acknowledgmentMode === "block-advance"
-                        ? "#9CA3AF"
-                        : colors.teal,
-                    opacity:
-                      hasUnacknowledgedNotices &&
-                      acknowledgmentMode === "block-advance"
-                        ? 0.5
-                        : 1,
-                  }}
-                >
-                  <Text
+                {ticket.status !== "ready" && (
+                  <TouchableOpacity
+                    onPress={handleBumpOneStep}
+                    disabled={
+                      acknowledgmentMode === "block-advance" &&
+                      hasUnacknowledgedNotices
+                    }
                     style={{
-                      color: "#FFFFFF",
-                      fontSize: s(11),
-                      fontWeight: "700",
+                      flex: 1,
+                      height: s(32),
+                      borderRadius: s(8),
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor:
+                        hasUnacknowledgedNotices &&
+                        acknowledgmentMode === "block-advance"
+                          ? "#9CA3AF"
+                          : colors.teal,
+                      opacity:
+                        hasUnacknowledgedNotices &&
+                        acknowledgmentMode === "block-advance"
+                          ? 0.5
+                          : 1,
                     }}
                   >
-                    Bump
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={{
+                        color: "#FFFFFF",
+                        fontSize: s(11),
+                        fontWeight: "700",
+                      }}
+                    >
+                      Bump
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   onPress={handleMarkAsDone}
                   style={{
