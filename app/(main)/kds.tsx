@@ -876,27 +876,29 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                     </Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity
-                  onPress={handleMarkAsDone}
-                  style={{
-                    flex: 1,
-                    height: s(32),
-                    borderRadius: s(8),
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: colors.success,
-                  }}
-                >
-                  <Text
+                {ticket.status === "ready" && (
+                  <TouchableOpacity
+                    onPress={handleMarkAsDone}
                     style={{
-                      color: "#FFFFFF",
-                      fontSize: s(11),
-                      fontWeight: "700",
+                      flex: 1,
+                      height: s(32),
+                      borderRadius: s(8),
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.success,
                     }}
                   >
-                    Done
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={{
+                        color: "#FFFFFF",
+                        fontSize: s(11),
+                        fontWeight: "700",
+                      }}
+                    >
+                      Done
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 {(ticket.status === "pending" ||
                   ticket.status === "cooking") && (
                   <TouchableOpacity
@@ -3841,48 +3843,54 @@ const KitchenDisplayScreen = () => {
 
                 {/* Recall — only for ready tickets */}
 
-                {/* Mark Done — available from any stage */}
-                <Pressable
-                  onPress={() => {
-                    const ticket = actionMenu.ticket;
-                    if (ticket) {
-                      const itemIds = getTicketItems(ticket).map((i) => i.id);
-                      advanceTicketStatus(ticket.ticket_id, itemIds, "served");
-                      handleDismissActionMenu();
-                    }
-                  }}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingHorizontal: s(12),
-                    paddingVertical: s(8),
-                    borderRadius: s(8),
-                    borderWidth: 1,
-                    borderColor: colors.success + "66",
-                    backgroundColor: colors.success + "16",
-                    marginBottom: s(6),
-                  }}
-                >
-                  <View
+                {/* Mark Done — only for served tickets */}
+                {actionMenu.ticket.status === "ready" && (
+                  <Pressable
+                    onPress={() => {
+                      const ticket = actionMenu.ticket;
+                      if (ticket) {
+                        const itemIds = getTicketItems(ticket).map((i) => i.id);
+                        advanceTicketStatus(
+                          ticket.ticket_id,
+                          itemIds,
+                          "served",
+                        );
+                        handleDismissActionMenu();
+                      }
+                    }}
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: s(8),
+                      justifyContent: "space-between",
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(8),
+                      borderRadius: s(8),
+                      borderWidth: 1,
+                      borderColor: colors.success + "66",
+                      backgroundColor: colors.success + "16",
+                      marginBottom: s(6),
                     }}
                   >
-                    <CheckSquare size={s(15)} color={colors.success} />
-                    <Text
+                    <View
                       style={{
-                        color: "#111827",
-                        fontSize: s(13),
-                        fontWeight: "700",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: s(8),
                       }}
                     >
-                      Mark Done
-                    </Text>
-                  </View>
-                </Pressable>
+                      <CheckSquare size={s(15)} color={colors.success} />
+                      <Text
+                        style={{
+                          color: "#111827",
+                          fontSize: s(13),
+                          fontWeight: "700",
+                        }}
+                      >
+                        Mark Done
+                      </Text>
+                    </View>
+                  </Pressable>
+                )}
 
                 {(actionMenu.ticket.status === "pending" ||
                   actionMenu.ticket.status === "cooking") && (
