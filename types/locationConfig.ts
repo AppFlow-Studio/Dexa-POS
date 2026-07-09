@@ -61,7 +61,7 @@ export interface PrintingConfig {
   // When true, split-payment orders auto-print one receipt per portion as each
   // portion completes (instead of the single combined receipt).
   autoPrintSplitReceipts: boolean;
-  autoPrintVoidReceipt: boolean;
+  autoPrintVoidReceipt: boolean;                                                                                                                                                                                                                                                                                                                                                                                                  
   printVoidTickets: boolean;
   printRefundTickets: boolean;
   printMerchantCopy: boolean;
