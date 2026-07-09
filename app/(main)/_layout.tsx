@@ -282,6 +282,30 @@ export default function MainLayout() {
     );
   }
 
+  // Kiosk (self-service) — plain full-screen layout with none of the POS
+  // bottom sheets (MenuSearchSheet, NotificationBottomSheet, PaymentBottomSheet,
+  // PaymentDetailBottomSheet) or online-order chrome that would render on top
+  // of the customer-facing UI.
+  if (isKiosk || isKioskRoute) {
+    return (
+      <LocationRealtimeProvider
+        locationId={selectedStore?.id}
+        callbacks={{
+          onOrderChange: handleOrderChange,
+          onPaymentChange: handlePaymentChange,
+        }}
+      >
+        <SafeAreaView
+          edges={["top", "right", "bottom", "left"]}
+          style={{ flex: 1, backgroundColor: colors.screen }}
+        >
+          <StatusBar style="light" translucent />
+          <Slot />
+        </SafeAreaView>
+      </LocationRealtimeProvider>
+    );
+  }
+
   return (
     <LocationRealtimeProvider
       locationId={selectedStore?.id}
