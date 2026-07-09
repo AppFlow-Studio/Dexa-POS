@@ -15,7 +15,17 @@ import { Platform } from "react-native";
  */
 export function useKioskOrientation(orientation: KioskOrientation | undefined) {
   useEffect(() => {
-    if (Platform.OS === "web" || !orientation) return;
+    if (Platform.OS === "web") return;
+
+    // No orientation requested — lock to landscape (the app's default per
+    // app.json). lockAsync(DEFAULT) doesn't actually prevent rotation on
+    // Android when system auto-rotate is on; we must be explicit.
+    if (!orientation) {
+      ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.LANDSCAPE,
+      ).catch(() => {});
+      return;
+    }
 
     const lock =
       orientation === "horizontal"
@@ -31,8 +41,13 @@ export function useKioskOrientation(orientation: KioskOrientation | undefined) {
       }
     })();
 
+    // Restore landscape when the component unmounts or the orientation changes
+    // away, so switching to a non-kiosk station locks back to the app default.
     return () => {
       cancelled = true;
+      ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.LANDSCAPE,
+      ).catch(() => {});
     };
   }, [orientation]);
 }

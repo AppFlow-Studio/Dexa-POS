@@ -7,6 +7,8 @@ import OnlineOrderDrawer from "@/components/online-orders/OnlineOrderDrawer";
 import OnlineOrderEdgeTab from "@/components/online-orders/OnlineOrderEdgeTab";
 import MyProfilePanel from "@/components/profile/MyProfilePanel";
 import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
+import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
+import { useKioskProfile } from "@/hooks/kiosk/useKioskProfile";
 import { useKdsOnlineOrdersBootstrap } from "@/hooks/pos/useKdsOnlineOrdersBootstrap";
 import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
@@ -66,6 +68,14 @@ export default function MainLayout() {
   const isFullScreenStation = isKDS || isKiosk || isKioskRoute;
   const disableKeyboardAvoiding =
     pathname === "/order-processing" || pathname.endsWith("/order-processing");
+
+  // Lock orientation for kiosk stations; unlock when on a non-kiosk station
+  // so switching station types doesn't leave the device stuck in kiosk
+  // orientation. The query is enabled/disabled implicitly by stationId.
+  const { config: kioskConfig } = useKioskProfile();
+  useKioskOrientation(
+    isKiosk || isKioskRoute ? kioskConfig?.orientation : undefined,
+  );
 
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
   const paymentDetailSheetRef = useRef<BottomSheetMethods>(null);
