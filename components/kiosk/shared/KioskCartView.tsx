@@ -1,9 +1,9 @@
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
-import { useKioskUiScale } from "@/lib/uiScale";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
+import { useKioskUiScale } from "@/lib/uiScale";
 import {
   lineTotal,
   useKioskCartStore,
@@ -11,7 +11,13 @@ import {
 } from "@/stores/useKioskCartStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { ChevronLeft, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react-native";
+import {
+  ChevronLeft,
+  Minus,
+  Plus,
+  ShoppingCart,
+  Trash2,
+} from "lucide-react-native";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
 
 /**
@@ -50,7 +56,10 @@ export function KioskCartView({
   const faint = `${config.textColor}12`;
 
   return (
-    <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
+    <View
+      className="flex-1"
+      style={{ backgroundColor: config.backgroundColor }}
+    >
       {/* Header row */}
       <View
         style={{
@@ -65,7 +74,11 @@ export function KioskCartView({
           <ChevronLeft size={kioskPx(28, s)} color={config.textColor} />
         </Pressable>
         <Text
-          style={{ fontSize: kioskPx(26, s), fontWeight: "800", color: config.textColor }}
+          style={{
+            fontSize: kioskPx(26, s),
+            fontWeight: "800",
+            color: config.textColor,
+          }}
         >
           Your Order
         </Text>
@@ -114,7 +127,12 @@ export function KioskCartView({
               gap: kioskPx(14, s),
             }}
           >
-            <SummaryRow label="Subtotal" value={subtotal} muted={muted} color={config.textColor} />
+            <SummaryRow
+              label="Subtotal"
+              value={subtotal}
+              muted={muted}
+              color={config.textColor}
+            />
             {taxRatePct > 0 && (
               <SummaryRow
                 label={`Tax (${taxRatePct}%)`}
@@ -124,7 +142,13 @@ export function KioskCartView({
               />
             )}
             <View style={{ height: 1, backgroundColor: faint }} />
-            <SummaryRow label="Total" value={estTotal} muted={muted} color={config.textColor} emphasize />
+            <SummaryRow
+              label="Total"
+              value={estTotal}
+              muted={muted}
+              color={config.textColor}
+              emphasize
+            />
 
             <Pressable
               onPress={onCheckout}
@@ -138,7 +162,11 @@ export function KioskCartView({
               }}
             >
               <Text
-                style={{ color: "#FFFFFF", fontSize: kioskPx(18, s), fontWeight: "800" }}
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: kioskPx(18, s),
+                  fontWeight: "800",
+                }}
               >
                 Checkout · ${estTotal.toFixed(2)}
               </Text>
@@ -212,7 +240,10 @@ function CartLineRow({
             resizeMode="cover"
           />
         ) : (
-          <PlaceholderIcon color={`${config.textColor}40`} size={kioskPx(28, s)} />
+          <PlaceholderIcon
+            color={`${config.textColor}40`}
+            size={kioskPx(28, s)}
+          />
         )}
       </View>
 
@@ -250,7 +281,11 @@ function CartLineRow({
           </View>
           {modifierText ? (
             <Text
-              style={{ fontSize: kioskPx(14, s), color: muted, marginTop: kioskPx(4, s) }}
+              style={{
+                fontSize: kioskPx(14, s),
+                color: muted,
+                marginTop: kioskPx(4, s),
+              }}
               numberOfLines={2}
             >
               {modifierText}
@@ -298,7 +333,11 @@ function CartLineRow({
             </Pressable>
           </View>
 
-          <Pressable onPress={onRemove} hitSlop={6} style={{ padding: kioskPx(6, s) }}>
+          <Pressable
+            onPress={onRemove}
+            hitSlop={6}
+            style={{ padding: kioskPx(6, s) }}
+          >
             <Trash2 size={kioskPx(20, s)} color="#EF4444" />
           </Pressable>
         </View>
@@ -318,12 +357,23 @@ function EmptyCart({
 }) {
   const s = useKioskUiScale();
   return (
-    <View className="flex-1 items-center justify-center px-10" style={{ gap: kioskPx(18, s) }}>
+    <View
+      className="flex-1 items-center justify-center px-10"
+      style={{ gap: kioskPx(18, s) }}
+    >
       <ShoppingCart size={kioskPx(72, s)} color={`${config.textColor}30`} />
-      <Text style={{ fontSize: kioskPx(22, s), fontWeight: "700", color: config.textColor }}>
+      <Text
+        style={{
+          fontSize: kioskPx(22, s),
+          fontWeight: "700",
+          color: config.textColor,
+        }}
+      >
         Your cart is empty
       </Text>
-      <Text style={{ fontSize: kioskPx(16, s), color: muted, textAlign: "center" }}>
+      <Text
+        style={{ fontSize: kioskPx(16, s), color: muted, textAlign: "center" }}
+      >
         Add some items from the menu to get started.
       </Text>
       <Pressable
@@ -336,7 +386,13 @@ function EmptyCart({
           backgroundColor: config.primaryColor,
         }}
       >
-        <Text style={{ color: "#FFFFFF", fontSize: kioskPx(16, s), fontWeight: "700" }}>
+        <Text
+          style={{
+            color: "#FFFFFF",
+            fontSize: kioskPx(16, s),
+            fontWeight: "700",
+          }}
+        >
           Browse Menu
         </Text>
       </Pressable>
@@ -359,11 +415,29 @@ function SummaryRow({
 }) {
   const s = useKioskUiScale();
   return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-      <Text style={{ fontSize: kioskPx(emphasize ? 18 : 15, s), color: emphasize ? color : muted, fontWeight: emphasize ? "800" : "400" }}>
+    <View
+      style={{
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}
+    >
+      <Text
+        style={{
+          fontSize: kioskPx(emphasize ? 18 : 15, s),
+          color: emphasize ? color : muted,
+          fontWeight: emphasize ? "800" : "400",
+        }}
+      >
         {label}
       </Text>
-      <Text style={{ fontSize: kioskPx(emphasize ? 22 : 15, s), fontWeight: emphasize ? "800" : "600", color }}>
+      <Text
+        style={{
+          fontSize: kioskPx(emphasize ? 22 : 15, s),
+          fontWeight: emphasize ? "800" : "600",
+          color,
+        }}
+      >
         ${value.toFixed(2)}
       </Text>
     </View>

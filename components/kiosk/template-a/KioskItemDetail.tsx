@@ -1,10 +1,10 @@
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { useItemModifiers } from "@/components/kiosk/shared/useItemModifiers";
-import { useKioskUiScale } from "@/lib/uiScale";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
+import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { ChevronLeft, Minus, Plus } from "lucide-react-native";
 import { useMemo } from "react";
@@ -116,7 +116,10 @@ export function KioskItemDetail({
             resizeMode="cover"
           />
         ) : (
-          <PlaceholderIcon color={`${config.textColor}40`} size={kioskPx(88, s)} />
+          <PlaceholderIcon
+            color={`${config.textColor}40`}
+            size={kioskPx(88, s)}
+          />
         )}
       </View>
     </>
@@ -335,7 +338,13 @@ export function KioskItemDetail({
             : `${config.primaryColor}40`,
         }}
       >
-        <Text style={{ color: "#FFFFFF", fontSize: kioskPx(18, s), fontWeight: "800" }}>
+        <Text
+          style={{
+            color: "#FFFFFF",
+            fontSize: kioskPx(18, s),
+            fontWeight: "800",
+          }}
+        >
           {canAdd
             ? `Add to Cart · $${total.toFixed(2)}`
             : `Select ${missingRequired[0]?.name ?? "options"}`}
@@ -402,7 +411,10 @@ export function KioskItemDetail({
     >
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: kioskPx(32, s), alignItems: "center" }}
+        contentContainerStyle={{
+          paddingBottom: kioskPx(32, s),
+          alignItems: "center",
+        }}
       >
         {/* Hero — contained, rounded, with soft tinted backdrop */}
         <View
@@ -419,7 +431,13 @@ export function KioskItemDetail({
         </View>
 
         {/* Content column */}
-        <View style={{ width: "100%", maxWidth: kioskPx(640, s), paddingHorizontal: kioskPx(24, s) }}>
+        <View
+          style={{
+            width: "100%",
+            maxWidth: kioskPx(640, s),
+            paddingHorizontal: kioskPx(24, s),
+          }}
+        >
           {titleBlock}
           {modifierGroups}
         </View>

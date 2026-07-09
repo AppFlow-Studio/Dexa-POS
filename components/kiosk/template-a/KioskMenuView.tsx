@@ -1,7 +1,7 @@
-import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
-import { useKioskUiScale } from "@/lib/uiScale";
+import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import type { Category, MenuItemType } from "@/lib/types";
+import { useKioskUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { useMemo, useState } from "react";
@@ -92,13 +92,19 @@ export function KioskMenuView({
           sections={sections}
           keyExtractor={(cat, index) => `${cat.id}-${index}`}
           stickySectionHeadersEnabled={false}
-          contentContainerStyle={{ paddingVertical: kioskPx(16, s), paddingHorizontal: kioskPx(12, s) }}
+          contentContainerStyle={{
+            paddingVertical: kioskPx(16, s),
+            paddingHorizontal: kioskPx(12, s),
+          }}
           showsVerticalScrollIndicator={false}
           renderSectionHeader={({ section }) => (
             <View
               style={{
                 paddingHorizontal: kioskPx(12, s),
-                paddingTop: section.menuId === sections[0]?.menuId ? kioskPx(4, s) : kioskPx(22, s),
+                paddingTop:
+                  section.menuId === sections[0]?.menuId
+                    ? kioskPx(4, s)
+                    : kioskPx(22, s),
                 paddingBottom: kioskPx(10, s),
               }}
             >
@@ -150,8 +156,6 @@ export function KioskMenuView({
                     : {}),
                 }}
               >
-                
-               
                 <Text
                   style={{
                     flex: 1,
@@ -167,7 +171,12 @@ export function KioskMenuView({
             );
           }}
           ListEmptyComponent={
-            <Text style={{ padding: kioskPx(20, s), color: `${config.textColor}99` }}>
+            <Text
+              style={{
+                padding: kioskPx(20, s),
+                color: `${config.textColor}99`,
+              }}
+            >
               No categories available.
             </Text>
           }
@@ -181,7 +190,10 @@ export function KioskMenuView({
           data={items}
           keyExtractor={(i) => i.id}
           numColumns={numColumns}
-          columnWrapperStyle={{ gap: kioskPx(12, s), marginBottom: kioskPx(12, s) }}
+          columnWrapperStyle={{
+            gap: kioskPx(12, s),
+            marginBottom: kioskPx(12, s),
+          }}
           contentContainerStyle={{ padding: kioskPx(16, s) }}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
@@ -195,7 +207,12 @@ export function KioskMenuView({
           )}
           ListEmptyComponent={
             <View className="flex-1 items-center justify-center py-20">
-              <Text style={{ fontSize: kioskPx(18, s), color: `${config.textColor}99` }}>
+              <Text
+                style={{
+                  fontSize: kioskPx(18, s),
+                  color: `${config.textColor}99`,
+                }}
+              >
                 No items in this category.
               </Text>
             </View>

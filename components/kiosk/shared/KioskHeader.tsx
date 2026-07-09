@@ -1,5 +1,5 @@
-import { useKioskUiScale } from "@/lib/uiScale";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskOrderType } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { ShoppingBag, UtensilsCrossed, X } from "lucide-react-native";
@@ -64,7 +64,13 @@ export function KioskHeader({
             resizeMode="contain"
           />
         ) : (
-          <Text style={{ color: "#FFFFFF", fontSize: kioskPx(22, s), fontWeight: "700" }}>
+          <Text
+            style={{
+              color: "#FFFFFF",
+              fontSize: kioskPx(22, s),
+              fontWeight: "700",
+            }}
+          >
             {config.profileName}
           </Text>
         )}
@@ -137,7 +143,13 @@ export function KioskHeader({
           }}
         >
           <X size={kioskPx(18, s)} color="#FFFFFF" />
-          <Text style={{ color: "#FFFFFF", fontSize: kioskPx(15, s), fontWeight: "600" }}>
+          <Text
+            style={{
+              color: "#FFFFFF",
+              fontSize: kioskPx(15, s),
+              fontWeight: "600",
+            }}
+          >
             Cancel
           </Text>
         </Pressable>

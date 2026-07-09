@@ -1,6 +1,6 @@
-import { useWindowDimensions } from "react-native";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useWindowDimensions } from "react-native";
 
 /**
  * Automatic UI scaling so the app looks proportionally consistent across
@@ -70,7 +70,10 @@ export function computeUiScale(widthDp: number, heightDp?: number): number {
  * Kiosk-specific scale computation. Same logic as computeUiScale but clamped
  * to KIOSK_MIN/MAX_UI_SCALE so huge kiosk displays get proportionally larger UI.
  */
-export function computeKioskUiScale(widthDp: number, heightDp?: number): number {
+export function computeKioskUiScale(
+  widthDp: number,
+  heightDp?: number,
+): number {
   if (!widthDp || widthDp <= 0) return 1;
   const widthRatio = widthDp / BASELINE_WIDTH_DP;
   const heightRatio =
@@ -102,7 +105,10 @@ export function useKioskUiScale(): number {
   const override = useSettingsStore((s) => s.uiScaleOverride);
   const base = computeKioskUiScale(width, height);
   if (override == null) return base;
-  return Math.min(KIOSK_MAX_UI_SCALE, Math.max(KIOSK_MIN_UI_SCALE, base * override));
+  return Math.min(
+    KIOSK_MAX_UI_SCALE,
+    Math.max(KIOSK_MIN_UI_SCALE, base * override),
+  );
 }
 
 /**

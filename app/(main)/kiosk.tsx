@@ -1,8 +1,8 @@
 import { KioskAttractScreen } from "@/components/kiosk/KioskAttractScreen";
-import { KioskScaleProvider } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskTemplateRouter } from "@/components/kiosk/KioskTemplateRouter";
 import { KioskAdminPinModal } from "@/components/kiosk/shared/KioskAdminPinModal";
 import { KioskDiagnosticsScreen } from "@/components/kiosk/shared/KioskDiagnosticsScreen";
+import { KioskScaleProvider } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
 import { useKioskProfile } from "@/hooks/kiosk/useKioskProfile";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";

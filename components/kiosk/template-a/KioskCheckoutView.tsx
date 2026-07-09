@@ -82,11 +82,7 @@ export function KioskCheckoutView({
   // it only shows if the cart was empty or computation errored.
   if (step === "tip" && status === "error") {
     return (
-      <PreparingScreen
-        config={config}
-        error={error}
-        onBack={handleBack}
-      />
+      <PreparingScreen config={config} error={error} onBack={handleBack} />
     );
   }
 
@@ -120,19 +116,38 @@ export function KioskCheckoutView({
   return (
     <View
       className="flex-1 items-center justify-center px-10"
-      style={{ backgroundColor: config.backgroundColor, gap: kioskPx(20, scale) }}
+      style={{
+        backgroundColor: config.backgroundColor,
+        gap: kioskPx(20, scale),
+      }}
     >
       {status === "error" ? (
         <>
           <Text
-            style={{ fontSize: kioskPx(24, scale), fontWeight: "800", color: config.textColor }}
+            style={{
+              fontSize: kioskPx(24, scale),
+              fontWeight: "800",
+              color: config.textColor,
+            }}
           >
             Payment didn’t go through
           </Text>
-          <Text style={{ fontSize: kioskPx(16, scale), color: muted, textAlign: "center" }}>
+          <Text
+            style={{
+              fontSize: kioskPx(16, scale),
+              color: muted,
+              textAlign: "center",
+            }}
+          >
             {error ?? "Please try again."}
           </Text>
-          <View style={{ flexDirection: "row", gap: kioskPx(12, scale), marginTop: kioskPx(8, scale) }}>
+          <View
+            style={{
+              flexDirection: "row",
+              gap: kioskPx(12, scale),
+              marginTop: kioskPx(8, scale),
+            }}
+          >
             <Pressable
               onPress={handleBack}
               style={{
@@ -143,7 +158,13 @@ export function KioskCheckoutView({
                 borderColor: `${config.textColor}30`,
               }}
             >
-              <Text style={{ color: config.textColor, fontSize: kioskPx(16, scale), fontWeight: "700" }}>
+              <Text
+                style={{
+                  color: config.textColor,
+                  fontSize: kioskPx(16, scale),
+                  fontWeight: "700",
+                }}
+              >
                 Back to cart
               </Text>
             </Pressable>
@@ -152,7 +173,13 @@ export function KioskCheckoutView({
       ) : (
         <>
           <ActivityIndicator size="large" color={config.primaryColor} />
-          <Text style={{ fontSize: kioskPx(20, scale), fontWeight: "700", color: config.textColor }}>
+          <Text
+            style={{
+              fontSize: kioskPx(20, scale),
+              fontWeight: "700",
+              color: config.textColor,
+            }}
+          >
             {status === "charging"
               ? "Follow the prompts on the card reader…"
               : "Processing your order…"}
@@ -194,46 +221,60 @@ function SuccessScreen({
       className="flex-1 items-center justify-center px-10"
       style={{ backgroundColor: config.backgroundColor, gap: kioskPx(20, s) }}
     >
-        <CheckCircle2 size={kioskPx(96, s)} color={config.primaryColor} />
+      <CheckCircle2 size={kioskPx(96, s)} color={config.primaryColor} />
+      <Text
+        style={{
+          fontSize: kioskPx(30, s),
+          fontWeight: "800",
+          color: config.textColor,
+        }}
+      >
+        Thank you!
+      </Text>
+      <Text
+        style={{ fontSize: kioskPx(18, s), color: muted, textAlign: "center" }}
+      >
+        Your order has been sent to the kitchen.
+      </Text>
+      {pickupNumber ? (
+        <View style={{ alignItems: "center", marginTop: kioskPx(8, s) }}>
+          <Text style={{ fontSize: kioskPx(16, s), color: muted }}>
+            Your number
+          </Text>
+          <Text
+            style={{
+              fontSize: kioskPx(56, s),
+              fontWeight: "900",
+              color: config.primaryColor,
+            }}
+          >
+            {config.pickupNumberPrefix}
+            {pickupNumber}
+          </Text>
+        </View>
+      ) : null}
+      <Pressable
+        onPress={onDone}
+        style={{
+          marginTop: kioskPx(16, s),
+          paddingHorizontal: kioskPx(36, s),
+          paddingVertical: kioskPx(16, s),
+          borderRadius: kioskPx(16, s),
+          backgroundColor: config.primaryColor,
+        }}
+      >
         <Text
-          style={{ fontSize: kioskPx(30, s), fontWeight: "800", color: config.textColor }}
-        >
-          Thank you!
-        </Text>
-        <Text style={{ fontSize: kioskPx(18, s), color: muted, textAlign: "center" }}>
-          Your order has been sent to the kitchen.
-        </Text>
-        {pickupNumber ? (
-          <View style={{ alignItems: "center", marginTop: kioskPx(8, s) }}>
-            <Text style={{ fontSize: kioskPx(16, s), color: muted }}>Your number</Text>
-            <Text
-              style={{
-                fontSize: kioskPx(56, s),
-                fontWeight: "900",
-                color: config.primaryColor,
-              }}
-            >
-              {config.pickupNumberPrefix}
-              {pickupNumber}
-            </Text>
-          </View>
-        ) : null}
-        <Pressable
-          onPress={onDone}
           style={{
-            marginTop: kioskPx(16, s),
-            paddingHorizontal: kioskPx(36, s),
-            paddingVertical: kioskPx(16, s),
-            borderRadius: kioskPx(16, s),
-            backgroundColor: config.primaryColor,
+            color: "#FFFFFF",
+            fontSize: kioskPx(18, s),
+            fontWeight: "700",
           }}
         >
-          <Text style={{ color: "#FFFFFF", fontSize: kioskPx(18, s), fontWeight: "700" }}>
-            Done
-          </Text>
-        </Pressable>
-      </View>
-    );
+          Done
+        </Text>
+      </Pressable>
+    </View>
+  );
 }
 
 /**
@@ -284,10 +325,22 @@ function PreparingScreen({
 
       {isError ? (
         <>
-          <Text style={{ fontSize: kioskPx(24, s), fontWeight: "800", color: config.textColor }}>
+          <Text
+            style={{
+              fontSize: kioskPx(24, s),
+              fontWeight: "800",
+              color: config.textColor,
+            }}
+          >
             We couldn’t start your order
           </Text>
-          <Text style={{ fontSize: kioskPx(16, s), color: muted, textAlign: "center" }}>
+          <Text
+            style={{
+              fontSize: kioskPx(16, s),
+              color: muted,
+              textAlign: "center",
+            }}
+          >
             {error}
           </Text>
           <Pressable
@@ -300,7 +353,13 @@ function PreparingScreen({
               backgroundColor: config.primaryColor,
             }}
           >
-            <Text style={{ color: "#FFFFFF", fontSize: kioskPx(18, s), fontWeight: "700" }}>
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: kioskPx(18, s),
+                fontWeight: "700",
+              }}
+            >
               Back to cart
             </Text>
           </Pressable>
@@ -308,7 +367,13 @@ function PreparingScreen({
       ) : (
         <>
           <ActivityIndicator size="large" color={config.primaryColor} />
-          <Text style={{ fontSize: kioskPx(20, s), fontWeight: "700", color: config.textColor }}>
+          <Text
+            style={{
+              fontSize: kioskPx(20, s),
+              fontWeight: "700",
+              color: config.textColor,
+            }}
+          >
             Getting your order ready…
           </Text>
           <Text style={{ fontSize: kioskPx(15, s), color: muted }}>
@@ -337,7 +402,8 @@ function TipStep({
   const [selected, setSelected] = useState<number | null>(null); // percent, -1 = no tip
   const muted = `${config.textColor}99`;
   const faint = `${config.textColor}12`;
-  const presets = config.tipPresets.length > 0 ? config.tipPresets : [15, 18, 20];
+  const presets =
+    config.tipPresets.length > 0 ? config.tipPresets : [15, 18, 20];
 
   const subtotal = totals?.subtotal ?? 0;
   const tax = totals?.tax ?? 0;
@@ -353,7 +419,10 @@ function TipStep({
   const disabled = selected == null || loading || !totals;
 
   return (
-    <View className="flex-1" style={{ backgroundColor: config.backgroundColor }}>
+    <View
+      className="flex-1"
+      style={{ backgroundColor: config.backgroundColor }}
+    >
       {/* Back */}
       <Pressable
         onPress={onBack}
@@ -374,7 +443,10 @@ function TipStep({
         <ChevronLeft size={kioskPx(26, s)} color={config.textColor} />
       </Pressable>
 
-      <View className="flex-1 items-center justify-center px-8" style={{ gap: kioskPx(28, s) }}>
+      <View
+        className="flex-1 items-center justify-center px-8"
+        style={{ gap: kioskPx(28, s) }}
+      >
         {/* Heading */}
         <View style={{ alignItems: "center", gap: kioskPx(12, s) }}>
           <View
@@ -387,12 +459,21 @@ function TipStep({
               backgroundColor: `${config.primaryColor}14`,
             }}
           >
-            <Heart size={kioskPx(34, s)} color={config.primaryColor} fill={config.primaryColor} />
+            <Heart
+              size={kioskPx(34, s)}
+              color={config.primaryColor}
+              fill={config.primaryColor}
+            />
           </View>
-          <Text style={{ fontSize: kioskPx(30, s), fontWeight: "800", color: config.textColor }}>
+          <Text
+            style={{
+              fontSize: kioskPx(30, s),
+              fontWeight: "800",
+              color: config.textColor,
+            }}
+          >
             Add a tip?
           </Text>
-          
         </View>
 
         {/* Tip preview */}
@@ -400,14 +481,22 @@ function TipStep({
           style={{
             fontSize: kioskPx(44, s),
             fontWeight: "900",
-            color: tipAmount > 0 ? config.primaryColor : `${config.textColor}40`,
+            color:
+              tipAmount > 0 ? config.primaryColor : `${config.textColor}40`,
           }}
         >
           {tipAmount > 0 ? `$${tipAmount.toFixed(2)}` : "$0.00"}
         </Text>
 
         {/* Preset row — equal width */}
-        <View style={{ flexDirection: "row", gap: kioskPx(12, s), width: "100%", maxWidth: kioskPx(560, s) }}>
+        <View
+          style={{
+            flexDirection: "row",
+            gap: kioskPx(12, s),
+            width: "100%",
+            maxWidth: kioskPx(560, s),
+          }}
+        >
           {presets.map((pct) => {
             const active = selected === pct;
             return (
@@ -425,10 +514,22 @@ function TipStep({
                   backgroundColor: active ? config.primaryColor : "transparent",
                 }}
               >
-                <Text style={{ fontSize: kioskPx(28, s), fontWeight: "800", color: active ? "#FFFFFF" : config.textColor }}>
+                <Text
+                  style={{
+                    fontSize: kioskPx(28, s),
+                    fontWeight: "800",
+                    color: active ? "#FFFFFF" : config.textColor,
+                  }}
+                >
                   {pct}%
                 </Text>
-                <Text style={{ fontSize: kioskPx(14, s), fontWeight: "600", color: active ? "rgba(255,255,255,0.85)" : muted }}>
+                <Text
+                  style={{
+                    fontSize: kioskPx(14, s),
+                    fontWeight: "600",
+                    color: active ? "rgba(255,255,255,0.85)" : muted,
+                  }}
+                >
                   ${((baseTotal * pct) / 100).toFixed(2)}
                 </Text>
               </Pressable>
@@ -477,7 +578,12 @@ function TipStep({
             gap: kioskPx(10, s),
           }}
         >
-          <SummaryRow label="Subtotal" value={subtotal} muted={muted} color={config.textColor} />
+          <SummaryRow
+            label="Subtotal"
+            value={subtotal}
+            muted={muted}
+            color={config.textColor}
+          />
           <SummaryRow
             label={
               subtotal > 0
@@ -488,9 +594,22 @@ function TipStep({
             muted={muted}
             color={config.textColor}
           />
-          <SummaryRow label="Tip" value={tipAmount} muted={muted} color={config.textColor} />
-          <View style={{ height: 1, backgroundColor: `${config.textColor}15` }} />
-          <SummaryRow label="Total" value={grandTotal} muted={muted} color={config.textColor} emphasize />
+          <SummaryRow
+            label="Tip"
+            value={tipAmount}
+            muted={muted}
+            color={config.textColor}
+          />
+          <View
+            style={{ height: 1, backgroundColor: `${config.textColor}15` }}
+          />
+          <SummaryRow
+            label="Total"
+            value={grandTotal}
+            muted={muted}
+            color={config.textColor}
+            emphasize
+          />
         </View>
 
         <Pressable
@@ -503,12 +622,24 @@ function TipStep({
             borderRadius: kioskPx(20, s),
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: disabled ? `${config.primaryColor}40` : config.primaryColor,
+            backgroundColor: disabled
+              ? `${config.primaryColor}40`
+              : config.primaryColor,
           }}
         >
-          {(loading || !totals) && <ActivityIndicator size="small" color="#FFFFFF" />}
-          <Text style={{ color: "#FFFFFF", fontSize: kioskPx(19, s), fontWeight: "800" }}>
-            {loading || !totals ? "Preparing your order…" : `Pay $${grandTotal.toFixed(2)}`}
+          {(loading || !totals) && (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          )}
+          <Text
+            style={{
+              color: "#FFFFFF",
+              fontSize: kioskPx(19, s),
+              fontWeight: "800",
+            }}
+          >
+            {loading || !totals
+              ? "Preparing your order…"
+              : `Pay $${grandTotal.toFixed(2)}`}
           </Text>
         </Pressable>
       </View>
@@ -531,11 +662,29 @@ function SummaryRow({
 }) {
   const s = useKioskUiScale();
   return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-      <Text style={{ fontSize: kioskPx(emphasize ? 18 : 15, s), color: emphasize ? color : muted, fontWeight: emphasize ? "800" : "400" }}>
+    <View
+      style={{
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}
+    >
+      <Text
+        style={{
+          fontSize: kioskPx(emphasize ? 18 : 15, s),
+          color: emphasize ? color : muted,
+          fontWeight: emphasize ? "800" : "400",
+        }}
+      >
         {label}
       </Text>
-      <Text style={{ fontSize: kioskPx(emphasize ? 22 : 15, s), fontWeight: emphasize ? "800" : "600", color }}>
+      <Text
+        style={{
+          fontSize: kioskPx(emphasize ? 22 : 15, s),
+          fontWeight: emphasize ? "800" : "600",
+          color,
+        }}
+      >
         ${value.toFixed(2)}
       </Text>
     </View>

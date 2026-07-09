@@ -1,9 +1,9 @@
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
-import { useKioskUiScale } from "@/lib/uiScale";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
+import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import React, { useMemo } from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -157,7 +157,10 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
               { backgroundColor: `${accent}10` },
             ]}
           >
-            <PlaceholderIcon color={`${config.textColor}55`} size={kioskPx(40, s)} />
+            <PlaceholderIcon
+              color={`${config.textColor}55`}
+              size={kioskPx(40, s)}
+            />
           </View>
         )}
       </View>

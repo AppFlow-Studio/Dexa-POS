@@ -25,9 +25,13 @@ export function KioskScaleProvider({ children }: { children: ReactNode }) {
   const scale = useKioskUiScale();
   return (
     <View
-      style={
-        [{ flex: 1 } as ViewStyle, { "--ui-scale": scale, "--kiosk-ui-scale": scale } as unknown as ViewStyle]
-      }
+      style={[
+        { flex: 1 } as ViewStyle,
+        {
+          "--ui-scale": scale,
+          "--kiosk-ui-scale": scale,
+        } as unknown as ViewStyle,
+      ]}
     >
       {children}
     </View>

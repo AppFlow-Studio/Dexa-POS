@@ -63,13 +63,25 @@ export function KioskCartButton({
             borderColor: config.primaryColor,
           }}
         >
-          <Text style={{ color: "#FFFFFF", fontSize: kioskPx(11, s), fontWeight: "800" }}>
+          <Text
+            style={{
+              color: "#FFFFFF",
+              fontSize: kioskPx(11, s),
+              fontWeight: "800",
+            }}
+          >
             {itemCount}
           </Text>
         </View>
       </View>
 
-      <Text style={{ color: "#FFFFFF", fontSize: kioskPx(17, s), fontWeight: "700" }}>
+      <Text
+        style={{
+          color: "#FFFFFF",
+          fontSize: kioskPx(17, s),
+          fontWeight: "700",
+        }}
+      >
         View Cart
         {subtotal != null ? `  ·  $${subtotal.toFixed(2)}` : ""}
       </Text>
