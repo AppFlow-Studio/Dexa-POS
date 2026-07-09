@@ -10,27 +10,26 @@
  * offline tip computation utility.
  */
 
+import { OrderProfile, OrderProfilePayment } from "@/lib/types";
 import {
   TipDistributionDetail,
   TipDistributionSession,
+  TipOutRule,
   TipPoolConfig,
   TipPoolRoleShare,
-  TipOutRule,
   useTipDistributionStore,
 } from "@/stores/useTipDistributionStore";
 import {
-  computeEmployeeTipData,
-  EmployeeTipSummary,
+  computeEmployeeTipData
 } from "@/utils/computeEmployeeTipData";
 import { round2 } from "@/utils/money";
-import { OrderProfile, OrderProfilePayment } from "@/lib/types";
 
 // ============================================================================
 // TEST FIXTURES
 // ============================================================================
 
 const createMockDistributionDetail = (
-  overrides: Partial<TipDistributionDetail> = {}
+  overrides: Partial<TipDistributionDetail> = {},
 ): TipDistributionDetail => ({
   id: `detail_${Math.random().toString(36).slice(2)}`,
   sessionId: "session_1",
@@ -53,7 +52,7 @@ const createMockDistributionDetail = (
 
 const createMockSession = (
   overrides: Partial<TipDistributionSession> = {},
-  details: TipDistributionDetail[] = []
+  details: TipDistributionDetail[] = [],
 ): TipDistributionSession => ({
   id: "session_1",
   locationId: "loc_1",
@@ -72,7 +71,7 @@ const createMockSession = (
 });
 
 const createMockTipPoolConfig = (
-  overrides: Partial<TipPoolConfig> = {}
+  overrides: Partial<TipPoolConfig> = {},
 ): TipPoolConfig => ({
   id: `pool_${Math.random().toString(36).slice(2)}`,
   name: "Bar Tip Pool",
@@ -86,7 +85,7 @@ const createMockTipPoolConfig = (
 });
 
 const createMockTipOutRule = (
-  overrides: Partial<TipOutRule> = {}
+  overrides: Partial<TipOutRule> = {},
 ): TipOutRule => ({
   id: `rule_${Math.random().toString(36).slice(2)}`,
   fromRoleCode: "merchant.bartender",
@@ -99,7 +98,7 @@ const createMockTipOutRule = (
 });
 
 const createMockOrder = (
-  overrides: Partial<OrderProfile> = {}
+  overrides: Partial<OrderProfile> = {},
 ): OrderProfile => ({
   id: `order_${Math.random().toString(36).slice(2)}`,
   service_location_id: null,
@@ -113,7 +112,7 @@ const createMockOrder = (
 });
 
 const createMockPayment = (
-  overrides: Partial<OrderProfilePayment> = {}
+  overrides: Partial<OrderProfilePayment> = {},
 ): OrderProfilePayment => ({
   id: `pay_${Math.random().toString(36).slice(2)}`,
   amount: 50,
@@ -123,6 +122,7 @@ const createMockPayment = (
   itemsCovered: [],
   status: "captured",
   timestamp: "2026-04-24T22:00:00Z",
+  isVoided: false,
   ...overrides,
 });
 
@@ -242,7 +242,8 @@ describe("Scenario 3: Net Tips Formula", () => {
     useTipDistributionStore.setState({ currentSession: session });
     useTipDistributionStore.getState().updateDetailAdjustment("d1", 0);
 
-    const updated = useTipDistributionStore.getState().currentSession!.details[0];
+    const updated =
+      useTipDistributionStore.getState().currentSession!.details[0];
     expect(updated.netTips).toBe(100);
     expect(updated.manualAdjustment).toBe(0);
   });
@@ -260,7 +261,8 @@ describe("Scenario 3: Net Tips Formula", () => {
     useTipDistributionStore.setState({ currentSession: session });
     useTipDistributionStore.getState().updateDetailAdjustment("d1", 0);
 
-    const updated = useTipDistributionStore.getState().currentSession!.details[0];
+    const updated =
+      useTipDistributionStore.getState().currentSession!.details[0];
     // 100 - 100 + 80 = 80
     expect(updated.netTips).toBe(80);
   });
@@ -278,7 +280,8 @@ describe("Scenario 3: Net Tips Formula", () => {
     useTipDistributionStore.setState({ currentSession: session });
     useTipDistributionStore.getState().updateDetailAdjustment("d1", 0);
 
-    const updated = useTipDistributionStore.getState().currentSession!.details[0];
+    const updated =
+      useTipDistributionStore.getState().currentSession!.details[0];
     // 100 - 15 + 0 = 85
     expect(updated.netTips).toBe(85);
   });
@@ -298,7 +301,8 @@ describe("Scenario 3: Net Tips Formula", () => {
     useTipDistributionStore.setState({ currentSession: session });
     useTipDistributionStore.getState().updateDetailAdjustment("d1", 3);
 
-    const updated = useTipDistributionStore.getState().currentSession!.details[0];
+    const updated =
+      useTipDistributionStore.getState().currentSession!.details[0];
     // 100 - 100 + 80 - 10 + 5 + 3 = 78
     expect(updated.netTips).toBe(78);
     expect(updated.manualAdjustment).toBe(3);
@@ -315,7 +319,8 @@ describe("Scenario 3: Net Tips Formula", () => {
     useTipDistributionStore.setState({ currentSession: session });
     useTipDistributionStore.getState().updateDetailAdjustment("d1", -10);
 
-    const updated = useTipDistributionStore.getState().currentSession!.details[0];
+    const updated =
+      useTipDistributionStore.getState().currentSession!.details[0];
     expect(updated.netTips).toBe(90);
   });
 
@@ -337,7 +342,8 @@ describe("Scenario 3: Net Tips Formula", () => {
     useTipDistributionStore.setState({ currentSession: session });
     useTipDistributionStore.getState().updateDetailAdjustment("nonexistent", 5);
 
-    const updated = useTipDistributionStore.getState().currentSession!.details[0];
+    const updated =
+      useTipDistributionStore.getState().currentSession!.details[0];
     expect(updated.netTips).toBe(100); // unchanged
   });
 });
@@ -376,7 +382,17 @@ describe("Scenario 5: Reset Behavior", () => {
     useTipDistributionStore.getState().setWizardStep("review");
     useTipDistributionStore.setState({
       currentSession: createMockSession(),
-      previousSessions: [{ id: "s1", sequenceNumber: 1, status: "approved", totalDistributed: 100, dataStartAfter: null, dataCutoffAt: null, approvedAt: "2026-04-24" }],
+      previousSessions: [
+        {
+          id: "s1",
+          sequenceNumber: 1,
+          status: "approved",
+          totalDistributed: 100,
+          dataStartAfter: null,
+          dataCutoffAt: null,
+          approvedAt: "2026-04-24",
+        },
+      ],
       error: "some error",
     });
 
@@ -395,7 +411,17 @@ describe("Scenario 5: Reset Behavior", () => {
   it("resetForNewSession() keeps date and previous sessions", () => {
     useTipDistributionStore.getState().declareCashTips("staff_1", 50);
     useTipDistributionStore.getState().setWizardStep("review");
-    const prevSessions = [{ id: "s1", sequenceNumber: 1, status: "approved", totalDistributed: 100, dataStartAfter: null, dataCutoffAt: null, approvedAt: "2026-04-24" }];
+    const prevSessions = [
+      {
+        id: "s1",
+        sequenceNumber: 1,
+        status: "approved",
+        totalDistributed: 100,
+        dataStartAfter: null,
+        dataCutoffAt: null,
+        approvedAt: "2026-04-24",
+      },
+    ];
     useTipDistributionStore.setState({
       currentSession: createMockSession(),
       previousSessions: prevSessions,
@@ -445,9 +471,9 @@ describe("Scenario 6: Two Bartenders — Equal Split", () => {
       cashTips: 0,
       individualTipsEarned: 100,
       tipPoolContributed: 100, // 100% of charged tips
-      tipPoolReceived: 80,     // 160 / 2
+      tipPoolReceived: 80, // 160 / 2
       hoursWorked: 8,
-      netTips: 80,             // 100 - 100 + 80
+      netTips: 80, // 100 - 100 + 80
     });
 
     bobDetail = createMockDistributionDetail({
@@ -459,15 +485,16 @@ describe("Scenario 6: Two Bartenders — Equal Split", () => {
       chargedTips: 60,
       cashTips: 0,
       individualTipsEarned: 60,
-      tipPoolContributed: 60,  // 100% of charged tips
-      tipPoolReceived: 80,     // 160 / 2
+      tipPoolContributed: 60, // 100% of charged tips
+      tipPoolReceived: 80, // 160 / 2
       hoursWorked: 4,
-      netTips: 80,             // 60 - 60 + 80
+      netTips: 80, // 60 - 60 + 80
     });
   });
 
   it("pool total equals sum of all charged tips", () => {
-    const poolTotal = aliceDetail.tipPoolContributed + bobDetail.tipPoolContributed;
+    const poolTotal =
+      aliceDetail.tipPoolContributed + bobDetail.tipPoolContributed;
     expect(poolTotal).toBe(160);
   });
 
@@ -506,12 +533,14 @@ describe("Scenario 6: Two Bartenders — Equal Split", () => {
   it("manual adjustment updates net tips correctly via store", () => {
     const session = createMockSession(
       { totalTipsCollected: 160, totalDistributed: 160 },
-      [aliceDetail, bobDetail]
+      [aliceDetail, bobDetail],
     );
     useTipDistributionStore.setState({ currentSession: session });
 
     // Manager adds $5 adjustment for Alice
-    useTipDistributionStore.getState().updateDetailAdjustment("alice_detail", 5);
+    useTipDistributionStore
+      .getState()
+      .updateDetailAdjustment("alice_detail", 5);
 
     const details = useTipDistributionStore.getState().currentSession!.details;
     const alice = details.find((d) => d.id === "alice_detail")!;
@@ -574,16 +603,16 @@ describe("Scenario 7: Two Bartenders — Hours-Weighted", () => {
     // Alice net: 100 - 100 + 106.67 = 106.67
     const aliceNet = round2(
       aliceDetail.individualTipsEarned -
-      aliceDetail.tipPoolContributed +
-      aliceDetail.tipPoolReceived
+        aliceDetail.tipPoolContributed +
+        aliceDetail.tipPoolReceived,
     );
     expect(aliceNet).toBe(106.67);
 
     // Bob net: 60 - 60 + 53.33 = 53.33
     const bobNet = round2(
       bobDetail.individualTipsEarned -
-      bobDetail.tipPoolContributed +
-      bobDetail.tipPoolReceived
+        bobDetail.tipPoolContributed +
+        bobDetail.tipPoolReceived,
     );
     expect(bobNet).toBe(53.33);
   });
@@ -674,7 +703,7 @@ describe("Scenario 8: Kitchen Tip-Out", () => {
 describe("Scenario 9: computeEmployeeTipData", () => {
   const staffId = "staff_alice";
   const startUtc = "2026-04-24T04:00:00Z"; // business day start
-  const endUtc = "2026-04-25T04:00:00Z";   // business day end
+  const endUtc = "2026-04-25T04:00:00Z"; // business day end
 
   it("sums card tips from completed orders", () => {
     const ordersById: Record<string, OrderProfile> = {
@@ -682,21 +711,22 @@ describe("Scenario 9: computeEmployeeTipData", () => {
         created_by_staff_profile_id: staffId,
         total_amount: 50,
         opened_at: "2026-04-24T12:00:00Z",
-        payments: [
-          createMockPayment({ method: "Card", tip_amount: 10 }),
-        ],
+        payments: [createMockPayment({ method: "Card", tip_amount: 10 })],
       }),
       o2: createMockOrder({
         created_by_staff_profile_id: staffId,
         total_amount: 30,
         opened_at: "2026-04-24T14:00:00Z",
-        payments: [
-          createMockPayment({ method: "Card", tip_amount: 8 }),
-        ],
+        payments: [createMockPayment({ method: "Card", tip_amount: 8 })],
       }),
     };
 
-    const result = computeEmployeeTipData(staffId, ordersById, startUtc, endUtc);
+    const result = computeEmployeeTipData(
+      staffId,
+      ordersById,
+      startUtc,
+      endUtc,
+    );
     expect(result.cardTips).toBe(18);
     expect(result.cashPaymentTips).toBe(0);
   });
@@ -714,7 +744,12 @@ describe("Scenario 9: computeEmployeeTipData", () => {
       }),
     };
 
-    const result = computeEmployeeTipData(staffId, ordersById, startUtc, endUtc);
+    const result = computeEmployeeTipData(
+      staffId,
+      ordersById,
+      startUtc,
+      endUtc,
+    );
     expect(result.cardTips).toBe(10);
     expect(result.cashPaymentTips).toBe(5);
   });
@@ -733,7 +768,12 @@ describe("Scenario 9: computeEmployeeTipData", () => {
       }),
     };
 
-    const result = computeEmployeeTipData(staffId, ordersById, startUtc, endUtc);
+    const result = computeEmployeeTipData(
+      staffId,
+      ordersById,
+      startUtc,
+      endUtc,
+    );
     expect(result.grossSales).toBe(125);
   });
 
@@ -762,7 +802,12 @@ describe("Scenario 9: computeEmployeeTipData", () => {
       }),
     };
 
-    const result = computeEmployeeTipData(staffId, ordersById, startUtc, endUtc);
+    const result = computeEmployeeTipData(
+      staffId,
+      ordersById,
+      startUtc,
+      endUtc,
+    );
     expect(result.cardTips).toBe(0);
     expect(result.grossSales).toBe(0);
   });
@@ -774,13 +819,26 @@ describe("Scenario 9: computeEmployeeTipData", () => {
         total_amount: 50,
         opened_at: "2026-04-24T12:00:00Z",
         payments: [
-          createMockPayment({ method: "Card", tip_amount: 10, status: "voided" }),
-          createMockPayment({ method: "Card", tip_amount: 7, status: "captured" }),
+          createMockPayment({
+            method: "Card",
+            tip_amount: 10,
+            status: "voided",
+          }),
+          createMockPayment({
+            method: "Card",
+            tip_amount: 7,
+            status: "captured",
+          }),
         ],
       }),
     };
 
-    const result = computeEmployeeTipData(staffId, ordersById, startUtc, endUtc);
+    const result = computeEmployeeTipData(
+      staffId,
+      ordersById,
+      startUtc,
+      endUtc,
+    );
     expect(result.cardTips).toBe(7); // only non-voided
   });
 
@@ -806,7 +864,12 @@ describe("Scenario 9: computeEmployeeTipData", () => {
       }),
     };
 
-    const result = computeEmployeeTipData(staffId, ordersById, startUtc, endUtc);
+    const result = computeEmployeeTipData(
+      staffId,
+      ordersById,
+      startUtc,
+      endUtc,
+    );
     expect(result.cardTips).toBe(5);
     expect(result.grossSales).toBe(30);
   });
@@ -827,7 +890,12 @@ describe("Scenario 9: computeEmployeeTipData", () => {
       }),
     };
 
-    const result = computeEmployeeTipData(staffId, ordersById, startUtc, endUtc);
+    const result = computeEmployeeTipData(
+      staffId,
+      ordersById,
+      startUtc,
+      endUtc,
+    );
     expect(result.cardTips).toBe(10);
     expect(result.grossSales).toBe(50);
   });
@@ -853,7 +921,12 @@ describe("Scenario 9: computeEmployeeTipData", () => {
       }),
     };
 
-    const result = computeEmployeeTipData(staffId, ordersById, startUtc, endUtc);
+    const result = computeEmployeeTipData(
+      staffId,
+      ordersById,
+      startUtc,
+      endUtc,
+    );
     expect(result.cardTips).toBe(12);
   });
 });
@@ -889,7 +962,7 @@ describe("Scenario 10: Edge Cases", () => {
       id: "solo",
       individualTipsEarned: 200,
       tipPoolContributed: 200, // 100% in
-      tipPoolReceived: 200,    // only eligible employee
+      tipPoolReceived: 200, // only eligible employee
       netTips: 200,
     });
 
@@ -905,9 +978,13 @@ describe("Scenario 10: Edge Cases", () => {
     useTipDistributionStore.setState({ currentSession: session });
 
     // Should not throw
-    useTipDistributionStore.getState().updateDetailAdjustment("nonexistent", 10);
+    useTipDistributionStore
+      .getState()
+      .updateDetailAdjustment("nonexistent", 10);
 
-    expect(useTipDistributionStore.getState().currentSession!.details).toHaveLength(0);
+    expect(
+      useTipDistributionStore.getState().currentSession!.details,
+    ).toHaveLength(0);
   });
 
   it("hours_weighted with zero total hours returns zero", () => {

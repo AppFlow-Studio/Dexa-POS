@@ -10,6 +10,7 @@ import PinNumpad from '@/components/auth/PinNumpad'
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import type { MerchantRole } from '@/lib/types'
 import { recordDrawerOperation } from '@/services/cashDrawerService'
 import { PrinterService } from '@/services/printing/PrinterService'
@@ -18,7 +19,7 @@ import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useInventoryStore } from '@/stores/useInventoryStore'
 import { formatCurrency } from '@/utils/currency'
 import React, { useCallback, useMemo, useState } from 'react'
-import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View, SafeAreaView } from 'react-native'
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -68,6 +69,8 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
   mode
 }) => {
   const supabase = useSupabaseClient()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const { show } = useToast()
 
   const drawerId = useCashDrawerStore(s => s.drawerId)
@@ -270,14 +273,15 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
           backgroundColor: 'rgba(0,0,0,0.6)',
           alignItems: 'center',
           justifyContent: 'center',
-          paddingHorizontal: 20
+          paddingHorizontal: s(20)
         }}
       >
         <TouchableOpacity
           activeOpacity={1}
           style={{
             width: '100%',
-            maxWidth: 460,
+            maxWidth: s(720),
+            maxHeight: '92%',
             alignSelf: 'center'
           }}
         >
@@ -286,14 +290,15 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 16,
-              overflow: 'hidden'
+              borderRadius: s(16),
+              overflow: 'hidden',
+              flexDirection: 'column'
             }}
           >
             <View
               style={{
-                paddingHorizontal: 14,
-                paddingVertical: 11,
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
                 backgroundColor: accentColor + '12',
                 borderBottomWidth: 1,
                 borderBottomColor: accentColor + '35'
@@ -301,291 +306,302 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
             >
               <Text
                 style={{
-                  fontSize: 18,
+                  fontSize: s(16),
                   fontWeight: '700',
                   color: colors.heading
                 }}
               >
                 {MODE_TITLES[mode]}
               </Text>
-              <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+              <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
                 {modeSubtitle}
               </Text>
-              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+              <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>
                 Step {step} of {totalSteps}
               </Text>
             </View>
 
-            <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
+            <ScrollView
+              scrollEnabled={true}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: s(12), paddingVertical: s(10) }}
+            >
               {step === 1 ? (
-                <View style={{ gap: 10 }}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      paddingHorizontal: 10,
-                      paddingVertical: 9,
-                      backgroundColor: colors.screen,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 9
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: '600',
-                        color: colors.label
-                      }}
-                    >
-                      Drawer Balance
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 16,
-                        fontWeight: '700',
-                        color: colors.teal
-                      }}
-                    >
-                      {formatCurrency(balance)}
-                    </Text>
-                  </View>
-
-                  <View
-                    style={{
-                      borderRadius: 10,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      backgroundColor: colors.screen,
-                      overflow: 'hidden'
-                    }}
-                  >
+                <View style={{ flexDirection: 'row', gap: s(12) }}>
+                  {/* Left column: amount display + numpad */}
+                  <View style={{ flex: 1, gap: s(6) }}>
                     <View
                       style={{
-                        minHeight: 52,
-                        paddingHorizontal: 12,
-                        alignItems: 'flex-end',
-                        justifyContent: 'center',
-                        borderBottomWidth: 1,
-                        borderBottomColor: colors.border
+                        borderRadius: s(9),
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.screen,
+                        overflow: 'hidden'
                       }}
                     >
-                      <Text
+                      <View
                         style={{
-                          fontSize: 24,
-                          lineHeight: 28,
-                          fontWeight: '800',
-                          color: colors.heading
-                        }}
-                      >
-                        ${displayAmount}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 10,
-                        gap: 8
-                      }}
-                    >
-                      <PinNumpad
-                        showDecimalKey
-                        onDecimalPress={() => appendAmountInput('.')}
-                        onKeyPress={input => {
-                          if (typeof input === 'number') {
-                            appendAmountInput(input.toString())
-                          } else if (input === 'backspace') {
-                            removeAmountInput()
-                          } else {
-                            clearAmountInput()
-                          }
-                        }}
-                      />
-                      <TouchableOpacity
-                        onPress={clearAmountInput}
-                        style={{
-                          alignSelf: 'center',
-                          minWidth: 120,
-                          minHeight: 34,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          backgroundColor: colors.panel,
-                          alignItems: 'center',
-                          justifyContent: 'center'
+                          minHeight: s(40),
+                          paddingHorizontal: s(10),
+                          paddingVertical: s(4),
+                          alignItems: 'flex-end',
+                          justifyContent: 'center',
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.border
                         }}
                       >
                         <Text
                           style={{
-                            fontSize: 12,
-                            fontWeight: '700',
-                            color: colors.label
+                            fontSize: s(22),
+                            lineHeight: s(26),
+                            fontWeight: '800',
+                            color: colors.heading
                           }}
                         >
-                          Clear Amount
+                          ${displayAmount}
                         </Text>
-                      </TouchableOpacity>
+                      </View>
+
+                      <View
+                        style={{
+                          paddingHorizontal: s(6),
+                          paddingVertical: s(6),
+                          gap: s(4)
+                        }}
+                      >
+                        <PinNumpad
+                          showDecimalKey
+                          onDecimalPress={() => appendAmountInput('.')}
+                          onKeyPress={input => {
+                            if (typeof input === 'number') {
+                              appendAmountInput(input.toString())
+                            } else if (input === 'backspace') {
+                              removeAmountInput()
+                            } else {
+                              clearAmountInput()
+                            }
+                          }}
+                        />
+                        <TouchableOpacity
+                          onPress={clearAmountInput}
+                          style={{
+                            alignSelf: 'center',
+                            minWidth: s(120),
+                            minHeight: s(30),
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            backgroundColor: colors.panel,
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(11),
+                              fontWeight: '700',
+                              color: colors.label
+                            }}
+                          >
+                            Clear Amount
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
 
-                  {showBalanceWarning && (
+                  {/* Right column: balance + reason + continue */}
+                  <View style={{ flex: 1, gap: s(6) }}>
                     <View
                       style={{
-                        paddingHorizontal: 9,
-                        paddingVertical: 6,
-                        backgroundColor: colors.warning + '18',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingHorizontal: s(10),
+                        paddingVertical: s(8),
+                        backgroundColor: colors.screen,
                         borderWidth: 1,
-                        borderColor: colors.warning + '50',
-                        borderRadius: 9
+                        borderColor: colors.border,
+                        borderRadius: s(8)
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 11,
-                          color: colors.warning,
-                          fontWeight: '600'
-                        }}
-                      >
-                        Amount exceeds current drawer balance.
-                      </Text>
-                    </View>
-                  )}
-
-                  {mode !== 'cash_drop' && (
-                    <>
-                      <Text
-                        style={{
-                          fontSize: 12,
+                          fontSize: s(11),
                           fontWeight: '600',
                           color: colors.label
                         }}
                       >
-                        Reason
+                        Drawer Balance
                       </Text>
-                      <View
+                      <Text
                         style={{
-                          flexDirection: 'row',
-                          flexWrap: 'wrap',
-                          gap: 6
+                          fontSize: s(15),
+                          fontWeight: '700',
+                          color: colors.teal
                         }}
                       >
-                        {chips.map(chip => (
-                          <TouchableOpacity
-                            key={chip}
-                            onPress={() => setSelectedReason(chip)}
-                            style={{
-                              paddingHorizontal: 8,
-                              paddingVertical: 5,
-                              borderRadius: 8,
-                              borderWidth: 1,
-                              backgroundColor:
-                                selectedReason === chip
-                                  ? accentColor + '20'
-                                  : colors.screen,
-                              borderColor:
-                                selectedReason === chip
-                                  ? accentColor + '55'
-                                  : colors.border
-                            }}
-                          >
-                            <Text
+                        {formatCurrency(balance)}
+                      </Text>
+                    </View>
+
+                    {showBalanceWarning && (
+                      <View
+                        style={{
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(5),
+                          backgroundColor: colors.warning + '18',
+                          borderWidth: 1,
+                          borderColor: colors.warning + '50',
+                          borderRadius: s(8)
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: s(10),
+                            color: colors.warning,
+                            fontWeight: '600'
+                          }}
+                        >
+                          Amount exceeds current drawer balance.
+                        </Text>
+                      </View>
+                    )}
+
+                    {mode !== 'cash_drop' && (
+                      <>
+                        <Text
+                          style={{
+                            fontSize: s(11),
+                            fontWeight: '600',
+                            color: colors.label
+                          }}
+                        >
+                          Reason
+                        </Text>
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            flexWrap: 'wrap',
+                            gap: s(6)
+                          }}
+                        >
+                          {chips.map(chip => (
+                            <TouchableOpacity
+                              key={chip}
+                              onPress={() => setSelectedReason(chip)}
                               style={{
-                                fontSize: 11,
-                                color:
+                                paddingHorizontal: s(10),
+                                paddingVertical: s(7),
+                                borderRadius: s(8),
+                                borderWidth: 1,
+                                backgroundColor:
                                   selectedReason === chip
-                                    ? accentColor
-                                    : colors.label,
-                                fontWeight:
-                                  selectedReason === chip ? '700' : '500'
+                                    ? accentColor + '20'
+                                    : colors.screen,
+                                borderColor:
+                                  selectedReason === chip
+                                    ? accentColor + '55'
+                                    : colors.border
                               }}
                             >
-                              {chip}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </>
-                  )}
+                              <Text
+                                style={{
+                                  fontSize: s(11),
+                                  color:
+                                    selectedReason === chip
+                                      ? accentColor
+                                      : colors.label,
+                                  fontWeight:
+                                    selectedReason === chip ? '700' : '500'
+                                }}
+                              >
+                                {chip}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </>
+                    )}
 
-                  {selectedReason === 'Other' && (
-                    <TextInput
-                      value={customReason}
-                      onChangeText={setCustomReason}
-                      placeholder='Enter reason...'
-                      placeholderTextColor={colors.muted}
-                      style={{
-                        height: 40,
-                        paddingHorizontal: 12,
-                        backgroundColor: colors.screen,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: 9,
-                        color: colors.heading,
-                        fontSize: 12
-                      }}
-                    />
-                  )}
+                    {selectedReason === 'Other' && (
+                      <TextInput
+                        value={customReason}
+                        onChangeText={setCustomReason}
+                        placeholder='Enter reason...'
+                        placeholderTextColor={colors.muted}
+                        style={{
+                          height: s(38),
+                          paddingHorizontal: s(10),
+                          backgroundColor: colors.screen,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: s(8),
+                          color: colors.heading,
+                          fontSize: s(12)
+                        }}
+                      />
+                    )}
 
-                  <TouchableOpacity
-                    onPress={handlePrimaryContinue}
-                    disabled={!canContinueToVendor}
-                    style={{
-                      marginTop: 4,
-                      paddingVertical: 10,
-                      borderRadius: 9,
-                      alignItems: 'center',
-                      backgroundColor: canContinueToVendor
-                        ? accentColor
-                        : colors.muted,
-                      opacity: canContinueToVendor ? 1 : 0.7
-                    }}
-                  >
-                    <Text
+                    <TouchableOpacity
+                      onPress={handlePrimaryContinue}
+                      disabled={!canContinueToVendor}
                       style={{
-                        fontSize: 12,
-                        fontWeight: '700',
-                        color: colors.onSolid
+                        marginTop: 'auto',
+                        paddingVertical: s(11),
+                        borderRadius: s(9),
+                        alignItems: 'center',
+                        backgroundColor: canContinueToVendor
+                          ? accentColor
+                          : colors.muted,
+                        opacity: canContinueToVendor ? 1 : 0.7
                       }}
                     >
-                      {requiresVendorSelection
-                        ? 'Continue to Vendor'
-                        : 'Continue to Manager PIN'}
-                    </Text>
-                  </TouchableOpacity>
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: '700',
+                          color: colors.onSolid
+                        }}
+                      >
+                        {requiresVendorSelection
+                          ? 'Continue to Vendor'
+                          : 'Continue to Manager PIN'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : step === 2 ? (
-                <View style={{ gap: 10 }}>
+                <View style={{ gap: s(4) }}>
                   <View
                     style={{
                       backgroundColor: colors.screen,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      borderRadius: 9,
-                      paddingHorizontal: 10,
-                      paddingVertical: 8,
-                      gap: 4
+                      borderRadius: s(8),
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(5),
+                      gap: s(2)
                     }}
                   >
-                    <Text style={{ fontSize: 11, color: colors.muted }}>
-                      Select Vendor
+                    <Text style={{ fontSize: s(9), color: colors.muted }}>
+                      Vendor
                     </Text>
                     <Text
                       style={{
-                        fontSize: 15,
+                        fontSize: s(12),
                         fontWeight: '700',
                         color: selectedVendor ? accentColor : colors.heading
                       }}
                     >
-                      {selectedVendor?.name || 'Choose a vendor for this payout'}
+                      {selectedVendor?.name || 'Select vendor'}
                     </Text>
                   </View>
 
                   <View
                     style={{
-                      maxHeight: 260,
-                      borderRadius: 10,
+                      maxHeight: s(120),
+                      borderRadius: s(10),
                       overflow: 'hidden'
                     }}
                   >
@@ -594,7 +610,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                       keyboardShouldPersistTaps='handled'
                       showsVerticalScrollIndicator={false}
                     >
-                    <View style={{ gap: 8 }}>
+                    <View style={{ gap: s(4) }}>
                     {sortedVendors.length > 0 ? (
                       sortedVendors.map(vendor => {
                         const isSelected = selectedVendorId === vendor.id
@@ -603,9 +619,9 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                             key={vendor.id}
                             onPress={() => setSelectedVendorId(vendor.id)}
                             style={{
-                              paddingHorizontal: 12,
-                              paddingVertical: 11,
-                              borderRadius: 10,
+                              paddingHorizontal: s(10),
+                              paddingVertical: s(8),
+                              borderRadius: s(10),
                               borderWidth: 1,
                               borderColor: isSelected
                                 ? accentColor + '55'
@@ -617,7 +633,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                           >
                             <Text
                               style={{
-                                fontSize: 12,
+                                fontSize: s(12),
                                 fontWeight: isSelected ? '700' : '600',
                                 color: isSelected ? accentColor : colors.heading
                               }}
@@ -627,9 +643,9 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                             {!!vendor.contactName && (
                               <Text
                                 style={{
-                                  fontSize: 10,
+                                  fontSize: s(10),
                                   color: colors.muted,
-                                  marginTop: 2
+                                  marginTop: s(2)
                                 }}
                               >
                                 {vendor.contactName}
@@ -641,15 +657,15 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                     ) : (
                       <View
                         style={{
-                          paddingHorizontal: 12,
-                          paddingVertical: 14,
-                          borderRadius: 10,
+                          paddingHorizontal: s(12),
+                          paddingVertical: s(14),
+                          borderRadius: s(10),
                           borderWidth: 1,
                           borderColor: colors.border,
                           backgroundColor: colors.screen
                         }}
                       >
-                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>
                           No vendors available.
                         </Text>
                       </View>
@@ -658,13 +674,13 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                     </ScrollView>
                   </View>
 
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ flexDirection: 'row', gap: s(4) }}>
                     <TouchableOpacity
                       onPress={() => setStep(1)}
                       style={{
                         flex: 1,
-                        paddingVertical: 10,
-                        borderRadius: 9,
+                        paddingVertical: s(7),
+                        borderRadius: s(8),
                         alignItems: 'center',
                         borderWidth: 1,
                         borderColor: colors.border,
@@ -673,7 +689,7 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                     >
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: s(10),
                           fontWeight: '600',
                           color: colors.label
                         }}
@@ -686,84 +702,167 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                       onPress={() => setStep(3)}
                       style={{
                         flex: 1,
-                        paddingVertical: 10,
-                        borderRadius: 9,
+                        paddingVertical: s(7),
+                        borderRadius: s(8),
                         alignItems: 'center',
                         backgroundColor: accentColor
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: s(10),
                           fontWeight: '700',
                           color: colors.onSolid
                         }}
                       >
-                        Continue to Manager PIN
+                        Next
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               ) : (
-                <View style={{ gap: 10 }}>
-                  <View
-                    style={{
-                      backgroundColor: colors.screen,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 9,
-                      paddingHorizontal: 10,
-                      paddingVertical: 8,
-                      gap: 4
-                    }}
-                  >
-                    <Text style={{ fontSize: 11, color: colors.muted }}>
-                      Amount
-                    </Text>
-                    <Text
+                <View style={{ flexDirection: 'row', gap: s(12) }}>
+                  {/* Left column: summary + approval status + actions */}
+                  <View style={{ flex: 1, gap: s(8) }}>
+                    <View
                       style={{
-                        fontSize: 16,
-                        fontWeight: '800',
-                        color: colors.heading
+                        backgroundColor: colors.screen,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: s(8),
+                        paddingHorizontal: s(10),
+                        paddingVertical: s(8),
+                        gap: s(2)
                       }}
                     >
-                      {formatCurrency(parsedAmount || 0)}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: colors.muted }}>
-                      Reason: {reason}
-                    </Text>
-                    {selectedVendor && (
-                      <Text style={{ fontSize: 11, color: colors.muted }}>
-                        Vendor: {selectedVendor.name}
+                      <Text style={{ fontSize: s(10), color: colors.muted }}>
+                        Amount
                       </Text>
+                      <Text
+                        style={{
+                          fontSize: s(18),
+                          fontWeight: '800',
+                          color: colors.heading
+                        }}
+                      >
+                        {formatCurrency(parsedAmount || 0)}
+                      </Text>
+                      <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(2) }}>
+                        Reason: {reason}
+                      </Text>
+                      {selectedVendor && (
+                        <Text style={{ fontSize: s(10), color: colors.muted }}>
+                          Vendor: {selectedVendor.name}
+                        </Text>
+                      )}
+                    </View>
+
+                    {approvedBy && (
+                      <View
+                        style={{
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(8),
+                          backgroundColor: colors.teal + '15',
+                          borderWidth: 1,
+                          borderColor: colors.teal + '45',
+                          borderRadius: s(8)
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: s(11),
+                            color: colors.teal,
+                            textAlign: 'center',
+                            fontWeight: '600'
+                          }}
+                        >
+                          ✓ Approved by {approvedByName}
+                        </Text>
+                      </View>
                     )}
+
+                    <View style={{ flexDirection: 'row', gap: s(6), marginTop: 'auto' }}>
+                      <TouchableOpacity
+                        onPress={() => setStep(requiresVendorSelection ? 2 : 1)}
+                        style={{
+                          flex: 1,
+                          paddingVertical: s(11),
+                          borderRadius: s(9),
+                          alignItems: 'center',
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          backgroundColor: colors.panel
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: s(12),
+                            fontWeight: '600',
+                            color: colors.label
+                          }}
+                        >
+                          Back
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={handleConfirm}
+                        disabled={!canSubmit || isSubmitting}
+                        style={{
+                          flex: 1,
+                          paddingVertical: s(11),
+                          borderRadius: s(9),
+                          alignItems: 'center',
+                          backgroundColor:
+                            canSubmit && !isSubmitting
+                              ? accentColor
+                              : colors.muted,
+                          opacity: canSubmit && !isSubmitting ? 1 : 0.7
+                        }}
+                      >
+                        <Text
+                          style={{
+                            textAlign: 'center',
+                            fontSize: s(12),
+                            fontWeight: '700',
+                            color: colors.onSolid
+                          }}
+                        >
+                          {isSubmitting ? 'Submitting...' : 'Confirm'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
-                  {!approvedBy ? (
+                  {/* Right column: manager PIN entry */}
+                  {!approvedBy && (
                     <Animated.View
                       style={[
                         shakeStyle,
                         {
-                          paddingHorizontal: 10,
-                          paddingVertical: 9,
+                          flex: 1,
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(8),
                           backgroundColor: colors.screen,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          borderRadius: 9,
-                          gap: 8
+                          borderRadius: s(8),
+                          gap: s(6)
                         }
                       ]}
                     >
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: s(11),
                           fontWeight: '600',
                           color: colors.label
                         }}
                       >
-                        Manager PIN Required
+                        Manager PIN
                       </Text>
-                      <PinDisplay pinLength={pin.length} maxLength={4} />
+                      <View style={{ alignItems: 'center', marginVertical: s(2) }}>
+                        <PinDisplay pinLength={pin.length} maxLength={4} />
+                      </View>
                       <PinNumpad
                         onKeyPress={input => {
                           if (typeof input === 'number') {
@@ -778,15 +877,15 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                       <TouchableOpacity
                         onPress={handlePinSubmit}
                         style={{
-                          paddingVertical: 8,
-                          borderRadius: 8,
+                          paddingVertical: s(9),
+                          borderRadius: s(8),
                           backgroundColor: accentColor
                         }}
                       >
                         <Text
                           style={{
                             textAlign: 'center',
-                            fontSize: 12,
+                            fontSize: s(12),
                             fontWeight: '700',
                             color: colors.onSolid
                           }}
@@ -795,107 +894,33 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
                         </Text>
                       </TouchableOpacity>
                     </Animated.View>
-                  ) : (
-                    <View
-                      style={{
-                        paddingHorizontal: 10,
-                        paddingVertical: 8,
-                        backgroundColor: colors.teal + '15',
-                        borderWidth: 1,
-                        borderColor: colors.teal + '45',
-                        borderRadius: 9
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          color: colors.teal,
-                          textAlign: 'center',
-                          fontWeight: '600'
-                        }}
-                      >
-                        Approved by: {approvedByName}
-                      </Text>
-                    </View>
                   )}
-
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TouchableOpacity
-                      onPress={() => setStep(requiresVendorSelection ? 2 : 1)}
-                      style={{
-                        flex: 1,
-                        paddingVertical: 10,
-                        borderRadius: 9,
-                        alignItems: 'center',
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        backgroundColor: colors.panel
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '600',
-                          color: colors.label
-                        }}
-                      >
-                        Back
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={handleConfirm}
-                      disabled={!canSubmit || isSubmitting}
-                      style={{
-                        flex: 1,
-                        paddingVertical: 10,
-                        borderRadius: 9,
-                        alignItems: 'center',
-                        backgroundColor:
-                          canSubmit && !isSubmitting
-                            ? accentColor
-                            : colors.muted,
-                        opacity: canSubmit && !isSubmitting ? 1 : 0.7
-                      }}
-                    >
-                      <Text
-                        style={{
-                          textAlign: 'center',
-                          fontSize: 12,
-                          fontWeight: '700',
-                          color: colors.onSolid
-                        }}
-                      >
-                        {isSubmitting ? 'Processing...' : actionLabel}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
                 </View>
               )}
 
-              <TouchableOpacity
-                onPress={handleClose}
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={handleClose}
+              style={{
+                paddingHorizontal: s(10),
+                paddingVertical: s(6),
+                borderTopWidth: 1,
+                borderTopColor: colors.border,
+                backgroundColor: colors.panel,
+                alignItems: 'center'
+              }}
+            >
+              <Text
                 style={{
-                  marginTop: 6,
-                  paddingVertical: 9,
-                  borderRadius: 9,
-                  alignItems: 'center',
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: colors.panel
+                  fontSize: s(10),
+                  fontWeight: '600',
+                  color: colors.label
                 }}
               >
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '600',
-                    color: colors.label
-                  }}
-                >
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-            </View>
+                Cancel
+              </Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </TouchableOpacity>

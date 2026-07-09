@@ -3,6 +3,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { isValidUUID } from "@/lib/offlineIdRegistry";
+import { useUiScale } from "@/lib/uiScale";
 import {
     createCustomerOffline,
     createCustomerOnline,
@@ -44,6 +45,9 @@ import { colors } from "@/lib/theme";
 export { formatAddress } from "@/utils/addressUtils";
 
 const CustomerSheet: React.FC = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
   const { isOpen, closeSheet } = useCustomerSheetStore();
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
@@ -370,58 +374,58 @@ const CustomerSheet: React.FC = () => {
           <TouchableWithoutFeedback onPress={() => {}}>
             <View
               style={{
-                width: 480,
+                width: s(480),
                 height: "80%",
                 backgroundColor: colors.screen,
-                borderRadius: 16,
+                borderRadius: s(16),
                 overflow: "hidden",
                 borderWidth: 1,
                 borderColor: colors.border,
               }}
             >
               {/* Header */}
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: colors.border }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: s(16), paddingVertical: s(12), borderBottomWidth: 1, borderColor: colors.border }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
                   {(viewMode === "add" || viewMode === "edit") && (
                     <TouchableOpacity onPress={() => { setViewMode("search"); clearForm(); }}>
-                      <ArrowLeft color={colors.label} size={16} />
+                      <ArrowLeft color={colors.label} size={s(16)} />
                     </TouchableOpacity>
                   )}
-                  <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "700" }}>
+                  <Text style={{ color: colors.heading, fontSize: s(13), fontWeight: "700" }}>
                     {viewMode === "search" ? "Assign Customer" : viewMode === "add" ? "Add Customer" : "Edit Customer"}
                   </Text>
                 </View>
-                <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                <View style={{ flexDirection: "row", gap: s(8), alignItems: "center" }}>
                   {viewMode === "search" && (
                     <TouchableOpacity
                       disabled={isAssignDisabled}
                       onPress={() => setViewMode("add")}
-                      style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isAssignDisabled ? colors.teal + "40" : colors.teal + "18", borderWidth: 1, borderColor: isAssignDisabled ? colors.teal + "30" : colors.teal + "50" }}
+                      style={{ paddingHorizontal: s(10), paddingVertical: s(5), borderRadius: s(8), backgroundColor: isAssignDisabled ? colors.teal + "40" : colors.teal + "18", borderWidth: 1, borderColor: isAssignDisabled ? colors.teal + "30" : colors.teal + "50" }}
                     >
-                      <Text style={{ color: isAssignDisabled ? colors.muted : colors.teal, fontSize: 12, fontWeight: "600" }}>+ New</Text>
+                      <Text style={{ color: isAssignDisabled ? colors.muted : colors.teal, fontSize: s(12), fontWeight: "600" }}>+ New</Text>
                     </TouchableOpacity>
                   )}
-                  <TouchableOpacity onPress={handleClose} style={{ padding: 4, borderRadius: 6, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-                    <X color={colors.label} size={14} />
+                  <TouchableOpacity onPress={handleClose} style={{ padding: s(4), borderRadius: s(6), backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+                    <X color={colors.label} size={s(14)} />
                   </TouchableOpacity>
                 </View>
               </View>
 
               {viewMode === "search" ? (
                 <View style={{ flex: 1 }}>
-                  <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, backgroundColor: colors.card, borderColor: colors.border }}>
-                      <Search size={13} color={colors.muted} />
+                  <View style={{ paddingHorizontal: s(12), paddingTop: s(12), paddingBottom: s(8) }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", borderRadius: s(8), paddingHorizontal: s(10), paddingVertical: s(6), borderWidth: 1, backgroundColor: colors.card, borderColor: colors.border }}>
+                      <Search size={s(13)} color={colors.muted} />
                       <TextInput
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         placeholder="Search name, phone, address..."
                         placeholderTextColor={colors.muted}
-                        style={{ flex: 1, marginLeft: 8, color: colors.heading, fontSize: 12, padding: 0 }}
+                        style={{ flex: 1, marginLeft: s(8), color: colors.heading, fontSize: s(12), padding: 0 }}
                       />
                       {searchQuery.length > 0 && (
                         <TouchableOpacity onPress={() => setSearchQuery("")}>
-                          <X size={13} color={colors.muted} />
+                          <X size={s(13)} color={colors.muted} />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -429,9 +433,9 @@ const CustomerSheet: React.FC = () => {
 
                   {/* Top customers quick-pick */}
                   {topCustomers.length > 0 && !searchQuery && (
-                    <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-                      <Text style={{ fontSize: 9, color: colors.muted, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 6 }}>Frequent</Text>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ paddingHorizontal: s(12), paddingBottom: s(8) }}>
+                      <Text style={{ fontSize: s(9), color: colors.muted, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: s(6) }}>Frequent</Text>
+                      <View style={{ flexDirection: 'row', gap: s(8) }}>
                         {topCustomers.map((c) => (
                           <TouchableOpacity
                             key={c.id}
@@ -442,22 +446,22 @@ const CustomerSheet: React.FC = () => {
                               flex: 1,
                               flexDirection: 'row',
                               alignItems: 'center',
-                              gap: 6,
-                              paddingHorizontal: 10,
-                              paddingVertical: 8,
-                              borderRadius: 8,
+                              gap: s(6),
+                              paddingHorizontal: s(10),
+                              paddingVertical: s(8),
+                              borderRadius: s(8),
                               backgroundColor: colors.teal + '10',
                               borderWidth: 1,
                               borderColor: colors.teal + '30',
                               opacity: isAssignDisabled ? 0.6 : 1,
                             }}
                           >
-                            <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.teal + '20' }}>
-                              <Text style={{ color: colors.teal, fontSize: 10, fontWeight: '700' }}>{(c.name || '?')[0].toUpperCase()}</Text>
+                            <View style={{ width: s(24), height: s(24), borderRadius: s(12), alignItems: 'center', justifyContent: 'center', backgroundColor: colors.teal + '20' }}>
+                              <Text style={{ color: colors.teal, fontSize: s(10), fontWeight: '700' }}>{(c.name || '?')[0].toUpperCase()}</Text>
                             </View>
                             <View style={{ flex: 1 }}>
-                              <Text style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>{c.name}</Text>
-                              <Text style={{ color: colors.muted, fontSize: 9 }}>{c.total_orders} orders</Text>
+                              <Text style={{ color: colors.heading, fontSize: s(11), fontWeight: '600' }} numberOfLines={1}>{c.name}</Text>
+                              <Text style={{ color: colors.muted, fontSize: s(9) }}>{c.total_orders} orders</Text>
                             </View>
                           </TouchableOpacity>
                         ))}
@@ -468,10 +472,10 @@ const CustomerSheet: React.FC = () => {
                   <SectionList
                     sections={groupedCustomers}
                     keyExtractor={(item) => item.id}
-                    contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20 }}
+                    contentContainerStyle={{ paddingHorizontal: s(12), paddingBottom: s(20) }}
                     renderSectionHeader={({ section }) => (
-                      <View style={{ paddingVertical: 4, paddingHorizontal: 4, marginBottom: 4, marginTop: 8, borderBottomWidth: 1, borderColor: colors.border }}>
-                        <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700", letterSpacing: 1 }}>{section.title}</Text>
+                      <View style={{ paddingVertical: s(4), paddingHorizontal: s(4), marginBottom: s(4), marginTop: s(8), borderBottomWidth: 1, borderColor: colors.border }}>
+                        <Text style={{ color: colors.teal, fontSize: s(11), fontWeight: "700", letterSpacing: 1 }}>{section.title}</Text>
                       </View>
                     )}
                     renderItem={({ item }: { item: CustomerWithMeta }) => (
@@ -479,52 +483,52 @@ const CustomerSheet: React.FC = () => {
                         disabled={isAssignDisabled}
                         onPress={() => handleSelectCustomer(item)}
                         onLongPress={() => handleLongPressCustomer(item)}
-                        style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1, marginBottom: 6, backgroundColor: colors.card, borderColor: colors.border, opacity: isAssignDisabled ? 0.6 : 1 }}
+                        style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: s(12), paddingVertical: s(10), borderRadius: s(8), borderWidth: 1, marginBottom: s(6), backgroundColor: colors.card, borderColor: colors.border, opacity: isAssignDisabled ? 0.6 : 1 }}
                       >
-                        <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", marginRight: 10, backgroundColor: colors.teal + "20" }}>
-                          <Text style={{ color: colors.teal, fontSize: 12, fontWeight: "700" }}>
+                        <View style={{ width: s(30), height: s(30), borderRadius: s(15), alignItems: "center", justifyContent: "center", marginRight: s(10), backgroundColor: colors.teal + "20" }}>
+                          <Text style={{ color: colors.teal, fontSize: s(12), fontWeight: "700" }}>
                             {(item.name || "?")[0].toUpperCase()}
                           </Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.heading, fontSize: 12, fontWeight: "600" }}>{item.name || "Unknown"}</Text>
-                          <Text style={{ color: colors.label, fontSize: 11, marginTop: 1 }}>{item.phone ?? item.phoneNumber}</Text>
+                          <Text style={{ color: colors.heading, fontSize: s(12), fontWeight: "600" }}>{item.name || "Unknown"}</Text>
+                          <Text style={{ color: colors.label, fontSize: s(11), marginTop: s(1) }}>{item.phone ?? item.phoneNumber}</Text>
                           {item.address ? (
-                            <Text style={{ color: colors.muted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>{formatAddress(item.address)}</Text>
+                            <Text style={{ color: colors.muted, fontSize: s(11), marginTop: s(1) }} numberOfLines={1}>{formatAddress(item.address)}</Text>
                           ) : null}
                         </View>
                         {item.is_offline && (
-                          <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.warning + "20", borderWidth: 1, borderColor: colors.warning + "40" }}>
-                            <Text style={{ color: colors.warning, fontSize: 11 }}>Offline</Text>
+                          <View style={{ paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: s(6), backgroundColor: colors.warning + "20", borderWidth: 1, borderColor: colors.warning + "40" }}>
+                            <Text style={{ color: colors.warning, fontSize: s(11) }}>Offline</Text>
                           </View>
                         )}
                       </TouchableOpacity>
                     )}
                     ListEmptyComponent={
-                      <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center", paddingVertical: 32 }}>No customers found.</Text>
+                      <Text style={{ color: colors.muted, fontSize: s(12), textAlign: "center", paddingVertical: s(32) }}>No customers found.</Text>
                     }
                   />
                 </View>
               ) : (
                 <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-                  <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }} keyboardShouldPersistTaps="handled">
-                    <Text style={{ color: colors.muted, fontSize: 11 }}>
+                  <ScrollView contentContainerStyle={{ padding: s(16), gap: s(14) }} keyboardShouldPersistTaps="handled">
+                    <Text style={{ color: colors.muted, fontSize: s(11) }}>
                       {viewMode === "edit" ? "Update customer name or address. Phone number cannot be changed." : "Address fields are optional."}
                     </Text>
 
-                    <View style={{ gap: 5 }}>
-                      <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>Full Name *</Text>
+                    <View style={{ gap: s(5) }}>
+                      <Text style={{ color: colors.label, fontSize: s(10), fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>Full Name *</Text>
                       <TextInput
                         value={newName}
                         onChangeText={setNewName}
                         placeholder="e.g. John Doe"
                         placeholderTextColor={colors.muted}
-                        style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, height: 38, paddingHorizontal: 12, color: colors.heading, fontSize: 13 }}
+                        style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: s(8), height: s(38), paddingHorizontal: s(12), color: colors.heading, fontSize: s(13) }}
                       />
                     </View>
 
-                    <View style={{ gap: 5 }}>
-                      <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>
+                    <View style={{ gap: s(5) }}>
+                      <Text style={{ color: colors.label, fontSize: s(10), fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>
                         Phone Number {viewMode === "add" ? "(optional)" : "(read-only)"}
                       </Text>
                       <TextInput
@@ -539,17 +543,17 @@ const CustomerSheet: React.FC = () => {
                           backgroundColor: viewMode === "edit" ? colors.card + "80" : colors.card,
                           borderWidth: 1,
                           borderColor: viewMode === "edit" ? colors.border : colors.teal + "60",
-                          borderRadius: 8,
-                          height: 38,
-                          paddingHorizontal: 12,
+                          borderRadius: s(8),
+                          height: s(38),
+                          paddingHorizontal: s(12),
                           color: viewMode === "edit" ? colors.muted : colors.heading,
-                          fontSize: 13,
+                          fontSize: s(13),
                         }}
                       />
                     </View>
 
-                    <View style={{ gap: 5 }}>
-                      <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>Delivery Address</Text>
+                    <View style={{ gap: s(5) }}>
+                      <Text style={{ color: colors.label, fontSize: s(10), fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>Delivery Address</Text>
                       <AddressAutocomplete
                         value={addressDisplay}
                         onChangeText={(text) => {
@@ -572,9 +576,9 @@ const CustomerSheet: React.FC = () => {
                         inline
                       />
                       {(city || stateCode || zip) && (
-                        <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                        <View style={{ flexDirection: "row", gap: s(6), flexWrap: "wrap", marginTop: s(4) }}>
                           {[street, city, stateCode, zip].filter(Boolean).map((v, i) => (
-                            <Text key={i} style={{ fontSize: 11, color: colors.muted, backgroundColor: colors.card, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: colors.border }}>{v}</Text>
+                            <Text key={i} style={{ fontSize: s(11), color: colors.muted, backgroundColor: colors.card, paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: s(4), borderWidth: 1, borderColor: colors.border }}>{v}</Text>
                           ))}
                         </View>
                       )}
@@ -582,9 +586,9 @@ const CustomerSheet: React.FC = () => {
 
                     <TouchableOpacity
                       onPress={viewMode === "edit" ? handleSaveEditCustomer : handleSaveNewCustomer}
-                      style={{ borderRadius: 8, height: 38, alignItems: "center", justifyContent: "center", marginTop: 4, backgroundColor: colors.teal + "18", borderWidth: 1, borderColor: colors.teal + "50" }}
+                      style={{ borderRadius: s(8), height: s(38), alignItems: "center", justifyContent: "center", marginTop: s(4), backgroundColor: colors.teal + "18", borderWidth: 1, borderColor: colors.teal + "50" }}
                     >
-                      <Text style={{ color: colors.teal, fontSize: 13, fontWeight: "700" }}>
+                      <Text style={{ color: colors.teal, fontSize: s(13), fontWeight: "700" }}>
                         {viewMode === "edit" ? "Update Customer" : "Save Customer"}
                       </Text>
                     </TouchableOpacity>

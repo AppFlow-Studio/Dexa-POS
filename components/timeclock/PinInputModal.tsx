@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import React, { useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
@@ -29,6 +30,8 @@ const PinInputModal: React.FC<PinInputModalProps> = ({
   onCancel,
   portalHost
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [pin, setPin] = useState('')
 
   // Animation values for shake effect
@@ -85,7 +88,7 @@ const PinInputModal: React.FC<PinInputModalProps> = ({
         portalHost={portalHost}
         className='h-fit p-6'
         style={{
-          width: 350,
+          width: s(350),
           backgroundColor: colors.panel,
           borderColor: colors.border
         }}

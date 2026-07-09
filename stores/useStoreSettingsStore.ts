@@ -155,6 +155,18 @@ export interface StoreSettings {
 
   // Order completion mode
   orderCompletionMode: "manual" | "auto" | "auto_on_payment";
+
+  // Per-order staff PIN attribution. When true, the register requires a PIN
+  // (attribution-only — no session/clock side effects) before each new order,
+  // crediting the PIN-entered staff as that order's creator. Synced from the
+  // backend location setting; defaults false (no behavior change when unset).
+  requirePinPerOrder: boolean;
+
+  // When true (default, legacy behavior), the register auto-creates orders:
+  // eager backend create on screen entry, auto local draft when none is active,
+  // and auto-start the next order after payment. When false, the operator must
+  // explicitly start each order (e.g. "New Order").
+  autoCreateOrder: boolean;
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -321,6 +333,12 @@ const initialData: StoreSettings = {
 
   // Order completion mode
   orderCompletionMode: "manual",
+
+  // Per-order staff PIN attribution (off until backend setting hydrates it)
+  requirePinPerOrder: false,
+
+  // Auto-create orders on by default (legacy behavior)
+  autoCreateOrder: true,
 };
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -478,13 +496,16 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
       refreshSelectedStore: async (supabase: SupabaseClient) => {
         const current = get().selectedStore;
         if (!current?.id) return;
+        // maybeSingle: if the selected store isn't visible to the current
+        // session (RLS / wrong environment / stale persisted store id) we get
+        // null instead of the cryptic PGRST116 "cannot coerce" error.
         const { data } = await supabase
           .from("locations")
           .select(
             "*, merchants!merchant_id(pricing_strategy, dual_pricing_percentage)",
           )
           .eq("id", current.id)
-          .single();
+          .maybeSingle();
         if (data) {
           const merchant = (data as any).merchants;
           const resolved = { ...data } as any;
@@ -631,6 +652,10 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         managerOverrideTimeoutMinutes: state.managerOverrideTimeoutMinutes,
         // Order completion mode
         orderCompletionMode: state.orderCompletionMode,
+        // Per-order staff PIN attribution
+        requirePinPerOrder: state.requirePinPerOrder,
+        // Auto-create orders
+        autoCreateOrder: state.autoCreateOrder,
       }),
     },
   ),

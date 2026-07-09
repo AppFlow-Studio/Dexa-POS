@@ -1,5 +1,6 @@
 import { colors } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import React from "react";
 import { Text, View } from "react-native";
 
@@ -9,6 +10,8 @@ interface ReadOnlyBillItemProps {
 }
 
 const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({ item, isLast }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const hasModifiers =
     (item.customizations.modifiers && item.customizations.modifiers.length > 0) ||
     item.customizations.notes;
@@ -20,25 +23,25 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({ item, isLast }) => 
   return (
     <View style={{ opacity: isVoided ? 0.55 : 1 }}>
       {/* Item row */}
-      <View style={{ flexDirection: "row", alignItems: "flex-start", paddingVertical: 8 }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", paddingVertical: s(8) }}>
         {/* Qty badge */}
         <View
           style={{
-            minWidth: 22,
-            height: 22,
-            borderRadius: 6,
+            minWidth: s(22),
+            height: s(22),
+            borderRadius: s(6),
             backgroundColor: isVoided ? colors.border : colors.teal + "18",
             borderWidth: 1,
             borderColor: isVoided ? colors.border : colors.teal + "40",
             alignItems: "center",
             justifyContent: "center",
-            marginRight: 9,
-            marginTop: 1,
+            marginRight: s(9),
+            marginTop: s(1),
           }}
         >
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               fontWeight: "700",
               color: isVoided ? colors.muted : colors.teal,
             }}
@@ -49,31 +52,36 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({ item, isLast }) => 
 
         {/* Name + void badge */}
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
             <Text
               numberOfLines={1}
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: "600",
                 color: nameColor,
                 flex: 1,
                 textDecorationLine: isVoided ? "line-through" : "none",
               }}
             >
+              {item.is_to_go ? (
+                <Text style={{ color: colors.teal, fontWeight: "700" }}>
+                  [TO GO]{" "}
+                </Text>
+              ) : null}
               {item.name}
             </Text>
             {isVoided && (
               <View
                 style={{
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 20,
+                  paddingHorizontal: s(6),
+                  paddingVertical: s(2),
+                  borderRadius: s(20),
                   backgroundColor: colors.danger + "20",
                   borderWidth: 1,
                   borderColor: colors.danger + "40",
                 }}
               >
-                <Text style={{ fontSize: 10, fontWeight: "600", color: colors.danger }}>
+                <Text style={{ fontSize: s(10), fontWeight: "600", color: colors.danger }}>
                   Voided
                 </Text>
               </View>
@@ -82,7 +90,7 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({ item, isLast }) => 
 
           {/* Modifiers */}
           {hasModifiers && (
-            <View style={{ marginTop: 3, gap: 2 }}>
+            <View style={{ marginTop: s(3), gap: s(2) }}>
               {item.customizations.modifiers?.map((modifier, index) =>
                 modifier.options.length > 0
                   ? modifier.options.map((option, optIdx) => (
@@ -92,17 +100,17 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({ item, isLast }) => 
                       >
                         <Text
                           numberOfLines={1}
-                          style={{ fontSize: 11, color: colors.label, flex: 1 }}
+                          style={{ fontSize: s(11), color: colors.label, flex: 1 }}
                         >
                           {modifier.categoryName}: {option.name}
                         </Text>
                         {option.price > 0 && (
                           <Text
                             style={{
-                              fontSize: 11,
+                              fontSize: s(11),
                               fontWeight: "500",
                               color: colors.success,
-                              marginLeft: 6,
+                              marginLeft: s(6),
                             }}
                           >
                             +${option.price.toFixed(2)}
@@ -113,7 +121,7 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({ item, isLast }) => 
                   : null,
               )}
               {item.customizations.notes && (
-                <Text style={{ fontSize: 11, fontStyle: "italic", color: colors.muted, marginTop: 1 }}>
+                <Text style={{ fontSize: s(11), fontStyle: "italic", color: colors.muted, marginTop: s(1) }}>
                   "{item.customizations.notes}"
                 </Text>
               )}
@@ -124,14 +132,14 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({ item, isLast }) => 
         {/* Price */}
         <Text
           style={{
-            fontSize: 13,
+            fontSize: s(13),
             fontWeight: "600",
             color: priceColor,
             fontVariant: ["tabular-nums"],
-            marginLeft: 10,
-            minWidth: 56,
+            marginLeft: s(10),
+            minWidth: s(56),
             textAlign: "right",
-            marginTop: 1,
+            marginTop: s(1),
           }}
         >
           ${(item.price * item.quantity).toFixed(2)}

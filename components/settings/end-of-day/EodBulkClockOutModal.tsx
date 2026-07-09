@@ -1,4 +1,5 @@
 import { bottomSheetTheme, colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -29,6 +30,8 @@ export default function EodBulkClockOutModal({
   isOpen,
   onClose,
 }: EodBulkClockOutModalProps) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const supabase = useSupabaseClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -109,16 +112,16 @@ export default function EodBulkClockOutModal({
       {...bottomSheetTheme}
     >
       <BottomSheetScrollView
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }}
+        contentContainerStyle={{ paddingHorizontal: s(20), paddingBottom: s(32) }}
       >
         {/* Header */}
-        <View style={{ marginBottom: 16 }}>
+        <View style={{ marginBottom: s(16) }}>
           <Text
-            style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}
+            style={{ fontSize: s(18), fontWeight: "700", color: colors.heading }}
           >
             End All Shifts
           </Text>
-          <Text style={{ fontSize: 13, color: colors.label, marginTop: 4 }}>
+          <Text style={{ fontSize: s(13), color: colors.label, marginTop: s(4) }}>
             {activeStaff.length > 0
               ? `${activeStaff.length} other staff member${activeStaff.length > 1 ? "s" : ""} currently clocked in`
               : "Only you are clocked in"}
@@ -128,15 +131,15 @@ export default function EodBulkClockOutModal({
         {activeStaff.length > 0 && (
           <View
             style={{
-              borderRadius: 10,
+              borderRadius: s(10),
               borderWidth: 1,
               borderColor: colors.danger + "40",
               backgroundColor: colors.danger + "12",
-              padding: 12,
-              marginBottom: 16,
+              padding: s(12),
+              marginBottom: s(16),
             }}
           >
-            <Text style={{ fontSize: 12, color: colors.danger, fontWeight: "600" }}>
+            <Text style={{ fontSize: s(12), color: colors.danger, fontWeight: "600" }}>
               This will immediately clock out all active staff. This action cannot be undone.
             </Text>
           </View>
@@ -145,21 +148,21 @@ export default function EodBulkClockOutModal({
         {activeStaff.length === 0 ? (
           <View
             style={{
-              paddingVertical: 24,
+              paddingVertical: s(24),
               alignItems: "center",
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.screen,
-              marginBottom: 16,
+              marginBottom: s(16),
             }}
           >
-            <Text style={{ fontSize: 14, color: colors.label }}>
+            <Text style={{ fontSize: s(14), color: colors.label }}>
               Only you are clocked in — clock yourself out via the Timeclock when you're done.
             </Text>
           </View>
         ) : (
-          <View style={{ gap: 8, marginBottom: 16 }}>
+          <View style={{ gap: s(8), marginBottom: s(16) }}>
             {activeStaff.map(({ session, employee }) => (
               <View
                 key={session.employeeId}
@@ -167,34 +170,34 @@ export default function EodBulkClockOutModal({
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  borderRadius: 10,
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.border,
                   backgroundColor: colors.card,
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
+                  paddingHorizontal: s(14),
+                  paddingVertical: s(12),
                 }}
               >
-                <View style={{ flex: 1, gap: 2 }}>
+                <View style={{ flex: 1, gap: s(2) }}>
                   <Text
                     style={{
-                      fontSize: 14,
+                      fontSize: s(14),
                       fontWeight: "600",
                       color: colors.heading,
                     }}
                   >
                     {employee?.displayName || employee?.fullName || "Unknown"}
                   </Text>
-                  <Text style={{ fontSize: 12, color: colors.label }}>
+                  <Text style={{ fontSize: s(12), color: colors.label }}>
                     {employee?.role ?? "Employee"} ·{" "}
                     {formatElapsed(session.clockInTime)}
                   </Text>
                 </View>
                 <View
                   style={{
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
-                    borderRadius: 6,
+                    paddingHorizontal: s(8),
+                    paddingVertical: s(3),
+                    borderRadius: s(6),
                     backgroundColor:
                       session.status === "onBreak"
                         ? colors.warning + "25"
@@ -203,7 +206,7 @@ export default function EodBulkClockOutModal({
                 >
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: "600",
                       color:
                         session.status === "onBreak" ? colors.warning : colors.teal,
@@ -224,18 +227,18 @@ export default function EodBulkClockOutModal({
             disabled={isSubmitting}
             style={{
               backgroundColor: colors.danger,
-              paddingVertical: 14,
-              borderRadius: 12,
+              paddingVertical: s(14),
+              borderRadius: s(12),
               alignItems: "center",
               flexDirection: "row",
               justifyContent: "center",
-              gap: 8,
-              marginBottom: 10,
+              gap: s(8),
+              marginBottom: s(10),
               opacity: isSubmitting ? 0.5 : 1,
             }}
           >
             {isSubmitting && <ActivityIndicator size="small" color={colors.onSolid} />}
-            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.onSolid }}>
+            <Text style={{ fontSize: s(14), fontWeight: "700", color: colors.onSolid }}>
               End All Shifts
             </Text>
           </TouchableOpacity>
@@ -244,15 +247,15 @@ export default function EodBulkClockOutModal({
         <TouchableOpacity
           onPress={onClose}
           style={{
-            paddingVertical: 12,
-            borderRadius: 12,
+            paddingVertical: s(12),
+            borderRadius: s(12),
             alignItems: "center",
             borderWidth: 1,
             borderColor: colors.border,
           }}
         >
           <Text
-            style={{ fontSize: 14, fontWeight: "600", color: colors.label }}
+            style={{ fontSize: s(14), fontWeight: "600", color: colors.label }}
           >
             {activeStaff.length === 0 ? "Close" : "Cancel"}
           </Text>

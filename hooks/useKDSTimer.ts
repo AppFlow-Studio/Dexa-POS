@@ -65,7 +65,12 @@ export function getBucketedElapsed (
 
   const currentTime = doneTimeEpoch || nowEpoch
   const diffMs = currentTime - startTimeEpoch
-  const totalSeconds = Math.floor(diffMs / 1000)
+  // Clamp at zero: when the server-issued start time (fire_time /
+  // sent_to_kitchen_at) is ahead of this device's clock — clock skew between the
+  // tablet and Supabase, common right after a ticket is sent — diffMs is negative
+  // and the raw formatter renders garbage like "-13:-51". A negative "time since
+  // sent" is never meaningful, so floor it to 0:00 until the clock catches up.
+  const totalSeconds = Math.max(0, Math.floor(diffMs / 1000))
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
 

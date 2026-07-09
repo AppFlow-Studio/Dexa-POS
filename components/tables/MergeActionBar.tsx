@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { GitMerge, Plus, Unlink } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -24,6 +25,9 @@ const MergeActionBar: React.FC<MergeActionBarProps> = ({
   onUnmerge,
   onCancel,
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+
   const hasAction = canMergeAndSeat || canAddToSession || canUnmerge;
   const hint = selectedCount === 0
     ? "Tap tables to select them"
@@ -35,47 +39,47 @@ const MergeActionBar: React.FC<MergeActionBarProps> = ({
     <View style={{
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingHorizontal: s(12),
+      paddingVertical: s(8),
       backgroundColor: colors.warning + '0F',
       borderBottomWidth: 1,
       borderBottomColor: colors.warning + '30',
-      gap: 10,
+      gap: s(10),
     }}>
       {/* Left: indicator dot + hint/count */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(7), flex: 1 }}>
         <View style={{
-          width: 6, height: 6, borderRadius: 3,
+          width: s(6), height: s(6), borderRadius: s(3),
           backgroundColor: colors.warning,
           shadowColor: colors.warning,
-          shadowRadius: 4,
+          shadowRadius: s(4),
           shadowOpacity: 0.8,
           shadowOffset: { width: 0, height: 0 },
         }} />
         {hint ? (
-          <Text style={{ fontSize: 12, color: colors.warning + 'CC', fontWeight: '500' }}>{hint}</Text>
+          <Text style={{ fontSize: s(12), color: colors.warning + 'CC', fontWeight: '500' }}>{hint}</Text>
         ) : (
-          <Text style={{ fontSize: 12, color: colors.warning, fontWeight: '700' }}>
+          <Text style={{ fontSize: s(12), color: colors.warning, fontWeight: '700' }}>
             {selectedCount} table{selectedCount !== 1 ? "s" : ""} selected
           </Text>
         )}
       </View>
 
       {/* Right: action buttons */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
         {canMergeAndSeat && (
           <TouchableOpacity
             onPress={onMerge}
             activeOpacity={0.7}
             style={{
-              flexDirection: 'row', alignItems: 'center', gap: 5,
-              paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+              flexDirection: 'row', alignItems: 'center', gap: s(5),
+              paddingHorizontal: s(12), paddingVertical: s(6), borderRadius: s(8),
               backgroundColor: colors.teal + '18',
               borderWidth: 1, borderColor: colors.teal + '50',
             }}
           >
-            <GitMerge size={12} color={colors.teal} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.teal }}>Merge & Seat</Text>
+            <GitMerge size={s(12)} color={colors.teal} />
+            <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.teal }}>Merge & Seat</Text>
           </TouchableOpacity>
         )}
 
@@ -84,14 +88,14 @@ const MergeActionBar: React.FC<MergeActionBarProps> = ({
             onPress={onAdd}
             activeOpacity={0.7}
             style={{
-              flexDirection: 'row', alignItems: 'center', gap: 5,
-              paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+              flexDirection: 'row', alignItems: 'center', gap: s(5),
+              paddingHorizontal: s(12), paddingVertical: s(6), borderRadius: s(8),
               backgroundColor: colors.info + '18',
               borderWidth: 1, borderColor: colors.info + '50',
             }}
           >
-            <Plus size={12} color={colors.info} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.info }}>Add to Session</Text>
+            <Plus size={s(12)} color={colors.info} />
+            <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.info }}>Add to Session</Text>
           </TouchableOpacity>
         )}
 
@@ -100,14 +104,14 @@ const MergeActionBar: React.FC<MergeActionBarProps> = ({
             onPress={onUnmerge}
             activeOpacity={0.7}
             style={{
-              flexDirection: 'row', alignItems: 'center', gap: 5,
-              paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+              flexDirection: 'row', alignItems: 'center', gap: s(5),
+              paddingHorizontal: s(12), paddingVertical: s(6), borderRadius: s(8),
               backgroundColor: colors.danger + '18',
               borderWidth: 1, borderColor: colors.danger + '50',
             }}
           >
-            <Unlink size={12} color={colors.danger} />
-            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.danger }}>Unmerge</Text>
+            <Unlink size={s(12)} color={colors.danger} />
+            <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.danger }}>Unmerge</Text>
           </TouchableOpacity>
         )}
 
@@ -115,12 +119,12 @@ const MergeActionBar: React.FC<MergeActionBarProps> = ({
           onPress={onCancel}
           activeOpacity={0.7}
           style={{
-            paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+            paddingHorizontal: s(10), paddingVertical: s(6), borderRadius: s(8),
             backgroundColor: colors.card,
             borderWidth: 1, borderColor: colors.border,
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.muted }}>Cancel</Text>
+          <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.muted }}>Cancel</Text>
         </TouchableOpacity>
       </View>
     </View>

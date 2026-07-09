@@ -81,6 +81,9 @@ interface LoyaltyDataState {
   redeemReward:      (rewardId: string, merchantId: string) => Promise<{ success: boolean; error?: string }>
   clearRedeemState:  () => void
   clearLastRedeemed: () => void
+  /** Wipe all loaded data (programs + enrollments + redeem state). Called on
+   *  leaving the loyalty screen so customer PII doesn't outlive the view. */
+  clearData:         () => void
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -324,4 +327,11 @@ export const useLoyaltyDataStore = create<LoyaltyDataState>()((set, get) => ({
   }),
 
   clearLastRedeemed: () => set({ redeemLastRedeemed: null }),
+
+  clearData: () => set({
+    programs: [], enrollments: [], loading: false,
+    redeemPhone: '', redeemSearching: false, redeemSearched: false,
+    redeemCustomer: null, redeemEnrollments: [], redeemRewards: [],
+    redeemRedeeming: null, redeemLastRedeemed: null,
+  }),
 }))

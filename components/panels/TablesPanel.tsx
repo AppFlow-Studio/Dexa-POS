@@ -1,7 +1,7 @@
 import TableListItem from "@/components/tables/TableListItem";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
-import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -18,7 +18,6 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import Animated, { Easing, Layout } from "react-native-reanimated";
 
 /**
  * Wave 3.3: memoized row that binds parent's stable callbacks to the row's
@@ -70,49 +69,44 @@ const Section: React.FC<SectionProps> = ({
   isOpen,
   onToggle,
   children,
-}) => (
-  <Animated.View
-    layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)}
-    style={{ flex: 1 }}
-  >
-    <TouchableOpacity
-      onPress={onToggle}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        borderRadius: 8,
-      }}
-    >
-      {isOpen ? (
-        <ChevronDown size={14} color={colors.muted} />
-      ) : (
-        <ChevronRight size={14} color={colors.muted} />
-      )}
-      <Text
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
+  return (
+    <View style={{ flex: 1 }}>
+      <TouchableOpacity
+        onPress={onToggle}
         style={{
-          fontSize: 11,
-          fontWeight: "600",
-          color: colors.muted,
-          textTransform: "uppercase",
-          letterSpacing: 0.5,
-          marginLeft: 6,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: s(10),
+          paddingVertical: s(8),
+          borderRadius: s(8),
         }}
       >
-        {title}
-      </Text>
-    </TouchableOpacity>
-    {isOpen && (
-      <Animated.View
-        layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)}
-        style={{ flex: 1, paddingLeft: 4 }}
-      >
-        {children}
-      </Animated.View>
-    )}
-  </Animated.View>
-);
+        {isOpen ? (
+          <ChevronDown size={s(14)} color={colors.muted} />
+        ) : (
+          <ChevronRight size={s(14)} color={colors.muted} />
+        )}
+        <Text
+          style={{
+            fontSize: s(11),
+            fontWeight: "600",
+            color: colors.muted,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+            marginLeft: s(6),
+          }}
+        >
+          {title}
+        </Text>
+      </TouchableOpacity>
+      {isOpen && <View style={{ flex: 1, paddingLeft: s(4) }}>{children}</View>}
+    </View>
+  );
+};
 
 interface InlineSelectProps<T extends string> {
   label: string;
@@ -129,6 +123,8 @@ function InlineSelect<T extends string>({
   onSelect,
   nullable = true,
 }: InlineSelectProps<T>) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const [open, setOpen] = useState(false);
   const selectedLabel = value
     ? (options.find((o) => o.value === value)?.label ?? value)
@@ -142,9 +138,9 @@ function InlineSelect<T extends string>({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          paddingHorizontal: 10,
-          paddingVertical: 6,
-          borderRadius: 8,
+          paddingHorizontal: s(10),
+          paddingVertical: s(6),
+          borderRadius: s(8),
           borderWidth: 1,
           backgroundColor: value ? colors.teal + "15" : colors.card,
           borderColor: value ? colors.teal + "40" : colors.border,
@@ -152,7 +148,7 @@ function InlineSelect<T extends string>({
       >
         <Text
           style={{
-            fontSize: 11,
+            fontSize: s(11),
             fontWeight: "600",
             color: value ? colors.teal : colors.muted,
             flex: 1,
@@ -162,7 +158,7 @@ function InlineSelect<T extends string>({
           {selectedLabel ?? label}
         </Text>
         <ChevronDown
-          size={12}
+          size={s(12)}
           color={value ? colors.teal : colors.muted}
           style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }}
         />
@@ -172,14 +168,14 @@ function InlineSelect<T extends string>({
         <View
           style={{
             position: "absolute",
-            top: 34,
+            top: s(34),
             left: 0,
             right: 0,
             zIndex: 100,
             backgroundColor: colors.panel,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 8,
+            borderRadius: s(8),
             overflow: "hidden",
           }}
         >
@@ -190,8 +186,8 @@ function InlineSelect<T extends string>({
                 setOpen(false);
               }}
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 8,
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
                 backgroundColor: !value ? colors.teal + "15" : "transparent",
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
@@ -199,7 +195,7 @@ function InlineSelect<T extends string>({
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: "600",
                   color: !value ? colors.teal : colors.label,
                 }}
@@ -216,15 +212,15 @@ function InlineSelect<T extends string>({
                 setOpen(false);
               }}
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 8,
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
                 backgroundColor:
                   value === opt.value ? colors.teal + "15" : "transparent",
               }}
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: "600",
                   color: value === opt.value ? colors.teal : colors.label,
                 }}
@@ -241,6 +237,9 @@ function InlineSelect<T extends string>({
 }
 
 const TablesPanel: React.FC = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
   const router = useRouter();
   const floorPlans = useFloorPlanStore((s) => s.floorPlans);
   const tables = useFloorPlanStore((s) => s.tables);
@@ -293,9 +292,7 @@ const TablesPanel: React.FC = () => {
       let changed = false;
       const next: Record<string, boolean> = {};
       for (const [tableId, expanded] of Object.entries(prev)) {
-        const status = (
-          liveSessions[tableId]?.status ?? ""
-        ).toLowerCase();
+        const status = (liveSessions[tableId]?.status ?? "").toLowerCase();
         if (expanded && !ACTIVE_STATUSES.has(status)) {
           changed = true; // drop it — no longer expandable/selected
         } else {
@@ -451,10 +448,8 @@ const TablesPanel: React.FC = () => {
       if (orderId) {
         ensureOrderPrefetched(orderId).catch(() => {});
       }
-      // Arm the overlay, then navigate to the tables floor; the overlay host
-      // there mounts TableOrderView on top (no per-table screen → no leak).
-      usePendingTableOverlay.getState().openTable(tableId);
-      router.push(`/tables`);
+      // Navigate directly to the table order screen instead of using overlay.
+      router.push(`/tables/${tableId}`);
     },
     [router],
   );
@@ -487,8 +482,8 @@ const TablesPanel: React.FC = () => {
       {/* Capacity bar */}
       <View
         style={{
-          paddingHorizontal: 12,
-          paddingVertical: 10,
+          paddingHorizontal: s(12),
+          paddingVertical: s(10),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
         }}
@@ -497,21 +492,21 @@ const TablesPanel: React.FC = () => {
           style={{
             flexDirection: "row",
             justifyContent: "space-between",
-            marginBottom: 6,
+            marginBottom: s(6),
           }}
         >
-          <Text style={{ fontSize: 11, color: colors.muted }}>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>
             {occupiedCount}/{totalTables} tables
           </Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>
             {capacityPercentage}% capacity
           </Text>
         </View>
         <View
           style={{
-            height: 4,
+            height: s(4),
             backgroundColor: colors.card,
-            borderRadius: 2,
+            borderRadius: s(2),
             overflow: "hidden",
           }}
         >
@@ -520,7 +515,7 @@ const TablesPanel: React.FC = () => {
               width: `${capacityPercentage}%`,
               height: "100%",
               backgroundColor: colors.teal,
-              borderRadius: 2,
+              borderRadius: s(2),
             }}
           />
         </View>
@@ -529,15 +524,15 @@ const TablesPanel: React.FC = () => {
       {/* Filters + Sort */}
       <View
         style={{
-          paddingHorizontal: 12,
-          paddingVertical: 8,
+          paddingHorizontal: s(12),
+          paddingVertical: s(8),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
-          gap: 6,
+          gap: s(6),
           zIndex: 10,
         }}
       >
-        <View style={{ flexDirection: "row", gap: 6 }}>
+        <View style={{ flexDirection: "row", gap: s(6) }}>
           <InlineSelect
             label="Server"
             value={selectedServerId}
@@ -562,7 +557,7 @@ const TablesPanel: React.FC = () => {
       </View>
 
       {/* Table list */}
-      <View style={{ flex: 1, padding: 8 }}>
+      <View style={{ flex: 1, padding: s(8) }}>
         <Section
           title={activePlanName}
           isOpen={isSectionOpen}
@@ -577,9 +572,9 @@ const TablesPanel: React.FC = () => {
               ListEmptyComponent={
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     color: colors.muted,
-                    padding: 8,
+                    padding: s(8),
                     fontStyle: "italic",
                   }}
                 >

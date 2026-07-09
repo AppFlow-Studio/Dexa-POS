@@ -4,7 +4,7 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import React, { forwardRef, useMemo } from "react";
 import { Text, View } from "react-native";
-import { BarChart } from "react-native-gifted-charts";
+import { BarChart } from "@/components/charts/LazyGiftedCharts";
 import { bottomSheetTheme, colors } from "@/lib/theme";
 
 const MetricCard = ({ label, value }: { label: string; value: string }) => (

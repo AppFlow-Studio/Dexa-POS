@@ -1,6 +1,7 @@
 import { colors } from '@/lib/theme'
 import type { Menu } from '@/lib/types'
 import { useColorScheme } from '@/lib/useColorScheme'
+import { useUiScale } from '@/lib/uiScale'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { usePinOverrideStore } from '@/stores/usePinOverrideStore'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -21,6 +22,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View
 } from 'react-native'
 
@@ -187,8 +189,6 @@ const createStyles = () =>
     },
     popupCard: {
       position: 'absolute',
-      width: 460,
-      maxWidth: '92%',
       borderRadius: 8,
       borderWidth: 1,
       padding: 14,
@@ -276,6 +276,8 @@ const getStylesForScheme = (scheme: string) => {
 // ─── Unlock session badge ────────────────────────────────────────────────────
 
 const UnlockBadge = React.memo(() => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const { isUnlocked, unlockedUntil, lockNow } = usePinOverrideStore()
   const [, tick] = useState(0)
 
@@ -295,26 +297,26 @@ const UnlockBadge = React.memo(() => {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 5,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 8,
+        gap: s(5),
+        paddingHorizontal: s(10),
+        paddingVertical: s(6),
+        borderRadius: s(8),
         backgroundColor: colors.teal + '15',
         borderWidth: 1,
         borderColor: colors.teal + '30',
-        marginRight: 4,
-        marginLeft: 8
+        marginRight: s(4),
+        marginLeft: s(8)
       }}
     >
-      <ShieldCheck size={12} color={colors.teal} />
-      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}>
+      <ShieldCheck size={s(12)} color={colors.teal} />
+      <Text style={{ fontSize: s(11), fontWeight: '600', color: colors.teal }}>
         Manager Mode · {remainingMin}m
       </Text>
       <TouchableOpacity
         onPress={lockNow}
         hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
       >
-        <X size={11} color={colors.teal} />
+        <X size={s(11)} color={colors.teal} />
       </TouchableOpacity>
     </View>
   )
@@ -335,6 +337,9 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 }) => {
   const { colorScheme } = useColorScheme()
   const styles = useMemo(() => getStylesForScheme(colorScheme), [colorScheme])
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions()
   const storeMenus = useMenuStore(s => s.menus)
   const menus = menuOptions ?? storeMenus
   const isCategoryAvailableNow = useMenuStore(s => s.isCategoryAvailableNow)
@@ -475,15 +480,15 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   )
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, { paddingTop: s(8) }]}>
       {showMenuButtons && (
-      <View style={styles.menuRowArea}>
+      <View style={[styles.menuRowArea, { minHeight: s(42) }]}>
         <ScrollView
           ref={menuScrollRef}
-          style={styles.menuRowScroll}
+          style={[styles.menuRowScroll, { minHeight: s(42) }]}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.menuRow}
+          contentContainerStyle={[styles.menuRow, { gap: s(6), paddingHorizontal: s(4), paddingBottom: s(8) }]}
           onScroll={event => {
             const nextX = event.nativeEvent.contentOffset.x
             menuScrollXRef.current = nextX
@@ -512,25 +517,28 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                 style={[
                   styles.menuButton,
                   isActive && styles.menuButtonActive,
-                  isOpen && !isActive && styles.menuButtonOpen
+                  isOpen && !isActive && styles.menuButtonOpen,
+                  { gap: s(6), paddingHorizontal: s(11), paddingVertical: s(7), borderRadius: s(8) }
                 ]}
               activeOpacity={0.8}
             >
               <View
                 style={[
                   styles.menuButtonIconWrap,
-                  (isActive || isOpen) && styles.menuButtonIconWrapActive
+                  (isActive || isOpen) && styles.menuButtonIconWrapActive,
+                  { width: s(18), height: s(18), borderRadius: s(9) }
                 ]}
               >
                 <UtensilsCrossed
-                  size={10}
+                  size={s(10)}
                   color={isActive || isOpen ? colors.teal : colors.label}
                 />
               </View>
               <Text
                 style={[
                   styles.menuButtonText,
-                    (isActive || isOpen) && styles.menuButtonTextActive
+                    (isActive || isOpen) && styles.menuButtonTextActive,
+                    { fontSize: s(11) }
                   ]}
                   numberOfLines={1}
                 >
@@ -584,11 +592,12 @@ const MenuControls: React.FC<MenuControlsProps> = ({
             style={[
               styles.tailButton,
               styles.leftTailButton,
-              styles.menuTailButton
+              styles.menuTailButton,
+              { width: s(28), height: s(28), borderRadius: s(14) }
             ]}
             activeOpacity={0.85}
           >
-            <ChevronLeft size={14} color={colors.label} />
+            <ChevronLeft size={s(14)} color={colors.label} />
           </TouchableOpacity>
         )}
 
@@ -601,27 +610,28 @@ const MenuControls: React.FC<MenuControlsProps> = ({
             style={[
               styles.tailButton,
               styles.rightTailButton,
-              styles.menuTailButton
+              styles.menuTailButton,
+              { width: s(28), height: s(28), borderRadius: s(14) }
             ]}
             activeOpacity={0.85}
           >
-            <ChevronRight size={14} color={colors.label} />
+            <ChevronRight size={s(14)} color={colors.label} />
           </TouchableOpacity>
         )}
       </View>
       )}
 
-      <View style={styles.controlsRow}>
+      <View style={[styles.controlsRow, { paddingBottom: s(8), minHeight: s(52) }]}>
         {/* Unlock session badge — only visible when manager mode is active */}
         <UnlockBadge />
 
-        <View style={styles.categoriesArea}>
+        <View style={[styles.categoriesArea, { minHeight: s(40) }]}>
           <ScrollView
             ref={categoriesScrollRef}
-            style={styles.categoriesScroll}
+            style={[styles.categoriesScroll, { minHeight: s(40) }]}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.scrollContent, { gap: s(6), paddingHorizontal: s(4), minHeight: s(40) }]}
             onScroll={event => {
               const nextX = event.nativeEvent.contentOffset.x
               categoriesScrollXRef.current = nextX
@@ -670,13 +680,14 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                   style={[
                     styles.tab,
                     isActive && styles.tabActive,
-                    showLock && !isActive && styles.tabLocked
+                    showLock && !isActive && styles.tabLocked,
+                    { gap: s(5), paddingHorizontal: s(14), paddingVertical: s(9), borderRadius: s(10) }
                   ]}
                   activeOpacity={0.7}
                 >
                   {showLock && (
                     <Lock
-                      size={11}
+                      size={s(11)}
                       color={hasOverride ? colors.teal : colors.muted}
                     />
                   )}
@@ -684,13 +695,14 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                     style={[
                       styles.tabText,
                       isActive && styles.tabTextActive,
-                      showLock && !isActive && styles.tabTextLocked
+                      showLock && !isActive && styles.tabTextLocked,
+                      { fontSize: s(13) }
                     ]}
                   >
                     {tab}
                   </Text>
                   {isScheduled && !isNormallyAvailable && hasOverride && (
-                    <Clock size={11} color={colors.teal} />
+                    <Clock size={s(11)} color={colors.teal} />
                   )}
                 </TouchableOpacity>
               )
@@ -742,10 +754,10 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                   animated: true
                 })
               }}
-              style={[styles.tailButton, styles.leftTailButton]}
+              style={[styles.tailButton, styles.leftTailButton, { width: s(28), height: s(28), borderRadius: s(14), marginTop: s(-14) }]}
               activeOpacity={0.85}
             >
-              <ChevronLeft size={14} color={colors.label} />
+              <ChevronLeft size={s(14)} color={colors.label} />
             </TouchableOpacity>
           )}
 
@@ -758,10 +770,10 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                   animated: true
                 })
               }}
-              style={[styles.tailButton, styles.rightTailButton]}
+              style={[styles.tailButton, styles.rightTailButton, { width: s(28), height: s(28), borderRadius: s(14), marginTop: s(-14) }]}
               activeOpacity={0.85}
             >
-              <ChevronRight size={14} color={colors.label} />
+              <ChevronRight size={s(14)} color={colors.label} />
             </TouchableOpacity>
           )}
         </View>
@@ -774,6 +786,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
       <Modal
         visible={!!popupMenu}
         transparent
+        statusBarTranslucent
         animationType='fade'
         onRequestClose={() => setPopupMenuName(null)}
       >
@@ -785,28 +798,60 @@ const MenuControls: React.FC<MenuControlsProps> = ({
             onPress={() => {}}
             style={[
               styles.popupCard,
-              {
-                top: popupAnchor.y + popupAnchor.height + 6,
-                left: Math.max(12, Math.min(popupAnchor.x, 760))
-              }
+              { padding: s(14), borderRadius: s(8) },
+              (() => {
+                const margin = s(12)
+                const gap = s(6)
+                const cardWidth = Math.min(s(460), screenWidth * 0.92)
+                const left = Math.max(
+                  margin,
+                  Math.min(popupAnchor.x, screenWidth - cardWidth - margin)
+                )
+
+                // Space available below vs. above the anchor. If there isn't
+                // enough room below, flip the card to open upward so it stays
+                // on screen; cap its height to the chosen side either way.
+                const spaceBelow =
+                  screenHeight - (popupAnchor.y + popupAnchor.height) - gap - margin
+                const spaceAbove = popupAnchor.y - gap - margin
+                const openUpward = spaceBelow < s(180) && spaceAbove > spaceBelow
+
+                if (openUpward) {
+                  return {
+                    bottom: screenHeight - popupAnchor.y + gap,
+                    left,
+                    width: cardWidth,
+                    maxHeight: Math.max(s(120), spaceAbove),
+                  }
+                }
+                return {
+                  top: popupAnchor.y + popupAnchor.height + gap,
+                  left,
+                  width: cardWidth,
+                  maxHeight: Math.max(s(120), spaceBelow),
+                }
+              })()
             ]}
           >
-            <View style={styles.popupHeader}>
-              <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={styles.popupTitle}>{popupMenu?.name}</Text>
-                <Text style={styles.popupSubtitle}>
+            <View style={[styles.popupHeader, { marginBottom: s(12), paddingBottom: s(10) }]}>
+              <View style={{ flex: 1, paddingRight: s(12) }}>
+                <Text style={[styles.popupTitle, { fontSize: s(15) }]}>{popupMenu?.name}</Text>
+                <Text style={[styles.popupSubtitle, { fontSize: s(11), marginTop: s(2) }]}>
                   Choose a category
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={() => setPopupMenuName(null)}
                 hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-                style={styles.popupCloseButton}
+                style={[styles.popupCloseButton, { width: s(28), height: s(28), borderRadius: s(14) }]}
               >
-                <X size={14} color={colors.label} />
+                <X size={s(14)} color={colors.label} />
               </TouchableOpacity>
             </View>
-            <View style={styles.popupGrid}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[styles.popupGrid, { gap: s(8) }]}
+            >
               {popupMenu?.categories?.map(category => {
                 const isActive =
                   activeMeal === popupMenu.name &&
@@ -824,14 +869,16 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                     }}
                     style={[
                       styles.popupCategory,
-                      isActive && styles.popupCategoryActive
+                      isActive && styles.popupCategoryActive,
+                      { minHeight: s(62), borderRadius: s(8), paddingHorizontal: s(10), paddingVertical: s(8) }
                     ]}
                     activeOpacity={0.82}
                   >
                     <Text
                       style={[
                         styles.popupCategoryText,
-                        isActive && styles.popupCategoryTextActive
+                        isActive && styles.popupCategoryTextActive,
+                        { fontSize: s(12), lineHeight: s(16) }
                       ]}
                     >
                       {category.name}
@@ -839,7 +886,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                   </TouchableOpacity>
                 )
               })}
-            </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>

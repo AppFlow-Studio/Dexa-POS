@@ -2,6 +2,7 @@ import ConfirmationModal from '@/components/settings/reset-application/Confirmat
 import { replaceRoute } from '@/lib/rootNavigation'
 import { createSupabaseClient } from '@/lib/supabase'
 import { colors, spinnerColor } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { SelectedStation, Station } from '@/types/station'
 import { useAuth } from '@clerk/clerk-expo'
@@ -38,6 +39,8 @@ const StationSelectItem = ({
   onPress,
   onTakeOver
 }: StationSelectItemProps) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const isAvailable = station.is_available
 
   return (
@@ -52,10 +55,10 @@ const StationSelectItem = ({
           : isAvailable
           ? colors.border
           : colors.border,
-        borderRadius: 10,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        marginBottom: 8
+        borderRadius: s(10),
+        paddingHorizontal: s(14),
+        paddingVertical: s(10),
+        marginBottom: s(8)
       }}
     >
       <View
@@ -69,9 +72,9 @@ const StationSelectItem = ({
         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
           <View
             style={{
-              width: 34,
-              height: 34,
-              borderRadius: 8,
+              width: s(34),
+              height: s(34),
+              borderRadius: s(8),
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: isSelected
@@ -79,11 +82,11 @@ const StationSelectItem = ({
                 : isAvailable
                 ? colors.teal + '15'
                 : colors.teal + '10',
-              marginRight: 12
+              marginRight: s(12)
             }}
           >
             <Monitor
-              size={16}
+              size={s(16)}
               color={
                 isSelected
                   ? colors.teal
@@ -96,11 +99,11 @@ const StationSelectItem = ({
 
           <View style={{ flex: 1 }}>
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}
             >
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '600',
                   color: isSelected ? colors.teal : colors.heading
                 }}
@@ -111,16 +114,16 @@ const StationSelectItem = ({
                 <View
                   style={{
                     backgroundColor: colors.screen,
-                    borderRadius: 20,
-                    paddingHorizontal: 7,
-                    paddingVertical: 2,
+                    borderRadius: s(20),
+                    paddingHorizontal: s(7),
+                    paddingVertical: s(2),
                     borderWidth: 1,
                     borderColor: colors.border
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       fontWeight: '600',
                       color: colors.muted
                     }}
@@ -130,7 +133,7 @@ const StationSelectItem = ({
                 </View>
               )}
             </View>
-            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+            <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}>
               {station.station_type.charAt(0).toUpperCase() +
                 station.station_type.slice(1)}
             </Text>
@@ -139,12 +142,12 @@ const StationSelectItem = ({
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  marginTop: 4,
-                  gap: 4
+                  marginTop: s(4),
+                  gap: s(4)
                 }}
               >
-                <User size={11} color={colors.muted} />
-                <Text style={{ fontSize: 11, color: colors.muted }}>
+                <User size={s(11)} color={colors.muted} />
+                <Text style={{ fontSize: s(11), color: colors.muted }}>
                   {station.current_session.staff_name}
                   {station.current_session.device_name
                     ? ` · ${station.current_session.device_name}`
@@ -162,41 +165,41 @@ const StationSelectItem = ({
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 4,
+                gap: s(4),
                 backgroundColor: colors.teal + '15',
-                borderRadius: 20,
-                paddingHorizontal: 9,
-                paddingVertical: 3,
+                borderRadius: s(20),
+                paddingHorizontal: s(9),
+                paddingVertical: s(3),
                 borderWidth: 1,
                 borderColor: colors.teal + '40'
               }}
             >
-              <Wifi size={11} color={colors.teal} />
+              <Wifi size={s(11)} color={colors.teal} />
               <Text
-                style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}
+                style={{ fontSize: s(11), fontWeight: '600', color: colors.teal }}
               >
                 Available
               </Text>
             </View>
           ) : (
-            <View style={{ alignItems: 'flex-end', gap: 6 }}>
+            <View style={{ alignItems: 'flex-end', gap: s(6) }}>
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 4,
+                  gap: s(4),
                   backgroundColor: colors.border,
-                  borderRadius: 20,
-                  paddingHorizontal: 9,
-                  paddingVertical: 3,
+                  borderRadius: s(20),
+                  paddingHorizontal: s(9),
+                  paddingVertical: s(3),
                   borderWidth: 1,
                   borderColor: colors.border
                 }}
               >
-                <WifiOff size={11} color={colors.muted} />
+                <WifiOff size={s(11)} color={colors.muted} />
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '600',
                     color: colors.muted
                   }}
@@ -210,14 +213,14 @@ const StationSelectItem = ({
                   backgroundColor: colors.teal + '15',
                   borderWidth: 1,
                   borderColor: colors.teal + '40',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4
+                  borderRadius: s(8),
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(4)
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '600',
                     color: colors.teal
                   }}
@@ -242,6 +245,8 @@ const StationSelectScreen = () => {
     state => state.setSelectedStation
   )
   const setIsCFDMode = useStoreSettingsStore(state => state.setIsCFDMode)
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   const [selectedStationId, setSelectedStationId] = useState<string | null>(
     null
@@ -338,11 +343,11 @@ const StationSelectScreen = () => {
           width: '100%',
           alignItems: 'center',
           justifyContent: 'center',
-          paddingVertical: 60
+          paddingVertical: s(60)
         }}
       >
         <ActivityIndicator size='small' color={spinnerColor} />
-        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 10 }}>
+        <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(10) }}>
           Loading stations...
         </Text>
       </View>
@@ -356,13 +361,13 @@ const StationSelectScreen = () => {
           width: '100%',
           alignItems: 'center',
           justifyContent: 'center',
-          paddingVertical: 60,
-          gap: 8
+          paddingVertical: s(60),
+          gap: s(8)
         }}
       >
         <Text
           style={{
-            fontSize: 13,
+            fontSize: s(13),
             fontWeight: '600',
             color: colors.danger,
             textAlign: 'center'
@@ -371,44 +376,44 @@ const StationSelectScreen = () => {
           Failed to load stations
         </Text>
         <Text
-          style={{ fontSize: 12, color: colors.muted, textAlign: 'center' }}
+          style={{ fontSize: s(12), color: colors.muted, textAlign: 'center' }}
         >
           {(error as Error).message || 'Please try again later'}
         </Text>
         <TouchableOpacity
           onPress={() => refetch()}
           style={{
-            marginTop: 4,
+            marginTop: s(4),
             backgroundColor: colors.teal + '20',
             borderWidth: 1,
             borderColor: colors.teal + '50',
-            borderRadius: 8,
-            paddingHorizontal: 14,
-            paddingVertical: 6
+            borderRadius: s(8),
+            paddingHorizontal: s(14),
+            paddingVertical: s(6)
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>
+          <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.teal }}>
             Retry
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => router.replace('/store-select')}
           style={{
-            marginTop: 6,
+            marginTop: s(6),
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 4,
+            gap: s(4),
             backgroundColor: colors.screen,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 8,
-            paddingHorizontal: 14,
-            paddingVertical: 6
+            borderRadius: s(8),
+            paddingHorizontal: s(14),
+            paddingVertical: s(6)
           }}
         >
-          <ChevronLeft size={14} color={colors.muted} />
+          <ChevronLeft size={s(14)} color={colors.muted} />
           <Text
-            style={{ fontSize: 12, fontWeight: '600', color: colors.muted }}
+            style={{ fontSize: s(12), fontWeight: '600', color: colors.muted }}
           >
             Back
           </Text>
@@ -424,25 +429,25 @@ const StationSelectScreen = () => {
           width: '100%',
           alignItems: 'center',
           justifyContent: 'center',
-          paddingVertical: 60,
-          gap: 8
+          paddingVertical: s(60),
+          gap: s(8)
         }}
       >
         <View
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
+            width: s(44),
+            height: s(44),
+            borderRadius: s(12),
             backgroundColor: colors.teal + '15',
             alignItems: 'center',
             justifyContent: 'center'
           }}
         >
-          <Monitor size={20} color={colors.muted} />
+          <Monitor size={s(20)} color={colors.muted} />
         </View>
         <Text
           style={{
-            fontSize: 13,
+            fontSize: s(13),
             fontWeight: '600',
             color: colors.label,
             textAlign: 'center'
@@ -451,44 +456,44 @@ const StationSelectScreen = () => {
           No stations available
         </Text>
         <Text
-          style={{ fontSize: 12, color: colors.muted, textAlign: 'center' }}
+          style={{ fontSize: s(12), color: colors.muted, textAlign: 'center' }}
         >
           Contact your administrator to set up stations
         </Text>
         <TouchableOpacity
           onPress={() => refetch()}
           style={{
-            marginTop: 4,
+            marginTop: s(4),
             backgroundColor: colors.teal + '20',
             borderWidth: 1,
             borderColor: colors.teal + '50',
-            borderRadius: 8,
-            paddingHorizontal: 14,
-            paddingVertical: 6
+            borderRadius: s(8),
+            paddingHorizontal: s(14),
+            paddingVertical: s(6)
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>
+          <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.teal }}>
             Refresh
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => router.replace('/store-select')}
           style={{
-            marginTop: 6,
+            marginTop: s(6),
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 4,
+            gap: s(4),
             backgroundColor: colors.screen,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 8,
-            paddingHorizontal: 14,
-            paddingVertical: 6
+            borderRadius: s(8),
+            paddingHorizontal: s(14),
+            paddingVertical: s(6)
           }}
         >
-          <ChevronLeft size={14} color={colors.muted} />
+          <ChevronLeft size={s(14)} color={colors.muted} />
           <Text
-            style={{ fontSize: 12, fontWeight: '600', color: colors.muted }}
+            style={{ fontSize: s(12), fontWeight: '600', color: colors.muted }}
           >
             Back
           </Text>
@@ -505,12 +510,12 @@ const StationSelectScreen = () => {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 4
+          marginBottom: s(4)
         }}
       >
         <Text
           style={{
-            fontSize: 15,
+            fontSize: s(15),
             fontWeight: '700',
             color: colors.heading,
             flex: 1
@@ -522,26 +527,26 @@ const StationSelectScreen = () => {
           onPress={() => refetch()}
           disabled={isRefetching}
           style={{
-            padding: 6,
+            padding: s(6),
             backgroundColor: colors.teal + '10',
-            borderRadius: 8,
+            borderRadius: s(8),
             borderWidth: 1,
             borderColor: colors.teal + '30',
             opacity: isRefetching ? 0.5 : 1
           }}
         >
-          <RefreshCw size={14} color={colors.teal} />
+          <RefreshCw size={s(14)} color={colors.teal} />
         </TouchableOpacity>
       </View>
 
       {/* Location subtitle */}
-      <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 14 }}>
+      <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(14) }}>
         {selectedStore?.name || 'Unknown Location'}
       </Text>
 
       {/* Station list */}
       <ScrollView
-        style={{ maxHeight: 320 }}
+        style={{ maxHeight: s(320) }}
         showsVerticalScrollIndicator={false}
       >
         {stations.map(station => (
@@ -560,16 +565,16 @@ const StationSelectScreen = () => {
         onPress={handleContinue}
         disabled={!selectedStationId}
         style={{
-          marginTop: 14,
+          marginTop: s(14),
           backgroundColor: selectedStationId ? colors.teal : colors.teal + '30',
-          borderRadius: 10,
-          paddingVertical: 11,
+          borderRadius: s(10),
+          paddingVertical: s(11),
           alignItems: 'center'
         }}
       >
         <Text
           style={{
-            fontSize: 13,
+            fontSize: s(13),
             fontWeight: '700',
             color: selectedStationId ? colors.onSolid : colors.muted
           }}
@@ -586,26 +591,26 @@ const StationSelectScreen = () => {
         }}
         style={{
           width: '100%',
-          marginTop: 16,
-          padding: 16,
-          borderRadius: 12,
+          marginTop: s(16),
+          padding: s(16),
+          borderRadius: s(12),
           alignItems: 'center',
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
           flexDirection: 'row',
           justifyContent: 'center',
-          gap: 12
+          gap: s(12)
         }}
       >
-        <MonitorPlay size={20} color={colors.label} />
+        <MonitorPlay size={s(20)} color={colors.label} />
         <View>
           <Text
-            style={{ fontSize: 16, fontWeight: '500', color: colors.heading }}
+            style={{ fontSize: s(16), fontWeight: '500', color: colors.heading }}
           >
             Use as CFD Display
           </Text>
-          <Text style={{ fontSize: 12, color: colors.muted }}>
+          <Text style={{ fontSize: s(12), color: colors.muted }}>
             Turn this tablet into a customer-facing display
           </Text>
         </View>

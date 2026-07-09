@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { Delete, Users } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
 import { Modal, Text, TouchableOpacity, View } from 'react-native'
@@ -26,6 +27,8 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
   errorMessage,
   onClearError
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [count, setCount] = useState('')
 
   useEffect(() => {
@@ -77,9 +80,9 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
       >
         <View
           style={{
-            width: 380,
+            width: s(380),
             backgroundColor: colors.panel,
-            borderRadius: 20,
+            borderRadius: s(20),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden'
@@ -88,22 +91,22 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
           {/* Header */}
           <View
             style={{
-              paddingHorizontal: 20,
-              paddingTop: 18,
-              paddingBottom: 14,
+              paddingHorizontal: s(20),
+              paddingTop: s(18),
+              paddingBottom: s(14),
               alignItems: 'center',
               borderBottomWidth: 1,
               borderBottomColor: colors.border
             }}
           >
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}
             >
               <View
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 8,
+                  width: s(28),
+                  height: s(28),
+                  borderRadius: s(8),
                   backgroundColor: colors.teal + '18',
                   borderWidth: 1,
                   borderColor: colors.teal + '40',
@@ -111,11 +114,11 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
                   justifyContent: 'center'
                 }}
               >
-                <Users size={14} color={colors.teal} />
+                <Users size={s(14)} color={colors.teal} />
               </View>
               <Text
                 style={{
-                  fontSize: 15,
+                  fontSize: s(15),
                   fontWeight: '700',
                   color: colors.heading
                 }}
@@ -127,26 +130,26 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
 
           {/* Display */}
           <View
-            style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 10 }}
+            style={{ paddingHorizontal: s(20), paddingTop: s(16), paddingBottom: s(10) }}
           >
             <View
               style={{
                 backgroundColor: colors.screen,
-                borderRadius: 14,
+                borderRadius: s(14),
                 borderWidth: 1,
                 borderColor:
                   displayCount > 0 ? colors.teal + '50' : colors.border,
-                paddingVertical: 18,
+                paddingVertical: s(18),
                 alignItems: 'center'
               }}
             >
               <Text
                 style={{
-                  fontSize: 56,
+                  fontSize: s(56),
                   fontWeight: '800',
                   color: count === '' ? colors.muted : colors.heading,
                   letterSpacing: -2,
-                  lineHeight: 60
+                  lineHeight: s(60)
                 }}
               >
                 {count === '' ? '–' : count}
@@ -155,19 +158,19 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
             {errorMessage ? (
               <View
                 style={{
-                  marginTop: 10,
+                  marginTop: s(10),
                   backgroundColor: colors.danger + '12',
                   borderWidth: 1,
                   borderColor: colors.danger + '45',
-                  borderRadius: 10,
-                  paddingHorizontal: 10,
-                  paddingVertical: 8
+                  borderRadius: s(10),
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(8)
                 }}
               >
                 <Text
                   style={{
                     color: colors.danger,
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '600'
                   }}
                 >
@@ -178,9 +181,9 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
           </View>
 
           {/* Numpad */}
-          <View style={{ paddingHorizontal: 20, paddingBottom: 16, gap: 8 }}>
+          <View style={{ paddingHorizontal: s(20), paddingBottom: s(16), gap: s(8) }}>
             {ROWS.map((row, ri) => (
-              <View key={ri} style={{ flexDirection: 'row', gap: 8 }}>
+              <View key={ri} style={{ flexDirection: 'row', gap: s(8) }}>
                 {row.map(btn => {
                   const isBackspace = btn === 'backspace'
                   const isClear = btn === 'clear'
@@ -191,8 +194,8 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
                       activeOpacity={0.6}
                       style={{
                         flex: 1,
-                        height: 54,
-                        borderRadius: 10,
+                        height: s(54),
+                        borderRadius: s(10),
                         alignItems: 'center',
                         justifyContent: 'center',
                         backgroundColor: isBackspace
@@ -207,11 +210,11 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
                       }}
                     >
                       {isBackspace ? (
-                        <Delete size={16} color={colors.danger} />
+                        <Delete size={s(16)} color={colors.danger} />
                       ) : (
                         <Text
                           style={{
-                            fontSize: isClear ? 13 : 20,
+                            fontSize: isClear ? s(13) : s(20),
                             fontWeight: '600',
                             color: isClear ? colors.muted : colors.heading
                           }}
@@ -239,14 +242,14 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
               activeOpacity={0.7}
               style={{
                 flex: 1,
-                paddingVertical: 16,
+                paddingVertical: s(16),
                 alignItems: 'center',
                 borderRightWidth: 1,
                 borderRightColor: colors.border
               }}
             >
               <Text
-                style={{ fontSize: 14, fontWeight: '600', color: colors.label }}
+                style={{ fontSize: s(14), fontWeight: '600', color: colors.label }}
               >
                 Cancel
               </Text>
@@ -256,7 +259,7 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
               activeOpacity={displayCount > 0 ? 0.7 : 1}
               style={{
                 flex: 2,
-                paddingVertical: 16,
+                paddingVertical: s(16),
                 alignItems: 'center',
                 backgroundColor:
                   displayCount > 0 ? colors.teal + '18' : colors.screen
@@ -264,7 +267,7 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
             >
               <Text
                 style={{
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: '700',
                   color: displayCount > 0 ? colors.teal : colors.muted
                 }}

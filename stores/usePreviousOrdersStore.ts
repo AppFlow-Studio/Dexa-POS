@@ -14,7 +14,7 @@ import { DEADLINES } from "@/lib/network/deadlines";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { OrderService } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
-import { projectToSummary, todayOrdersCache } from "@/stores/todayOrdersCache";
+import { previousOrdersOfflineCache } from "@/stores/previousOrdersOfflineCache";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type {
@@ -71,6 +71,37 @@ export function resolveBusinessDayConfig(): BusinessDayConfig | null {
   };
 }
 
+/**
+ * Synchronously resolve business-day bounds for a date window using the local
+ * Luxon config — no network. Used by `setDateWindow` to populate
+ * `_resolvedStartTs/_endTs` immediately on a pill tap, so the live-orders date
+ * gate (which reads these bounds) never sees a null window between the tap and
+ * the authoritative RPC refresh. The RPC overwrites these with server bounds.
+ * Returns null when no business-day config is available (pre-login).
+ */
+function resolveLocalBounds(window: {
+  startDate: string | null;
+  endDate: string | null;
+  label: DateWindowLabel;
+}): { startTs: string; endTs: string } | null {
+  const config = resolveBusinessDayConfig();
+  if (!config) return null;
+  try {
+    if (window.label === "today" || !window.startDate) {
+      const day = getCurrentBusinessDay(config);
+      const b = getBusinessDayBounds(day, config);
+      return { startTs: b.startUtc, endTs: b.endUtc };
+    }
+    const startB = getBusinessDayBounds(window.startDate, config);
+    const endTs = window.endDate
+      ? getBusinessDayBounds(window.endDate, config).endUtc
+      : startB.endUtc;
+    return { startTs: startB.startUtc, endTs };
+  } catch {
+    return null;
+  }
+}
+
 /** DB row id and local order id may both appear in URLs / lookups */
 function buildOrderLookupMap(
   orders: PreviousOrder[],
@@ -104,6 +135,32 @@ function _isFinalState(profile: OrderProfile): boolean {
   );
 }
 
+/**
+ * An "empty draft" shell: a still-open order with no line items and a zero
+ * total. These are created when a station opens an order (which assigns a
+ * display number) but never adds any items — common with cross-station order
+ * creation, where another terminal's abandoned draft surfaces here because the
+ * history fetch is location-scoped, not station-scoped. They carry no business
+ * meaning and only clutter the Previous Orders list (rendering as
+ * "$0.00 / Awaiting Payment"), so they're filtered out of the history feed
+ * entirely. They reappear the moment items are added — a subsequent fetch or
+ * broadcast carries a non-empty payload and this guard no longer matches.
+ *
+ * Conservative on purpose: requires BOTH zero items AND a zero total, and only
+ * applies to non-final orders, so a fully-voided-items order (non-zero stored
+ * total) or any paid/closed/refunded historical order is never hidden.
+ */
+function isEmptyDraftOrder(po: PreviousOrder): boolean {
+  return (
+    (po.items?.length ?? 0) === 0 &&
+    (po.total ?? 0) === 0 &&
+    !po.voided &&
+    !po.refunded &&
+    !po.closed_at &&
+    po.paymentStatus !== "Paid"
+  );
+}
+
 const HISTORY_REFRESH_COALESCE_MS = 4000;
 const SET_DATE_WINDOW_DEBOUNCE_MS = 200;
 let refreshPreviousOrdersInFlight: Promise<void> | null = null;
@@ -132,6 +189,20 @@ export const setPreviousOrdersSupabaseClient = (
 ) => {
   _supabaseClient = client;
 };
+
+/**
+ * Raw NetInfo-based online status. Lazily required to avoid a static import
+ * cycle (offlineSyncService imports stores). Defaults to online if the service
+ * isn't wired yet, so we never wrongly suppress a fetch.
+ */
+function isDeviceOnline(): boolean {
+  try {
+    const { getRawIsOnline } = require("@/services/offlineSyncService");
+    return getRawIsOnline();
+  } catch {
+    return true;
+  }
+}
 
 interface RefundItem {
   itemId: string;
@@ -210,6 +281,10 @@ interface PreviousOrdersState {
 
   // Date window for business-day-aware filtering
   dateWindow: DateWindow;
+
+  /** True while a full refresh (initial fetch or filter switch) is in flight.
+   *  Screens show a loading state when this is true and the list is empty. */
+  _isRefreshing: boolean;
 
   // Pagination state
   _currentOffset: number; // Legacy offset cursor — kept for compat with refresh accounting
@@ -301,10 +376,12 @@ function _transformFetchedOrder(
     cash_amount_due: profile.cash_amount_due || 0,
     type: (profile.order_type || "Dine In") as any,
     total: profile.total_amount || 0,
+    total_cash_amount: profile.total_cash_amount ?? profile.total_amount ?? 0,
     tax: profile.total_tax || 0,
     service_charge: profile.service_charge ?? 0,
     service_charge_name: profile.service_charge_name ?? null,
     service_charge_rate: profile.service_charge_rate ?? null,
+    service_charge_is_taxable: profile.service_charge_is_taxable ?? null,
     items: profile.items,
     notes: profile.notes,
     voided: profile.order_status === "void",
@@ -346,20 +423,31 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     lastHistoryRefreshAt: null,
     _lastRefreshLocationId: null,
     dateWindow: { ...DEFAULT_DATE_WINDOW },
+    _isRefreshing: false,
     _currentOffset: 0,
     _hasMore: false,
     _isLoadingMore: false,
     _oldestCursor: null,
 
     setDateWindow: (window) => {
+      // Resolve bounds synchronously (Luxon, no network) so the live-orders
+      // date gate has a window to filter against immediately — before the
+      // debounced RPC refresh returns authoritative bounds. Without this, the
+      // gate sees null bounds for ~200ms+ and leaks out-of-window orders (e.g.
+      // 4-day-old orders flashing under the freshly-tapped "Today" pill).
+      const localBounds = resolveLocalBounds(window);
       set({
         dateWindow: {
           ...window,
-          _resolvedStartTs: null,
-          _resolvedEndTs: null,
+          _resolvedStartTs: localBounds?.startTs ?? null,
+          _resolvedEndTs: localBounds?.endTs ?? null,
         },
         previousOrders: [],
         _orderLookup: {},
+        // Show the loading state immediately on tap — the list was just cleared,
+        // and the (debounced) refetch is on its way. Without this the empty list
+        // renders "No orders found" during the gap until the fetch returns.
+        _isRefreshing: true,
         _currentOffset: 0,
         _hasMore: false, // Block loadMore until refresh resolves bounds + sets _hasMore
         _isLoadingMore: false,
@@ -465,9 +553,12 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         cash_amount_due: order.cash_amount_due || 0,
         type: orderType,
         total: finalTotal,
+        total_cash_amount: order.total_cash_amount ?? finalTotal,
+        tax: order.total_tax ?? 0,
         service_charge: order.service_charge ?? 0,
         service_charge_name: order.service_charge_name ?? null,
         service_charge_rate: order.service_charge_rate ?? null,
+        service_charge_is_taxable: order.service_charge_is_taxable ?? null,
         items: order.items,
         notes: order.notes, // Order-level notes (customer requests, special instructions)
         // Additional fields for refund tracking
@@ -491,6 +582,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         order_source: order.order_source ?? null,
         delivery_platform: order.delivery_platform ?? null,
         created_by_staff_profile_id: order.created_by_staff_profile_id ?? null,
+        // Flag as offline/unsynced when archived without a backend row while the
+        // device is offline. Drives the row's "Offline" badge; cleared when the
+        // order later syncs and a server fetch replaces this entry.
+        _offlineUnsynced: !order.db_order_id && !isDeviceOnline(),
       };
 
       set((state) => {
@@ -512,14 +607,34 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         };
       });
 
-      // Write-through to MMKV cache for instant boot rendering
+      // Merge this order INTO the persisted offline snapshot so it survives
+      // navigating away + re-entering (re-entry hydrates from this cache).
+      //
+      // Critically, merge into the *cached* list — NOT get().previousOrders.
+      // addOrderToHistory often fires from archiveOrder while the Previous
+      // Orders screen is unmounted, so the in-memory list is [] (wiped on
+      // leave). Writing that would clobber the cached server snapshot. Reading
+      // the cache, prepending the new order, and writing back keeps the
+      // snapshot additive. When online the next server fetch overwrites it.
       const locationId = resolveHistoryLocationId();
-      const config = resolveBusinessDayConfig();
-      if (locationId && config) {
-        todayOrdersCache.upsert(
+      if (locationId) {
+        const cached = previousOrdersOfflineCache.get(locationId);
+        const base = cached?.orders ?? [];
+        // Dedupe by db_order_id / orderId so a re-archive or a later synced
+        // copy doesn't duplicate the row.
+        const newKey = previousOrder.db_order_id || previousOrder.orderId;
+        const deduped = base.filter(
+          (o) => (o.db_order_id || o.orderId) !== newKey,
+        );
+        const mergedCache = [previousOrder, ...deduped].sort(
+          (a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        );
+        previousOrdersOfflineCache.set(
           locationId,
-          config,
-          projectToSummary(previousOrder),
+          mergedCache,
+          cached?.windowLabel ??
+            (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
         );
       }
     },
@@ -575,6 +690,35 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         console.warn(
           "Location ID not found for history (selected store / floor plan)",
         );
+        // setDateWindow may have optimistically flagged a refresh; clear it so
+        // the loading state doesn't stick when no fetch actually runs.
+        if (get()._isRefreshing) set({ _isRefreshing: false });
+        return;
+      }
+
+      // Offline: don't hit the network. Hydrate the list from the last
+      // successful online fetch so the screen isn't empty. The cache is shown
+      // ONLY here (offline) — online always renders fresh server data.
+      if (!isDeviceOnline()) {
+        const cached = previousOrdersOfflineCache.get(locationId);
+        if (cached) {
+          const orders = cached.orders.filter((po) => !isEmptyDraftOrder(po));
+          set({
+            previousOrders: orders,
+            _orderLookup: buildOrderLookupMap(orders),
+            newOrdersCount: 0,
+            _isRefreshing: false,
+            // No live pagination offline — cache is a fixed snapshot.
+            _hasMore: false,
+            _isLoadingMore: false,
+          });
+          if (__DEV__)
+            console.log(
+              `[PreviousOrders] offline — hydrated ${orders.length} orders from cache.`,
+            );
+        } else if (get()._isRefreshing) {
+          set({ _isRefreshing: false });
+        }
         return;
       }
 
@@ -585,12 +729,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         st.lastHistoryRefreshAt != null &&
         Date.now() - st.lastHistoryRefreshAt < HISTORY_REFRESH_COALESCE_MS
       ) {
+        if (st._isRefreshing) set({ _isRefreshing: false });
         return;
       }
 
       if (refreshPreviousOrdersInFlight) {
         return refreshPreviousOrdersInFlight;
       }
+
+      set({ _isRefreshing: true });
 
       refreshPreviousOrdersInFlight = (async () => {
         if (__DEV__)
@@ -715,7 +862,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           // Skip pre-sort: the merged result is sorted below, and the Map merge
           // loses ordering anyway.
 
-          const existingPreviousOrders = get().previousOrders;
+          // Drop offline-unsynced placeholders before merging: this is an online
+          // refresh, so the authoritative server result supersedes them. A truly
+          // synced order comes back from the fetch (unflagged); a not-yet-synced
+          // one re-surfaces on a later fetch/broadcast. Prevents a duplicate row
+          // (offline-badged local copy keyed by orderId + server copy keyed by
+          // db_order_id) that the keyed merge would otherwise keep.
+          const existingPreviousOrders = get().previousOrders.filter(
+            (o) => !o._offlineUnsynced,
+          );
 
           // Build merge map — filtered when date-bounded, full when not
           const ordersMap = new Map<string, PreviousOrder>();
@@ -746,8 +901,14 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             ordersMap.set(key, order);
           });
 
-          // Convert map values back to an array
-          let mergedPreviousOrders = Array.from(ordersMap.values());
+          // Convert map values back to an array, dropping empty-draft shells
+          // (e.g. cross-station abandoned drafts) so they never render in the
+          // history list. Pagination state below is derived from the raw
+          // `fetchedOrders` count/cursor, so client-side filtering here does
+          // not skew keyset paging.
+          let mergedPreviousOrders = Array.from(ordersMap.values()).filter(
+            (po) => !isEmptyDraftOrder(po),
+          );
 
           // Sort by timestamp descending (newest first)
           mergedPreviousOrders.sort(
@@ -777,28 +938,24 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             _isLoadingMore: false,
             _oldestCursor,
           });
+
+          // Persist this successful fetch as the offline fallback snapshot.
+          // Read back ONLY when offline (see top of refreshPreviousOrders).
+          previousOrdersOfflineCache.set(
+            locationId,
+            mergedPreviousOrders,
+            (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
+          );
+
           if (__DEV__)
             console.log(
               `Previous orders refreshed: ${mergedPreviousOrders.length} orders loaded (window: ${dateWindow.label}).`,
             );
-
-          // Bulk-write to MMKV cache for instant boot rendering (today only)
-          if (dateWindow.label === "today") {
-            const config = resolveBusinessDayConfig();
-            if (config) {
-              const businessDay = getCurrentBusinessDay(config);
-              todayOrdersCache.writeFromRefresh(
-                locationId,
-                businessDay,
-                mergedPreviousOrders,
-              );
-              todayOrdersCache.evictStale(locationId, businessDay);
-            }
-          }
         } catch (err) {
           console.error("Error in refreshPreviousOrders:", err);
         } finally {
           refreshPreviousOrdersInFlight = null;
+          set({ _isRefreshing: false });
         }
       })();
 
@@ -847,6 +1004,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           const existing = lookup[id];
 
           if (!existing) {
+            // Empty-draft shells are filtered from the rendered history, so they
+            // must not inflate the "new orders" badge either (otherwise the count
+            // promises orders that a refresh won't surface). Non-final + no items
+            // + zero total mirrors isEmptyDraftOrder on the OrderProfile shape.
+            const isEmptyDraft =
+              !_isFinalState(profile) &&
+              (profile.items?.length ?? 0) === 0 &&
+              (profile.total_amount ?? 0) === 0;
+            if (isEmptyDraft) continue;
             const known = get().previousOrders.some(
               (po) => po.db_order_id === id || po.orderId === id,
             );
@@ -935,10 +1101,14 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           if (po.orderId) existingKeys.add(po.orderId);
         }
 
-        const uniqueNewOrders = newOrders.filter((o) => {
-          const key = o.db_order_id || o.orderId;
-          return !existingKeys.has(key);
-        });
+        const uniqueNewOrders = newOrders
+          .filter((o) => {
+            const key = o.db_order_id || o.orderId;
+            return !existingKeys.has(key);
+          })
+          // Drop empty-draft shells (e.g. cross-station abandoned drafts).
+          // Cursor/hasMore below come from the raw page, so paging is unaffected.
+          .filter((o) => !isEmptyDraftOrder(o));
 
         if (uniqueNewOrders.length === 0) {
           set({
@@ -977,6 +1147,16 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       } finally {
         _lastLoadMoreCompletedAt = Date.now();
         set({ _isLoadingMore: false });
+        // Keep the offline snapshot in sync with scrolled-in pages so going
+        // offline mid-scroll retains everything the user already loaded.
+        const lid = resolveHistoryLocationId();
+        if (lid) {
+          previousOrdersOfflineCache.set(
+            lid,
+            get().previousOrders,
+            (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
+          );
+        }
       }
     },
 

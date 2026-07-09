@@ -1,5 +1,82 @@
 # Tasks
 
+## Perf Roadmap — Phase 3: Data layer + Tables flow (in progress)
+
+Plan approved 2026-06-11 (persona-reviewed: 3 blockers fixed in design). Order: T → A → B. Wave C deferred.
+
+### Wave T — Tables & dine-in (code complete)
+- [x] **Regression fix (user-reported)**: floor switch showed all tables available. Root cause chain: `_patchSessionsFromTables` cleared OTHER plans' sessions on every plan-scoped patch → each CLEAR poisoned the 30s `recentlyClearedSessions` TTL map → `fetchFloorPlanSnapshot` stripped those sessions from every fresh fetch (incl. T1a's prefetch re-warm + the cached-path hydrate). Fix: plan-scoped clear sweep (only clear sessions of tables IN the snapshot); cached-path now hydrates the session store at switch (`setActiveFloorPlan`). Regression test: `__tests__/patchSessionsPlanScoped.test.ts` (3 tests).
+- [x] T0: spans `pos.floor_switch` (tab press, tag `cached`; skips no-op tap on active plan) + `pos.table_open` (markStart in `usePendingTableOverlay.openTable` → markEnd at TableOrderView renderStage≥1, tag `prefetch_hit`)
+- [x] T1a (revised): `setActiveFloorPlan` ALREADY paints any cached snapshot (explorer claim wrong); real gap was `prefetchFloorPlan` early-returning on ANY cache → permanently stale entries. Now re-warms entries older than 30s, so post-switch background refreshes mostly no-op.
+- [x] T1b: broadcast-debounce reconcile in `useFloorRealtime` skips when an authoritative snapshot landed <1.2s ago; (re)subscribe catch-up, heartbeat, and fallback poll deliberately NOT suppressed.
+- [x] T2a: `loadFloorPlanStatus` now reuses previous per-table object identities via depth-3 value-equality (`shallowValueEqual` — conservative on unknown fields). `useShallow(s.tables)` subscribers skip re-rendering when elements identical; only genuinely changed tables propagate.
+- [x] T3a: `useTableSession` mount-path fetch now `await ensureOrderPrefetched(...)` (joins the global in-flight prefetch; kills the duplicate parallel `syncOrderFromDatabase`). Post-seat + recovery call sites left as-is (no race there). Added `__DEV__` log on Priority-3 O(n) scan hits.
+- [x] T3b: `prefetchCoursing` in tableOrderPrefetch (gated on `config.dining.enableCoursing`; mirrors the hook's 10s/lastSyncAt + syncing guards; fires on cached hits AND after prefetch resolves) — coursing loads at tap time instead of screen mount.
+- [x] T3c: reservations 30s interval cleanup verified CORRECT as-is (explorer claim wrong; cleanup clears both task and interval). No change.
+- [x] Verified: tsc 0 new errors (useFloorPlanStore:1500 error pre-exists at HEAD:1447 — line shift only), eslint 0 errors, rapidTableOrderHydration + sync suites pass (21/21). NOTE: `tableReopenCheckWiring` + `clearTableServedTransition` source-snapshot suites fail on HEAD too (pre-existing drift, asserted files untouched).
+- [ ] (User) on-device: switch floor tabs (watch `[perf] pos.floor_switch` in metro/logcat; no skeleton on revisited plans), tap occupied table (`pos.table_open` with prefetch_hit=true), two-station session change re-renders only the affected table.
+
+### Wave A — Kitchen/payment client cuts (code complete)
+- [x] Pre-flight PASSED: `pg_get_functiondef(update_order_status)` identical on staging AND prod to the repo reference (returns post-update jsonb row; P0001 for both not-found and already-in-status). Note: prod copy lacks `SET search_path` (pre-existing convention violation, untouched).
+- [x] A1: new `OrderService.ensureOrderOutOfDraft` helper (success → trust RPC row, NO verify; ambiguous P0001/"already in" → verify-SELECT discriminates not-found vs benign; other errors → fail). Converted **FIVE** sites (not the plan's four — exploration found more): `sendNewItemsToKitchen`, `sendNewItemsToKitchenForOrder` (payment path), `fireActiveOrderToKitchen`, both `addItemToBackend` retroactive paths, + the offlineSyncInit replay executor. Replay executor previously treated ANY P0001 as success — now not-found correctly fails to retry/dead-letter.
+- [x] A1: `__tests__/ensureOrderOutOfDraft.test.ts` — 6 tests covering the three-way branch + no-SELECT-on-success + legacy message routing. All pass.
+- [x] A2: payment-replay pre-checks run concurrently — two self-catching promises (NOT bare Promise.all over raw awaits; supabase-js rejects on network aborts), evaluated void-first then duplicate-charge. Outcome matrix preserved exactly; one serial RT removed per replayed payment.
+- [x] Verified: tsc 0 new errors (offlineSyncInit TS2448 `createOrderParams` TDZ pre-exists at HEAD — latent bug in create_order replay logging, reported to user), eslint 0 errors, 44/44 queue-contract tests + 6/6 new.
+
+### Wave B — send_order_to_kitchen_v1 (staging migration + flagged client)
+- [ ] Migration + rollback SQL → staging only; staging test matrix incl. legacy-key dedupe + 40P01
+- [ ] Client: OrderService.sendOrderToKitchen + flag + PGRST202/42883 fallback + 22023/40P01 classification
+
+## Perf Roadmap — Phase 2: Render structural (code complete)
+
+- [x] F8 — Menu grid migrated FlatList → **FlashList 1.7.6** (`npx expo install` pinned the SDK-53 version). **Requires a native rebuild** — FlashList ships native views (`AutoLayoutView`/`CellContainer`); old dev clients throw "View config not found for AutoLayoutView". Rebuild via `npm run android` (emulator) / EAS development build (Landi).
+- [x] F8 fix — **`disableAutoLayout` required on New Architecture**: FlashList v1's native AutoLayoutView misdraws a dark rectangle over the viewport area below short content (newArch bug). Verified via adb UI dump (scroll viewport sized correctly; only the native overlay wrong) + before/after screencaps. Safe here: auto-layout correction targets variable-size cells; menu tiles are uniform. Also set `drawDistance={500}`. `MenuSection.tsx`: FlashList + `estimatedItemSize` (240 image-tiles / 78 text-tiles), `getItemType` separates spacer cells from MenuItem recycling pool, gutters moved to a `gridCell` wrapper (FlashList has no `columnWrapperStyle`). `MenuItem.tsx`: container width `19%` → `100%` (fills its cell). Recycling-safety: MenuItem has no local state; `OptimizedListImage` already takes `recyclingKey`. **Needs visual check on device** (gutter parity, last-row alignment).
+- [x] F8 (deferred) — KDS ticket grid + orders carousel migrations stay gated on Phase 0 FPS baselines per plan.
+- [x] F9 — Subscription/getState audit on hot screens: **verified already-clean, no changes needed.** Flagged `getState()` sites are inside effects/handlers (correct pattern); tables screen uses granular selectors; `useStationOrders` is O(n)-bounded with `useStableOrderList` stabilization; order-processing uses per-field selectors. The audit's render findings did not reproduce.
+- [x] F10 — KDS derivations: **verified already memoized** (kds.tsx wraps the filter/aggregate/sort pipeline in one useMemo). No change.
+- [x] Found dead code: `components/bill/PaymentModal.tsx` + `components/bill/ paymentView/SplitPaymentView.tsx` are never imported (SplitPaymentView still destructures the removed `orders[]` store field — would crash if ever mounted). Reported to user for deletion.
+- [x] Verified: tsc 0 new errors (ItemCustomizationDialog 2 errors pre-existing), eslint 0 errors, 26/26 core tests.
+- [ ] (User/on-device) menu grid: visual parity + fling-scroll FPS vs baseline; category-switch latency.
+
+### Phase 2 review
+Phase 2 shrank under verification: of the audit's three structural render findings, two (F9 subscriptions, F10 KDS memoization) were already in the target state — React Compiler plus earlier perf waves had done the work. The remaining genuine win was the FlashList grid migration. Lesson: this codebase's render layer is more optimized than fresh audits assume; verify before churning.
+
+## Perf Roadmap — Phase 1: Quick wins (code complete)
+
+Plan: `~/.claude/plans/role-objective-cryptic-dusk.md` · Verify each item against Phase 0 baselines per `docs/perf-baseline-protocol.md`
+
+- [x] F1 — `useOrderPayments` staleTime 0 → 60s (`hooks/orders/useOrderPayments.ts`) **+ realtime gate fix**: payments-query invalidation in `useOrdersRealtime.ts` was online-orders-only; now fires for all orders (unmounted = mark-stale only, no network) so the 60s cache has no cross-station freshness gap. Prefetch stays online-only.
+- [x] F2 — POS boot block in `app/_layout.tsx` (draft cleanup, PrinterService start, payment/refund journal scans) moved from `useIsomorphicLayoutEffect` (blocked first paint) into `InteractionManager.runAfterInteractions`, with cancel on unmount.
+- [x] F3 — `PosSyncProvider`: **deduped double sync** — floor plans + tax rates were fetched twice per store selection by two parallel effects; single owner now (the clear-then-sync effect). Employee sync + the floor/tax/template effect both deferred via InteractionManager. Note: `initializeOfflineSync` was already fire-and-forget (audit claim wrong, no change).
+- [x] F4 — `OrderLineSection`: removed `itemLayoutAnimation` (LinearTransition spring re-animated every visible card on any data change). `entering` slide stays (iOS-only already).
+- [x] F5 — Modifier precompute now warms the WHOLE active category (rAF-chunked, list order, modifier-bearing items only) instead of first 6/12; image prefetch still capped to visible window. Added FIFO cap (400 entries) to `preWarmCache` in `useModifierSidebarStore`.
+- [x] F6 — `react-native-gifted-charts` lazy: confirmed expo-router import mode is `sync` (routes execute at boot), created `components/charts/LazyGiftedCharts.tsx` (React.lazy + Suspense facade) and swapped all 7 import sites. No static imports of the lib remain.
+- [x] F7 — TanStack: explicit defaults (`networkMode: 'offlineFirst'`, `refetchOnReconnect: false`, `refetchOnWindowFocus: false`) + `lib/network/setupTanstackOnlineManager.ts` wires `onlineManager` to `getIsOnline()` (NetInfo + connectionQuality slow-mode, both subscriptions). `refetchOnReconnect:false` preserves pre-wiring behavior — reconnect recovery stays owned by useOrderSyncRecovery/sync queue (bad-WiFi cross-check honored).
+- [x] Verified: tsc 0 new errors (9 implicit-any errors in `GiftedChartsSalesTrendChart.tsx` confirmed pre-existing by revert test), eslint 0 errors, 49/49 tests across sync/order/payment suites.
+- [ ] (User/on-device) re-run baseline protocol on Landi; compare `pos.*` spans + cold start vs baseline.
+
+### Phase 1 review
+The two audit corrections that mattered: (1) the payments-query realtime invalidation was gated to online orders, so raising staleTime without un-gating it would have created a 60s cross-station payment blind spot; (2) PosSyncProvider was double-fetching floor plans and tax rates on every store selection — the dedupe is likely worth as much as the deferral. F7's onlineManager wiring deliberately pairs with `refetchOnReconnect: false`; flipping that to true later would re-introduce a reconnect stampede and must go through the bad-WiFi cross-check.
+
+## Perf Roadmap — Phase 0: Measurement (code complete)
+
+Plan: `~/.claude/plans/role-objective-cryptic-dusk.md` (approved 2026-06-11)
+
+- [x] `lib/perf.ts` — interaction-span helper wrapping Sentry (startInactiveSpan + double-rAF end for tap-to-paint; cross-screen marks with 2-min TTL)
+- [x] Instrument `pos.add_to_cart` (useOrderStore.addItemToActiveOrder — both draft fast path and regular path; tags `draft`, `merged`)
+- [x] Instrument `pos.open_modifier_sheet` (MenuItem.handlePress; tags `item_id`, `has_modifiers`, `prewarmed`)
+- [x] Instrument `pos.send_to_kitchen` (useOrderStore.sendNewItemsToKitchen — tap → optimistic state flip + toast paint; tags `item_count`)
+- [x] Instrument `pos.open_payment` (usePaymentStore.open — guards → set({isOpen}) → paint; tags `method`, `view`)
+- [x] Instrument `pos.boot_to_order` (markStart at pin-login success → markEnd at order-processing renderStage 2; TTL-cancels on KDS routes)
+- [x] Instrument `pos.queue_flush` (offlineSyncService.processQueue — real flushes only; tags ready/blocked/pending counts, success/fail counts)
+- [x] Write repeatable Landi baseline protocol doc (`docs/perf-baseline-protocol.md`)
+- [x] Type check + lint (0 errors; only pre-existing warnings) + 26 tests pass (offlineSyncBlocking, wave26AddItem, payment-store-sc)
+- [ ] (User/on-device) run baseline protocol on Landi, fill budget-table baselines
+- [ ] (User/Sentry UI) confirm slow/frozen frames per transaction; build `transaction.op:pos.interaction` dashboard
+
+### Phase 0 review
+Spans are standalone transactions (`op: pos.interaction`, `forceTransaction: true`) so they appear in Sentry Performance under the global 30% prod sample rate. Tap→paint spans end via double-rAF after the state commit, so the measured window includes the painted frame. `__DEV__` builds also log `[perf] <name>: <ms>ms` to console for on-device iteration without the dashboard. The `pos.boot_to_order` mark auto-cancels (attribute `cancelled:true`) after 2 minutes so KDS-routed logins never report phantom boots; `markEnd` is a no-op on plain navigations to order-processing.
+
 ## Completed
 
 - [x] Speed up MenuSection for low-end devices

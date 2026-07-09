@@ -49,6 +49,7 @@ import Animated, {
 } from "react-native-reanimated";
 import PinDisplay from "../auth/PinDisplay";
 import PinNumpad from "../auth/PinNumpad";
+import SplitReceiptSelectorModal from "./SplitReceiptSelectorModal";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
@@ -94,6 +95,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     useState(false);
   const [isPrintingReceipt, setIsPrintingReceipt] = useState(false);
   const [isPrintingKitchen, setIsPrintingKitchen] = useState(false);
+  const [splitReceiptSelectorOpen, setSplitReceiptSelectorOpen] =
+    useState(false);
   const { show } = useToast();
 
   // Pending action to execute after the sheet finishes closing (index === -1).
@@ -357,6 +360,13 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     if (ref && "current" in ref && ref.current) {
       ref.current.close();
     }
+  };
+
+  const handleOpenSplitReceipts = () => {
+    if (ref && "current" in ref && ref.current) {
+      ref.current.close();
+    }
+    setSplitReceiptSelectorOpen(true);
   };
 
   const handlePrintKitchenTicket = async () => {
@@ -873,6 +883,46 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             </Text>
             <ChevronRight size={14} color={colors.muted} />
           </TouchableOpacity>
+
+          {/* Split Receipts row — only for split-paid orders */}
+          {!!activeOrder?.split_payment_path && (
+            <TouchableOpacity
+              onPress={handleOpenSplitReceipts}
+              disabled={!hasItems}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                opacity: hasItems ? 1 : 0.45,
+              }}
+            >
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  backgroundColor: colors.teal + "15",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 12,
+                }}
+              >
+                <Printer size={14} color={colors.teal} />
+              </View>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "600",
+                  color: colors.heading,
+                  flex: 1,
+                }}
+              >
+                Split Receipts
+              </Text>
+              <ChevronRight size={14} color={colors.muted} />
+            </TouchableOpacity>
+          )}
 
           {/* Kitchen Ticket row */}
           <TouchableOpacity
@@ -1428,6 +1478,13 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           </TouchableOpacity>
         </DialogContent>
       </Dialog>
+
+      <SplitReceiptSelectorModal
+        isOpen={splitReceiptSelectorOpen}
+        onClose={() => setSplitReceiptSelectorOpen(false)}
+        order={activeOrder ?? null}
+        location={selectedStore ?? null}
+      />
     </>
   );
 };

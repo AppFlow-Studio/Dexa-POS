@@ -5,6 +5,7 @@
  */
 
 import { bottomSheetTheme, colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { FloorPlanObject, WaitlistEntry } from '@/types/db-floor-plan-types'
@@ -35,11 +36,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming
-} from 'react-native-reanimated'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -117,6 +113,9 @@ export const WaitlistCard: React.FC<{
   onEdit?: () => void
 }> = React.memo(
   ({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete, onEdit }) => {
+    const uiScale = useUiScale()
+    const s = (n: number) => Math.round(n * uiScale)
+
     const elapsed = useMemo(
       () => getElapsedMinutes(entry.created_at),
       [entry.created_at]
@@ -126,29 +125,38 @@ export const WaitlistCard: React.FC<{
     const badgeBorder = isOverdue ? colors.danger + '45' : colors.teal + '45'
     const badgeLabel = isOverdue ? colors.danger : colors.teal
 
-    const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
+    const [expandedVisible, setExpandedVisible] = useState(false)
     useEffect(() => {
-      expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
+      setExpandedVisible(isExpanded)
     }, [isExpanded])
-    const expandedStyle = useAnimatedStyle(() => ({
-      opacity: expandedHeight.value,
-      maxHeight: expandedHeight.value * 300,
-      overflow: 'hidden'
-    }))
 
     return (
-      <View className='mb-3 rounded-xl overflow-hidden bg-card border border-border'>
+      <View
+        style={{
+          marginBottom: s(12),
+          borderRadius: s(12),
+          overflow: 'hidden',
+          backgroundColor: colors.card,
+          borderWidth: 1,
+          borderColor: colors.border
+        }}
+      >
         <Pressable
           onPress={onToggle}
-          className='flex-row items-center px-4 py-3'
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: s(16),
+            paddingVertical: s(12)
+          }}
         >
           <View
             style={{
-              width: 62,
-              minHeight: 50,
-              borderRadius: 10,
-              paddingHorizontal: 8,
-              paddingVertical: 6,
+              width: s(62),
+              minHeight: s(50),
+              borderRadius: s(10),
+              paddingHorizontal: s(8),
+              paddingVertical: s(6),
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: badgeBg,
@@ -157,43 +165,72 @@ export const WaitlistCard: React.FC<{
             }}
           >
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}
             >
-              <Clock size={10} color={badgeLabel} />
+              <Clock size={s(10)} color={badgeLabel} />
               <Text
-                style={{ fontSize: 9, fontWeight: '700', color: badgeLabel }}
+                style={{ fontSize: s(9), fontWeight: '700', color: badgeLabel }}
               >
                 WAIT
               </Text>
             </View>
             <Text
               style={{
-                fontSize: 14,
+                fontSize: s(14),
                 fontWeight: '800',
                 color: badgeLabel,
-                marginTop: 1
+                marginTop: s(1)
               }}
             >
               {formatElapsed(elapsed)}
             </Text>
           </View>
 
-          <View className='flex-1 ml-3 min-w-0'>
+          <View
+            style={{
+              flex: 1,
+              marginLeft: s(12),
+              minWidth: 0
+            }}
+          >
             <Text
-              style={{ color: colors.label, fontWeight: '600', fontSize: 14 }}
+              style={{ color: colors.label, fontWeight: '600', fontSize: s(14) }}
               numberOfLines={1}
             >
               {entry.party_name}
             </Text>
-            <View className='flex-row items-center mt-0.5'>
-              <Users size={12} color={colors.label} />
-              <Text style={{ color: colors.label }} className='text-sm ml-1'>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: s(2) }}>
+              <Users size={s(12)} color={colors.label} />
+              <Text
+                style={{
+                  color: colors.label,
+                  fontSize: s(13),
+                  marginLeft: s(4)
+                }}
+              >
                 {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
               </Text>
             </View>
             {(entry.notification_failures ?? 0) > 0 && (
-              <View className='self-start mt-1 px-2 py-0.5 rounded bg-red-600 border border-red-500'>
-                <Text className='text-white text-xs font-bold'>
+              <View
+                style={{
+                  alignSelf: 'flex-start',
+                  marginTop: s(4),
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(2),
+                  borderRadius: s(4),
+                  backgroundColor: colors.danger + '30',
+                  borderWidth: 1,
+                  borderColor: colors.danger + '60'
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.danger,
+                    fontSize: s(11),
+                    fontWeight: '700'
+                  }}
+                >
                   SMS FAIL {entry.notification_failures}
                 </Text>
               </View>
@@ -201,9 +238,9 @@ export const WaitlistCard: React.FC<{
           </View>
 
           {isExpanded ? (
-            <ChevronUp size={20} color={colors.label} />
+            <ChevronUp size={s(20)} color={colors.label} />
           ) : (
-            <ChevronDown size={20} color={colors.label} />
+            <ChevronDown size={s(20)} color={colors.label} />
           )}
           {onEdit && (
             <TouchableOpacity
@@ -211,36 +248,37 @@ export const WaitlistCard: React.FC<{
                 e.stopPropagation?.()
                 onEdit()
               }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              hitSlop={{ top: s(8), bottom: s(8), left: s(8), right: s(8) }}
               style={{
-                marginLeft: 6,
-                padding: 4,
-                borderRadius: 6,
+                marginLeft: s(6),
+                padding: s(4),
+                borderRadius: s(6),
                 backgroundColor: colors.card,
                 borderWidth: 1,
                 borderColor: colors.border
               }}
             >
-              <Pencil size={13} color={colors.label} />
+              <Pencil size={s(13)} color={colors.label} />
             </TouchableOpacity>
           )}
         </Pressable>
 
-        <Animated.View style={expandedStyle}>
+        {expandedVisible && (
+          <View>
           <View className='px-4 pb-4 border-t border-border'>
             <View className='mt-3 gap-2'>
               {entry.phone ? (
                 <View className='flex-row items-center'>
-                  <Phone size={14} color={colors.label} />
+                  <Phone size={s(14)} color={colors.label} />
                   <Text className='text-label text-sm ml-2'>{entry.phone}</Text>
                 </View>
               ) : null}
               {entry.notes ? (
                 <View className='flex-row items-start'>
                   <StickyNote
-                    size={14}
+                    size={s(14)}
                     color={colors.label}
-                    style={{ marginTop: 2 }}
+                    style={{ marginTop: s(2) }}
                   />
                   <Text className='text-label text-sm ml-2 italic flex-1'>
                     {entry.notes}
@@ -248,14 +286,14 @@ export const WaitlistCard: React.FC<{
                 </View>
               ) : null}
               <View className='flex-row items-center'>
-                <Clock size={14} color={colors.label} />
+                <Clock size={s(14)} color={colors.label} />
                 <Text className='text-label text-sm ml-2'>
                   Quoted: {entry.quoted_wait_minutes} min
                 </Text>
               </View>
               {(entry.notification_failures ?? 0) > 0 && (
                 <View className='flex-row items-center gap-2 px-2.5 py-2 rounded-lg bg-red-600 border border-red-500'>
-                  <AlertCircle size={14} color='white' />
+                  <AlertCircle size={s(14)} color='white' />
                   <Text className='text-white text-sm flex-1 font-semibold'>
                     SMS failed {entry.notification_failures}x — call guest
                     verbally
@@ -268,8 +306,8 @@ export const WaitlistCard: React.FC<{
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 8,
-                marginTop: 10
+                gap: s(8),
+                marginTop: s(10)
               }}
             >
               <TouchableOpacity
@@ -279,18 +317,18 @@ export const WaitlistCard: React.FC<{
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 6,
-                  paddingVertical: 7,
-                  borderRadius: 8,
+                  gap: s(6),
+                  paddingVertical: s(7),
+                  borderRadius: s(8),
                   backgroundColor: colors.teal + '20',
                   borderWidth: 1,
                   borderColor: colors.teal + '50'
                 }}
               >
-                <Check size={13} color={colors.teal} />
+                <Check size={s(13)} color={colors.teal} />
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '600',
                     color: colors.teal
                   }}
@@ -305,17 +343,17 @@ export const WaitlistCard: React.FC<{
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 6,
-                  paddingVertical: 7,
-                  borderRadius: 8,
+                  gap: s(6),
+                  paddingVertical: s(7),
+                  borderRadius: s(8),
                   borderWidth: 1,
                   borderColor: colors.border
                 }}
               >
-                <Bell size={13} color={colors.label} />
+                <Bell size={s(13)} color={colors.label} />
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '600',
                     color: colors.label
                   }}
@@ -326,21 +364,22 @@ export const WaitlistCard: React.FC<{
               <TouchableOpacity
                 onPress={onDelete}
                 style={{
-                  width: 32,
-                  height: 32,
+                  width: s(32),
+                  height: s(32),
                   alignItems: 'center',
                   justifyContent: 'center',
-                  borderRadius: 8,
+                  borderRadius: s(8),
                   backgroundColor: colors.danger + '15',
                   borderWidth: 1,
                   borderColor: colors.danger + '30'
                 }}
               >
-                <X size={13} color={colors.danger} />
+                <X size={s(13)} color={colors.danger} />
               </TouchableOpacity>
             </View>
           </View>
-        </Animated.View>
+          </View>
+        )}
       </View>
     )
   }

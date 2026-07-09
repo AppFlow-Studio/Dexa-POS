@@ -3,12 +3,16 @@ import Header from "@/components/Header";
 import MenuSearchSheet from "@/components/menu/MenuSearchSheet";
 import PaymentDetailBottomSheet from "@/components/menu/PaymentDetailBottomSheet";
 import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
+import OnlineOrderDrawer from "@/components/online-orders/OnlineOrderDrawer";
+import OnlineOrderEdgeTab from "@/components/online-orders/OnlineOrderEdgeTab";
 import MyProfilePanel from "@/components/profile/MyProfilePanel";
 import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
+import { useKdsOnlineOrdersBootstrap } from "@/hooks/pos/useKdsOnlineOrdersBootstrap";
 import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import { useTableSessionInit } from "@/hooks/useTableSessionInit";
 import { setHeaderHeight } from "@/lib/headerHeight";
+import { hintNativeGc } from "@/lib/nativeMemory";
 import { colors, spinnerColor } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { hydrateDrawerSession } from "@/services/cashDrawerService";
@@ -18,8 +22,8 @@ import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import {
-    getOrderStoreSupabaseClient,
-    useOrderStore,
+  getOrderStoreSupabaseClient,
+  useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
@@ -30,16 +34,16 @@ import { useAuth } from "@clerk/clerk-expo";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { PortalHost } from "@rn-primitives/portal";
 import { Redirect, Slot, usePathname } from "expo-router";
-import * as ScreenOrientation from "expo-screen-orientation";
 import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useRef } from "react";
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    unstable_batchedUpdates,
-    View,
+  ActivityIndicator,
+  InteractionManager,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  unstable_batchedUpdates,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 /** Side-effect component: keeps POS orders in sync when realtime drops */
@@ -66,22 +70,36 @@ export default function MainLayout() {
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
   const paymentDetailSheetRef = useRef<BottomSheetMethods>(null);
   const menuSearchSheetRef = useRef<BottomSheetMethods>(null);
-  const { setSheetRef } = useNotificationSheetStore();
-  const { setSearchSheetRef } = useMenuManagementSearchStore();
+  const setSheetRef = useNotificationSheetStore((state) => state.setSheetRef);
+  const clearSheetRef = useNotificationSheetStore(
+    (state) => state.clearSheetRef,
+  );
+  const { setSearchSheetRef, clearSearchSheetRef } =
+    useMenuManagementSearchStore();
+
+  // Complementary mitigation to the screens animation fix (lib/screenConfig.ts):
+  // hint a GC after every navigation so native cleaners drain promptly.
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      hintNativeGc(pathname);
+    });
+    return () => task.cancel();
+  }, [pathname]);
 
   useEffect(() => {
-    if (!isFullScreenStation) {
-      setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>);
+    if (!isKDS) {
+      const ref = notificationSheetRef as React.RefObject<BottomSheetMethods>;
+      setSheetRef(ref);
+      return () => clearSheetRef(ref);
     }
-  }, [setSheetRef, isFullScreenStation]);
+  }, [setSheetRef, clearSheetRef, isKDS]);
 
   useEffect(() => {
-    setSearchSheetRef(
-      menuSearchSheetRef as React.RefObject<BottomSheetMethods>,
-    );
-  }, [setSearchSheetRef]);
+    const ref = menuSearchSheetRef as React.RefObject<BottomSheetMethods>;
+    setSearchSheetRef(ref);
+    return () => clearSearchSheetRef(ref);
+  }, [setSearchSheetRef, clearSearchSheetRef]);
 
-  // DEBUG: Verify station context is initialized before broadcasts arrive (Step 4)
   useEffect(() => {
     if (__DEV__ && !isFullScreenStation) {
       const orderStore = useOrderStore.getState();
@@ -95,39 +113,16 @@ export default function MainLayout() {
     }
   }, [isFullScreenStation]);
 
-  // Register PaymentDetailBottomSheet ref with store
   useEffect(() => {
-    if (!isFullScreenStation) {
-      usePaymentDetailSheetStore
-        .getState()
-        .setBottomSheetRef(
-          paymentDetailSheetRef as React.RefObject<BottomSheetMethods>,
-        );
+    if (!isKDS) {
+      const ref = paymentDetailSheetRef as React.RefObject<BottomSheetMethods>;
+      usePaymentDetailSheetStore.getState().setBottomSheetRef(ref);
+      return () =>
+        usePaymentDetailSheetStore.getState().clearBottomSheetRef(ref);
     }
-  }, [paymentDetailSheetRef, isFullScreenStation]);
+  }, [paymentDetailSheetRef, isKDS]);
 
-  // --- POS Sound Notifications for external orders ---
   const soundServiceRef = useRef<KDSSoundService | null>(null);
-
-  // Orientation guard: the app is landscape-only everywhere EXCEPT the kiosk
-  // screen, which manages its own orientation from config.orientation (see
-  // hooks/kiosk/useKioskOrientation). On the kiosk we step back entirely; off
-  // it we force LANDSCAPE so device rotation never affects POS/KDS screens and
-  // a kiosk's portrait lock is always undone on exit.
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-    if (isKiosk || isKioskRoute) return;
-    (async () => {
-      try {
-        await ScreenOrientation.lockAsync(
-          ScreenOrientation.OrientationLock.LANDSCAPE,
-        );
-      } catch (err) {
-        console.warn("[MainLayout] ScreenOrientation lock failed:", err);
-      }
-    })();
-    // Re-run when kiosk state or route changes.
-  }, [isKiosk, isKioskRoute]);
 
   useEffect(() => {
     if (isFullScreenStation) return;
@@ -140,7 +135,6 @@ export default function MainLayout() {
     };
   }, [isFullScreenStation]);
 
-  // Sync sound config from location config store
   const notifConfig = useLocationConfigStore((s) => s.config.notifications);
   useEffect(() => {
     if (isFullScreenStation || !soundServiceRef.current) return;
@@ -150,15 +144,19 @@ export default function MainLayout() {
       kiosk: notifConfig.kioskOrderSound,
       third_party: notifConfig.thirdPartyOrderSound,
       pos: "none",
-      default: notifConfig.thirdPartyOrderSound, // unknown external sources use third-party sound
+      default: notifConfig.thirdPartyOrderSound,
     });
-  }, [isFullScreenStation, notifConfig]);
+  }, [isKDS, notifConfig]);
 
-  // Initialize table order prefetch subscriber and session side effects (POS mode only)
-  useTableSessionInit({ skip: isFullScreenStation });
+  useTableSessionInit({ skip: isKDS });
 
-  // Hydrate cash drawer session on startup (POS mode only)
-  // If no active session found and a drawer exists, prompt user to open it
+  // KDS skips useOrdersQuery, so seed the shared order store with active
+  // online orders for the edge tab/drawer (broadcasts keep them live after).
+  useKdsOnlineOrdersBootstrap({
+    locationId: selectedStore?.id,
+    enabled: isKDS,
+  });
+
   useEffect(() => {
     if (isFullScreenStation || !selectedStation || !selectedStore) return;
     const supabase = getOrderStoreSupabaseClient();
@@ -176,19 +174,29 @@ export default function MainLayout() {
       });
   }, [isFullScreenStation, selectedStation?.id, selectedStore?.id]);
 
-  // KDS-only broadcast handler — only feeds useKDSStore, skips useOrderStore
   const handleOrderChangeKDS = useCallback((payload: OrderPayload) => {
     const broadcastPayload = payload as unknown as OrderBroadcastPayload;
     useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
+    // Also feed ONLINE orders into the shared order store so the online-orders
+    // edge tab/drawer stays live on KDS. Gated to online source (or orders the
+    // store already tracks, so status/DELETE updates land) — KDS doesn't need
+    // the full POS order workspace.
+    const order = broadcastPayload.data?.order;
+    if (order) {
+      const orderStore = useOrderStore.getState();
+      if (
+        order.order_source === "online" ||
+        orderStore.dbOrderIdIndex[order.id] ||
+        orderStore.ordersById[order.id]
+      ) {
+        orderStore._handleOrderBroadcast(broadcastPayload);
+      }
+    }
   }, []);
 
-  // Realtime order syncing callbacks (POS mode)
   const handleOrderChange = useCallback((payload: OrderPayload) => {
-    // Backend sends OrderBroadcastPayload with full order data
     const broadcastPayload = payload as unknown as OrderBroadcastPayload;
-
     if (__DEV__) {
-      // DEBUG: Log received broadcast
       console.log("🔔 [MainLayout] Broadcast received:", {
         operation: broadcastPayload.operation,
         orderId: broadcastPayload.data?.order?.id,
@@ -196,29 +204,18 @@ export default function MainLayout() {
         stationId: broadcastPayload.data?.order?.station_id,
         stationName: broadcastPayload.data?.order?.station_name,
       });
-
-      // DEBUG: Log current station context
-      const orderStore = useOrderStore.getState();
-      console.log("📍 [MainLayout] Current station context:", {
-        currentStationId: orderStore.currentStationId,
-        stationName: orderStore.currentStation?.station_name,
-        viewScope: orderStore.currentStation?.view_scope,
-      });
     }
-
-    // Batch all three store mutations so React processes them as a single
-    // render cycle instead of three separate re-render passes.
     unstable_batchedUpdates(() => {
       useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
-      useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
       usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
+      // Keep the KDS store warm on POS stations too — the /kds screen relies
+      // on broadcasts while realtime is connected (its polling is disabled
+      // then, see kds.tsx schedulePoll), and its own pre-gate skips
+      // non-kitchen-relevant broadcasts cheaply.
+      useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
     });
-
-    // Play notification sound for external orders (not POS-originated)
     if (broadcastPayload.operation === "INSERT") {
       const src = broadcastPayload.data?.order?.order_source;
-      // Play sound for all external orders (online, delivery, kiosk, etc.)
-      // Only skip if order_source is 'pos' (originated from POS)
       if (src && src !== "pos" && src !== "in_store") {
         soundServiceRef.current?.playForSource(src);
       }
@@ -229,15 +226,12 @@ export default function MainLayout() {
     if (__DEV__) {
       console.log("[MainLayout] Payment changed:", payload);
     }
-    // Payment changes are handled through order updates
-    // The order store will receive an ORDER_UPDATE event with updated amount_paid
   }, []);
 
   if (!selectedStore || !selectedStore?.id) {
     return <Redirect href="/login" />;
   }
 
-  // Show loading indicator while Clerk is loading
   if (!isLoaded) {
     return (
       <View className="flex-1 items-center justify-center bg-screen">
@@ -246,13 +240,11 @@ export default function MainLayout() {
     );
   }
 
-  // Redirect to login if user is not signed in
   if (!isSignedIn) {
     return <Redirect href="/login" />;
   }
 
-  // Full-screen station surfaces get a minimal layout: no Header or POS sheets.
-  if (isFullScreenStation) {
+  if (isKDS) {
     return (
       <LocationRealtimeProvider
         locationId={selectedStore?.id}
@@ -268,6 +260,23 @@ export default function MainLayout() {
         >
           <StatusBar style="light" translucent />
           <Slot />
+          {/* Online-orders edge tab + drawer on KDS too. kdsMode hides the
+              POS-only navigation (board/detail routes have no header/back
+              affordance in the KDS layout). */}
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 150,
+            }}
+            pointerEvents="box-none"
+          >
+            <OnlineOrderEdgeTab />
+            <OnlineOrderDrawer kdsMode />
+          </View>
         </SafeAreaView>
       </LocationRealtimeProvider>
     );
@@ -306,18 +315,17 @@ export default function MainLayout() {
             className="flex-1 flex-row"
             style={{ backgroundColor: colors.screen }}
           >
-            {/* The Sidebar is now a self-contained component that handles its own state */}
-            {/* <Sidebar /> */}
-            {/* <ModifierSidebar /> */}
             <View
               className="flex-1 flex-col"
               style={{ backgroundColor: colors.screen }}
             >
               <View
-                className="px-4 z-50"
+                className="z-50"
                 style={{
                   backgroundColor: "transparent",
                   borderBottomWidth: 0,
+                  paddingLeft: 16,
+                  paddingRight: 16,
                 }}
                 onLayout={(event) =>
                   setHeaderHeight(event.nativeEvent.layout.height)
@@ -326,7 +334,7 @@ export default function MainLayout() {
                 <Header />
               </View>
               <View
-                className='flex-1'
+                className="flex-1"
                 style={disableKeyboardAvoiding ? { zIndex: 100 } : undefined}
               >
                 <Slot />
@@ -337,13 +345,9 @@ export default function MainLayout() {
             bottomSheetRef={
               notificationSheetRef as React.RefObject<BottomSheetMethods>
             }
-            onClose={() => {
-              /* sheet is already closed when onClose fires */
-            }}
+            onClose={() => {}}
           />
-          {/* Payment sheet — Modal-based, self-manages visibility via isOpen */}
           <PaymentBottomSheet />
-          {/* PaymentDetailBottomSheet in separate container with higher z-index */}
           <View
             style={{
               position: "absolute",
@@ -356,7 +360,23 @@ export default function MainLayout() {
           >
             <PaymentDetailBottomSheet ref={paymentDetailSheetRef} />
           </View>
-          {/* MenuSearchSheet — absolute overlay so it covers the app header */}
+          {/* Global online-orders edge tab + drawer. zIndex 150: above
+              PaymentDetail (100) so incoming orders stay reachable
+              mid-payment, below MenuSearchSheet (200). */}
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 150,
+            }}
+            pointerEvents="box-none"
+          >
+            <OnlineOrderEdgeTab />
+            <OnlineOrderDrawer />
+          </View>
           <View
             style={{
               position: "absolute",
@@ -368,18 +388,16 @@ export default function MainLayout() {
             }}
             pointerEvents="box-none"
           >
-          <MenuSearchSheet ref={menuSearchSheetRef} />
+            <MenuSearchSheet ref={menuSearchSheetRef} />
           </View>
           <Modal
             visible={isProfileOpen}
-            animationType='none'
-            presentationStyle='fullScreen'
+            animationType="none"
+            presentationStyle="fullScreen"
             onRequestClose={closeProfile}
           >
             <MyProfilePanel onClose={closeProfile} />
-            {/* Portal host so Dialog-based modals (PIN entry) render ABOVE this
-                fullScreen Modal rather than behind the app root PortalHost. */}
-            <PortalHost name='profile-overlay' />
+            <PortalHost name="profile-overlay" />
           </Modal>
         </SafeAreaView>
       </KeyboardAvoidingView>

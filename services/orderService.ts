@@ -1,5 +1,6 @@
 import { getDeviceId } from "@/lib/deviceId";
 import { DEADLINES } from "@/lib/network/deadlines";
+import { clearPendingToGo, markPendingToGo } from "@/lib/pendingToGo";
 import {
     rpcWithIdempotency,
     withIdempotency,
@@ -28,6 +29,23 @@ import {
     UpdateOrderItemResult,
 } from "@/types/db-order-management-types";
 import { SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * JSON envelope returned by accept_online_order / decline_online_order.
+ * These RPCs return HTTP 200 with success:false on guard failures (e.g. the
+ * order is no longer pending), so outcome detection reads this shape, not the
+ * transport `error`.
+ */
+export type OnlineOrderActionResult = {
+  success: boolean;
+  error?: string;
+  order_id?: string;
+  accepted_at?: string;
+  declined_at?: string;
+  cancelled_at?: string;
+  ready_at?: string;
+  completed_at?: string;
+};
 
 export type AddOpenItemParams = {
   p_order_id: string;
@@ -402,6 +420,141 @@ export class OrderService {
   }
 
   /**
+   * Accept an incoming online/QR order — fires every item to the kitchen (KDS).
+   *
+   * accept_online_order is pending-guarded and returns a JSON envelope at
+   * HTTP 200 even on the "not pending" branch:
+   *   { success: false, error: 'Order is not in pending status (current: X)' }
+   * (NOT a thrown/transport error). Callers MUST branch on data.success /
+   * data.error rather than relying on `error`. The server normalizes accept to
+   * status='sent_to_kitchen', so a benign "already accepted" race reports a
+   * current status of sent_to_kitchen/preparing/ready/accepted.
+   */
+  static async acceptOnlineOrder(
+    client: SupabaseClient,
+    dbOrderId: string,
+  ): Promise<{ data: OnlineOrderActionResult | null; error: any }> {
+    return _runWithDeadline<OnlineOrderActionResult>(
+      "accept_online_order",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("accept_online_order", { p_order_id: dbOrderId })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
+  }
+
+  /**
+   * Decline an incoming online/QR order (terminal). Same JSON-envelope contract
+   * as acceptOnlineOrder — inspect data.success / data.error.
+   */
+  static async declineOnlineOrder(
+    client: SupabaseClient,
+    dbOrderId: string,
+    reason?: string,
+  ): Promise<{ data: OnlineOrderActionResult | null; error: any }> {
+    return _runWithDeadline<OnlineOrderActionResult>(
+      "decline_online_order",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("decline_online_order", {
+            p_order_id: dbOrderId,
+            p_reason: reason ?? null,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
+  }
+
+  /**
+   * Cancel an already-accepted online/OrderOut order (post-acceptance).
+   *
+   * DB-only: writes the cancel state to `orders` + stamps the `orderout_orders`
+   * bridge row (cancel_source='pos', reject_reason). The external OrderOut
+   * backend relays the cancellation to the marketplace. `reason` MUST be one of
+   * the OrderOut enum codes (ITEM_UNAVAILABLE, STORE_CLOSED, TOO_BUSY,
+   * CUSTOMER_REQUEST, CANNOT_FULFILL); `details` is optional free text. Same
+   * JSON-envelope contract as accept/decline — inspect data.success / data.error.
+   */
+  static async cancelOnlineOrder(
+    client: SupabaseClient,
+    dbOrderId: string,
+    reason: string,
+    details?: string,
+  ): Promise<{ data: OnlineOrderActionResult | null; error: any }> {
+    return _runWithDeadline<OnlineOrderActionResult>(
+      "cancel_online_order",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("cancel_online_order", {
+            p_order_id: dbOrderId,
+            p_reason: reason,
+            p_details: details ?? null,
+          })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
+  }
+
+  /**
+   * Mark an already-accepted online/OrderOut order READY FOR PICKUP.
+   *
+   * DB-only: sets orders.status='ready' + ready_at; the AFTER UPDATE trigger
+   * stamps the orderout_orders bridge (ready_by='pos'). The external OrderOut
+   * backend observes that stamp and relays mark-ready to the marketplace
+   * (Uber Eats / DoorDash / Grubhub). Same JSON-envelope contract as
+   * accept/decline/cancel — inspect data.success / data.error (guard-fail
+   * branches return HTTP 200 with success:false, e.g. "not in-kitchen").
+   */
+  static async markOnlineOrderReady(
+    client: SupabaseClient,
+    dbOrderId: string,
+  ): Promise<{ data: OnlineOrderActionResult | null; error: any }> {
+    return _runWithDeadline<OnlineOrderActionResult>(
+      "mark_online_order_ready",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("mark_online_order_ready", { p_order_id: dbOrderId })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
+  }
+
+  /**
+   * Mark a READY online/OrderOut order DONE (status='completed') from the POS
+   * Online Orders "Mark done" button — used when the kitchen never bumps a ready
+   * order off the KDS, leaving it stuck in the "Ready" lane.
+   *
+   * DB-only: sets orders.status='completed' + bumps line items to 'served' so the
+   * KDS ticket clears. Same JSON-envelope contract as accept/decline/cancel/ready
+   * — inspect data.success / data.error (guard-fail branches return HTTP 200 with
+   * success:false, e.g. "not ready").
+   */
+  static async completeOnlineOrder(
+    client: SupabaseClient,
+    dbOrderId: string,
+  ): Promise<{ data: OnlineOrderActionResult | null; error: any }> {
+    return _runWithDeadline<OnlineOrderActionResult>(
+      "complete_online_order",
+      DEADLINES.sendToKitchen,
+      async (signal) => {
+        const { data, error } = await client
+          .rpc("complete_online_order", { p_order_id: dbOrderId })
+          .abortSignal(signal);
+        return { data, error };
+      },
+    );
+  }
+
+  /**
    * Update the status of an order
    */
   static async updateOrderStatus(
@@ -424,6 +577,54 @@ export class OrderService {
         return { data, error };
       },
     );
+  }
+
+  /**
+   * Perf A1: transition an order out of draft for a kitchen send, with the
+   * verify-SELECT on the ERROR PATH ONLY (was unconditionally a third round
+   * trip at every send-to-kitchen call site).
+   *
+   * - RPC success → the returned row is the post-update state from the same
+   *   transaction, i.e. non-draft by definition. Proceed. (~99% path, 1 RT.)
+   * - P0001 / "already in" → ambiguous: deployed update_order_status raises
+   *   P0001 for BOTH "already in <status>" (benign) and "Order not found"
+   *   (fatal). Verified identical on staging + prod 2026-06-11. Discriminate
+   *   with today's SELECT: not-found/draft → fail (preserves retry →
+   *   dead-letter visibility); non-draft → proceed.
+   * - Any other error → fail.
+   */
+  static async ensureOrderOutOfDraft(
+    client: SupabaseClient,
+    orderId: string,
+    targetStatus: OrderStatus,
+  ): Promise<{ ok: boolean; error?: any }> {
+    const { error } = await OrderService.updateOrderStatus(
+      client,
+      orderId,
+      targetStatus,
+    );
+    if (!error) return { ok: true };
+
+    const maybeBenign =
+      error.code === "P0001" || error.message?.includes("already in");
+    if (!maybeBenign) return { ok: false, error };
+
+    const { data: row, error: verifyError } = await client
+      .from("orders")
+      .select("status")
+      .eq("id", orderId)
+      .single();
+    if (verifyError || row?.status === "draft") {
+      return {
+        ok: false,
+        error:
+          verifyError ??
+          new Error(
+            `Order ${orderId} remained draft after status update`,
+          ),
+      };
+    }
+    return { ok: true };
   }
 
   /**
@@ -554,7 +755,13 @@ export class OrderService {
       //                            row (consumed by apply_refund_to_payment_v4
       //                            for proportional SC reversal).
       "process_payment_v12",
-      "process_payment_v15",
+      // v16 — forks v15. The split-payment "fully paid" test now requires ALL
+      // portions captured (v_portions_remaining = 0) and drops v15's
+      // `balance <= 0.02` dust fallback inside the split branch. On a tiny
+      // order (e.g. a $0.02 custom item split 2 ways) that fallback flipped the
+      // order to `paid` after the FIRST $0.01 portion — amount_paid=$0.01 with a
+      // real portion still owed — and enforce_order_math rejected it (P0005).
+      "process_payment_v16",
       params,
       {
         deadline: DEADLINES.paymentRpc,
@@ -1537,6 +1744,46 @@ export class OrderService {
         return { data, error };
       },
     );
+  }
+
+  /**
+   * Toggle the per-item "TO GO" flag on order items.
+   */
+  static async toggleToGoOnItems(
+    client: SupabaseClient,
+    orderItemIds: string[],
+    isToGo: boolean,
+  ): Promise<{ data: any; error: any }> {
+    if (orderItemIds.length === 0) {
+      return { data: null, error: null };
+    }
+    // Protect the optimistic local flag from a stale concurrent fetch/broadcast
+    // until this persist commits (see lib/pendingToGo). On failure we clear the
+    // markers so the next fetch reconciles local state back to the DB value.
+    markPendingToGo(orderItemIds, isToGo);
+    let result: { data: any; error: any };
+    try {
+      result = await _runWithDeadline<any>(
+        "toggle_to_go_order_items",
+        DEADLINES.hotMutation,
+        async (signal) => {
+          const { data, error } = await client
+            .rpc("toggle_to_go_order_items", {
+              p_order_item_ids: orderItemIds,
+              p_is_to_go: isToGo,
+            })
+            .abortSignal(signal);
+          return { data, error };
+        },
+      );
+    } catch (err) {
+      clearPendingToGo(orderItemIds);
+      throw err;
+    }
+    if (result?.error) {
+      clearPendingToGo(orderItemIds);
+    }
+    return result;
   }
 
   /**

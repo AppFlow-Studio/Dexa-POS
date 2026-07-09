@@ -1,4 +1,5 @@
 import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { rpcWithIdempotency } from "@/lib/network/idempotencyKey";
 import {
   AddFloorPlanObjectParams,
@@ -96,9 +97,10 @@ export class FloorPlanService {
     error: any;
   }> {
     try {
-      console.log(
-        `[getAllFloorPlanObjects] Fetching objects for floor plan: ${floorPlanId}`,
-      );
+      if (__DEV__)
+        console.log(
+          `[getAllFloorPlanObjects] Fetching objects for floor plan: ${floorPlanId}`,
+        );
 
       // 1. Fetch ALL active floor plan objects (not filtered by category)
       const { data: allObjects, error: objectsError } = await client
@@ -123,9 +125,10 @@ export class FloorPlanService {
         return { data: [], error: null };
       }
 
-      console.log(
-        `[getAllFloorPlanObjects] Found ${allObjects.length} total objects`,
-      );
+      if (__DEV__)
+        console.log(
+          `[getAllFloorPlanObjects] Found ${allObjects.length} total objects`,
+        );
 
       // 2. Fetch session data for tables that have sessions
       // Scope junction query to only tables in this floor plan to avoid cross-plan pollution
@@ -230,9 +233,10 @@ export class FloorPlanService {
         return { ...obj, session };
       });
 
-      console.log(
-        `[getAllFloorPlanObjects] Returning ${result.length} objects with session data`,
-      );
+      if (__DEV__)
+        console.log(
+          `[getAllFloorPlanObjects] Returning ${result.length} objects with session data`,
+        );
       return { data: result, error: null };
     } catch (err: any) {
       console.error("[getAllFloorPlanObjects] Fatal error:", err);
@@ -344,10 +348,19 @@ export class FloorPlanService {
         hint.includes("Perhaps you meant to call"));
 
     if (missingIdempotencyArg) {
-      const retry = await client.rpc(
-        "seat_guests_v3",
-        params as Record<string, any>,
-      );
+      // Bad-WiFi: bound the legacy fallback too (the MAIN path above is already
+      // deadline-wrapped via rpcWithIdempotency). On timeout this returns
+      // { error: DEADLINE_EXCEEDED } which flows to the seatGuests caller and
+      // queues 'seat_guests' (replays the idempotency-keyed MAIN path). PGRST202
+      // is a deterministic signature mismatch, not a timeout, so no retry loop.
+      const retry = await runWithDeadline<
+        SeatGuestsResponse & { success?: boolean; error?: string }
+      >("seat_guests_legacy", DEADLINES.closeCheck, async (signal) => {
+        const res = await client
+          .rpc("seat_guests_v3", params as Record<string, any>)
+          .abortSignal(signal);
+        return { data: res.data, error: res.error };
+      });
       data = retry.data as SeatGuestsResponse & {
         success?: boolean;
         error?: string;

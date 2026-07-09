@@ -7,6 +7,7 @@ import SecurityTab from '@/components/profile/SecurityTab'
 import UserProfileCard from '@/components/timeclock/UserProfileCard'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useNotificationSheetStore } from '@/stores/useNotificationSheetStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
@@ -24,6 +25,8 @@ interface MyProfilePanelProps {
 }
 
 export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const activeEmployeeId = useEmployeeStore(state => state.activeEmployeeId)
   const employees = useEmployeeStore(state => state.employees)
   const sessions = useTimeclockStore(state => state.sessions)
@@ -47,14 +50,17 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
   const [activeTab, setActiveTab] = useState<TabName>('Profile Info')
   const notificationSheetRef = useRef<BottomSheetMethods | null>(null)
   const setSheetRef = useNotificationSheetStore(state => state.setSheetRef)
+  const clearSheetRef = useNotificationSheetStore(state => state.clearSheetRef)
 
   // PTO / Requests render as an in-panel overlay rather than a separate route,
   // so the profile Modal stays open and there's no jarring close→navigate jump.
   const [overlay, setOverlay] = useState<'pto' | 'requests' | null>(null)
 
   useEffect(() => {
-    setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>)
-  }, [setSheetRef])
+    const ref = notificationSheetRef as React.RefObject<BottomSheetMethods>
+    setSheetRef(ref)
+    return () => clearSheetRef(ref)
+  }, [setSheetRef, clearSheetRef])
 
   const renderContent = () => {
     switch (activeTab) {
@@ -74,9 +80,9 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
       <View
         style={{
           flex: 1,
-          paddingHorizontal: 20,
-          paddingTop: 12,
-          paddingBottom: 16,
+          paddingHorizontal: s(20),
+          paddingTop: s(12),
+          paddingBottom: s(16),
           backgroundColor: colors.screen
         }}
       >
@@ -87,11 +93,11 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
               className='p-1.5 rounded-lg'
               style={{ backgroundColor: `${colors.teal}18` }}
             >
-              <ArrowLeft color={colors.teal} size={18} />
+              <ArrowLeft color={colors.teal} size={s(18)} />
             </TouchableOpacity>
             <Text
               style={{
-                fontSize: 18,
+                fontSize: s(18),
                 fontWeight: 'bold',
                 color: colors.heading
               }}
@@ -103,17 +109,22 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
           <View className='flex-row items-center gap-2'>
             <TouchableOpacity
               onPress={() => setOverlay('pto')}
-              className='flex-row items-center gap-2 px-3 py-1.5 rounded-xl'
               style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: s(8),
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
+                borderRadius: s(12),
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border
               }}
             >
-              <Calendar size={14} color={colors.teal} />
+              <Calendar size={s(14)} color={colors.teal} />
               <Text
                 style={{
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: '600',
                   color: colors.heading
                 }}
@@ -123,17 +134,22 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setOverlay('requests')}
-              className='flex-row items-center gap-2 px-3 py-1.5 rounded-xl'
               style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: s(8),
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
+                borderRadius: s(12),
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border
               }}
             >
-              <Menu size={14} color={colors.teal} />
+              <Menu size={s(14)} color={colors.teal} />
               <Text
                 style={{
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: '600',
                   color: colors.heading
                 }}
@@ -148,12 +164,12 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
           style={{
             flex: 1,
             flexDirection: 'row',
-            gap: 16,
+            gap: s(16),
             alignItems: 'stretch'
           }}
         >
           {currentEmployee?.id && (
-            <View style={{ width: 360, flexShrink: 0 }}>
+            <View style={{ width: s(360), flexShrink: 0 }}>
               <UserProfileCard employeeId={currentEmployee.id} />
             </View>
           )}
@@ -163,7 +179,7 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
               flex: 1,
               minWidth: 0,
               backgroundColor: colors.panel,
-              borderRadius: 16,
+              borderRadius: s(16),
               borderWidth: 1,
               borderColor: colors.border,
               overflow: 'hidden'
@@ -174,8 +190,8 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
                 flexDirection: 'row',
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
-                paddingHorizontal: 8,
-                paddingTop: 8
+                paddingHorizontal: s(8),
+                paddingTop: s(8)
               }}
             >
               {TABS.map(t => {
@@ -184,15 +200,20 @@ export default function MyProfilePanel ({ onClose }: MyProfilePanelProps) {
                   <TouchableOpacity
                     key={t}
                     onPress={() => setActiveTab(t)}
-                    className='px-4 pb-2 mr-1'
                     style={{
+                      paddingHorizontal: s(16),
+                      paddingBottom: s(8),
+                      marginRight: s(4),
                       borderBottomWidth: 2,
                       borderBottomColor: isActive ? colors.teal : 'transparent'
                     }}
                   >
                     <Text
-                      className='text-sm font-semibold'
-                      style={{ color: isActive ? colors.teal : colors.label }}
+                      style={{
+                        fontSize: s(13),
+                        fontWeight: '600',
+                        color: isActive ? colors.teal : colors.label
+                      }}
                     >
                       {t}
                     </Text>

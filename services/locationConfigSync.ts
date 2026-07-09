@@ -71,14 +71,28 @@ async function _fetchAndHydrate(supabase: SupabaseClient, locationId: string) {
       .from('locations')
       .select('pos_config, public_metadata, kds_workflow_mode')
       .eq('id', locationId)
-      .single()
+      .maybeSingle()
 
     if (error) {
       console.error(`${LOG_TAG} Failed to fetch pos_config:`, error.message)
       return
     }
 
-    if (!data) return
+    if (!data) {
+      // 0 rows. RLS on `locations` is authenticated-only and scoped to
+      // (user_belongs_to_merchant OR is_location_member), so an empty result
+      // means the active session can't see this location. Almost always the
+      // persisted selectedStore belongs to a different environment/identity
+      // than the one now running (e.g. a staging location id or a stale Clerk
+      // session against the prod instance), or the signed-in user isn't a
+      // member of this location. Config falls back to defaults rather than
+      // surfacing the cryptic PGRST116 "cannot coerce" error.
+      console.warn(
+        `${LOG_TAG} Location ${locationId} not visible to current session — ` +
+        `wrong environment for this store, or no access. Skipping config hydrate; using defaults.`
+      )
+      return
+    }
 
     let config = (data.pos_config as Record<string, any>) ?? {}
 

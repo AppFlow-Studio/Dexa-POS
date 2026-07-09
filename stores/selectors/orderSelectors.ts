@@ -13,6 +13,10 @@ import { calculateOrderTotals } from "@/lib/order-calculator";
 import type { CartItem, OrderProfile, OrderProfilePayment } from "@/lib/types";
 import { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
+import {
+  selectSeenOrderIds,
+  useOnlineOrderDrawerStore,
+} from "../useOnlineOrderDrawerStore";
 import { useOrderStore } from "../useOrderStore";
 import { useSeatingStore } from "../useSeatingStore";
 import { useServiceChargeRulesStore } from "../useServiceChargeRulesStore";
@@ -200,12 +204,16 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
     enabled ? s.resolveRule(scLocationId) : null,
   );
   const sessionPartySize = useTableSessionStore((s) => {
+    // O(1) lookup: useTableSessionStore.sessions is keyed by tableId, and an
+    // order's service_location_id IS its tableId. The `sx.id === sessionId`
+    // guard preserves the previous full-scan semantics exactly (including the
+    // reseat/stale-session miss → null). Assumes tableId === service_location_id.
     const sessionId = activeOrder?.session_id;
     if (!enabled || !sessionId) return null;
-    for (const sess of Object.values(s.sessions)) {
-      if (sess.id === sessionId) return sess.party_size ?? null;
-    }
-    return null;
+    const locationId = activeOrder?.service_location_id;
+    if (!locationId) return null;
+    const sx = s.sessions[locationId];
+    return sx && sx.id === sessionId ? sx.party_size ?? null : null;
   });
   // seatCount is the local UI truth (SeatSelector stepper), session.party_size
   // is the backend-authoritative fallback. order.guest_count intentionally not
@@ -375,12 +383,14 @@ export function useOrderTotals(
     s.resolveRule(scLocationId),
   );
   const sessionPartySize = useTableSessionStore((s) => {
+    // O(1) lookup keyed by tableId (= order.service_location_id); the
+    // `sx.id === sessionId` guard preserves the old full-scan semantics.
     const sessionId = order?.session_id;
     if (!sessionId) return null;
-    for (const sess of Object.values(s.sessions)) {
-      if (sess.id === sessionId) return sess.party_size ?? null;
-    }
-    return null;
+    const locationId = order?.service_location_id;
+    if (!locationId) return null;
+    const sx = s.sessions[locationId];
+    return sx && sx.id === sessionId ? sx.party_size ?? null : null;
   });
   const seatCount = useSeatingStore((s) =>
     orderId ? (s.byOrderId[orderId]?.seatCount ?? null) : null,
@@ -526,9 +536,16 @@ export function useWorkingSetOrders(): OrderProfile[] {
 // - order_status NOT IN ('completed', 'voided', 'cancelled', 'void')
 // - Must have items
 
-const INACTIVE_STATUSES = new Set(["completed", "voided", "cancelled", "void"]);
+const INACTIVE_STATUSES = new Set([
+  "completed",
+  "voided",
+  "cancelled",
+  "void",
+  "declined", // online-order manual-decline is terminal
+]);
 export function useStationOrders(): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
   const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
@@ -546,9 +563,11 @@ export function useStationOrders(): OrderProfile[] {
     const workingSet = new Set(workingSetOrderIds);
 
     const result: OrderProfile[] = [];
-    const keys = Object.keys(ordersById);
-    for (let i = 0; i < keys.length; i++) {
-      const order = ordersById[keys[i]];
+    // Iterate the pre-maintained orderIds array instead of allocating a fresh
+    // Object.keys(ordersById) on every evaluation.
+    for (let i = 0; i < orderIds.length; i++) {
+      const order = ordersById[orderIds[i]];
+      if (!order) continue;
       if (INACTIVE_STATUSES.has(order.order_status ?? "")) continue;
       if (!order.items || order.items.length === 0) continue;
 
@@ -574,7 +593,7 @@ export function useStationOrders(): OrderProfile[] {
       return bTime - aTime;
     });
     return result;
-  }, [ordersById, currentStationId, workingSetOrderIds, cutoffTime]);
+  }, [ordersById, orderIds, currentStationId, workingSetOrderIds, cutoffTime]);
 
   return useStableOrderList(filtered);
 }
@@ -596,6 +615,7 @@ export function useStationOrderCount(): number {
 
 export function useOtherStationOrders(): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
 
@@ -604,10 +624,11 @@ export function useOtherStationOrders(): OrderProfile[] {
 
     const workingSet = new Set(workingSetOrderIds);
     const result: OrderProfile[] = [];
-    const keys = Object.keys(ordersById);
 
-    for (let i = 0; i < keys.length; i++) {
-      const order = ordersById[keys[i]];
+    // Iterate the pre-maintained orderIds array instead of Object.keys(ordersById).
+    for (let i = 0; i < orderIds.length; i++) {
+      const order = ordersById[orderIds[i]];
+      if (!order) continue;
       if (order.station_id === currentStationId) continue;
       if (order.db_order_id && workingSet.has(order.db_order_id)) continue;
       if (INACTIVE_STATUSES.has(order.order_status ?? "")) continue;
@@ -620,7 +641,7 @@ export function useOtherStationOrders(): OrderProfile[] {
       return bTime - aTime;
     });
     return result;
-  }, [ordersById, currentStationId, workingSetOrderIds]);
+  }, [ordersById, orderIds, currentStationId, workingSetOrderIds]);
 
   return useStableOrderList(filtered);
 }
@@ -661,6 +682,7 @@ export interface OrdersFilterState {
 
 export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const currentStation = useOrderStore((s) => s.currentStation);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
@@ -673,6 +695,7 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
       "voided",
       "cancelled",
       "void",
+      "declined",
     ]);
     const dineInTypes = new Set(["Dine In", "dine_in"]);
     const workingSet = new Set(workingSetOrderIds);
@@ -681,7 +704,12 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
     // Optimize: Single pass to build exclusion set
     const stationOrderIds = new Set<string>();
 
-    const allOrders = Object.values(ordersById);
+    // Build from the pre-maintained orderIds array instead of Object.values.
+    const allOrders: OrderProfile[] = [];
+    for (let i = 0; i < orderIds.length; i++) {
+      const o = ordersById[orderIds[i]];
+      if (o) allOrders.push(o);
+    }
 
     // First pass mainly to identify station orders for exclusion
     for (const o of allOrders) {
@@ -761,6 +789,7 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
     return result;
   }, [
     ordersById,
+    orderIds,
     currentStationId,
     currentStation,
     workingSetOrderIds,
@@ -947,4 +976,159 @@ export function useIsOwnStationOrder(order: OrderProfile | null): boolean {
     if (!order || !currentStationId) return false;
     return order.station_id === currentStationId;
   }, [order, currentStationId]);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Pending Online Orders (online-orders Kanban "New" column)
+// ═══════════════════════════════════════════════════════════════════════════
+// Incoming online/QR orders awaiting manual Accept/Decline.
+//
+// Keyed on order_source==='online' + order_status==='pending' — NOT order_type.
+// QR dine-in orders transform to order_type='takeout' (mapOrderType has no
+// qr_dine_in case), so order_type cannot distinguish them. order_source is set
+// to 'online' by process_online_order for ALL ingress paths (website/QR +
+// Orderout aggregators), so this queue surfaces every pending online order.
+// Auto-accepted aggregator orders are never 'pending', so they won't appear.
+
+export function usePendingOnlineOrders(): OrderProfile[] {
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
+
+  const filtered = useMemo(() => {
+    const result: OrderProfile[] = [];
+    for (let i = 0; i < orderIds.length; i++) {
+      const o = ordersById[orderIds[i]];
+      if (!o) continue;
+      if (o.order_source !== "online") continue;
+      if (o.order_status !== "pending") continue;
+      result.push(o);
+    }
+    // Newest first
+    result.sort((a, b) => getOrderTime(b.opened_at) - getOrderTime(a.opened_at));
+    return result;
+  }, [ordersById, orderIds]);
+
+  return useStableOrderList(filtered);
+}
+
+// Online orders we never show on the Kanban (terminal / dropped).
+// `completed` is intentionally KEPT so it can fill the "Done" column.
+const ONLINE_EXCLUDED_STATUSES = new Set([
+  "declined",
+  "cancelled",
+  "void",
+  "voided",
+  "refunded",
+]);
+
+/**
+ * All active online orders (any non-terminal status), newest first.
+ * The Kanban buckets these into its columns by order_status. Stable reference
+ * via useStableOrderList so unrelated store mutations don't churn the board.
+ */
+export function useOnlineOrders(): OrderProfile[] {
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
+
+  const filtered = useMemo(() => {
+    const result: OrderProfile[] = [];
+    for (let i = 0; i < orderIds.length; i++) {
+      const o = ordersById[orderIds[i]];
+      if (!o) continue;
+      if (o.order_source !== "online") continue;
+      if (ONLINE_EXCLUDED_STATUSES.has(o.order_status ?? "")) continue;
+      result.push(o);
+    }
+    result.sort((a, b) => getOrderTime(b.opened_at) - getOrderTime(a.opened_at));
+    return result;
+  }, [ordersById, orderIds]);
+
+  return useStableOrderList(filtered);
+}
+
+/**
+ * Count of pending online orders for the nav/header badge.
+ * Returns a primitive number, so subscribers re-render only when the count
+ * changes — not when any order in the store mutates.
+ */
+export function usePendingOnlineOrderCount(): number {
+  return useOrderStore((s) => {
+    let n = 0;
+    for (let i = 0; i < s.orderIds.length; i++) {
+      const o = s.ordersById[s.orderIds[i]];
+      if (o && o.order_source === "online" && o.order_status === "pending") n++;
+    }
+    return n;
+  });
+}
+
+// Statuses that make an online order "active" for the right-edge drawer tab.
+// Positive allowlist (unlike ONLINE_EXCLUDED_STATUSES): `completed` orders
+// stay on the Kanban's Done column but don't keep the edge tab visible.
+const TAB_ACTIVE_ONLINE_STATUSES = new Set([
+  "pending",
+  "accepted",
+  "sent_to_kitchen",
+  "preparing",
+  "ready",
+]);
+
+function isTabActiveOnlineOrder(o: OrderProfile | undefined): o is OrderProfile {
+  return (
+    !!o &&
+    o.order_source === "online" &&
+    TAB_ACTIVE_ONLINE_STATUSES.has(o.order_status ?? "")
+  );
+}
+
+/** The stable key used for online-order seen-tracking (matches the Kanban). */
+export function getOnlineOrderKey(o: OrderProfile): string {
+  return o.db_order_id ?? o.id;
+}
+
+/**
+ * Count of active (pending → ready) online orders. Drives edge-tab
+ * visibility. Primitive return — subscribers re-render only on count change.
+ */
+export function useActiveOnlineOrderCount(): number {
+  return useOrderStore((s) => {
+    let n = 0;
+    for (let i = 0; i < s.orderIds.length; i++) {
+      if (isTabActiveOnlineOrder(s.ordersById[s.orderIds[i]])) n++;
+    }
+    return n;
+  });
+}
+
+/**
+ * Count of active online orders NOT yet seen on this station (drawer store's
+ * seen set). Drives the edge-tab badge. Two-store combine: subscribing to the
+ * seen map re-renders on seen writes, and the order-store selector closure
+ * re-evaluates with the fresh map on that render.
+ */
+export function useUnseenOnlineOrderCount(): number {
+  const seen = useOnlineOrderDrawerStore(selectSeenOrderIds);
+  return useOrderStore((s) => {
+    let n = 0;
+    for (let i = 0; i < s.orderIds.length; i++) {
+      const o = s.ordersById[s.orderIds[i]];
+      if (isTabActiveOnlineOrder(o) && !seen[getOnlineOrderKey(o)]) n++;
+    }
+    return n;
+  });
+}
+
+/**
+ * Non-hook snapshot of active online order keys. Used by the edge tab's
+ * press handler to feed openDrawer/toggleDrawer without subscribing the tab
+ * to the full order list.
+ */
+export function getActiveOnlineOrderKeys(): string[] {
+  const s = useOrderStore.getState();
+  const keys: string[] = [];
+  for (let i = 0; i < s.orderIds.length; i++) {
+    const o = s.ordersById[s.orderIds[i]];
+    if (isTabActiveOnlineOrder(o)) keys.push(getOnlineOrderKey(o));
+  }
+  return keys;
 }

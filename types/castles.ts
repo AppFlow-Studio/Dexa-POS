@@ -24,6 +24,17 @@ export interface CastlesConnectionConfig {
   timeout: number;
   /** payment_terminals.id — used for counter + DB ops */
   terminalId: string;
+  /**
+   * Background auto-connect after a plug/power-cycle (USB attach or cold-boot
+   * startup), where the terminal may still be rebooting and returning 0 bytes.
+   * When true, _connectInner stays boot-tolerant: it makes a single light
+   * attempt and treats the empty-buffer (CastlesEmptyResponseError) as an
+   * ordinary retryable failure — it does NOT hand off to the wedge supervisor
+   * or throw CastlesWedgedError. The auto-connect coordinator owns the retry
+   * cadence. User-initiated paths (manual Test, sale) leave this falsy so the
+   * genuine app-layer wedge is still detected and surfaced.
+   */
+  coldConnect?: boolean;
 }
 
 // ============================================================

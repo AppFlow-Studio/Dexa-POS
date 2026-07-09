@@ -33,6 +33,7 @@ import BottomActionBar from './BottomActionBar'
 import CourseAccordion from './CourseAccordion'
 import DiscountBottomSheet from './DiscountBottomSheet'
 import PricingBreakdownSheet from './PricingBreakdownSheet'
+import { useUiScale } from '@/lib/uiScale'
 
 // ============================================================================
 // Helpers
@@ -76,7 +77,8 @@ const DenseBillItemRow = React.memo(
     indentLeft,
     enableCoursing,
     orderHasPayments,
-    orderPayments
+    orderPayments,
+    scale
   }: {
     orderId: string
     itemId: string
@@ -86,7 +88,9 @@ const DenseBillItemRow = React.memo(
     enableCoursing: boolean
     orderHasPayments: boolean
     orderPayments: OrderProfile['payments'] | null
+    scale: number
   }) {
+    const s = (n: number) => Math.round(n * scale)
     const item = useOrderItem(orderId, itemId)
     if (!item) return null
 
@@ -94,8 +98,8 @@ const DenseBillItemRow = React.memo(
       <View
         style={{
           paddingLeft: indentLeft,
-          paddingRight: 4,
-          paddingVertical: enableCoursing ? 2 : 3,
+          paddingRight: s(4),
+          paddingVertical: enableCoursing ? s(2) : s(3),
           opacity: enableCoursing && isSent ? 0.55 : 1
         }}
       >
@@ -111,19 +115,20 @@ const DenseBillItemRow = React.memo(
 )
 
 const StatusPill = React.memo(
-  ({ status }: { status: AggregateKitchenStatus }) => {
+  ({ status, scale }: { status: AggregateKitchenStatus; scale: number }) => {
     if (!status) return null
+    const s = (n: number) => Math.round(n * scale)
     const cfg = STATUS_BADGE[status]
     return (
       <View
         style={{
-          paddingHorizontal: 6,
-          paddingVertical: 2,
-          borderRadius: 4,
+          paddingHorizontal: s(6),
+          paddingVertical: s(2),
+          borderRadius: s(4),
           backgroundColor: cfg.color + '20'
         }}
       >
-        <Text style={{ fontSize: 9, fontWeight: '700', color: cfg.color }}>
+        <Text style={{ fontSize: s(9), fontWeight: '700', color: cfg.color }}>
           {cfg.label}
         </Text>
       </View>
@@ -135,7 +140,8 @@ const StatusPill = React.memo(
 // KitchenTimer — shows elapsed minutes since course was sent (30s refresh)
 // ============================================================================
 
-const KitchenTimer = React.memo(({ sentAt }: { sentAt: number }) => {
+const KitchenTimer = React.memo(({ sentAt, scale }: { sentAt: number; scale: number }) => {
+  const s = (n: number) => Math.round(n * scale)
   const [elapsed, setElapsed] = useState(() =>
     Math.floor((Date.now() - sentAt) / 60000)
   )
@@ -149,7 +155,7 @@ const KitchenTimer = React.memo(({ sentAt }: { sentAt: number }) => {
 
   if (elapsed < 1) return null
   return (
-    <Text style={{ fontSize: 9, fontWeight: '600', color: colors.muted }}>
+    <Text style={{ fontSize: s(9), fontWeight: '600', color: colors.muted }}>
       · {elapsed}m
     </Text>
   )
@@ -166,7 +172,8 @@ const SeatHeader = React.memo(
     total,
     isCurrent,
     expanded,
-    onPress
+    onPress,
+    scale
   }: {
     label: string
     itemCount: number
@@ -174,17 +181,20 @@ const SeatHeader = React.memo(
     isCurrent: boolean
     expanded: boolean
     onPress?: () => void
-  }) => (
+    scale: number
+  }) => {
+    const s = (n: number) => Math.round(n * scale)
+    return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
       style={{
-        height: 34,
+        height: s(34),
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 10,
-        marginTop: 6,
+        paddingHorizontal: s(10),
+        marginTop: s(6),
         backgroundColor: isCurrent ? colors.teal + '12' : colors.card + '80',
         borderBottomWidth: 1,
         borderBottomColor: colors.border,
@@ -192,18 +202,18 @@ const SeatHeader = React.memo(
         borderTopColor: colors.border + '60'
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
         <View
           style={{
-            width: 6,
-            height: 6,
-            borderRadius: 3,
+            width: s(6),
+            height: s(6),
+            borderRadius: s(3),
             backgroundColor: isCurrent ? colors.teal : colors.muted
           }}
         />
         <Text
           style={{
-            fontSize: 12,
+            fontSize: s(12),
             fontWeight: '800',
             color: colors.heading,
             letterSpacing: 0.2
@@ -211,22 +221,23 @@ const SeatHeader = React.memo(
         >
           {label}
         </Text>
-        <Text style={{ fontSize: 10, color: colors.muted }}>
+        <Text style={{ fontSize: s(10), color: colors.muted }}>
           · {itemCount} {itemCount === 1 ? 'item' : 'items'}
         </Text>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 12, fontWeight: '800', color: colors.teal }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
+        <Text style={{ fontSize: s(12), fontWeight: '800', color: colors.teal }}>
           ${total.toFixed(2)}
         </Text>
         {expanded ? (
-          <ChevronDown size={14} color={colors.label} />
+          <ChevronDown size={s(14)} color={colors.label} />
         ) : (
-          <ChevronRight size={14} color={colors.label} />
+          <ChevronRight size={s(14)} color={colors.label} />
         )}
       </View>
     </TouchableOpacity>
-  )
+    )
+  }
 )
 
 // ============================================================================
@@ -246,7 +257,8 @@ const CourseSubHeader = React.memo(
     onPress,
     onSend,
     onLongPress,
-    onRemove
+    onRemove,
+    scale
   }: {
     course: number
     itemCount: number
@@ -260,68 +272,72 @@ const CourseSubHeader = React.memo(
     onSend?: () => void
     onLongPress?: () => void
     onRemove?: () => void
-  }) => (
+    scale: number
+  }) => {
+    const s = (n: number) => Math.round(n * scale)
+    return (
     <TouchableOpacity
       activeOpacity={0.7}
       onPress={onPress}
       onLongPress={onLongPress}
       style={{
-        height: 26,
+        height: s(26),
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingLeft: 22,
-        paddingRight: 10,
-        marginTop: 2
+        paddingLeft: s(22),
+        paddingRight: s(10),
+        marginTop: s(2)
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(5) }}>
         <View
           style={{
-            width: 4,
-            height: 4,
-            borderRadius: 2,
+            width: s(4),
+            height: s(4),
+            borderRadius: s(2),
             backgroundColor: isCurrentCourse ? colors.success : colors.muted
           }}
         />
-        <Text style={{ fontSize: 10, fontWeight: '600', color: colors.label }}>
+        <Text style={{ fontSize: s(10), fontWeight: '600', color: colors.label }}>
           Course {course}
         </Text>
-        <StatusPill status={status} />
-        {sentAt && status && <KitchenTimer sentAt={sentAt} />}
-        <Text style={{ fontSize: 9, color: colors.muted }}>
+        <StatusPill status={status} scale={scale} />
+        {sentAt && status && <KitchenTimer sentAt={sentAt} scale={scale} />}
+        <Text style={{ fontSize: s(9), color: colors.muted }}>
           {itemCount} {itemCount === 1 ? 'item' : 'items'}
         </Text>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(5) }}>
         {!isSent && itemCount === 0 && course !== 1 && onRemove && (
           <TouchableOpacity
             onPress={e => {
               e.stopPropagation()
               onRemove()
             }}
-            hitSlop={6}
+            hitSlop={s(6)}
             style={{
-              width: 18,
-              height: 18,
+              width: s(18),
+              height: s(18),
               alignItems: 'center',
               justifyContent: 'center',
-              borderRadius: 4
+              borderRadius: s(4)
             }}
             activeOpacity={0.5}
           >
-            <X size={11} color={colors.muted} />
+            <X size={s(11)} color={colors.muted} />
           </TouchableOpacity>
         )}
         {hasUnsentItems && onSend && <SendCourseButton onPress={onSend} />}
         {expanded ? (
-          <ChevronDown size={12} color={colors.label} />
+          <ChevronDown size={s(12)} color={colors.label} />
         ) : (
-          <ChevronRight size={12} color={colors.label} />
+          <ChevronRight size={s(12)} color={colors.label} />
         )}
       </View>
     </TouchableOpacity>
-  )
+    )
+  }
 )
 
 type SeatListRow =
@@ -411,6 +427,8 @@ const DenseSeatView = React.memo(
     isOvertime?: boolean
     overtimeMinutes?: number
   }) => {
+    const uiScale = useUiScale()
+    const s = (n: number) => Math.round(n * uiScale)
     const [actionCourse, setActionCourse] = useState<number | null>(null)
     const [collapsedSeats, setCollapsedSeats] = useState<Set<string | number>>(
       new Set()
@@ -698,10 +716,10 @@ const DenseSeatView = React.memo(
               style={{
                 alignItems: 'center',
                 justifyContent: 'center',
-                paddingVertical: 40
+                paddingVertical: s(40)
               }}
             >
-              <Text style={{ fontSize: 12, color: colors.muted }}>
+              <Text style={{ fontSize: s(12), color: colors.muted }}>
                 Add items to start an order.
               </Text>
             </View>
@@ -720,6 +738,7 @@ const DenseSeatView = React.memo(
                 d.toggleSeat(row.seatKey)
                 d.onSelectSeat?.(row.seatNumber)
               }}
+              scale={uiScale}
             />
           )
         }
@@ -749,6 +768,7 @@ const DenseSeatView = React.memo(
                   ? () => d.onRemoveCourse!(row.course)
                   : undefined
               }
+              scale={uiScale}
             />
           )
         }
@@ -765,10 +785,11 @@ const DenseSeatView = React.memo(
             enableCoursing={d.enableCoursing}
             orderHasPayments={d.orderHasPayments}
             orderPayments={d.orderPayments}
+            scale={uiScale}
           />
         )
       },
-      [] // stable — reads from renderDataRef
+      [uiScale] // stable callback, uiScale only changes on window resize
     )
 
     if (!activeOrder) {
@@ -778,10 +799,10 @@ const DenseSeatView = React.memo(
             flex: 1,
             alignItems: 'center',
             justifyContent: 'center',
-            paddingVertical: 40
+            paddingVertical: s(40)
           }}
         >
-          <Text style={{ fontSize: 12, color: colors.muted }}>
+          <Text style={{ fontSize: s(12), color: colors.muted }}>
             No active order.
           </Text>
         </View>
@@ -798,14 +819,14 @@ const DenseSeatView = React.memo(
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            paddingHorizontal: 10,
-            paddingVertical: 8,
+            paddingHorizontal: s(10),
+            paddingVertical: s(8),
             borderBottomWidth: 1,
             borderBottomColor: colors.border
           }}
         >
           <Text
-            style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
           >
             Order{' '}
             {activeOrder.display_number
@@ -816,19 +837,19 @@ const DenseSeatView = React.memo(
               ? `#${activeOrder.order_number}`
               : ''}
           </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
             {isOvertime && (
               <View
                 style={{
                   backgroundColor: colors.warning + '30',
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(4),
                   borderRadius: 999
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 10,
+                    fontSize: s(10),
                     fontWeight: '600',
                     color: colors.warning
                   }}
@@ -839,10 +860,10 @@ const DenseSeatView = React.memo(
             )}
             {hasItems && (
               <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}
               >
-                <Users size={11} color={colors.muted} />
-                <Text style={{ fontSize: 10, color: colors.muted }}>
+                <Users size={s(11)} color={colors.muted} />
+                <Text style={{ fontSize: s(10), color: colors.muted }}>
                   {seatCount} {seatCount === 1 ? 'seat' : 'seats'}
                 </Text>
               </View>
@@ -853,19 +874,19 @@ const DenseSeatView = React.memo(
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 4,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
-                  borderRadius: 6,
+                  gap: s(4),
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(4),
+                  borderRadius: s(6),
                   borderWidth: 1,
                   borderColor: colors.teal + '50'
                 }}
                 activeOpacity={0.8}
               >
-                <Plus size={12} color={colors.teal} />
+                <Plus size={s(12)} color={colors.teal} />
                 <Text
                   style={{
-                    fontSize: 10,
+                    fontSize: s(10),
                     fontWeight: '600',
                     color: colors.teal
                   }}
@@ -902,7 +923,7 @@ const DenseSeatView = React.memo(
           keyExtractor={row => row.id}
           renderItem={renderRow}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 8 }}
+          contentContainerStyle={{ paddingBottom: s(8) }}
           initialNumToRender={24}
           maxToRenderPerBatch={24}
           windowSize={7}
@@ -930,23 +951,23 @@ const DenseSeatView = React.memo(
               <View
                 style={{
                   backgroundColor: colors.panel,
-                  borderRadius: 12,
-                  padding: 8,
-                  width: 220,
+                  borderRadius: s(12),
+                  padding: s(8),
+                  width: s(220),
                   shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 4 },
+                  shadowOffset: { width: 0, height: s(4) },
                   shadowOpacity: 0.3,
-                  shadowRadius: 8,
+                  shadowRadius: s(8),
                   elevation: 8
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '700',
                     color: colors.heading,
-                    paddingHorizontal: 12,
-                    paddingVertical: 6
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(6)
                   }}
                 >
                   Course {actionCourse} Actions
@@ -957,17 +978,17 @@ const DenseSeatView = React.memo(
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 10,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      borderRadius: 8
+                      gap: s(10),
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(10),
+                      borderRadius: s(8)
                     }}
                     activeOpacity={0.7}
                   >
-                    <Flame size={16} color={colors.danger} />
+                    <Flame size={s(16)} color={colors.danger} />
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '600',
                         color: colors.danger
                       }}
@@ -982,17 +1003,17 @@ const DenseSeatView = React.memo(
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 10,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      borderRadius: 8
+                      gap: s(10),
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(10),
+                      borderRadius: s(8)
                     }}
                     activeOpacity={0.7}
                   >
-                    <ArrowUpToLine size={16} color='#f59e0b' />
+                    <ArrowUpToLine size={s(16)} color='#f59e0b' />
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '600',
                         color: '#f59e0b'
                       }}
@@ -1007,17 +1028,17 @@ const DenseSeatView = React.memo(
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 10,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      borderRadius: 8
+                      gap: s(10),
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(10),
+                      borderRadius: s(8)
                     }}
                     activeOpacity={0.7}
                   >
-                    <Send size={16} color={colors.teal} />
+                    <Send size={s(16)} color={colors.teal} />
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '600',
                         color: colors.teal
                       }}
@@ -1214,7 +1235,7 @@ const TableBillSection = ({
   return (
     <>
       <View
-        className='max-w-lg  flex-1 flex-col'
+        className='flex-1 flex-col'
         style={{ backgroundColor: colors.panel }}
       >
         {isReadOnly && (

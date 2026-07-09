@@ -156,8 +156,14 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   setShowMenuImages: (show: boolean) => void;
   posMenuNavigationMode: PosMenuNavigationMode;
   setPosMenuNavigationMode: (mode: PosMenuNavigationMode) => void;
+  // When a required modifier group has no preset default, auto-select the
+  // first free (then first available) option. Off = require manual selection.
+  autoSelectFirstRequiredOption: boolean;
+  setAutoSelectFirstRequiredOption: (value: boolean) => void;
 
-  // Actions
+  // UI Scale Override
+  uiScaleOverride: number | null;
+  setUiScaleOverride: (value: number | null) => void;
   setDefaultSittingTimeMinutes: (minutes: number) => void;
   setOrderLineSettings: (settings: Partial<OrderLineSettings>) => void;
   updateDiningSettings: (
@@ -481,6 +487,12 @@ export const useSettingsStore = create<SettingsState>()(
       setShowMenuImages: (show) => set({ showMenuImages: show }),
       posMenuNavigationMode: "classic",
       setPosMenuNavigationMode: (mode) => set({ posMenuNavigationMode: mode }),
+      autoSelectFirstRequiredOption: true,
+      setAutoSelectFirstRequiredOption: (value) =>
+        set({ autoSelectFirstRequiredOption: value }),
+
+      // UI Scale Override
+      uiScaleOverride: null,
 
       setDefaultSittingTimeMinutes: (minutes) =>
         set({ defaultSittingTimeMinutes: minutes }),
@@ -543,6 +555,8 @@ export const useSettingsStore = create<SettingsState>()(
           ),
         })),
 
+      setUiScaleOverride: (value) => set({ uiScaleOverride: value }),
+
       setOrderLineSettings: (settings) =>
         set((state) => ({
           orderLineSettings: { ...state.orderLineSettings, ...settings },
@@ -573,10 +587,11 @@ export const useSettingsStore = create<SettingsState>()(
         showMenuItemPrices: state.showMenuItemPrices,
         showMenuImages: state.showMenuImages,
         posMenuNavigationMode: state.posMenuNavigationMode,
+        autoSelectFirstRequiredOption: state.autoSelectFirstRequiredOption,
         // Order Line
         orderLineSettings: state.orderLineSettings,
-        // Printer Assignment
-        defaultReceiptPrinterId: state.defaultReceiptPrinterId,
+        // UI Scale Override
+        uiScaleOverride: state.uiScaleOverride,
       }),
     },
   ),

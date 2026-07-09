@@ -1,3 +1,4 @@
+import { markStart } from '@/lib/perf'
 import { create } from 'zustand'
 
 interface PendingTableOverlayState {
@@ -18,7 +19,12 @@ interface PendingTableOverlayState {
 export const usePendingTableOverlay = create<PendingTableOverlayState>()(
   (set, get) => ({
     openTableId: null,
-    openTable: id => set({ openTableId: id }),
+    openTable: id => {
+      // Perf T0: open → TableOrderView interactive (ended at renderStage 1;
+      // TTL-cancelled automatically if the view never mounts).
+      markStart('pos.table_open', { table_id: id })
+      set({ openTableId: id })
+    },
     closeTable: () => set({ openTableId: null }),
 
     pendingTableId: null,

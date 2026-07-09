@@ -1,5 +1,6 @@
 import { getCurrentBusinessDay } from '@/lib/businessDay'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { PrinterService } from '@/services/printing/PrinterService'
 import type {
@@ -101,6 +102,8 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
   const { userId } = useAuth()
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   const [state, setState] = useState<ScreenState>('idle')
   const [statusMessage, setStatusMessage] = useState('')
@@ -372,19 +375,19 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
       {/* Terminal info */}
       <View
         style={{
-          borderRadius: 14,
+          borderRadius: s(14),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.card,
-          padding: 16
+          padding: s(16)
         }}
       >
         <Text
-          style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}
         >
           {terminal?.terminal_name || 'Payment Terminal'}
         </Text>
-        <Text style={{ marginTop: 4, fontSize: 13, color: colors.muted }}>
+        <Text style={{ marginTop: s(4), fontSize: s(13), color: colors.muted }}>
           {isCastles
             ? isUsbTerminal
               ? 'Castles · USB'
@@ -392,7 +395,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
             : terminal?.terminal_type ?? 'No terminal configured'}
         </Text>
         {terminalSerial ? (
-          <Text style={{ marginTop: 2, fontSize: 12, color: colors.muted }}>
+          <Text style={{ marginTop: s(2), fontSize: s(12), color: colors.muted }}>
             S/N {terminalSerial}
           </Text>
         ) : null}
@@ -401,14 +404,14 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
       {!isCastles ? (
         <View
           style={{
-            borderRadius: 14,
+            borderRadius: s(14),
             borderWidth: 1,
             borderColor: colors.warning + '60',
             backgroundColor: colors.warning + '15',
-            padding: 14
+            padding: s(14)
           }}
         >
-          <Text style={{ fontSize: 13, color: colors.warning }}>
+          <Text style={{ fontSize: s(13), color: colors.warning }}>
             Batchout is currently supported for Castles terminals only.
           </Text>
         </View>
@@ -467,15 +470,18 @@ function IdleView ({
   onPrintDay: () => void
   disabled: boolean
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const isSettleDisabled = disabled || (stats?.count ?? 0) === 0
 
   return (
-    <View style={{ gap: 14 }}>
+    <View style={{ gap: s(14) }}>
       {stats?.hasStuckBatch ? (
         <Banner
           tone='warning'
           title='Previous Batchout Incomplete'
           body={`A prior attempt is in a "${stats.stuckBatchStatus}" state. Tapping Batch Out will start a new attempt — the previous batch will be resolved automatically.`}
+          scale={uiScale}
         />
       ) : null}
 
@@ -484,59 +490,63 @@ function IdleView ({
           tone='info'
           title={`${stats!.daySpan} Days of Unsettled Transactions`}
           body={`Oldest: ${stats!.oldestDate} · Newest: ${stats!.newestDate}`}
+          scale={uiScale}
         />
       ) : null}
 
-      <Card>
+      <Card scale={uiScale}>
         <Text
-          style={{ fontSize: 14, fontWeight: '600', color: colors.heading }}
+          style={{ fontSize: s(14), fontWeight: '600', color: colors.heading }}
         >
           Unsettled Payments
         </Text>
         {statsLoading ? (
           <ActivityIndicator
-            style={{ marginTop: 12 }}
+            style={{ marginTop: s(12) }}
             color={colors.teal}
           />
         ) : stats && stats.count > 0 ? (
-          <View style={{ marginTop: 12, gap: 8 }}>
-            <StatRow label='Payments in batch' value={String(stats.count)} />
+          <View style={{ marginTop: s(12), gap: s(8) }}>
+            <StatRow label='Payments in batch' value={String(stats.count)} scale={uiScale} />
             <StatRow
               label='Sales'
               value={`$${stats.grossAmount.toFixed(2)}`}
+              scale={uiScale}
             />
             {stats.tipAmount > 0 ? (
               <StatRow
                 label='Tips'
                 value={`$${stats.tipAmount.toFixed(2)}`}
+                scale={uiScale}
               />
             ) : null}
             <View
               style={{
                 borderTopWidth: 1,
                 borderTopColor: colors.border,
-                paddingTop: 8,
-                marginTop: 4
+                paddingTop: s(8),
+                marginTop: s(4)
               }}
             >
               <StatRow
                 label='Total'
                 value={`$${stats.totalAmount.toFixed(2)}`}
                 emphasize
+                scale={uiScale}
               />
             </View>
           </View>
         ) : (
           <Text
-            style={{ marginTop: 8, fontSize: 13, color: colors.muted }}
+            style={{ marginTop: s(8), fontSize: s(13), color: colors.muted }}
           >
             No unsettled payments found for this terminal.
           </Text>
         )}
       </Card>
 
-      <Card>
-        <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 17 }}>
+      <Card scale={uiScale}>
+        <Text style={{ fontSize: s(12), color: colors.muted, lineHeight: s(17) }}>
           Batchout closes the terminal's open batch and sends all captured
           transactions to their acquiring banks. After batchout, tips cannot be
           adjusted on settled payments. Refunds remain possible via the refund
@@ -548,8 +558,8 @@ function IdleView ({
         onPress={onSettle}
         disabled={isSettleDisabled}
         style={{
-          borderRadius: 14,
-          paddingVertical: 16,
+          borderRadius: s(14),
+          paddingVertical: s(16),
           alignItems: 'center',
           backgroundColor: isSettleDisabled ? colors.inset : colors.teal,
           opacity: isSettleDisabled ? 0.6 : 1
@@ -557,7 +567,7 @@ function IdleView ({
       >
         <Text
           style={{
-            fontSize: 16,
+            fontSize: s(16),
             fontWeight: '700',
             color: isSettleDisabled ? colors.muted : colors.onSolid
           }}
@@ -569,19 +579,19 @@ function IdleView ({
       <TouchableOpacity
         onPress={onPrintDay}
         style={{
-          borderRadius: 14,
-          paddingVertical: 14,
+          borderRadius: s(14),
+          paddingVertical: s(14),
           alignItems: 'center',
           flexDirection: 'row',
           justifyContent: 'center',
-          gap: 8,
+          gap: s(8),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.card
         }}
       >
-        <Printer size={16} color={colors.label} />
-        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.label }}>
+        <Printer size={s(16)} color={colors.label} />
+        <Text style={{ fontSize: s(14), fontWeight: '600', color: colors.label }}>
           Print Today's Summary
         </Text>
       </TouchableOpacity>
@@ -592,39 +602,41 @@ function IdleView ({
 // ── Settling View ──────────────────────────────────────────────
 
 function SettlingView ({ statusMessage }: { statusMessage: string }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <View
       style={{
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 14,
-        paddingVertical: 60
+        gap: s(14),
+        paddingVertical: s(60)
       }}
     >
       <ActivityIndicator size='large' color={colors.teal} />
       <Text
-        style={{ fontSize: 16, fontWeight: '600', color: colors.heading }}
+        style={{ fontSize: s(16), fontWeight: '600', color: colors.heading }}
       >
         Batchout in Progress
       </Text>
       <Text
         style={{
-          fontSize: 13,
+          fontSize: s(13),
           color: colors.muted,
           textAlign: 'center',
-          paddingHorizontal: 16
+          paddingHorizontal: s(16)
         }}
       >
         {statusMessage}
       </Text>
       <Text
         style={{
-          fontSize: 12,
+          fontSize: s(12),
           color: colors.muted,
           textAlign: 'center',
-          paddingHorizontal: 32,
+          paddingHorizontal: s(32),
           opacity: 0.7,
-          marginTop: 8
+          marginTop: s(8)
         }}
       >
         Do not close this screen or disconnect the terminal. This may take
@@ -645,12 +657,14 @@ function ResultsView ({
   onDone: () => void
   onRetry: () => void
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const overallIcon = result.success ? (
-    <CheckCircle color={colors.success} size={32} />
+    <CheckCircle color={colors.success} size={s(32)} />
   ) : result.partialSuccess ? (
-    <AlertTriangle color={colors.warning} size={32} />
+    <AlertTriangle color={colors.warning} size={s(32)} />
   ) : (
-    <XCircle color={colors.danger} size={32} />
+    <XCircle color={colors.danger} size={s(32)} />
   )
 
   const overallLabel = result.success
@@ -666,19 +680,19 @@ function ResultsView ({
     : colors.danger
 
   return (
-    <View style={{ gap: 14 }}>
-      <View style={{ alignItems: 'center', gap: 8, paddingVertical: 12 }}>
+    <View style={{ gap: s(14) }}>
+      <View style={{ alignItems: 'center', gap: s(8), paddingVertical: s(12) }}>
         {overallIcon}
-        <Text style={{ fontSize: 20, fontWeight: '700', color: overallColor }}>
+        <Text style={{ fontSize: s(20), fontWeight: '700', color: overallColor }}>
           {overallLabel}
         </Text>
         {result.error ? (
           <Text
             style={{
-              fontSize: 13,
+              fontSize: s(13),
               color: colors.danger,
               textAlign: 'center',
-              paddingHorizontal: 16
+              paddingHorizontal: s(16)
             }}
           >
             {result.error}
@@ -687,31 +701,32 @@ function ResultsView ({
       </View>
 
       {(result.success || result.partialSuccess) && !result.dbWriteFailed ? (
-        <Card>
+        <Card scale={uiScale}>
           {result.paymentsUpdated != null ? (
             <StatRow
               label='Payments marked settled'
               value={String(result.paymentsUpdated)}
+              scale={uiScale}
             />
           ) : null}
           {result.batchUuid ? (
             <View
               style={{
-                marginTop: 8,
+                marginTop: s(8),
                 flexDirection: 'row',
                 justifyContent: 'space-between',
                 alignItems: 'center'
               }}
             >
-              <Text style={{ fontSize: 13, color: colors.label }}>
+              <Text style={{ fontSize: s(13), color: colors.label }}>
                 Batch ID
               </Text>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   color: colors.muted,
                   flexShrink: 1,
-                  marginLeft: 12
+                  marginLeft: s(12)
                 }}
                 numberOfLines={1}
               >
@@ -726,6 +741,7 @@ function ResultsView ({
         <Banner
           tone='warning'
           body='Batchout succeeded on terminal but database update failed. Payments were not marked as settled in the system.'
+          scale={uiScale}
         />
       ) : null}
 
@@ -734,6 +750,7 @@ function ResultsView ({
           tone='warning'
           title='Retry Required (E000002A)'
           body='The terminal requested a retry with a new transaction ID. Tap Retry to attempt batchout again.'
+          scale={uiScale}
         />
       ) : null}
 
@@ -753,23 +770,24 @@ function ResultsView ({
           ]
             .filter(Boolean)
             .join('\n')}
+          scale={uiScale}
         />
       ) : null}
 
       {result.hosts.length > 0 ? (
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: s(10) }}>
           <Text
-            style={{ fontSize: 13, fontWeight: '600', color: colors.label }}
+            style={{ fontSize: s(13), fontWeight: '600', color: colors.label }}
           >
             Host Breakdown
           </Text>
           {result.hosts.map((host, idx) => (
-            <HostCard key={idx} host={host} />
+            <HostCard key={idx} host={host} scale={uiScale} />
           ))}
         </View>
       ) : null}
 
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+      <View style={{ flexDirection: 'row', gap: s(10), marginTop: s(8) }}>
         {(!result.success && !result.partialSuccess) ||
         result.dbWriteFailed ||
         result.shouldRetry ? (
@@ -777,16 +795,16 @@ function ResultsView ({
             onPress={onRetry}
             style={{
               flex: 1,
-              borderRadius: 14,
+              borderRadius: s(14),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              paddingVertical: 14,
+              paddingVertical: s(14),
               alignItems: 'center'
             }}
           >
             <Text
-              style={{ fontSize: 15, fontWeight: '700', color: colors.label }}
+              style={{ fontSize: s(15), fontWeight: '700', color: colors.label }}
             >
               Retry
             </Text>
@@ -796,14 +814,14 @@ function ResultsView ({
           onPress={onDone}
           style={{
             flex: 1,
-            borderRadius: 14,
+            borderRadius: s(14),
             backgroundColor: colors.teal,
-            paddingVertical: 14,
+            paddingVertical: s(14),
             alignItems: 'center'
           }}
         >
           <Text
-            style={{ fontSize: 15, fontWeight: '700', color: colors.onSolid }}
+            style={{ fontSize: s(15), fontWeight: '700', color: colors.onSolid }}
           >
             Done
           </Text>
@@ -815,29 +833,30 @@ function ResultsView ({
 
 // ── Host Card ──────────────────────────────────────────────────
 
-function HostCard ({ host }: { host: CastlesSettlementHostResult }) {
+function HostCard ({ host, scale }: { host: CastlesSettlementHostResult; scale: number }) {
+  const s = (n: number) => Math.round(n * scale)
   const icon = host.success ? (
-    <CheckCircle color={colors.success} size={16} />
+    <CheckCircle color={colors.success} size={s(16)} />
   ) : (
-    <XCircle color={colors.danger} size={16} />
+    <XCircle color={colors.danger} size={s(16)} />
   )
 
   return (
     <View
       style={{
-        borderRadius: 12,
+        borderRadius: s(12),
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.card,
-        padding: 12,
-        gap: 8
+        padding: s(12),
+        gap: s(8)
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
         {icon}
         <Text
           style={{
-            fontSize: 13,
+            fontSize: s(13),
             fontWeight: '600',
             color: colors.heading,
             flex: 1
@@ -846,35 +865,35 @@ function HostCard ({ host }: { host: CastlesSettlementHostResult }) {
           {host.acquirerName}
         </Text>
         {host.batchNumber ? (
-          <Text style={{ fontSize: 11, color: colors.muted }}>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>
             Batch #{host.batchNumber}
           </Text>
         ) : null}
       </View>
 
       {host.hostMessage ? (
-        <Text style={{ fontSize: 11, color: colors.muted }}>
+        <Text style={{ fontSize: s(11), color: colors.muted }}>
           {host.hostMessage}
         </Text>
       ) : null}
 
-      <View style={{ flexDirection: 'row', gap: 12 }}>
+      <View style={{ flexDirection: 'row', gap: s(12) }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Sales</Text>
-          <Text style={{ fontSize: 13, color: colors.label }}>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>Sales</Text>
+          <Text style={{ fontSize: s(13), color: colors.label }}>
             {host.saleTotalCount} / ${host.saleTotalAmount.toFixed(2)}
           </Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Refunds</Text>
-          <Text style={{ fontSize: 13, color: colors.label }}>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>Refunds</Text>
+          <Text style={{ fontSize: s(13), color: colors.label }}>
             {host.refundTotalCount} / ${host.refundTotalAmount.toFixed(2)}
           </Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Net</Text>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>Net</Text>
           <Text
-            style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}
+            style={{ fontSize: s(13), fontWeight: '600', color: colors.heading }}
           >
             ${host.settleTotalAmount.toFixed(2)}
           </Text>
@@ -893,6 +912,8 @@ function PendingFinalizeSection ({
   supabase: ReturnType<typeof useSupabaseClient>
   onResolved: () => void
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [entries, setEntries] = useState<PendingFinalizeEntry[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -952,7 +973,7 @@ function PendingFinalizeSection ({
   if (entries.length === 0) return null
 
   return (
-    <View style={{ gap: 10, marginTop: 8 }}>
+    <View style={{ gap: s(10), marginTop: s(8) }}>
       <View
         style={{
           flexDirection: 'row',
@@ -960,10 +981,10 @@ function PendingFinalizeSection ({
           justifyContent: 'space-between'
         }}
       >
-        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.danger }}>
+        <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.danger }}>
           Pending Sync ({entries.length})
         </Text>
-        <Text style={{ fontSize: 11, color: colors.muted }}>
+        <Text style={{ fontSize: s(11), color: colors.muted }}>
           Settled on terminal, not yet recorded
         </Text>
       </View>
@@ -981,25 +1002,25 @@ function PendingFinalizeSection ({
           <View
             key={entry.batchUuid}
             style={{
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.danger + '60',
               backgroundColor: colors.danger + '08',
-              padding: 12,
-              gap: 8
+              padding: s(12),
+              gap: s(8)
             }}
           >
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 8
+                gap: s(8)
               }}
             >
-              <AlertTriangle size={16} color={colors.danger} />
+              <AlertTriangle size={s(16)} color={colors.danger} />
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '600',
                   color: colors.heading,
                   flex: 1
@@ -1008,19 +1029,19 @@ function PendingFinalizeSection ({
               >
                 Batch {entry.batchUuid.slice(0, 8)}
               </Text>
-              <Text style={{ fontSize: 11, color: colors.muted }}>
+              <Text style={{ fontSize: s(11), color: colors.muted }}>
                 {saved}
               </Text>
             </View>
-            <Text style={{ fontSize: 12, color: colors.label, lineHeight: 17 }}>
+            <Text style={{ fontSize: s(12), color: colors.label, lineHeight: s(17) }}>
               The terminal closed this batch but the DB write failed. Tap
               Retry to record the result. Safe to retry as many times as
               needed.
             </Text>
             {err ? (
-              <Text style={{ fontSize: 12, color: colors.danger }}>{err}</Text>
+              <Text style={{ fontSize: s(12), color: colors.danger }}>{err}</Text>
             ) : null}
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flexDirection: 'row', gap: s(8) }}>
               <TouchableOpacity
                 onPress={() => onRetry(entry)}
                 disabled={busy}
@@ -1029,9 +1050,9 @@ function PendingFinalizeSection ({
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 6,
-                  paddingVertical: 10,
-                  borderRadius: 10,
+                  gap: s(6),
+                  paddingVertical: s(10),
+                  borderRadius: s(10),
                   backgroundColor: busy ? colors.inset : colors.teal,
                   opacity: busy ? 0.6 : 1
                 }}
@@ -1039,10 +1060,10 @@ function PendingFinalizeSection ({
                 {busy ? (
                   <ActivityIndicator color='#fff' size='small' />
                 ) : (
-                  <RefreshCw size={14} color='#fff' />
+                  <RefreshCw size={s(14)} color='#fff' />
                 )}
                 <Text
-                  style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}
+                  style={{ color: '#fff', fontWeight: '700', fontSize: s(13) }}
                 >
                   {busy ? 'Retrying…' : 'Retry sync'}
                 </Text>
@@ -1051,9 +1072,9 @@ function PendingFinalizeSection ({
                 onPress={() => onDiscard(entry)}
                 disabled={busy}
                 style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 14,
-                  borderRadius: 10,
+                  paddingVertical: s(10),
+                  paddingHorizontal: s(14),
+                  borderRadius: s(10),
                   borderWidth: 1,
                   borderColor: colors.border
                 }}
@@ -1062,7 +1083,7 @@ function PendingFinalizeSection ({
                   style={{
                     color: colors.label,
                     fontWeight: '600',
-                    fontSize: 13
+                    fontSize: s(13)
                   }}
                 >
                   Discard
@@ -1089,10 +1110,12 @@ function BatchLog ({
   errored: boolean
   onPrintBatch: (settlementBatchId: string) => void
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const list = batches || []
   // Flat: every open batch at the location, regardless of which terminal
   // owns it. BatchRow renders the terminal label so users can tell rows
-  // apart, and the settle action targets each batch's own terminal.
+  // apart, and the settle action targets each batch’s own terminal.
   const openBatches = list.filter(b => !b.isClosedToday)
   const closedToday = list.filter(b => b.isClosedToday)
 
@@ -1104,11 +1127,12 @@ function BatchLog ({
       : `${openBatches.length} open`
 
   return (
-    <View style={{ gap: 10, marginTop: 8 }}>
+    <View style={{ gap: s(10), marginTop: s(8) }}>
       {!loading && closedToday.length > 0 ? (
         <ClosedTodayCollapsible
           batches={closedToday}
           onPrintBatch={onPrintBatch}
+          scale={uiScale}
         />
       ) : null}
 
@@ -1120,28 +1144,28 @@ function BatchLog ({
         }}
       >
         <Text
-          style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(14), fontWeight: '700', color: colors.heading }}
         >
           Open Batches
         </Text>
         {openCount ? (
-          <Text style={{ fontSize: 11, color: colors.muted }}>{openCount}</Text>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>{openCount}</Text>
         ) : null}
       </View>
 
       {loading ? (
-        <Card>
+        <Card scale={uiScale}>
           <ActivityIndicator color={colors.teal} />
         </Card>
       ) : errored && openBatches.length === 0 ? (
-        <Card>
-          <Text style={{ fontSize: 13, color: colors.muted }}>
-            Couldn{'’'}t load batches. Pull down to refresh.
+        <Card scale={uiScale}>
+          <Text style={{ fontSize: s(13), color: colors.muted }}>
+            Couldn{"'"}t load batches. Pull down to refresh.
           </Text>
         </Card>
       ) : openBatches.length === 0 ? (
-        <Card>
-          <Text style={{ fontSize: 13, color: colors.muted }}>
+        <Card scale={uiScale}>
+          <Text style={{ fontSize: s(13), color: colors.muted }}>
             No open batches.
           </Text>
         </Card>
@@ -1152,6 +1176,7 @@ function BatchLog ({
             batch={b}
             showTerminalLabel
             onPrint={() => onPrintBatch(b.id)}
+            scale={uiScale}
           />
         ))
       )}
@@ -1161,11 +1186,14 @@ function BatchLog ({
 
 function ClosedTodayCollapsible ({
   batches,
-  onPrintBatch
+  onPrintBatch,
+  scale
 }: {
   batches: SettlementBatchRow[]
   onPrintBatch: (settlementBatchId: string) => void
+  scale: number
 }) {
+  const s = (n: number) => Math.round(n * scale)
   const [expanded, setExpanded] = useState(false)
   const label =
     batches.length === 1
@@ -1173,7 +1201,7 @@ function ClosedTodayCollapsible ({
       : `${batches.length} batches closed today`
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: s(10) }}>
       <TouchableOpacity
         onPress={() => setExpanded(v => !v)}
         activeOpacity={0.7}
@@ -1181,23 +1209,23 @@ function ClosedTodayCollapsible ({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingVertical: 10,
-          paddingHorizontal: 12,
-          borderRadius: 10,
+          paddingVertical: s(10),
+          paddingHorizontal: s(12),
+          borderRadius: s(10),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.card
         }}
       >
         <Text
-          style={{ fontSize: 13, fontWeight: '600', color: colors.label }}
+          style={{ fontSize: s(13), fontWeight: '600', color: colors.label }}
         >
           {label}
         </Text>
         {expanded ? (
-          <ChevronUp size={16} color={colors.muted} />
+          <ChevronUp size={s(16)} color={colors.muted} />
         ) : (
-          <ChevronDown size={16} color={colors.muted} />
+          <ChevronDown size={s(16)} color={colors.muted} />
         )}
       </TouchableOpacity>
 
@@ -1207,6 +1235,7 @@ function ClosedTodayCollapsible ({
               key={b.id}
               batch={b}
               onPrint={() => onPrintBatch(b.id)}
+              scale={scale}
             />
           ))
         : null}
@@ -1217,12 +1246,15 @@ function ClosedTodayCollapsible ({
 function BatchRow ({
   batch,
   showTerminalLabel = false,
-  onPrint
+  onPrint,
+  scale
 }: {
   batch: SettlementBatchRow
   showTerminalLabel?: boolean
   onPrint: () => void
+  scale: number
 }) {
+  const s = (n: number) => Math.round(n * scale)
   const supabase = useSupabaseClient()
   const { userId } = useAuth()
   const { selectedStore } = useStoreSettingsStore()
@@ -1288,12 +1320,12 @@ function BatchRow ({
   return (
     <View
       style={{
-        borderRadius: 12,
+        borderRadius: s(12),
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.card,
-        padding: 12,
-        gap: 10
+        padding: s(12),
+        gap: s(10)
       }}
     >
       <View
@@ -1303,29 +1335,29 @@ function BatchRow ({
           justifyContent: 'space-between'
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
           <View
             style={{
-              width: 26,
-              height: 26,
-              borderRadius: 8,
+              width: s(26),
+              height: s(26),
+              borderRadius: s(8),
               backgroundColor: tone + '20',
               alignItems: 'center',
               justifyContent: 'center'
             }}
           >
             {isSettled ? (
-              <CheckCircle size={14} color={tone} />
+              <CheckCircle size={s(14)} color={tone} />
             ) : isFailed ? (
-              <XCircle size={14} color={tone} />
+              <XCircle size={s(14)} color={tone} />
             ) : (
-              <Clock size={14} color={tone} />
+              <Clock size={s(14)} color={tone} />
             )}
           </View>
           <View>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '600',
                 color: colors.heading
               }}
@@ -1335,31 +1367,31 @@ function BatchRow ({
                 ? `Batch ${batch.batchNumber}`
                 : `Batch ${batch.batchId || batch.id.slice(0, 8)}`}
             </Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>
+            <Text style={{ fontSize: s(11), color: colors.muted }}>
               {timeLabel} {timeDisplay}{businessDateDisplay}
             </Text>
             {showTerminalLabel && (batch.terminalName || batch.terminalSerial) ? (
-              <Text style={{ fontSize: 11, color: colors.muted }}>
+              <Text style={{ fontSize: s(11), color: colors.muted }}>
                 {batch.terminalName ?? 'Terminal'}
                 {batch.terminalSerial ? ` · S/N ${batch.terminalSerial}` : ''}
               </Text>
             ) : null}
           </View>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
           {batch.acquirer ? (
             <View
               style={{
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                borderRadius: 6,
+                paddingHorizontal: s(8),
+                paddingVertical: s(3),
+                borderRadius: s(6),
                 borderWidth: 1,
                 borderColor: colors.border
               }}
             >
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '700',
                   color: colors.label,
                   letterSpacing: 0.5
@@ -1381,9 +1413,9 @@ function BatchRow ({
             delayLongPress={1500}
             activeOpacity={1}
             style={{
-              paddingHorizontal: 8,
-              paddingVertical: 3,
-              borderRadius: 6,
+              paddingHorizontal: s(8),
+              paddingVertical: s(3),
+              borderRadius: s(6),
               backgroundColor: tone + '20',
               borderWidth: manualUnlocked ? 1 : 0,
               borderColor: manualUnlocked ? colors.danger : 'transparent'
@@ -1391,7 +1423,7 @@ function BatchRow ({
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 fontWeight: '700',
                 color: tone,
                 textTransform: 'uppercase',
@@ -1403,16 +1435,16 @@ function BatchRow ({
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onPrint}
-            hitSlop={8}
+            hitSlop={s(8)}
             accessibilityLabel='Print batch summary'
             style={{
-              padding: 6,
-              borderRadius: 6,
+              padding: s(6),
+              borderRadius: s(6),
               borderWidth: 1,
               borderColor: colors.border
             }}
           >
-            <Printer size={14} color={colors.label} />
+            <Printer size={s(14)} color={colors.label} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1487,9 +1519,9 @@ function BatchRow ({
           }}
           disabled={marking}
           style={{
-            paddingVertical: 8,
-            paddingHorizontal: 12,
-            borderRadius: 8,
+            paddingVertical: s(8),
+            paddingHorizontal: s(12),
+            borderRadius: s(8),
             borderWidth: 1,
             borderColor: colors.border,
             alignSelf: 'flex-start',
@@ -1498,7 +1530,7 @@ function BatchRow ({
         >
           <Text
             style={{
-              fontSize: 12,
+              fontSize: s(12),
               fontWeight: '600',
               color: colors.label
             }}
@@ -1508,17 +1540,19 @@ function BatchRow ({
         </TouchableOpacity>
       ) : null}
 
-      <View style={{ flexDirection: 'row', gap: 12 }}>
-        <BatchStat label='Txns' value={String(batch.transactionCount)} />
+      <View style={{ flexDirection: 'row', gap: s(12) }}>
+        <BatchStat label='Txns' value={String(batch.transactionCount)} scale={scale} />
         <BatchStat
           label='Gross'
           value={`$${batch.grossAmount.toFixed(2)}`}
+          scale={scale}
         />
-        <BatchStat label='Tips' value={`$${batch.tipAmount.toFixed(2)}`} />
+        <BatchStat label='Tips' value={`$${batch.tipAmount.toFixed(2)}`} scale={scale} />
         <BatchStat
           label='Net'
           value={`$${batch.netDeposit.toFixed(2)}`}
           emphasize
+          scale={scale}
         />
       </View>
 
@@ -1531,20 +1565,20 @@ function BatchRow ({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 6,
-          paddingVertical: 8,
-          borderRadius: 8,
+          gap: s(6),
+          paddingVertical: s(8),
+          borderRadius: s(8),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.inset
         }}
       >
         {expanded ? (
-          <ChevronUp size={14} color={colors.label} />
+          <ChevronUp size={s(14)} color={colors.label} />
         ) : (
-          <ChevronDown size={14} color={colors.label} />
+          <ChevronDown size={s(14)} color={colors.label} />
         )}
-        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>
+        <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}>
           {expanded
             ? 'Hide payments'
             : `Show payments (${batch.transactionCount})`}
@@ -1556,6 +1590,7 @@ function BatchRow ({
           loading={paymentsLoading}
           error={paymentsError}
           payments={payments}
+          scale={scale}
         />
       ) : null}
     </View>
@@ -1565,41 +1600,45 @@ function BatchRow ({
 function BatchPaymentsList ({
   loading,
   error,
-  payments
+  payments,
+  scale
 }: {
   loading: boolean
   error: string | null
   payments: BatchPaymentRow[] | null
+  scale: number
 }) {
+  const s = (n: number) => Math.round(n * scale)
   if (loading) {
     return (
-      <View style={{ paddingVertical: 12 }}>
+      <View style={{ paddingVertical: s(12) }}>
         <ActivityIndicator color={colors.teal} />
       </View>
     )
   }
   if (error) {
     return (
-      <Text style={{ fontSize: 12, color: colors.danger }}>{error}</Text>
+      <Text style={{ fontSize: s(12), color: colors.danger }}>{error}</Text>
     )
   }
   if (!payments || payments.length === 0) {
     return (
-      <Text style={{ fontSize: 12, color: colors.muted }}>
+      <Text style={{ fontSize: s(12), color: colors.muted }}>
         No payments linked to this batch.
       </Text>
     )
   }
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: s(6) }}>
       {payments.map(p => (
-        <PaymentLine key={p.id} payment={p} />
+        <PaymentLine key={p.id} payment={p} scale={scale} />
       ))}
     </View>
   )
 }
 
-function PaymentLine ({ payment }: { payment: BatchPaymentRow }) {
+function PaymentLine ({ payment, scale }: { payment: BatchPaymentRow; scale: number }) {
+  const s = (n: number) => Math.round(n * scale)
   const time = payment.captured_at
     ? new Date(payment.captured_at).toLocaleTimeString([], {
         hour: 'numeric',
@@ -1636,11 +1675,11 @@ function PaymentLine ({ payment }: { payment: BatchPaymentRow }) {
   return (
     <View
       style={{
-        borderRadius: 8,
+        borderRadius: s(8),
         borderWidth: 1,
         borderColor: colors.border,
-        padding: 10,
-        gap: 4
+        padding: s(10),
+        gap: s(4)
       }}
     >
       <View
@@ -1650,10 +1689,10 @@ function PaymentLine ({ payment }: { payment: BatchPaymentRow }) {
           alignItems: 'center'
         }}
       >
-        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+        <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}>
           {payment.display_number ?? payment.order_number ?? '—'}
         </Text>
-        <Text style={{ fontSize: 11, color: colors.muted }}>{time}</Text>
+        <Text style={{ fontSize: s(11), color: colors.muted }}>{time}</Text>
       </View>
       <View
         style={{
@@ -1662,8 +1701,8 @@ function PaymentLine ({ payment }: { payment: BatchPaymentRow }) {
           alignItems: 'center'
         }}
       >
-        <Text style={{ fontSize: 12, color: colors.label }}>{card}</Text>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+        <Text style={{ fontSize: s(12), color: colors.label }}>{card}</Text>
+        <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.heading }}>
           ${total.toFixed(2)}
         </Text>
       </View>
@@ -1674,14 +1713,14 @@ function PaymentLine ({ payment }: { payment: BatchPaymentRow }) {
           alignItems: 'center'
         }}
       >
-        <Text style={{ fontSize: 11, color: colors.muted }}>
+        <Text style={{ fontSize: s(11), color: colors.muted }}>
           Sale ${amount.toFixed(2)}
           {tip > 0 ? ` · Tip $${tip.toFixed(2)}` : ''}
           {payment.authorization_code ? ` · Auth ${payment.authorization_code}` : ''}
         </Text>
         <Text
           style={{
-            fontSize: 10,
+            fontSize: s(10),
             fontWeight: '700',
             color: statusTone,
             textTransform: 'uppercase',
@@ -1692,7 +1731,7 @@ function PaymentLine ({ payment }: { payment: BatchPaymentRow }) {
         </Text>
       </View>
       {refunded > 0 ? (
-        <Text style={{ fontSize: 11, color: colors.warning, fontWeight: '600' }}>
+        <Text style={{ fontSize: s(11), color: colors.warning, fontWeight: '600' }}>
           Refunded ${refunded.toFixed(2)} of ${total.toFixed(2)}
         </Text>
       ) : null}
@@ -1717,6 +1756,8 @@ function ReasonPromptModal ({
   onCancel: () => void
   onSubmit: () => void
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <Modal
       visible={visible}
@@ -1730,23 +1771,23 @@ function ReasonPromptModal ({
           backgroundColor: 'rgba(0,0,0,0.4)',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: 20
+          padding: s(20)
         }}
       >
         <View
           style={{
             width: '100%',
-            maxWidth: 480,
+            maxWidth: s(480),
             backgroundColor: colors.card,
-            borderRadius: 14,
-            padding: 18,
-            gap: 12
+            borderRadius: s(14),
+            padding: s(18),
+            gap: s(12)
           }}
         >
-          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}>
+          <Text style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}>
             Reason for manual reconcile
           </Text>
-          <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 17 }}>
+          <Text style={{ fontSize: s(12), color: colors.muted, lineHeight: s(17) }}>
             Required for the audit log. Be specific (e.g. "Terminal auto-cut
             batch overnight before POS could send finalize"). Minimum 10
             characters.
@@ -1761,26 +1802,26 @@ function ReasonPromptModal ({
             style={{
               borderWidth: 1,
               borderColor: error ? colors.danger : colors.border,
-              borderRadius: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              minHeight: 90,
+              borderRadius: s(10),
+              paddingHorizontal: s(12),
+              paddingVertical: s(10),
+              minHeight: s(90),
               textAlignVertical: 'top',
               color: colors.heading,
-              fontSize: 13
+              fontSize: s(13)
             }}
           />
           {error ? (
-            <Text style={{ fontSize: 12, color: colors.danger }}>{error}</Text>
+            <Text style={{ fontSize: s(12), color: colors.danger }}>{error}</Text>
           ) : null}
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+          <View style={{ flexDirection: 'row', gap: s(8), marginTop: s(4) }}>
             <TouchableOpacity
               onPress={onCancel}
               disabled={busy}
               style={{
                 flex: 1,
-                paddingVertical: 12,
-                borderRadius: 10,
+                paddingVertical: s(12),
+                borderRadius: s(10),
                 borderWidth: 1,
                 borderColor: colors.border,
                 alignItems: 'center'
@@ -1798,9 +1839,9 @@ function ReasonPromptModal ({
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
-                paddingVertical: 12,
-                borderRadius: 10,
+                gap: s(6),
+                paddingVertical: s(12),
+                borderRadius: s(10),
                 backgroundColor: busy ? colors.inset : colors.danger,
                 opacity: busy ? 0.6 : 1
               }}
@@ -1820,18 +1861,21 @@ function ReasonPromptModal ({
 function BatchStat ({
   label,
   value,
-  emphasize
+  emphasize,
+  scale
 }: {
   label: string
   value: string
   emphasize?: boolean
+  scale: number
 }) {
+  const s = (n: number) => Math.round(n * scale)
   return (
     <View style={{ flex: 1 }}>
-      <Text style={{ fontSize: 10, color: colors.muted }}>{label}</Text>
+      <Text style={{ fontSize: s(10), color: colors.muted }}>{label}</Text>
       <Text
         style={{
-          fontSize: 13,
+          fontSize: s(13),
           fontWeight: emphasize ? '700' : '500',
           color: emphasize ? colors.heading : colors.label
         }}
@@ -1844,15 +1888,16 @@ function BatchStat ({
 
 // ── Shared atoms ───────────────────────────────────────────────
 
-function Card ({ children }: { children: React.ReactNode }) {
+function Card ({ children, scale }: { children: React.ReactNode; scale: number }) {
+  const s = (n: number) => Math.round(n * scale)
   return (
     <View
       style={{
-        borderRadius: 14,
+        borderRadius: s(14),
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.card,
-        padding: 14
+        padding: s(14)
       }}
     >
       {children}
@@ -1863,12 +1908,15 @@ function Card ({ children }: { children: React.ReactNode }) {
 function StatRow ({
   label,
   value,
-  emphasize
+  emphasize,
+  scale
 }: {
   label: string
   value: string
   emphasize?: boolean
+  scale: number
 }) {
+  const s = (n: number) => Math.round(n * scale)
   return (
     <View
       style={{
@@ -1879,7 +1927,7 @@ function StatRow ({
     >
       <Text
         style={{
-          fontSize: 13,
+          fontSize: s(13),
           color: emphasize ? colors.heading : colors.label,
           fontWeight: emphasize ? '600' : '400'
         }}
@@ -1888,7 +1936,7 @@ function StatRow ({
       </Text>
       <Text
         style={{
-          fontSize: 13,
+          fontSize: s(13),
           fontWeight: emphasize ? '700' : '600',
           color: colors.heading
         }}
@@ -1902,36 +1950,39 @@ function StatRow ({
 function Banner ({
   tone,
   title,
-  body
+  body,
+  scale
 }: {
   tone: 'warning' | 'info'
   title?: string
   body: string
+  scale: number
 }) {
+  const s = (n: number) => Math.round(n * scale)
   const accent = tone === 'warning' ? colors.warning : colors.info
   return (
     <View
       style={{
-        borderRadius: 14,
+        borderRadius: s(14),
         borderWidth: 1,
         borderColor: accent + '60',
         backgroundColor: accent + '15',
-        padding: 14
+        padding: s(14)
       }}
     >
       {title ? (
         <Text
           style={{
-            fontSize: 13,
+            fontSize: s(13),
             fontWeight: '700',
             color: accent,
-            marginBottom: 4
+            marginBottom: s(4)
           }}
         >
           {title}
         </Text>
       ) : null}
-      <Text style={{ fontSize: 12, color: accent, lineHeight: 17 }}>
+      <Text style={{ fontSize: s(12), color: accent, lineHeight: s(17) }}>
         {body}
       </Text>
     </View>

@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { ChecklistItem } from '@/stores/useEndOfDayStore'
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 import EodChecklistRow from '../EodChecklistRow'
@@ -26,6 +27,9 @@ export default function EodStepOverview ({
   onOpenTips,
   onOpenStaff
 }: EodStepOverviewProps) {
+  const scale = useUiScale()
+  const s = (value: number) => Math.round(value * scale)
+
   const passed = allItems.filter(item => item.status === 'passed').length
   const failed = blockingItems.filter(item => item.status === 'failed').length
   const pending = blockingItems.filter(item => item.status === 'pending').length
@@ -62,36 +66,36 @@ export default function EodStepOverview ({
   ]
 
   return (
-    <View style={{ flex: 1, justifyContent: 'space-between', gap: 10 }}>
+    <View style={{ flex: 1, justifyContent: 'space-between', gap: s(10) }}>
       <View
         style={{
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 12,
-          gap: 10
+          padding: s(12),
+          gap: s(10)
         }}
       >
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}>
           {summaryCards.map(card => (
             <View
               key={card.label}
               style={{
                 flexGrow: 1,
                 flexBasis: 110,
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: colors.border,
                 backgroundColor: colors.card,
-                paddingVertical: 10,
-                paddingHorizontal: 10,
-                gap: 2
+                paddingVertical: s(10),
+                paddingHorizontal: s(10),
+                gap: s(2)
               }}
             >
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '700',
                   color: colors.teal,
                   textTransform: 'uppercase',
@@ -102,15 +106,15 @@ export default function EodStepOverview ({
               </Text>
               <Text
                 style={{
-                  fontSize: 22,
+                  fontSize: s(22),
                   fontWeight: '800',
                   color: colors.heading,
-                  lineHeight: 24
+                  lineHeight: s(24)
                 }}
               >
                 {card.value}
               </Text>
-              <Text style={{ fontSize: 10.5, color: colors.label }}>
+              <Text style={{ fontSize: s(10.5), color: colors.label }}>
                 {card.detail}
               </Text>
             </View>
@@ -120,24 +124,24 @@ export default function EodStepOverview ({
         <TouchableOpacity
           onPress={() => void onRefresh()}
           style={{
-            minHeight: 44,
-            borderRadius: 14,
+            minHeight: s(44),
+            borderRadius: s(14),
             backgroundColor: colors.teal + '18',
             borderWidth: 1,
             borderColor: colors.teal + '40',
-            paddingHorizontal: 12,
-            paddingVertical: 8,
+            paddingHorizontal: s(12),
+            paddingVertical: s(8),
             alignItems: 'center',
             justifyContent: 'center'
           }}
           disabled={isLoading}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
             {isLoading ? (
               <ActivityIndicator size='small' color={colors.teal} />
             ) : null}
             <Text
-              style={{ fontSize: 12, fontWeight: '700', color: colors.teal }}
+              style={{ fontSize: s(12), fontWeight: '700', color: colors.teal }}
             >
               Refresh status
             </Text>
@@ -146,9 +150,9 @@ export default function EodStepOverview ({
       </View>
 
       {blockingItems.length > 0 ? (
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: s(8) }}>
           <Text
-            style={{ fontSize: 12.5, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(12.5), fontWeight: '700', color: colors.heading }}
           >
             Blockers to resolve
           </Text>
@@ -159,54 +163,56 @@ export default function EodStepOverview ({
               description={item.description}
               status={item.status}
               detail={item.detail}
+              actionLabel={item.id === 'shifts_reviewed' ? 'Review' : undefined}
+              onPress={item.id === 'shifts_reviewed' ? onOpenStaff : undefined}
             />
           ))}
         </View>
       ) : (
         <View
           style={{
-            borderRadius: 16,
+            borderRadius: s(16),
             borderWidth: 1,
             borderColor: colors.teal + '50',
             backgroundColor: colors.teal + '15',
-            padding: 12,
-            gap: 3
+            padding: s(12),
+            gap: s(3)
           }}
         >
           <Text
-            style={{ fontSize: 12.5, fontWeight: '700', color: colors.teal }}
+            style={{ fontSize: s(12.5), fontWeight: '700', color: colors.teal }}
           >
             All critical checks are clear.
           </Text>
-          <Text style={{ fontSize: 11, color: colors.label }}>
+          <Text style={{ fontSize: s(11), color: colors.label }}>
             You can continue to Floor & Orders and confirm details as you
             complete each step.
           </Text>
         </View>
       )}
 
-      <View style={{ gap: 8 }}>
+      <View style={{ gap: s(8) }}>
         <Text
-          style={{ fontSize: 12.5, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(12.5), fontWeight: '700', color: colors.heading }}
         >
           Quick actions
         </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}>
           <TouchableOpacity
             onPress={onOpenTables}
             style={{
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              minHeight: 40,
-              paddingHorizontal: 10,
-              paddingVertical: 8,
+              minHeight: s(40),
+              paddingHorizontal: s(10),
+              paddingVertical: s(8),
               justifyContent: 'center'
             }}
           >
             <Text
-              style={{ fontSize: 11, fontWeight: '600', color: colors.label }}
+              style={{ fontSize: s(11), fontWeight: '600', color: colors.label }}
             >
               Go to tables
             </Text>
@@ -214,18 +220,18 @@ export default function EodStepOverview ({
           <TouchableOpacity
             onPress={onOpenOrders}
             style={{
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              minHeight: 40,
-              paddingHorizontal: 10,
-              paddingVertical: 8,
+              minHeight: s(40),
+              paddingHorizontal: s(10),
+              paddingVertical: s(8),
               justifyContent: 'center'
             }}
           >
             <Text
-              style={{ fontSize: 11, fontWeight: '600', color: colors.label }}
+              style={{ fontSize: s(11), fontWeight: '600', color: colors.label }}
             >
               Go to orders
             </Text>
@@ -234,18 +240,18 @@ export default function EodStepOverview ({
             <TouchableOpacity
               onPress={onOpenCashDrawer}
               style={{
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: colors.border,
                 backgroundColor: colors.card,
-                minHeight: 40,
-                paddingHorizontal: 10,
-                paddingVertical: 8,
+                minHeight: s(40),
+                paddingHorizontal: s(10),
+                paddingVertical: s(8),
                 justifyContent: 'center'
               }}
             >
               <Text
-                style={{ fontSize: 11, fontWeight: '600', color: colors.label }}
+                style={{ fontSize: s(11), fontWeight: '600', color: colors.label }}
               >
                 Open drawer
               </Text>
@@ -255,18 +261,18 @@ export default function EodStepOverview ({
             <TouchableOpacity
               onPress={onOpenTips}
               style={{
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: colors.border,
                 backgroundColor: colors.card,
-                minHeight: 40,
-                paddingHorizontal: 10,
-                paddingVertical: 8,
+                minHeight: s(40),
+                paddingHorizontal: s(10),
+                paddingVertical: s(8),
                 justifyContent: 'center'
               }}
             >
               <Text
-                style={{ fontSize: 11, fontWeight: '600', color: colors.label }}
+                style={{ fontSize: s(11), fontWeight: '600', color: colors.label }}
               >
                 Open tips wizard
               </Text>
@@ -276,18 +282,18 @@ export default function EodStepOverview ({
             <TouchableOpacity
               onPress={onOpenStaff}
               style={{
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: colors.border,
                 backgroundColor: colors.card,
-                minHeight: 40,
-                paddingHorizontal: 10,
-                paddingVertical: 8,
+                minHeight: s(40),
+                paddingHorizontal: s(10),
+                paddingVertical: s(8),
                 justifyContent: 'center'
               }}
             >
               <Text
-                style={{ fontSize: 11, fontWeight: '600', color: colors.label }}
+                style={{ fontSize: s(11), fontWeight: '600', color: colors.label }}
               >
                 Review staff
               </Text>

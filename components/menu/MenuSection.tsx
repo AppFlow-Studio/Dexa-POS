@@ -48,11 +48,12 @@ import React, {
     useState,
 } from "react";
 import {
-    FlatList,
+  FlashList,
+  type ListRenderItemInfo,
+} from "@shopify/flash-list";
+import {
     ActivityIndicator,
     InteractionManager,
-    ListRenderItemInfo,
-    Platform,
     Pressable,
     Text,
     TouchableOpacity,
@@ -84,15 +85,37 @@ interface MenuSectionProps {
 
 // OPTIMIZED: Pre-compiled StyleSheet for spacer (no runtime parsing)
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { useSearchStore } from "@/stores/searchStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { StyleSheet, ViewStyle } from "react-native";
 
 const menuSectionStyles = StyleSheet.create({
   spacer: {
-    width: "23%",
+    flex: 1,
+  },
+  // Perf F8 (FlashList): each grid cell is width/numColumns; gutters live on
+  // the cell wrapper (3+3 horizontal between columns, 6 vertical between
+  // rows) since FlashList has no columnWrapperStyle.
+  gridCell: {
+    // FlashList lays each row of `numColumns` cells out in a flex row; flex:1
+    // makes every cell take an equal share of the row width. Static (no onLayout
+    // measurement race that left the first category cramped until a switch).
+    flex: 1,
+    paddingHorizontal: 3,
+    paddingBottom: 6,
+  },
+  gridContainer: {
+    flex: 1,
+    marginTop: 8,
+    // NOTE: backgroundColor is applied inline at the render site, NOT here.
+    // `colors` is a theme Proxy that defaults to dark; StyleSheet.create runs
+    // at module load (before setThemeMode('light')), so a themed color frozen
+    // here would lock to the dark value (#1E2340) and show as a dark rectangle
+    // below short lists. Inline styles read the live (light) value.
   },
 });
 const EMPTY_HIDDEN_MENU_IDS: string[] = [];
@@ -122,7 +145,7 @@ const getImageSource = (item: MenuItemType) => {
   return source;
 };
 
-// OPTIMIZED: Memoized spacer component
+// OPTIMIZED: Memoized spacer component — 20% width matches a real grid cell.
 const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
 SpacerItem.displayName = "SpacerItem";
 
@@ -152,6 +175,8 @@ const SeatingBlockingOverlay = React.memo(
     title: string;
     message: string;
   }) => {
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
     if (!isVisible) return null;
     return (
       <Pressable style={getBlockingOverlayStyle("transparent")}>
@@ -171,16 +196,16 @@ const SeatingBlockingOverlay = React.memo(
             flex: 1,
             alignItems: "center",
             justifyContent: "center",
-            paddingHorizontal: 24,
+            paddingHorizontal: s(24),
           }}
         >
           <View
             style={{
               alignItems: "center",
-              gap: 8,
-              paddingHorizontal: 18,
-              paddingVertical: 14,
-              borderRadius: 12,
+              gap: s(8),
+              paddingHorizontal: s(18),
+              paddingVertical: s(14),
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.panel + "E6",
@@ -190,7 +215,7 @@ const SeatingBlockingOverlay = React.memo(
             <Text
               style={{
                 color: colors.heading,
-                fontSize: 15,
+                fontSize: s(15),
                 fontWeight: "700",
                 textAlign: "center",
               }}
@@ -200,7 +225,7 @@ const SeatingBlockingOverlay = React.memo(
             <Text
               style={{
                 color: colors.muted,
-                fontSize: 12,
+                fontSize: s(12),
                 textAlign: "center",
               }}
             >
@@ -230,6 +255,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   placeMenuSelectorInMenuRow = false,
 }) => {
   const { colorScheme } = useColorScheme();
+  const uiScale = useUiScale();
+  const sc = (n: number) => Math.round(n * uiScale);
   // State for the active filters
   const menus = useMenuStore((s) => s.menus);
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
@@ -312,15 +339,45 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // ONLINE, otherwise the overlay would stick on "Creating order" forever offline.
   const { isOnline } = useNetworkStatus();
   const isCreatingOrder = isOnline && !!activeOrderId && !currentOrderDbId;
-  const isMenuAddDisabled = isTableSeating || isCreatingOrder;
+  // Per-order PIN attribution: block adding items (which is what creates the
+  // backend order row) until the staff who's ringing has been verified. This
+  // closes the timing gap where an order could be created — and attributed —
+  // before the PIN is entered. The PIN prompt itself (OrderPinGate) is rendered
+  // by BillSection; here we only gate adds and surface the right message.
+  const requirePinPerOrder = useStoreSettingsStore(
+    (s) => s.requirePinPerOrder,
+  );
+  const orderAttributionOrderId = useEmployeeStore(
+    (s) => s.orderAttributionOrderId,
+  );
+  const currentOrderPaidStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.paid_status ?? null;
+  });
+  // Block adds until a PIN was verified for THIS specific order. Order-bound so
+  // a stale verification from another order can't unblock this one. Skips once
+  // the order is created (db_order_id) — seated dine-in / mid-order — and never
+  // on the empty / just-paid state.
+  const isAwaitingOrderPin =
+    requirePinPerOrder &&
+    !!activeOrderId &&
+    orderAttributionOrderId !== activeOrderId &&
+    !currentOrderDbId &&
+    currentOrderPaidStatus !== "Paid";
+  const isMenuAddDisabled =
+    isTableSeating || isCreatingOrder || isAwaitingOrderPin;
   // Seating takes precedence over "creating" in the label (a dine-in order is
   // also db_order_id-less while seating, but "Seating in progress" is clearer).
   const menuDisabledTitle = isTableSeating
     ? "Seating in progress"
-    : "Creating order";
+    : isAwaitingOrderPin
+      ? "Enter PIN to start"
+      : "Creating order";
   const menuDisabledMessage = isTableSeating
     ? "Items can be added once the table is seated."
-    : "Items can be added once the order is ready.";
+    : isAwaitingOrderPin
+      ? "Enter your PIN to start this order."
+      : "Items can be added once the order is ready.";
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails,
   );
@@ -654,6 +711,12 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   useEffect(() => {
     if (!filteredMenuItems.length || !currentCategoryId || !activeMenuId)
       return;
+    // Perf F5: warm the WHOLE category, not just the first 6/12 — items past
+    // the old window paid the full modifier-tree computation on tap (latency
+    // cliff at index 12). The rAF-chunked loop below keeps each batch small,
+    // and the cursor runs in list order so above-the-fold items still warm
+    // first. Image prefetch stays capped to the visible window.
+    const itemsToWarm = filteredMenuItems;
     const visibleItems = filteredMenuItems.slice(0, isTableOrder ? 6 : 12);
     let cancelled = false;
     let pendingRaf: number | null = null;
@@ -674,7 +737,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         let cursor = 0;
         const step = () => {
           if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
-          const slice = visibleItems.slice(cursor, cursor + chunkSize);
+          const slice = itemsToWarm.slice(cursor, cursor + chunkSize);
           if (slice.length === 0) {
             pendingRaf = null;
             return;
@@ -710,15 +773,17 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       const imagePriority =
         index < highThrough ? "high" : index < normalThrough ? "normal" : "low";
       return (
-        <MenuItem
-          item={item}
-          imageSource={getImageSource(item)}
-          imagePriority={imagePriority}
-          onOrderClosedCheck={onOrderClosedCheck}
-          categoryId={currentCategoryId}
-          menuId={activeMenuId}
-          disabled={isMenuAddDisabled}
-        />
+        <View style={menuSectionStyles.gridCell}>
+          <MenuItem
+            item={item}
+            imageSource={getImageSource(item)}
+            imagePriority={imagePriority}
+            onOrderClosedCheck={onOrderClosedCheck}
+            categoryId={currentCategoryId}
+            menuId={activeMenuId}
+            disabled={isMenuAddDisabled}
+          />
+        </View>
       );
     },
     [
@@ -730,6 +795,17 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     ],
   );
 
+  // FlashList recycles by type — keep spacer cells out of the MenuItem pool.
+  const getItemType = useCallback(
+    (item: MenuItemType) => ((item as any).name === "spacer" ? "spacer" : "item"),
+    [],
+  );
+
+  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
+  // Row-height estimate. Image tiles are square at ~1/5 of the grid width;
+  // text-only tiles are a fixed 80 (+6 gridCell paddingBottom).
+  const estimatedItemSize = showMenuImages ? 240 : 86;
+
   const formatTime = (d?: Date | null) =>
     d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
 
@@ -739,16 +815,15 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     <>
       <View
         key={colorScheme}
-        className={`mt-0 flex-1 relative overflow-hidden px-2 ${
-          isTableOrder ? "rounded-tl-3xl" : ""
+        className={`mt-0 flex-1 relative overflow-hidden ${
+          isTableOrder ? "pl-0 pr-2" : "px-2"
         }`}
         style={{ backgroundColor: colors.card }}
       >
         {/* Row 1: Header (Order Line) + Toolbar */}
         <View
-          className={`${
-            isTableOrder ? "px-0 py-2" : "px-0 py-2"
-          } flex-row items-center`}
+          className="px-0 flex-row items-center"
+          style={{ paddingVertical: sc(8) }}
         >
           {headerLeft}
           <View
@@ -764,7 +839,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 className="flex-row items-center rounded-lg p-3 justify-start"
                 style={{ backgroundColor: colors.panel }}
               >
-                <Search color={colors.label} size={14} />
+                <Search color={colors.label} size={sc(14)} />
               </TouchableOpacity>
             ) : null}
             {showMenuTabButton && (
@@ -778,7 +853,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
               >
                 <Table
                   color={activeTab == "Menu" ? colors.teal : colors.label}
-                  size={14}
+                  size={sc(14)}
                 />
               </TouchableOpacity>
             )}
@@ -795,7 +870,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
               >
                 <PackagePlus
                   color={activeTab == "Open Item" ? colors.teal : colors.label}
-                  size={14}
+                  size={sc(14)}
                 />
               </TouchableOpacity>
             )}
@@ -806,7 +881,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 className="flex-row items-center rounded-lg p-3 justify-start"
                 style={{ backgroundColor: colors.panel }}
               >
-                <Sofa color={colors.label} size={14} />
+                <Sofa color={colors.label} size={sc(14)} />
               </Link>
             )}
 
@@ -821,7 +896,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
               >
                 <Logs
                   color={activeTab == "Orders" ? colors.teal : colors.label}
-                  size={14}
+                  size={sc(14)}
                 />
                 <Text
                   style={{
@@ -843,25 +918,28 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                     className="flex-row items-center rounded-lg px-3 py-2.5 gap-2"
                     style={{ backgroundColor: colors.panel }}
                   >
-                    <UtensilsCrossed color={colors.label} size={13} />
+                    <UtensilsCrossed color={colors.label} size={sc(13)} />
                     <Text
                       style={{
                         color: colors.heading,
-                        fontSize: 13,
+                        fontSize: sc(13),
                         fontWeight: "500",
                       }}
                     >
                       {activeMeal || "Select Menu"}
                     </Text>
-                    <ChevronDown color={colors.label} size={13} />
+                    <ChevronDown color={colors.label} size={sc(13)} />
                   </TouchableOpacity>
                 </DialogTrigger>
               )}
               <DialogContent
-                className="w-[480px] max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden"
+                className="max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden"
                 style={{
                   backgroundColor: colors.screen,
                   borderColor: colors.border,
+                  maxWidth: sc(480),
+                  alignSelf: 'center',
+                  width: '90%',
                 }}
               >
                 <DialogHeader
@@ -871,7 +949,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   <DialogTitle>
                     <Text
                       style={{
-                        fontSize: 18,
+                        fontSize: sc(18),
                         fontWeight: "600",
                         color: colors.heading,
                       }}
@@ -883,7 +961,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 <ScrollView
                   ref={menuScrollViewRef}
                   className="w-full"
-                  contentContainerStyle={{ padding: 16, gap: 10 }}
+                  contentContainerStyle={{ padding: sc(16), gap: sc(10) }}
                 >
                   {visibleMenus.map((menu) => {
                     const isAvailable =
@@ -922,7 +1000,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                           <Text
                             style={{
                               fontWeight: "600",
-                              fontSize: 16,
+                              fontSize: sc(16),
                               color: !isAvailable ? colors.muted : colors.heading,
                             }}
                           >
@@ -932,8 +1010,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                             {isSelected && (
                               <View
                                 style={{
-                                  paddingHorizontal: 7,
-                                  paddingVertical: 3,
+                                  paddingHorizontal: sc(7),
+                                  paddingVertical: sc(3),
                                   borderRadius: 999,
                                   backgroundColor: colors.teal + "1f",
                                   borderWidth: 1,
@@ -942,7 +1020,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                               >
                                 <Text
                                   style={{
-                                    fontSize: 10,
+                                    fontSize: sc(10),
                                     fontWeight: "700",
                                     color: colors.teal,
                                   }}
@@ -956,41 +1034,41 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                                 style={{
                                   flexDirection: "row",
                                   alignItems: "center",
-                                  gap: 4,
+                                  gap: sc(4),
                                   backgroundColor: colors.danger + "18",
                                   borderWidth: 1,
                                   borderColor: colors.danger + "40",
-                                  paddingHorizontal: 7,
-                                  paddingVertical: 3,
-                                  borderRadius: 6,
+                                  paddingHorizontal: sc(7),
+                                  paddingVertical: sc(3),
+                                  borderRadius: sc(6),
                                 }}
                               >
-                                <Lock size={11} color={colors.danger} />
+                                <Lock size={sc(11)} color={colors.danger} />
                                 <Text
-                                  style={{ fontSize: 10, color: colors.danger }}
+                                  style={{ fontSize: sc(10), color: colors.danger }}
                                 >
                                   Schedule
                                 </Text>
                               </View>
                             )}
                             {isScheduled && isAvailable && (
-                              <Clock size={14} color={colors.label} />
+                              <Clock size={sc(14)} color={colors.label} />
                             )}
                             {isSelected ? (
-                              <CheckCircle2 size={16} color={colors.teal} />
+                              <CheckCircle2 size={sc(16)} color={colors.teal} />
                             ) : isAvailable ? (
-                              <CheckCircle2 size={16} color={colors.success} />
+                              <CheckCircle2 size={sc(16)} color={colors.success} />
                             ) : (
-                              <Lock size={16} color={colors.muted} />
+                              <Lock size={sc(16)} color={colors.muted} />
                             )}
                           </View>
                         </View>
                         {menu.description ? (
                           <Text
                             style={{
-                              fontSize: 12,
+                              fontSize: sc(12),
                               color: colors.muted,
-                              marginTop: 4,
+                              marginTop: sc(4),
                             }}
                           >
                             {menu.description}
@@ -1001,8 +1079,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                             style={{
                               flexDirection: "row",
                               flexWrap: "wrap",
-                              gap: 6,
-                              marginTop: 10,
+                              gap: sc(6),
+                              marginTop: sc(10),
                             }}
                           >
                             {menuCategories.map((category, index) => {
@@ -1023,9 +1101,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                                     )
                                   }
                                   style={{
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 4,
-                                    borderRadius: 12,
+                                    paddingHorizontal: sc(10),
+                                    paddingVertical: sc(4),
+                                    borderRadius: sc(12),
                                     backgroundColor: isSelectedCategory
                                       ? colors.teal + "20"
                                       : colors.screen,
@@ -1038,7 +1116,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                                 >
                                   <Text
                                     style={{
-                                      fontSize: 12,
+                                      fontSize: sc(12),
                                       color: isSelectedCategory
                                         ? colors.teal
                                         : colors.label,
@@ -1070,7 +1148,10 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         {!forceOrdersView &&
           activeTab === "Menu" &&
           (activeMeal ? (
-            <View className={`${isTableOrder ? "px-3" : ""} pb-3`}>
+            <View
+              className={isTableOrder ? "px-3" : ""}
+              style={{ paddingBottom: sc(12) }}
+            >
               <MenuControls
                 activeMeal={activeMeal}
                 menuOptions={visibleMenus}
@@ -1086,17 +1167,17 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                       className="flex-row items-center rounded-lg px-3 py-2.5 gap-2"
                       style={{ backgroundColor: colors.panel }}
                     >
-                      <UtensilsCrossed color={colors.label} size={13} />
+                      <UtensilsCrossed color={colors.label} size={sc(13)} />
                       <Text
                         style={{
                           color: colors.heading,
-                          fontSize: 13,
+                          fontSize: sc(13),
                           fontWeight: "500",
                         }}
                       >
                         {activeMeal || "Select Menu"}
                       </Text>
-                      <ChevronDown color={colors.label} size={13} />
+                      <ChevronDown color={colors.label} size={sc(13)} />
                     </TouchableOpacity>
                   ) : undefined
                 }
@@ -1108,16 +1189,16 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 flex: 1,
                 alignItems: "center",
                 justifyContent: "center",
-                marginTop: 80,
+                marginTop: sc(80),
               }}
             >
-              <Clock size={64} color={colors.muted} />
+              <Clock size={sc(64)} color={colors.muted} />
               <Text
                 style={{
                   color: colors.heading,
-                  fontSize: 24,
+                  fontSize: sc(24),
                   fontWeight: "bold",
-                  marginTop: 16,
+                  marginTop: sc(16),
                 }}
               >
                 No Menu Available
@@ -1125,10 +1206,10 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
               <Text
                 style={{
                   color: colors.muted,
-                  fontSize: 16,
-                  marginTop: 8,
+                  fontSize: sc(16),
+                  marginTop: sc(8),
                   textAlign: "center",
-                  paddingHorizontal: 40,
+                  paddingHorizontal: sc(40),
                 }}
               >
                 There are currently no menus scheduled for this time. Please
@@ -1148,52 +1229,53 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 key={"Menu"}
                 className={`flex-1 ${isTableOrder ? "px-3" : ""}`}
               >
-                <FlatList
-                  data={dataWithSpacers}
-                  keyExtractor={keyExtractor}
-                  numColumns={numColumns}
-                  style={{
-                    flex: 1,
-                    marginTop: 8,
-                    backgroundColor: colors.card,
-                  }}
-                  contentContainerStyle={{
-                    backgroundColor: colors.card,
-                    paddingBottom: 128,
-                  }}
-                  ItemSeparatorComponent={SpacerItem}
-                  getItemLayout={(_item, index) => {
-                    const ROW_HEIGHT = 80 + 12;
-                    const row = Math.floor(index / numColumns);
-                    return { length: 80, offset: row * ROW_HEIGHT, index };
-                  }}
-                  showsVerticalScrollIndicator={false}
-                  columnWrapperStyle={{
-                    justifyContent: "flex-start",
-                    gap: 6,
-                    marginBottom: 6,
-                  }}
-                  removeClippedSubviews={Platform.OS === "android"}
-                  maxToRenderPerBatch={10}
-                  updateCellsBatchingPeriod={32}
-                  windowSize={2}
-                  initialNumToRender={15}
-                  ListEmptyComponent={
-                    <View
-                      style={{
-                        flex: 1,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        height: 192,
-                      }}
-                    >
-                      <Text style={{ color: colors.muted, fontSize: 18 }}>
-                        No items match the current filters.
-                      </Text>
-                    </View>
-                  }
-                  renderItem={renderMenuItem}
-                />
+                {/* Perf F8: FlashList replaces the tuned FlatList — cell
+                    recycling instead of mount/unmount during fling scrolls.
+                    Column gutters moved into renderItem's gridCell wrapper
+                    (no columnWrapperStyle in FlashList); the old batching
+                    props (windowSize etc.) have no FlashList equivalent. */}
+                <View
+                  style={[
+                    menuSectionStyles.gridContainer,
+                    { backgroundColor: colors.card, marginTop: sc(8) },
+                  ]}
+                >
+                  <FlashList
+                    data={dataWithSpacers}
+                    keyExtractor={keyExtractor}
+                    numColumns={numColumns}
+                    estimatedItemSize={estimatedItemSize}
+                    getItemType={getItemType}
+                    disableAutoLayout
+                    drawDistance={500}
+                    contentContainerStyle={{
+                      backgroundColor: colors.card,
+                      paddingBottom: 128,
+                    }}
+                    showsVerticalScrollIndicator={false}
+                    // Re-render visible cells when the add-disabled state flips
+                    // (e.g. first order's db_order_id arrives → isMenuAddDisabled
+                    // false). Without this, dataWithSpacers keeps the same item
+                    // references so FlashList leaves the first category's cells
+                    // grayed out until a category switch rebuilds the data.
+                    extraData={isMenuAddDisabled}
+                    ListEmptyComponent={
+                      <View
+                        style={{
+                          flex: 1,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: sc(192),
+                        }}
+                      >
+                        <Text style={{ color: colors.muted, fontSize: sc(18) }}>
+                          No items match the current filters.
+                        </Text>
+                      </View>
+                    }
+                    renderItem={renderMenuItem}
+                  />
+                </View>
               </View>
             ) : null
           ) : activeTab === "Open Item" ? (

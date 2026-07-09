@@ -7,6 +7,7 @@ import AppNoticeModal from '@/components/ui/AppNoticeModal'
 import { useToast } from '@/contexts/ToastContext'
 import { NotifyContext, TemplateKey } from '@/lib/notifyTemplates'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
@@ -23,9 +24,11 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
-import Animated, { LinearTransition } from 'react-native-reanimated'
 
 const WaitlistPanel: React.FC = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+
   const {
     waitlist,
     isLoading,
@@ -242,8 +245,8 @@ const WaitlistPanel: React.FC = () => {
       {/* Header */}
       <View
         style={{
-          paddingHorizontal: 12,
-          paddingVertical: 10,
+          paddingHorizontal: s(12),
+          paddingVertical: s(10),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
           flexDirection: 'row',
@@ -251,24 +254,24 @@ const WaitlistPanel: React.FC = () => {
           justifyContent: 'space-between'
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
           <Text
-            style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
           >
             Waitlist
           </Text>
           <View
             style={{
               backgroundColor: colors.card,
-              paddingHorizontal: 7,
-              paddingVertical: 2,
-              borderRadius: 20,
+              paddingHorizontal: s(7),
+              paddingVertical: s(2),
+              borderRadius: s(20),
               borderWidth: 1,
               borderColor: colors.border
             }}
           >
             <Text
-              style={{ fontSize: 11, fontWeight: '600', color: colors.muted }}
+              style={{ fontSize: s(11), fontWeight: '600', color: colors.muted }}
             >
               {waitlist.length}
             </Text>
@@ -277,9 +280,9 @@ const WaitlistPanel: React.FC = () => {
         <TouchableOpacity
           onPress={() => setShowAddModal(true)}
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 8,
+            width: s(30),
+            height: s(30),
+            borderRadius: s(8),
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: colors.teal + '15',
@@ -287,30 +290,30 @@ const WaitlistPanel: React.FC = () => {
             borderColor: colors.teal + '30'
           }}
         >
-          <UserPlus size={14} color={colors.teal} />
+          <UserPlus size={s(14)} color={colors.teal} />
         </TouchableOpacity>
       </View>
 
       {/* Content */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 8, paddingBottom: 20 }}
+        contentContainerStyle={{ padding: s(8), paddingBottom: s(20) }}
       >
         {isLoading && waitlist.length === 0 ? (
           <View
             style={{
               alignItems: 'center',
               justifyContent: 'center',
-              paddingVertical: 40
+              paddingVertical: s(40)
             }}
           >
             <ActivityIndicator size='small' color={colors.teal} />
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>
+            <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(8) }}>
               Loading waitlist...
             </Text>
           </View>
         ) : waitlist.length > 0 ? (
-          <Animated.View layout={LinearTransition.duration(200)}>
+          <View>
             {waitlist.map(entry => (
               <WaitlistCard
                 key={entry.id}
@@ -323,20 +326,20 @@ const WaitlistPanel: React.FC = () => {
                 onEdit={() => setEntryToEdit(entry)}
               />
             ))}
-          </Animated.View>
+          </View>
         ) : (
           <View
             style={{
               alignItems: 'center',
               justifyContent: 'center',
-              paddingVertical: 40
+              paddingVertical: s(40)
             }}
           >
-            <Clock size={28} color={colors.muted} />
-            <Text style={{ fontSize: 13, color: colors.label, marginTop: 10 }}>
+            <Clock size={s(28)} color={colors.muted} />
+            <Text style={{ fontSize: s(13), color: colors.label, marginTop: s(10) }}>
               No parties waiting
             </Text>
-            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+            <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(4) }}>
               Tap + to add someone
             </Text>
           </View>

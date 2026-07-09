@@ -3,13 +3,15 @@ import {
   getKitchenSentStatus,
   getOrderSentStatus,
 } from "@/lib/kitchenStatusUtils";
+import { payableQuantity } from "@/lib/payableQuantity";
+import { startInteraction } from "@/lib/perf";
+import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
   createLazyPersistStorage,
   getSyncJSON,
   setSyncJSON,
 } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
-import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
   CartItem,
   Discount,
@@ -20,11 +22,11 @@ import {
   OrderProfilePayment,
   PaymentType,
 } from "@/lib/types";
-import { OrderService } from "@/services/orderService";
 import {
   decrementDiscountUsage,
   incrementDiscountUsage,
 } from "@/services/discountUsageTracker";
+import { OrderService } from "@/services/orderService";
 import {
   completePaymentJournal,
   failPaymentJournal,
@@ -37,6 +39,7 @@ import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import type {
   AddOrderItemParams,
   CreateOrderParams,
+  OrderStatus as DbOrderStatus,
   OrderType as DbOrderType,
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
@@ -65,16 +68,13 @@ import { useTableSessionStore } from "./useTableSessionStore";
 // } from "@/lib/offlineIdRegistry";
 // Import pure calculation functions from order-calculator module
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
-import { snapshotTableName } from "@/lib/orderDisplay";
 import {
   forceSetLocalSequence,
   generateLocalOrderNumbers,
   parseSequenceFromDisplayNumber,
   seedLocalSequence,
 } from "@/lib/localOrderSequence";
-import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
 import { DEADLINES } from "@/lib/network/deadlines";
-import { withDeadline } from "@/lib/network/withDeadline";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
 import {
   rpcWithIdempotency,
@@ -84,6 +84,7 @@ import {
   toUpdateQuantityKey,
 } from "@/lib/network/idempotencyKey";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
+import { withDeadline } from "@/lib/network/withDeadline";
 import { mapLocalToBackend, registerLocalId } from "@/lib/offlineIdRegistry";
 import { ITEM_BOUND_OPS } from "@/lib/offlineSyncSubtitles";
 import {
@@ -96,6 +97,9 @@ import {
   round2,
   scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
+import { snapshotTableName } from "@/lib/orderDisplay";
+import { resolveInboundToGo } from "@/lib/pendingToGo";
+import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
 
 import { normalizePlatform } from "@/lib/platformAliases";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
@@ -137,8 +141,8 @@ import {
   BroadcastOrderData,
   OrderBroadcastPayload,
 } from "@/hooks/realtime/useOrdersRealtime";
-import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
+import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
@@ -163,9 +167,14 @@ import {
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { restoreDiscountsFromBackend } from "@/utils/discountUtils";
 
-const resolveTableNameForOrder = (tableIdOrName?: string | null): string | null => {
+const resolveTableNameForOrder = (
+  tableIdOrName?: string | null,
+): string | null => {
   if (!tableIdOrName) return null;
-  return useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ?? tableIdOrName;
+  return (
+    useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ??
+    tableIdOrName
+  );
 };
 
 function isOrderTableStillSeating(order?: OrderProfile | null): boolean {
@@ -305,8 +314,7 @@ function buildServiceChargeInputForOrder(
 > {
   if (!order) return {};
 
-  const locationId =
-    useStoreSettingsStore.getState().selectedStore?.id ?? null;
+  const locationId = useStoreSettingsStore.getState().selectedStore?.id ?? null;
   const rule =
     useServiceChargeRulesStore.getState().resolveRule(locationId) ?? null;
 
@@ -331,7 +339,12 @@ function buildServiceChargeInputForOrder(
       .getSessionBySessionId(order.session_id);
     partySize = found?.session?.party_size ?? null;
   }
-  if (partySize == null && !order.session_id && typeof order.guest_count === "number" && order.guest_count > 0) {
+  if (
+    partySize == null &&
+    !order.session_id &&
+    typeof order.guest_count === "number" &&
+    order.guest_count > 0
+  ) {
     partySize = order.guest_count;
   }
 
@@ -341,7 +354,7 @@ function buildServiceChargeInputForOrder(
   // rule-SC after recompute and before the next backend sync.
   const manualServiceCharge =
     order.service_charge_is_manual === true
-      ? order.service_charge ?? 0
+      ? (order.service_charge ?? 0)
       : null;
 
   // Wave D follow-up — server-confirmed SC fallback. When the server has
@@ -583,6 +596,113 @@ export const setOrderStoreSupabaseClient = (client: SupabaseClient | null) => {
 
 export const getOrderStoreSupabaseClient = () => _supabaseClient;
 
+/**
+ * Hardened backend "send to kitchen" for a batch, shared by sendNewItemsToKitchen
+ * / sendNewItemsToKitchenForOrder / fireActiveOrderToKitchen.
+ *
+ * Mirrors services/sessionEffects/sendToKitchenEffect.ts (the already-hardened
+ * table path): send EVERY batch item that has resolved a db_order_item_id by now
+ * — regardless of whether it had one when Send was pressed — and queue any
+ * still-missing stragglers to the offline queue, which replays the send once
+ * their id lands. This closes the "sent N, only M reached the kitchen" race where
+ * an item that only got its db id during the sync wait was left to
+ * addItemToBackend's retroactive "last sibling" gate, which can race and silently
+ * skip it — leaving the item optimistically `sent` locally but `new` in the DB
+ * and therefore absent from the KDS (get_kds_tickets_v2 only returns
+ * sent/preparing/ready).
+ *
+ * PRECONDITION: the caller has already awaited waitForPendingSyncs and re-read
+ * `freshOrder` from the store.
+ *
+ * Idempotent: bulkUpdateOrderItemStatus uses a deterministic keyOverride and
+ * setting an item to the same kitchen status twice is a no-op, so overlap with
+ * the retroactive path and/or the offline queue is harmless.
+ */
+async function _commitKitchenSendForBatch(
+  freshOrder: OrderProfile,
+  localOrderId: string,
+  sentLocalIds: Set<string>,
+): Promise<void> {
+  const supabase = getOrderStoreSupabaseClient();
+  const isOnlineNow = getIsOnline();
+
+  const freshItems = freshOrder.items ?? [];
+  const freshSentItems = freshItems.filter(
+    (i) => sentLocalIds.has(i.id) && !!i.db_order_item_id,
+  );
+  const dbItemIds = freshSentItems
+    .map((i) => i.db_order_item_id)
+    .filter((id): id is string => !!id);
+
+  // Stragglers: batch items that STILL have no db_order_item_id after the wait.
+  // Hand them to the offline queue (offline_batch), which replays the send once
+  // the id resolves — same guarantee the table path relies on.
+  const stragglerIds = freshItems
+    .filter((i) => sentLocalIds.has(i.id) && !i.db_order_item_id)
+    .map((i) => i.id);
+  if (stragglerIds.length > 0) {
+    await queueFailedOperation(
+      "send_to_kitchen",
+      { localOrderId, localItemIds: stragglerIds, offline_batch: true },
+      localOrderId,
+    );
+  }
+
+  // Offline, no client, or order not synced yet: queue the whole resolved batch.
+  if (!isOnlineNow || !supabase || !freshOrder.db_order_id) {
+    const localItemIds = freshSentItems.map((i) => i.id);
+    if (localItemIds.length > 0) {
+      queueFailedOperation(
+        "send_to_kitchen",
+        { localOrderId, localItemIds },
+        localOrderId,
+      );
+    }
+    return;
+  }
+
+  if (dbItemIds.length === 0) return; // only stragglers; the queue handles them
+
+  const localItemIds = freshSentItems.map((i) => i.id);
+  try {
+    // The order may still be draft on the backend while local state is optimistic.
+    const transition = await OrderService.ensureOrderOutOfDraft(
+      supabase,
+      freshOrder.db_order_id,
+      getOrderSentStatus(),
+    );
+    if (!transition.ok) {
+      queueFailedOperation(
+        "send_to_kitchen",
+        { localOrderId, localItemIds },
+        localOrderId,
+      );
+      return;
+    }
+    const kitchenSent = getKitchenSentStatus();
+    const result = await OrderService.bulkUpdateOrderItemStatus(
+      supabase,
+      dbItemIds,
+      kitchenSent,
+      { keyOverride: toBulkUpdateStatusKey(dbItemIds, kitchenSent) },
+    );
+    if (result?.error) {
+      queueFailedOperation(
+        "send_to_kitchen",
+        { localOrderId, localItemIds },
+        localOrderId,
+      );
+    }
+  } catch (err) {
+    console.error("[_commitKitchenSendForBatch] send failed:", err);
+    queueFailedOperation(
+      "send_to_kitchen",
+      { localOrderId, localItemIds },
+      localOrderId,
+    );
+  }
+}
+
 type RecipeInventoryDeduction = {
   inventoryItemId: string;
   inventoryItemName: string;
@@ -652,7 +772,10 @@ const syncArchivedOrderInventoryByLocation = async (
     stockQuantity: number;
   }>,
 ) => {
-  const deductions = buildRecipeInventoryDeductions(soldItems, inventorySnapshot);
+  const deductions = buildRecipeInventoryDeductions(
+    soldItems,
+    inventorySnapshot,
+  );
 
   if (deductions.length === 0) {
     return { success: true as const };
@@ -976,6 +1099,33 @@ const ensureOrderCreated = async (
   }
 
   // ========================================================================
+  // PER-ORDER PIN ATTRIBUTION GUARD
+  // ========================================================================
+  // This is the single true chokepoint for backend order creation. Guarding
+  // here covers EVERY trigger — adding items, AND taking payment (which
+  // materializes the order at pay-time) — so no order can be created and
+  // attributed before the ringing staff is PIN-verified. The cart-add guard in
+  // addItemToActiveOrder is the proactive/UX layer; this is the backstop that
+  // also catches the payment path. Only blocks NEW creation (early returns
+  // above already short-circuit orders that exist). Dine-in orders are created
+  // via seat_guests (guarded separately at the seating path), but if one ever
+  // reaches here pre-seating it should be gated too.
+  if (
+    useStoreSettingsStore.getState().requirePinPerOrder &&
+    useEmployeeStore.getState().orderAttributionOrderId !== order.id
+  ) {
+    console.log(
+      `[ensureOrderCreated] Blocked: per-order PIN required, no verified staff for ${order.id}`,
+    );
+    toastService.show({
+      title: "Enter PIN to start",
+      message: "Enter your PIN to start this order.",
+      type: "warning",
+    });
+    return null;
+  }
+
+  // ========================================================================
   // OFFLINE MODE: Queue order creation and return special marker
   // ========================================================================
   if (!supabase || !isNetworkOnline) {
@@ -1011,7 +1161,7 @@ const ensureOrderCreated = async (
       p_special_instructions: null,
       p_device_id: getDeviceId(),
       p_created_by_staff_id:
-        useEmployeeStore.getState().loggedInEmployee?.profileId || null,
+        useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
       p_station_id:
         useStoreSettingsStore.getState().selectedStation?.id || null,
     };
@@ -1143,7 +1293,7 @@ const ensureOrderCreated = async (
         p_special_instructions: null,
         p_device_id: getDeviceId(),
         p_created_by_staff_id:
-          useEmployeeStore.getState().loggedInEmployee?.profileId || null,
+          useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
         p_station_id:
           useStoreSettingsStore.getState().selectedStation?.id || null,
       };
@@ -1227,6 +1377,21 @@ const ensureOrderCreated = async (
             orderData.created_at || new Date().toISOString(),
             orderData.sync_version, // Pass sync_version from backend response
           );
+
+          // Persist the creator on the local order so "Created by" reflects the
+          // staff who actually rang THIS order (the per-order PIN staff when on),
+          // not the live/last-PIN global value. backendId is the post-rekey key.
+          {
+            const creatorId =
+              useEmployeeStore.getState().getEffectiveCreatorStaffId() || null;
+            if (creatorId) {
+              useOrderStore.setState((state) => {
+                const o =
+                  state.ordersById[backendId] ?? state.ordersById[order.id];
+                if (o) o.created_by_staff_profile_id = creatorId;
+              });
+            }
+          }
 
           // Re-seed local counter to match DB-assigned sequence (prevents drift from abandoned drafts)
           const dbSeq = parseSequenceFromDisplayNumber(
@@ -1762,6 +1927,31 @@ const addItemToBackend = async (
         // Phase 7D: Set sync status in dedicated store (not on item)
         useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
 
+        // Reconcile per-item "TO GO": add_open_item_v2 does NOT persist
+        // is_to_go (the column defaults false), so an open item created/edited
+        // with TO GO on must be pushed now that the backend row exists. Mirrors
+        // the regular-item reconcile below (~2380). Read the FRESH store item
+        // (not the stale add-time snapshot) so a to-go set during the sync
+        // window isn't dropped. Fire BEFORE the retroactive kitchen-send below
+        // so the toggle's sync_version bump precedes the KDS broadcast. Toggling
+        // OFF needs no action here — the new DB row is already false.
+        const reconcileOpenItemForToGo = useOrderStore
+          .getState()
+          .ordersById[resolveOrderKey()]?.items.find((i) => i.id === item.id);
+        if (reconcileOpenItemForToGo?.is_to_go) {
+          OrderService.toggleToGoOnItems(
+            supabase,
+            [addResult.order_item_id],
+            true,
+          ).catch((err) => {
+            if (__DEV__)
+              console.warn(
+                "[addItemToBackend] open-item to-go reconcile failed:",
+                err,
+              );
+          });
+        }
+
         // Invalidate calculation cache after item sync (coalesced)
         scheduleCalculationCacheInvalidation();
 
@@ -1853,44 +2043,17 @@ const addItemToBackend = async (
           try {
             // Update order status first (draft → sent_to_kitchen) before setting
             // item statuses — the DB constraint rejects sent_to_kitchen_at on draft orders.
+            // Perf A1: verify-SELECT lives inside ensureOrderOutOfDraft, error path only.
             if (dbOrderId) {
-              const { error: statusError } =
-                await OrderService.updateOrderStatus(
-                  supabase,
-                  dbOrderId,
-                  getOrderSentStatus(),
-                );
-              if (
-                statusError &&
-                statusError.code !== "P0001" &&
-                !statusError.message?.includes("already in")
-              ) {
+              const transition = await OrderService.ensureOrderOutOfDraft(
+                supabase,
+                dbOrderId,
+                getOrderSentStatus(),
+              );
+              if (!transition.ok) {
                 console.warn(
-                  "[addItemToBackend] Failed to update order status before retroactive kitchen send:",
-                  statusError,
-                );
-                queueFailedOperation(
-                  "send_to_kitchen",
-                  { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
-                  resolveOrderKey(),
-                );
-                return true;
-              }
-
-              const { data: backendOrder, error: verifyError } = await supabase
-                .from("orders")
-                .select("status")
-                .eq("id", dbOrderId)
-                .single();
-
-              if (verifyError || backendOrder?.status === "draft") {
-                console.warn(
-                  "[addItemToBackend] Backend order remained draft after status update; deferring retroactive kitchen send",
-                  {
-                    dbOrderId,
-                    verifyError,
-                    backendStatus: backendOrder?.status,
-                  },
+                  "[addItemToBackend] Order status transition failed before retroactive kitchen send; deferring",
+                  { dbOrderId, error: transition.error },
                 );
                 queueFailedOperation(
                   "send_to_kitchen",
@@ -2274,6 +2437,28 @@ const addItemToBackend = async (
       // Phase 7D: Set sync status in dedicated store (not on item)
       useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
 
+      // Reconcile per-item "TO GO": the add RPC does NOT persist is_to_go (the
+      // column defaults false), so any item whose LIVE state is to-go must be
+      // pushed now that the backend row exists. This covers BOTH:
+      //   1. added with TO GO already on in the modifier (first-time add), and
+      //   2. toggled TO GO while still syncing (no db_order_item_id yet).
+      // Read the fresh item (not the stale add-time snapshot) so a to-go set
+      // during the sync window isn't dropped. Toggling OFF needs no action here —
+      // the DB row is already false. No-op in the common (not-to-go) case.
+      const reconcileItemForToGo = useOrderStore
+        .getState()
+        .ordersById[resolveOrderKey()]?.items.find((i) => i.id === item.id);
+      if (reconcileItemForToGo?.is_to_go) {
+        OrderService.toggleToGoOnItems(
+          supabase,
+          [addResult.order_item_id],
+          true,
+        ).catch((err) => {
+          if (__DEV__)
+            console.warn("[addItemToBackend] to-go reconcile failed:", err);
+        });
+      }
+
       // Invalidate calculation cache after new item added (coalesced)
       scheduleCalculationCacheInvalidation();
 
@@ -2379,43 +2564,17 @@ const addItemToBackend = async (
           // The order was created as 'draft' in the backend; bulkUpdateOrderItemStatus
           // sets sent_to_kitchen_at on the order which is rejected if still draft
           // (valid_status_transitions constraint). Update order status first (idempotent).
+          // Perf A1: verify-SELECT lives inside ensureOrderOutOfDraft, error path only.
           if (dbOrderId) {
-            const { error: statusError } = await OrderService.updateOrderStatus(
+            const transition = await OrderService.ensureOrderOutOfDraft(
               supabase,
               dbOrderId,
               getOrderSentStatus(),
             );
-            if (
-              statusError &&
-              statusError.code !== "P0001" &&
-              !statusError.message?.includes("already in")
-            ) {
+            if (!transition.ok) {
               console.warn(
-                "[addItemToBackend] Failed to update order status before retroactive kitchen send:",
-                statusError,
-              );
-              queueFailedOperation(
-                "send_to_kitchen",
-                { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
-                resolveOrderKey(),
-              );
-              return true;
-            }
-
-            const { data: backendOrder, error: verifyError } = await supabase
-              .from("orders")
-              .select("status")
-              .eq("id", dbOrderId)
-              .single();
-
-            if (verifyError || backendOrder?.status === "draft") {
-              console.warn(
-                "[addItemToBackend] Backend order remained draft after status update; deferring retroactive kitchen send",
-                {
-                  dbOrderId,
-                  verifyError,
-                  backendStatus: backendOrder?.status,
-                },
+                "[addItemToBackend] Order status transition failed before retroactive kitchen send; deferring",
+                { dbOrderId, error: transition.error },
               );
               queueFailedOperation(
                 "send_to_kitchen",
@@ -2684,6 +2843,10 @@ const syncPaymentToBackend = async (
         : null,
       p_item_allocations: itemAllocations,
       p_terminal_response: terminalResponse,
+      // Bake in the ringing staff at enqueue time so offline replay attributes
+      // the payment correctly (PIN-verified staff when per-order PIN is on).
+      p_staff_id:
+        useEmployeeStore.getState().getEffectiveCreatorStaffId() ?? null,
       p_split_count: paymentDetails.splitCount || null,
       p_split_portion_index: paymentDetails.splitPortionIndex || null,
       p_force_card_pricing: paymentDetails.forceCardPricing || false,
@@ -2770,7 +2933,11 @@ const syncPaymentToBackend = async (
       //                            pay-for-items client paths already scale
       //                            items+tax up by the proportional SC share).
       "process_payment_v12",
-      "process_payment_v15",
+      // v16 — split-payment fully-paid requires ALL portions captured (drops
+      // v15's `balance <= 0.02` dust fallback that flipped a tiny split to paid
+      // after the first portion). MUST match orderService.processPayment, which
+      // also calls v16 — this is the direct (non-OrderService) payment path.
+      "process_payment_v16",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -2782,7 +2949,10 @@ const syncPaymentToBackend = async (
           : null,
         p_item_allocations: itemAllocationsForRpc,
         p_terminal_response: terminalResponse,
-        p_staff_id: null, // Could get from employee store if needed
+        // Attribute the payment to the staff who rang the order (PIN-verified
+        // when per-order PIN is on, else the signed-in shift user).
+        p_staff_id:
+          useEmployeeStore.getState().getEffectiveCreatorStaffId() ?? null,
         p_split_count: paymentDetails.splitCount || null,
         p_split_portion_index: paymentDetails.splitPortionIndex || null,
         p_force_card_pricing: paymentDetails.forceCardPricing || false,
@@ -2797,12 +2967,27 @@ const syncPaymentToBackend = async (
     );
 
     if (error) {
-      console.error(
-        "[syncPaymentToBackend] Failed to process payment in backend:",
-        error,
-      );
-
       const errMessage = (error as any)?.message?.toLowerCase?.() || "";
+
+      // P0005 = enforce_order_math: a transient cross-write race (the
+      // pre-payment apply_service_charge_v1 UPDATE can momentarily collide with
+      // an in-flight order write on a tiny split) makes the FIRST direct call
+      // reject, but the queued retry below settles cleanly. Log it as a warning,
+      // not a red error, so it doesn't read as a hard payment failure — the
+      // payment is captured on retry and the order reconciles to the correct
+      // partial/paid state.
+      if ((error as any)?.code === "P0005") {
+        console.warn(
+          "[syncPaymentToBackend] enforce_order_math (P0005) on direct call — queueing for retry (auto-recovers):",
+          (error as any)?.message,
+        );
+      } else {
+        console.error(
+          "[syncPaymentToBackend] Failed to process payment in backend:",
+          error,
+        );
+      }
+
       const isAlreadyPaidError =
         (error as any)?.code === "P0001" &&
         (errMessage.includes("no unpaid items remaining") ||
@@ -3001,6 +3186,8 @@ const syncPaymentToBackend = async (
           : null,
         p_item_allocations: itemAllocationsRetry,
         p_terminal_response: terminalResponseRetry,
+        p_staff_id:
+          useEmployeeStore.getState().getEffectiveCreatorStaffId() ?? null,
         p_split_count: paymentDetails.splitCount || null,
         p_split_portion_index: paymentDetails.splitPortionIndex || null,
         p_force_card_pricing: paymentDetails.forceCardPricing || false,
@@ -3048,12 +3235,29 @@ const syncPaymentToBackend = async (
       const activeOrderId = useOrderStore.getState().activeOrderId;
 
       // Pre-compute fully-paid check (used both inside and outside setState)
+      // The server's order_fully_paid is authoritative. The amount-based
+      // fallback only applies when the RPC didn't return an explicit flag — it
+      // must NOT override an explicit order_fully_paid=false. On a split, a
+      // single remaining portion can be <= 0.01 (e.g. $0.03 split 2 ways leaves
+      // $0.01 after the first $0.02 portion); letting the `<= 0.01` fallback win
+      // there flips the order to Paid mid-split, which then auto-closes the
+      // check and blocks the final portion ("Order is already fully paid").
+      const serverReportsPortionsRemaining =
+        data.is_split_payment === true &&
+        data.portions_remaining != null &&
+        data.portions_remaining > 0;
       const isFullyPaidByAmounts =
-        (data.order_amount_due != null && data.order_amount_due <= 0.01) ||
-        (data.order_cash_amount_due != null &&
-          data.order_cash_amount_due <= 0.01) ||
-        (data.unpaid_cash_total != null && data.unpaid_cash_total <= 0.01);
-      const isFullyPaid = data.order_fully_paid || isFullyPaidByAmounts;
+        !serverReportsPortionsRemaining &&
+        ((data.order_amount_due != null && data.order_amount_due <= 0.01) ||
+          (data.order_cash_amount_due != null &&
+            data.order_cash_amount_due <= 0.01) ||
+          (data.unpaid_cash_total != null && data.unpaid_cash_total <= 0.01));
+      const isFullyPaid =
+        data.order_fully_paid === true
+          ? true
+          : data.order_fully_paid === false
+            ? false
+            : isFullyPaidByAmounts;
 
       useOrderStore.setState((state) => {
         const currentOrder = state.ordersById[order.id];
@@ -3552,9 +3756,7 @@ interface OrderState {
    * row-level OrderActionsMenu, and the PaymentDetailBottomSheet read-only
    * banner.
    */
-  claimOrderById: (
-    localOrderId: string,
-  ) => Promise<
+  claimOrderById: (localOrderId: string) => Promise<
     | { success: true }
     | {
         success: false;
@@ -3626,7 +3828,11 @@ interface OrderState {
   setOpenedAt: (orderId: string, openedAt: string) => void;
   setClosedAt: (orderId: string, closedAt: string) => void;
   updateActiveOrderDetails: (details: Partial<OrderProfile>) => Promise<void>;
-  applyDiscountToCheck: (orderId: string, discount: Discount, onError?: (msg: string) => void) => void;
+  applyDiscountToCheck: (
+    orderId: string,
+    discount: Discount,
+    onError?: (msg: string) => void,
+  ) => void;
   removeCheckDiscount: (orderId: string) => void;
   applyDiscountToItem: (orderId: string, itemId: string) => void;
   removeDiscountFromItem: (orderId: string, itemId: string) => void;
@@ -3642,7 +3848,11 @@ interface OrderState {
   ) => Promise<void>;
   markCheckReopenedLocally: (
     orderId: string,
-    backendTotals?: { amount_due?: number; cash_amount_due?: number; reopen_count?: number },
+    backendTotals?: {
+      amount_due?: number;
+      cash_amount_due?: number;
+      reopen_count?: number;
+    },
   ) => void;
   addPaymentToOrder: (details: {
     orderId: string;
@@ -3659,6 +3869,12 @@ interface OrderState {
     forceCardPricing?: boolean; // Force card pricing for custom amount payments (no cash discount)
     forceExplicitAmount?: boolean; // Preserve p_amount for allocation-free partial payments
   }) => Promise<boolean>; // Returns true if sync succeeded, false if failed (state reverted)
+  // Roll back optimistic, never-backend-confirmed payments when a user cancels
+  // an in-progress (split) payment. Removes pending payments lacking a
+  // db_payment_id, restores paidQuantity/item status from their coverage,
+  // clears the stale optimistic amount_due so it isn't treated as authoritative,
+  // and recomputes from item coverage. Returns true if anything was rolled back.
+  discardUnsyncedPayments: (orderId: string) => boolean;
   setOrders: (orders: OrderProfile[]) => void;
 
   markOrderAsPaid: (orderId: string) => void;
@@ -3880,6 +4096,99 @@ const nextPendingPaymentSeq = () => ++_pendingPaymentSeqCounter;
 const lastLocalMutationAt: Record<string, number> = {};
 const OWN_STATION_MUTATION_WINDOW_MS = 3000;
 
+// Clear per-order broadcast-throttle module state when an order leaves
+// ordersById, so these dicts don't grow unbounded across a long shift (an
+// order is created+archived many times per day). The throttle dicts are keyed
+// by dbOrderId at the write sites, so callers must pass every id the order was
+// keyed under (its store key AND its db_order_id). clearTimeout first so a
+// pending timer can't fire into a removed order.
+function _cleanupOrderModuleState(...ids: (string | null | undefined)[]): void {
+  for (const id of ids) {
+    if (!id) continue;
+    const timer = throttleTimers[id];
+    if (timer) clearTimeout(timer);
+    delete throttleTimers[id];
+    delete pendingThrottledBroadcast[id];
+    delete lastBroadcastTime[id];
+    // Also release the other per-order-key module dicts so they don't leak
+    // across a shift when an order is removed/pruned. orderRefreshTimeouts
+    // holds a live setTimeout (clear it so it can't fire into a removed order);
+    // pendingItemsBlockStart + lastLocalMutationAt are plain timestamp dicts.
+    const refreshTimer = orderRefreshTimeouts[id];
+    if (refreshTimer) clearTimeout(refreshTimer);
+    delete orderRefreshTimeouts[id];
+    delete pendingItemsBlockStart[id];
+    delete lastLocalMutationAt[id];
+  }
+}
+
+// Release ALL per-order / per-item satellite state when an order leaves
+// ordersById. Covers what _cleanupOrderModuleState (string-keyed dicts) can't:
+// the item-keyed quantitySyncGenerations Map and the per-order coursing /
+// seating / sync-status stores, whose own clearOrder/clearAllForOrder were
+// never wired to any order-removal path (memory audit Group A — they grew
+// monotonically across a shift). Satellite stores re-init on re-open from
+// history (initializeForOrder), so clearing here loses nothing. Lazy require
+// mirrors the getTableSessionStore pattern to avoid store import cycles.
+function releaseOrderState(
+  order: OrderProfile | undefined,
+  storeKey?: string,
+): void {
+  if (!order) return;
+  const orderId = order.id;
+  const dbId = order.db_order_id;
+  // Clear the string-keyed module dicts under every id the order was keyed
+  // under (its own id, db UUID, and the store key it was removed under).
+  _cleanupOrderModuleState(orderId, dbId, storeKey);
+  // Prune the two order-keyed module Maps that aren't covered by
+  // _cleanupOrderModuleState: localIdToDbOrderId (PERSISTED — grew one entry
+  // per order for the app's lifetime across restarts) and lastOrderDetailSyncAt
+  // (in-mem sync cooldown — grew one entry per distinct synced order per shift).
+  // Both are dead once the order leaves ordersById: the local→db mapping only
+  // exists to dedupe creation/resolve queue keys for a LIVE order, and the
+  // cooldown only throttles syncs for an order still in memory. A re-open from
+  // history re-keys + re-syncs fresh, so dropping these loses nothing.
+  let localIdMapChanged = false;
+  for (const k of [orderId, dbId, storeKey]) {
+    if (!k) continue;
+    if (localIdToDbOrderId.delete(k)) localIdMapChanged = true;
+    lastOrderDetailSyncAt.delete(k);
+  }
+  if (localIdMapChanged) persistLocalIdMap();
+  const items = order.items ?? [];
+  for (const item of items) {
+    if (item?.id) quantitySyncGenerations.delete(item.id);
+  }
+  try {
+    const itemIds = items.map((i) => i.id).filter(Boolean) as string[];
+    // coursing/seating byOrderId are keyed by the local order id; clear under
+    // every id the order may have been keyed under (idempotent no-op misses).
+    const keys = Array.from(
+      new Set([orderId, dbId, storeKey].filter(Boolean) as string[]),
+    );
+    const coursing = (
+      require("@/stores/useCoursingStore") as typeof import("@/stores/useCoursingStore")
+    ).useCoursingStore.getState();
+    const seating = (
+      require("@/stores/useSeatingStore") as typeof import("@/stores/useSeatingStore")
+    ).useSeatingStore.getState();
+    for (const k of keys) {
+      coursing.clearOrder(k);
+      seating.clearOrder(k);
+    }
+    if (itemIds.length > 0) {
+      (
+        require("@/stores/useSyncStatusStore") as typeof import("@/stores/useSyncStatusStore")
+      ).useSyncStatusStore
+        .getState()
+        .clearAllForOrder(itemIds);
+    }
+  } catch (e) {
+    if (__DEV__)
+      console.warn("[releaseOrderState] satellite cleanup failed", e);
+  }
+}
+
 // Wave 2.1: per-order toast dedup helper lives in `lib/takeoverToast.ts` so
 // the dedup contract is unit-testable without loading the full order store.
 
@@ -4001,10 +4310,7 @@ function mergePayments(
         returnedBy: localHasMoreRefund
           ? (lp.returnedBy ?? bp.returnedBy)
           : (bp.returnedBy ?? lp.returnedBy),
-        returnAmount: Math.max(
-          lp.returnAmount ?? 0,
-          bp.returnAmount ?? 0,
-        ),
+        returnAmount: Math.max(lp.returnAmount ?? 0, bp.returnAmount ?? 0),
       };
     }
     return bp;
@@ -4279,6 +4585,12 @@ export const useOrderStore = create<OrderState>()(
             return false;
           }
 
+          // A to-go item and an identical for-here item must stay separate lines
+          // so they can be fulfilled (and shown) differently.
+          if (Boolean(leftItem.is_to_go) !== Boolean(rightItem.is_to_go)) {
+            return false;
+          }
+
           return (
             getCartItemSeatForMerge(orderId, leftItem) ===
             getCartItemSeatForMerge(orderId, rightItem)
@@ -4482,7 +4794,8 @@ export const useOrderStore = create<OrderState>()(
                     const rule = useServiceChargeRulesStore
                       .getState()
                       .resolveRule(
-                        useStoreSettingsStore.getState().selectedStore?.id ?? null,
+                        useStoreSettingsStore.getState().selectedStore?.id ??
+                          null,
                       );
                     if (rule) {
                       o.service_charge_rule_id = rule.id;
@@ -4523,9 +4836,7 @@ export const useOrderStore = create<OrderState>()(
               lastServerConfirmed === undefined
                 ? totals.service_charge > 0 ||
                   order.service_charge_rule_id != null
-                : Math.abs(
-                    totals.service_charge - lastServerConfirmed,
-                  ) >= 0.01;
+                : Math.abs(totals.service_charge - lastServerConfirmed) >= 0.01;
             if (__DEV__ && _scChanged) {
               console.log("[SC-DIAG/_ensureTotalsFresh] gate", {
                 orderId,
@@ -4579,12 +4890,10 @@ export const useOrderStore = create<OrderState>()(
                       o2.service_charge = data.service_charge;
                       o2.service_charge_rule_id =
                         data.service_charge_rule_id ?? null;
-                      o2.service_charge_rate =
-                        data.service_charge_rate ?? null;
+                      o2.service_charge_rate = data.service_charge_rate ?? null;
                       o2.service_charge_applies_on =
                         data.service_charge_applies_on ?? null;
-                      o2.service_charge_name =
-                        data.service_charge_name ?? null;
+                      o2.service_charge_name = data.service_charge_name ?? null;
                       o2._serverConfirmedServiceCharge = data.service_charge;
 
                       const localSv = o2.sync_version ?? 0;
@@ -5271,8 +5580,7 @@ export const useOrderStore = create<OrderState>()(
                             const candidates = stamped
                               ? [stamped]
                               : bucket.filter(
-                                  (c) =>
-                                    !broadcastClaimedPendingIds.has(c.id),
+                                  (c) => !broadcastClaimedPendingIds.has(c.id),
                                 );
                             if (candidates.length === 0) continue;
 
@@ -5490,11 +5798,13 @@ export const useOrderStore = create<OrderState>()(
                         ...(() => {
                           const STATUS_RANK: Record<string, number> = {
                             draft: 0,
+                            accepted: 1, // online-order accept — kitchen bucket
                             sent_to_kitchen: 1,
                             preparing: 1,
                             ready: 2,
                             completed: 3,
                             closed: 3,
+                            declined: 4, // terminal
                             void: 4,
                           };
                           const localStatusRank =
@@ -5515,7 +5825,8 @@ export const useOrderStore = create<OrderState>()(
                                 check_status:
                                   existingOrder.check_status === "Closed" &&
                                   backendOrder.check_status !== "Closed" &&
-                                  (backendOrder.sync_version ?? 0) <= (existingOrder.sync_version ?? 0)
+                                  (backendOrder.sync_version ?? 0) <=
+                                    (existingOrder.sync_version ?? 0)
                                     ? existingOrder.check_status
                                     : backendOrder.check_status ||
                                       existingOrder.check_status ||
@@ -5613,7 +5924,8 @@ export const useOrderStore = create<OrderState>()(
                           check_status:
                             localOrder.check_status === "Closed" &&
                             backendOrder.check_status !== "Closed" &&
-                            (backendOrder.sync_version ?? 0) <= (localOrder.sync_version ?? 0)
+                            (backendOrder.sync_version ?? 0) <=
+                              (localOrder.sync_version ?? 0)
                               ? localOrder.check_status
                               : backendOrder.check_status ||
                                 localOrder.check_status ||
@@ -5690,10 +6002,12 @@ export const useOrderStore = create<OrderState>()(
                     if (localOrder.order_status !== backendOrder.status) {
                       const ORDER_STATUS_RANK: Record<string, number> = {
                         draft: 0,
+                        accepted: 1, // online-order accept — kitchen bucket
                         sent_to_kitchen: 1,
                         preparing: 1,
                         ready: 2,
                         closed: 3,
+                        declined: 4, // terminal
                         void: 4,
                       };
                       const localRank =
@@ -6193,7 +6507,10 @@ export const useOrderStore = create<OrderState>()(
                   (item) => item.isDraft,
                 );
 
-                if (localPendingItems.length > 0 || localDraftItems.length > 0) {
+                if (
+                  localPendingItems.length > 0 ||
+                  localDraftItems.length > 0
+                ) {
                   const claimedPendingIds = new Set<string>();
                   const pendingByKey = new Map<string, CartItem[]>();
 
@@ -6239,9 +6556,7 @@ export const useOrderStore = create<OrderState>()(
                       ...serverItem,
                       id: pendingItem.id,
                       seatNumber:
-                        serverItem.seatNumber ??
-                        pendingItem.seatNumber ??
-                        null,
+                        serverItem.seatNumber ?? pendingItem.seatNumber ?? null,
                     };
                   });
 
@@ -6366,8 +6681,7 @@ export const useOrderStore = create<OrderState>()(
                   existing.service_charge_is_taxable;
               }
               if (backendOrder.service_charge_rate === undefined) {
-                orderProfile.service_charge_rate =
-                  existing.service_charge_rate;
+                orderProfile.service_charge_rate = existing.service_charge_rate;
               }
               if (backendOrder.service_charge_applies_on === undefined) {
                 orderProfile.service_charge_applies_on =
@@ -6378,8 +6692,7 @@ export const useOrderStore = create<OrderState>()(
                   existing.service_charge_rule_id;
               }
               if (backendOrder.service_charge_name === undefined) {
-                orderProfile.service_charge_name =
-                  existing.service_charge_name;
+                orderProfile.service_charge_name = existing.service_charge_name;
               }
             }
 
@@ -6415,8 +6728,13 @@ export const useOrderStore = create<OrderState>()(
               // Without this guard, tableOrderIdIndex briefly points to the empty
               // broadcast shell, causing a one-frame flicker in the bill section.
               if (!existing && orderProfile.service_location_id) {
-                const currentIndexedId = state.tableOrderIdIndex[orderProfile.service_location_id];
-                if (currentIndexedId && currentIndexedId !== dbOrderId && state.ordersById[currentIndexedId]) {
+                const currentIndexedId =
+                  state.tableOrderIdIndex[orderProfile.service_location_id];
+                if (
+                  currentIndexedId &&
+                  currentIndexedId !== dbOrderId &&
+                  state.ordersById[currentIndexedId]
+                ) {
                   // A local order already owns this table — don't overwrite the index yet
                 } else {
                   syncTableOrderIdIndexForOrder(state, dbOrderId, existing);
@@ -6489,10 +6807,23 @@ export const useOrderStore = create<OrderState>()(
               // Surgical dbOrderIdIndex maintenance
               delete state.dbOrderIdIndex[dbOrderId];
               delete state.persistableOrderIds[dbOrderId];
+              delete state.pendingBackendUpdates[dbOrderId];
+              // Drop any tableOrderIdIndex entry that resolved to this order so
+              // it can't leave a dangling key (→ O(n) table-scan fallback in
+              // useTableSession). Surgical delete by value: a removed order is
+              // the only one that could have pointed here.
+              if (orderToRemove?.service_location_id) {
+                const sl = orderToRemove.service_location_id;
+                if (state.tableOrderIdIndex[sl] === dbOrderId) {
+                  delete state.tableOrderIdIndex[sl];
+                }
+              }
             });
 
-            // Cleanup mutation window tracker
-            delete lastLocalMutationAt[dbOrderId];
+            // Release ALL per-order/item satellite state (module dicts keyed by
+            // both the store key and db UUID, item-keyed quantitySyncGenerations,
+            // and the coursing/seating/sync-status stores).
+            releaseOrderState(existing, dbOrderId);
 
             console.log("[RemoveOrder] Removed:", dbOrderId);
           },
@@ -6765,8 +7096,7 @@ export const useOrderStore = create<OrderState>()(
               paid_status: mapPaymentStatus(serverOrder.payment_status),
               service_location_id: serverOrder.table_number ?? null,
               service_location_name:
-                resolveTableNameForOrder(serverOrder.table_number) ||
-                undefined,
+                resolveTableNameForOrder(serverOrder.table_number) || undefined,
               session_id: serverOrder.session_id ?? undefined,
               customer_name: "",
 
@@ -6795,8 +7125,7 @@ export const useOrderStore = create<OrderState>()(
                 (serverOrder as any).service_charge_is_manual ?? false,
               service_charge_is_taxable:
                 (serverOrder as any).service_charge_is_taxable ?? null,
-              _serverConfirmedServiceCharge:
-                serverOrder.service_charge ?? 0,
+              _serverConfirmedServiceCharge: serverOrder.service_charge ?? 0,
 
               // Items + payments
               items,
@@ -7274,8 +7603,8 @@ export const useOrderStore = create<OrderState>()(
 
             const data = result.data as any;
             const ourStationName =
-              useStoreSettingsStore.getState().selectedStation
-                ?.station_name ?? undefined;
+              useStoreSettingsStore.getState().selectedStation?.station_name ??
+              undefined;
 
             // Helper: apply the same local-store mutation that a successful
             // claim does. Used by both the success path and the idempotent
@@ -7291,8 +7620,7 @@ export const useOrderStore = create<OrderState>()(
                 if (typeof syncVersion === "number") {
                   (o as any).sync_version = syncVersion;
                 } else {
-                  (o as any).sync_version =
-                    ((o as any).sync_version ?? 0) + 1;
+                  (o as any).sync_version = ((o as any).sync_version ?? 0) + 1;
                 }
               });
               // Reviewer #2 critical #2: the order-broadcast pipeline writes
@@ -7373,8 +7701,7 @@ export const useOrderStore = create<OrderState>()(
                 ? messages[errCode]
                 : { title: "Couldn't take over", message: "Unknown error." };
               toastService.show({ ...msg, type: "warning" });
-              if (__DEV__)
-                console.warn("[claimOrder] server rejected:", data);
+              if (__DEV__) console.warn("[claimOrder] server rejected:", data);
               return {
                 success: false,
                 error: errCode ?? ("NETWORK" as const),
@@ -7418,10 +7745,7 @@ export const useOrderStore = create<OrderState>()(
               );
             }
             const localNumbers = selectedStore
-              ? generateLocalOrderNumbers(
-                  selectedStore.id,
-                  stationNumber,
-                )
+              ? generateLocalOrderNumbers(selectedStore.id, stationNumber)
               : undefined;
 
             const newOrder: OrderProfile = {
@@ -7501,7 +7825,8 @@ export const useOrderStore = create<OrderState>()(
             if (isOrderTableStillSeating(activeOrder)) {
               toastService.show({
                 title: "Seating in progress",
-                message: "Please wait until the table is seated before adding items.",
+                message:
+                  "Please wait until the table is seated before adding items.",
                 type: "warning",
               });
               return;
@@ -7521,9 +7846,16 @@ export const useOrderStore = create<OrderState>()(
               !activeOrder.db_order_id &&
               !getOrderCreationOperationId(activeOrder.id)
             ) {
+              // No creation is in progress — fire it on-demand so the order
+              // gets a db_order_id. Without this, the UI would be permanently
+              // stuck on "Creating order" with nothing driving the creation
+              // (e.g. when autoCreateOrder is OFF and the eager-create effect
+              // in order-processing.tsx skipped).
+              get().ensureActiveOrderCreated(activeOrder.id);
               toastService.show({
                 title: "Creating order",
-                message: "Please wait until the order is ready before adding items.",
+                message:
+                  "Please wait until the order is ready before adding items.",
                 type: "warning",
               });
               return;
@@ -7539,7 +7871,38 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
 
+            // Per-order PIN attribution: when the setting is ON, no items may be
+            // added until the ringing staff has been PIN-verified — but ONLY when
+            // this would create a NEW order. If the order already exists (has a
+            // db_order_id or a pending create), creation is done and its creator
+            // is already attributed, so adds proceed without re-prompting. This is
+            // what lets a seated dine-in order (created+attributed at seating,
+            // attribution since cleared) accept items without a second PIN, while
+            // still gating brand-new QSR orders. Covers every add surface since
+            // they all funnel through here.
+            const orderNotYetCreated =
+              !activeOrder.db_order_id &&
+              !getOrderCreationOperationId(activeOrder.id);
+            if (
+              orderNotYetCreated &&
+              useStoreSettingsStore.getState().requirePinPerOrder &&
+              useEmployeeStore.getState().orderAttributionOrderId !==
+                activeOrder.id
+            ) {
+              toastService.show({
+                title: "Enter PIN to start",
+                message: "Enter your PIN to start this order.",
+                type: "warning",
+              });
+              return;
+            }
+
             // Phase 5: Any visible order can be modified - no ownership guard needed
+
+            // Perf Phase 0: tap→paint span; both paths below commit a set().
+            const perfAdd = startInteraction("pos.add_to_cart", {
+              draft: !!newItem.isDraft,
+            });
 
             // ================================================================
             // FAST PATH: Draft items skip all expensive operations
@@ -7561,6 +7924,7 @@ export const useOrderStore = create<OrderState>()(
                 order.items.push(draftCartItem);
                 order.last_activity_at = new Date().toISOString();
               });
+              perfAdd.endAfterPaint();
               return; // Early exit - no sync, no totals
             }
 
@@ -7679,6 +8043,7 @@ export const useOrderStore = create<OrderState>()(
               }
             });
             get()._scheduleTotalsRecompute(activeOrderId);
+            perfAdd.endAfterPaint({ merged: isMergeOperation });
 
             // Track mutation for own-station broadcast guard
             const _dbId = get().ordersById[activeOrderId]?.db_order_id;
@@ -8751,7 +9116,8 @@ export const useOrderStore = create<OrderState>()(
                     const rule = useServiceChargeRulesStore
                       .getState()
                       .resolveRule(
-                        useStoreSettingsStore.getState().selectedStore?.id ?? null,
+                        useStoreSettingsStore.getState().selectedStore?.id ??
+                          null,
                       );
                     if (rule) {
                       order.service_charge_rule_id = rule.id;
@@ -8800,9 +9166,7 @@ export const useOrderStore = create<OrderState>()(
               lastServerConfirmed === undefined
                 ? totals.service_charge > 0 ||
                   order.service_charge_rule_id != null
-                : Math.abs(
-                    totals.service_charge - lastServerConfirmed,
-                  ) >= 0.01;
+                : Math.abs(totals.service_charge - lastServerConfirmed) >= 0.01;
             if (__DEV__ && _scChanged) {
               console.log("[SC-DIAG/applyBackendItemData] gate", {
                 activeOrderId,
@@ -8852,12 +9216,10 @@ export const useOrderStore = create<OrderState>()(
                       o2.service_charge = data.service_charge;
                       o2.service_charge_rule_id =
                         data.service_charge_rule_id ?? null;
-                      o2.service_charge_rate =
-                        data.service_charge_rate ?? null;
+                      o2.service_charge_rate = data.service_charge_rate ?? null;
                       o2.service_charge_applies_on =
                         data.service_charge_applies_on ?? null;
-                      o2.service_charge_name =
-                        data.service_charge_name ?? null;
+                      o2.service_charge_name = data.service_charge_name ?? null;
                       o2._serverConfirmedServiceCharge = data.service_charge;
 
                       const localSv = o2.sync_version ?? 0;
@@ -9277,7 +9639,9 @@ export const useOrderStore = create<OrderState>()(
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) {
               if (__DEV__)
-                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: no activeOrderId", { itemId });
+                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: no activeOrderId", {
+                  itemId,
+                });
               return;
             }
             if (!_checkCartEditable(get())) {
@@ -9309,11 +9673,14 @@ export const useOrderStore = create<OrderState>()(
             const item = order.items.find((i) => i.id === itemId);
             if (!item || item.is_voided) {
               if (__DEV__)
-                orderStoreDiagnosticLog("[QTY-DIAG] EXIT: item missing/voided", {
-                  itemId,
-                  found: !!item,
-                  voided: item?.is_voided,
-                });
+                orderStoreDiagnosticLog(
+                  "[QTY-DIAG] EXIT: item missing/voided",
+                  {
+                    itemId,
+                    found: !!item,
+                    voided: item?.is_voided,
+                  },
+                );
               return;
             }
 
@@ -9387,12 +9754,15 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
             if (__DEV__)
-              orderStoreDiagnosticLog("[QTY-DIAG] LIVE-RPC-BRANCH (dbItemId resolved)", {
-                itemId,
-                dbItemId,
-                expectedQty: newQuantity,
-                hasExistingPromise: pendingSyncOperations.has(itemId),
-              });
+              orderStoreDiagnosticLog(
+                "[QTY-DIAG] LIVE-RPC-BRANCH (dbItemId resolved)",
+                {
+                  itemId,
+                  dbItemId,
+                  expectedQty: newQuantity,
+                  hasExistingPromise: pendingSyncOperations.has(itemId),
+                },
+              );
 
             // 2. Update quantity on DB — chain onto any existing in-flight promise
             //    for this item so rapid increments are serialized and the final
@@ -9425,11 +9795,15 @@ export const useOrderStore = create<OrderState>()(
                     quantitySyncGenerations.get(itemId) !== quantityGeneration
                   ) {
                     if (__DEV__)
-                      orderStoreDiagnosticLog("[QTY-DIAG] STALE-GENERATION-SKIPPED", {
-                        itemId,
-                        quantityGeneration,
-                        currentGeneration: quantitySyncGenerations.get(itemId),
-                      });
+                      orderStoreDiagnosticLog(
+                        "[QTY-DIAG] STALE-GENERATION-SKIPPED",
+                        {
+                          itemId,
+                          quantityGeneration,
+                          currentGeneration:
+                            quantitySyncGenerations.get(itemId),
+                        },
+                      );
                     return {
                       response: null,
                       latestQuantity: newQuantity,
@@ -9484,11 +9858,14 @@ export const useOrderStore = create<OrderState>()(
                 // corrupting waitForPendingSyncs.
                 if (response?.error?.code === "DEADLINE_EXCEEDED") {
                   if (__DEV__)
-                    orderStoreDiagnosticLog("[QTY-DIAG] DEADLINE-EXCEEDED-QUEUE", {
-                      itemId,
-                      dbItemId,
-                      latestQuantity,
-                    });
+                    orderStoreDiagnosticLog(
+                      "[QTY-DIAG] DEADLINE-EXCEEDED-QUEUE",
+                      {
+                        itemId,
+                        dbItemId,
+                        latestQuantity,
+                      },
+                    );
                   const latestQueuedQuantity =
                     get().ordersById[activeOrderId]?.items.find(
                       (i) => i.id === itemId,
@@ -9547,11 +9924,14 @@ export const useOrderStore = create<OrderState>()(
 
                   if (isStaleResponse) {
                     if (__DEV__)
-                      orderStoreDiagnosticLog("[QTY-DIAG] STALE-RESPONSE-IGNORED", {
-                        itemId,
-                        latestQuantity,
-                        currentQuantity,
-                      });
+                      orderStoreDiagnosticLog(
+                        "[QTY-DIAG] STALE-RESPONSE-IGNORED",
+                        {
+                          itemId,
+                          latestQuantity,
+                          currentQuantity,
+                        },
+                      );
                     return true;
                   }
 
@@ -10875,17 +11255,23 @@ export const useOrderStore = create<OrderState>()(
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order?.db_order_id) {
               const dbOrderId = order.db_order_id;
-              OrderService.updateOrderStatus(supabase, dbOrderId, status).catch(
-                async (err) => {
-                  console.error("Failed to sync status:", err);
-                  // Queue for offline retry
-                  await queueOperation({
-                    type: "update_order_status",
-                    params: { orderId: dbOrderId, status },
-                    localOrderId: orderId,
-                  });
-                },
-              );
+              // This generic lifecycle path only handles standard backend
+              // statuses; online-order accept/decline route through the
+              // dedicated accept_online_order/decline_online_order RPCs instead.
+              const dbStatus = status as DbOrderStatus;
+              OrderService.updateOrderStatus(
+                supabase,
+                dbOrderId,
+                dbStatus,
+              ).catch(async (err) => {
+                console.error("Failed to sync status:", err);
+                // Queue for offline retry
+                await queueOperation({
+                  type: "update_order_status",
+                  params: { orderId: dbOrderId, status: dbStatus },
+                  localOrderId: orderId,
+                });
+              });
             }
 
             set((state) => {
@@ -11025,7 +11411,8 @@ export const useOrderStore = create<OrderState>()(
               if (!order) return;
               order.check_status = "Opened";
               order._reopenedForOrdering = true;
-              order.reopen_count = backendTotals?.reopen_count ?? (order.reopen_count ?? 0) + 1;
+              order.reopen_count =
+                backendTotals?.reopen_count ?? (order.reopen_count ?? 0) + 1;
               if (order.paid_status === "Paid") {
                 order.paid_status = "Partial";
               }
@@ -11037,6 +11424,97 @@ export const useOrderStore = create<OrderState>()(
               }
             });
             get().recalculateOrder(storeKey);
+          },
+
+          discardUnsyncedPayments: (orderId) => {
+            const storeKey = get().dbOrderIdIndex[orderId] ?? orderId;
+            const order = get().ordersById[storeKey];
+            if (!order) return false;
+
+            // Only roll back payments that never reached the backend. A payment
+            // with a db_payment_id is the server's responsibility (void/refund),
+            // never a silent client-side discard. Pre-auths are excluded — they
+            // have their own release path.
+            const toDiscard = (order.payments ?? []).filter(
+              (p) =>
+                !p.db_payment_id &&
+                p.sync_status === "pending" &&
+                !p.isPreAuth &&
+                !p.isVoided,
+            );
+            if (toDiscard.length === 0) return false;
+
+            const discardIds = new Set(toDiscard.map((p) => p.id));
+
+            // Aggregate the paid quantity each discarded payment claimed, keyed
+            // by the same id the coverage was written under (db_order_item_id
+            // when present, else the local item id).
+            const restoreQtyByItemKey = new Map<string, number>();
+            for (const p of toDiscard) {
+              for (const cov of p.itemsCovered ?? []) {
+                restoreQtyByItemKey.set(
+                  cov.itemId,
+                  (restoreQtyByItemKey.get(cov.itemId) ?? 0) + cov.quantity,
+                );
+              }
+            }
+
+            set((state) => {
+              const o = state.ordersById[storeKey];
+              if (!o) return;
+
+              // Restore paidQuantity / kitchen status for items the discarded
+              // payments had marked paid.
+              o.items = o.items.map((item) => {
+                const restore =
+                  restoreQtyByItemKey.get(item.db_order_item_id || "") ??
+                  restoreQtyByItemKey.get(item.id);
+                if (!restore || restore <= 0) return item;
+                const newPaidQty = Math.max(
+                  0,
+                  (item.paidQuantity || 0) - restore,
+                );
+                const next: typeof item = {
+                  ...item,
+                  paidQuantity: newPaidQty,
+                };
+                // Drop the optimistic-payment fingerprint so a late broadcast
+                // can no longer prefer this now-unpaid copy.
+                if (next.pendingPaymentSeq !== undefined) {
+                  delete next.pendingPaymentSeq;
+                }
+                return next;
+              });
+
+              // Remove the never-confirmed payments.
+              o.payments = (o.payments ?? []).filter(
+                (p) => !discardIds.has(p.id),
+              );
+
+              // Reverse the optimistic amount_paid bump from addPaymentToOrder.
+              const discardedAmount = toDiscard.reduce(
+                (sum, p) => sum + (p.amount || 0),
+                0,
+              );
+              o.amount_paid = Math.max(
+                0,
+                (o.amount_paid || 0) - discardedAmount,
+              );
+
+              // Critical: clear the stale optimistic amount_due / cash_amount_due.
+              // recalculateOrder treats a defined amount_due as backend-
+              // authoritative; leaving the optimistic value here is exactly what
+              // manufactures the phantom residual on the next attempt. Setting
+              // them to undefined forces recalculateOrder to derive outstanding
+              // from item coverage, and the next backend sync to defer to the
+              // server's authoritative value.
+              o.amount_due = undefined as unknown as number;
+              o.cash_amount_due = undefined as unknown as number;
+            });
+
+            // Recompute totals / outstanding from the restored item coverage.
+            get().recalculateOrder(storeKey);
+            return true;
           },
 
           addPaymentToOrder: async ({
@@ -11077,12 +11555,45 @@ export const useOrderStore = create<OrderState>()(
               useStoreSettingsStore.getState().taxRatesMap,
               order,
             );
+            // Prefer the backend-authoritative amount_due / cash_amount_due when
+            // present. The local calculateOrderTotals card-equivalent
+            // reconstruction inflates a cash payment by its dual-pricing
+            // cashSavings, and on a tiny split that over-count clamps the
+            // recomputed outstanding to 0 even though a portion is still owed
+            // (order.cash_amount_due is still correct). Using the stored value
+            // stops the "No unpaid items remaining" false reject when continuing
+            // a split. Fall back to the computed value when the field is absent.
+            const isCashOutstanding = method === "Cash" && !forceCardPricing;
+            const computedOutstanding = isCashOutstanding
+              ? prePaymentTotals.cash_outstanding_total
+              : prePaymentTotals.outstanding_total;
+            const storedOutstanding = isCashOutstanding
+              ? order.cash_amount_due
+              : order.amount_due;
             const outstandingBeforePayment =
-              method === "Cash" && !forceCardPricing
-                ? prePaymentTotals.cash_outstanding_total
-                : prePaymentTotals.outstanding_total;
+              storedOutstanding != null
+                ? Math.max(storedOutstanding, computedOutstanding)
+                : computedOutstanding;
 
-            if (outstandingBeforePayment <= 0.01) {
+            // A legitimate final even-split portion can be a sub-cent remainder
+            // (e.g. $0.05 split 3 ways → last portion is $0.03 but a $0.02 total
+            // can leave $0.01 owing). In that case outstanding == the portion we
+            // are about to collect, so this is NOT "already paid" — let it through.
+            // We only treat it as a true final portion when the explicit amount
+            // still covers what's owed.
+            const isFinalSplitPortion =
+              splitCount !== undefined &&
+              splitPortionIndex !== undefined &&
+              splitPortionIndex === splitCount;
+            const collectsRemaining =
+              forceExplicitAmount &&
+              amount > 0 &&
+              amount >= outstandingBeforePayment - 0.001;
+
+            if (
+              outstandingBeforePayment <= 0.01 &&
+              !(isFinalSplitPortion && collectsRemaining)
+            ) {
               toastService.show({
                 title: "Already Paid",
                 message: "No unpaid items remaining on this order.",
@@ -11206,7 +11717,10 @@ export const useOrderStore = create<OrderState>()(
                 if (quantityToPay !== undefined && quantityToPay > 0) {
                   const newPaidQty = Math.min(
                     (item.paidQuantity || 0) + quantityToPay,
-                    item.quantity, // Don't exceed total quantity
+                    // Allow re-paying refunded units: a refund makes a paid unit
+                    // payable again, so paid_quantity may exceed quantity by the
+                    // refunded count (net paid = paid - refunded stays <= quantity).
+                    item.quantity + (item.refundedQuantity || 0),
                   );
                   const isFullyPaid = newPaidQty >= item.quantity;
                   // Update this item's status to preparing if it's currently "new"
@@ -11243,7 +11757,7 @@ export const useOrderStore = create<OrderState>()(
                   method === "Cash"
                     ? (item.cashPrice ?? item.baseCashPrice ?? item.price)
                     : item.price;
-                const unpaidQty = item.quantity - (item.paidQuantity || 0);
+                const unpaidQty = payableQuantity(item);
                 if (remaining <= 0 || unpaidQty <= 0) return item;
 
                 const maxCoverQty = Math.min(
@@ -11417,11 +11931,24 @@ export const useOrderStore = create<OrderState>()(
               order,
             );
 
-            // Determine if order is fully paid based on outstanding amount
+            // Determine if order is fully paid based on outstanding amount.
+            // The <= 0.01 tolerance absorbs cross-mode rounding dust, but on a
+            // tiny even-split it is the size of a whole remaining portion: a
+            // $0.02 item split 2 ways leaves cash_outstanding = $0.01 after the
+            // FIRST $0.01 portion, which would optimistically (and wrongly) read
+            // Paid. Pushing that Paid state while a portion is still owed makes
+            // the server's enforce_order_math trigger reject the write (P0005:
+            // payment_status=paid but amount_paid<total). For an even split the
+            // order can only be fully paid on the LAST portion, so gate on that.
+            const isLastSplitPortion =
+              splitCount == null ||
+              splitPortionIndex == null ||
+              splitPortionIndex >= splitCount;
             const isFullyPaid =
-              method === "Cash"
+              isLastSplitPortion &&
+              (method === "Cash"
                 ? totals.cash_outstanding_total <= 0.01
-                : totals.outstanding_total <= 0.01; // Allow tiny rounding margin
+                : totals.outstanding_total <= 0.01); // Allow tiny rounding margin
 
             // Determine new order status:
             // - If order is in "draft" and payment is made, move to "preparing"
@@ -11684,7 +12211,10 @@ export const useOrderStore = create<OrderState>()(
                 }
               } catch (err) {
                 if (__DEV__)
-                  console.warn("[archiveOrder] Inventory deduction error:", err);
+                  console.warn(
+                    "[archiveOrder] Inventory deduction error:",
+                    err,
+                  );
                 // Continue archiving despite error
               }
             }
@@ -11856,6 +12386,12 @@ export const useOrderStore = create<OrderState>()(
 
             // Remove abandoned drafts
             if (idsToRemove.length > 0) {
+              // Capture the order objects (with their store key) before deletion
+              // so releaseOrderState can fan out per-order/item satellite cleanup
+              // (module dicts, quantitySyncGenerations, coursing/seating/sync).
+              const ordersToRelease = idsToRemove
+                .map((id) => ({ key: id, order: get().ordersById[id] }))
+                .filter((o) => !!o.order);
               set((state) => {
                 idsToRemove.forEach((id) => {
                   // Surgical dbOrderIdIndex cleanup
@@ -11871,6 +12407,7 @@ export const useOrderStore = create<OrderState>()(
                   );
                   delete state._workingSetLookup[id];
                   delete state.persistableOrderIds[id];
+                  delete state.pendingBackendUpdates[id];
                 });
                 state.orderIds = state.orderIds.filter(
                   (id) => !idsToRemove.includes(id),
@@ -11890,10 +12427,12 @@ export const useOrderStore = create<OrderState>()(
                 }
               });
 
-              // Module-level mutation tracker — also leaked previously.
-              idsToRemove.forEach((id) => {
-                delete lastLocalMutationAt[id];
-              });
+              // Release all per-order/item satellite state for each removed
+              // draft (covers the module dicts via _cleanupOrderModuleState plus
+              // quantitySyncGenerations + coursing/seating/sync-status stores).
+              for (const { key, order } of ordersToRelease) {
+                releaseOrderState(order, key);
+              }
 
               console.log(
                 `[cleanupAbandonedDrafts] Removed ${idsToRemove.length} abandoned draft(s)`,
@@ -11915,16 +12454,29 @@ export const useOrderStore = create<OrderState>()(
             const keepSet = new Set<string>();
             const now = Date.now();
 
-            if (state.activeOrderId) keepSet.add(state.activeOrderId);
-            for (const id of state.workingSetOrderIds) keepSet.add(id);
-            for (const id of state.unsyncedOrderIds) keepSet.add(id);
-
             const inactiveStatuses = new Set([
               "completed",
               "voided",
               "cancelled",
               "void",
             ]);
+
+            if (state.activeOrderId) keepSet.add(state.activeOrderId);
+            // Working-set membership grows by one for EVERY table opened during
+            // a shift (setActiveOrder → addToWorkingSet), and nothing trims it
+            // (removeFromWorkingSet is never called). Unconditionally pinning
+            // the whole working set here meant completed orders could never be
+            // pruned — ordersById grew unbounded across a busy service (the
+            // core sustained-perf leak). Pin a working-set order only while it's
+            // NOT in a terminal status; once completed it falls through to the
+            // age/LRU caps below like any other inactive order.
+            for (const id of state.workingSetOrderIds) {
+              const o = state.ordersById[id];
+              if (o && !inactiveStatuses.has(o.order_status ?? "")) {
+                keepSet.add(id);
+              }
+            }
+            for (const id of state.unsyncedOrderIds) keepSet.add(id);
 
             // Collect completed orders to enforce LRU cap
             const completedOrders: { id: string; time: number }[] = [];
@@ -12017,6 +12569,15 @@ export const useOrderStore = create<OrderState>()(
               });
             }
 
+            // Capture the order objects being pruned BEFORE the set() so we can
+            // fan out per-order/item satellite cleanup after (this path never
+            // called any module cleanup before — the satellite stores +
+            // quantitySyncGenerations leaked every prune).
+            const ordersToRelease = state.orderIds
+              .filter((id) => !keepSet.has(id))
+              .map((id) => ({ key: id, order: state.ordersById[id] }))
+              .filter((o) => !!o.order);
+
             set((draft) => {
               for (const id of draft.orderIds) {
                 if (!keepSet.has(id)) {
@@ -12026,10 +12587,33 @@ export const useOrderStore = create<OrderState>()(
                   }
                   delete draft.ordersById[id];
                   delete draft.persistableOrderIds[id];
+                  delete draft.pendingBackendUpdates[id];
+                  // Mirror removeOrder()'s working-set cleanup. Without this a
+                  // pruned completed order left a dangling entry in
+                  // workingSetOrderIds / _workingSetLookup pointing at a key no
+                  // longer in ordersById — leaking across a shift and forcing
+                  // working-set iterators to walk dead refs.
+                  delete draft._workingSetLookup[id];
                 }
               }
               draft.orderIds = draft.orderIds.filter((id) => keepSet.has(id));
+              draft.workingSetOrderIds = draft.workingSetOrderIds.filter((id) =>
+                keepSet.has(id),
+              );
+              // Rebuild from the surviving orders so a pruned order can't leave
+              // a stale tableOrderIdIndex entry. A stale entry resolves to a
+              // dead key in useTableSession's Priority-2.5 lookup and silently
+              // falls through to the O(n) full orderIds table-scan — the slow
+              // path that grows with every cleared table on a busy floor.
+              draft.tableOrderIdIndex = rebuildTableOrderIdIndex(
+                draft.ordersById,
+              );
             });
+
+            for (const { key, order } of ordersToRelease) {
+              releaseOrderState(order, key);
+            }
+
             console.log(
               `[clearInactiveOrders] Removed ${removedCount}, kept ${keepSet.size}`,
             );
@@ -12791,173 +13375,27 @@ export const useOrderStore = create<OrderState>()(
               state.activeOrderTotalCash = 0;
             });
 
-            // Sync to backend: if all items are already synced, send in one
-            // batch to produce a single KDS ticket. If some items are still
-            // syncing, skip sending here — each item's addItemToBackend
-            // retroactive path checks hasPendingSyncs and the last item to
-            // finish will send all items together.
-            const supabase = getOrderStoreSupabaseClient();
-            const localItemIds = currentOrder.items.map((item) => item.id);
-            if (supabase && currentOrder.db_order_id) {
-              const dbItemIds = currentOrder.items
-                .map((item) => item.db_order_item_id)
-                .filter((id): id is string => !!id);
-
-              const hasPending = get().hasPendingSyncs(activeOrderId);
-
-              if (hasPending) {
-                // Items still syncing — the retroactive send in addItemToBackend
-                // will batch-send once all items complete. Still update order status.
-                console.log(
-                  "[fireActiveOrderToKitchen] Items still syncing, deferring kitchen send to addItemToBackend",
+            // Sync to backend with the hardened batch send (mirrors
+            // sendNewItemsToKitchen / the table path): wait for in-flight item
+            // syncs, re-read the FIRED order (the set() above already switched
+            // activeOrderId to a fresh empty order, so re-read by the captured
+            // firedOrderId), then send every item that has a db_order_item_id and
+            // queue stragglers. Fire-and-forget so this action stays synchronous.
+            const firedOrderId = activeOrderId;
+            const firedItemIds = new Set(
+              currentOrder.items.map((item) => item.id),
+            );
+            void (async () => {
+              await get().waitForPendingSyncs(firedOrderId);
+              const sendOrder = get().ordersById[firedOrderId];
+              if (sendOrder) {
+                await _commitKitchenSendForBatch(
+                  sendOrder,
+                  firedOrderId,
+                  firedItemIds,
                 );
-                OrderService.updateOrderStatus(
-                  supabase,
-                  currentOrder.db_order_id!,
-                  getOrderSentStatus(),
-                )
-                  .then(({ error }) => {
-                    if (
-                      error &&
-                      error.code !== "P0001" &&
-                      !error.message?.includes("already in")
-                    ) {
-                      console.error(
-                        "Failed to update backend order status:",
-                        error,
-                      );
-                    }
-                  })
-                  .catch(console.error);
-              } else if (
-                dbItemIds.length === 0 &&
-                currentOrder.items.length > 0
-              ) {
-                // No db IDs and no pending syncs — queue for retry
-                console.log(
-                  "[fireActiveOrderToKitchen] Items not synced yet, queuing send_to_kitchen",
-                );
-                queueFailedOperation(
-                  "send_to_kitchen",
-                  { localOrderId: activeOrderId, localItemIds },
-                  activeOrderId,
-                );
-                OrderService.updateOrderStatus(
-                  supabase,
-                  currentOrder.db_order_id!,
-                  getOrderSentStatus(),
-                )
-                  .then(({ error }) => {
-                    if (
-                      error &&
-                      error.code !== "P0001" &&
-                      !error.message?.includes("already in")
-                    ) {
-                      console.error(
-                        "Failed to update backend order status:",
-                        error,
-                      );
-                    }
-                  })
-                  .catch(console.error);
-              } else if (dbItemIds.length > 0) {
-                // All items synced — send as a single batch
-                // Update order status FIRST (draft -> sent_to_kitchen/preparing)
-                // Then update items (which also sets sent_to_kitchen_at on the order via trigger)
-                OrderService.updateOrderStatus(
-                  supabase,
-                  currentOrder.db_order_id!,
-                  getOrderSentStatus(),
-                )
-                  .then(({ error }) => {
-                    if (
-                      error &&
-                      error.code !== "P0001" &&
-                      !error.message?.includes("already in")
-                    ) {
-                      console.error(
-                        "Failed to update backend order status:",
-                        error,
-                      );
-                      queueFailedOperation(
-                        "send_to_kitchen",
-                        { localOrderId: activeOrderId, localItemIds },
-                        activeOrderId,
-                      );
-                      return; // Don't update items if order status failed
-                    }
-
-                    return supabase
-                      .from("orders")
-                      .select("status")
-                      .eq("id", currentOrder.db_order_id!)
-                      .single()
-                      .then(({ data: backendOrder, error: verifyError }) => {
-                        if (verifyError || backendOrder?.status === "draft") {
-                          console.warn(
-                            "[fireActiveOrderToKitchen] Backend order remained draft after status update; deferring item sync",
-                            {
-                              dbOrderId: currentOrder.db_order_id,
-                              verifyError,
-                              backendStatus: backendOrder?.status,
-                            },
-                          );
-                          queueFailedOperation(
-                            "send_to_kitchen",
-                            { localOrderId: activeOrderId, localItemIds },
-                            activeOrderId,
-                          );
-                          return;
-                        }
-
-                        // THEN update item statuses in one bulk call
-                        const kitchenSent = getKitchenSentStatus();
-                        return OrderService.bulkUpdateOrderItemStatus(
-                          supabase,
-                          dbItemIds,
-                          kitchenSent,
-                          {
-                            keyOverride: toBulkUpdateStatusKey(
-                              dbItemIds,
-                              kitchenSent,
-                            ),
-                          },
-                        );
-                      });
-                  })
-                  .then((result) => {
-                    if (result?.error) {
-                      console.error(
-                        "Failed to update item statuses:",
-                        result.error,
-                      );
-                      queueFailedOperation(
-                        "send_to_kitchen",
-                        { localOrderId: activeOrderId, localItemIds },
-                        activeOrderId,
-                      );
-                    }
-                  })
-                  .catch((err) => {
-                    console.error("Failed to sync fire-to-kitchen:", err);
-                    queueFailedOperation(
-                      "send_to_kitchen",
-                      { localOrderId: activeOrderId, localItemIds },
-                      activeOrderId,
-                    );
-                  });
               }
-            } else {
-              // Order not synced yet or offline: queue for later
-              console.log(
-                "[fireActiveOrderToKitchen] Order not synced, queueing send_to_kitchen for later",
-              );
-              queueFailedOperation(
-                "send_to_kitchen",
-                { localOrderId: activeOrderId, localItemIds },
-                activeOrderId,
-              );
-            }
+            })();
 
             toastService.show({
               title: "Order Sent",
@@ -13005,6 +13443,11 @@ export const useOrderStore = create<OrderState>()(
             );
 
             if (newItems.length === 0) return;
+
+            // Perf Phase 0: tap → optimistic local ack (state flip + toast paint)
+            const perfSend = startInteraction("pos.send_to_kitchen", {
+              item_count: newItems.length,
+            });
 
             let cartToProcess = [...currentOrder.items];
             const itemsToKeep: CartItem[] = [];
@@ -13080,6 +13523,7 @@ export const useOrderStore = create<OrderState>()(
               } sent to the kitchen.`,
               type: "success",
             });
+            perfSend.endAfterPaint();
 
             // Auto-print kitchen tickets (centralized — fires for all send-to-kitchen paths)
             const orderForPrint = get().ordersById[activeOrderId];
@@ -13102,158 +13546,19 @@ export const useOrderStore = create<OrderState>()(
             const freshOrder = get().ordersById[activeOrderId];
             if (!freshOrder) return;
 
-            // Resolve which items are being sent by matching local IDs captured before the await.
-            // Exclude items that went through the retroactive kitchen-send path in addItemToBackend:
-            // those had no db_order_item_id at press-time, got it during the wait, and
-            // addItemToBackend already called bulkUpdateOrderItemStatus for them.
+            // Hardened backend send (mirrors the table path in sendToKitchenEffect):
+            // send EVERY batch item that resolved a db_order_item_id during the wait
+            // — not just those that had one at press time — and queue stragglers.
+            // The old "skip items without a db id at press time, trust the
+            // retroactive path" logic silently dropped items whose id landed during
+            // the wait when the retroactive "last sibling" gate raced (the
+            // "sent N, only M reached the kitchen" bug).
             const sentLocalIds = new Set(newItems.map((item) => item.id));
-            const hadDbIdAtPressTime = new Set(
-              newItems
-                .filter((item) => !!item.db_order_item_id)
-                .map((item) => item.id),
+            await _commitKitchenSendForBatch(
+              freshOrder,
+              activeOrderId,
+              sentLocalIds,
             );
-            console.log(
-              `[SendKitchen] After wait: sentLocalIds=${sentLocalIds.size} hadDbIdAtPressTime=${hadDbIdAtPressTime.size} freshItems=${freshOrder.items.length}`,
-            );
-            const freshSentItems = freshOrder.items.filter((item) => {
-              if (!sentLocalIds.has(item.id)) return false;
-              // If item had no db_order_item_id when Send was pressed, the retroactive
-              // path in addItemToBackend already sent it to kitchen — skip it here.
-              if (!hadDbIdAtPressTime.has(item.id)) return false;
-              return true;
-            });
-            console.log(
-              `[SendKitchen] freshSentItems=${freshSentItems.length} (items with db_id at press time)`,
-            );
-
-            const supabase = getOrderStoreSupabaseClient();
-            const isOnlineNow = getIsOnline();
-
-            // Get local item IDs for queuing (will be resolved to db_order_item_ids during sync)
-            const localItemIds = freshSentItems.map((item) => item.id);
-
-            if (isOnlineNow && supabase && freshOrder.db_order_id) {
-              // Online + order synced: sync immediately
-              const dbItemIds = freshSentItems
-                .map((item) => item.db_order_item_id)
-                .filter((id): id is string => !!id);
-
-              const hasPending = get().hasPendingSyncs(activeOrderId);
-
-              if (freshSentItems.length === 0) {
-                // All items were handled by the retroactive path in addItemToBackend
-                // (they had no db_order_item_id at press-time and were sent during sync).
-                // Nothing left to do here.
-              } else if (
-                hasPending ||
-                (dbItemIds.length === 0 && freshSentItems.length > 0)
-              ) {
-                // Items still syncing — defer to addItemToBackend retroactive path
-                // which will batch-send once all items are synced.
-                console.log(
-                  "[sendNewItemsToKitchen] Items still syncing, deferring kitchen send",
-                );
-                queueFailedOperation(
-                  "send_to_kitchen",
-                  { localOrderId: activeOrderId, localItemIds },
-                  activeOrderId,
-                );
-              } else if (dbItemIds.length > 0) {
-                // Always transition backend order status before item updates.
-                // Local state may already be optimistic/non-draft while backend is still draft.
-                OrderService.updateOrderStatus(
-                  supabase,
-                  freshOrder.db_order_id!,
-                  getOrderSentStatus(),
-                )
-                  .then(({ error }) => {
-                    if (
-                      error &&
-                      error.code !== "P0001" &&
-                      !error.message?.includes("already in")
-                    ) {
-                      console.error(
-                        "Failed to update backend order status:",
-                        error,
-                      );
-                      queueFailedOperation(
-                        "send_to_kitchen",
-                        { localOrderId: activeOrderId, localItemIds },
-                        activeOrderId,
-                      );
-                      return;
-                    }
-
-                    return supabase
-                      .from("orders")
-                      .select("status")
-                      .eq("id", freshOrder.db_order_id!)
-                      .single()
-                      .then(({ data: backendOrder, error: verifyError }) => {
-                        if (verifyError || backendOrder?.status === "draft") {
-                          console.warn(
-                            "[sendNewItemsToKitchen] Backend order remained draft after status update; deferring item sync",
-                            {
-                              dbOrderId: freshOrder.db_order_id,
-                              verifyError,
-                              backendStatus: backendOrder?.status,
-                            },
-                          );
-                          queueFailedOperation(
-                            "send_to_kitchen",
-                            { localOrderId: activeOrderId, localItemIds },
-                            activeOrderId,
-                          );
-                          return;
-                        }
-
-                        const kitchenSent = getKitchenSentStatus();
-                        return OrderService.bulkUpdateOrderItemStatus(
-                          supabase,
-                          dbItemIds,
-                          kitchenSent,
-                          {
-                            keyOverride: toBulkUpdateStatusKey(
-                              dbItemIds,
-                              kitchenSent,
-                            ),
-                          },
-                        );
-                      });
-                  })
-                  .then((result) => {
-                    if (result?.error) {
-                      console.error(
-                        "Failed to update item statuses:",
-                        result.error,
-                      );
-                      queueFailedOperation(
-                        "send_to_kitchen",
-                        { localOrderId: activeOrderId, localItemIds },
-                        activeOrderId,
-                      );
-                    }
-                  })
-                  .catch((err: any) => {
-                    console.error("Failed to sync send-to-kitchen:", err);
-                    queueFailedOperation(
-                      "send_to_kitchen",
-                      { localOrderId: activeOrderId, localItemIds },
-                      activeOrderId,
-                    );
-                  });
-              }
-            } else {
-              // Offline or order not synced: queue for later
-              console.log(
-                "[sendNewItemsToKitchen] Queueing send_to_kitchen operation for later sync",
-              );
-              queueFailedOperation(
-                "send_to_kitchen",
-                { localOrderId: activeOrderId, localItemIds },
-                activeOrderId,
-              );
-            }
           },
 
           sendNewItemsToKitchenForOrder: async (orderId: string) => {
@@ -13320,121 +13625,25 @@ export const useOrderStore = create<OrderState>()(
               autoPrintKitchenTicketsIfEnabled(freshOrder, newItemsForPrint);
             }
 
-            // Clear sync status for fired items — they're committed to local state now
             // ================================================================
             // OFFLINE-FIRST: Queue or sync backend operation
             // ================================================================
-            // Local state is already updated above - now handle backend sync
-            const supabase = getOrderStoreSupabaseClient();
-            const isOnlineNow = getIsOnline();
-
-            // Get items that need to be sent
-            const newItems = order.items.filter(
-              (item) => !item.kitchen_status || item.kitchen_status === "new",
-            );
-            const localItemIds = newItems.map((item) => item.id);
-
-            if (isOnlineNow && supabase && order.db_order_id) {
-              // Online + order synced: sync immediately
-              const dbItemIds = newItems
-                .map((item) => item.db_order_item_id)
-                .filter((id): id is string => !!id);
-
-              if (dbItemIds.length === 0 && newItems.length > 0) {
-                // Items haven't synced to backend yet - queue for retry
-                // The queue handler will update order status + items atomically
-                console.log(
-                  "[sendNewItemsToKitchenForOrder] Items not synced yet, queuing send_to_kitchen",
-                );
-                queueFailedOperation(
-                  "send_to_kitchen",
-                  { localOrderId: orderId, localItemIds },
-                  orderId,
-                );
-              } else if (dbItemIds.length > 0) {
-                // Always transition backend status first, then verify backend is no longer draft.
-                // Local status can be optimistic and out of sync with backend reality.
-                const { error: statusError } =
-                  await OrderService.updateOrderStatus(
-                    supabase,
-                    order.db_order_id!,
-                    getOrderSentStatus(),
-                  );
-                if (
-                  statusError &&
-                  statusError.code !== "P0001" &&
-                  !statusError.message?.includes("already in")
-                ) {
-                  console.error(
-                    "Failed to update backend order status:",
-                    statusError,
-                  );
-                  queueFailedOperation(
-                    "send_to_kitchen",
-                    { localOrderId: orderId, localItemIds },
-                    orderId,
-                  );
-                  return;
-                }
-
-                const { data: backendOrder, error: verifyError } =
-                  await supabase
-                    .from("orders")
-                    .select("status")
-                    .eq("id", order.db_order_id!)
-                    .single();
-
-                if (verifyError || backendOrder?.status === "draft") {
-                  console.warn(
-                    "[sendNewItemsToKitchenForOrder] Backend order remained draft after status update; deferring item sync",
-                    {
-                      dbOrderId: order.db_order_id,
-                      verifyError,
-                      backendStatus: backendOrder?.status,
-                    },
-                  );
-                  queueFailedOperation(
-                    "send_to_kitchen",
-                    { localOrderId: orderId, localItemIds },
-                    orderId,
-                  );
-                  return;
-                }
-
-                const kitchenSent = getKitchenSentStatus();
-                const { error: itemError } =
-                  await OrderService.bulkUpdateOrderItemStatus(
-                    supabase,
-                    dbItemIds,
-                    kitchenSent,
-                    {
-                      keyOverride: toBulkUpdateStatusKey(
-                        dbItemIds,
-                        kitchenSent,
-                      ),
-                    },
-                  );
-                if (itemError) {
-                  console.error(
-                    "Failed to bulk update item statuses:",
-                    itemError,
-                  );
-                  queueFailedOperation(
-                    "send_to_kitchen",
-                    { localOrderId: orderId, localItemIds },
-                    orderId,
-                  );
-                }
-              }
-            } else {
-              // Offline or order not synced: queue for later
-              console.log(
-                "[sendNewItemsToKitchenForOrder] Queueing send_to_kitchen operation for later sync",
+            // Hardened backend send (mirrors sendNewItemsToKitchen / the table
+            // path): wait for in-flight item syncs, re-read the order, then send
+            // every batch item that has a db_order_item_id and queue stragglers.
+            // This path previously never awaited syncs and could drop an item
+            // whose db id resolved a moment later — the same race that left items
+            // stuck at kitchen_status='new' and absent from the KDS.
+            await get().waitForPendingSyncs(orderId);
+            const sendOrder = get().ordersById[orderId];
+            if (sendOrder) {
+              const sentLocalIds = new Set(
+                newItemsForPrint.map((item) => item.id),
               );
-              queueFailedOperation(
-                "send_to_kitchen",
-                { localOrderId: orderId, localItemIds },
+              await _commitKitchenSendForBatch(
+                sendOrder,
                 orderId,
+                sentLocalIds,
               );
             }
 
@@ -14575,6 +14784,14 @@ export const useOrderStore = create<OrderState>()(
                             price: dbItem.unit_price,
                             cashPrice: dbItem.cash_price,
                             is_voided: dbItem.is_voided,
+                            // Route through resolveInboundToGo so an in-flight
+                            // optimistic toggle isn't clobbered by a stale
+                            // backend `false` (the `??` only guards an ABSENT
+                            // column, not a legitimate false landing mid-flight).
+                            is_to_go: resolveInboundToGo(
+                              dbItem.id,
+                              dbItem.is_to_go ?? false,
+                            ),
                             // Preserve course number from backend to prevent items being grouped into course 1
                             courseNumber:
                               dbItem.course_number ||
@@ -14665,6 +14882,12 @@ export const useOrderStore = create<OrderState>()(
                         seatNumber: dbItem.seat_number ?? null,
                         category_name: dbItem.category_name || "Uncategorized",
                         is_voided: dbItem.is_voided || false,
+                        // Consistent with the merge branch above — honor any
+                        // in-flight optimistic toggle over a stale backend value.
+                        is_to_go: resolveInboundToGo(
+                          dbItem.id,
+                          dbItem.is_to_go ?? false,
+                        ),
                         sync_status: "synced" as const,
                         customizations: {
                           notes: dbItem.special_instructions || undefined,
@@ -14720,7 +14943,7 @@ export const useOrderStore = create<OrderState>()(
                           (dbItem as any).base_cash_price ??
                           (dbItem.is_open_item
                             ? dbItem.open_item_price || 0
-                            : dbItem.unit_price ?? 0),
+                            : (dbItem.unit_price ?? 0)),
                       })) || [];
 
                   const allItems: CartItem[] = [
@@ -14742,7 +14965,9 @@ export const useOrderStore = create<OrderState>()(
                     allItems.map((i) => i.db_order_item_id).filter(Boolean),
                   );
                   const allItemsLocalIds = new Set(allItems.map((i) => i.id));
-                  for (const [key, candidate] of Object.entries(state.ordersById)) {
+                  for (const [key, candidate] of Object.entries(
+                    state.ordersById,
+                  )) {
                     if (key === localOrderId) continue;
                     if (
                       candidate.service_location_id !==
@@ -14754,11 +14979,16 @@ export const useOrderStore = create<OrderState>()(
                     for (const item of candidate.items) {
                       if (item.isDraft) continue;
                       if (allItemsLocalIds.has(item.id)) continue;
-                      if (item.db_order_item_id && allItemsDbIds.has(item.db_order_item_id)) continue;
+                      if (
+                        item.db_order_item_id &&
+                        allItemsDbIds.has(item.db_order_item_id)
+                      )
+                        continue;
                       // Pending or locally-synced item not yet in backend fetch — preserve it
                       allItems.push(item);
                       allItemsLocalIds.add(item.id);
-                      if (item.db_order_item_id) allItemsDbIds.add(item.db_order_item_id);
+                      if (item.db_order_item_id)
+                        allItemsDbIds.add(item.db_order_item_id);
                     }
                   }
 
@@ -14802,7 +15032,8 @@ export const useOrderStore = create<OrderState>()(
                       // refund didn't always advance `status`, so we have to
                       // carry refunded_amount + is_returned explicitly.
                       const localPmt = localPaymentsByDbId.get(p.id);
-                      const dbRefunded = Number((p as any).refunded_amount) || 0;
+                      const dbRefunded =
+                        Number((p as any).refunded_amount) || 0;
                       const localRefunded = localPmt?.refundedAmount ?? 0;
                       const localHasMoreRefund = localRefunded > dbRefunded;
                       const mergedRefundedAmount = Math.max(
@@ -14945,9 +15176,15 @@ export const useOrderStore = create<OrderState>()(
                     // Prefer DB value. Guard: if the local order was already
                     // reopened (_reopenedForOrdering=true) but the DB fetch
                     // raced and returned stale 'Closed', keep local 'Opened'.
-                    check_status: (localOrder?._reopenedForOrdering && (dbOrder.check_status === 'Closed' || !dbOrder.check_status))
-                      ? 'Opened'
-                      : ((dbOrder.check_status as "Opened" | "Closed" | undefined) ?? (isPaid ? "Closed" : "Opened")),
+                    check_status:
+                      localOrder?._reopenedForOrdering &&
+                      (dbOrder.check_status === "Closed" ||
+                        !dbOrder.check_status)
+                        ? "Opened"
+                        : ((dbOrder.check_status as
+                            | "Opened"
+                            | "Closed"
+                            | undefined) ?? (isPaid ? "Closed" : "Opened")),
                     // Session tracking - sync from database
                     session_id: dbOrder.session_id,
                     order_source: dbOrder.order_source ?? null,
@@ -14958,7 +15195,10 @@ export const useOrderStore = create<OrderState>()(
                       ) ??
                       null,
                     sync_status: "synced",
-                    reopen_count: (dbOrder as any).reopen_count ?? localOrder?.reopen_count ?? 0,
+                    reopen_count:
+                      (dbOrder as any).reopen_count ??
+                      localOrder?.reopen_count ??
+                      0,
                   };
 
                   state.ordersById[localOrderId] = updatedOrderProfile;
@@ -15351,10 +15591,14 @@ export const useOrderStore = create<OrderState>()(
             // repair below is still settling. Relative path avoids any @/ alias
             // resolution differences between metro and node-test contexts.
             try {
-              const prefetchMod = require("../services/tableOrderPrefetch") as typeof import("../services/tableOrderPrefetch");
+              const prefetchMod =
+                require("../services/tableOrderPrefetch") as typeof import("../services/tableOrderPrefetch");
               prefetchMod.markOrderRecentlyHydrated(dbOrderId);
             } catch (err) {
-              console.warn("[hydrateOrderFromSeat] markOrderRecentlyHydrated failed:", err);
+              console.warn(
+                "[hydrateOrderFromSeat] markOrderRecentlyHydrated failed:",
+                err,
+              );
             }
             if (localOrderId) {
               // Path A: Update existing local order with backend data
@@ -15786,14 +16030,13 @@ export const useOrderStore = create<OrderState>()(
             const finalOutstandingTotal = shouldUseCalculatedReopenBalance
               ? totals.outstanding_total
               : hasBackendAmountDue
-              ? order.amount_due!
-              : totals.outstanding_total;
+                ? order.amount_due!
+                : totals.outstanding_total;
 
-            const finalCashOutstandingTotal =
-              shouldUseCalculatedReopenBalance
-                ? totals.cash_outstanding_total
-                : order.cash_amount_due !== undefined &&
-                    order.cash_amount_due >= 0
+            const finalCashOutstandingTotal = shouldUseCalculatedReopenBalance
+              ? totals.cash_outstanding_total
+              : order.cash_amount_due !== undefined &&
+                  order.cash_amount_due >= 0
                 ? order.cash_amount_due
                 : totals.cash_outstanding_total;
 
@@ -15833,7 +16076,8 @@ export const useOrderStore = create<OrderState>()(
                     const rule = useServiceChargeRulesStore
                       .getState()
                       .resolveRule(
-                        useStoreSettingsStore.getState().selectedStore?.id ?? null,
+                        useStoreSettingsStore.getState().selectedStore?.id ??
+                          null,
                       );
                     if (rule) {
                       o.service_charge_rule_id = rule.id;
@@ -15929,12 +16173,10 @@ export const useOrderStore = create<OrderState>()(
                       o2.service_charge = data.service_charge;
                       o2.service_charge_rule_id =
                         data.service_charge_rule_id ?? null;
-                      o2.service_charge_rate =
-                        data.service_charge_rate ?? null;
+                      o2.service_charge_rate = data.service_charge_rate ?? null;
                       o2.service_charge_applies_on =
                         data.service_charge_applies_on ?? null;
-                      o2.service_charge_name =
-                        data.service_charge_name ?? null;
+                      o2.service_charge_name = data.service_charge_name ?? null;
                       // Mark the server has confirmed this SC. Drift gate
                       // compares against this on the next recalc, so we
                       // don't fire again until the computed SC actually
@@ -16714,6 +16956,27 @@ export const useOrderStore = create<OrderState>()(
                     (p) => !p.db_payment_id && p.sync_status === "pending",
                   );
 
+                  // Financial-residue guard (Task 4): a bare optimistic split
+                  // payment that never reached the backend (no db_payment_id,
+                  // not a pre-auth) must NOT pin amount_due/amount_paid to the
+                  // stale local value — the backend is authoritative for the
+                  // money. Only pre-auths (a real authorization awaiting capture)
+                  // legitimately keep local financials ahead of the server.
+                  // Without this, a cancelled/lost split leaves the optimistic
+                  // amount_due in place, which recalculateOrder then treats as
+                  // backend-authoritative and the SC/refund clamp re-fires on the
+                  // corrupted balance.
+                  const hasUnsettledPreAuth = (
+                    currentOrder.payments ?? []
+                  ).some(
+                    (p) =>
+                      !p.db_payment_id &&
+                      p.sync_status === "pending" &&
+                      p.isPreAuth,
+                  );
+                  const keepLocalFinancials =
+                    hasLocalAdvancedPayments || hasUnsettledPreAuth;
+
                   // Rank-based upgrade: always accept server's paid_status if it's higher
                   // Refund transitions bypass rank check — both Paid→Refunded and
                   // Refunded→Paid must be accepted to reflect the full lifecycle.
@@ -16796,12 +17059,12 @@ export const useOrderStore = create<OrderState>()(
                     total_discount: orderData.discount_amount,
                     amount_paid: isServerPaidUpgrade
                       ? orderData.amount_paid
-                      : hasLocalAdvancedPayments || hasLocalPendingPayments
+                      : keepLocalFinancials
                         ? currentOrder.amount_paid
                         : orderData.amount_paid,
                     amount_due: isServerPaidUpgrade
                       ? orderData.amount_due
-                      : hasLocalAdvancedPayments || hasLocalPendingPayments
+                      : keepLocalFinancials
                         ? currentOrder.amount_due
                         : orderData.amount_due,
                     cash_amount_due: orderData.cash_amount_due,
@@ -16812,29 +17075,35 @@ export const useOrderStore = create<OrderState>()(
                     service_charge: orderData.service_charge ?? 0,
                     service_charge_name:
                       (orderData as any).service_charge_name ??
-                      currentOrder.service_charge_name ?? null,
+                      currentOrder.service_charge_name ??
+                      null,
                     service_charge_rate:
                       (orderData as any).service_charge_rate ??
-                      currentOrder.service_charge_rate ?? null,
+                      currentOrder.service_charge_rate ??
+                      null,
                     service_charge_applies_on:
                       (orderData as any).service_charge_applies_on ??
-                      currentOrder.service_charge_applies_on ?? null,
+                      currentOrder.service_charge_applies_on ??
+                      null,
                     service_charge_rule_id:
                       (orderData as any).service_charge_rule_id ??
-                      currentOrder.service_charge_rule_id ?? null,
+                      currentOrder.service_charge_rule_id ??
+                      null,
                     service_charge_is_manual:
                       (orderData as any).service_charge_is_manual ??
-                      currentOrder.service_charge_is_manual ?? false,
+                      currentOrder.service_charge_is_manual ??
+                      false,
                     service_charge_is_taxable:
                       (orderData as any).service_charge_is_taxable ??
-                      currentOrder.service_charge_is_taxable ?? null,
+                      currentOrder.service_charge_is_taxable ??
+                      null,
                     _serverConfirmedServiceCharge:
                       orderData.service_charge ?? 0,
                     // Status fields — preserve local status when items are pending sync or payments are ahead
                     // BUT always accept server upgrade (e.g. Partial → Paid)
                     paid_status: isServerPaidUpgrade
                       ? paidStatus
-                      : hasLocalAdvancedPayments || hasLocalPendingPayments
+                      : keepLocalFinancials
                         ? currentOrder.paid_status
                         : hasLocalPending
                           ? currentOrder.paid_status
@@ -16864,10 +17133,25 @@ export const useOrderStore = create<OrderState>()(
                       null,
                   };
 
-                  // Self-healing: if amount_due ≈ 0 and all payments synced, ensure paid_status = "Paid"
+                  // Self-healing: if amount_due ≈ 0 and all payments synced, ensure paid_status = "Paid".
+                  // Guard: also require collected money to actually cover the
+                  // total. On a tiny even-split (e.g. $0.02 split 2 ways) the
+                  // server can report amount_due≈0 after the FIRST $0.01 portion
+                  // while the order is genuinely still Partial; healing to Paid
+                  // there pushes a paid/amount_paid<total contradiction that the
+                  // server's enforce_order_math rejects (P0005).
+                  const _healPaidTotal =
+                    (updatedOrder as any).total_amount ??
+                    (updatedOrder as any).card_total ??
+                    0;
+                  const _healAmountPaid = (updatedOrder.payments ?? []).reduce(
+                    (sum, p) => sum + (p.amount ?? 0) - (p.refundedAmount ?? 0),
+                    0,
+                  );
                   if (
                     updatedOrder.paid_status !== "Paid" &&
                     (updatedOrder.amount_due ?? 0) <= 0.01 &&
+                    _healAmountPaid + 0.01 >= _healPaidTotal &&
                     (updatedOrder.payments ?? []).length > 0 &&
                     (updatedOrder.payments ?? []).every(
                       (p) => !!p.db_payment_id,

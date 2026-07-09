@@ -14,71 +14,78 @@ import { useCFDOrderProcessingActivity } from "@/contexts/CFDProvider";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwnershipRecheck";
-import {
-    findLatestReusableEmptyDraftId,
-    getRefreshedReusableDraftNumbers,
-    isReusableEmptyDraftOrder,
-} from "@/lib/reusableEmptyDraft";
-import {
-    forceSetLocalSequence,
-    parseSequenceFromDisplayNumber,
-} from "@/lib/localOrderSequence";
-import { formatOrderStatus, formatPaymentStatus } from "@/utils/orderStatusHelpers";
-import { getHeaderHeight } from "@/lib/headerHeight";
-import { iosOnly } from "@/lib/safeAnimations";
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
+import { getHeaderHeight } from "@/lib/headerHeight";
+import {
+  forceSetLocalSequence,
+  parseSequenceFromDisplayNumber,
+} from "@/lib/localOrderSequence";
+import { markEnd } from "@/lib/perf";
+import {
+  findLatestReusableEmptyDraftId,
+  getRefreshedReusableDraftNumbers,
+  isReusableEmptyDraftOrder,
+} from "@/lib/reusableEmptyDraft";
+import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useSearchStore } from "@/stores/searchStore";
 import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import {
+  formatOrderStatus,
+  formatPaymentStatus,
+} from "@/utils/orderStatusHelpers";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import {
-    CheckCircle2,
-    ChevronLeft,
-    ChevronRight,
-    Eye,
-    Logs,
-    Plus,
-    Printer,
-    Search,
-    ShoppingBag,
-    Sofa,
-    UtensilsCrossed,
-    X,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Logs,
+  Plus,
+  Printer,
+  Search,
+  ShoppingBag,
+  Sofa,
+  UtensilsCrossed,
+  X,
 } from "lucide-react-native";
 import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    Dimensions,
-    Keyboard,
-    Modal,
-    PanResponder,
-    Pressable,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  Dimensions,
+  InteractionManager,
+  Keyboard,
+  Modal,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from "react-native";
 import Animated, {
-    LinearTransition,
-    SlideInLeft,
-    useAnimatedStyle,
-    useSharedValue,
+  LinearTransition,
+  SlideInLeft,
+  useAnimatedStyle,
+  useSharedValue,
 } from "react-native-reanimated";
 
 const EMPTY_ORDERS: OrderProfile[] = [];
@@ -123,17 +130,23 @@ const OrderProcessing = () => {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
   const { colorScheme } = useColorScheme();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const markOrderProcessingActivity = useCFDOrderProcessingActivity();
   const measuredHeaderHeight = getHeaderHeight();
-  const overlayHeaderHeight = measuredHeaderHeight > 0 ? measuredHeaderHeight : 56;
+  const overlayHeaderHeight =
+    measuredHeaderHeight > 0 ? measuredHeaderHeight : 56;
   const customItemModalHeight = useMemo(() => {
     const screenHeight = Dimensions.get("screen").height;
-    return Math.min(560, Math.max(420, screenHeight - 40));
-  }, []);
+    return Math.min(s(560), Math.max(s(420), screenHeight - 40));
+  }, [uiScale]);
   const customItemModalTop = useMemo(() => {
     const screenHeight = Dimensions.get("screen").height;
-    return Math.max(20, Math.round((screenHeight - customItemModalHeight) / 2));
-  }, [customItemModalHeight]);
+    return Math.max(
+      s(20),
+      Math.round((screenHeight - customItemModalHeight) / 2),
+    );
+  }, [customItemModalHeight, uiScale]);
 
   // Wave 2.7: per-order ownership recheck on screen focus + connectionQuality
   // recovery. Closes the gap between Wave 2.1 (realtime) and Wave 2.1.1
@@ -142,6 +155,12 @@ const OrderProcessing = () => {
   useActiveOrderOwnershipRecheck();
   // FIXED: Use individual selectors to prevent subscribing to entire ordersById
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  // Re-trigger the eager backend create once the per-order PIN is verified for
+  // the active order, so a QSR order that was blocked pre-PIN gets created
+  // instead of sticking on "Creating order".
+  const orderAttributionOrderId = useEmployeeStore(
+    (s) => s.orderAttributionOrderId,
+  );
   const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
   const startNewOrder = useOrderStore((s) => s.startNewOrder);
   const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
@@ -305,7 +324,11 @@ const OrderProcessing = () => {
       return;
     }
 
-    if (currentActiveOrder && isReusableEmptyDraftOrder(currentActiveOrder)) {
+    if (
+      useStoreSettingsStore.getState().autoCreateOrder &&
+      currentActiveOrder &&
+      isReusableEmptyDraftOrder(currentActiveOrder)
+    ) {
       if (selectedStore) {
         const refreshedNumbers = getRefreshedReusableDraftNumbers({
           draftId: currentActiveOrder.id,
@@ -326,6 +349,14 @@ const OrderProcessing = () => {
       }
 
       setActiveOrder(currentActiveOrder.id);
+      return;
+    }
+
+    // Setting: when auto-create is OFF, don't auto-create/select a draft when
+    // none is active. The screen shows an empty state until the operator
+    // explicitly starts an order. We've already resumed any in-progress order
+    // above; from here we'd only be fabricating a fresh draft, so bail.
+    if (!useStoreSettingsStore.getState().autoCreateOrder) {
       return;
     }
 
@@ -436,12 +467,47 @@ const OrderProcessing = () => {
   // (see addItemToActiveOrder + BillSection's isCreatingOrder gate).
   useEffect(() => {
     if (!activeOrderId) return;
+    const settings = useStoreSettingsStore.getState();
     const order = useOrderStore.getState().ordersById[activeOrderId];
     if (!order || order.db_order_id) return;
     // Dine-in orders create at seating; only eager-create non-dine-in here.
-    if (order.order_type === "dine_in" || order.order_type === "Dine In") return;
-    void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
-  }, [activeOrderId]);
+    if (order.order_type === "dine_in" || order.order_type === "Dine In")
+      return;
+
+    // Per-order PIN: the order must be eager-created BEFORE items (the
+    // "Creating order" gate stays intact). When the PIN is required, eager
+    // creation is driven by the PIN entry — it waits for a verified staff and
+    // then creates. This deliberately runs even when auto-create is OFF,
+    // because the PIN entry IS the explicit "start this order" action, and
+    // without it the create-before-add gate would deadlock.
+    const pinRequired = settings.requirePinPerOrder;
+    if (pinRequired) {
+      // Wait until the PIN was verified for THIS order; effect re-runs when
+      // orderAttributionOrderId changes.
+      if (orderAttributionOrderId !== activeOrderId) return;
+      // fall through to create
+    } else {
+      // No PIN: always eager-create the backend order when an order becomes
+      // active, regardless of autoCreateOrder. When autoCreate is OFF, the
+      // order was started explicitly via "New Order" (or is an existing draft
+      // that was already active) — it still needs a backend row before items
+      // can be added. The "on demand" creation at add-item time was never
+      // implemented: MenuSection blocks adds when db_order_id is missing, and
+      // addItemToActiveOrder shows a toast and returns without triggering
+      // creation, leaving the UI permanently stuck on "Creating order".
+      // Always eager-creating here is safe because ensureActiveOrderCreated
+      // is idempotent and single-flight.
+    }
+    // Defer the eager backend create off the screen-entry frame: it's an RPC
+    // whose broadcast/re-render can land mid-first-interaction. The local draft
+    // is already usable; this just pre-persists it so the first item-add is
+    // faster. ensureActiveOrderCreated is idempotent + single-flight, so the
+    // add-item path still creates on demand if this hasn't run yet.
+    const task = InteractionManager.runAfterInteractions(() => {
+      void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+    });
+    return () => task.cancel();
+  }, [activeOrderId, orderAttributionOrderId]);
 
   const handleViewItems = useCallback((orderId: string) => {
     setSelectedOrderId(orderId);
@@ -592,6 +658,9 @@ const OrderProcessing = () => {
         setRenderStage(1);
         requestAnimationFrame(() => {
           setRenderStage(2);
+          // Perf Phase 0: closes pos.boot_to_order (started at PIN success).
+          // No-op when no mark is pending (e.g. plain navigation here).
+          markEnd("pos.boot_to_order");
         });
       });
     });
@@ -825,7 +894,7 @@ const OrderProcessing = () => {
             flex: 1,
             maxWidth: 320,
             alignSelf: "flex-start",
-            borderRadius: 14,
+            borderRadius: s(14),
             borderWidth: 1,
             borderColor: colors.info + "50",
             backgroundColor: colors.panel,
@@ -833,14 +902,18 @@ const OrderProcessing = () => {
           }}
         >
           <View
-            style={{ paddingHorizontal: 10, paddingTop: 8, paddingBottom: 7 }}
+            style={{
+              paddingHorizontal: s(10),
+              paddingTop: s(8),
+              paddingBottom: s(7),
+            }}
           >
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                gap: 6,
+                gap: s(6),
               }}
             >
               <View
@@ -848,14 +921,14 @@ const OrderProcessing = () => {
                   flexDirection: "row",
                   alignItems: "center",
                   flex: 1,
-                  gap: 6,
+                  gap: s(6),
                 }}
               >
                 <View
                   style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 6,
+                    width: s(20),
+                    height: s(20),
+                    borderRadius: s(6),
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: colors.info + "18",
@@ -863,13 +936,13 @@ const OrderProcessing = () => {
                     borderColor: colors.info + "35",
                   }}
                 >
-                  <ShoppingBag size={11} color={colors.label} />
+                  <ShoppingBag size={s(11)} color={colors.label} />
                 </View>
                 <Text
                   numberOfLines={1}
                   style={{
                     color: colors.heading,
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: "700",
                     flex: 1,
                   }}
@@ -881,7 +954,7 @@ const OrderProcessing = () => {
                     numberOfLines={1}
                     style={{
                       color: colors.muted,
-                      fontSize: 10,
+                      fontSize: s(10),
                       textTransform: "lowercase",
                     }}
                   >
@@ -891,8 +964,8 @@ const OrderProcessing = () => {
               </View>
               <View
                 style={{
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
+                  paddingHorizontal: s(7),
+                  paddingVertical: s(2),
                   borderRadius: 999,
                   backgroundColor: paidStatusColor + "20",
                   borderWidth: 1,
@@ -902,7 +975,7 @@ const OrderProcessing = () => {
                 <Text
                   style={{
                     color: paidStatusColor,
-                    fontSize: 9,
+                    fontSize: s(9),
                     fontWeight: "700",
                   }}
                 >
@@ -913,23 +986,25 @@ const OrderProcessing = () => {
 
             <Text
               numberOfLines={1}
-              style={{ color: colors.label, fontSize: 10, marginTop: 4 }}
+              style={{ color: colors.label, fontSize: s(10), marginTop: s(4) }}
             >
               {item.customer_name || "Walk-In"} • {itemCount} item
               {itemCount !== 1 ? "s" : ""}
             </Text>
 
             {!!openedAt && (
-              <Text style={{ color: colors.muted, fontSize: 9, marginTop: 2 }}>
+              <Text
+                style={{ color: colors.muted, fontSize: s(9), marginTop: s(2) }}
+              >
                 {openedAt}
               </Text>
             )}
 
-            <View style={{ flexDirection: "row", gap: 6, marginTop: 7 }}>
+            <View style={{ flexDirection: "row", gap: s(6), marginTop: s(7) }}>
               <View
                 style={{
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
+                  paddingHorizontal: s(7),
+                  paddingVertical: s(2),
                   borderRadius: 999,
                   backgroundColor: orderStatusColor + "20",
                   borderWidth: 1,
@@ -939,7 +1014,7 @@ const OrderProcessing = () => {
                 <Text
                   style={{
                     color: orderStatusColor,
-                    fontSize: 9,
+                    fontSize: s(9),
                     fontWeight: "700",
                   }}
                 >
@@ -948,8 +1023,8 @@ const OrderProcessing = () => {
               </View>
               <View
                 style={{
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
+                  paddingHorizontal: s(7),
+                  paddingVertical: s(2),
                   borderRadius: 999,
                   backgroundColor: colors.muted + "20",
                   borderWidth: 1,
@@ -959,7 +1034,7 @@ const OrderProcessing = () => {
                 <Text
                   style={{
                     color: colors.label,
-                    fontSize: 9,
+                    fontSize: s(9),
                     fontWeight: "600",
                   }}
                 >
@@ -971,8 +1046,8 @@ const OrderProcessing = () => {
 
           <View
             style={{
-              paddingHorizontal: 10,
-              paddingVertical: 6,
+              paddingHorizontal: s(10),
+              paddingVertical: s(6),
               borderTopWidth: 1,
               borderBottomWidth: 1,
               borderColor: colors.border,
@@ -982,11 +1057,15 @@ const OrderProcessing = () => {
               justifyContent: "space-between",
             }}
           >
-            <Text style={{ color: colors.muted, fontSize: 9 }}>
+            <Text style={{ color: colors.muted, fontSize: s(9) }}>
               Cash ${cashDue.toFixed(2)}
             </Text>
             <Text
-              style={{ color: colors.heading, fontSize: 12, fontWeight: "700" }}
+              style={{
+                color: colors.heading,
+                fontSize: s(12),
+                fontWeight: "700",
+              }}
             >
               ${totalAmount.toFixed(2)}
             </Text>
@@ -999,26 +1078,26 @@ const OrderProcessing = () => {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingHorizontal: 10,
-                  paddingVertical: 7,
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(7),
                 }}
               >
                 <View
                   style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: 7,
+                    width: s(22),
+                    height: s(22),
+                    borderRadius: s(7),
                     backgroundColor: colors.success + "25",
                     alignItems: "center",
                     justifyContent: "center",
-                    marginRight: 8,
+                    marginRight: s(8),
                   }}
                 >
-                  <CheckCircle2 size={12} color={colors.success} />
+                  <CheckCircle2 size={s(12)} color={colors.success} />
                 </View>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: "700",
                     color: colors.success,
                     flex: 1,
@@ -1026,7 +1105,7 @@ const OrderProcessing = () => {
                 >
                   Mark as Done
                 </Text>
-                <ChevronRight size={13} color={colors.label} />
+                <ChevronRight size={s(13)} color={colors.label} />
               </TouchableOpacity>
             )}
 
@@ -1035,26 +1114,26 @@ const OrderProcessing = () => {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                paddingHorizontal: 10,
-                paddingVertical: 7,
+                paddingHorizontal: s(10),
+                paddingVertical: s(7),
               }}
             >
               <View
                 style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 7,
+                  width: s(22),
+                  height: s(22),
+                  borderRadius: s(7),
                   backgroundColor: colors.info + "20",
                   alignItems: "center",
                   justifyContent: "center",
-                  marginRight: 8,
+                  marginRight: s(8),
                 }}
               >
-                <Eye size={12} color={colors.info} />
+                <Eye size={s(12)} color={colors.info} />
               </View>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: "700",
                   color: colors.heading,
                   flex: 1,
@@ -1062,7 +1141,7 @@ const OrderProcessing = () => {
               >
                 View Items
               </Text>
-              <ChevronRight size={13} color={colors.label} />
+              <ChevronRight size={s(13)} color={colors.label} />
             </TouchableOpacity>
 
             {effectivePaidStatus === "Paid" && (
@@ -1071,26 +1150,26 @@ const OrderProcessing = () => {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingHorizontal: 10,
-                  paddingVertical: 7,
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(7),
                 }}
               >
                 <View
                   style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: 7,
+                    width: s(22),
+                    height: s(22),
+                    borderRadius: s(7),
                     backgroundColor: colors.muted + "20",
                     alignItems: "center",
                     justifyContent: "center",
-                    marginRight: 8,
+                    marginRight: s(8),
                   }}
                 >
-                  <Printer size={12} color={colors.muted} />
+                  <Printer size={s(12)} color={colors.muted} />
                 </View>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: "700",
                     color: colors.heading,
                     flex: 1,
@@ -1098,7 +1177,7 @@ const OrderProcessing = () => {
                 >
                   Print Receipt
                 </Text>
-                <ChevronRight size={13} color={colors.label} />
+                <ChevronRight size={s(13)} color={colors.label} />
               </TouchableOpacity>
             )}
           </View>
@@ -1185,7 +1264,7 @@ const OrderProcessing = () => {
                   >
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "600",
                         color: colors.label,
                       }}
@@ -1195,22 +1274,22 @@ const OrderProcessing = () => {
                     {displayOrders.length > 0 && (
                       <View
                         style={{
-                          minWidth: 20,
-                          height: 20,
-                          borderRadius: 10,
-                          marginLeft: 6,
+                          minWidth: s(20),
+                          height: s(20),
+                          borderRadius: s(10),
+                          marginLeft: s(6),
                           backgroundColor: colors.muted + "20",
                           borderWidth: 1,
                           borderColor: colors.border,
                           alignItems: "center",
                           justifyContent: "center",
-                          paddingHorizontal: 5,
+                          paddingHorizontal: s(5),
                         }}
                       >
                         <Text
                           style={{
                             color: colors.label,
-                            fontSize: 10,
+                            fontSize: s(10),
                             fontWeight: "700",
                           }}
                         >
@@ -1243,7 +1322,7 @@ const OrderProcessing = () => {
                       color={
                         !isInlinePreviousOrdersOpen ? colors.teal : colors.label
                       }
-                      size={14}
+                      size={s(14)}
                     />
                   </TouchableOpacity>
 
@@ -1257,26 +1336,26 @@ const OrderProcessing = () => {
                     }}
                     accessibilityLabel="Go to tables"
                   >
-                    <Sofa color={colors.label} size={14} />
+                    <Sofa color={colors.label} size={s(14)} />
                     {activeSessionCount > 0 && (
                       <View
                         style={{
-                          minWidth: 18,
-                          height: 18,
-                          borderRadius: 9,
-                          marginLeft: 6,
+                          minWidth: s(18),
+                          height: s(18),
+                          borderRadius: s(9),
+                          marginLeft: s(6),
                           backgroundColor: colors.warning + "25",
                           borderWidth: 1,
                           borderColor: colors.warning + "45",
                           alignItems: "center",
                           justifyContent: "center",
-                          paddingHorizontal: 4,
+                          paddingHorizontal: s(4),
                         }}
                       >
                         <Text
                           style={{
                             color: colors.warning,
-                            fontSize: 9,
+                            fontSize: s(9),
                             fontWeight: "800",
                           }}
                         >
@@ -1304,7 +1383,7 @@ const OrderProcessing = () => {
                       color={
                         isInlinePreviousOrdersOpen ? colors.teal : colors.label
                       }
-                      size={14}
+                      size={s(14)}
                     />
                   </TouchableOpacity>
 
@@ -1317,11 +1396,15 @@ const OrderProcessing = () => {
                       borderColor: colors.teal,
                     }}
                   >
-                    <Plus size={16} color={colors.onSolid} strokeWidth={2.5} />
+                    <Plus
+                      size={s(16)}
+                      color={colors.onSolid}
+                      strokeWidth={2.5}
+                    />
                     <Text
                       style={{
                         color: colors.onSolid,
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "700",
                       }}
                     >
@@ -1336,17 +1419,17 @@ const OrderProcessing = () => {
                     onPress={openSearch}
                     className="flex-row items-center rounded-lg px-3 py-2.5 justify-start"
                     style={{
-                      width: orderLineViewMode === "minimal" ? 300 : 300,
+                      width: s(300),
                       borderWidth: 1,
                       borderColor: `${colors.teal}35`,
                       backgroundColor: colors.screen,
                     }}
                   >
-                    <Search size={14} color={colors.muted} />
+                    <Search size={s(14)} color={colors.muted} />
                     <Text
                       style={{
-                        marginLeft: 7,
-                        fontSize: 12,
+                        marginLeft: s(7),
+                        fontSize: s(12),
                         fontWeight: "500",
                         color: colors.label,
                       }}
@@ -1362,19 +1445,19 @@ const OrderProcessing = () => {
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
-                          gap: 4,
+                          gap: s(4),
                           backgroundColor: colors.success + "15",
                           borderWidth: 1,
                           borderColor: colors.success + "30",
-                          borderRadius: 20,
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
+                          borderRadius: s(20),
+                          paddingHorizontal: s(6),
+                          paddingVertical: s(2),
                         }}
                       >
-                        <CheckCircle2 size={10} color={colors.success} />
+                        <CheckCircle2 size={s(10)} color={colors.success} />
                         <Text
                           style={{
-                            fontSize: 10,
+                            fontSize: s(10),
                             fontWeight: "600",
                             color: colors.success,
                           }}
@@ -1396,7 +1479,7 @@ const OrderProcessing = () => {
                           <Text
                             style={{
                               color: colors.heading,
-                              fontSize: 18,
+                              fontSize: s(18),
                               fontWeight: "600",
                             }}
                           >
@@ -1503,10 +1586,10 @@ const OrderProcessing = () => {
                                 position: "absolute",
                                 left: -2,
                                 top: "50%",
-                                marginTop: -14,
-                                width: 28,
-                                height: 28,
-                                borderRadius: 14,
+                                marginTop: s(-14),
+                                width: s(28),
+                                height: s(28),
+                                borderRadius: s(14),
                                 alignItems: "center",
                                 justifyContent: "center",
                                 backgroundColor: colors.panel,
@@ -1519,7 +1602,7 @@ const OrderProcessing = () => {
                               }}
                               activeOpacity={0.85}
                             >
-                              <ChevronLeft size={14} color={colors.label} />
+                              <ChevronLeft size={s(14)} color={colors.label} />
                             </TouchableOpacity>
                           )}
 
@@ -1530,10 +1613,10 @@ const OrderProcessing = () => {
                                 position: "absolute",
                                 right: -2,
                                 top: "50%",
-                                marginTop: -14,
-                                width: 28,
-                                height: 28,
-                                borderRadius: 14,
+                                marginTop: s(-14),
+                                width: s(28),
+                                height: s(28),
+                                borderRadius: s(14),
                                 alignItems: "center",
                                 justifyContent: "center",
                                 backgroundColor: colors.panel,
@@ -1546,7 +1629,7 @@ const OrderProcessing = () => {
                               }}
                               activeOpacity={0.85}
                             >
-                              <ChevronRight size={14} color={colors.label} />
+                              <ChevronRight size={s(14)} color={colors.label} />
                             </TouchableOpacity>
                           )}
                         </View>
@@ -1587,36 +1670,36 @@ const OrderProcessing = () => {
         (moreOptionsOpenedOnce ||
           discountOpenedOnce ||
           serviceChargeOpenedOnce) && (
-        <View
-          pointerEvents="box-none"
-          style={[styles.sheetOverlayLayer, { top: -overlayHeaderHeight }]}
-        >
-          {moreOptionsOpenedOnce && (
-            <MoreOptionsBottomSheet
-              ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
-              discountSheetRef={lazyDiscountSheetRef}
-              serviceChargeSheetRef={lazyServiceChargeSheetRef}
-              onCloseCheck={handleCloseCheck}
-              onNoSale={handleNoSale}
-              onManageDrawer={() => setCashDrawerSheetOpen(true)}
-            />
-          )}
-          {discountOpenedOnce && (
-            <DiscountBottomSheet
-              ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
-              onClose={() => discountSheetRef?.current?.close()}
-            />
-          )}
-          {serviceChargeOpenedOnce && (
-            <ServiceChargeOverrideSheet
-              ref={
-                serviceChargeSheetRef as React.RefObject<BottomSheetMethods>
-              }
-              onClose={() => serviceChargeSheetRef?.current?.close()}
-            />
-          )}
-        </View>
-      )}
+          <View
+            pointerEvents="box-none"
+            style={[styles.sheetOverlayLayer, { top: -overlayHeaderHeight }]}
+          >
+            {moreOptionsOpenedOnce && (
+              <MoreOptionsBottomSheet
+                ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+                discountSheetRef={lazyDiscountSheetRef}
+                serviceChargeSheetRef={lazyServiceChargeSheetRef}
+                onCloseCheck={handleCloseCheck}
+                onNoSale={handleNoSale}
+                onManageDrawer={() => setCashDrawerSheetOpen(true)}
+              />
+            )}
+            {discountOpenedOnce && (
+              <DiscountBottomSheet
+                ref={discountSheetRef as React.RefObject<BottomSheetMethods>}
+                onClose={() => discountSheetRef?.current?.close()}
+              />
+            )}
+            {serviceChargeOpenedOnce && (
+              <ServiceChargeOverrideSheet
+                ref={
+                  serviceChargeSheetRef as React.RefObject<BottomSheetMethods>
+                }
+                onClose={() => serviceChargeSheetRef?.current?.close()}
+              />
+            )}
+          </View>
+        )}
 
       <CashDrawerSheet
         isOpen={isCashDrawerSheetOpen}
@@ -1657,8 +1740,8 @@ const OrderProcessing = () => {
             style={[
               {
                 width: "100%",
-                borderTopLeftRadius: 18,
-                borderTopRightRadius: 18,
+                borderTopLeftRadius: s(18),
+                borderTopRightRadius: s(18),
                 borderWidth: 1,
                 borderColor: colors.info + "35",
                 backgroundColor: colors.screen,
@@ -1679,8 +1762,8 @@ const OrderProcessing = () => {
             >
               <View
                 style={{
-                  width: 58,
-                  height: 5,
+                  width: s(58),
+                  height: s(5),
                   borderRadius: 999,
                   backgroundColor: colors.border,
                 }}
@@ -1689,9 +1772,9 @@ const OrderProcessing = () => {
 
             <View
               style={{
-                paddingHorizontal: 12,
-                paddingTop: 6,
-                paddingBottom: 10,
+                paddingHorizontal: s(12),
+                paddingTop: s(6),
+                paddingBottom: s(10),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
                 flexDirection: "row",
@@ -1700,12 +1783,16 @@ const OrderProcessing = () => {
               }}
             >
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(8),
+                }}
               >
                 <Text
                   style={{
                     color: colors.heading,
-                    fontSize: 15,
+                    fontSize: s(15),
                     fontWeight: "800",
                   }}
                 >
@@ -1713,21 +1800,21 @@ const OrderProcessing = () => {
                 </Text>
                 <View
                   style={{
-                    minWidth: 22,
-                    height: 22,
-                    borderRadius: 11,
+                    minWidth: s(22),
+                    height: s(22),
+                    borderRadius: s(11),
                     backgroundColor: colors.info + "30",
                     borderWidth: 1,
                     borderColor: colors.info + "55",
                     alignItems: "center",
                     justifyContent: "center",
-                    paddingHorizontal: 6,
+                    paddingHorizontal: s(6),
                   }}
                 >
                   <Text
                     style={{
                       color: colors.heading,
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: "800",
                     }}
                   >
@@ -1736,7 +1823,11 @@ const OrderProcessing = () => {
                 </View>
               </View>
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(8),
+                }}
               >
                 {completableOrders.length > 0 && (
                   <TouchableOpacity
@@ -1744,19 +1835,19 @@ const OrderProcessing = () => {
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 4,
+                      gap: s(4),
                       backgroundColor: colors.success + "15",
                       borderWidth: 1,
                       borderColor: colors.success + "30",
-                      borderRadius: 20,
-                      paddingHorizontal: 8,
-                      paddingVertical: 4,
+                      borderRadius: s(20),
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(4),
                     }}
                   >
-                    <CheckCircle2 size={12} color={colors.success} />
+                    <CheckCircle2 size={s(12)} color={colors.success} />
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         fontWeight: "600",
                         color: colors.success,
                       }}
@@ -1768,9 +1859,9 @@ const OrderProcessing = () => {
                 <TouchableOpacity
                   onPress={() => setIsOrdersModuleOpen(false)}
                   style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 15,
+                    width: s(30),
+                    height: s(30),
+                    borderRadius: s(15),
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: colors.panel,
@@ -1778,7 +1869,7 @@ const OrderProcessing = () => {
                     borderColor: colors.border,
                   }}
                 >
-                  <X size={16} color={colors.label} />
+                  <X size={s(16)} color={colors.label} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1789,14 +1880,14 @@ const OrderProcessing = () => {
                 keyExtractor={badgeKeyExtractor}
                 numColumns={4}
                 contentContainerStyle={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 12,
-                  gap: 10,
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(12),
+                  gap: s(10),
                 }}
                 columnWrapperStyle={{
-                  marginBottom: 10,
+                  marginBottom: s(10),
                   justifyContent: "flex-start",
-                  gap: 10,
+                  gap: s(10),
                 }}
                 showsVerticalScrollIndicator={false}
                 initialNumToRender={12}
@@ -1807,12 +1898,12 @@ const OrderProcessing = () => {
             ) : (
               <View
                 style={{
-                  paddingVertical: 28,
+                  paddingVertical: s(28),
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <Text style={{ color: colors.muted, fontSize: 12 }}>
+                <Text style={{ color: colors.muted, fontSize: s(12) }}>
                   No active orders.
                 </Text>
               </View>
@@ -1851,12 +1942,12 @@ const OrderProcessing = () => {
           <Pressable
             onPress={() => {}}
             style={{
-              width: 500,
+              width: s(500),
               maxWidth: "96%",
               height: customItemModalHeight,
               alignSelf: "center",
               maxHeight: customItemModalHeight,
-              borderRadius: 18,
+              borderRadius: s(18),
               borderWidth: 1,
               borderColor: colors.teal + "45",
               backgroundColor: colors.screen,
@@ -1865,8 +1956,8 @@ const OrderProcessing = () => {
           >
             <View
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 10,
+                paddingHorizontal: s(12),
+                paddingVertical: s(10),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
                 flexDirection: "row",
@@ -1877,7 +1968,7 @@ const OrderProcessing = () => {
               <Text
                 style={{
                   color: colors.heading,
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: "800",
                 }}
               >
@@ -1886,9 +1977,9 @@ const OrderProcessing = () => {
               <TouchableOpacity
                 onPress={() => setIsCustomItemModuleOpen(false)}
                 style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 15,
+                  width: s(30),
+                  height: s(30),
+                  borderRadius: s(15),
                   alignItems: "center",
                   justifyContent: "center",
                   backgroundColor: colors.panel,
@@ -1896,7 +1987,7 @@ const OrderProcessing = () => {
                   borderColor: colors.border,
                 }}
               >
-                <X size={16} color={colors.label} />
+                <X size={s(16)} color={colors.label} />
               </TouchableOpacity>
             </View>
             <View style={{ flex: 1 }}>

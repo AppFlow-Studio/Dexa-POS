@@ -429,6 +429,30 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     }
   }
 
+  // ── C2. Split-payment header (per-portion receipts only) ─────────────
+  if (validated.splitLabel) {
+    nodes.push({
+      type: "text_line",
+      content: sanitizeForPrint(validated.splitLabel),
+      align: "center",
+      format: BOLD,
+    });
+    if (validated.splitPayerName) {
+      nodes.push({
+        type: "text_line",
+        content: sanitizeForPrint(validated.splitPayerName),
+        align: "center",
+      });
+    }
+    if (validated.isPartialSplitReceipt) {
+      nodes.push({
+        type: "text_line",
+        content: "Partial payment - full check below",
+        align: "center",
+      });
+    }
+  }
+
   // ═══ SEAM: handoff from DEXA top to Figure body ══════════════════════
   nodes.push({ type: "empty_line" });
 
@@ -510,7 +534,14 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   nodes.push({ type: "divider", style: "double", lineWidth: w, weight: "bold" });
   nodes.push({ type: "empty_line" });
   const hasDualPricing =
+    validated.pricingMode === "dual" &&
     validated.cashTotal !== undefined && validated.cashTotal !== validated.total;
+  const totalLabel =
+    validated.pricingMode === "cash"
+      ? "TOTAL (CASH)"
+      : validated.pricingMode === "card"
+        ? "TOTAL (CARD)"
+        : "TOTAL";
 
   if (hasDualPricing) {
     const totalPrice = safeCurrency(validated.total);
@@ -520,7 +551,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     // the visual work.
     nodes.push({
       type: "two_column",
-      left: "Total",
+      left: totalLabel,
       right: totalPrice,
       lineWidth: w,
       format: BOLD,
@@ -543,7 +574,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     const totalPrice = safeCurrency(validated.total);
     nodes.push({
       type: "two_column",
-      left: "Total",
+      left: totalLabel,
       right: totalPrice,
       lineWidth: w,
       format: BOLD,

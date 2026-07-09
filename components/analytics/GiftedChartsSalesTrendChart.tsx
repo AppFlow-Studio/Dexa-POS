@@ -3,7 +3,7 @@ import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { format } from "date-fns";
 import { JSX } from "react";
 import { Dimensions, Text, View } from "react-native";
-import { LineChart } from "react-native-gifted-charts";
+import { LineChart } from "@/components/charts/LazyGiftedCharts";
 
 const screenWidth = Dimensions.get("window").width;
 

@@ -1,16 +1,17 @@
-import { colors } from '@/lib/theme'
-import { CartItem, OrderProfile } from '@/lib/types'
-import { useCustomerSheetStore } from '@/stores/useCustomerSheetStore'
-import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
-import { useMenuStore } from '@/stores/useMenuStore'
-import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import {
   SendAllButton,
-  SendCourseButton
-} from '@/components/bill/SendToKitchenButton'
-import { useCoursingStore } from '@/stores/useCoursingStore'
-import { useOrderItem } from '@/stores/selectors/orderSelectors'
-import { useOrderStore } from '@/stores/useOrderStore'
+  SendCourseButton,
+} from "@/components/bill/SendToKitchenButton";
+import { colors } from "@/lib/theme";
+import { CartItem, OrderProfile } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
+import { useOrderItem } from "@/stores/selectors/orderSelectors";
+import { useCoursingStore } from "@/stores/useCoursingStore";
+import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useMenuStore } from "@/stores/useMenuStore";
+import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import {
   ArrowUpToLine,
   ChevronDown,
@@ -18,123 +19,132 @@ import {
   Flame,
   Plus,
   Send,
-  X
-} from 'lucide-react-native'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+  X,
+} from "lucide-react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Modal,
   Pressable,
   ScrollView,
   Text,
   TouchableOpacity,
-  View
-} from 'react-native'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+  View,
+} from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   LinearTransition,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
-  withSpring
-} from 'react-native-reanimated'
-import { useShallow } from 'zustand/react/shallow'
-import BillItem from './BillItem'
+  withSpring,
+} from "react-native-reanimated";
+import { useShallow } from "zustand/react/shallow";
+import BillItem from "./BillItem";
 
 // --- Types ---
 interface CourseAccordionProps {
-  activeOrder: OrderProfile | undefined
-  itemCourseMap?: Record<string, number>
-  sentCourses?: Record<number, boolean>
-  currentCourse?: number
-  onSelectCourse?: (course: number | null) => void
-  onPressStartNewCourse: () => void
-  onDoubleTapCourse: (courseId: number) => void
-  onOpenServerSheet?: () => void
-  onRushCourse?: (courseId: number) => void
-  onPrioritizeCourse?: (courseId: number) => void
-  onResendCourse?: (courseId: number) => void
-  onRemoveCourse?: (courseId: number) => void
-  onPressSendAllToKitchen?: () => void
-  enableCoursing?: boolean
-  isOvertime?: boolean
-  overtimeMinutes?: number
+  activeOrder: OrderProfile | undefined;
+  itemCourseMap?: Record<string, number>;
+  sentCourses?: Record<number, boolean>;
+  currentCourse?: number;
+  onSelectCourse?: (course: number | null) => void;
+  onPressStartNewCourse: () => void;
+  onDoubleTapCourse: (courseId: number) => void;
+  onOpenServerSheet?: () => void;
+  onRushCourse?: (courseId: number) => void;
+  onPrioritizeCourse?: (courseId: number) => void;
+  onResendCourse?: (courseId: number) => void;
+  onRemoveCourse?: (courseId: number) => void;
+  onPressSendAllToKitchen?: () => void;
+  enableCoursing?: boolean;
+  isOvertime?: boolean;
+  overtimeMinutes?: number;
 }
 
 interface CourseGroupProps {
-  orderId: string
-  courseId: number
-  items: CartItem[]
-  isExpanded: boolean
-  isSent: boolean
-  isCurrent: boolean
-  onToggle: (id: number) => void
-  onSelect: (id: number) => void
-  onDoubleTap: (id: number) => void
-  onRushCourse?: (courseId: number) => void
-  onPrioritizeCourse?: (courseId: number) => void
-  onResendCourse?: (courseId: number) => void
-  onRemoveCourse?: (courseId: number) => void
+  orderId: string;
+  courseId: number;
+  items: CartItem[];
+  isExpanded: boolean;
+  isSent: boolean;
+  isCurrent: boolean;
+  onToggle: (id: number) => void;
+  onSelect: (id: number) => void;
+  onDoubleTap: (id: number) => void;
+  onRushCourse?: (courseId: number) => void;
+  onPrioritizeCourse?: (courseId: number) => void;
+  onResendCourse?: (courseId: number) => void;
+  onRemoveCourse?: (courseId: number) => void;
 }
 
 // --- Helpers ---
-type AggregateKitchenStatus = 'sent' | 'preparing' | 'ready' | 'served' | null
+type AggregateKitchenStatus = "sent" | "preparing" | "ready" | "served" | null;
 
 const BADGE_CONFIG: Record<
   NonNullable<AggregateKitchenStatus>,
   { bg: string; text: string; label: string }
 > = {
-  sent: { bg: 'bg-amber-600/20', text: 'text-amber-400', label: 'Queued' },
+  sent: { bg: "bg-amber-600/20", text: "text-amber-400", label: "Queued" },
   preparing: {
-    bg: 'bg-orange-600/20',
-    text: 'text-orange-400',
-    label: 'Preparing'
+    bg: "bg-orange-600/20",
+    text: "text-orange-400",
+    label: "Preparing",
   },
-  ready: { bg: 'bg-green-600/20', text: 'text-green-400', label: 'Ready' },
-  served: { bg: 'bg-emerald-900/30', text: 'text-emerald-500', label: 'Served' }
-}
+  ready: { bg: "bg-green-600/20", text: "text-green-400", label: "Ready" },
+  served: {
+    bg: "bg-emerald-900/30",
+    text: "text-emerald-500",
+    label: "Served",
+  },
+};
 
-function deriveAggregateStatus (items: CartItem[]): AggregateKitchenStatus {
-  if (items.length === 0) return null
-  if (items.every(i => i.kitchen_status === 'served')) return 'served'
+function deriveAggregateStatus(items: CartItem[]): AggregateKitchenStatus {
+  const active = items.filter((i) => !i.is_voided);
+  if (active.length === 0) return null;
+  if (active.every((i) => i.kitchen_status === "served")) return "served";
   if (
-    items.every(
-      i => i.kitchen_status === 'ready' || i.kitchen_status === 'served'
+    active.every(
+      (i) => i.kitchen_status === "ready" || i.kitchen_status === "served",
     )
   )
-    return 'ready'
-  if (items.some(i => i.kitchen_status === 'preparing')) return 'preparing'
-  if (items.some(i => i.kitchen_status === 'sent')) return 'sent'
-  return null
+    return "ready";
+  if (active.some((i) => i.kitchen_status === "preparing")) return "preparing";
+  if (active.some((i) => i.kitchen_status === "sent")) return "sent";
+  return null;
 }
 
-function isKitchenItemUnsent (item: CartItem): boolean {
-  return !item.kitchen_status || item.kitchen_status === 'new'
+function isKitchenItemUnsent(item: CartItem): boolean {
+  return !item.kitchen_status || item.kitchen_status === "new";
 }
 
-const CourseBillItemRow = React.memo(
-  function CourseBillItemRow ({
-    orderId,
-    itemId,
-    className
-  }: {
-    orderId: string
-    itemId: string
-    className?: string
-  }) {
-    const item = useOrderItem(orderId, itemId)
-    if (!item) return null
+const CourseBillItemRow = React.memo(function CourseBillItemRow({
+  orderId,
+  itemId,
+  className,
+}: {
+  orderId: string;
+  itemId: string;
+  className?: string;
+}) {
+  const item = useOrderItem(orderId, itemId);
+  if (!item) return null;
 
-    return (
-      <View className={className}>
-        <BillItem item={item} isEditable={true} />
-      </View>
-    )
-  }
-)
+  return (
+    <View className={className}>
+      <BillItem item={item} isEditable={true} />
+    </View>
+  );
+});
 
 // --- Sub-Component: CourseGroup with Animations ---
-function CourseGroupInner ({
+function CourseGroupInner({
   orderId,
   courseId,
   items,
@@ -147,15 +157,17 @@ function CourseGroupInner ({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
-  onRemoveCourse
+  onRemoveCourse,
 }: CourseGroupProps) {
-  const scale = useSharedValue(1)
-  const [showActions, setShowActions] = useState(false)
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const scale = useSharedValue(1);
+  const [showActions, setShowActions] = useState(false);
 
   // Header tap animation
   const animatedHeaderStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }]
-  }))
+    transform: [{ scale: scale.value }],
+  }));
 
   // Gesture Definitions
   const doubleTap = Gesture.Tap()
@@ -164,55 +176,62 @@ function CourseGroupInner ({
     .onStart(() => {
       scale.value = withSequence(
         withSpring(0.95, { damping: 10, stiffness: 200 }),
-        withSpring(1)
-      )
-      runOnJS(onDoubleTap)(courseId)
-    })
+        withSpring(1),
+      );
+      runOnJS(onDoubleTap)(courseId);
+    });
 
   // Single tap on the body of the header → select as working course only.
   // Expansion is controlled by the dedicated chevron pressable on the right.
   const singleTap = Gesture.Tap().onEnd(() => {
     scale.value = withSequence(
       withSpring(0.98, { damping: 15, stiffness: 300 }),
-      withSpring(1)
-    )
-    runOnJS(onSelect)(courseId)
-  })
+      withSpring(1),
+    );
+    runOnJS(onSelect)(courseId);
+  });
 
-  const courseItemCount = items.reduce((sum, item) => sum + item.quantity, 0)
-  const aggregateStatus = useMemo(() => deriveAggregateStatus(items), [items])
+  const courseItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const aggregateStatus = useMemo(() => deriveAggregateStatus(items), [items]);
   const hasUnsentItems = useMemo(
     () => items.some(isKitchenItemUnsent),
-    [items]
-  )
+    [items],
+  );
 
   const longPress = Gesture.LongPress()
     .minDuration(500)
     .onStart(() => {
-      if (isSent && aggregateStatus && aggregateStatus !== 'served') {
-        runOnJS(setShowActions)(true)
+      if (isSent && aggregateStatus && aggregateStatus !== "served") {
+        runOnJS(setShowActions)(true);
       }
-    })
+    });
 
-  const composedGesture = Gesture.Exclusive(longPress, doubleTap, singleTap)
+  const composedGesture = Gesture.Exclusive(longPress, doubleTap, singleTap);
 
   return (
-    <Animated.View layout={LinearTransition.duration(200)} className='mb-1'>
+    <Animated.View layout={LinearTransition.duration(200)} className="mb-1">
       {/* Header — body selects working course; chevron toggles expansion. */}
       <Animated.View
         style={animatedHeaderStyle}
-        className='flex-row items-center justify-between py-3 px-2'
+        className="flex-row items-center justify-between py-3 px-2"
       >
         <GestureDetector gesture={composedGesture}>
-          <Animated.View className='flex-row items-center flex-1'>
+          <Animated.View className="flex-row items-center flex-1">
             <View
-              className='w-2 h-2 rounded-full mr-2.5'
               style={{
-                backgroundColor: isCurrent ? colors.success : colors.muted
+                width: s(8),
+                height: s(8),
+                borderRadius: s(4),
+                marginRight: s(10),
+                backgroundColor: isCurrent ? colors.success : colors.muted,
               }}
             />
             <Text
-              style={{ fontSize: 12, fontWeight: '700', color: colors.heading }}
+              style={{
+                fontSize: s(12),
+                fontWeight: "700",
+                color: colors.heading,
+              }}
             >
               Course {courseId}
             </Text>
@@ -227,48 +246,53 @@ function CourseGroupInner ({
                 </Text>
               </View>
             )}
-            <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 6 }}>
-              {courseItemCount} item{courseItemCount !== 1 ? 's' : ''}
+            <Text
+              style={{ fontSize: s(11), color: colors.muted, marginLeft: s(6) }}
+            >
+              {courseItemCount} item{courseItemCount !== 1 ? "s" : ""}
             </Text>
           </Animated.View>
         </GestureDetector>
 
-        <View className='flex-row items-center gap-2'>
-          {!isSent && courseItemCount === 0 && courseId !== 1 && onRemoveCourse && (
-            <TouchableOpacity
-              onPress={() => onRemoveCourse(courseId)}
-              hitSlop={8}
-              style={{
-                width: 24,
-                height: 24,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 6
-              }}
-              activeOpacity={0.5}
-            >
-              <X size={14} color={colors.muted} />
-            </TouchableOpacity>
-          )}
+        <View className="flex-row items-center gap-2">
+          {!isSent &&
+            courseItemCount === 0 &&
+            courseId !== 1 &&
+            onRemoveCourse && (
+              <TouchableOpacity
+                onPress={() => onRemoveCourse(courseId)}
+                hitSlop={s(8)}
+                style={{
+                  width: s(24),
+                  height: s(24),
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: s(6),
+                }}
+                activeOpacity={0.5}
+              >
+                <X size={s(14)} color={colors.muted} />
+              </TouchableOpacity>
+            )}
           {hasUnsentItems && (
             <SendCourseButton onPress={() => onDoubleTap(courseId)} />
           )}
           <TouchableOpacity
             onPress={() => onToggle(courseId)}
-            hitSlop={8}
+            hitSlop={s(8)}
             style={{
-              width: 28,
-              height: 28,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 6
+              width: s(28),
+              height: s(28),
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: s(6),
             }}
             activeOpacity={0.5}
           >
             {isExpanded ? (
-              <ChevronDown size={18} color={colors.label} />
+              <ChevronDown size={s(18)} color={colors.label} />
             ) : (
-              <ChevronRight size={18} color={colors.label} />
+              <ChevronRight size={s(18)} color={colors.label} />
             )}
           </TouchableOpacity>
         </View>
@@ -276,8 +300,8 @@ function CourseGroupInner ({
 
       {/* Content — no enter/exit animations for instant expand */}
       {isExpanded && (
-        <View className='pl-4 gap-y-2'>
-          {items.map(item => (
+        <View className="pl-4 gap-y-2">
+          {items.map((item) => (
             <CourseBillItemRow
               key={item.id}
               orderId={orderId}
@@ -291,39 +315,39 @@ function CourseGroupInner ({
       {showActions && (
         <Modal
           transparent
-          animationType='fade'
+          animationType="fade"
           visible
           onRequestClose={() => setShowActions(false)}
         >
           <Pressable
             style={{
               flex: 1,
-              backgroundColor: 'rgba(0,0,0,0.4)',
-              justifyContent: 'center',
-              alignItems: 'center'
+              backgroundColor: "rgba(0,0,0,0.4)",
+              justifyContent: "center",
+              alignItems: "center",
             }}
             onPress={() => setShowActions(false)}
           >
             <View
               style={{
                 backgroundColor: colors.panel,
-                borderRadius: 12,
-                padding: 8,
-                width: 220,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 4 },
+                borderRadius: s(12),
+                padding: s(8),
+                width: s(220),
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: s(4) },
                 shadowOpacity: 0.3,
-                shadowRadius: 8,
-                elevation: 8
+                shadowRadius: s(8),
+                elevation: 8,
               }}
             >
               <Text
                 style={{
-                  fontSize: 11,
-                  fontWeight: '700',
+                  fontSize: s(11),
+                  fontWeight: "700",
                   color: colors.heading,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(6),
                 }}
               >
                 Course {courseId} Actions
@@ -331,25 +355,25 @@ function CourseGroupInner ({
               {onRushCourse && (
                 <TouchableOpacity
                   onPress={() => {
-                    setShowActions(false)
-                    onRushCourse(courseId)
+                    setShowActions(false);
+                    onRushCourse(courseId);
                   }}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    borderRadius: 8
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(10),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    borderRadius: s(8),
                   }}
                   activeOpacity={0.7}
                 >
-                  <Flame size={16} color={colors.danger} />
+                  <Flame size={s(16)} color={colors.danger} />
                   <Text
                     style={{
-                      fontSize: 13,
-                      fontWeight: '600',
-                      color: colors.danger
+                      fontSize: s(13),
+                      fontWeight: "600",
+                      color: colors.danger,
                     }}
                   >
                     Rush Course
@@ -359,25 +383,25 @@ function CourseGroupInner ({
               {onPrioritizeCourse && (
                 <TouchableOpacity
                   onPress={() => {
-                    setShowActions(false)
-                    onPrioritizeCourse(courseId)
+                    setShowActions(false);
+                    onPrioritizeCourse(courseId);
                   }}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    borderRadius: 8
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(10),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    borderRadius: s(8),
                   }}
                   activeOpacity={0.7}
                 >
-                  <ArrowUpToLine size={16} color='#f59e0b' />
+                  <ArrowUpToLine size={s(16)} color="#f59e0b" />
                   <Text
                     style={{
-                      fontSize: 13,
-                      fontWeight: '600',
-                      color: '#f59e0b'
+                      fontSize: s(13),
+                      fontWeight: "600",
+                      color: "#f59e0b",
                     }}
                   >
                     Prioritize Course
@@ -387,25 +411,25 @@ function CourseGroupInner ({
               {onResendCourse && (
                 <TouchableOpacity
                   onPress={() => {
-                    setShowActions(false)
-                    onResendCourse(courseId)
+                    setShowActions(false);
+                    onResendCourse(courseId);
                   }}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    borderRadius: 8
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(10),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    borderRadius: s(8),
                   }}
                   activeOpacity={0.7}
                 >
-                  <Send size={16} color={colors.teal} />
+                  <Send size={s(16)} color={colors.teal} />
                   <Text
                     style={{
-                      fontSize: 13,
-                      fontWeight: '600',
-                      color: colors.teal
+                      fontSize: s(13),
+                      fontWeight: "600",
+                      color: colors.teal,
                     }}
                   >
                     Resend Course
@@ -417,26 +441,26 @@ function CourseGroupInner ({
         </Modal>
       )}
     </Animated.View>
-  )
+  );
 }
 
 const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
-  if (prev.orderId !== next.orderId) return false
-  if (prev.courseId !== next.courseId) return false
-  if (prev.isExpanded !== next.isExpanded) return false
-  if (prev.isSent !== next.isSent) return false
-  if (prev.isCurrent !== next.isCurrent) return false
-  if (prev.onToggle !== next.onToggle) return false
-  if (prev.onSelect !== next.onSelect) return false
-  if (prev.onDoubleTap !== next.onDoubleTap) return false
-  if (prev.onRushCourse !== next.onRushCourse) return false
-  if (prev.onPrioritizeCourse !== next.onPrioritizeCourse) return false
-  if (prev.onResendCourse !== next.onResendCourse) return false
-  if (prev.onRemoveCourse !== next.onRemoveCourse) return false
-  if (prev.items.length !== next.items.length) return false
+  if (prev.orderId !== next.orderId) return false;
+  if (prev.courseId !== next.courseId) return false;
+  if (prev.isExpanded !== next.isExpanded) return false;
+  if (prev.isSent !== next.isSent) return false;
+  if (prev.isCurrent !== next.isCurrent) return false;
+  if (prev.onToggle !== next.onToggle) return false;
+  if (prev.onSelect !== next.onSelect) return false;
+  if (prev.onDoubleTap !== next.onDoubleTap) return false;
+  if (prev.onRushCourse !== next.onRushCourse) return false;
+  if (prev.onPrioritizeCourse !== next.onPrioritizeCourse) return false;
+  if (prev.onResendCourse !== next.onResendCourse) return false;
+  if (prev.onRemoveCourse !== next.onRemoveCourse) return false;
+  if (prev.items.length !== next.items.length) return false;
   for (let i = 0; i < prev.items.length; i++) {
-    const p = prev.items[i]
-    const n = next.items[i]
+    const p = prev.items[i];
+    const n = next.items[i];
     if (
       p.id !== n.id ||
       p.quantity !== n.quantity ||
@@ -445,10 +469,10 @@ const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
       p.price !== n.price ||
       p.customizations !== n.customizations
     )
-      return false
+      return false;
   }
-  return true
-})
+  return true;
+});
 
 // --- Main Component ---
 const CourseAccordion: React.FC<CourseAccordionProps> = ({
@@ -467,24 +491,28 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onPressSendAllToKitchen,
   enableCoursing = true,
   isOvertime,
-  overtimeMinutes
+  overtimeMinutes,
 }) => {
-  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(() => {
-    const initial = new Set<number>()
-    activeOrder?.items?.forEach(item => {
-      if (item.is_voided) return
-      initial.add(item.courseNumber ?? itemCourseMap?.[item.id] ?? 1)
-    })
-    if (currentCourse !== undefined && currentCourse !== null) {
-      initial.add(currentCourse)
-    }
-    return initial
-  })
-  const prevItemCount = useRef<number>(0)
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const [expandedCourseIds, setExpandedCourseIds] = useState<Set<number>>(
+    () => {
+      const initial = new Set<number>();
+      activeOrder?.items?.forEach((item) => {
+        if (item.is_voided) return;
+        initial.add(item.courseNumber ?? itemCourseMap?.[item.id] ?? 1);
+      });
+      if (currentCourse !== undefined && currentCourse !== null) {
+        initial.add(currentCourse);
+      }
+      return initial;
+    },
+  );
+  const prevItemCount = useRef<number>(0);
   // Narrow selectors — subscribe only to the specific fields we display, not the whole order
   const orderMeta = useOrderStore(
-    useShallow(s => {
-      const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+    useShallow((s) => {
+      const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
       return {
         serviceLocationId: o?.service_location_id ?? null,
         guestCount: o?.guest_count ?? 0,
@@ -492,79 +520,82 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         customerName: o?.customer_name ?? null,
         displayNumber: o?.display_number ?? null,
         orderNumber: o?.order_number ?? null,
-        dbOrderId: o?.db_order_id ?? null
-      }
-    })
-  )
-  const openCustomerSheet = useCustomerSheetStore(s => s.openSheet)
-  const tableName = useFloorPlanStore(s => {
-    const locId = orderMeta.serviceLocationId
-    if (!locId) return null
-    return s.tablesById[locId]?.name ?? locId
-  })
+        dbOrderId: o?.db_order_id ?? null,
+      };
+    }),
+  );
+  const openCustomerSheet = useCustomerSheetStore((s) => s.openSheet);
+  const tableName = useFloorPlanStore((s) => {
+    const locId = orderMeta.serviceLocationId;
+    if (!locId) return null;
+    return s.tablesById[locId]?.name ?? locId;
+  });
 
-  // Group items by course — recalculates when grouping changes OR item content changes
+  // Group items by course — recalculates when grouping changes OR item content changes.
+  // Voided items are included so BillItem can render them with the VOID badge /
+  // strikethrough styling, consistent with BillSection's BillSummary.
   const groupedItems = useMemo(() => {
-    const groups: Record<number, CartItem[]> = {}
-    activeOrder?.items?.forEach(item => {
-      if (item.is_voided) return
-      const course = item.courseNumber ?? itemCourseMap?.[item.id] ?? 1
+    const groups: Record<number, CartItem[]> = {};
+    activeOrder?.items?.forEach((item) => {
+      const course = item.courseNumber ?? itemCourseMap?.[item.id] ?? 1;
       if (!groups[course]) {
-        groups[course] = []
+        groups[course] = [];
       }
-      groups[course].push(item)
-    })
+      groups[course].push(item);
+    });
     // Stable sort within each course so broadcast re-ordering doesn't cause visual jumps
-    Object.values(groups).forEach(arr => {
+    Object.values(groups).forEach((arr) => {
       arr.sort((a, b) => {
-        const ka = a.db_order_item_id ?? a.id
-        const kb = b.db_order_item_id ?? b.id
-        return ka < kb ? -1 : ka > kb ? 1 : 0
-      })
-    })
-    return groups
-  }, [activeOrder?.items, itemCourseMap])
+        const ka = a.db_order_item_id ?? a.id;
+        const kb = b.db_order_item_id ?? b.id;
+        return ka < kb ? -1 : ka > kb ? 1 : 0;
+      });
+    });
+    return groups;
+  }, [activeOrder?.items, itemCourseMap]);
 
-  // Flat (no-coursing) item list — same filter + sort as groupedItems.
+  // Flat (no-coursing) item list — same sort as groupedItems.
   // Used when enableCoursing=false so the bill renders without any course header.
+  // Voided items are included so BillItem can render them with the VOID badge /
+  // strikethrough styling, consistent with BillSection's BillSummary.
   // Depend on activeOrder.items so discount/subtotal-only updates render immediately.
   const flatItems = useMemo(() => {
-    const items = (activeOrder?.items ?? []).filter(i => !i.is_voided)
+    const items = [...(activeOrder?.items ?? [])];
     items.sort((a, b) => {
-      const ka = a.db_order_item_id ?? a.id
-      const kb = b.db_order_item_id ?? b.id
-      return ka < kb ? -1 : ka > kb ? 1 : 0
-    })
-    return items
-  }, [activeOrder?.items])
+      const ka = a.db_order_item_id ?? a.id;
+      const kb = b.db_order_item_id ?? b.id;
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
+    return items;
+  }, [activeOrder?.items]);
 
   // All course numbers tracked in the coursing store (includes empty open
   // courses created via "New Course" that don't yet have items). Without this,
   // tapping a previous course to set it as working would drop empty headers
   // from the visible set.
   const storeCourseNumbers = useCoursingStore(
-    useShallow(s => {
-      const oid = activeOrder?.id
-      if (!oid) return [] as number[]
-      const o = s.byOrderId[oid]
-      if (!o) return [] as number[]
-      return Object.keys(o.courses).map(Number)
-    })
-  )
+    useShallow((s) => {
+      const oid = activeOrder?.id;
+      if (!oid) return [] as number[];
+      const o = s.byOrderId[oid];
+      if (!o) return [] as number[];
+      return Object.keys(o.courses).map(Number);
+    }),
+  );
 
   // Sort course keys
   const sortedCourses = useMemo(() => {
-    const coursesFromItems = Object.keys(groupedItems).map(Number)
-    const allCourses = new Set<number>(coursesFromItems)
+    const coursesFromItems = Object.keys(groupedItems).map(Number);
+    const allCourses = new Set<number>(coursesFromItems);
 
-    for (const n of storeCourseNumbers) allCourses.add(n)
+    for (const n of storeCourseNumbers) allCourses.add(n);
 
     if (activeOrder && currentCourse !== undefined && currentCourse !== null) {
-      allCourses.add(currentCourse)
+      allCourses.add(currentCourse);
     }
 
-    return Array.from(allCourses).sort((a, b) => a - b)
-  }, [groupedItems, activeOrder, currentCourse, storeCourseNumbers])
+    return Array.from(allCourses).sort((a, b) => a - b);
+  }, [groupedItems, activeOrder, currentCourse, storeCourseNumbers]);
 
   // Total non-voided items still waiting to be sent — matches the filter used
   // by TableOrderView.handleSendAllToKitchen so the badge can't over-promise.
@@ -572,34 +603,36 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
     () =>
       activeOrder?.items?.reduce(
         (sum, i) =>
-          !i.is_voided && isKitchenItemUnsent(i) ? sum + (i.quantity ?? 1) : sum,
-        0
+          !i.is_voided && isKitchenItemUnsent(i)
+            ? sum + (i.quantity ?? 1)
+            : sum,
+        0,
       ) ?? 0,
-    [activeOrder?.items]
-  )
+    [activeOrder?.items],
+  );
 
   // Track previous values to prevent re-triggering
-  const prevCurrentCourse = useRef<number | undefined>(currentCourse)
+  const prevCurrentCourse = useRef<number | undefined>(currentCourse);
 
   // Auto-expand logic: When items are added, expand the current/working course
   useEffect(() => {
-    const currentItemCount = activeOrder?.items?.length ?? 0
+    const currentItemCount = activeOrder?.items?.length ?? 0;
 
     // Only auto-expand when items are ADDED (count increased)
     if (
       currentItemCount > prevItemCount.current &&
       currentCourse !== undefined
     ) {
-      setExpandedCourseIds(prev => {
-        if (prev.has(currentCourse)) return prev
-        const next = new Set(prev)
-        next.add(currentCourse)
-        return next
-      })
+      setExpandedCourseIds((prev) => {
+        if (prev.has(currentCourse)) return prev;
+        const next = new Set(prev);
+        next.add(currentCourse);
+        return next;
+      });
     }
 
-    prevItemCount.current = currentItemCount
-  }, [activeOrder?.items?.length, currentCourse])
+    prevItemCount.current = currentItemCount;
+  }, [activeOrder?.items?.length, currentCourse]);
 
   // Also auto-expand when currentCourse changes (e.g., "Start New Course")
   useEffect(() => {
@@ -608,38 +641,38 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       currentCourse !== null &&
       currentCourse !== prevCurrentCourse.current
     ) {
-      setExpandedCourseIds(prev => {
-        if (prev.has(currentCourse)) return prev
-        const next = new Set(prev)
-        next.add(currentCourse)
-        return next
-      })
-      prevCurrentCourse.current = currentCourse
+      setExpandedCourseIds((prev) => {
+        if (prev.has(currentCourse)) return prev;
+        const next = new Set(prev);
+        next.add(currentCourse);
+        return next;
+      });
+      prevCurrentCourse.current = currentCourse;
     }
-  }, [currentCourse])
+  }, [currentCourse]);
 
-  const onSelectCourseRef = useRef(onSelectCourse)
-  onSelectCourseRef.current = onSelectCourse
+  const onSelectCourseRef = useRef(onSelectCourse);
+  onSelectCourseRef.current = onSelectCourse;
 
   // Toggle expansion only. Selecting a working course is now a separate
   // action wired to handleSelectCourseTap (chevron taps don't change the
   // working course).
   const handleToggleCourse = useCallback((courseId: number) => {
-    setExpandedCourseIds(prev => {
-      const next = new Set(prev)
+    setExpandedCourseIds((prev) => {
+      const next = new Set(prev);
       if (next.has(courseId)) {
-        next.delete(courseId)
+        next.delete(courseId);
       } else {
-        next.add(courseId)
+        next.add(courseId);
       }
-      return next
-    })
-  }, [])
+      return next;
+    });
+  }, []);
 
   // Tap on the header body: select as working course without toggling expansion.
   const handleSelectCourseTap = useCallback((courseId: number) => {
-    queueMicrotask(() => onSelectCourseRef.current?.(courseId))
-  }, [])
+    queueMicrotask(() => onSelectCourseRef.current?.(courseId));
+  }, []);
 
   // Pre-warm modifier cache for ALL items regardless of accordion state.
   // BillItem's own preWarm only fires when mounted (expanded). This ensures
@@ -648,125 +681,131 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
     () =>
       Array.from(
         new Set(
-          (activeOrder?.items ?? []).map(i => i.menuItemId).filter(Boolean)
-        )
-      ).join(','),
-    [activeOrder?.items]
-  )
+          (activeOrder?.items ?? []).map((i) => i.menuItemId).filter(Boolean),
+        ),
+      ).join(","),
+    [activeOrder?.items],
+  );
   useEffect(() => {
-    const allItemIds = allItemIdsKey ? allItemIdsKey.split(',') : []
-    if (allItemIds.length === 0) return
+    const allItemIds = allItemIdsKey ? allItemIdsKey.split(",") : [];
+    if (allItemIds.length === 0) return;
     const handle = setTimeout(() => {
-      const store = useModifierSidebarStore.getState()
-      const menuStore = useMenuStore.getState()
+      const store = useModifierSidebarStore.getState();
+      const menuStore = useMenuStore.getState();
       for (const menuItemId of allItemIds) {
-        const menuItem = menuStore.getMenuItemById(menuItemId)
+        const menuItem = menuStore.getMenuItemById(menuItemId);
         if (menuItem?.modifierGroupIds?.length) {
-          store.preWarm(menuItem)
+          store.preWarm(menuItem);
         }
       }
-    }, 50) // slight delay to not block initial render
-    return () => clearTimeout(handle)
-  }, [allItemIdsKey])
+    }, 50); // slight delay to not block initial render
+    return () => clearTimeout(handle);
+  }, [allItemIdsKey]);
 
   if (!activeOrder) {
     return (
-      <View className='flex-1 items-center justify-center'>
-        <Text style={{ fontSize: 12, color: colors.muted }}>
+      <View className="flex-1 items-center justify-center">
+        <Text style={{ fontSize: s(12), color: colors.muted }}>
           No active order.
         </Text>
       </View>
-    )
+    );
   }
 
   const Dot = () => (
-    <Text style={{ fontSize: 10, color: colors.muted, marginHorizontal: 3 }}>
+    <Text
+      style={{ fontSize: s(10), color: colors.muted, marginHorizontal: s(3) }}
+    >
       ·
     </Text>
-  )
-  const guestCount = orderMeta.guestCount
+  );
+  const guestCount = orderMeta.guestCount;
 
   return (
     <View
-      className='flex-1'
-      style={{ backgroundColor: colors.panel, padding: 16 }}
+      className="flex-1"
+      style={{ backgroundColor: colors.panel, padding: s(16) }}
     >
       {/* Meta info row */}
       <View
-        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginBottom: s(6),
+        }}
       >
         {tableName && (
           <Text
-            style={{ fontSize: 10, fontWeight: '600', color: colors.label }}
+            style={{ fontSize: s(10), fontWeight: "600", color: colors.label }}
           >
             {tableName}
           </Text>
         )}
         <Dot />
-        <Text style={{ fontSize: 10, color: colors.muted }}>
-          {guestCount || 1} guest{(guestCount || 1) !== 1 ? 's' : ''}
+        <Text style={{ fontSize: s(10), color: colors.muted }}>
+          {guestCount || 1} guest{(guestCount || 1) !== 1 ? "s" : ""}
         </Text>
         <Dot />
         <TouchableOpacity
           onPress={onOpenServerSheet}
-          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          hitSlop={{ top: s(8), bottom: s(8), left: s(4), right: s(4) }}
         >
           <Text
             style={{
-              fontSize: 10,
-              color: orderMeta.serverName ? colors.muted : colors.teal
+              fontSize: s(10),
+              color: orderMeta.serverName ? colors.muted : colors.teal,
             }}
           >
-            {orderMeta.serverName || 'Assign server'}
+            {orderMeta.serverName || "Assign server"}
           </Text>
         </TouchableOpacity>
         <Dot />
         <TouchableOpacity
           onPress={openCustomerSheet}
-          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          hitSlop={{ top: s(8), bottom: s(8), left: s(4), right: s(4) }}
         >
           <Text
             style={{
-              fontSize: 10,
-              color: orderMeta.customerName ? colors.muted : colors.teal
+              fontSize: s(10),
+              color: orderMeta.customerName ? colors.muted : colors.teal,
             }}
           >
-            {orderMeta.customerName || 'Add customer'}
+            {orderMeta.customerName || "Add customer"}
           </Text>
         </TouchableOpacity>
       </View>
 
       {/* Main Header */}
-      <View className='flex-row items-center justify-between pb-3 mb-2'>
+      <View className="flex-row items-center justify-between pb-3 mb-2">
         <Text
-          style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
         >
-          Order{' '}
+          Order{" "}
           {orderMeta.displayNumber
-            ? orderMeta.displayNumber.startsWith('#')
+            ? orderMeta.displayNumber.startsWith("#")
               ? orderMeta.displayNumber
               : `#${orderMeta.displayNumber}`
             : orderMeta.orderNumber
-            ? `#${orderMeta.orderNumber}`
-            : orderMeta.dbOrderId
-            ? `#${orderMeta.dbOrderId.substring(0, 8)}`
-            : ''}
+              ? `#${orderMeta.orderNumber}`
+              : orderMeta.dbOrderId
+                ? `#${orderMeta.dbOrderId.substring(0, 8)}`
+                : ""}
         </Text>
-        <View className='flex-row items-center gap-2'>
+        <View className="flex-row items-center gap-2">
           {isOvertime && (
             <View
               style={{
-                backgroundColor: colors.warning + '30',
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: 999
+                backgroundColor: colors.warning + "30",
+                paddingHorizontal: s(10),
+                paddingVertical: s(4),
+                borderRadius: 999,
               }}
             >
               <Text
                 style={{
-                  fontSize: 10,
-                  fontWeight: '600',
-                  color: colors.warning
+                  fontSize: s(10),
+                  fontWeight: "600",
+                  color: colors.warning,
                 }}
               >
                 {overtimeMinutes}min exceeded
@@ -777,20 +816,24 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
             <TouchableOpacity
               onPress={onPressStartNewCourse}
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 8,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: s(6),
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
+                borderRadius: s(8),
                 borderWidth: 1,
-                borderColor: colors.teal
+                borderColor: colors.teal,
               }}
               activeOpacity={0.8}
             >
-              <Plus size={16} color={colors.teal} />
+              <Plus size={s(16)} color={colors.teal} />
               <Text
-                style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}
+                style={{
+                  fontSize: s(11),
+                  fontWeight: "600",
+                  color: colors.teal,
+                }}
               >
                 New Course
               </Text>
@@ -809,7 +852,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         <Animated.View layout={LinearTransition.duration(250)}>
           {enableCoursing ? (
             sortedCourses.length > 0 ? (
-              sortedCourses.map(courseId => (
+              sortedCourses.map((courseId) => (
                 <CourseGroup
                   key={`course-${courseId}`}
                   orderId={activeOrder.id}
@@ -828,26 +871,26 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
                 />
               ))
             ) : (
-              <View className='flex-1 items-center justify-center mt-10'>
-                <Text style={{ fontSize: 12, color: colors.muted }}>
+              <View className="flex-1 items-center justify-center mt-10">
+                <Text style={{ fontSize: s(12), color: colors.muted }}>
                   Add items to start an order.
                 </Text>
               </View>
             )
           ) : flatItems.length > 0 ? (
-            <View className='gap-y-2'>
-              {flatItems.map(item => (
+            <View className="gap-y-2">
+              {flatItems.map((item) => (
                 <CourseBillItemRow
                   key={item.id}
                   orderId={activeOrder.id}
                   itemId={item.id}
-                  className='overflow-hidden'
+                  className="overflow-hidden"
                 />
               ))}
             </View>
           ) : (
-            <View className='flex-1 items-center justify-center mt-10'>
-              <Text style={{ fontSize: 12, color: colors.muted }}>
+            <View className="flex-1 items-center justify-center mt-10">
+              <Text style={{ fontSize: s(12), color: colors.muted }}>
                 Add items to start an order.
               </Text>
             </View>
@@ -855,7 +898,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         </Animated.View>
       </ScrollView>
     </View>
-  )
-}
+  );
+};
 
-export default CourseAccordion
+export default CourseAccordion;

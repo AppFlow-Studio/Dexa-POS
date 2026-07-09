@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import { useLocationConfigStore } from './useLocationConfigStore'
 import { useMenuStore } from './useMenuStore'
 import { useSeatingStore } from './useSeatingStore'
+import { useSettingsStore } from './useSettingsStore'
 
 /**
  * Fire-and-forget prefetch for a single menu item's remote image. Used by
@@ -85,6 +86,19 @@ type PreWarmEntry = {
 }
 
 const preWarmCache = new Map<string, PreWarmEntry>()
+
+// Perf F5: whole categories are now pre-warmed (not just the first 6-12
+// items), so cap the cache. FIFO eviction — Map iteration order is insertion
+// order, and the TTL already handles staleness.
+const PREWARM_MAX_ENTRIES = 400
+
+function capPreWarmCache () {
+  while (preWarmCache.size > PREWARM_MAX_ENTRIES) {
+    const oldestKey = preWarmCache.keys().next().value
+    if (oldestKey === undefined) break
+    preWarmCache.delete(oldestKey)
+  }
+}
 
 /** Clear all cached precomputed modifier data. Call after menu sync to avoid stale modifiers. */
 export function clearModifierPreWarmCache () {
@@ -189,6 +203,96 @@ interface ModifierSidebarState {
 }
 
 /**
+ * Build the modifier selection map for EDIT mode — restore the cart item's
+ * saved selections (true, or 'no' for explicit "no X" options). Lazy: only
+ * true/'no' values are set; the component treats unset as false.
+ */
+function buildEditModeSelections (
+  modifiers: ModifierCategory[],
+  cartItem: CartItem
+): ModifierSelection {
+  const selections: ModifierSelection = {}
+  modifiers.forEach(category => {
+    selections[category.id] = {}
+    const existingModifier = cartItem.customizations.modifiers?.find(
+      mod => mod.categoryId === category.id
+    )
+    if (existingModifier) {
+      existingModifier.options.forEach(selectedOption => {
+        selections[category.id][selectedOption.id] = selectedOption.isNo
+          ? 'no'
+          : true
+      })
+    }
+  })
+  return selections
+}
+
+/**
+ * Build the modifier selection map for ADD mode — apply the auto-select rules.
+ * Reads the local `autoSelectFirstRequiredOption` setting, so this MUST run at
+ * open() time (not only at pre-warm) or a settings toggle won't take effect on
+ * already-cached items.
+ *   - setting OFF → required groups are left empty (NO pre-selection at all,
+ *     including any configured `isDefault`); submit-time validation in
+ *     ModifierScreen enforces a manual pick.
+ *   - setting ON → required groups are pre-selected: the configured default if
+ *     present (single = first, multiple = all), otherwise the first free ($0)
+ *     option, else the first available option.
+ * Optional (non-required) groups are unaffected by the setting and always keep
+ * their configured `isDefault` options.
+ */
+function computeAddModeSelections (
+  modifiers: ModifierCategory[]
+): ModifierSelection {
+  const settings = useSettingsStore.getState()
+  const selections: ModifierSelection = {}
+  modifiers.forEach(category => {
+    selections[category.id] = {}
+    const defaultOptions = category.options.filter(
+      option => option.isDefault === true && option.isAvailable !== false
+    )
+    const isRequired = category.type === 'required'
+    // Required groups are pre-selected ONLY when the setting is on. When off,
+    // leave them empty — suppressing even configured `isDefault` options — so
+    // the cashier must pick (submit-time validation enforces it). Optional
+    // groups are unaffected and keep their defaults (handled below).
+    if (isRequired && !settings.autoSelectFirstRequiredOption) return
+
+    // Reached only when not-required, or required-with-setting-on. For a
+    // required group with no configured default, fall back to first-free.
+    const wantFirstFree = isRequired && defaultOptions.length === 0
+
+    if (wantFirstFree) {
+      // Select first available option with price $0, else first available.
+      const freeOption = category.options.find(
+        option => option.isAvailable !== false && option.price === 0
+      )
+      if (freeOption) {
+        selections[category.id][freeOption.id] = true
+      } else {
+        const firstAvailableOption = category.options.find(
+          option => option.isAvailable !== false
+        )
+        if (firstAvailableOption) {
+          selections[category.id][firstAvailableOption.id] = true
+        }
+      }
+    } else if (defaultOptions.length > 0) {
+      // For single-select, use the first default; for multiple, use all.
+      if (category.selectionType === 'single') {
+        selections[category.id][defaultOptions[0].id] = true
+      } else {
+        defaultOptions.forEach(option => {
+          selections[category.id][option.id] = true
+        })
+      }
+    }
+  })
+  return selections
+}
+
+/**
  * Pre-compute modifier data for instant UI rendering
  * This moves the heavy computation OUT of the render cycle
  *
@@ -250,62 +354,14 @@ function precomputeModifierData (
     })
   }
 
-  // OPTIMIZED: Lazy modifier selections - only set true values
-  // Components use (selection ?? false) pattern for unset options
-  const initialSelections: ModifierSelection = {}
-  modifiers.forEach(category => {
-    initialSelections[category.id] = {}
-
-    if (cartItem) {
-      // For edit mode, only restore existing TRUE selections from cart item
-      const existingModifier = cartItem.customizations.modifiers?.find(
-        mod => mod.categoryId === category.id
-      )
-
-      if (existingModifier) {
-        existingModifier.options.forEach(selectedOption => {
-          initialSelections[category.id][selectedOption.id] =
-            selectedOption.isNo ? 'no' : true
-        })
-      }
-      // OPTIMIZATION: Skip setting false values - component uses ?? false
-    } else {
-      // For add mode, auto-select defaults
-      const defaultOptions = category.options.filter(
-        option => option.isDefault === true && option.isAvailable !== false
-      )
-
-      if (defaultOptions.length > 0) {
-        // For single-select, use the first default; for multiple, use all defaults
-        if (category.selectionType === 'single') {
-          initialSelections[category.id][defaultOptions[0].id] = true
-        } else {
-          // Multiple selection - select all defaults
-          defaultOptions.forEach(option => {
-            initialSelections[category.id][option.id] = true
-          })
-        }
-      } else if (category.type === 'required') {
-        // No defaults set on required category - select first available option with price $0
-        const freeOption = category.options.find(
-          option => option.isAvailable !== false && option.price === 0
-        )
-
-        if (freeOption) {
-          initialSelections[category.id][freeOption.id] = true
-        } else {
-          // Priority 3: No free option - select first available option
-          const firstAvailableOption = category.options.find(
-            option => option.isAvailable !== false
-          )
-          if (firstAvailableOption) {
-            initialSelections[category.id][firstAvailableOption.id] = true
-          }
-        }
-      }
-      // OPTIMIZATION: Skip setting false values - component uses ?? false
-    }
-  })
+  // Lazy modifier selections — only true/'no' values are set; the component
+  // uses (selection ?? false). Edit mode restores the cart item's saved
+  // selections; add mode applies the auto-select rules. NOTE: add-mode
+  // selections depend on local settings, so open() recomputes them when
+  // serving a cached (pre-warmed) entry — the cache can predate a toggle.
+  const initialSelections: ModifierSelection = cartItem
+    ? buildEditModeSelections(modifiers, cartItem)
+    : computeAddModeSelections(modifiers)
 
   // Set first category as active
   const activeCategory = modifiers.length > 0 ? modifiers[0].id : null
@@ -458,6 +514,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         null
       )
       preWarmCache.set(item.id, { data: result, createdAt: Date.now() })
+      capPreWarmCache()
     },
 
     preWarmMany: (items, categoryId, menuId) => {
@@ -476,6 +533,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           preWarmCache.set(item.id, { data: result, createdAt: now })
         }
       }
+      capPreWarmCache()
     },
 
     open: config => {
@@ -515,27 +573,17 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         if (cachedEntry) {
           precomputed = cachedEntry.data
 
-          // Edit mode: cache was built without cartItem → initialSelections are defaults.
-          // Override with the actual cart item modifier selections.
-          if (cartItemParam) {
-            const cartItemSelections: ModifierSelection = {}
-            precomputed.modifiers.forEach(category => {
-              cartItemSelections[category.id] = {}
-              const existingMod = cartItemParam.customizations.modifiers?.find(
-                mod => mod.categoryId === category.id
-              )
-              if (existingMod) {
-                existingMod.options.forEach(opt => {
-                  cartItemSelections[category.id][opt.id] = opt.isNo
-                    ? 'no'
-                    : true
-                })
-              }
-            })
-            precomputed = {
-              ...precomputed,
-              initialSelections: cartItemSelections
-            }
+          // The cache was built at pre-warm time, before we knew add-vs-edit
+          // and possibly before a settings toggle. Recompute the selection map
+          // now so it's current: edit mode → the cart item's saved selections;
+          // add mode → the auto-select settings (which the cached entry may
+          // predate). Without this, toggling an auto-select setting wouldn't
+          // affect already-pre-warmed items.
+          precomputed = {
+            ...precomputed,
+            initialSelections: cartItemParam
+              ? buildEditModeSelections(precomputed.modifiers, cartItemParam)
+              : computeAddModeSelections(precomputed.modifiers)
           }
 
           // PreWarm skipped setFn, so schedule deferred price lookup if menuId exists

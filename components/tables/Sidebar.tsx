@@ -1,5 +1,6 @@
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import {
   CalendarClock,
@@ -11,12 +12,6 @@ import {
 } from 'lucide-react-native'
 import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming
-} from 'react-native-reanimated'
 import PinDisplay from '../auth/PinDisplay'
 import PinNumpad from '../auth/PinNumpad'
 import HistoryPanel from '../panels/HistoryPanel'
@@ -30,16 +25,16 @@ type TabMode = 'tables' | 'waitlist' | 'reservations' | 'history'
 interface SidebarProps {
   activeLayoutId: string | null
   setActiveLayout: (id: string) => void
-  // layouts prop removed
 }
-
-const EXPANDED_WIDTH = 280
-const COLLAPSED_WIDTH = 72
 
 const Sidebar: React.FC<SidebarProps> = ({
   activeLayoutId,
   setActiveLayout
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  const EXPANDED_WIDTH = Math.round(280 * uiScale)
+  const COLLAPSED_WIDTH = Math.round(72 * uiScale)
   const [isExpanded, setIsExpanded] = useState(true)
   const [activeTab, setActiveTab] = useState<TabMode>('tables')
   const [tabsCollapsed, setTabsCollapsed] = useState(false)
@@ -47,10 +42,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [pinDialogOpen, setPinDialogOpen] = useState(false)
   const [currentPin, setCurrentPin] = useState('')
   const [targetTab, setTargetTab] = useState<TabMode | null>(null)
-
-  // Shared values for animations
-  const widthSV = useSharedValue(EXPANDED_WIDTH)
-  const opacitySV = useSharedValue(1)
 
   // Get actual Realtime Channel status (not store status)
   const { floor } = useLocationRealtime()
@@ -101,28 +92,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     // Refetch floor plan data to recover missed events during connection drop
     useFloorPlanStore.getState().loadFloorPlanStatus()
   }
-
-  useEffect(() => {
-    const config = {
-      duration: 200,
-      easing: Easing.out(Easing.quad)
-    }
-
-    widthSV.value = withTiming(
-      isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH,
-      config
-    )
-    opacitySV.value = withTiming(isExpanded ? 1 : 0, { duration: 150 })
-  }, [isExpanded])
-
-  const containerStyle = useAnimatedStyle(() => ({
-    width: widthSV.value
-  }))
-
-  const textStyle = useAnimatedStyle(() => ({
-    opacity: opacitySV.value,
-    display: opacitySV.value === 0 ? 'none' : 'flex'
-  }))
 
   const toggleSidebar = () => {
     setIsExpanded(prev => !prev)
@@ -176,17 +145,15 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      <Animated.View
-        style={[
-          containerStyle,
-          {
-            height: '100%',
-            zIndex: 20,
-            backgroundColor: colors.panel,
-            borderRightWidth: 1,
-            borderRightColor: colors.border
-          }
-        ]}
+      <View
+        style={{
+          width: isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH,
+          height: '100%',
+          zIndex: 20,
+          backgroundColor: colors.panel,
+          borderRightWidth: 1,
+          borderRightColor: colors.border
+        }}
       >
         {/* Floating Toggle Button */}
         <TouchableOpacity
@@ -195,13 +162,13 @@ const Sidebar: React.FC<SidebarProps> = ({
           activeOpacity={0.7}
           style={{
             position: 'absolute',
-            right: -14,
+            right: s(-14),
             top: '50%',
-            marginTop: -16,
+            marginTop: s(-16),
             zIndex: 50,
-            width: 32,
-            height: 32,
-            borderRadius: 16,
+            width: s(32),
+            height: s(32),
+            borderRadius: s(16),
             backgroundColor: colors.card,
             borderWidth: 1,
             borderColor: colors.border,
@@ -210,23 +177,21 @@ const Sidebar: React.FC<SidebarProps> = ({
           }}
         >
           {isExpanded ? (
-            <ChevronLeft size={16} color={colors.label} />
+            <ChevronLeft size={s(16)} color={colors.label} />
           ) : (
-            <ChevronRight size={16} color={colors.label} />
+            <ChevronRight size={s(16)} color={colors.label} />
           )}
         </TouchableOpacity>
-
-        {/* Header removed for density */}
 
         {/* Navigation Tabs */}
         <View
           style={{
-            padding: 8,
+            padding: s(8),
             flexShrink: 0,
             borderBottomWidth: isExpanded ? 1 : 0,
             borderBottomColor: colors.border,
             flexDirection: isExpanded ? 'row' : 'column',
-            gap: 4
+            gap: s(4)
           }}
         >
           {navItems.map(item => {
@@ -253,9 +218,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  height: 40,
-                  gap: 3,
-                  borderRadius: 8,
+                  height: s(40),
+                  gap: s(3),
+                  borderRadius: s(8),
                   borderWidth: 1,
                   backgroundColor: isActive
                     ? colors.teal + '20'
@@ -264,24 +229,23 @@ const Sidebar: React.FC<SidebarProps> = ({
                 }}
               >
                 <item.icon
-                  size={13}
+                  size={s(13)}
                   color={isActive ? colors.teal : colors.label}
                 />
-                <Animated.Text
-                  style={[
-                    textStyle,
-                    {
-                      fontSize: 10,
+                {isExpanded && (
+                  <Text
+                    style={{
+                      fontSize: s(10),
                       fontWeight: '600',
                       color: isActive ? colors.teal : colors.label
-                    }
-                  ]}
-                  numberOfLines={1}
-                >
-                  {item.label}
-                </Animated.Text>
+                    }}
+                    numberOfLines={1}
+                  >
+                    {item.label}
+                  </Text>
+                )}
                 {item.isLocked && !isActive && (
-                  <Lock size={11} color={colors.muted} />
+                  <Lock size={s(11)} color={colors.muted} />
                 )}
               </TouchableOpacity>
             )
@@ -289,21 +253,20 @@ const Sidebar: React.FC<SidebarProps> = ({
         </View>
 
         {/* Panel Content */}
-        <Animated.View
+        <View
           style={{
             flex: 1,
-            opacity: opacitySV,
             backgroundColor: colors.screen
           }}
         >
           {isExpanded && renderPanel()}
-        </Animated.View>
+        </View>
 
         {/* Live Status Indicator */}
         <TouchableOpacity
           style={{
-            paddingVertical: 10,
-            paddingHorizontal: 12,
+            paddingVertical: s(10),
+            paddingHorizontal: s(12),
             borderTopWidth: 1,
             borderTopColor: colors.border,
             flexDirection: 'row',
@@ -315,9 +278,9 @@ const Sidebar: React.FC<SidebarProps> = ({
         >
           <View
             style={{
-              width: 7,
-              height: 7,
-              borderRadius: 4,
+              width: s(7),
+              height: s(7),
+              borderRadius: s(4),
               backgroundColor: floor.isConnected
                 ? colors.success
                 : isSyncing
@@ -326,21 +289,18 @@ const Sidebar: React.FC<SidebarProps> = ({
             }}
           />
           {isExpanded && (
-            <Animated.Text
-              style={[
-                textStyle,
-                { marginLeft: 7, fontSize: 11, color: colors.muted }
-              ]}
+            <Text
+              style={{ marginLeft: s(7), fontSize: s(11), color: colors.muted }}
             >
               {floor.isConnected
                 ? 'Live'
                 : isSyncing
                 ? 'Syncing...'
                 : 'Offline · Tap to retry'}
-            </Animated.Text>
+            </Text>
           )}
         </TouchableOpacity>
-      </Animated.View>
+      </View>
 
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
         <DialogContent
@@ -348,16 +308,16 @@ const Sidebar: React.FC<SidebarProps> = ({
             backgroundColor: colors.panel,
             borderColor: colors.border,
             borderWidth: 1,
-            borderRadius: 16,
-            padding: 24,
-            width: 360
+            borderRadius: s(16),
+            padding: s(24),
+            width: s(360)
           }}
         >
           <DialogHeader>
             <DialogTitle>
               <Text
                 style={{
-                  fontSize: 16,
+                  fontSize: s(16),
                   fontWeight: '700',
                   color: colors.heading,
                   textAlign: 'center'
@@ -367,13 +327,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               </Text>
             </DialogTitle>
           </DialogHeader>
-          <View style={{ paddingTop: 16 }}>
+          <View style={{ paddingTop: s(16) }}>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 color: colors.label,
                 textAlign: 'center',
-                marginBottom: 20
+                marginBottom: s(20)
               }}
             >
               Enter your manager PIN to access this feature
@@ -401,9 +361,9 @@ const Sidebar: React.FC<SidebarProps> = ({
             <TouchableOpacity
               onPress={handlePinSubmit}
               style={{
-                marginTop: 16,
-                paddingVertical: 12,
-                borderRadius: 8,
+                marginTop: s(16),
+                paddingVertical: s(12),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + '20',
                 borderWidth: 1,
                 borderColor: colors.teal + '50',
@@ -411,7 +371,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <Text
-                style={{ fontSize: 14, fontWeight: '700', color: colors.teal }}
+                style={{ fontSize: s(14), fontWeight: '700', color: colors.teal }}
               >
                 Confirm
               </Text>

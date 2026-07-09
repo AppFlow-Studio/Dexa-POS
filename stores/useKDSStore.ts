@@ -11,6 +11,9 @@ import {
     toBulkUpdateStatusKey,
     toIdempotencyKey,
 } from "@/lib/network/idempotencyKey";
+import { isRecallExpired } from "@/lib/kdsAutomation";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { normalizePlatform } from "@/lib/platformAliases";
 import { createLazyPersistStorage, getJSON, setJSON } from "@/lib/storage";
 import { OrderService } from "@/services/orderService";
@@ -131,6 +134,7 @@ interface KDSState {
   markItemDone: (ticketId: string, itemId: string) => void;
   acknowledgeNoticeItem: (ticketId: string, itemId: string) => void;
   isTicketRecalled: (ticketId: string) => boolean;
+  isRushPending: (ticketId: string) => boolean;
 
   // Done tickets
   recallDoneTicket: (ticketId: string) => void;
@@ -146,7 +150,9 @@ interface KDSState {
   selectAllVisible: (ids: string[]) => void;
   clearSelection: () => void;
   bulkAdvanceTickets: (ticketIds: string[], locationId: string) => void;
-  bulkMarkTicketsDone: (ticketIds: string[]) => void;
+  bulkMarkTicketsDone: (
+    ticketIds: string[],
+  ) => { done: number; skippedNotice: number };
 
   // Config
   setNewOrderPosition: (pos: "left" | "right") => void;
@@ -242,8 +248,12 @@ function restoreKdsRetryState(): void {
   }
 
   _recalledTicketIds.clear();
+  _recalledTicketAt.clear();
   for (const ticketId of persisted.recalledTicketIds ?? []) {
     _recalledTicketIds.add(ticketId);
+    // Restart the TTL clock on boot (persisted shape is id-only) — a stale
+    // recall persists at most RECALLED_TICKET_TTL after a restart.
+    _recalledTicketAt.set(ticketId, Date.now());
   }
 
   // Retry handles are not executable across app restarts because callbacks are ephemeral.
@@ -274,13 +284,30 @@ function deletePendingAction(ticketId: string): void {
 function addRecalledTicketId(ticketId: string): void {
   _recalledTicketIds.add(ticketId);
   _recalledCycleTicketIds.add(ticketId);
+  _recalledTicketAt.set(ticketId, Date.now());
   persistKdsRetryState();
 }
 
 function deleteRecalledTicketId(ticketId: string): void {
+  _recalledTicketAt.delete(ticketId);
   if (_recalledTicketIds.delete(ticketId)) {
     persistKdsRetryState();
   }
+}
+
+// Evict recalls older than RECALLED_TICKET_TTL from both Sets + the timestamp
+// map so an unfinished recall can't accumulate over a shift / across restarts.
+function cullExpiredRecalls(now: number): void {
+  if (_recalledTicketAt.size === 0) return;
+  let changed = false;
+  for (const [ticketId, at] of _recalledTicketAt) {
+    if (isRecallExpired(at, now, RECALLED_TICKET_TTL)) {
+      _recalledTicketAt.delete(ticketId);
+      _recalledCycleTicketIds.delete(ticketId);
+      if (_recalledTicketIds.delete(ticketId)) changed = true;
+    }
+  }
+  if (changed) persistKdsRetryState();
 }
 
 function scheduleRetry(
@@ -383,9 +410,23 @@ function getTicketMutationVersion(ticketId: string): number {
   return _ticketMutationVersions.get(ticketId) ?? 0;
 }
 
+// Drop the version entry for a ticket that has left state. Without this the
+// Map only ever grows (bump on every mutation, never deleted) — one entry per
+// ticket id ever seen, for the whole KDS session. Called from every ticket-
+// removal site and on _cleanup.
+function deleteTicketMutationVersion(ticketId: string): void {
+  _ticketMutationVersions.delete(ticketId);
+}
+
 /** Track ticket IDs that have been recalled — survives server refetches */
 const _recalledTicketIds = new Set<string>();
 const _recalledCycleTicketIds = new Set<string>();
+// Recall timestamps for TTL eviction. Recalls are removed on ticket completion,
+// but an incomplete recall (customer leaves, ticket never served) would otherwise
+// linger in the Sets forever — and across restarts, since they persist to MMKV.
+// TTL-cull them in overlayPendingActions (mirrors _pendingActions' TTL prune).
+const _recalledTicketAt = new Map<string, number>();
+const RECALLED_TICKET_TTL = 4 * 60 * 60 * 1000; // 4h — far past any live ticket
 
 /** Track order item IDs whose void/refund notice has been acknowledged locally.
  *  Persisted to MMKV so acknowledgements survive app restarts when there is no
@@ -450,6 +491,9 @@ function overlayPendingActions(tickets: KDSTicket[]): KDSTicket[] {
       deletePendingAction(ticketId);
     }
   }
+
+  // Evict long-stale recalls (4h TTL) so unfinished recalls don't accumulate.
+  cullExpiredRecalls(now);
 
   // Some bulk-done flows can regenerate ticket IDs from broadcast/refetch before
   // backend state fully settles. Keep those tickets hidden if all incoming items
@@ -649,6 +693,29 @@ const TERMINAL_ORDER_STATUSES = new Set([
   "void",
 ]);
 
+/**
+ * Tickets removed by a REMOTE 'completed' broadcast (e.g. Online Orders
+ * "Mark done", or another station bumping the order) belong in the local
+ * Done tab, same as an on-device served-bump. Returns the doneTickets/
+ * doneCount patch to spread into the same set() as the removal. Cancelled/
+ * refunded/void removals should NOT call this — that work was never done.
+ */
+function buildRemoteDonePatch(
+  removed: KDSTicket[],
+  currentDone: KDSTicket[],
+): Partial<KDSState> {
+  if (removed.length === 0) return {};
+  const updatedDone = dedupeTicketsByIdKeepFirst([
+    ...removed.map((t) => ({
+      ...t,
+      status: "done" as KDSTicket["status"],
+      done_time_epoch: Date.now(),
+    })),
+    ...currentDone,
+  ]).slice(0, 50);
+  return { doneTickets: updatedDone, doneCount: updatedDone.length };
+}
+
 function getEffectiveItemQuantity(
   item: Pick<KDSTicketItem, "quantity">,
 ): number {
@@ -660,8 +727,8 @@ function getEffectiveItemQuantity(
 function isActionableKitchenItem(
   item: Pick<
     KDSTicketItem,
-    "is_voided" | "refunded_quantity" | "quantity" | "kitchen_status"
-  >,
+    "is_voided" | "refunded_quantity" | "quantity"
+  > & { kitchen_status: string | null },
 ): boolean {
   const status = (item.kitchen_status ?? "").toLowerCase();
   const isTerminalKitchenStatus =
@@ -874,6 +941,7 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
       prep_station: item.prep_station,
       rush: item.rush,
       is_prioritized: item.is_prioritized,
+      is_to_go: item.is_to_go,
       seat_number: item.seat_number ?? null,
       is_voided: item.is_voided,
       is_refunded: (item.refunded_quantity ?? 0) > 0,
@@ -924,6 +992,12 @@ function arraysShallowEqual(a: KDSTicket[], b: KDSTicket[]): boolean {
 /** Deep-compare two tickets by value, reusing unchanged references */
 function ticketDeepEqual(a: KDSTicket, b: KDSTicket): boolean {
   if (a.status !== b.status || a.prioritized !== b.prioritized) return false;
+  // Track the freeze epochs: when a ticket flips to "ready" the only field that
+  // changes can be ready_time_epoch (server completed_at). Without this the merge
+  // treats the ticket as unchanged, keeps the old (un-frozen / per-device) ref,
+  // and the "Served" timer keeps ticking. done_time_epoch tracked for parity.
+  if (a.ready_time_epoch !== b.ready_time_epoch) return false;
+  if (a.done_time_epoch !== b.done_time_epoch) return false;
   if (a.item_count !== b.item_count || a.order_number !== b.order_number)
     return false;
   if (a.display_number !== b.display_number || a.table_name !== b.table_name)
@@ -1399,9 +1473,19 @@ export const useKDSStore = create<KDSState>()(
             params.p_kds_display_id = kdsDisplayId;
           }
 
-          const { data, error } = await client.rpc(
-            "get_kds_tickets_v2",
-            params,
+          // Bad-WiFi: bound the KDS poll so it can't hang 30s+ on a slow link
+          // (this is the live hot-path fetch). On DEADLINE_EXCEEDED it returns
+          // { error } and the branch below resets isFetching; the next poll
+          // (15-30s, connection-quality-aware) recovers.
+          const { data, error } = await runWithDeadline<KDSTicket[]>(
+            "get_kds_tickets",
+            DEADLINES.read,
+            async (signal) => {
+              const res = await client
+                .rpc("get_kds_tickets_v2", params)
+                .abortSignal(signal);
+              return { data: res.data as KDSTicket[] | null, error: res.error };
+            },
           );
 
           // Discard stale response (but still reset isFetching)
@@ -1421,6 +1505,19 @@ export const useKDSStore = create<KDSState>()(
             normalizeKdsTicket({
               ...t,
               start_time_epoch: safeParseUtcTimestamp(t.start_time),
+              // Server-authoritative freeze for the "Served" (ready) column.
+              // get_kds_tickets_v2 returns ready_time = MAX(completed_at) across the
+              // round's active items — uniform across stations and stable across
+              // refetches, unlike the old per-device Date.now() stamp. Only set it
+              // for ready tickets; 0 (missing/unparseable) collapses to undefined so
+              // we never freeze a still-cooking ticket at epoch 0.
+              ready_time_epoch:
+                t.status === "ready"
+                  ? safeParseUtcTimestamp(
+                      (t as KDSTicket & { ready_time?: string | null })
+                        .ready_time,
+                    ) || undefined
+                  : undefined,
             }),
           );
           const stabilizedIncoming = stabilizeTicketsByLogicalSignature(
@@ -1523,9 +1620,16 @@ export const useKDSStore = create<KDSState>()(
             params.p_kds_display_id = kdsDisplayId;
           }
 
-          const { data, error } = await client.rpc(
-            "get_kds_tickets_v2",
-            params,
+          // Bad-WiFi: bound the background KDS poll (same as fetchTickets).
+          const { data, error } = await runWithDeadline<KDSTicket[]>(
+            "get_kds_tickets",
+            DEADLINES.read,
+            async (signal) => {
+              const res = await client
+                .rpc("get_kds_tickets_v2", params)
+                .abortSignal(signal);
+              return { data: res.data as KDSTicket[] | null, error: res.error };
+            },
           );
 
           // Discard stale response
@@ -1554,6 +1658,19 @@ export const useKDSStore = create<KDSState>()(
             normalizeKdsTicket({
               ...t,
               start_time_epoch: safeParseUtcTimestamp(t.start_time),
+              // Server-authoritative freeze for the "Served" (ready) column.
+              // get_kds_tickets_v2 returns ready_time = MAX(completed_at) across the
+              // round's active items — uniform across stations and stable across
+              // refetches, unlike the old per-device Date.now() stamp. Only set it
+              // for ready tickets; 0 (missing/unparseable) collapses to undefined so
+              // we never freeze a still-cooking ticket at epoch 0.
+              ready_time_epoch:
+                t.status === "ready"
+                  ? safeParseUtcTimestamp(
+                      (t as KDSTicket & { ready_time?: string | null })
+                        .ready_time,
+                    ) || undefined
+                  : undefined,
             }),
           );
           const stabilizedIncoming = stabilizeTicketsByLogicalSignature(
@@ -1868,6 +1985,7 @@ export const useKDSStore = create<KDSState>()(
           // Avoid shallow-copying entire map — use Object.create trick with deletion
           updatedById = Object.assign({}, _ticketsById);
           delete updatedById[ticketId];
+          deleteTicketMutationVersion(ticketId);
 
           if (ticket) {
             const updatedDone = dedupeTicketsByIdKeepFirst([
@@ -2132,6 +2250,21 @@ export const useKDSStore = create<KDSState>()(
         const order = payload.data?.order;
         if (!order) return;
 
+        // Pre-gate before allocating a debounce timer. On a POS station (which
+        // still keeps the KDS store warm for the KDS screen) EVERY location
+        // order broadcast lands here; an order that was never fired to the
+        // kitchen and isn't in a kitchen/terminal status can never produce or
+        // remove a ticket, so _processOrderBroadcast would early-return anyway.
+        // Filtering here avoids per-broadcast setTimeout/Map churn under a busy
+        // floor. Terminal statuses are allowed through so ticket REMOVAL still
+        // runs (a completed/voided order may carry sent_to_kitchen_at).
+        const isKitchenRelevant =
+          !!order.sent_to_kitchen_at ||
+          order.status === "sent_to_kitchen" ||
+          order.status === "preparing" ||
+          TERMINAL_ORDER_STATUSES.has(order.status);
+        if (!isKitchenRelevant) return;
+
         // Debounce per-order: bulk_update_order_item_status fires one DB trigger per
         // row, producing N rapid broadcasts with partial item state. Hold 80ms and
         // only process the last one to prevent flickering item counts.
@@ -2150,11 +2283,13 @@ export const useKDSStore = create<KDSState>()(
         const order = payload.data?.order;
         if (!order) return;
 
-        console.log("[KDSStore] Broadcast received:", {
-          orderId: order.id,
-          sessionId: order.session_id,
-          tableNumber: order.table_number,
-        });
+        if (__DEV__) {
+          console.log("[KDSStore] Broadcast received:", {
+            orderId: order.id,
+            sessionId: order.session_id,
+            tableNumber: order.table_number,
+          });
+        }
 
         // Gate: order must have been fired to kitchen
         // Accept sent_to_kitchen_at OR status of sent_to_kitchen/preparing
@@ -2186,13 +2321,23 @@ export const useKDSStore = create<KDSState>()(
               const filtered = tickets.filter(
                 (t) => !orderTids!.has(t.ticket_id),
               );
+              // Remote completion (e.g. Online Orders "Mark done") → Done tab;
+              // cancelled/refunded/void just disappear.
+              const removed =
+                order.status === "completed"
+                  ? tickets.filter((t) => orderTids!.has(t.ticket_id))
+                  : [];
               const bucketed = smartBucketTickets(
                 filtered,
                 get().ticketsByStatus,
                 get().prioritizedTicketIds,
                 get().newOrderPosition,
               );
-              set({ tickets: filtered, ...bucketed });
+              set({
+                tickets: filtered,
+                ...bucketed,
+                ...buildRemoteDonePatch(removed, get().doneTickets),
+              });
             }
             return;
           }
@@ -2254,13 +2399,22 @@ export const useKDSStore = create<KDSState>()(
               const filtered = tickets.filter(
                 (t) => !orderTids!.has(t.ticket_id),
               );
+              // Remote completion → Done tab (see header-only path above).
+              const removed =
+                order.status === "completed"
+                  ? tickets.filter((t) => orderTids!.has(t.ticket_id))
+                  : [];
               const bucketed = smartBucketTickets(
                 filtered,
                 get().ticketsByStatus,
                 get().prioritizedTicketIds,
                 get().newOrderPosition,
               );
-              set({ tickets: filtered, ...bucketed });
+              set({
+                tickets: filtered,
+                ...bucketed,
+                ...buildRemoteDonePatch(removed, get().doneTickets),
+              });
             }
             return;
           }
@@ -2662,6 +2816,10 @@ export const useKDSStore = create<KDSState>()(
       },
 
       isTicketRecalled: (ticketId: string) => _recalledTicketIds.has(ticketId),
+      isRushPending: (ticketId: string) => {
+        const pending = _pendingActions.get(ticketId);
+        return pending?.rushOverride != null;
+      },
 
       prioritizeTicket: (ticketId: string) => {
         const { tickets, _ticketsById, prioritizedTicketIds } = get();
@@ -2745,6 +2903,11 @@ export const useKDSStore = create<KDSState>()(
         const { tickets, _ticketsById } = get();
         const ticket = _ticketsById[ticketId];
         if (!ticket) return;
+
+        // Guard against rapid toggles: if a rush action is already pending for
+        // this ticket, wait for it to settle before allowing another toggle.
+        const existingPending = _pendingActions.get(ticketId);
+        if (existingPending?.rushOverride != null) return;
 
         const currentRush = ticket.items.some((i) => i.rush);
         const newRush = !currentRush;
@@ -2955,6 +3118,7 @@ export const useKDSStore = create<KDSState>()(
           updatedTickets = tickets.filter((t) => t.ticket_id !== ticketId);
           updatedById = { ..._ticketsById };
           delete updatedById[ticketId];
+          deleteTicketMutationVersion(ticketId);
         } else {
           const updatedTicket = { ...ticket, items: updatedItems };
           updatedTickets = tickets.map((t) =>
@@ -2979,7 +3143,13 @@ export const useKDSStore = create<KDSState>()(
           if (kdsDisplayId) params.p_kds_display_id = kdsDisplayId;
           scheduleRetry(
             `ack_notice_${ticketId}_${itemId}`,
-            () => client.rpc("acknowledge_kds_notice", params),
+            async () => {
+              const { error } = await client.rpc(
+                "acknowledge_kds_notice",
+                params,
+              );
+              if (error) throw error;
+            },
             0,
             () => {
               const lastLoc = get()._lastLocationId;
@@ -3406,13 +3576,26 @@ export const useKDSStore = create<KDSState>()(
         const matchedTickets = tickets.filter((t) =>
           ticketSet.has(t.ticket_id),
         );
-        if (matchedTickets.length === 0) return;
+        if (matchedTickets.length === 0) {
+          return { done: 0, skippedNotice: 0 };
+        }
 
         // Build single optimistic state update for ALL tickets at once
         const removedIds = new Set<string>();
         const newDoneTickets: KDSTicket[] = [];
+        let skippedNotice = 0;
 
         for (const ticket of matchedTickets) {
+          // Block bulk-done on any ticket carrying an unacknowledged void/refund.
+          // The void is a notice the cook must handle explicitly — and since
+          // bulk-done never acknowledges it, the server keeps returning the
+          // ticket, so it would just reappear on the next fetch anyway. Leave it
+          // on the board and report it so the caller can warn.
+          if (ticket.items.some((i) => isKitchenNoticeItem(i))) {
+            skippedNotice++;
+            continue;
+          }
+
           const actionableItemIds = ticket.items
             .filter((i) => isActionableKitchenItem(i))
             .map((i) => i.id);
@@ -3422,17 +3605,23 @@ export const useKDSStore = create<KDSState>()(
             cancelRetry(`item_${ticket.ticket_id}_${id}`);
           }
 
-          // Register pending action
+          // Register pending action. Cover EVERY item id (not just the
+          // currently-actionable ones) with target "served". The optimistic
+          // removal below is unconditional, so the suppression in
+          // overlayPendingActions must be too — otherwise a ticket whose items
+          // were all already served/voided (e.g. a concurrent broadcast bumped
+          // the last item moments before this bulk action) gets removed with no
+          // pending entry, and the next fetch/broadcast re-adds it to the board.
           const itemStatusMap = new Map<string, string>();
-          for (const id of actionableItemIds) itemStatusMap.set(id, "served");
-          if (actionableItemIds.length > 0) {
-            setPendingAction(ticket.ticket_id, {
-              ticketId: ticket.ticket_id,
-              targetStatus: "done",
-              itemStatuses: itemStatusMap,
-              timestamp: Date.now(),
-            });
+          for (const item of ticket.items) {
+            itemStatusMap.set(item.id, "served");
           }
+          setPendingAction(ticket.ticket_id, {
+            ticketId: ticket.ticket_id,
+            targetStatus: "done",
+            itemStatuses: itemStatusMap,
+            timestamp: Date.now(),
+          });
 
           removedIds.add(ticket.ticket_id);
           deleteRecalledTicketId(ticket.ticket_id);
@@ -3481,7 +3670,10 @@ export const useKDSStore = create<KDSState>()(
           (t) => !removedIds.has(t.ticket_id),
         );
         const updatedById = { ..._ticketsById };
-        for (const id of removedIds) delete updatedById[id];
+        for (const id of removedIds) {
+          delete updatedById[id];
+          deleteTicketMutationVersion(id);
+        }
         const updatedDone = dedupeTicketsByIdKeepFirst([
           ...newDoneTickets,
           ...get().doneTickets,
@@ -3503,6 +3695,8 @@ export const useKDSStore = create<KDSState>()(
           doneCount: updatedDone.length,
           selectedTicketIds: new Set<string>(),
         });
+
+        return { done: removedIds.size, skippedNotice };
       },
 
       // ─── Cleanup (for unmount) ──────────────────────────────────────
@@ -3510,6 +3704,10 @@ export const useKDSStore = create<KDSState>()(
         cancelAllRetries();
         _pendingActions.clear();
         _queuedAdvanceActions.clear();
+        _recalledTicketIds.clear();
+        _recalledCycleTicketIds.clear();
+        _recalledTicketAt.clear();
+        _ticketMutationVersions.clear();
         _acknowledgedNoticeItemIds.clear();
         persistAcknowledgedNoticeItems();
         if (_refetchTimeout) {

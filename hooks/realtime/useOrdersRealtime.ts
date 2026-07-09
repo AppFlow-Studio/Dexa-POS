@@ -55,6 +55,7 @@ export interface BroadcastOrderItemData {
   prep_station?: string | null
   rush?: boolean
   is_prioritized?: boolean
+  is_to_go?: boolean
   fire_time?: string | null
   // Modifiers (Phase 2.5: Order Item Sync with Modifiers)
   modifiers?: BroadcastModifierData[]
@@ -344,18 +345,30 @@ export function useOrdersRealtime ({
         const orderId = broadcastOrder?.id
         const orderSource = broadcastOrder?.order_source?.toLowerCase()
 
-        if (
-          orderId &&
-          orderSource === 'online' &&
-          (event === 'INSERT' || event === 'UPDATE')
-        ) {
-          void queryClient.invalidateQueries({
-            queryKey: orderPaymentsQueryKey(orderId)
-          })
+        if (orderId && (event === 'INSERT' || event === 'UPDATE')) {
+          // Only invalidate the payments query when it actually has an active
+          // observer (an open payment sheet for THIS order). On a busy floor,
+          // every order mutation across the location broadcasts here; blindly
+          // invalidating walked the query cache for orders nobody is viewing.
+          // An open sheet still refetches immediately, preserving the
+          // cross-station payment-freshness guarantee; unmounted queries
+          // refetch on next mount regardless.
+          const paymentsKey = orderPaymentsQueryKey(orderId)
+          const hasActiveObserver = queryClient
+            .getQueryCache()
+            .find({ queryKey: paymentsKey })
+            ?.getObserversCount()
+          if (hasActiveObserver) {
+            void queryClient.invalidateQueries({ queryKey: paymentsKey })
+          }
 
-          void queryClient.prefetchQuery(
-            getOrderPaymentsQueryOptions(supabase, orderId)
-          )
+          // Prefetch stays online-only — eagerly fetching payments for every
+          // POS broadcast would add a round trip per order mutation.
+          if (orderSource === 'online') {
+            void queryClient.prefetchQuery(
+              getOrderPaymentsQueryOptions(supabase, orderId)
+            )
+          }
         }
 
         if (onOrderChange) {

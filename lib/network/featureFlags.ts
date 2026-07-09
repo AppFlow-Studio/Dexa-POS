@@ -212,6 +212,11 @@ export function setBlockedAddItemEnabled(enabled: boolean): void {
 
 export function subscribeFlags(listener: () => void): () => void {
   listeners.add(listener);
+  if (__DEV__ && listeners.size > 25) {
+    console.warn(
+      `[featureFlags] listener set unexpectedly large (${listeners.size}) — a subscribeFlags call-site is likely not unsubscribing on unmount.`,
+    );
+  }
   return () => {
     listeners.delete(listener);
   };

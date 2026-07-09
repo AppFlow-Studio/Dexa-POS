@@ -1,6 +1,7 @@
 import { TestPrintModal } from '@/components/settings/TestPrintModal'
 import { Switch } from '@/components/ui/switch'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { toastService } from '@/lib/toastService'
 import { useReceiptTemplateStore } from '@/stores/useReceiptTemplateStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -359,19 +360,21 @@ function CollapsibleSection ({
   defaultOpen?: boolean
   children: React.ReactNode
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <View style={{ marginBottom: 4 }}>
+    <View style={{ marginBottom: s(4) }}>
       <TouchableOpacity
         onPress={() => setOpen(v => !v)}
         style={{
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingVertical: 8,
-          paddingHorizontal: 10,
-          marginTop: 6,
-          borderRadius: 8,
+          paddingVertical: s(8),
+          paddingHorizontal: s(10),
+          marginTop: s(6),
+          borderRadius: s(8),
           backgroundColor: colors.panel,
           borderWidth: 1,
           borderColor: colors.border
@@ -380,7 +383,7 @@ function CollapsibleSection ({
         <View style={{ flex: 1 }}>
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               fontWeight: '700',
               color: colors.label,
               textTransform: 'uppercase',
@@ -390,18 +393,18 @@ function CollapsibleSection ({
             {title}
           </Text>
           {subtitle && !open ? (
-            <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+            <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
               {subtitle}
             </Text>
           ) : null}
         </View>
         {open ? (
-          <ChevronDown size={12} color={colors.muted} />
+          <ChevronDown size={s(12)} color={colors.muted} />
         ) : (
-          <ChevronRight size={12} color={colors.muted} />
+          <ChevronRight size={s(12)} color={colors.muted} />
         )}
       </TouchableOpacity>
-      {open && <View style={{ paddingTop: 4 }}>{children}</View>}
+      {open && <View style={{ paddingTop: s(4) }}>{children}</View>}
     </View>
   )
 }
@@ -417,6 +420,8 @@ function ToggleRow ({
   value: boolean
   onToggle: (val: boolean) => void
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <TouchableOpacity
       onPress={() => onToggle(!value)}
@@ -424,23 +429,23 @@ function ToggleRow ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 9,
-        paddingHorizontal: 10,
-        borderRadius: 8,
-        marginBottom: 3,
+        paddingVertical: s(9),
+        paddingHorizontal: s(10),
+        borderRadius: s(8),
+        marginBottom: s(3),
         borderWidth: 1,
         borderColor: value ? colors.teal + '40' : colors.border,
         backgroundColor: value ? colors.teal + '0D' : colors.card
       }}
     >
-      <View style={{ flex: 1, marginRight: 10 }}>
+      <View style={{ flex: 1, marginRight: s(10) }}>
         <Text
-          style={{ fontSize: 13, color: colors.heading, fontWeight: '500' }}
+          style={{ fontSize: s(13), color: colors.heading, fontWeight: '500' }}
         >
           {label}
         </Text>
         {subtitle ? (
-          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+          <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }}>
             {subtitle}
           </Text>
         ) : null}
@@ -461,14 +466,16 @@ function TextRow ({
   onChangeText: (text: string) => void
   placeholder?: string
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
-    <View style={{ marginBottom: 6 }}>
+    <View style={{ marginBottom: s(6) }}>
       <Text
         style={{
-          fontSize: 11,
+          fontSize: s(11),
           color: colors.muted,
-          marginBottom: 3,
-          paddingHorizontal: 2,
+          marginBottom: s(3),
+          paddingHorizontal: s(2),
           textTransform: 'uppercase',
           letterSpacing: 0.5,
           fontWeight: '600'
@@ -480,10 +487,10 @@ function TextRow ({
         style={{
           backgroundColor: colors.screen,
           color: colors.heading,
-          fontSize: 13,
-          paddingHorizontal: 10,
-          paddingVertical: 8,
-          borderRadius: 8,
+          fontSize: s(13),
+          paddingHorizontal: s(10),
+          paddingVertical: s(8),
+          borderRadius: s(8),
           borderWidth: 1,
           borderColor: colors.border
         }}
@@ -511,6 +518,8 @@ function PresetPickerModal ({
   onApply: (overrides: Partial<ReceiptTemplateConfig>) => void
   onClose: () => void
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <Modal
       visible={visible}
@@ -524,7 +533,7 @@ function PresetPickerModal ({
           backgroundColor: 'rgba(0,0,0,0.7)',
           alignItems: 'center',
           justifyContent: 'center',
-          paddingHorizontal: 40
+          paddingHorizontal: s(40)
         }}
         activeOpacity={1}
         onPress={onClose}
@@ -535,7 +544,7 @@ function PresetPickerModal ({
             width: '100%',
             maxWidth: 400,
             backgroundColor: colors.panel,
-            borderRadius: 14,
+            borderRadius: s(14),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden'
@@ -546,58 +555,58 @@ function PresetPickerModal ({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: 14,
-              paddingVertical: 12,
+              paddingHorizontal: s(14),
+              paddingVertical: s(12),
               borderBottomWidth: 1,
               borderBottomColor: colors.border
             }}
           >
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
+                width: s(32),
+                height: s(32),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + '15',
                 borderWidth: 1,
                 borderColor: colors.teal + '40',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 10
+                marginRight: s(10)
               }}
             >
-              <Layers size={15} color={colors.teal} />
+              <Layers size={s(15)} color={colors.teal} />
             </View>
             <View style={{ flex: 1 }}>
               <Text
                 style={{
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: '700',
                   color: colors.heading
                 }}
               >
                 Choose a Preset
               </Text>
-              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+              <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }}>
                 One-tap template configuration
               </Text>
             </View>
             <TouchableOpacity
               onPress={onClose}
               style={{
-                width: 26,
-                height: 26,
-                borderRadius: 7,
+                width: s(26),
+                height: s(26),
+                borderRadius: s(7),
                 backgroundColor: colors.screen,
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <X size={13} color={colors.muted} />
+              <X size={s(13)} color={colors.muted} />
             </TouchableOpacity>
           </View>
 
           {/* Preset list */}
-          <View style={{ padding: 10 }}>
+          <View style={{ padding: s(10) }}>
             {presets.map((preset, idx) => {
               const isLast = idx === presets.length - 1
               return (
@@ -612,18 +621,18 @@ function PresetPickerModal ({
                     flexDirection: 'row',
                     alignItems: 'center',
                     backgroundColor: colors.card,
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     borderWidth: 1,
                     borderColor: colors.border,
-                    paddingHorizontal: 10,
-                    paddingVertical: 10,
-                    marginBottom: isLast ? 0 : 6
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(10),
+                    marginBottom: isLast ? 0 : s(6)
                   }}
                 >
                   <View style={{ flex: 1 }}>
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '600',
                         color: colors.heading
                       }}
@@ -632,9 +641,9 @@ function PresetPickerModal ({
                     </Text>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.muted,
-                        marginTop: 1
+                        marginTop: s(1)
                       }}
                     >
                       {preset.description}
@@ -643,7 +652,7 @@ function PresetPickerModal ({
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         fontWeight: '600',
                         color: colors.teal
                       }}
@@ -651,9 +660,9 @@ function PresetPickerModal ({
                       Apply
                     </Text>
                     <ChevronRight
-                      size={12}
+                      size={s(12)}
                       color={colors.teal}
-                      style={{ marginLeft: 2 }}
+                      style={{ marginLeft: s(2) }}
                     />
                   </View>
                 </TouchableOpacity>
@@ -662,12 +671,12 @@ function PresetPickerModal ({
           </View>
 
           {/* Footer */}
-          <View style={{ paddingHorizontal: 10, paddingBottom: 10 }}>
+          <View style={{ paddingHorizontal: s(10), paddingBottom: s(10) }}>
             <TouchableOpacity
               onPress={onClose}
               style={{
-                paddingVertical: 8,
-                borderRadius: 8,
+                paddingVertical: s(8),
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
                 alignItems: 'center',
@@ -675,7 +684,7 @@ function PresetPickerModal ({
               }}
             >
               <Text
-                style={{ fontSize: 13, fontWeight: '500', color: colors.label }}
+                style={{ fontSize: s(13), fontWeight: '500', color: colors.label }}
               >
                 Cancel
               </Text>
@@ -704,6 +713,8 @@ function CopyFromLocationModal ({
   onApply: (config: ReceiptTemplateConfig) => void
   onClose: () => void
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const templates = useReceiptTemplateStore(s => s.templates)
 
   const otherTemplates = templates.filter(
@@ -734,7 +745,7 @@ function CopyFromLocationModal ({
           backgroundColor: 'rgba(0,0,0,0.7)',
           alignItems: 'center',
           justifyContent: 'center',
-          paddingHorizontal: 40
+          paddingHorizontal: s(40)
         }}
         activeOpacity={1}
         onPress={onClose}
@@ -745,7 +756,7 @@ function CopyFromLocationModal ({
             width: '100%',
             maxWidth: 400,
             backgroundColor: colors.panel,
-            borderRadius: 14,
+            borderRadius: s(14),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden'
@@ -756,18 +767,18 @@ function CopyFromLocationModal ({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: 14,
-              paddingVertical: 12,
+              paddingHorizontal: s(14),
+              paddingVertical: s(12),
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
-              gap: 10
+              gap: s(10)
             }}
           >
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
+                width: s(32),
+                height: s(32),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + '15',
                 borderWidth: 1,
                 borderColor: colors.teal + '40',
@@ -775,59 +786,59 @@ function CopyFromLocationModal ({
                 justifyContent: 'center'
               }}
             >
-              <Copy size={15} color={colors.teal} />
+              <Copy size={s(15)} color={colors.teal} />
             </View>
             <View style={{ flex: 1 }}>
               <Text
                 style={{
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: '700',
                   color: colors.heading
                 }}
               >
                 Copy from Location
               </Text>
-              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+              <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }}>
                 Import {typeLabel} settings
               </Text>
             </View>
             <TouchableOpacity
               onPress={onClose}
               style={{
-                width: 26,
-                height: 26,
-                borderRadius: 7,
+                width: s(26),
+                height: s(26),
+                borderRadius: s(7),
                 backgroundColor: colors.screen,
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <X size={13} color={colors.muted} />
+              <X size={s(13)} color={colors.muted} />
             </TouchableOpacity>
           </View>
 
           {/* Body */}
-          <View style={{ padding: 10 }}>
+          <View style={{ padding: s(10) }}>
             {otherTemplates.length === 0 ? (
-              <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+              <View style={{ paddingVertical: s(24), alignItems: 'center' }}>
                 <View
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 8,
+                    width: s(36),
+                    height: s(36),
+                    borderRadius: s(8),
                     backgroundColor: colors.card,
                     borderWidth: 1,
                     borderColor: colors.border,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: 8
+                    marginBottom: s(8)
                   }}
                 >
-                  <MapPin size={16} color={colors.muted} />
+                  <MapPin size={s(16)} color={colors.muted} />
                 </View>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: '600',
                     color: colors.label,
                     textAlign: 'center'
@@ -837,11 +848,11 @@ function CopyFromLocationModal ({
                 </Text>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.muted,
                     textAlign: 'center',
-                    marginTop: 3,
-                    lineHeight: 16
+                    marginTop: s(3),
+                    lineHeight: s(16)
                   }}
                 >
                   Save a template at another location{'\n'}for it to appear
@@ -865,22 +876,22 @@ function CopyFromLocationModal ({
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        paddingHorizontal: 10,
-                        paddingVertical: 10,
-                        borderRadius: 8,
+                        paddingHorizontal: s(10),
+                        paddingVertical: s(10),
+                        borderRadius: s(8),
                         borderWidth: 1,
                         borderColor: colors.border,
                         backgroundColor: colors.card,
-                        marginBottom: isLast ? 0 : 6,
-                        gap: 10
+                        marginBottom: isLast ? 0 : s(6),
+                        gap: s(10)
                       }}
                     >
                       {/* Location icon box */}
                       <View
                         style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 8,
+                          width: s(32),
+                          height: s(32),
+                          borderRadius: s(8),
                           backgroundColor: colors.teal + '15',
                           borderWidth: 1,
                           borderColor: colors.teal + '40',
@@ -888,13 +899,13 @@ function CopyFromLocationModal ({
                           justifyContent: 'center'
                         }}
                       >
-                        <MapPin size={15} color={colors.teal} />
+                        <MapPin size={s(15)} color={colors.teal} />
                       </View>
                       {/* Info */}
                       <View style={{ flex: 1 }}>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: '600',
                             color: colors.heading
                           }}
@@ -903,9 +914,9 @@ function CopyFromLocationModal ({
                         </Text>
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: s(11),
                             color: colors.muted,
-                            marginTop: 1
+                            marginTop: s(1)
                           }}
                         >
                           {typeLabel} template
@@ -917,7 +928,7 @@ function CopyFromLocationModal ({
                       >
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: s(11),
                             fontWeight: '600',
                             color: colors.teal
                           }}
@@ -925,9 +936,9 @@ function CopyFromLocationModal ({
                           Apply
                         </Text>
                         <ChevronRight
-                          size={12}
+                          size={s(12)}
                           color={colors.teal}
-                          style={{ marginLeft: 2 }}
+                          style={{ marginLeft: s(2) }}
                         />
                       </View>
                     </TouchableOpacity>
@@ -938,12 +949,12 @@ function CopyFromLocationModal ({
           </View>
 
           {/* Footer */}
-          <View style={{ paddingHorizontal: 10, paddingBottom: 10 }}>
+          <View style={{ paddingHorizontal: s(10), paddingBottom: s(10) }}>
             <TouchableOpacity
               onPress={onClose}
               style={{
-                paddingVertical: 8,
-                borderRadius: 8,
+                paddingVertical: s(8),
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
                 alignItems: 'center',
@@ -951,7 +962,7 @@ function CopyFromLocationModal ({
               }}
             >
               <Text
-                style={{ fontSize: 13, fontWeight: '500', color: colors.label }}
+                style={{ fontSize: s(13), fontWeight: '500', color: colors.label }}
               >
                 Cancel
               </Text>
@@ -968,18 +979,20 @@ function CopyFromLocationModal ({
 // ============================================================================
 
 function ReceiptPaper ({ children }: { children: React.ReactNode }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <View
       style={{
         backgroundColor: '#ffffff',
-        borderRadius: 4,
-        paddingHorizontal: 12,
-        paddingVertical: 14,
-        marginHorizontal: 4,
+        borderRadius: s(4),
+        paddingHorizontal: s(12),
+        paddingVertical: s(14),
+        marginHorizontal: s(4),
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
+        shadowOffset: { width: 0, height: s(2) },
         shadowOpacity: 0.18,
-        shadowRadius: 6,
+        shadowRadius: s(6),
         elevation: 4
       }}
     >
@@ -989,25 +1002,29 @@ function ReceiptPaper ({ children }: { children: React.ReactNode }) {
 }
 
 function DottedLine () {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <View
       style={{
         borderTopWidth: 1,
         borderStyle: 'dashed',
         borderTopColor: '#d1d5db',
-        marginVertical: 6
+        marginVertical: s(6)
       }}
     />
   )
 }
 
 function DoubleLine () {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <View
       style={{
         borderTopWidth: 1.5,
         borderTopColor: '#9ca3af',
-        marginVertical: 6
+        marginVertical: s(6)
       }}
     />
   )
@@ -1022,23 +1039,25 @@ function renderReceiptSection (
   config: ReceiptTemplateConfig,
   storeName: string,
   storeAddress: string,
-  storePhone: string
+  storePhone: string,
+  uiScale: number
 ): React.ReactNode {
+  const s = (n: number) => Math.round(n * uiScale)
   switch (sectionId) {
     case 'logo':
       return config.showLogo ? (
-        <View style={{ alignItems: 'center', marginBottom: 6 }}>
+        <View style={{ alignItems: 'center', marginBottom: s(6) }}>
           <View
             style={{
-              width: 36,
-              height: 36,
+              width: s(36),
+              height: s(36),
               backgroundColor: '#e5e7eb',
-              borderRadius: 6,
+              borderRadius: s(6),
               alignItems: 'center',
               justifyContent: 'center'
             }}
           >
-            <Text style={{ fontSize: 8, color: '#9ca3af', fontWeight: '700' }}>
+            <Text style={{ fontSize: s(8), color: '#9ca3af', fontWeight: '700' }}>
               LOGO
             </Text>
           </View>
@@ -1052,7 +1071,7 @@ function renderReceiptSection (
               color: '#111827',
               textAlign: 'center',
               fontWeight: '700',
-              fontSize: 12
+              fontSize: s(12)
             }}
           >
             {storeName || '—'}
@@ -1062,15 +1081,15 @@ function renderReceiptSection (
               style={{
                 color: '#6b7280',
                 textAlign: 'center',
-                fontSize: 9,
-                marginTop: 1
+                fontSize: s(9),
+                marginTop: s(1)
               }}
             >
               {storeAddress}
             </Text>
           ) : null}
           {storePhone ? (
-            <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: 9 }}>
+            <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: s(9) }}>
               {storePhone}
             </Text>
           ) : null}
@@ -1079,8 +1098,8 @@ function renderReceiptSection (
               style={{
                 color: '#111827',
                 textAlign: 'center',
-                fontSize: 9,
-                marginTop: 3
+                fontSize: s(9),
+                marginTop: s(3)
               }}
             >
               {config.headerText}
@@ -1095,16 +1114,16 @@ function renderReceiptSection (
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Order #1042</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>01/15/2026</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Order #1042</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>01/15/2026</Text>
           </View>
           {config.showOrderType && (
-            <Text style={{ color: '#6b7280', fontSize: 9, marginTop: 1 }}>
+            <Text style={{ color: '#6b7280', fontSize: s(9), marginTop: s(1) }}>
               Dine In - Table 5
             </Text>
           )}
           {config.showServerName && (
-            <Text style={{ color: '#6b7280', fontSize: 9 }}>
+            <Text style={{ color: '#6b7280', fontSize: s(9) }}>
               Server: Sarah M.
             </Text>
           )}
@@ -1114,13 +1133,13 @@ function renderReceiptSection (
     case 'items':
       return (
         <View>
-          <View style={{ gap: 3 }}>
+          <View style={{ gap: s(3) }}>
             {config.groupBySeat ? (
               <>
                 <Text
                   style={{
                     color: '#6b7280',
-                    fontSize: 8,
+                    fontSize: s(8),
                     textAlign: 'center',
                     fontWeight: '700'
                   }}
@@ -1131,7 +1150,7 @@ function renderReceiptSection (
                   style={{
                     height: 1,
                     backgroundColor: '#d1d5db',
-                    marginVertical: 2
+                    marginVertical: s(2)
                   }}
                 />
                 <View
@@ -1140,14 +1159,14 @@ function renderReceiptSection (
                     justifyContent: 'space-between'
                   }}
                 >
-                  <Text style={{ color: '#111827', fontSize: 9 }}>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>
                     1x Cheeseburger
                   </Text>
-                  <Text style={{ color: '#111827', fontSize: 9 }}>$12.99</Text>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>$12.99</Text>
                 </View>
                 {config.showItemModifiers && (
                   <Text
-                    style={{ color: '#6b7280', fontSize: 8, marginLeft: 8 }}
+                    style={{ color: '#6b7280', fontSize: s(8), marginLeft: s(8) }}
                   >
                     + Extra Cheese, No Onions
                   </Text>
@@ -1155,10 +1174,10 @@ function renderReceiptSection (
                 <Text
                   style={{
                     color: '#6b7280',
-                    fontSize: 8,
+                    fontSize: s(8),
                     textAlign: 'center',
                     fontWeight: '700',
-                    marginTop: 4
+                    marginTop: s(4)
                   }}
                 >
                   -- SEAT 2 --
@@ -1167,7 +1186,7 @@ function renderReceiptSection (
                   style={{
                     height: 1,
                     backgroundColor: '#d1d5db',
-                    marginVertical: 2
+                    marginVertical: s(2)
                   }}
                 />
                 <View
@@ -1176,14 +1195,14 @@ function renderReceiptSection (
                     justifyContent: 'space-between'
                   }}
                 >
-                  <Text style={{ color: '#111827', fontSize: 9 }}>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>
                     1x Caesar Salad
                   </Text>
-                  <Text style={{ color: '#111827', fontSize: 9 }}>$9.50</Text>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>$9.50</Text>
                 </View>
                 {config.showItemModifiers && (
                   <Text
-                    style={{ color: '#6b7280', fontSize: 8, marginLeft: 8 }}
+                    style={{ color: '#6b7280', fontSize: s(8), marginLeft: s(8) }}
                   >
                     + Grilled Chicken
                   </Text>
@@ -1191,10 +1210,10 @@ function renderReceiptSection (
                 <Text
                   style={{
                     color: '#6b7280',
-                    fontSize: 8,
+                    fontSize: s(8),
                     textAlign: 'center',
                     fontWeight: '700',
-                    marginTop: 4
+                    marginTop: s(4)
                   }}
                 >
                   -- SHARED --
@@ -1203,7 +1222,7 @@ function renderReceiptSection (
                   style={{
                     height: 1,
                     backgroundColor: '#d1d5db',
-                    marginVertical: 2
+                    marginVertical: s(2)
                   }}
                 />
                 <View
@@ -1212,10 +1231,10 @@ function renderReceiptSection (
                     justifyContent: 'space-between'
                   }}
                 >
-                  <Text style={{ color: '#111827', fontSize: 9 }}>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>
                     2x Iced Tea
                   </Text>
-                  <Text style={{ color: '#111827', fontSize: 9 }}>$5.98</Text>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>$5.98</Text>
                 </View>
               </>
             ) : (
@@ -1226,14 +1245,14 @@ function renderReceiptSection (
                     justifyContent: 'space-between'
                   }}
                 >
-                  <Text style={{ color: '#111827', fontSize: 9 }}>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>
                     1x Cheeseburger
                   </Text>
-                  <Text style={{ color: '#111827', fontSize: 9 }}>$12.99</Text>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>$12.99</Text>
                 </View>
                 {config.showItemModifiers && (
                   <Text
-                    style={{ color: '#6b7280', fontSize: 8, marginLeft: 8 }}
+                    style={{ color: '#6b7280', fontSize: s(8), marginLeft: s(8) }}
                   >
                     + Extra Cheese, No Onions
                   </Text>
@@ -1244,14 +1263,14 @@ function renderReceiptSection (
                     justifyContent: 'space-between'
                   }}
                 >
-                  <Text style={{ color: '#111827', fontSize: 9 }}>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>
                     1x Caesar Salad
                   </Text>
-                  <Text style={{ color: '#111827', fontSize: 9 }}>$9.50</Text>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>$9.50</Text>
                 </View>
                 {config.showItemModifiers && (
                   <Text
-                    style={{ color: '#6b7280', fontSize: 8, marginLeft: 8 }}
+                    style={{ color: '#6b7280', fontSize: s(8), marginLeft: s(8) }}
                   >
                     + Grilled Chicken
                   </Text>
@@ -1262,10 +1281,10 @@ function renderReceiptSection (
                     justifyContent: 'space-between'
                   }}
                 >
-                  <Text style={{ color: '#111827', fontSize: 9 }}>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>
                     2x Iced Tea
                   </Text>
-                  <Text style={{ color: '#111827', fontSize: 9 }}>$5.98</Text>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>$5.98</Text>
                 </View>
               </>
             )}
@@ -1279,29 +1298,29 @@ function renderReceiptSection (
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Subtotal</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>$28.47</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Subtotal</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>$28.47</Text>
           </View>
           {config.showTaxBreakdown && (
             <View
               style={{
                 flexDirection: 'row',
                 justifyContent: 'space-between',
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
-              <Text style={{ color: '#6b7280', fontSize: 9 }}>Tax (8.25%)</Text>
-              <Text style={{ color: '#6b7280', fontSize: 9 }}>$2.35</Text>
+              <Text style={{ color: '#6b7280', fontSize: s(9) }}>Tax (8.25%)</Text>
+              <Text style={{ color: '#6b7280', fontSize: s(9) }}>$2.35</Text>
             </View>
           )}
           <DoubleLine />
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 11, fontWeight: '700' }}>
+            <Text style={{ color: '#111827', fontSize: s(11), fontWeight: '700' }}>
               Total
             </Text>
-            <Text style={{ color: '#111827', fontSize: 11, fontWeight: '700' }}>
+            <Text style={{ color: '#111827', fontSize: s(11), fontWeight: '700' }}>
               $30.82
             </Text>
           </View>
@@ -1314,20 +1333,20 @@ function renderReceiptSection (
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Tip:</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>________</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Tip:</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>________</Text>
           </View>
           <View
             style={{
               flexDirection: 'row',
               justifyContent: 'space-between',
-              marginTop: 3
+              marginTop: s(3)
             }}
           >
-            <Text style={{ color: '#111827', fontSize: 9, fontWeight: '700' }}>
+            <Text style={{ color: '#111827', fontSize: s(9), fontWeight: '700' }}>
               Total w/ Tip:
             </Text>
-            <Text style={{ color: '#111827', fontSize: 9, fontWeight: '700' }}>
+            <Text style={{ color: '#111827', fontSize: s(9), fontWeight: '700' }}>
               ________
             </Text>
           </View>
@@ -1340,10 +1359,10 @@ function renderReceiptSection (
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Paid: Card</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>$30.82</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Paid: Card</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>$30.82</Text>
           </View>
-          <Text style={{ color: '#6b7280', fontSize: 8, marginTop: 1 }}>
+          <Text style={{ color: '#6b7280', fontSize: s(8), marginTop: s(1) }}>
             Visa ending in 4242
           </Text>
         </View>
@@ -1352,7 +1371,7 @@ function renderReceiptSection (
       return config.footerText ? (
         <View>
           <DottedLine />
-          <Text style={{ color: '#111827', textAlign: 'center', fontSize: 9 }}>
+          <Text style={{ color: '#111827', textAlign: 'center', fontSize: s(9) }}>
             {config.footerText}
           </Text>
         </View>
@@ -1364,15 +1383,15 @@ function renderReceiptSection (
             flexDirection: 'row',
             justifyContent: 'center',
             alignItems: 'center',
-            gap: 8,
-            marginTop: 8
+            gap: s(8),
+            marginTop: s(8)
           }}
         >
           {config.showBarcode && (
-            <Barcode size={28} color='#9ca3af' strokeWidth={1.5} />
+            <Barcode size={s(28)} color='#9ca3af' strokeWidth={1.5} />
           )}
           {config.showQrCode && (
-            <QrCode size={28} color='#9ca3af' strokeWidth={1.5} />
+            <QrCode size={s(28)} color='#9ca3af' strokeWidth={1.5} />
           )}
         </View>
       ) : null
@@ -1396,6 +1415,7 @@ function ReceiptPreview ({
   sectionOrder: ReceiptSectionId[]
   onReorder: (newOrder: ReceiptSectionId[]) => void
 }) {
+  const uiScale = useUiScale()
   const sections: ReceiptSection[] = sectionOrder.map(id => ({
     id,
     label: RECEIPT_SECTION_LABELS[id]
@@ -1403,7 +1423,7 @@ function ReceiptPreview ({
 
   const renderItem = useCallback(
     ({ item, drag, isActive }: RenderItemParams<ReceiptSection>) => {
-      const content = renderReceiptSection(item.id, config, storeName, storeAddress, storePhone)
+      const content = renderReceiptSection(item.id, config, storeName, storeAddress, storePhone, uiScale)
       return (
         <ScaleDecorator activeScale={1.02}>
           <TouchableOpacity
@@ -1511,10 +1531,12 @@ const SALAD_ITEMS = [
 
 function renderKitchenSection (
   sectionId: KitchenSectionId,
-  config: ReceiptTemplateConfig
+  config: ReceiptTemplateConfig,
+  uiScale: number
 ): React.ReactNode {
-  const itemFontSize = config.largeItemText ? 13 : 10
-  const modFontSize = config.showModsLarge ? 12 : 9
+  const s = (n: number) => Math.round(n * uiScale)
+  const itemFontSize = s(config.largeItemText ? 13 : 10)
+  const modFontSize = s(config.showModsLarge ? 12 : 9)
 
   const renderOrderItem = (
     item: {
@@ -1526,15 +1548,15 @@ function renderKitchenSection (
     },
     idx: number
   ) => (
-    <View key={idx} style={{ marginTop: idx > 0 ? 6 : 0 }}>
+    <View key={idx} style={{ marginTop: idx > 0 ? s(6) : 0 }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
         {config.groupBySeat && (
           <Text
             style={{
               color: '#9ca3af',
-              fontSize: 8,
+              fontSize: s(8),
               fontWeight: '600',
-              marginRight: 3
+              marginRight: s(3)
             }}
           >
             S{item.seat}
@@ -1555,7 +1577,7 @@ function renderKitchenSection (
           const modStyle = config.modifierStyle ?? 'inverted'
           const modTextStyle: any = {
             fontSize: modFontSize,
-            marginLeft: 10,
+            marginLeft: s(10),
             fontWeight: '700'
           }
           if (modStyle === 'inverted') {
@@ -1580,17 +1602,17 @@ function renderKitchenSection (
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            marginLeft: 10,
-            marginTop: 2
+            marginLeft: s(10),
+            marginTop: s(2)
           }}
         >
-          <TriangleAlert size={9} color='#dc2626' />
+          <TriangleAlert size={s(9)} color='#dc2626' />
           <Text
             style={{
               color: '#dc2626',
               fontWeight: '700',
-              fontSize: 8,
-              marginLeft: 3
+              fontSize: s(8),
+              marginLeft: s(3)
             }}
           >
             ALLERGY: {item.allergy}
@@ -1604,18 +1626,18 @@ function renderKitchenSection (
     <View
       style={{
         backgroundColor: '#e5e7eb',
-        marginHorizontal: -12,
-        paddingHorizontal: 12,
-        paddingVertical: 2,
-        marginBottom: 5,
-        marginTop: 2
+        marginHorizontal: -s(12),
+        paddingHorizontal: s(12),
+        paddingVertical: s(2),
+        marginBottom: s(5),
+        marginTop: s(2)
       }}
     >
       <Text
         style={{
           textAlign: 'center',
           fontWeight: '900',
-          fontSize: 8,
+          fontSize: s(8),
           textTransform: 'uppercase',
           letterSpacing: 2,
           color: '#111827'
@@ -1635,7 +1657,7 @@ function renderKitchenSection (
               color: '#111827',
               textAlign: 'center',
               fontWeight: '900',
-              fontSize: 13,
+              fontSize: s(13),
               letterSpacing: 1
             }}
           >
@@ -1647,10 +1669,10 @@ function renderKitchenSection (
                 color: '#111827',
                 textAlign: 'center',
                 fontWeight: '700',
-                fontSize: 8,
+                fontSize: s(8),
                 textTransform: 'uppercase',
                 letterSpacing: 1,
-                marginTop: 1
+                marginTop: s(1)
               }}
             >
               Dine In — Table 5
@@ -1661,8 +1683,8 @@ function renderKitchenSection (
               style={{
                 color: '#6b7280',
                 textAlign: 'center',
-                fontSize: 9,
-                marginTop: 1
+                fontSize: s(9),
+                marginTop: s(1)
               }}
             >
               Server: Sarah M.
@@ -1672,8 +1694,8 @@ function renderKitchenSection (
             style={{
               color: '#9ca3af',
               textAlign: 'center',
-              fontSize: 8,
-              marginTop: 1
+              fontSize: s(8),
+              marginTop: s(1)
             }}
           >
             01/15/2026 12:34 PM
@@ -1683,24 +1705,24 @@ function renderKitchenSection (
       )
     case 'readyBy':
       return config.showReadyByTime ? (
-        <View style={{ alignItems: 'center', marginBottom: 6 }}>
+        <View style={{ alignItems: 'center', marginBottom: s(6) }}>
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
               backgroundColor: '#111827',
-              borderRadius: 4,
-              paddingHorizontal: 8,
-              paddingVertical: 3
+              borderRadius: s(4),
+              paddingHorizontal: s(8),
+              paddingVertical: s(3)
             }}
           >
-            <Clock size={8} color='#fff' />
+            <Clock size={s(8)} color='#fff' />
             <Text
               style={{
                 color: '#fff',
-                fontSize: 9,
+                fontSize: s(9),
                 fontWeight: '700',
-                marginLeft: 4
+                marginLeft: s(4)
               }}
             >
               Ready by: 12:49 PM
@@ -1714,7 +1736,7 @@ function renderKitchenSection (
           {config.groupByStation ? (
             <View>
               <StationBanner label='Grill' />
-              <View style={{ marginBottom: 6 }}>
+              <View style={{ marginBottom: s(6) }}>
                 {GRILL_ITEMS.map(renderOrderItem)}
               </View>
               <DottedLine />
@@ -1729,7 +1751,7 @@ function renderKitchenSection (
       )
     case 'footer':
       return (
-        <Text style={{ color: '#9ca3af', textAlign: 'center', fontSize: 8 }}>
+        <Text style={{ color: '#9ca3af', textAlign: 'center', fontSize: s(8) }}>
           3 items total
         </Text>
       )
@@ -1748,6 +1770,7 @@ function KitchenPreview ({
   sectionOrder: KitchenSectionId[]
   onReorder: (newOrder: KitchenSectionId[]) => void
 }) {
+  const uiScale = useUiScale()
   const sections: KitchenSection[] = sectionOrder.map(id => ({
     id,
     label: KITCHEN_SECTION_LABELS[id]
@@ -1755,7 +1778,7 @@ function KitchenPreview ({
 
   const renderItem = useCallback(
     ({ item, drag, isActive }: RenderItemParams<KitchenSection>) => {
-      const content = renderKitchenSection(item.id, config)
+      const content = renderKitchenSection(item.id, config, uiScale)
       return (
         <ScaleDecorator activeScale={1.02}>
           <TouchableOpacity
@@ -1864,8 +1887,10 @@ function renderNoSaleSection (
   config: ReceiptTemplateConfig,
   storeName: string,
   storeAddress: string,
-  storePhone: string
+  storePhone: string,
+  uiScale: number
 ): React.ReactNode {
+  const s = (n: number) => Math.round(n * uiScale)
   switch (sectionId) {
     case 'header':
       return (
@@ -1875,8 +1900,8 @@ function renderNoSaleSection (
               style={{
                 color: '#111827',
                 textAlign: 'center',
-                fontSize: 9,
-                marginBottom: 2
+                fontSize: s(9),
+                marginBottom: s(2)
               }}
             >
               {config.headerText}
@@ -1887,7 +1912,7 @@ function renderNoSaleSection (
               color: '#111827',
               textAlign: 'center',
               fontWeight: '900',
-              fontSize: 14,
+              fontSize: s(14),
               letterSpacing: 1
             }}
           >
@@ -1904,7 +1929,7 @@ function renderNoSaleSection (
               color: '#111827',
               textAlign: 'center',
               fontWeight: '700',
-              fontSize: 11
+              fontSize: s(11)
             }}
           >
             {storeName || '—'}
@@ -1914,8 +1939,8 @@ function renderNoSaleSection (
               style={{
                 color: '#6b7280',
                 textAlign: 'center',
-                fontSize: 9,
-                marginTop: 1
+                fontSize: s(9),
+                marginTop: s(1)
               }}
             >
               {storeAddress}
@@ -1926,8 +1951,8 @@ function renderNoSaleSection (
               style={{
                 color: '#6b7280',
                 textAlign: 'center',
-                fontSize: 9,
-                marginTop: 1
+                fontSize: s(9),
+                marginTop: s(1)
               }}
             >
               {storePhone}
@@ -1938,49 +1963,49 @@ function renderNoSaleSection (
       )
     case 'details':
       return (
-        <View style={{ gap: 2 }}>
+        <View style={{ gap: s(2) }}>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Date:</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>01/15/2026</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Date:</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>01/15/2026</Text>
           </View>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Time:</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>12:34:56</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Time:</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>12:34:56</Text>
           </View>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Employee:</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>Sarah M.</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Employee:</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Sarah M.</Text>
           </View>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Drawer:</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>Drawer 1</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Drawer:</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Drawer 1</Text>
           </View>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Station:</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>POS-01</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Station:</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>POS-01</Text>
           </View>
         </View>
       )
     case 'reason':
       return (
-        <View style={{ marginTop: 4 }}>
+        <View style={{ marginTop: s(4) }}>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9, fontWeight: '700' }}>
+            <Text style={{ color: '#111827', fontSize: s(9), fontWeight: '700' }}>
               Reason:
             </Text>
-            <Text style={{ color: '#111827', fontSize: 9, fontWeight: '700' }}>
+            <Text style={{ color: '#111827', fontSize: s(9), fontWeight: '700' }}>
               Making Change
             </Text>
           </View>
@@ -1989,13 +2014,13 @@ function renderNoSaleSection (
               style={{
                 flexDirection: 'row',
                 justifyContent: 'space-between',
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
-              <Text style={{ color: '#111827', fontSize: 9 }}>
+              <Text style={{ color: '#111827', fontSize: s(9) }}>
                 Approved By:
               </Text>
-              <Text style={{ color: '#111827', fontSize: 9 }}>
+              <Text style={{ color: '#111827', fontSize: s(9) }}>
                 Manager Jane
               </Text>
             </View>
@@ -2010,7 +2035,7 @@ function renderNoSaleSection (
             style={{
               color: '#111827',
               textAlign: 'center',
-              fontSize: 9,
+              fontSize: s(9),
               fontWeight: '700'
             }}
           >
@@ -2021,8 +2046,8 @@ function renderNoSaleSection (
               style={{
                 color: '#111827',
                 textAlign: 'center',
-                fontSize: 9,
-                marginTop: 3
+                fontSize: s(9),
+                marginTop: s(3)
               }}
             >
               {config.footerText}
@@ -2050,6 +2075,7 @@ function NoSalePreview ({
   sectionOrder: NoSaleSectionId[]
   onReorder: (newOrder: NoSaleSectionId[]) => void
 }) {
+  const uiScale = useUiScale()
   const sections: NoSaleSection[] = sectionOrder.map(id => ({
     id,
     label: NO_SALE_SECTION_LABELS[id]
@@ -2057,7 +2083,7 @@ function NoSalePreview ({
 
   const renderItem = useCallback(
     ({ item, drag, isActive }: RenderItemParams<NoSaleSection>) => {
-      const content = renderNoSaleSection(item.id, config, storeName, storeAddress, storePhone)
+      const content = renderNoSaleSection(item.id, config, storeName, storeAddress, storePhone, uiScale)
       return (
         <ScaleDecorator activeScale={1.02}>
           <TouchableOpacity
@@ -2145,8 +2171,10 @@ function renderVoidOrderSection (
   config: ReceiptTemplateConfig,
   storeName: string,
   storeAddress: string,
-  storePhone: string
+  storePhone: string,
+  uiScale: number
 ): React.ReactNode {
+  const s = (n: number) => Math.round(n * uiScale)
   switch (sectionId) {
     case 'header':
       return (
@@ -2156,8 +2184,8 @@ function renderVoidOrderSection (
               style={{
                 color: '#111827',
                 textAlign: 'center',
-                fontSize: 9,
-                marginBottom: 2
+                fontSize: s(9),
+                marginBottom: s(2)
               }}
             >
               {config.headerText}
@@ -2168,7 +2196,7 @@ function renderVoidOrderSection (
               color: '#111827',
               textAlign: 'center',
               fontWeight: '900',
-              fontSize: 14,
+              fontSize: s(14),
               letterSpacing: 1
             }}
           >
@@ -2185,7 +2213,7 @@ function renderVoidOrderSection (
               color: '#111827',
               textAlign: 'center',
               fontWeight: '700',
-              fontSize: 11
+              fontSize: s(11)
             }}
           >
             {storeName || '—'}
@@ -2195,15 +2223,15 @@ function renderVoidOrderSection (
               style={{
                 color: '#6b7280',
                 textAlign: 'center',
-                fontSize: 9,
-                marginTop: 1
+                fontSize: s(9),
+                marginTop: s(1)
               }}
             >
               {storeAddress}
             </Text>
           ) : null}
           {storePhone ? (
-            <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: 9 }}>
+            <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: s(9) }}>
               {storePhone}
             </Text>
           ) : null}
@@ -2212,31 +2240,31 @@ function renderVoidOrderSection (
       )
     case 'orderInfo':
       return (
-        <View style={{ gap: 2 }}>
+        <View style={{ gap: s(2) }}>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Order:</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>#1042</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Order:</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>#1042</Text>
           </View>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Date:</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>01/15/2026</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Date:</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>01/15/2026</Text>
           </View>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Time:</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>12:34:56</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Time:</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>12:34:56</Text>
           </View>
           {config.showServerName && (
             <View
               style={{ flexDirection: 'row', justifyContent: 'space-between' }}
             >
-              <Text style={{ color: '#111827', fontSize: 9 }}>Server:</Text>
-              <Text style={{ color: '#111827', fontSize: 9 }}>Sarah M.</Text>
+              <Text style={{ color: '#111827', fontSize: s(9) }}>Server:</Text>
+              <Text style={{ color: '#111827', fontSize: s(9) }}>Sarah M.</Text>
             </View>
           )}
           <DottedLine />
@@ -2244,28 +2272,28 @@ function renderVoidOrderSection (
       )
     case 'items':
       return (
-        <View style={{ gap: 3 }}>
+        <View style={{ gap: s(3) }}>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>
               1x Cheeseburger
             </Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>$12.99</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>$12.99</Text>
           </View>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>
               1x Caesar Salad
             </Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>$9.50</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>$9.50</Text>
           </View>
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>2x Iced Tea</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>$5.98</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>2x Iced Tea</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>$5.98</Text>
           </View>
           <DottedLine />
         </View>
@@ -2273,28 +2301,28 @@ function renderVoidOrderSection (
     case 'totals':
       return (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={{ color: '#111827', fontSize: 10, fontWeight: '700' }}>
+          <Text style={{ color: '#111827', fontSize: s(10), fontWeight: '700' }}>
             Subtotal:
           </Text>
-          <Text style={{ color: '#111827', fontSize: 10, fontWeight: '700' }}>
+          <Text style={{ color: '#111827', fontSize: s(10), fontWeight: '700' }}>
             $28.47
           </Text>
         </View>
       )
     case 'voidReason':
       return (
-        <View style={{ marginTop: 4 }}>
+        <View style={{ marginTop: s(4) }}>
           {config.showVoidReason && (
             <View
               style={{ flexDirection: 'row', justifyContent: 'space-between' }}
             >
               <Text
-                style={{ color: '#111827', fontSize: 9, fontWeight: '700' }}
+                style={{ color: '#111827', fontSize: s(9), fontWeight: '700' }}
               >
                 Reason:
               </Text>
               <Text
-                style={{ color: '#111827', fontSize: 9, fontWeight: '700' }}
+                style={{ color: '#111827', fontSize: s(9), fontWeight: '700' }}
               >
                 Guest left
               </Text>
@@ -2305,13 +2333,13 @@ function renderVoidOrderSection (
               style={{
                 flexDirection: 'row',
                 justifyContent: 'space-between',
-                marginTop: 2
+                marginTop: s(2)
               }}
             >
-              <Text style={{ color: '#111827', fontSize: 9 }}>
+              <Text style={{ color: '#111827', fontSize: s(9) }}>
                 Approved By:
               </Text>
-              <Text style={{ color: '#111827', fontSize: 9 }}>
+              <Text style={{ color: '#111827', fontSize: s(9) }}>
                 Manager Jane
               </Text>
             </View>
@@ -2326,7 +2354,7 @@ function renderVoidOrderSection (
             style={{
               color: '#111827',
               textAlign: 'center',
-              fontSize: 9,
+              fontSize: s(9),
               fontWeight: '700'
             }}
           >
@@ -2337,8 +2365,8 @@ function renderVoidOrderSection (
               style={{
                 color: '#111827',
                 textAlign: 'center',
-                fontSize: 9,
-                marginTop: 3
+                fontSize: s(9),
+                marginTop: s(3)
               }}
             >
               {config.footerText}
@@ -2366,6 +2394,7 @@ function VoidOrderPreview ({
   sectionOrder: VoidOrderSectionId[]
   onReorder: (newOrder: VoidOrderSectionId[]) => void
 }) {
+  const uiScale = useUiScale()
   const sections: VoidOrderSection[] = sectionOrder.map(id => ({
     id,
     label: VOID_ORDER_SECTION_LABELS[id]
@@ -2373,7 +2402,7 @@ function VoidOrderPreview ({
 
   const renderItem = useCallback(
     ({ item, drag, isActive }: RenderItemParams<VoidOrderSection>) => {
-      const content = renderVoidOrderSection(item.id, config, storeName, storeAddress, storePhone)
+      const content = renderVoidOrderSection(item.id, config, storeName, storeAddress, storePhone, uiScale)
       return (
         <ScaleDecorator activeScale={1.02}>
           <TouchableOpacity
@@ -2486,8 +2515,10 @@ const SAMPLE_SHIFTS = [
 function renderTimeSheetSection (
   sectionId: TimeSheetSectionId,
   config: ReceiptTemplateConfig,
-  storeName: string
+  storeName: string,
+  uiScale: number
 ): React.ReactNode {
+  const s = (n: number) => Math.round(n * uiScale)
   switch (sectionId) {
     case 'header':
       return (
@@ -2497,8 +2528,8 @@ function renderTimeSheetSection (
               style={{
                 color: '#111827',
                 textAlign: 'center',
-                fontSize: 9,
-                marginBottom: 2
+                fontSize: s(9),
+                marginBottom: s(2)
               }}
             >
               {config.headerText}
@@ -2509,7 +2540,7 @@ function renderTimeSheetSection (
               color: '#111827',
               textAlign: 'center',
               fontWeight: '900',
-              fontSize: 14,
+              fontSize: s(14),
               letterSpacing: 1
             }}
           >
@@ -2526,7 +2557,7 @@ function renderTimeSheetSection (
               color: '#111827',
               textAlign: 'center',
               fontWeight: '700',
-              fontSize: 11
+              fontSize: s(11)
             }}
           >
             {storeName || '—'}
@@ -2535,10 +2566,10 @@ function renderTimeSheetSection (
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 9, fontWeight: '700' }}>
+            <Text style={{ color: '#111827', fontSize: s(9), fontWeight: '700' }}>
               Employee:
             </Text>
-            <Text style={{ color: '#111827', fontSize: 9, fontWeight: '700' }}>
+            <Text style={{ color: '#111827', fontSize: s(9), fontWeight: '700' }}>
               Sarah M.
             </Text>
           </View>
@@ -2546,31 +2577,31 @@ function renderTimeSheetSection (
             style={{
               flexDirection: 'row',
               justifyContent: 'space-between',
-              marginTop: 2
+              marginTop: s(2)
             }}
           >
-            <Text style={{ color: '#111827', fontSize: 9 }}>Role:</Text>
-            <Text style={{ color: '#111827', fontSize: 9 }}>Server</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Role:</Text>
+            <Text style={{ color: '#111827', fontSize: s(9) }}>Server</Text>
           </View>
         </View>
       )
     case 'dateRange':
       return (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={{ color: '#111827', fontSize: 9 }}>Period:</Text>
-          <Text style={{ color: '#111827', fontSize: 9 }}>01/13 – 01/15</Text>
+          <Text style={{ color: '#111827', fontSize: s(9) }}>Period:</Text>
+          <Text style={{ color: '#111827', fontSize: s(9) }}>01/13 – 01/15</Text>
         </View>
       )
     case 'shifts':
       return (
         <View>
           <DottedLine />
-          {SAMPLE_SHIFTS.map((s, idx) => (
-            <View key={idx} style={{ marginTop: idx > 0 ? 4 : 0 }}>
+          {SAMPLE_SHIFTS.map((shift, idx) => (
+            <View key={idx} style={{ marginTop: idx > 0 ? s(4) : 0 }}>
               <Text
-                style={{ color: '#111827', fontSize: 9, fontWeight: '700' }}
+                style={{ color: '#111827', fontSize: s(9), fontWeight: '700' }}
               >
-                {s.date}
+                {shift.date}
               </Text>
               <View
                 style={{
@@ -2578,8 +2609,8 @@ function renderTimeSheetSection (
                   justifyContent: 'space-between'
                 }}
               >
-                <Text style={{ color: '#6b7280', fontSize: 9 }}> In:</Text>
-                <Text style={{ color: '#111827', fontSize: 9 }}>{s.inT}</Text>
+                <Text style={{ color: '#6b7280', fontSize: s(9) }}> In:</Text>
+                <Text style={{ color: '#111827', fontSize: s(9) }}>{shift.inT}</Text>
               </View>
               <View
                 style={{
@@ -2587,19 +2618,19 @@ function renderTimeSheetSection (
                   justifyContent: 'space-between'
                 }}
               >
-                <Text style={{ color: '#6b7280', fontSize: 9 }}> Out:</Text>
-                <Text style={{ color: '#111827', fontSize: 9 }}>{s.outT}</Text>
+                <Text style={{ color: '#6b7280', fontSize: s(9) }}> Out:</Text>
+                <Text style={{ color: '#111827', fontSize: s(9) }}>{shift.outT}</Text>
               </View>
-              {config.showBreakDetails && s.breakIn !== 'N/A' && (
+              {config.showBreakDetails && shift.breakIn !== 'N/A' && (
                 <View
                   style={{
                     flexDirection: 'row',
                     justifyContent: 'space-between'
                   }}
                 >
-                  <Text style={{ color: '#6b7280', fontSize: 9 }}> Break:</Text>
-                  <Text style={{ color: '#111827', fontSize: 9 }}>
-                    {s.breakIn}-{s.breakOut}
+                  <Text style={{ color: '#6b7280', fontSize: s(9) }}> Break:</Text>
+                  <Text style={{ color: '#111827', fontSize: s(9) }}>
+                    {shift.breakIn}-{shift.breakOut}
                   </Text>
                 </View>
               )}
@@ -2609,9 +2640,9 @@ function renderTimeSheetSection (
                   justifyContent: 'space-between'
                 }}
               >
-                <Text style={{ color: '#6b7280', fontSize: 9 }}> Total:</Text>
-                <Text style={{ color: '#111827', fontSize: 9 }}>
-                  {s.hours.toFixed(2)} h
+                <Text style={{ color: '#6b7280', fontSize: s(9) }}> Total:</Text>
+                <Text style={{ color: '#111827', fontSize: s(9) }}>
+                  {shift.hours.toFixed(2)} h
                 </Text>
               </View>
             </View>
@@ -2625,10 +2656,10 @@ function renderTimeSheetSection (
           <View
             style={{ flexDirection: 'row', justifyContent: 'space-between' }}
           >
-            <Text style={{ color: '#111827', fontSize: 12, fontWeight: '900' }}>
+            <Text style={{ color: '#111827', fontSize: s(12), fontWeight: '900' }}>
               TOTAL HOURS:
             </Text>
-            <Text style={{ color: '#111827', fontSize: 12, fontWeight: '900' }}>
+            <Text style={{ color: '#111827', fontSize: s(12), fontWeight: '900' }}>
               23.90 h
             </Text>
           </View>
@@ -2637,8 +2668,8 @@ function renderTimeSheetSection (
       )
     case 'footer':
       return (
-        <View style={{ marginTop: 2 }}>
-          <Text style={{ color: '#9ca3af', textAlign: 'center', fontSize: 8 }}>
+        <View style={{ marginTop: s(2) }}>
+          <Text style={{ color: '#9ca3af', textAlign: 'center', fontSize: s(8) }}>
             Printed: 01/15/2026 03:50 PM
           </Text>
           {config.footerText ? (
@@ -2646,8 +2677,8 @@ function renderTimeSheetSection (
               style={{
                 color: '#111827',
                 textAlign: 'center',
-                fontSize: 9,
-                marginTop: 3
+                fontSize: s(9),
+                marginTop: s(3)
               }}
             >
               {config.footerText}
@@ -2671,6 +2702,7 @@ function TimeSheetPreview ({
   sectionOrder: TimeSheetSectionId[]
   onReorder: (newOrder: TimeSheetSectionId[]) => void
 }) {
+  const uiScale = useUiScale()
   const sections: TimeSheetSection[] = sectionOrder.map(id => ({
     id,
     label: TIME_SHEET_SECTION_LABELS[id]
@@ -2678,7 +2710,7 @@ function TimeSheetPreview ({
 
   const renderItem = useCallback(
     ({ item, drag, isActive }: RenderItemParams<TimeSheetSection>) => {
-      const content = renderTimeSheetSection(item.id, config, storeName)
+      const content = renderTimeSheetSection(item.id, config, storeName, uiScale)
       return (
         <ScaleDecorator activeScale={1.02}>
           <TouchableOpacity
@@ -2762,6 +2794,8 @@ function TimeSheetPreview ({
 // ============================================================================
 
 const ReceiptTemplatesScreen = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const organizationLogoUrl = useStoreSettingsStore(s => s.organizationLogoUrl)
   const storeName = selectedStore?.name ?? 'My Store'
@@ -2781,10 +2815,10 @@ const ReceiptTemplatesScreen = () => {
   const locationId = selectedStore?.id ?? ''
   const merchantId = selectedStore?.merchant_id ?? ''
 
-  const templates = useReceiptTemplateStore(s => s.templates)
-  const isSaving = useReceiptTemplateStore(s => s.isSaving)
-  const saveTemplate = useReceiptTemplateStore(s => s.saveTemplate)
-  const cacheLogoBase64 = useReceiptTemplateStore(s => s.cacheLogoBase64)
+  const templates = useReceiptTemplateStore(t => t.templates)
+  const isSaving = useReceiptTemplateStore(t => t.isSaving)
+  const saveTemplate = useReceiptTemplateStore(t => t.saveTemplate)
+  const cacheLogoBase64 = useReceiptTemplateStore(t => t.cacheLogoBase64)
 
   const [activeTab, setActiveTab] = useState<TabType>('receipt')
   const [showTestPrint, setShowTestPrint] = useState(false)
@@ -2846,7 +2880,7 @@ const ReceiptTemplatesScreen = () => {
       toastService.show({
         title: 'Preset applied',
         message: 'Review and save when ready.',
-        type: 'info'
+        type: 'success'
       })
     },
     []
@@ -2863,7 +2897,7 @@ const ReceiptTemplatesScreen = () => {
     toastService.show({
       title: 'Copied',
       message: 'Settings copied. Save to apply.',
-      type: 'info'
+      type: 'success'
     })
   }, [])
 
@@ -2899,9 +2933,9 @@ const ReceiptTemplatesScreen = () => {
       <View
         style={{
           flexDirection: 'row',
-          paddingHorizontal: 16,
-          paddingTop: 12,
-          gap: 4,
+          paddingHorizontal: s(16),
+          paddingTop: s(12),
+          gap: s(4),
           borderBottomWidth: 1,
           borderBottomColor: colors.border
         }}
@@ -2943,16 +2977,16 @@ const ReceiptTemplatesScreen = () => {
                   setTimeSheetSectionOrder(DEFAULT_TIME_SHEET_SECTION_ORDER)
               }}
               style={{
-                paddingHorizontal: 14,
-                paddingBottom: 10,
-                paddingTop: 2,
+                paddingHorizontal: s(14),
+                paddingBottom: s(10),
+                paddingTop: s(2),
                 borderBottomWidth: 2,
                 borderBottomColor: active ? colors.teal : 'transparent'
               }}
             >
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '600',
                   color: active ? colors.teal : colors.label
                 }}
@@ -2965,14 +2999,14 @@ const ReceiptTemplatesScreen = () => {
       </View>
 
       {/* Main Content: Preview + Settings side by side */}
-      <View style={{ flex: 1, flexDirection: 'row', padding: 14, gap: 12 }}>
+      <View style={{ flex: 1, flexDirection: 'row', padding: s(14), gap: s(12) }}>
         {/* Preview Panel */}
         <View
           style={{
             flex: 4,
             backgroundColor: colors.screen,
-            borderRadius: 12,
-            padding: 12,
+            borderRadius: s(12),
+            padding: s(12),
             borderWidth: 1,
             borderColor: colors.border
           }}
@@ -2982,12 +3016,12 @@ const ReceiptTemplatesScreen = () => {
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: 10
+              marginBottom: s(10)
             }}
           >
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: '700',
                 color: colors.label,
                 textTransform: 'uppercase',
@@ -3001,22 +3035,22 @@ const ReceiptTemplatesScreen = () => {
                 flexDirection: 'row',
                 alignItems: 'center',
                 backgroundColor: colors.screen,
-                borderRadius: 6,
-                paddingHorizontal: 7,
-                paddingVertical: 3,
+                borderRadius: s(6),
+                paddingHorizontal: s(7),
+                paddingVertical: s(3),
                 borderWidth: 1,
                 borderColor: colors.border
               }}
             >
-              <GripVertical size={10} color={colors.muted} />
-              <Text style={{ fontSize: 9, color: colors.muted, marginLeft: 3 }}>
+              <GripVertical size={s(10)} color={colors.muted} />
+              <Text style={{ fontSize: s(9), color: colors.muted, marginLeft: s(3) }}>
                 Long-press to reorder
               </Text>
             </View>
           </View>
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 16 }}
+            contentContainerStyle={{ paddingBottom: s(16) }}
           >
             {activeTab === 'receipt' ? (
               <ReceiptPreview
@@ -3068,7 +3102,7 @@ const ReceiptTemplatesScreen = () => {
           style={{
             flex: 6,
             backgroundColor: colors.screen,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border
           }}
@@ -3078,16 +3112,16 @@ const ReceiptTemplatesScreen = () => {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 6,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
+              gap: s(6),
+              paddingHorizontal: s(12),
+              paddingVertical: s(10),
               borderBottomWidth: 1,
               borderBottomColor: colors.border
             }}
           >
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '600',
                 color: colors.heading,
                 flex: 1
@@ -3101,7 +3135,7 @@ const ReceiptTemplatesScreen = () => {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
+                gap: s(6),
                 flexShrink: 0
               }}
             >
@@ -3110,21 +3144,21 @@ const ReceiptTemplatesScreen = () => {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(6),
                   backgroundColor: 'transparent',
-                  borderRadius: 8,
+                  borderRadius: s(8),
                   borderWidth: 1,
                   borderColor: colors.border
                 }}
               >
-                <Copy size={11} color={colors.muted} />
+                <Copy size={s(11)} color={colors.muted} />
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     color: colors.label,
                     fontWeight: '500',
-                    marginLeft: 5
+                    marginLeft: s(5)
                   }}
                 >
                   Copy from Location
@@ -3137,21 +3171,21 @@ const ReceiptTemplatesScreen = () => {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(6),
                     backgroundColor: colors.teal + '20',
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     borderWidth: 1,
                     borderColor: colors.teal + '50'
                   }}
                 >
-                  <Layers size={11} color={colors.teal} />
+                  <Layers size={s(11)} color={colors.teal} />
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       color: colors.teal,
                       fontWeight: '600',
-                      marginLeft: 5
+                      marginLeft: s(5)
                     }}
                   >
                     Presets
@@ -3163,7 +3197,7 @@ const ReceiptTemplatesScreen = () => {
 
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
+            contentContainerStyle={{ padding: s(12), paddingBottom: s(24) }}
             style={{ flex: 1 }}
           >
             {activeTab === 'receipt' ? (
@@ -3188,12 +3222,12 @@ const ReceiptTemplatesScreen = () => {
           {/* Save + Test Print */}
           <View
             style={{
-              paddingHorizontal: 12,
-              paddingVertical: 10,
+              paddingHorizontal: s(12),
+              paddingVertical: s(10),
               borderTopWidth: 1,
               borderTopColor: colors.border,
               flexDirection: 'row',
-              gap: 8
+              gap: s(8)
             }}
           >
             <TouchableOpacity
@@ -3202,18 +3236,18 @@ const ReceiptTemplatesScreen = () => {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 8,
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
+                borderRadius: s(8),
                 backgroundColor: 'transparent',
                 borderWidth: 1,
                 borderColor: colors.border,
-                gap: 5
+                gap: s(5)
               }}
             >
-              <Printer size={13} color={colors.teal} />
+              <Printer size={s(13)} color={colors.teal} />
               <Text
-                style={{ fontSize: 12, color: colors.teal, fontWeight: '600' }}
+                style={{ fontSize: s(12), color: colors.teal, fontWeight: '600' }}
               >
                 Test Print
               </Text>
@@ -3224,8 +3258,8 @@ const ReceiptTemplatesScreen = () => {
               disabled={!hasChanges || isSaving}
               style={{
                 flex: 1,
-                paddingVertical: 8,
-                borderRadius: 8,
+                paddingVertical: s(8),
+                borderRadius: s(8),
                 alignItems: 'center',
                 justifyContent: 'center',
                 backgroundColor:
@@ -3240,7 +3274,7 @@ const ReceiptTemplatesScreen = () => {
               ) : (
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     color: hasChanges && !isSaving ? colors.teal : colors.muted,
                     fontWeight: '600'
                   }}
@@ -3406,6 +3440,8 @@ function KitchenSettings ({
     value: ReceiptTemplateConfig[K]
   ) => void
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <>
       <CollapsibleSection
@@ -3451,18 +3487,18 @@ function KitchenSettings ({
           onToggle={v => updateField('showAllergyAlert', v)}
         />
         {config.showItemModifiers && (
-          <View style={{ marginTop: 8, paddingHorizontal: 4 }}>
+          <View style={{ marginTop: s(8), paddingHorizontal: s(4) }}>
             <Text
               style={{
                 color: colors.label,
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '600',
-                marginBottom: 6
+                marginBottom: s(6)
               }}
             >
               Modifier Style
             </Text>
-            <View style={{ flexDirection: 'row', gap: 6 }}>
+            <View style={{ flexDirection: 'row', gap: s(6) }}>
               {(['inverted', 'red', 'bold'] as ModifierStyle[]).map(opt => {
                 const isSelected = config.modifierStyle === opt
                 const label =
@@ -3477,21 +3513,21 @@ function KitchenSettings ({
                     onPress={() => updateField('modifierStyle', opt)}
                     style={{
                       flex: 1,
-                      paddingVertical: 8,
-                      borderRadius: 8,
+                      paddingVertical: s(8),
+                      borderRadius: s(8),
                       borderWidth: 1.5,
-                      borderColor: isSelected ? colors.primary : colors.border,
+                      borderColor: isSelected ? colors.teal : colors.border,
                       backgroundColor: isSelected
-                        ? colors.primary + '15'
+                        ? colors.teal + '15'
                         : colors.card,
                       alignItems: 'center'
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: isSelected ? '700' : '500',
-                        color: isSelected ? colors.primary : colors.label
+                        color: isSelected ? colors.teal : colors.label
                       }}
                     >
                       {label}
@@ -3513,21 +3549,21 @@ function KitchenSettings ({
         <View
           style={{
             backgroundColor: colors.screen,
-            borderRadius: 8,
-            paddingHorizontal: 10,
-            paddingVertical: 10,
-            marginBottom: 6,
+            borderRadius: s(8),
+            paddingHorizontal: s(10),
+            paddingVertical: s(10),
+            marginBottom: s(6),
             borderWidth: 1,
             borderColor: colors.border
           }}
         >
           <Text
             style={{
-              fontSize: 9,
+              fontSize: s(9),
               color: colors.muted,
               textTransform: 'uppercase',
               letterSpacing: 1,
-              marginBottom: 5
+              marginBottom: s(5)
             }}
           >
             Preview
@@ -3536,7 +3572,7 @@ function KitchenSettings ({
             style={{
               color: colors.heading,
               fontWeight: '700',
-              fontSize: config.largeItemText ? 15 : 11
+              fontSize: s(config.largeItemText ? 15 : 11)
             }}
           >
             2x Cheeseburger
@@ -3544,23 +3580,23 @@ function KitchenSettings ({
           {config.showItemModifiers &&
             (() => {
               const ms = config.modifierStyle ?? 'inverted'
-              const s: any = {
-                marginLeft: 10,
-                fontSize: config.showModsLarge ? 13 : 9,
+              const modStyle: any = {
+                marginLeft: s(10),
+                fontSize: s(config.showModsLarge ? 13 : 9),
                 fontWeight: '700'
               }
               if (ms === 'inverted') {
-                s.backgroundColor = '#111827'
-                s.color = '#FFFFFF'
-                s.paddingHorizontal = 3
-                s.borderRadius = 2
-                s.alignSelf = 'flex-start'
+                modStyle.backgroundColor = '#111827'
+                modStyle.color = '#FFFFFF'
+                modStyle.paddingHorizontal = s(3)
+                modStyle.borderRadius = s(2)
+                modStyle.alignSelf = 'flex-start'
               } else if (ms === 'red') {
-                s.color = '#dc2626'
+                modStyle.color = '#dc2626'
               } else {
-                s.color = colors.label
+                modStyle.color = colors.label
               }
-              return <Text style={s}>+ Extra Cheese</Text>
+              return <Text style={modStyle}>+ Extra Cheese</Text>
             })()}
         </View>
         <ToggleRow

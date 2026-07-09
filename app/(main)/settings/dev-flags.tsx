@@ -28,8 +28,9 @@ import {
 } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
-import SendReceiptSheet from '@/components/receipts/SendReceiptSheet'
+import { useUiScale } from '@/lib/uiScale'
 import { useOrderStore } from '@/stores/useOrderStore'
+import SendReceiptSheet from '@/components/receipts/SendReceiptSheet'
 
 const ALL_RPCS: { key: IdempotentRpc; label: string; description: string }[] = [
   { key: 'seat_guests', label: 'seat_guests', description: 'Seating guests at a table → seat_guests_v3' },
@@ -51,6 +52,9 @@ const ALL_RPCS: { key: IdempotentRpc; label: string; description: string }[] = [
 ]
 
 export default function DevFlagsScreen () {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+
   // Production build: redirect away, do not render the screen at all.
   if (!__DEV__) {
     return <Redirect href='/settings/general' />
@@ -68,26 +72,26 @@ export default function DevFlagsScreen () {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+    <ScrollView contentContainerStyle={{ padding: s(16), gap: s(16) }}>
       {/* Banner */}
       <View
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 10,
-          padding: 12,
-          borderRadius: 12,
+          gap: s(10),
+          padding: s(12),
+          borderRadius: s(12),
           backgroundColor: colors.warning + '15',
           borderWidth: 1,
           borderColor: colors.warning + '40',
         }}
       >
-        <FlaskConical size={20} color={colors.warning} />
+        <FlaskConical size={s(20)} color={colors.warning} />
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}>
+          <Text style={{ color: colors.heading, fontSize: s(14), fontWeight: '700' }}>
             Developer-only — Bad-WiFi Phase 2 flags
           </Text>
-          <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+          <Text style={{ color: colors.muted, fontSize: s(11), marginTop: s(2) }}>
             Hidden in production builds. Toggling routes the client to v(n+1) RPCs that pass `p_idempotency_key`. Watch the `idempotency_keys` table on staging to confirm.
           </Text>
         </View>
@@ -95,23 +99,23 @@ export default function DevFlagsScreen () {
 
       {/* Master controls */}
       <SettingsCard title='Master Controls'>
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        <View style={{ flexDirection: 'row', gap: s(8), marginBottom: s(12) }}>
           <TouchableOpacity
             onPress={() => setAll(true)}
             style={{
               flex: 1,
-              padding: 12,
-              borderRadius: 10,
+              padding: s(12),
+              borderRadius: s(10),
               backgroundColor: allOn ? colors.teal + '15' : colors.card,
               borderWidth: 1,
               borderColor: allOn ? colors.teal : colors.border,
               alignItems: 'center',
               flexDirection: 'row',
               justifyContent: 'center',
-              gap: 6,
+              gap: s(6),
             }}
           >
-            <CheckCircle2 size={16} color={allOn ? colors.teal : colors.muted} />
+            <CheckCircle2 size={s(16)} color={allOn ? colors.teal : colors.muted} />
             <Text style={{ color: allOn ? colors.teal : colors.label, fontWeight: '600' }}>
               Enable All
             </Text>
@@ -120,24 +124,24 @@ export default function DevFlagsScreen () {
             onPress={() => setAll(false)}
             style={{
               flex: 1,
-              padding: 12,
-              borderRadius: 10,
+              padding: s(12),
+              borderRadius: s(10),
               backgroundColor: enabledCount === 0 ? colors.danger + '15' : colors.card,
               borderWidth: 1,
               borderColor: enabledCount === 0 ? colors.danger : colors.border,
               alignItems: 'center',
               flexDirection: 'row',
               justifyContent: 'center',
-              gap: 6,
+              gap: s(6),
             }}
           >
-            <CircleOff size={16} color={enabledCount === 0 ? colors.danger : colors.muted} />
+            <CircleOff size={s(16)} color={enabledCount === 0 ? colors.danger : colors.muted} />
             <Text style={{ color: enabledCount === 0 ? colors.danger : colors.label, fontWeight: '600' }}>
               Disable All
             </Text>
           </TouchableOpacity>
         </View>
-        <Text style={{ color: colors.muted, fontSize: 12, textAlign: 'center' }}>
+        <Text style={{ color: colors.muted, fontSize: s(12), textAlign: 'center' }}>
           {enabledCount} of {ALL_RPCS.length} RPCs flag-ON
         </Text>
       </SettingsCard>
@@ -148,14 +152,14 @@ export default function DevFlagsScreen () {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            paddingVertical: 8,
+            paddingVertical: s(8),
           }}
         >
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.label, fontSize: 14, fontWeight: '600' }}>
+            <Text style={{ color: colors.label, fontSize: s(14), fontWeight: '600' }}>
               flag.paymentRecoveryUI
             </Text>
-            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+            <Text style={{ color: colors.muted, fontSize: s(12), marginTop: s(2) }}>
               Reserved for future verifying-state UI. Currently the defensive auth-check on payment-queue replay always runs (no flag needed).
             </Text>
           </View>
@@ -177,18 +181,18 @@ export default function DevFlagsScreen () {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                paddingVertical: 12,
+                paddingVertical: s(12),
                 borderBottomWidth: idx < ALL_RPCS.length - 1 ? 1 : 0,
                 borderBottomColor: colors.border,
                 opacity: notWired ? 0.5 : 1,
               }}
             >
               <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
                   <Text
                     style={{
                       color: colors.label,
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '600',
                       fontFamily: 'monospace',
                     }}
@@ -200,21 +204,21 @@ export default function DevFlagsScreen () {
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: 3,
+                        gap: s(3),
                         backgroundColor: colors.warning + '20',
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        borderRadius: 4,
+                        paddingHorizontal: s(6),
+                        paddingVertical: s(2),
+                        borderRadius: s(4),
                       }}
                     >
-                      <AlertTriangle size={10} color={colors.warning} />
-                      <Text style={{ fontSize: 9, color: colors.warning, fontWeight: '600' }}>
+                      <AlertTriangle size={s(10)} color={colors.warning} />
+                      <Text style={{ fontSize: s(9), color: colors.warning, fontWeight: '600' }}>
                         DEFERRED
                       </Text>
                     </View>
                   )}
                 </View>
-                <Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>
+                <Text style={{ color: colors.muted, fontSize: s(11), marginTop: s(3) }}>
                   {rpc.description}
                 </Text>
               </View>
@@ -234,6 +238,8 @@ export default function DevFlagsScreen () {
 }
 
 function DevSendReceiptCard () {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [open, setOpen] = useState(false)
   const ordersById = useOrderStore(s => s.ordersById)
   const mostRecentDbOrderId = React.useMemo(() => {
@@ -252,16 +258,16 @@ function DevSendReceiptCard () {
 
   return (
     <SettingsCard title='Send Receipt (Debug)'>
-      <View style={{ paddingVertical: 8, gap: 8 }}>
-        <Text style={{ fontSize: 12, color: colors.muted }}>
+      <View style={{ paddingVertical: s(8), gap: s(8) }}>
+        <Text style={{ fontSize: s(12), color: colors.muted }}>
           Invokes send-receipt edge function for the most recent synced order.
         </Text>
-        <Text style={{ fontSize: 12, color: colors.muted }}>
+        <Text style={{ fontSize: s(12), color: colors.muted }}>
           db_order_id: {mostRecentDbOrderId ?? '— none —'}
         </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Send size={14} color={colors.teal} />
-          <Text style={{ fontSize: 11, color: colors.teal, fontWeight: '600' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
+          <Send size={s(14)} color={colors.teal} />
+          <Text style={{ fontSize: s(11), color: colors.teal, fontWeight: '600' }}>
             Debug only
           </Text>
         </View>
@@ -269,8 +275,8 @@ function DevSendReceiptCard () {
           onPress={() => setOpen(true)}
           disabled={!mostRecentDbOrderId}
           style={{
-            paddingVertical: 10,
-            borderRadius: 8,
+            paddingVertical: s(10),
+            borderRadius: s(8),
             backgroundColor: colors.teal,
             opacity: mostRecentDbOrderId ? 1 : 0.4,
             alignItems: 'center',

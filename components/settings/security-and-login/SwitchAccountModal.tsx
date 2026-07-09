@@ -5,6 +5,7 @@ import { useLoading } from "@/contexts/LoadingContext";
 import { useTimeClock } from "@/hooks/useTimeclock";
 import { getDeviceId } from "@/lib/deviceId";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -27,6 +28,8 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const { getEmployeeByStaffId, setActiveSession, clockIn: employeeClockIn } = useEmployeeStore();
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const { getSession, clockIn: timeclockClockIn } = useTimeclockStore();
@@ -121,11 +124,11 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 overflow-hidden" style={{ borderRadius: 14 }}>
+      <DialogContent className="p-0 overflow-hidden" style={{ borderRadius: s(14) }}>
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 14,
+            borderRadius: s(14),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: "hidden",
@@ -135,20 +138,20 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
           <View
             style={{
               backgroundColor: colors.screen,
-              paddingVertical: 14,
-              paddingHorizontal: 20,
+              paddingVertical: s(14),
+              paddingHorizontal: s(20),
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
-              gap: 8,
+              gap: s(8),
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
             }}
           >
             <View
               style={{
-                width: 28,
-                height: 28,
+                width: s(28),
+                height: s(28),
                 borderRadius: 999,
                 backgroundColor: colors.teal + "20",
                 borderWidth: 1,
@@ -157,39 +160,39 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
                 justifyContent: "center",
               }}
             >
-              <UserRound size={14} color={colors.teal} />
+              <UserRound size={s(14)} color={colors.teal} />
             </View>
             <DialogTitle>
-              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
+              <Text style={{ fontSize: s(14), fontWeight: "700", color: colors.heading }}>
                 Switch Account
               </Text>
             </DialogTitle>
           </View>
 
           {/* Body */}
-          <Animated.View style={[shakeStyle, { padding: 20 }]}>
-            <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", marginBottom: 14 }}>
+          <Animated.View style={[shakeStyle, { padding: s(20) }]}>
+            <Text style={{ fontSize: s(12), color: colors.muted, textAlign: "center", marginBottom: s(14) }}>
               Enter your PIN to switch
             </Text>
 
             <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />
 
-            <View style={{ marginTop: 10 }}>
+            <View style={{ marginTop: s(10) }}>
               <PinNumpad onKeyPress={handleKeyPress} />
             </View>
 
             {/* Error */}
-            <View style={{ height: 20, marginTop: 8, alignItems: "center", justifyContent: "center" }}>
+            <View style={{ height: s(20), marginTop: s(8), alignItems: "center", justifyContent: "center" }}>
               {error && (
-                <Text style={{ fontSize: 11, color: colors.danger, textAlign: "center" }}>
+                <Text style={{ fontSize: s(11), color: colors.danger, textAlign: "center" }}>
                   {error}
                 </Text>
               )}
             </View>
 
             {/* Forgot PIN */}
-            <TouchableOpacity style={{ alignSelf: "flex-end", marginBottom: 14 }}>
-              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>
+            <TouchableOpacity style={{ alignSelf: "flex-end", marginBottom: s(14) }}>
+              <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.teal }}>
                 Forgot PIN?
               </Text>
             </TouchableOpacity>
@@ -198,10 +201,10 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
             <View
               style={{
                 flexDirection: "row",
-                gap: 8,
+                gap: s(8),
                 borderTopWidth: 1,
                 borderTopColor: colors.border,
-                paddingTop: 14,
+                paddingTop: s(14),
               }}
             >
               <TouchableOpacity
@@ -210,16 +213,16 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 6,
-                  paddingVertical: 10,
+                  gap: s(6),
+                  paddingVertical: s(10),
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 8,
+                  borderRadius: s(8),
                   backgroundColor: colors.screen,
                 }}
               >
-                <Clock size={13} color={colors.label} />
-                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
+                <Clock size={s(13)} color={colors.label} />
+                <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.label }}>
                   Timeclock
                 </Text>
               </TouchableOpacity>
@@ -229,15 +232,15 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
                 disabled={pin.length < MAX_PIN_LENGTH}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
+                  paddingVertical: s(10),
                   backgroundColor: pin.length === MAX_PIN_LENGTH ? colors.teal : colors.teal + "30",
-                  borderRadius: 8,
+                  borderRadius: s(8),
                   alignItems: "center",
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: "700",
                     color: pin.length === MAX_PIN_LENGTH ? colors.onSolid : colors.muted,
                   }}

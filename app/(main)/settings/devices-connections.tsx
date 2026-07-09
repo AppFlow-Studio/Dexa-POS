@@ -6,6 +6,7 @@ import { usePaymentTerminal } from '@/hooks/usePaymentTerminal'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { useTerminalStatus } from '@/hooks/useTerminalStatus'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { toastService } from '@/lib/toastService'
 import {
   checkForNativeUpdate,
@@ -32,6 +33,9 @@ import { PrinterService } from '@/services/printing/PrinterService'
 import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
+import { getSharedCastlesService } from '@/services/terminals/castles-service'
+import { CASTLES_DEFAULT_PORT } from '@/types/castles'
 import type {
   PrinterConfig,
   PrinterDriverType,
@@ -159,6 +163,8 @@ function SectionHeader ({
   onToggle: () => void
   rightContent?: React.ReactNode
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <TouchableOpacity
       onPress={onToggle}
@@ -166,10 +172,10 @@ function SectionHeader ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: 14,
+        padding: s(14),
         backgroundColor: colors.panel,
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
+        borderTopLeftRadius: s(12),
+        borderTopRightRadius: s(12),
         borderBottomWidth: expanded ? 1 : 0,
         borderBottomColor: colors.border
       }}
@@ -177,29 +183,29 @@ function SectionHeader ({
       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
         <View
           style={{
-            width: 32,
-            height: 32,
+            width: s(32),
+            height: s(32),
             backgroundColor: colors.teal + '15',
-            borderRadius: 8,
+            borderRadius: s(8),
             alignItems: 'center',
             justifyContent: 'center',
-            marginRight: 10
+            marginRight: s(10)
           }}
         >
           {icon}
         </View>
         <Text
-          style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
         >
           {title}
         </Text>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
         {rightContent}
         {expanded ? (
-          <ChevronUp size={16} color={colors.label} />
+          <ChevronUp size={s(16)} color={colors.label} />
         ) : (
-          <ChevronDown size={16} color={colors.label} />
+          <ChevronDown size={s(16)} color={colors.label} />
         )}
       </View>
     </TouchableOpacity>
@@ -219,6 +225,8 @@ const DevicesConnectionsScreen = ({
   mode = 'all',
   afterPrinters
 }: DevicesConnectionsScreenProps) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const supabase = useSupabaseClient()
   const router = useRouter()
   const [showCastlesUsbSetup, setShowCastlesUsbSetup] = useState(false)
@@ -237,6 +245,32 @@ const DevicesConnectionsScreen = ({
     diagnoseCastlesConnection,
     registerTerminal
   } = usePaymentTerminal()
+
+  // Live connect sub-step ("Connecting…", "Verifying…") shown while testing.
+  const terminalConnectActivity = useTerminalConnectionStore(
+    s => s.connectActivity
+  )
+
+  // Pre-warm the Castles singleton when this screen opens so the first "Test"
+  // (or the next sale) skips the cold-connect cost. Fire-and-forget; no-op when
+  // already connected, suspended, or no Castles terminal is configured.
+  useEffect(() => {
+    const terminal = selectedStation?.payment_terminal
+    if (terminal?.terminal_type !== 'castles') return
+    const service = getSharedCastlesService()
+    if (service.isSuspended() || service.isConnected()) return
+    const isUsb = terminal.connection_type === 'usb'
+    service
+      .connect({
+        connectionType: isUsb ? ('usb' as const) : ('local_socket' as const),
+        host: isUsb ? undefined : terminal.ip_address,
+        port: isUsb ? undefined : terminal.port ?? CASTLES_DEFAULT_PORT,
+        timeout: 10_000,
+        terminalId: terminal.id
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStation?.payment_terminal?.id])
 
   // Printer store
   const storedPrinters = usePrinterStore(s => s.printers)
@@ -425,7 +459,7 @@ const DevicesConnectionsScreen = ({
     if (!fullRecord) return
     const hydratedIp = currentTerminal.ip_address ?? fullRecord.ipAddress
     const hydratedSerial =
-      currentTerminal.serial_number ?? fullRecord.serialNumber ?? null
+      currentTerminal.serial_number ?? null
     if (
       hydratedIp === currentTerminal.ip_address &&
       hydratedSerial === currentTerminal.serial_number
@@ -533,6 +567,29 @@ const DevicesConnectionsScreen = ({
 
   const handleAssignTerminal = async (terminal: typeof terminals[number]) => {
     if (!selectedStation || !selectedStore) return
+
+    // Loosened binding: a terminal that's connected/active at another station
+    // can still be claimed here. Confirm the move first so we don't silently
+    // steal another station's reader. (The body below already unbinds the old
+    // station and rebinds to this one.)
+    const boundElsewhere =
+      terminal.isActive &&
+      !!terminal.stationId &&
+      terminal.stationId !== selectedStation.id
+    if (boundElsewhere) {
+      const confirmed = await new Promise<boolean>(resolve => {
+        Alert.alert(
+          'Move terminal to this station?',
+          `${terminal.name} is currently in use at another station. Moving it here disconnects it from that station.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Move here', onPress: () => resolve(true) }
+          ]
+        )
+      })
+      if (!confirmed) return
+    }
+
     setIsAssigning(true)
     try {
       await supabase
@@ -1357,37 +1414,37 @@ const DevicesConnectionsScreen = ({
         paddingVertical: 10
       }}
     >
-      <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View style={{ marginBottom: s(12), flexDirection: 'row', alignItems: 'center', gap: s(12) }}>
         <View style={{ flex: 1 }}>
           <Text
-            style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
+            style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}
           >
             {mode === 'printers' ? 'Printer Settings' : 'Devices & Connections'}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
+          <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(2) }}>
             {mode === 'printers'
               ? 'Printer connection, receipt printing, and order printing.'
               : 'Station hardware, terminal, and printer management.'}
           </Text>
         </View>
         {mode !== 'printers' && (
-          <View style={{ flexDirection: 'row', gap: 6 }}>
+          <View style={{ flexDirection: 'row', gap: s(6) }}>
             <TouchableOpacity
               onPress={() => setShowCastlesUsbSetup(true)}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 8,
+                gap: s(6),
+                paddingHorizontal: s(10),
+                paddingVertical: s(6),
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.teal + '50',
                 backgroundColor: colors.teal
               }}
             >
-              <Usb size={13} color='#fff' />
-              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 12 }}>
+              <Usb size={s(13)} color='#fff' />
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: s(12) }}>
                 Set Up USB Terminal
               </Text>
             </TouchableOpacity>
@@ -1396,17 +1453,17 @@ const DevicesConnectionsScreen = ({
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 8,
+                gap: s(6),
+                paddingHorizontal: s(10),
+                paddingVertical: s(6),
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.teal + '50',
                 backgroundColor: colors.teal + '15'
               }}
             >
-              <Usb size={13} color={colors.teal} />
-              <Text style={{ color: colors.teal, fontWeight: '600', fontSize: 12 }}>
+              <Usb size={s(13)} color={colors.teal} />
+              <Text style={{ color: colors.teal, fontWeight: '600', fontSize: s(12) }}>
                 USB Diagnostics
               </Text>
             </TouchableOpacity>
@@ -1414,7 +1471,7 @@ const DevicesConnectionsScreen = ({
         )}
       </View>
       <View
-        style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }}
+        style={{ height: 1, backgroundColor: colors.border, marginBottom: s(16) }}
       />
 
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -1425,42 +1482,42 @@ const DevicesConnectionsScreen = ({
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 12,
+            marginBottom: s(12),
             overflow: 'hidden'
           }}
         >
           <SectionHeader
             title='This Station'
-            icon={<Smartphone size={20} color={colors.teal} />}
+            icon={<Smartphone size={s(20)} color={colors.teal} />}
             expanded={expandedSections.station}
             onToggle={() => toggleSection('station')}
             rightContent={
               <TouchableOpacity
                 onPress={handleRefreshCapabilities}
                 disabled={isRefreshingCaps}
-                style={{ padding: 4 }}
+                style={{ padding: s(4) }}
               >
                 {isRefreshingCaps ? (
                   <ActivityIndicator size='small' color={colors.teal} />
                 ) : (
-                  <RefreshCw size={14} color={colors.teal} />
+                  <RefreshCw size={s(14)} color={colors.teal} />
                 )}
               </TouchableOpacity>
             }
           />
           {expandedSections.station && (
-            <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
+            <View style={{ paddingHorizontal: s(12), paddingVertical: s(10) }}>
               {capabilities ? (
                 <>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '700',
                       color: colors.heading,
-                      marginBottom: 8
+                      marginBottom: s(8)
                     }}
                   >
                     {capabilities.manufacturer} {capabilities.model}
@@ -1469,8 +1526,8 @@ const DevicesConnectionsScreen = ({
                     style={{
                       flexDirection: 'row',
                       flexWrap: 'wrap',
-                      gap: 8,
-                      marginBottom: 10
+                      gap: s(8),
+                      marginBottom: s(10)
                     }}
                   >
                     {[
@@ -1497,31 +1554,31 @@ const DevicesConnectionsScreen = ({
                         key={item.label}
                         style={{
                           backgroundColor: colors.card,
-                          borderRadius: 8,
+                          borderRadius: s(8),
                           borderWidth: 1,
                           borderColor: colors.border,
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          minWidth: 120
+                          paddingHorizontal: s(10),
+                          paddingVertical: s(6),
+                          minWidth: s(120)
                         }}
                       >
                         <Text
                           style={{
-                            fontSize: 9,
+                            fontSize: s(9),
                             color: colors.muted,
                             fontWeight: '600',
                             textTransform: 'uppercase',
-                            letterSpacing: 0.5
+                            letterSpacing: s(0.5)
                           }}
                         >
                           {item.label}
                         </Text>
                         <Text
                           style={{
-                            fontSize: 12,
+                            fontSize: s(12),
                             color: colors.heading,
                             fontWeight: '500',
-                            marginTop: 1
+                            marginTop: s(1)
                           }}
                         >
                           {item.value}
@@ -1530,7 +1587,7 @@ const DevicesConnectionsScreen = ({
                     ))}
                   </View>
                   <View
-                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}
+                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6) }}
                   >
                     {[
                       {
@@ -1553,14 +1610,14 @@ const DevicesConnectionsScreen = ({
                             backgroundColor: colors.success + '20',
                             borderWidth: 1,
                             borderColor: colors.success + '40',
-                            borderRadius: 6,
-                            paddingHorizontal: 8,
-                            paddingVertical: 3
+                            borderRadius: s(6),
+                            paddingHorizontal: s(8),
+                            paddingVertical: s(3)
                           }}
                         >
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               fontWeight: '500',
                               color: colors.success
                             }}
@@ -1572,7 +1629,7 @@ const DevicesConnectionsScreen = ({
                   </View>
                 </>
               ) : (
-                <Text style={{ fontSize: 12, color: colors.muted }}>
+                <Text style={{ fontSize: s(12), color: colors.muted }}>
                   Detecting device capabilities...
                 </Text>
               )}
@@ -1588,21 +1645,21 @@ const DevicesConnectionsScreen = ({
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 12,
+            marginBottom: s(12),
             overflow: 'hidden'
           }}
         >
           <SectionHeader
             title='Payment Terminal'
-            icon={<Radio size={20} color={colors.teal} />}
+            icon={<Radio size={s(20)} color={colors.teal} />}
             expanded={expandedSections.terminal}
             onToggle={() => toggleSection('terminal')}
           />
           {expandedSections.terminal && (
-            <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
+            <View style={{ paddingHorizontal: s(12), paddingVertical: s(10) }}>
               {showRegisterForm ? (
                 // ── Register form ──
                 <View>
@@ -1611,22 +1668,22 @@ const DevicesConnectionsScreen = ({
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      marginBottom: 12
+                      marginBottom: s(12)
                     }}
                   >
                     <View
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: 8
+                        gap: s(8)
                       }}
                     >
-                      <Plus size={16} color={colors.teal} />
+                      <Plus size={s(16)} color={colors.teal} />
                       <Text
                         style={{
                           color: colors.heading,
                           fontWeight: '700',
-                          fontSize: 13
+                          fontSize: s(13)
                         }}
                       >
                         Add Terminal
@@ -1637,9 +1694,9 @@ const DevicesConnectionsScreen = ({
                         setShowRegisterForm(false)
                         setQuickTestStatus('idle')
                       }}
-                      style={{ padding: 4 }}
+                      style={{ padding: s(4) }}
                     >
-                      <X size={18} color={colors.muted} />
+                      <X size={s(18)} color={colors.muted} />
                     </TouchableOpacity>
                   </View>
 
@@ -1648,11 +1705,11 @@ const DevicesConnectionsScreen = ({
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 12,
-                      marginBottom: 12,
-                      paddingVertical: 10,
-                      paddingHorizontal: 12,
-                      borderRadius: 8,
+                      gap: s(12),
+                      marginBottom: s(12),
+                      paddingVertical: s(10),
+                      paddingHorizontal: s(12),
+                      borderRadius: s(8),
                       borderWidth: 1,
                       borderColor: colors.teal + '50',
                       backgroundColor: colors.teal + '15'
@@ -1661,16 +1718,16 @@ const DevicesConnectionsScreen = ({
                     <Image
                       source={require('@/assets/images/castles.jpg')}
                       style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 6
+                        width: s(36),
+                        height: s(36),
+                        borderRadius: s(6)
                       }}
                       resizeMode='cover'
                     />
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: '700',
                           color: colors.teal
                         }}
@@ -1679,9 +1736,9 @@ const DevicesConnectionsScreen = ({
                       </Text>
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.muted,
-                          marginTop: 2
+                          marginTop: s(2)
                         }}
                       >
                         Network (TCP) payment terminal
@@ -1695,12 +1752,12 @@ const DevicesConnectionsScreen = ({
                           this terminal is wired (USB) or networked (TCP).
                           USB is pre-set by the Setup wizard but the user can
                           still flip it back to TCP for a network terminal. */}
-                      <View style={{ marginBottom: 8 }}>
+                      <View style={{ marginBottom: s(8) }}>
                         <Text
                           style={{
                             color: colors.muted,
-                            fontSize: 11,
-                            marginBottom: 6
+                            fontSize: s(11),
+                            marginBottom: s(6)
                           }}
                         >
                           Connection
@@ -1709,7 +1766,7 @@ const DevicesConnectionsScreen = ({
                           style={{
                             flexDirection: 'row',
                             backgroundColor: colors.screen,
-                            borderRadius: 8,
+                            borderRadius: s(8),
                             overflow: 'hidden',
                             borderWidth: 1,
                             borderColor: colors.border
@@ -1729,18 +1786,18 @@ const DevicesConnectionsScreen = ({
                                 }
                                 style={{
                                   flex: 1,
-                                  paddingVertical: 10,
+                                  paddingVertical: s(10),
                                   alignItems: 'center',
                                   flexDirection: 'row',
                                   justifyContent: 'center',
-                                  gap: 6,
+                                  gap: s(6),
                                   backgroundColor: active ? colors.teal + '20' : 'transparent'
                                 }}
                               >
-                                <Icon size={13} color={active ? colors.teal : colors.muted} />
+                                <Icon size={s(13)} color={active ? colors.teal : colors.muted} />
                                 <Text
                                   style={{
-                                    fontSize: 12,
+                                    fontSize: s(12),
                                     fontWeight: '600',
                                     color: active ? colors.teal : colors.muted
                                   }}
@@ -1760,16 +1817,16 @@ const DevicesConnectionsScreen = ({
                         <View
                           style={{
                             flexDirection: 'row',
-                            gap: 8,
-                            marginBottom: 8
+                            gap: s(8),
+                            marginBottom: s(8)
                           }}
                         >
                         <View style={{ flex: 3 }}>
                           <Text
                             style={{
                               color: colors.muted,
-                              fontSize: 11,
-                              marginBottom: 4
+                              fontSize: s(11),
+                              marginBottom: s(4)
                             }}
                           >
                             IP Address *
@@ -1786,11 +1843,11 @@ const DevicesConnectionsScreen = ({
                               backgroundColor: colors.screen,
                               borderWidth: 1,
                               borderColor: colors.border,
-                              borderRadius: 8,
-                              paddingHorizontal: 12,
-                              paddingVertical: 10,
+                              borderRadius: s(8),
+                              paddingHorizontal: s(12),
+                              paddingVertical: s(10),
                               color: colors.heading,
-                              fontSize: 13
+                              fontSize: s(13)
                             }}
                           />
                         </View>
@@ -1798,8 +1855,8 @@ const DevicesConnectionsScreen = ({
                           <Text
                             style={{
                               color: colors.muted,
-                              fontSize: 11,
-                              marginBottom: 4
+                              fontSize: s(11),
+                              marginBottom: s(4)
                             }}
                           >
                             Port
@@ -1816,11 +1873,11 @@ const DevicesConnectionsScreen = ({
                               backgroundColor: colors.screen,
                               borderWidth: 1,
                               borderColor: colors.border,
-                              borderRadius: 8,
-                              paddingHorizontal: 12,
-                              paddingVertical: 10,
+                              borderRadius: s(8),
+                              paddingHorizontal: s(12),
+                              paddingVertical: s(10),
                               color: colors.heading,
-                              fontSize: 13
+                              fontSize: s(13)
                             }}
                           />
                         </View>
@@ -1828,29 +1885,29 @@ const DevicesConnectionsScreen = ({
                       ) : (
                         <View
                           style={{
-                            padding: 10,
-                            marginBottom: 8,
-                            borderRadius: 8,
+                            padding: s(10),
+                            marginBottom: s(8),
+                            borderRadius: s(8),
                             borderWidth: 1,
                             borderColor: colors.teal + '40',
                             backgroundColor: colors.teal + '10',
                             flexDirection: 'row',
                             alignItems: 'center',
-                            gap: 8
+                            gap: s(8)
                           }}
                         >
-                          <Usb size={14} color={colors.teal} />
-                          <Text style={{ flex: 1, fontSize: 11, color: colors.label, lineHeight: 16 }}>
+                          <Usb size={s(14)} color={colors.teal} />
+                          <Text style={{ flex: 1, fontSize: s(11), color: colors.label, lineHeight: s(16) }}>
                             USB — no IP needed. The terminal is identified by USB device serial after the wizard handshake.
                           </Text>
                         </View>
                       )}
-                      <View style={{ marginBottom: 12 }}>
+                      <View style={{ marginBottom: s(12) }}>
                         <Text
                           style={{
                             color: colors.muted,
-                            fontSize: 11,
-                            marginBottom: 4
+                            fontSize: s(11),
+                            marginBottom: s(4)
                           }}
                         >
                           Terminal Name *
@@ -1866,11 +1923,11 @@ const DevicesConnectionsScreen = ({
                             backgroundColor: colors.screen,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            borderRadius: 8,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
+                            borderRadius: s(8),
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(10),
                             color: colors.heading,
-                            fontSize: 13
+                            fontSize: s(13)
                           }}
                         />
                       </View>
@@ -1895,12 +1952,12 @@ const DevicesConnectionsScreen = ({
                           secure: true
                         }
                       ].map(field => (
-                        <View key={field.key} style={{ marginBottom: 12 }}>
+                        <View key={field.key} style={{ marginBottom: s(12) }}>
                           <Text
                             style={{
                               color: colors.muted,
-                              fontSize: 11,
-                              marginBottom: 4
+                              fontSize: s(11),
+                              marginBottom: s(4)
                             }}
                           >
                             {field.label}
@@ -1917,21 +1974,21 @@ const DevicesConnectionsScreen = ({
                               backgroundColor: colors.screen,
                               borderWidth: 1,
                               borderColor: colors.border,
-                              borderRadius: 8,
-                              paddingHorizontal: 12,
-                              paddingVertical: 10,
+                              borderRadius: s(8),
+                              paddingHorizontal: s(12),
+                              paddingVertical: s(10),
                               color: colors.heading,
-                              fontSize: 13
+                              fontSize: s(13)
                             }}
                           />
                         </View>
                       ))}
-                      <View style={{ marginBottom: 12 }}>
+                      <View style={{ marginBottom: s(12) }}>
                         <Text
                           style={{
                             color: colors.muted,
-                            fontSize: 11,
-                            marginBottom: 6
+                            fontSize: s(11),
+                            marginBottom: s(6)
                           }}
                         >
                           Environment
@@ -1940,7 +1997,7 @@ const DevicesConnectionsScreen = ({
                           style={{
                             flexDirection: 'row',
                             backgroundColor: colors.screen,
-                            borderRadius: 8,
+                            borderRadius: s(8),
                             overflow: 'hidden',
                             borderWidth: 1,
                             borderColor: colors.border
@@ -1957,7 +2014,7 @@ const DevicesConnectionsScreen = ({
                               }
                               style={{
                                 flex: 1,
-                                paddingVertical: 10,
+                                paddingVertical: s(10),
                                 alignItems: 'center',
                                 backgroundColor:
                                   registerForm.environment === env
@@ -1967,7 +2024,7 @@ const DevicesConnectionsScreen = ({
                             >
                               <Text
                                 style={{
-                                  fontSize: 13,
+                                  fontSize: s(13),
                                   fontWeight: '500',
                                   color:
                                     registerForm.environment === env
@@ -1989,8 +2046,8 @@ const DevicesConnectionsScreen = ({
                     onPress={handleRegisterTerminal}
                     disabled={!isRegisterFormValid || isRegistering}
                     style={{
-                      paddingVertical: 12,
-                      borderRadius: 10,
+                      paddingVertical: s(12),
+                      borderRadius: s(10),
                       alignItems: 'center',
                       flexDirection: 'row',
                       justifyContent: 'center',
@@ -2010,19 +2067,19 @@ const DevicesConnectionsScreen = ({
                     ) : (
                       <>
                         <Check
-                          size={15}
+                          size={s(15)}
                           color={
                             isRegisterFormValid ? colors.teal : colors.muted
                           }
                         />
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             color: isRegisterFormValid
                               ? colors.teal
                               : colors.muted,
                             fontWeight: '700',
-                            marginLeft: 6
+                            marginLeft: s(6)
                           }}
                         >
                           {registerFormType === 'castles'
@@ -2041,14 +2098,14 @@ const DevicesConnectionsScreen = ({
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      marginBottom: 16
+                      marginBottom: s(16)
                     }}
                   >
                     <Text
                       style={{
                         color: colors.heading,
                         fontWeight: 'bold',
-                        fontSize: 14
+                        fontSize: s(14)
                       }}
                     >
                       Available Terminals
@@ -2056,7 +2113,7 @@ const DevicesConnectionsScreen = ({
                     <TouchableOpacity
                       onPress={() => setShowTerminalPicker(false)}
                     >
-                      <Text style={{ color: colors.teal }}>Cancel</Text>
+                      <Text style={{ color: colors.teal, fontSize: s(13) }}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
                   {terminals.length === 0 ? (
@@ -2064,7 +2121,7 @@ const DevicesConnectionsScreen = ({
                       style={{
                         color: colors.muted,
                         textAlign: 'center',
-                        paddingVertical: 16
+                        paddingVertical: s(16)
                       }}
                     >
                       No terminals found.
@@ -2080,21 +2137,17 @@ const DevicesConnectionsScreen = ({
                         <TouchableOpacity
                           key={t.id}
                           onPress={() =>
-                            !isCurrent &&
-                            !isOtherStation &&
-                            handleAssignTerminal(t)
+                            !isCurrent && handleAssignTerminal(t)
                           }
-                          disabled={
-                            isCurrent || isAssigning || !!isOtherStation
-                          }
+                          disabled={isCurrent || isAssigning}
                           style={{
                             backgroundColor: isCurrent
                               ? colors.teal + '10'
                               : colors.screen,
-                            paddingHorizontal: 12,
-                            paddingVertical: 12,
-                            borderRadius: 8,
-                            marginBottom: 8,
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(12),
+                            borderRadius: s(8),
+                            marginBottom: s(8),
                             flexDirection: 'row',
                             alignItems: 'center',
                             justifyContent: 'space-between',
@@ -2102,7 +2155,7 @@ const DevicesConnectionsScreen = ({
                             borderColor: isCurrent
                               ? colors.teal + '50'
                               : colors.border,
-                            opacity: isOtherStation ? 0.5 : 1
+                            opacity: 1
                           }}
                         >
                           <View
@@ -2114,10 +2167,10 @@ const DevicesConnectionsScreen = ({
                           >
                             <View
                               style={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: 5,
-                                marginRight: 10,
+                                width: s(10),
+                                height: s(10),
+                                borderRadius: s(5),
+                                marginRight: s(10),
                                 backgroundColor: t.isConnected
                                   ? colors.success
                                   : colors.muted
@@ -2128,7 +2181,7 @@ const DevicesConnectionsScreen = ({
                                 style={{
                                   color: colors.heading,
                                   fontWeight: '500',
-                                  fontSize: 12
+                                  fontSize: s(12)
                                 }}
                               >
                                 {t.name}
@@ -2137,22 +2190,22 @@ const DevicesConnectionsScreen = ({
                                 style={{
                                   flexDirection: 'row',
                                   alignItems: 'center',
-                                  marginTop: 2,
+                                  marginTop: s(2),
                                   flexWrap: 'wrap',
-                                  gap: 4
+                                  gap: s(4)
                                 }}
                               >
                                 <View
                                   style={{
-                                    paddingHorizontal: 6,
-                                    paddingVertical: 2,
-                                    borderRadius: 4,
+                                    paddingHorizontal: s(6),
+                                    paddingVertical: s(2),
+                                    borderRadius: s(4),
                                     backgroundColor: colors.teal + '30'
                                   }}
                                 >
                                   <Text
                                     style={{
-                                      fontSize: 10,
+                                      fontSize: s(10),
                                       fontWeight: '500',
                                       color: colors.teal
                                     }}
@@ -2168,26 +2221,26 @@ const DevicesConnectionsScreen = ({
                                 {t.terminalType === 'castles' && (
                                   <View
                                     style={{
-                                      paddingHorizontal: 6,
-                                      paddingVertical: 2,
-                                      borderRadius: 4,
+                                      paddingHorizontal: s(6),
+                                      paddingVertical: s(2),
+                                      borderRadius: s(4),
                                       backgroundColor:
                                         t.connectionType === 'usb'
                                           ? colors.warning + '30'
                                           : colors.muted + '30',
                                       flexDirection: 'row',
                                       alignItems: 'center',
-                                      gap: 3
+                                      gap: s(3)
                                     }}
                                   >
                                     {t.connectionType === 'usb' ? (
-                                      <Usb size={9} color={colors.warning} />
+                                      <Usb size={s(9)} color={colors.warning} />
                                     ) : (
-                                      <Wifi size={9} color={colors.muted} />
+                                      <Wifi size={s(9)} color={colors.muted} />
                                     )}
                                     <Text
                                       style={{
-                                        fontSize: 10,
+                                        fontSize: s(10),
                                         fontWeight: '600',
                                         color:
                                           t.connectionType === 'usb'
@@ -2203,7 +2256,7 @@ const DevicesConnectionsScreen = ({
                                   <Text
                                     style={{
                                       color: colors.muted,
-                                      fontSize: 10
+                                      fontSize: s(10)
                                     }}
                                   >
                                     {t.model}
@@ -2211,7 +2264,36 @@ const DevicesConnectionsScreen = ({
                                 )}
                               </View>
                               {t.terminalType === 'castles' && (
-                                <View style={{ marginTop: 4, gap: 2 }}>
+                                <View style={{ marginTop: s(4), gap: s(2) }}>
+                                  {(t as any).serialNumber && (
+                                    <View
+                                      style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center'
+                                      }}
+                                    >
+                                      <Text
+                                        style={{
+                                          fontSize: s(10),
+                                          color: colors.muted,
+                                          fontWeight: '600',
+                                          width: s(44)
+                                        }}
+                                      >
+                                        S/N:
+                                      </Text>
+                                      <Text
+                                        style={{
+                                          fontSize: s(10),
+                                          color: colors.heading,
+                                          fontFamily: 'monospace'
+                                        }}
+                                        selectable
+                                      >
+                                        {(t as any).serialNumber ?? '— not yet discovered —'}
+                                      </Text>
+                                    </View>
+                                  )}
                                   <View
                                     style={{
                                       flexDirection: 'row',
@@ -2220,44 +2302,17 @@ const DevicesConnectionsScreen = ({
                                   >
                                     <Text
                                       style={{
-                                        fontSize: 10,
+                                        fontSize: s(10),
                                         color: colors.muted,
                                         fontWeight: '600',
-                                        width: 44
-                                      }}
-                                    >
-                                      S/N:
-                                    </Text>
-                                    <Text
-                                      style={{
-                                        fontSize: 10,
-                                        color: colors.heading,
-                                        fontFamily: 'monospace'
-                                      }}
-                                      selectable
-                                    >
-                                      {t.serialNumber ?? '— not yet discovered —'}
-                                    </Text>
-                                  </View>
-                                  <View
-                                    style={{
-                                      flexDirection: 'row',
-                                      alignItems: 'center'
-                                    }}
-                                  >
-                                    <Text
-                                      style={{
-                                        fontSize: 10,
-                                        color: colors.muted,
-                                        fontWeight: '600',
-                                        width: 44
+                                        width: s(44)
                                       }}
                                     >
                                       {t.connectionType === 'usb' ? 'Conn:' : 'Addr:'}
                                     </Text>
                                     <Text
                                       style={{
-                                        fontSize: 10,
+                                        fontSize: s(10),
                                         color: colors.heading,
                                         fontFamily: 'monospace'
                                       }}
@@ -2276,17 +2331,17 @@ const DevicesConnectionsScreen = ({
                                   >
                                     <Text
                                       style={{
-                                        fontSize: 10,
+                                        fontSize: s(10),
                                         color: colors.muted,
                                         fontWeight: '600',
-                                        width: 44
+                                        width: s(44)
                                       }}
                                     >
                                       ID:
                                     </Text>
                                     <Text
                                       style={{
-                                        fontSize: 10,
+                                        fontSize: s(10),
                                         color: colors.heading,
                                         fontFamily: 'monospace'
                                       }}
@@ -2303,16 +2358,16 @@ const DevicesConnectionsScreen = ({
                             <View
                               style={{
                                 backgroundColor: colors.teal + '20',
-                                paddingHorizontal: 8,
-                                paddingVertical: 3,
-                                borderRadius: 4,
+                                paddingHorizontal: s(8),
+                                paddingVertical: s(3),
+                                borderRadius: s(4),
                                 borderWidth: 1,
                                 borderColor: colors.teal + '50'
                               }}
                             >
                               <Text
                                 style={{
-                                  fontSize: 10,
+                                  fontSize: s(10),
                                   color: colors.teal,
                                   fontWeight: '700'
                                 }}
@@ -2324,20 +2379,20 @@ const DevicesConnectionsScreen = ({
                           {isOtherStation && (
                             <View
                               style={{
-                                backgroundColor: colors.border,
-                                paddingHorizontal: 8,
-                                paddingVertical: 3,
-                                borderRadius: 4
+                                backgroundColor: colors.warning + '20',
+                                paddingHorizontal: s(8),
+                                paddingVertical: s(3),
+                                borderRadius: s(4)
                               }}
                             >
                               <Text
                                 style={{
-                                  color: colors.label,
-                                  fontSize: 10,
+                                  color: colors.warning,
+                                  fontSize: s(10),
                                   fontWeight: 'bold'
                                 }}
                               >
-                                In Use
+                                Tap to move here
                               </Text>
                             </View>
                           )}
@@ -2354,16 +2409,17 @@ const DevicesConnectionsScreen = ({
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginTop: 8,
-                      paddingVertical: 8
+                      marginTop: s(8),
+                      paddingVertical: s(8)
                     }}
                   >
-                    <Plus size={16} color={colors.teal} />
+                    <Plus size={s(16)} color={colors.teal} />
                     <Text
                       style={{
                         color: colors.teal,
                         fontWeight: '500',
-                        marginLeft: 4
+                        marginLeft: s(4),
+                        fontSize: s(12)
                       }}
                     >
                       Register New Terminal
@@ -2378,37 +2434,37 @@ const DevicesConnectionsScreen = ({
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      marginBottom: 16
+                      marginBottom: s(16)
                     }}
                   >
                     <View
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: 8
+                        gap: s(8)
                       }}
                     >
-                      <Pencil size={16} color={colors.teal} />
+                      <Pencil size={s(16)} color={colors.teal} />
                       <Text
                         style={{
                           color: colors.heading,
                           fontWeight: 'bold',
-                          fontSize: 14
+                          fontSize: s(14)
                         }}
                       >
                         Edit Terminal
                       </Text>
                       <View
                         style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 2,
-                          borderRadius: 4,
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(2),
+                          borderRadius: s(4),
                           backgroundColor: colors.teal + '30'
                         }}
                       >
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: s(11),
                             fontWeight: 'bold',
                             color: colors.teal
                           }}
@@ -2421,18 +2477,18 @@ const DevicesConnectionsScreen = ({
                     </View>
                     <TouchableOpacity
                       onPress={() => setIsEditingTerminal(false)}
-                      style={{ padding: 4 }}
+                      style={{ padding: s(4) }}
                     >
-                      <X size={18} color={colors.muted} />
+                      <X size={s(18)} color={colors.muted} />
                     </TouchableOpacity>
                   </View>
 
-                  <View style={{ marginBottom: 12 }}>
+                  <View style={{ marginBottom: s(12) }}>
                     <Text
                       style={{
                         color: colors.muted,
-                        fontSize: 11,
-                        marginBottom: 4
+                        fontSize: s(11),
+                        marginBottom: s(4)
                       }}
                     >
                       Terminal Name *
@@ -2446,11 +2502,11 @@ const DevicesConnectionsScreen = ({
                         backgroundColor: colors.screen,
                         borderWidth: 1,
                         borderColor: colors.border,
-                        borderRadius: 8,
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
+                        borderRadius: s(8),
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(10),
                         color: colors.heading,
-                        fontSize: 13
+                        fontSize: s(13)
                       }}
                     />
                   </View>
@@ -2458,12 +2514,12 @@ const DevicesConnectionsScreen = ({
                   {currentTerminal.terminal_type === 'castles' && (
                     <>
                       {/* Connection type — same selector pattern as register. */}
-                      <View style={{ marginBottom: 12 }}>
+                      <View style={{ marginBottom: s(12) }}>
                         <Text
                           style={{
                             color: colors.muted,
-                            fontSize: 11,
-                            marginBottom: 6
+                            fontSize: s(11),
+                            marginBottom: s(6)
                           }}
                         >
                           Connection
@@ -2472,7 +2528,7 @@ const DevicesConnectionsScreen = ({
                           style={{
                             flexDirection: 'row',
                             backgroundColor: colors.screen,
-                            borderRadius: 8,
+                            borderRadius: s(8),
                             overflow: 'hidden',
                             borderWidth: 1,
                             borderColor: colors.border
@@ -2492,18 +2548,18 @@ const DevicesConnectionsScreen = ({
                                 }
                                 style={{
                                   flex: 1,
-                                  paddingVertical: 10,
+                                  paddingVertical: s(10),
                                   alignItems: 'center',
                                   flexDirection: 'row',
                                   justifyContent: 'center',
-                                  gap: 6,
+                                  gap: s(6),
                                   backgroundColor: active ? colors.teal + '20' : 'transparent'
                                 }}
                               >
-                                <Icon size={13} color={active ? colors.teal : colors.muted} />
+                                <Icon size={s(13)} color={active ? colors.teal : colors.muted} />
                                 <Text
                                   style={{
-                                    fontSize: 12,
+                                    fontSize: s(12),
                                     fontWeight: '600',
                                     color: active ? colors.teal : colors.muted
                                   }}
@@ -2518,14 +2574,14 @@ const DevicesConnectionsScreen = ({
 
                       {editForm.connectionType === 'local_socket' ? (
                         <View
-                          style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}
+                          style={{ flexDirection: 'row', gap: s(8), marginBottom: s(12) }}
                         >
                           <View style={{ flex: 3 }}>
                             <Text
                               style={{
                                 color: colors.muted,
-                                fontSize: 11,
-                                marginBottom: 4
+                                fontSize: s(11),
+                                marginBottom: s(4)
                               }}
                             >
                               IP Address *
@@ -2542,11 +2598,11 @@ const DevicesConnectionsScreen = ({
                                 backgroundColor: colors.screen,
                                 borderWidth: 1,
                                 borderColor: colors.border,
-                                borderRadius: 8,
-                                paddingHorizontal: 12,
-                                paddingVertical: 10,
+                                borderRadius: s(8),
+                                paddingHorizontal: s(12),
+                                paddingVertical: s(10),
                                 color: colors.heading,
-                                fontSize: 13
+                                fontSize: s(13)
                               }}
                             />
                           </View>
@@ -2554,8 +2610,8 @@ const DevicesConnectionsScreen = ({
                             <Text
                               style={{
                                 color: colors.muted,
-                                fontSize: 11,
-                                marginBottom: 4
+                                fontSize: s(11),
+                                marginBottom: s(4)
                               }}
                             >
                               Port
@@ -2572,11 +2628,11 @@ const DevicesConnectionsScreen = ({
                                 backgroundColor: colors.screen,
                                 borderWidth: 1,
                                 borderColor: colors.border,
-                                borderRadius: 8,
-                                paddingHorizontal: 12,
-                                paddingVertical: 10,
+                                borderRadius: s(8),
+                                paddingHorizontal: s(12),
+                                paddingVertical: s(10),
                                 color: colors.heading,
-                                fontSize: 13
+                                fontSize: s(13)
                               }}
                             />
                           </View>
@@ -2584,19 +2640,19 @@ const DevicesConnectionsScreen = ({
                       ) : (
                         <View
                           style={{
-                            padding: 10,
-                            marginBottom: 12,
-                            borderRadius: 8,
+                            padding: s(10),
+                            marginBottom: s(12),
+                            borderRadius: s(8),
                             borderWidth: 1,
                             borderColor: colors.teal + '40',
                             backgroundColor: colors.teal + '10',
                             flexDirection: 'row',
                             alignItems: 'center',
-                            gap: 8
+                            gap: s(8)
                           }}
                         >
-                          <Usb size={14} color={colors.teal} />
-                          <Text style={{ flex: 1, fontSize: 11, color: colors.label, lineHeight: 16 }}>
+                          <Usb size={s(14)} color={colors.teal} />
+                          <Text style={{ flex: 1, fontSize: s(11), color: colors.label, lineHeight: s(16) }}>
                             USB — no IP needed. The terminal is identified by USB device serial.
                           </Text>
                         </View>
@@ -2605,12 +2661,12 @@ const DevicesConnectionsScreen = ({
                   )}
                   {currentTerminal.terminal_type !== 'castles' && (
                     <>
-                      <View style={{ marginBottom: 12 }}>
+                      <View style={{ marginBottom: s(12) }}>
                         <Text
                           style={{
                             color: colors.muted,
-                            fontSize: 11,
-                            marginBottom: 4
+                            fontSize: s(11),
+                            marginBottom: s(4)
                           }}
                         >
                           TPN *
@@ -2626,20 +2682,20 @@ const DevicesConnectionsScreen = ({
                             backgroundColor: colors.screen,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            borderRadius: 8,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
+                            borderRadius: s(8),
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(10),
                             color: colors.heading,
-                            fontSize: 13
+                            fontSize: s(13)
                           }}
                         />
                       </View>
-                      <View style={{ marginBottom: 12 }}>
+                      <View style={{ marginBottom: s(12) }}>
                         <Text
                           style={{
                             color: colors.muted,
-                            fontSize: 11,
-                            marginBottom: 4
+                            fontSize: s(11),
+                            marginBottom: s(4)
                           }}
                         >
                           Auth Key
@@ -2656,11 +2712,11 @@ const DevicesConnectionsScreen = ({
                             backgroundColor: colors.screen,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            borderRadius: 8,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
+                            borderRadius: s(8),
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(10),
                             color: colors.heading,
-                            fontSize: 13
+                            fontSize: s(13)
                           }}
                         />
                       </View>
@@ -2671,8 +2727,8 @@ const DevicesConnectionsScreen = ({
                     onPress={handleSaveEdit}
                     disabled={!isEditFormValid || isSavingEdit}
                     style={{
-                      paddingVertical: 12,
-                      borderRadius: 10,
+                      paddingVertical: s(12),
+                      borderRadius: s(10),
                       alignItems: 'center',
                       flexDirection: 'row',
                       justifyContent: 'center',
@@ -2692,15 +2748,15 @@ const DevicesConnectionsScreen = ({
                     ) : (
                       <>
                         <Check
-                          size={15}
+                          size={s(15)}
                           color={isEditFormValid ? colors.teal : colors.muted}
                         />
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             color: isEditFormValid ? colors.teal : colors.muted,
                             fontWeight: '700',
-                            marginLeft: 6
+                            marginLeft: s(6)
                           }}
                         >
                           Save Changes
@@ -2714,12 +2770,12 @@ const DevicesConnectionsScreen = ({
                 <View>
                   <View
                     style={{
-                      borderRadius: 12,
+                      borderRadius: s(12),
                       borderWidth: 1,
                       borderColor: currentTerminal.is_connected
                         ? colors.success + '40'
                         : colors.border,
-                      marginBottom: 12,
+                      marginBottom: s(12),
                       overflow: 'hidden'
                     }}
                   >
@@ -2728,8 +2784,8 @@ const DevicesConnectionsScreen = ({
                         flexDirection: 'row',
                         alignItems: 'flex-start',
                         justifyContent: 'space-between',
-                        paddingHorizontal: 12,
-                        paddingVertical: 10
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(10)
                       }}
                     >
                       <View style={{ flex: 1 }}>
@@ -2737,29 +2793,29 @@ const DevicesConnectionsScreen = ({
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            gap: 6
+                            gap: s(6)
                           }}
                         >
                           <Text
                             style={{
                               color: colors.heading,
                               fontWeight: '700',
-                              fontSize: 13
+                              fontSize: s(13)
                             }}
                           >
                             {currentTerminal.terminal_name}
                           </Text>
                           <View
                             style={{
-                              paddingHorizontal: 6,
-                              paddingVertical: 2,
-                              borderRadius: 4,
+                              paddingHorizontal: s(6),
+                              paddingVertical: s(2),
+                              borderRadius: s(4),
                               backgroundColor: colors.teal + '20'
                             }}
                           >
                             <Text
                               style={{
-                                fontSize: 9,
+                                fontSize: s(9),
                                 fontWeight: '700',
                                 color: colors.teal
                               }}
@@ -2770,7 +2826,7 @@ const DevicesConnectionsScreen = ({
                             </Text>
                           </View>
                         </View>
-                        <View style={{ marginTop: 4, gap: 2 }}>
+                        <View style={{ marginTop: s(4), gap: s(2) }}>
                           {currentTerminal.terminal_type === 'castles' ? (
                             <>
                               <View
@@ -2782,9 +2838,9 @@ const DevicesConnectionsScreen = ({
                                 <Text
                                   style={{
                                     color: colors.muted,
-                                    fontSize: 9,
+                                    fontSize: s(9),
                                     fontWeight: '600',
-                                    width: 36
+                                    width: s(36)
                                   }}
                                 >
                                   Addr:
@@ -2792,7 +2848,7 @@ const DevicesConnectionsScreen = ({
                                 <Text
                                   style={{
                                     color: colors.heading,
-                                    fontSize: 9,
+                                    fontSize: s(9),
                                     fontFamily: 'monospace'
                                   }}
                                   selectable
@@ -2812,9 +2868,9 @@ const DevicesConnectionsScreen = ({
                                 <Text
                                   style={{
                                     color: colors.muted,
-                                    fontSize: 9,
+                                    fontSize: s(9),
                                     fontWeight: '600',
-                                    width: 36
+                                    width: s(36)
                                   }}
                                 >
                                   S/N:
@@ -2822,7 +2878,7 @@ const DevicesConnectionsScreen = ({
                                 <Text
                                   style={{
                                     color: colors.heading,
-                                    fontSize: 9,
+                                    fontSize: s(9),
                                     fontFamily: 'monospace'
                                   }}
                                   selectable
@@ -2841,9 +2897,9 @@ const DevicesConnectionsScreen = ({
                                   <Text
                                     style={{
                                       color: colors.muted,
-                                      fontSize: 9,
+                                      fontSize: s(9),
                                       fontWeight: '600',
-                                      width: 36
+                                      width: s(36)
                                     }}
                                   >
                                     Model:
@@ -2851,7 +2907,7 @@ const DevicesConnectionsScreen = ({
                                   <Text
                                     style={{
                                       color: colors.heading,
-                                      fontSize: 9,
+                                      fontSize: s(9),
                                       fontFamily: 'monospace'
                                     }}
                                     selectable
@@ -2869,9 +2925,9 @@ const DevicesConnectionsScreen = ({
                                 <Text
                                   style={{
                                     color: colors.muted,
-                                    fontSize: 9,
+                                    fontSize: s(9),
                                     fontWeight: '600',
-                                    width: 36
+                                    width: s(36)
                                   }}
                                 >
                                   ID:
@@ -2879,7 +2935,7 @@ const DevicesConnectionsScreen = ({
                                 <Text
                                   style={{
                                     color: colors.heading,
-                                    fontSize: 9,
+                                    fontSize: s(9),
                                     fontFamily: 'monospace'
                                   }}
                                   selectable
@@ -2889,58 +2945,69 @@ const DevicesConnectionsScreen = ({
                               </View>
                             </>
                           ) : currentTerminal.register_id ? (
-                            <Text style={{ color: colors.muted, fontSize: 9 }}>
+                            <Text style={{ color: colors.muted, fontSize: s(9) }}>
                               TPN: {currentTerminal.register_id}
                             </Text>
                           ) : null}
                         </View>
                       </View>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 4,
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                          borderRadius: 6,
-                          backgroundColor: currentTerminal.is_connected
-                            ? colors.success + '15'
-                            : colors.danger + '15'
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: 3,
-                            backgroundColor: currentTerminal.is_connected
-                              ? colors.success
-                              : colors.danger
-                          }}
-                        />
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            fontWeight: '600',
-                            color: currentTerminal.is_connected
-                              ? colors.success
-                              : colors.danger
-                          }}
-                        >
-                          {currentTerminal.is_connected ? 'Online' : 'Offline'}
-                        </Text>
-                      </View>
+                      {(() => {
+                        // While the singleton is mid-connect (auto-connect on
+                        // plug/boot, pre-warm, or a test), show the live phase in
+                        // teal; otherwise fall back to Online/Offline.
+                        const statusColor = terminalConnectActivity
+                          ? colors.teal
+                          : currentTerminal.is_connected
+                            ? colors.success
+                            : colors.danger
+                        return (
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: s(4),
+                              paddingHorizontal: s(8),
+                              paddingVertical: s(4),
+                              borderRadius: s(6),
+                              maxWidth: s(200),
+                              backgroundColor: statusColor + '15'
+                            }}
+                          >
+                            <View
+                              style={{
+                                width: s(6),
+                                height: s(6),
+                                borderRadius: s(3),
+                                backgroundColor: statusColor
+                              }}
+                            />
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                fontWeight: '600',
+                                color: statusColor
+                              }}
+                              numberOfLines={1}
+                            >
+                              {terminalConnectActivity ??
+                                (currentTerminal.is_connected
+                                  ? 'Online'
+                                  : 'Offline')}
+                            </Text>
+                          </View>
+                        )
+                      })()}
                     </View>
                   </View>
 
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <View style={{ flexDirection: 'row', gap: s(6) }}>
                     <TouchableOpacity
                       onPress={handleTestConnection}
                       disabled={isTestingConnection}
                       style={{
                         flex: 1,
-                        paddingVertical: 8,
-                        borderRadius: 8,
+                        paddingVertical: s(8),
+                        borderRadius: s(8),
                         alignItems: 'center',
                         flexDirection: 'row',
                         justifyContent: 'center',
@@ -2950,15 +3017,28 @@ const DevicesConnectionsScreen = ({
                       }}
                     >
                       {isTestingConnection ? (
-                        <ActivityIndicator size='small' color={colors.teal} />
-                      ) : (
                         <>
-                          <RefreshCw size={13} color={colors.teal} />
+                          <ActivityIndicator size='small' color={colors.teal} />
                           <Text
                             style={{
                               fontWeight: '600',
-                              marginLeft: 4,
-                              fontSize: 11,
+                              marginLeft: s(6),
+                              fontSize: s(11),
+                              color: colors.teal
+                            }}
+                            numberOfLines={1}
+                          >
+                            {terminalConnectActivity ?? 'Testing…'}
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw size={s(13)} color={colors.teal} />
+                          <Text
+                            style={{
+                              fontWeight: '600',
+                              marginLeft: s(4),
+                              fontSize: s(11),
                               color: colors.teal
                             }}
                           >
@@ -2974,20 +3054,20 @@ const DevicesConnectionsScreen = ({
                         backgroundColor: colors.teal + '20',
                         borderWidth: 1,
                         borderColor: colors.teal + '50',
-                        paddingVertical: 8,
-                        borderRadius: 8,
+                        paddingVertical: s(8),
+                        borderRadius: s(8),
                         alignItems: 'center',
                         flexDirection: 'row',
                         justifyContent: 'center'
                       }}
                     >
-                      <Pencil size={13} color={colors.teal} />
+                      <Pencil size={s(13)} color={colors.teal} />
                       <Text
                         style={{
                           color: colors.teal,
                           fontWeight: '600',
-                          marginLeft: 4,
-                          fontSize: 11
+                          marginLeft: s(4),
+                          fontSize: s(11)
                         }}
                       >
                         Edit
@@ -3000,20 +3080,20 @@ const DevicesConnectionsScreen = ({
                         backgroundColor: colors.teal + '20',
                         borderWidth: 1,
                         borderColor: colors.teal + '50',
-                        paddingVertical: 8,
-                        borderRadius: 8,
+                        paddingVertical: s(8),
+                        borderRadius: s(8),
                         alignItems: 'center',
                         flexDirection: 'row',
                         justifyContent: 'center'
                       }}
                     >
-                      <CreditCard size={13} color={colors.teal} />
+                      <CreditCard size={s(13)} color={colors.teal} />
                       <Text
                         style={{
                           color: colors.teal,
                           fontWeight: '600',
-                          marginLeft: 4,
-                          fontSize: 11
+                          marginLeft: s(4),
+                          fontSize: s(11)
                         }}
                       >
                         Switch
@@ -3029,20 +3109,20 @@ const DevicesConnectionsScreen = ({
                         backgroundColor: colors.teal + '20',
                         borderWidth: 1,
                         borderColor: colors.teal + '50',
-                        paddingVertical: 8,
-                        borderRadius: 8,
+                        paddingVertical: s(8),
+                        borderRadius: s(8),
                         alignItems: 'center',
                         flexDirection: 'row',
                         justifyContent: 'center'
                       }}
                     >
-                      <Plus size={13} color={colors.teal} />
+                      <Plus size={s(13)} color={colors.teal} />
                       <Text
                         style={{
                           color: colors.teal,
                           fontWeight: '600',
-                          marginLeft: 4,
-                          fontSize: 11
+                          marginLeft: s(4),
+                          fontSize: s(11)
                         }}
                       >
                         Add
@@ -3056,35 +3136,35 @@ const DevicesConnectionsScreen = ({
                   <View
                     style={{
                       backgroundColor: colors.screen,
-                      borderRadius: 12,
+                      borderRadius: s(12),
                       borderWidth: 1,
                       borderColor: colors.border,
-                      paddingHorizontal: 16,
-                      paddingVertical: 16,
-                      marginBottom: 16
+                      paddingHorizontal: s(16),
+                      paddingVertical: s(16),
+                      marginBottom: s(16)
                     }}
                   >
                     <View
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: 8,
-                        marginBottom: 12
+                        gap: s(8),
+                        marginBottom: s(12)
                       }}
                     >
-                      <Wifi size={16} color={colors.teal} />
+                      <Wifi size={s(16)} color={colors.teal} />
                       <Text
                         style={{
                           color: colors.heading,
                           fontWeight: '600',
-                          fontSize: 13
+                          fontSize: s(13)
                         }}
                       >
                         Quick Connect Test
                       </Text>
                     </View>
                     <View
-                      style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}
+                      style={{ flexDirection: 'row', gap: s(8), marginBottom: s(8) }}
                     >
                       <View style={{ flex: 3 }}>
                         <TextInput
@@ -3100,11 +3180,11 @@ const DevicesConnectionsScreen = ({
                             backgroundColor: colors.panel,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            borderRadius: 8,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
+                            borderRadius: s(8),
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(10),
                             color: colors.heading,
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontFamily: 'monospace'
                           }}
                         />
@@ -3120,11 +3200,11 @@ const DevicesConnectionsScreen = ({
                             backgroundColor: colors.panel,
                             borderWidth: 1,
                             borderColor: colors.border,
-                            borderRadius: 8,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
+                            borderRadius: s(8),
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(10),
                             color: colors.heading,
-                            fontSize: 13
+                            fontSize: s(13)
                           }}
                         />
                       </View>
@@ -3138,8 +3218,8 @@ const DevicesConnectionsScreen = ({
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        paddingVertical: 10,
-                        borderRadius: 8,
+                        paddingVertical: s(10),
+                        borderRadius: s(8),
                         borderWidth: 1,
                         backgroundColor:
                           quickTestStatus === 'online'
@@ -3162,8 +3242,8 @@ const DevicesConnectionsScreen = ({
                           <Text
                             style={{
                               color: colors.teal,
-                              fontSize: 13,
-                              marginLeft: 8
+                              fontSize: s(13),
+                              marginLeft: s(8)
                             }}
                           >
                             Testing...
@@ -3171,13 +3251,13 @@ const DevicesConnectionsScreen = ({
                         </>
                       ) : quickTestStatus === 'online' ? (
                         <>
-                          <Check size={15} color={colors.success} />
+                          <Check size={s(15)} color={colors.success} />
                           <Text
                             style={{
                               color: colors.success,
-                              fontSize: 13,
+                              fontSize: s(13),
                               fontWeight: '600',
-                              marginLeft: 8
+                              marginLeft: s(8)
                             }}
                           >
                             Reachable
@@ -3185,12 +3265,12 @@ const DevicesConnectionsScreen = ({
                         </>
                       ) : quickTestStatus === 'offline' ? (
                         <>
-                          <WifiOff size={15} color={colors.danger} />
+                          <WifiOff size={s(15)} color={colors.danger} />
                           <Text
                             style={{
                               color: colors.danger,
-                              fontSize: 13,
-                              marginLeft: 8
+                              fontSize: s(13),
+                              marginLeft: s(8)
                             }}
                           >
                             No response
@@ -3198,12 +3278,12 @@ const DevicesConnectionsScreen = ({
                         </>
                       ) : (
                         <>
-                          <Wifi size={15} color={colors.teal} />
+                          <Wifi size={s(15)} color={colors.teal} />
                           <Text
                             style={{
                               color: colors.teal,
-                              fontSize: 13,
-                              marginLeft: 8
+                              fontSize: s(13),
+                              marginLeft: s(8)
                             }}
                           >
                             Test Connection
@@ -3212,15 +3292,15 @@ const DevicesConnectionsScreen = ({
                       )}
                     </TouchableOpacity>
                   </View>
-                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flexDirection: 'row', gap: s(12) }}>
                     {terminals.length > 0 && (
                       <TouchableOpacity
                         onPress={() => setShowTerminalPicker(true)}
                         style={{
                           flex: 1,
                           backgroundColor: colors.teal + '20',
-                          paddingVertical: 12,
-                          borderRadius: 10,
+                          paddingVertical: s(12),
+                          borderRadius: s(10),
                           flexDirection: 'row',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -3228,13 +3308,13 @@ const DevicesConnectionsScreen = ({
                           borderColor: colors.teal + '50'
                         }}
                       >
-                        <CreditCard size={15} color={colors.teal} />
+                        <CreditCard size={s(15)} color={colors.teal} />
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             color: colors.teal,
                             fontWeight: '700',
-                            marginLeft: 6
+                            marginLeft: s(6)
                           }}
                         >
                           Assign Existing
@@ -3251,20 +3331,20 @@ const DevicesConnectionsScreen = ({
                         backgroundColor: colors.screen,
                         borderWidth: 1,
                         borderColor: colors.border,
-                        paddingVertical: 12,
-                        borderRadius: 10,
+                        paddingVertical: s(12),
+                        borderRadius: s(10),
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'center'
                       }}
                     >
-                      <Plus size={15} color={colors.teal} />
+                      <Plus size={s(15)} color={colors.teal} />
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           color: colors.teal,
                           fontWeight: '700',
-                          marginLeft: 6
+                          marginLeft: s(6)
                         }}
                       >
                         Register New
@@ -3288,49 +3368,49 @@ const DevicesConnectionsScreen = ({
           onPress={() => router.push('/settings/printers')}
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 12,
-            padding: 14,
+            marginBottom: s(12),
+            padding: s(14),
             flexDirection: 'row',
             alignItems: 'center'
           }}
         >
           <View
             style={{
-              width: 32,
-              height: 32,
+              width: s(32),
+              height: s(32),
               backgroundColor: colors.teal + '15',
-              borderRadius: 8,
+              borderRadius: s(8),
               alignItems: 'center',
               justifyContent: 'center',
-              marginRight: 12
+              marginRight: s(12)
             }}
           >
-            <Printer size={18} color={colors.teal} />
+            <Printer size={s(18)} color={colors.teal} />
           </View>
           <View style={{ flex: 1 }}>
             <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 2 }}
+              style={{ fontSize: s(13), fontWeight: '700', color: colors.heading, marginBottom: s(2) }}
             >
               Printers
             </Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>
+            <Text style={{ fontSize: s(11), color: colors.muted }}>
               Manage printers, discovery, and routing in Settings → Printers
             </Text>
           </View>
           <View
             style={{
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 8,
+              paddingHorizontal: s(10),
+              paddingVertical: s(6),
+              borderRadius: s(8),
               backgroundColor: colors.teal + '15',
               borderWidth: 1,
               borderColor: colors.teal + '40'
             }}
           >
-            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal }}>Open</Text>
+            <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.teal }}>Open</Text>
           </View>
         </TouchableOpacity>
 
@@ -3340,8 +3420,8 @@ const DevicesConnectionsScreen = ({
         {mode === 'all' && Platform.OS === 'android' && (
           <View
             style={{
-              marginTop: 16,
-              borderRadius: 12,
+              marginTop: s(16),
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               overflow: 'hidden'
@@ -3349,13 +3429,13 @@ const DevicesConnectionsScreen = ({
           >
             <SectionHeader
               title='App Updates'
-              icon={<RefreshCw size={16} color={colors.teal} />}
+              icon={<RefreshCw size={s(16)} color={colors.teal} />}
               expanded={expandedSections.appUpdates}
               onToggle={() => toggleSection('appUpdates')}
             />
             {expandedSections.appUpdates && (
               <View
-                style={{ backgroundColor: colors.card, padding: 14, gap: 12 }}
+                style={{ backgroundColor: colors.card, padding: s(14), gap: s(12) }}
               >
                 {/* Version row */}
                 <View
@@ -3365,12 +3445,12 @@ const DevicesConnectionsScreen = ({
                     justifyContent: 'space-between'
                   }}
                 >
-                  <Text style={{ fontSize: 12, color: colors.label }}>
+                  <Text style={{ fontSize: s(12), color: colors.label }}>
                     Current Version
                   </Text>
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       fontWeight: '600',
                       color: colors.heading,
                       fontFamily: 'monospace'
@@ -3388,10 +3468,10 @@ const DevicesConnectionsScreen = ({
                     justifyContent: 'space-between'
                   }}
                 >
-                  <Text style={{ fontSize: 12, color: colors.label }}>
+                  <Text style={{ fontSize: s(12), color: colors.label }}>
                     Last Checked
                   </Text>
-                  <Text style={{ fontSize: 12, color: colors.muted }}>
+                  <Text style={{ fontSize: s(12), color: colors.muted }}>
                     {lastChecked ? lastChecked.toLocaleTimeString() : '—'}
                   </Text>
                 </View>
@@ -3404,9 +3484,9 @@ const DevicesConnectionsScreen = ({
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: 6,
-                    paddingVertical: 10,
-                    borderRadius: 8,
+                    gap: s(6),
+                    paddingVertical: s(10),
+                    borderRadius: s(8),
                     backgroundColor: colors.teal + '20',
                     borderWidth: 1,
                     borderColor: colors.teal + '50',
@@ -3416,11 +3496,11 @@ const DevicesConnectionsScreen = ({
                   {isCheckingUpdate ? (
                     <ActivityIndicator size='small' color={colors.teal} />
                   ) : (
-                    <RefreshCw size={14} color={colors.teal} />
+                    <RefreshCw size={s(14)} color={colors.teal} />
                   )}
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '600',
                       color: colors.teal
                     }}
@@ -3433,7 +3513,7 @@ const DevicesConnectionsScreen = ({
           </View>
         )}
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: s(40) }} />
       </ScrollView>
 
       {/* Native APK Update Modal */}
@@ -3505,9 +3585,9 @@ const DevicesConnectionsScreen = ({
         >
           <View
             style={{
-              width: 320,
+              width: s(320),
               backgroundColor: colors.panel,
-              borderRadius: 14,
+              borderRadius: s(14),
               borderWidth: 1,
               borderColor: colors.border,
               overflow: 'hidden'
@@ -3521,20 +3601,20 @@ const DevicesConnectionsScreen = ({
                   : colors.danger
               }}
             />
-            <View style={{ padding: 20 }}>
+            <View style={{ padding: s(20) }}>
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 10,
-                  marginBottom: 10
+                  gap: s(10),
+                  marginBottom: s(10)
                 }}
               >
                 <View
                   style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
+                    width: s(32),
+                    height: s(32),
+                    borderRadius: s(8),
                     backgroundColor:
                       (alertModal?.success ? colors.teal : colors.danger) +
                       '20',
@@ -3543,14 +3623,14 @@ const DevicesConnectionsScreen = ({
                   }}
                 >
                   {alertModal?.success ? (
-                    <Printer size={16} color={colors.teal} />
+                    <Printer size={s(16)} color={colors.teal} />
                   ) : (
-                    <AlertTriangle size={16} color={colors.danger} />
+                    <AlertTriangle size={s(16)} color={colors.danger} />
                   )}
                 </View>
                 <Text
                   style={{
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: '700',
                     color: colors.heading,
                     flex: 1
@@ -3561,10 +3641,10 @@ const DevicesConnectionsScreen = ({
               </View>
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   color: colors.label,
-                  lineHeight: 18,
-                  marginBottom: 20
+                  lineHeight: s(18),
+                  marginBottom: s(20)
                 }}
               >
                 {alertModal?.message}
@@ -3572,8 +3652,8 @@ const DevicesConnectionsScreen = ({
               <TouchableOpacity
                 onPress={() => setAlertModal(null)}
                 style={{
-                  paddingVertical: 9,
-                  borderRadius: 8,
+                  paddingVertical: s(9),
+                  borderRadius: s(8),
                   alignItems: 'center',
                   backgroundColor:
                     (alertModal?.success ? colors.teal : colors.danger) + '20',
@@ -3584,7 +3664,7 @@ const DevicesConnectionsScreen = ({
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: '600',
                     color: alertModal?.success ? colors.teal : colors.danger
                   }}

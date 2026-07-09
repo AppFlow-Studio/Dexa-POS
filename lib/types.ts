@@ -346,17 +346,6 @@ export interface Layout {
   tables: TableType[]
 }
 
-export type OnlineOrderStatus =
-  | 'New Orders'
-  | 'Confirmed/In-Process'
-  | 'Ready to Dispatch'
-  | 'Dispatched'
-export type DeliveryPartner =
-  | 'Door Dash'
-  | 'grubhub'
-  | 'Uber-Eats'
-  | 'Food Panda'
-
 export interface CartItem {
   id: string // Unique ID for this cart instance (e.g., menuItemId + timestamp)
   menuItemId: string // The original ID from the menu data
@@ -417,6 +406,9 @@ export interface CartItem {
   // Voided item tracking
   is_voided?: boolean
   void_reason?: string
+  // Per-item "TO GO" flag (e.g. one item to-go inside a dine-in check).
+  // Mirrors the per-item is_prioritized/rush pattern.
+  is_to_go?: boolean
   // Sync status tracking for resilient backend sync
   sync_status?: 'pending' | 'syncing' | 'synced' | 'failed'
   sync_error?: string
@@ -454,24 +446,6 @@ export interface CartItem {
   seatNumber?: number | null // Which seat (1..N), null = shared/unassigned
 }
 
-export interface OnlineOrder {
-  id: string // e.g., #45654
-  status: OnlineOrderStatus
-  deliveryPartner: DeliveryPartner
-  customerName: string
-  total: number
-  itemCount: number
-  timestamp: string // e.g., '02/03/25, 05:36 PM'
-  // Detailed info for the details page
-  customerDetails: {
-    id: string
-    phone: string
-    email: string
-  }
-  paymentStatus: 'Paid' | 'Pending'
-  items: CartItem[]
-}
-
 export type PaymentStatus =
   | 'Paid'
   | 'In Progress'
@@ -501,12 +475,17 @@ export interface PreviousOrder {
   cash_amount_due: number
   type: OrderType
   total: number
+  // Cash-priced grand total (card-equivalent is `total`). Server-authoritative
+  // (includes service charge + SC tax); read by getCashPricedOrderTotal so a
+  // cash-paid order's breakdown shows the real cash total, not an items-only sum.
+  total_cash_amount?: number
   tax?: number // Tax amount for bill display
   // Service charge snapshot — pinned when SC was applied on the live order
   // so the historical receipt shows the same SC line the customer paid.
   service_charge?: number
   service_charge_name?: string | null
   service_charge_rate?: number | null
+  service_charge_is_taxable?: boolean | null
   items: CartItem[] // The detailed list of items for the notes modal
   notes?: string // Order-level notes (customer requests, special instructions)
   payments?: OrderProfile['payments'] // Add payments array
@@ -529,6 +508,10 @@ export interface PreviousOrder {
   order_refund_items?: OrderRefundItemRecord[]
   // Staff attribution (for fraud detection — who created this order)
   created_by_staff_profile_id?: string | null
+  // True when this entry was archived to history while OFFLINE (not yet
+  // confirmed by the backend). Drives the "Offline" badge on the row. Cleared
+  // automatically once the order syncs and a server fetch replaces it.
+  _offlineUnsynced?: boolean
 }
 
 export type InventoryItemStatus =
@@ -929,10 +912,12 @@ export interface OrderProfile {
   order_status:
     | 'draft'
     | 'pending'
+    | 'accepted' // online-order manual-accept; server normalizes to sent_to_kitchen, modeled as a safety net
     | 'sent_to_kitchen'
     | 'preparing'
     | 'ready'
     | 'completed'
+    | 'declined' // online-order manual-decline (terminal)
     | 'cancelled'
     | 'refunded'
     | 'void'
@@ -1053,6 +1038,10 @@ export interface OrderProfile {
   // to skip per-order get_order_details fan-out when the bulk fetch already
   // delivered fresh data. Cleared on realtime/local writes that drift the order.
   _lastBulkFetchAt?: number
+
+  // Display-only: set on Previous Orders rows whose history entry was archived
+  // while offline (not yet confirmed by the backend). Drives the "Offline" badge.
+  _offlineUnsynced?: boolean
 }
 
 export type CheckStatus = 'Pending' | 'Cleared' | 'Voided'

@@ -3,6 +3,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { orderStoreDiagnosticLog } from '@/lib/performanceDiagnostics'
 import { OrderProfile } from '@/lib/types'
+import { ensureOrderPrefetched } from '@/services/tableOrderPrefetch'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { hasPendingOrderCreation, useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
@@ -11,6 +12,7 @@ import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { TableStatus } from '@/types/db-floor-plan-types'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 // Module-level counter to detect when a newer useTableSession mount has claimed
 // activeOrderId. The lazy useState initializer stamps a generation; the cleanup
@@ -142,64 +144,55 @@ export function useTableSession (
   const setActiveTableId = usePaymentStore(s => s.setActiveTableId)
   const clearActiveTableId = usePaymentStore(s => s.clearActiveTableId)
 
-  // Reactive order subscription — raw selector (inlined O(1) lookup for narrow subscription)
-  const rawActiveOrder = useOrderStore(state => {
-    // Priority 1: resolve via session's order_id (DB UUID → local key via index).
-    // Skip if the resolved order is in a terminal status — a late realtime SYNC
-    // can resurrect a just-cleared session locally with the previous order_id,
-    // which would otherwise flash the closed order's items onto a freshly-seated
-    // table before the new SESSION_CREATED/SET arrives.
-    if (sessionOrderId) {
-      const localKey = state.dbOrderIdIndex[sessionOrderId] ?? sessionOrderId
-      const found = state.ordersById[localKey]
-      if (found && !TERMINAL_ORDER_STATUSES.has(found.order_status ?? '')) {
-        return found
+  // Reactive order subscription — uses shallow comparison to avoid re-renders
+  // when unrelated store fields change. The selector only returns a new reference
+  // when the resolved order actually mutates (Immer structural sharing keeps
+  // untouched objects stable).
+  const rawActiveOrder = useOrderStore(
+    useShallow(state => {
+      // Priority 1: resolve via session's order_id (DB UUID → local key via index).
+      if (sessionOrderId) {
+        const localKey = state.dbOrderIdIndex[sessionOrderId] ?? sessionOrderId
+        const found = state.ordersById[localKey]
+        if (found && !TERMINAL_ORDER_STATUSES.has(found.order_status ?? '')) {
+          return found
+        }
       }
-    }
-    // Priority 2: active order already set and belongs to this table.
-    // Checked before tableOrderIdIndex because activeOrderId is updated atomically
-    // by rekeyOrder in the same Immer commit, whereas tableOrderIdIndex can briefly
-    // point to a broadcast shell (empty items) before rekeyOrder overwrites it.
-    if (state.activeOrderId) {
-      const active = state.ordersById[state.activeOrderId]
-      if (
-        active?.service_location_id === tableId &&
-        !TERMINAL_ORDER_STATUSES.has(active.order_status ?? '')
-      ) {
-        return active
+      // Priority 2: active order already set and belongs to this table.
+      if (state.activeOrderId) {
+        const active = state.ordersById[state.activeOrderId]
+        if (
+          active?.service_location_id === tableId &&
+          !TERMINAL_ORDER_STATUSES.has(active.order_status ?? '')
+        ) {
+          return active
+        }
       }
-    }
-    // Priority 2.5: resolve via table index (fallback when activeOrderId was cleared
-    // during a mount transition or the index was populated before activeOrderId was set).
-    // Skip terminal-status orders — after a Close Table, the tableOrderIdIndex can
-    // still point at the archived order, which would surface the closed-out items
-    // when the user reopens the table.
-    const indexedOrderId = state.tableOrderIdIndex[tableId]
-    if (indexedOrderId) {
-      const indexedOrder = state.ordersById[indexedOrderId]
-      if (
-        indexedOrder?.service_location_id === tableId &&
-        !TERMINAL_ORDER_STATUSES.has(indexedOrder.order_status ?? '')
-      ) {
-        return indexedOrder
+      // Priority 2.5: resolve via table index.
+      const indexedOrderId = state.tableOrderIdIndex[tableId]
+      if (indexedOrderId) {
+        const indexedOrder = state.ordersById[indexedOrderId]
+        if (
+          indexedOrder?.service_location_id === tableId &&
+          !TERMINAL_ORDER_STATUSES.has(indexedOrder.order_status ?? '')
+        ) {
+          return indexedOrder
+        }
       }
-    }
-    // Priority 3: scan for any order belonging to this table (covers the window
-    // between startNewOrder and setActiveOrder, or after a rekey clears the index).
-    // Skip terminal-status orders so a previously-closed order lingering in
-    // ordersById can't be returned for a freshly-seated session on the same table.
-    const entries = Object.values(state.ordersById)
-    for (let i = 0; i < entries.length; i++) {
-      const o = entries[i]
-      if (
-        o.service_location_id === tableId &&
-        !TERMINAL_ORDER_STATUSES.has(o.order_status ?? '')
-      ) {
-        return o
+      // Priority 3: scan for any order belonging to this table (last resort).
+      for (let i = 0; i < state.orderIds.length; i++) {
+        const o = state.ordersById[state.orderIds[i]]
+        if (!o) continue
+        if (
+          o.service_location_id === tableId &&
+          !TERMINAL_ORDER_STATUSES.has(o.order_status ?? '')
+        ) {
+          return o
+        }
       }
-    }
-    return undefined
-  })
+      return undefined
+    })
+  )
 
   // Cache last valid order; use as fallback during transitional gaps
   const activeOrder = useMemo(() => {
@@ -490,7 +483,12 @@ export function useTableSession (
               }
               syncInFlightRef.current = sOrderId
 
-              const localOrderId = await syncOrderFromDatabase(sOrderId)
+              // Perf T3a: join the shared prefetch (single-flight) instead of
+              // issuing a parallel syncOrderFromDatabase. If the floor-plan
+              // tap already started this fetch, we await THAT promise; if not,
+              // ensureOrderPrefetched starts one and registers it so later
+              // callers join us. Also kicks the coursing prefetch.
+              const localOrderId = await ensureOrderPrefetched(sOrderId)
               if (getPhase(phaseRef) === 'navigating_away') return
 
               if (localOrderId) {

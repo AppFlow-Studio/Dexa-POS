@@ -10,6 +10,7 @@ import CashDrawerSheet from '@/components/cash-drawer/CashDrawerSheet'
 import { Switch } from '@/components/ui/switch'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { hydrateDrawerSession } from '@/services/cashDrawerService'
 import { useCashDrawerStore } from '@/stores/useCashDrawerStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -61,6 +62,8 @@ interface CashDrawerRow {
 
 export default function CashManagementScreen () {
   const supabase = useSupabaseClient()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const cashDrawerSettings = useLocationConfigStore((s) => s.config.cashDrawer)
   const _updateConfig = useLocationConfigStore((s) => s.updateConfig)
   const updateCashDrawerSettings = (partial: Partial<typeof cashDrawerSettings>) =>
@@ -217,11 +220,11 @@ export default function CashManagementScreen () {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 14,
-        paddingVertical: 12,
+        paddingHorizontal: s(14),
+        paddingVertical: s(12),
         backgroundColor: colors.panel,
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
+        borderTopLeftRadius: s(12),
+        borderTopRightRadius: s(12),
         borderBottomWidth: expandedSections[section] ? 1 : 0,
         borderBottomColor: colors.border
       }}
@@ -229,27 +232,27 @@ export default function CashManagementScreen () {
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <View
           style={{
-            width: 28,
-            height: 28,
+            width: s(28),
+            height: s(28),
             backgroundColor: colors.teal + '15',
-            borderRadius: 8,
+            borderRadius: s(8),
             alignItems: 'center',
             justifyContent: 'center',
-            marginRight: 8
+            marginRight: s(8)
           }}
         >
           {icon}
         </View>
         <Text
-          style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
         >
           {title}
         </Text>
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={14} color={colors.label} />
+        <ChevronUp size={s(14)} color={colors.label} />
       ) : (
-        <ChevronDown size={14} color={colors.label} />
+        <ChevronDown size={s(14)} color={colors.label} />
       )}
     </TouchableOpacity>
   )
@@ -265,18 +268,18 @@ export default function CashManagementScreen () {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 9,
+        paddingVertical: s(9),
         borderBottomWidth: 1,
         borderBottomColor: colors.border
       }}
     >
-      <View style={{ flex: 1, marginRight: 12 }}>
+      <View style={{ flex: 1, marginRight: s(12) }}>
         <Text
-          style={{ fontSize: 13, fontWeight: '500', color: colors.heading }}
+          style={{ fontSize: s(13), fontWeight: '500', color: colors.heading }}
         >
           {label}
         </Text>
-        <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+        <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
           {description}
         </Text>
       </View>
@@ -296,24 +299,24 @@ export default function CashManagementScreen () {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 9,
+        paddingVertical: s(9),
         borderBottomWidth: 1,
         borderBottomColor: colors.border
       }}
     >
-      <View style={{ flex: 1, marginRight: 12 }}>
+      <View style={{ flex: 1, marginRight: s(12) }}>
         <Text
-          style={{ fontSize: 13, fontWeight: '500', color: colors.heading }}
+          style={{ fontSize: s(13), fontWeight: '500', color: colors.heading }}
         >
           {label}
         </Text>
-        <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+        <Text style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}>
           {description}
         </Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         {prefix && (
-          <Text style={{ fontSize: 12, color: colors.label, marginRight: 3 }}>
+          <Text style={{ fontSize: s(12), color: colors.label, marginRight: s(3) }}>
             {prefix}
           </Text>
         )}
@@ -325,17 +328,17 @@ export default function CashManagementScreen () {
           }}
           keyboardType='decimal-pad'
           style={{
-            width: 64,
-            height: 36,
-            paddingHorizontal: 8,
+            width: s(64),
+            height: s(36),
+            paddingHorizontal: s(8),
             paddingVertical: 0,
             backgroundColor: colors.inset,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 8,
+            borderRadius: s(8),
             color: colors.heading,
-            fontSize: 13,
-            lineHeight: Platform.OS === 'android' ? undefined : 18,
+            fontSize: s(13),
+            lineHeight: Platform.OS === 'android' ? undefined : s(18),
             textAlignVertical: 'center',
             includeFontPadding: true,
             textAlign: 'center'
@@ -351,14 +354,14 @@ export default function CashManagementScreen () {
         style={{
           flex: 1,
           backgroundColor: colors.screen,
-          paddingHorizontal: 14,
-          paddingVertical: 10
+          paddingHorizontal: s(14),
+          paddingVertical: s(10)
         }}
       >
         {/* Header */}
         <View
           style={{
-            marginBottom: 12,
+            marginBottom: s(12),
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between'
@@ -366,11 +369,11 @@ export default function CashManagementScreen () {
         >
           <View style={{ flex: 1 }}>
             <Text
-              style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
             >
               Cash Management
             </Text>
-            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+            <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }}>
               Configure drawers, approval rules, and reconciliation
             </Text>
           </View>
@@ -378,9 +381,9 @@ export default function CashManagementScreen () {
             onPress={handleRefresh}
             disabled={isRefreshing}
             style={{
-              marginLeft: 12,
-              padding: 7,
-              borderRadius: 8,
+              marginLeft: s(12),
+              padding: s(7),
+              borderRadius: s(8),
               backgroundColor: colors.teal + '15',
               borderWidth: 1,
               borderColor: colors.teal + '30'
@@ -389,38 +392,38 @@ export default function CashManagementScreen () {
             {isRefreshing ? (
               <ActivityIndicator size='small' color={colors.teal} />
             ) : (
-              <RefreshCw size={14} color={colors.teal} />
+              <RefreshCw size={s(14)} color={colors.teal} />
             )}
           </TouchableOpacity>
         </View>
 
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 12 }}
+          contentContainerStyle={{ paddingBottom: s(12) }}
         >
           {/* ── Stations & Devices ── */}
           <View
             style={{
               backgroundColor: colors.panel,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
-              marginBottom: 10,
+              marginBottom: s(10),
               overflow: 'hidden'
             }}
           >
             {renderSectionHeader(
               'Stations & Devices',
-              <Monitor size={14} color={colors.teal} />,
+              <Monitor size={s(14)} color={colors.teal} />,
               'assignment'
             )}
             {expandedSections.assignment && (
-              <View style={{ padding: 12 }}>
+              <View style={{ padding: s(12) }}>
                 <Text
                   style={{
-                    fontSize: 10,
+                    fontSize: s(10),
                     color: colors.muted,
-                    marginBottom: 10
+                    marginBottom: s(10)
                   }}
                 >
                   Assign physical cash drawers to stations. Only active drawers
@@ -428,13 +431,13 @@ export default function CashManagementScreen () {
                 </Text>
 
                 {loadingStations || loadingDrawers ? (
-                  <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                  <View style={{ alignItems: 'center', paddingVertical: s(20) }}>
                     <ActivityIndicator color={colors.teal} />
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.muted,
-                        marginTop: 8
+                        marginTop: s(8)
                       }}
                     >
                       Loading stations…
@@ -443,10 +446,10 @@ export default function CashManagementScreen () {
                 ) : stations.length === 0 ? (
                   <Text
                     style={{
-                      fontSize: 12,
+                      fontSize: s(12),
                       color: colors.muted,
                       textAlign: 'center',
-                      paddingVertical: 12
+                      paddingVertical: s(12)
                     }}
                   >
                     No stations found for this location.
@@ -462,8 +465,8 @@ export default function CashManagementScreen () {
                       <View
                         key={station.id}
                         style={{
-                          marginBottom: 8,
-                          borderRadius: 10,
+                          marginBottom: s(8),
+                          borderRadius: s(10),
                           borderWidth: 1,
                           borderColor: isCurrentStation
                             ? colors.teal + '50'
@@ -476,24 +479,24 @@ export default function CashManagementScreen () {
                             flexDirection: 'row',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            paddingHorizontal: 12,
-                            paddingVertical: 8,
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(8),
                             backgroundColor: isCurrentStation
                               ? colors.teal + '10'
                               : colors.screen
                           }}
                         >
-                          <View style={{ flex: 1, paddingRight: 8 }}>
+                          <View style={{ flex: 1, paddingRight: s(8) }}>
                             <View
                               style={{
                                 flexDirection: 'row',
                                 alignItems: 'center',
-                                gap: 6
+                                gap: s(6)
                               }}
                             >
                               <Text
                                 style={{
-                                  fontSize: 13,
+                                  fontSize: s(13),
                                   fontWeight: '700',
                                   color: colors.heading
                                 }}
@@ -506,14 +509,14 @@ export default function CashManagementScreen () {
                                     backgroundColor: colors.teal + '20',
                                     borderWidth: 1,
                                     borderColor: colors.teal + '40',
-                                    paddingHorizontal: 5,
-                                    paddingVertical: 1,
+                                    paddingHorizontal: s(5),
+                                    paddingVertical: s(1),
                                     borderRadius: 20
                                   }}
                                 >
                                   <Text
                                     style={{
-                                      fontSize: 10,
+                                      fontSize: s(10),
                                       color: colors.teal,
                                       fontWeight: '600'
                                     }}
@@ -525,9 +528,9 @@ export default function CashManagementScreen () {
                             </View>
                             <Text
                               style={{
-                                fontSize: 10,
+                                fontSize: s(10),
                                 color: colors.label,
-                                marginTop: 0.5,
+                                marginTop: s(0.5),
                                 textTransform: 'capitalize'
                               }}
                             >
@@ -540,19 +543,19 @@ export default function CashManagementScreen () {
                               style={{
                                 flexDirection: 'row',
                                 alignItems: 'center',
-                                gap: 4,
+                                gap: s(4),
                                 backgroundColor: colors.teal + '15',
                                 borderWidth: 1,
                                 borderColor: colors.teal + '50',
-                                paddingHorizontal: 10,
-                                paddingVertical: 4,
-                                borderRadius: 8
+                                paddingHorizontal: s(10),
+                                paddingVertical: s(4),
+                                borderRadius: s(8)
                               }}
                             >
-                              <Check size={11} color={colors.teal} />
+                              <Check size={s(11)} color={colors.teal} />
                               <Text
                                 style={{
-                                  fontSize: 11,
+                                  fontSize: s(11),
                                   color: colors.teal,
                                   fontWeight: '600'
                                 }}
@@ -560,7 +563,7 @@ export default function CashManagementScreen () {
                               >
                                 {assignedDrawer.name}
                               </Text>
-                              <X size={9} color={colors.teal} />
+                              <X size={s(9)} color={colors.teal} />
                             </TouchableOpacity>
                           ) : (
                             <TouchableOpacity
@@ -568,21 +571,21 @@ export default function CashManagementScreen () {
                               style={{
                                 flexDirection: 'row',
                                 alignItems: 'center',
-                                gap: 4,
+                                gap: s(4),
                                 backgroundColor: colors.screen,
                                 borderWidth: 1,
                                 borderColor: colors.border,
-                                paddingHorizontal: 10,
-                                paddingVertical: 4,
-                                borderRadius: 8
+                                paddingHorizontal: s(10),
+                                paddingVertical: s(4),
+                                borderRadius: s(8)
                               }}
                             >
                               <Text
-                                style={{ fontSize: 11, color: colors.label }}
+                                style={{ fontSize: s(11), color: colors.label }}
                               >
                                 Assign
                               </Text>
-                              <ChevronRight size={11} color={colors.muted} />
+                              <ChevronRight size={s(11)} color={colors.muted} />
                             </TouchableOpacity>
                           )}
                         </View>
@@ -593,8 +596,8 @@ export default function CashManagementScreen () {
                               flexDirection: 'row',
                               alignItems: 'center',
                               justifyContent: 'space-between',
-                              paddingHorizontal: 12,
-                              paddingVertical: 6,
+                              paddingHorizontal: s(12),
+                              paddingVertical: s(6),
                               backgroundColor: colors.screen,
                               borderTopWidth: 1,
                               borderTopColor: colors.border
@@ -604,13 +607,13 @@ export default function CashManagementScreen () {
                               style={{
                                 flexDirection: 'row',
                                 alignItems: 'center',
-                                gap: 5,
+                                gap: s(5),
                                 flex: 1
                               }}
                             >
-                              <Banknote size={10} color={colors.teal} />
+                              <Banknote size={s(10)} color={colors.teal} />
                               <Text
-                                style={{ fontSize: 10, color: colors.label }}
+                                style={{ fontSize: s(10), color: colors.label }}
                                 numberOfLines={1}
                               >
                                 {assignedDrawer.device_catalog
@@ -624,14 +627,14 @@ export default function CashManagementScreen () {
                                 borderWidth: 1,
                                 borderColor: colors.teal + '40',
                                 borderRadius: 20,
-                                paddingHorizontal: 7,
-                                paddingVertical: 2,
-                                marginLeft: 8
+                                paddingHorizontal: s(7),
+                                paddingVertical: s(2),
+                                marginLeft: s(8)
                               }}
                             >
                               <Text
                                 style={{
-                                  fontSize: 10,
+                                  fontSize: s(10),
                                   color: colors.teal,
                                   fontWeight: '600'
                                 }}
@@ -649,18 +652,18 @@ export default function CashManagementScreen () {
                 {cashDrawers.length === 0 && !loadingDrawers && (
                   <View
                     style={{
-                      marginTop: 6,
+                      marginTop: s(6),
                       backgroundColor: colors.screen,
-                      borderRadius: 10,
+                      borderRadius: s(10),
                       borderWidth: 1,
                       borderColor: colors.border,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(10)
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         color: colors.label,
                         fontWeight: '500'
                       }}
@@ -669,9 +672,9 @@ export default function CashManagementScreen () {
                     </Text>
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         color: colors.muted,
-                        marginTop: 1
+                        marginTop: s(1)
                       }}
                     >
                       Add drawers to this location to enable assignment.
@@ -686,22 +689,22 @@ export default function CashManagementScreen () {
           <View
             style={{
               backgroundColor: colors.panel,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
-              marginBottom: 10,
+              marginBottom: s(10),
               overflow: 'hidden'
             }}
           >
             {renderSectionHeader(
               'Drawer Session',
-              <CircleDollarSign size={14} color={colors.teal} />,
+              <CircleDollarSign size={s(14)} color={colors.teal} />,
               'session'
             )}
             {expandedSections.session && (
-              <View style={{ padding: 12 }}>
+              <View style={{ padding: s(12) }}>
                 {!drawerId ? (
-                  <Text style={{ fontSize: 11, color: colors.muted }}>
+                  <Text style={{ fontSize: s(11), color: colors.muted }}>
                     No drawer assigned to this station.
                   </Text>
                 ) : !isSessionOpen ? (
@@ -711,13 +714,13 @@ export default function CashManagementScreen () {
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        marginBottom: 10
+                        marginBottom: s(10)
                       }}
                     >
                       <View>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: '600',
                             color: colors.heading
                           }}
@@ -728,12 +731,12 @@ export default function CashManagementScreen () {
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            marginTop: 1,
-                            gap: 4
+                            marginTop: s(1),
+                            gap: s(4)
                           }}
                         >
-                          <Lock size={11} color={colors.muted} />
-                          <Text style={{ fontSize: 11, color: colors.muted }}>
+                          <Lock size={s(11)} color={colors.muted} />
+                          <Text style={{ fontSize: s(11), color: colors.muted }}>
                             Closed
                           </Text>
                         </View>
@@ -742,8 +745,8 @@ export default function CashManagementScreen () {
                     <TouchableOpacity
                       onPress={() => setCashDrawerSheetOpen(true)}
                       style={{
-                        paddingVertical: 10,
-                        borderRadius: 10,
+                        paddingVertical: s(10),
+                        borderRadius: s(10),
                         alignItems: 'center',
                         backgroundColor: colors.teal
                       }}
@@ -752,13 +755,13 @@ export default function CashManagementScreen () {
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
-                          gap: 6
+                          gap: s(6)
                         }}
                       >
-                        <Unlock size={14} color={colors.onSolid} />
+                        <Unlock size={s(14)} color={colors.onSolid} />
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: '700',
                             color: colors.onSolid
                           }}
@@ -775,13 +778,13 @@ export default function CashManagementScreen () {
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        marginBottom: 10
+                        marginBottom: s(10)
                       }}
                     >
                       <View>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: '600',
                             color: colors.heading
                           }}
@@ -792,30 +795,30 @@ export default function CashManagementScreen () {
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            marginTop: 1,
-                            gap: 4
+                            marginTop: s(1),
+                            gap: s(4)
                           }}
                         >
                           <View
                             style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: 3,
+                              width: s(6),
+                              height: s(6),
+                              borderRadius: s(3),
                               backgroundColor: colors.success
                             }}
                           />
-                          <Text style={{ fontSize: 11, color: colors.success }}>
+                          <Text style={{ fontSize: s(11), color: colors.success }}>
                             Active
                           </Text>
                         </View>
                       </View>
                       <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={{ fontSize: 10, color: colors.muted }}>
+                        <Text style={{ fontSize: s(10), color: colors.muted }}>
                           Balance
                         </Text>
                         <Text
                           style={{
-                            fontSize: 15,
+                            fontSize: s(15),
                             fontWeight: '700',
                             color: colors.teal
                           }}
@@ -827,8 +830,8 @@ export default function CashManagementScreen () {
                     <TouchableOpacity
                       onPress={() => setCashDrawerSheetOpen(true)}
                       style={{
-                        paddingVertical: 10,
-                        borderRadius: 10,
+                        paddingVertical: s(10),
+                        borderRadius: s(10),
                         alignItems: 'center',
                         backgroundColor: colors.teal + '15',
                         borderWidth: 1,
@@ -837,7 +840,7 @@ export default function CashManagementScreen () {
                     >
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: s(12),
                           fontWeight: '600',
                           color: colors.teal
                         }}
@@ -855,20 +858,20 @@ export default function CashManagementScreen () {
           <View
             style={{
               backgroundColor: colors.panel,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
-              marginBottom: 10,
+              marginBottom: s(10),
               overflow: 'hidden'
             }}
           >
             {renderSectionHeader(
               'No Sale Settings',
-              <ShieldCheck size={14} color={colors.teal} />,
+              <ShieldCheck size={s(14)} color={colors.teal} />,
               'noSale'
             )}
             {expandedSections.noSale && (
-              <View style={{ padding: 12 }}>
+              <View style={{ padding: s(12) }}>
                 {renderToggleRow(
                   'Require Reason',
                   'Staff must select a reason for No Sale operations',
@@ -901,20 +904,20 @@ export default function CashManagementScreen () {
           <View
             style={{
               backgroundColor: colors.panel,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
-              marginBottom: 10,
+              marginBottom: s(10),
               overflow: 'hidden'
             }}
           >
             {renderSectionHeader(
               'Drawer Settings',
-              <Banknote size={14} color={colors.teal} />,
+              <Banknote size={s(14)} color={colors.teal} />,
               'drawer'
             )}
             {expandedSections.drawer && (
-              <View style={{ padding: 12 }}>
+              <View style={{ padding: s(12) }}>
                 {renderToggleRow(
                   'Blind Close Count',
                   'Hide expected amount during closing count',
@@ -936,20 +939,20 @@ export default function CashManagementScreen () {
           <View
             style={{
               backgroundColor: colors.panel,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
-              marginBottom: 10,
+              marginBottom: s(10),
               overflow: 'hidden'
             }}
           >
             {renderSectionHeader(
               'Variance Thresholds',
-              <DollarSign size={14} color={colors.teal} />,
+              <DollarSign size={s(14)} color={colors.teal} />,
               'variance'
             )}
             {expandedSections.variance && (
-              <View style={{ padding: 12 }}>
+              <View style={{ padding: s(12) }}>
                 {renderNumberRow(
                   'Warning Threshold',
                   'Show yellow warning when variance exceeds this amount',
@@ -973,20 +976,20 @@ export default function CashManagementScreen () {
           <View
             style={{
               backgroundColor: colors.panel,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
-              marginBottom: 10,
+              marginBottom: s(10),
               overflow: 'hidden'
             }}
           >
             {renderSectionHeader(
               'End of Day',
-              <FileText size={14} color={colors.teal} />,
+              <FileText size={s(14)} color={colors.teal} />,
               'eod'
             )}
             {expandedSections.eod && (
-              <View style={{ padding: 12 }}>
+              <View style={{ padding: s(12) }}>
                 {renderToggleRow(
                   'Require EOD Before Close',
                   'Cash drawer must be closed through End of Day process',
@@ -1017,7 +1020,7 @@ export default function CashManagementScreen () {
             backgroundColor: 'rgba(0,0,0,0.5)',
             alignItems: 'center',
             justifyContent: 'center',
-            paddingHorizontal: 20
+            paddingHorizontal: s(20)
           }}
           activeOpacity={1}
           onPress={() => !isAssigning && setAssigningStation(null)}
@@ -1027,7 +1030,7 @@ export default function CashManagementScreen () {
             style={{
               width: '100%',
               backgroundColor: colors.panel,
-              borderRadius: 16,
+              borderRadius: s(16),
               borderWidth: 1,
               borderColor: colors.border,
               overflow: 'hidden'
@@ -1039,8 +1042,8 @@ export default function CashManagementScreen () {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                paddingHorizontal: 14,
-                paddingVertical: 10,
+                paddingHorizontal: s(14),
+                paddingVertical: s(10),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border
               }}
@@ -1048,7 +1051,7 @@ export default function CashManagementScreen () {
               <View>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: '700',
                     color: colors.heading
                   }}
@@ -1057,7 +1060,7 @@ export default function CashManagementScreen () {
                 </Text>
                 {assigningStation && (
                   <Text
-                    style={{ fontSize: 10, color: colors.label, marginTop: 1 }}
+                    style={{ fontSize: s(10), color: colors.label, marginTop: s(1) }}
                   >
                     {assigningStation.station_name}
                   </Text>
@@ -1065,21 +1068,21 @@ export default function CashManagementScreen () {
               </View>
               <TouchableOpacity
                 onPress={() => setAssigningStation(null)}
-                style={{ padding: 4 }}
+                style={{ padding: s(4) }}
               >
-                <X size={14} color={colors.muted} />
+                <X size={s(14)} color={colors.muted} />
               </TouchableOpacity>
             </View>
 
             {/* Drawer list */}
-            <View style={{ padding: 12 }}>
+            <View style={{ padding: s(12) }}>
               {cashDrawers.length === 0 ? (
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.muted,
                     textAlign: 'center',
-                    paddingVertical: 14
+                    paddingVertical: s(14)
                   }}
                 >
                   No drawers available for this location.
@@ -1107,10 +1110,10 @@ export default function CashManagementScreen () {
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        marginBottom: 8,
-                        paddingHorizontal: 12,
-                        paddingVertical: 9,
-                        borderRadius: 10,
+                        marginBottom: s(8),
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(9),
+                        borderRadius: s(10),
                         borderWidth: 1,
                         borderColor: isAssignedHere
                           ? colors.teal + '50'
@@ -1124,7 +1127,7 @@ export default function CashManagementScreen () {
                       <View style={{ flex: 1 }}>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: '600',
                             color: isAssignedElsewhere
                               ? colors.muted
@@ -1135,9 +1138,9 @@ export default function CashManagementScreen () {
                         </Text>
                         <Text
                           style={{
-                            fontSize: 10,
+                            fontSize: s(10),
                             color: colors.label,
-                            marginTop: 0.5
+                            marginTop: s(0.5)
                           }}
                         >
                           {drawer.device_catalog
@@ -1151,11 +1154,11 @@ export default function CashManagementScreen () {
                       {isAssigning && isAssignedHere ? (
                         <ActivityIndicator size='small' color={colors.teal} />
                       ) : isAssignedHere ? (
-                        <Check size={13} color={colors.teal} />
+                        <Check size={s(13)} color={colors.teal} />
                       ) : isAssignedElsewhere ? (
-                        <Lock size={11} color={colors.muted} />
+                        <Lock size={s(11)} color={colors.muted} />
                       ) : (
-                        <ChevronRight size={13} color={colors.muted} />
+                        <ChevronRight size={s(13)} color={colors.muted} />
                       )}
                     </TouchableOpacity>
                   )

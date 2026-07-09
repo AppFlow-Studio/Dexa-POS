@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
@@ -8,10 +9,12 @@ import {
   ChevronUp,
   LayoutGrid,
   List,
-  Lock
+  Lock,
+  PlusCircle,
+  UserCheck
 } from 'lucide-react-native'
 import React, { useState } from 'react'
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native'
 
 const DAY_OPTIONS = [
   { value: 0, label: 'Today Only', description: 'Only show orders from today' },
@@ -121,19 +124,25 @@ const MINIMAL_MODE_ROW_OPTIONS: {
 ]
 
 const OrderLineSettingsScreen = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const orderLineSettings = useSettingsStore(s => s.orderLineSettings)
   const setOrderLineSettings = useSettingsStore(s => s.setOrderLineSettings)
   const managerOverrideTimeoutMinutes = useStoreSettingsStore(
     s => s.managerOverrideTimeoutMinutes
   )
   const orderCompletionMode = useStoreSettingsStore(s => s.orderCompletionMode)
+  const requirePinPerOrder = useStoreSettingsStore(s => s.requirePinPerOrder)
+  const autoCreateOrder = useStoreSettingsStore(s => s.autoCreateOrder)
   const updateField = useStoreSettingsStore(s => s.updateField)
 
   const [expandedSections, setExpandedSections] = useState({
     visibility: true,
     viewMode: true,
     managerOverride: true,
-    orderCompletion: true
+    orderCompletion: true,
+    staffAttribution: true,
+    orderCreation: true
   })
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -151,8 +160,8 @@ const OrderLineSettingsScreen = () => {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 14,
-        paddingVertical: 11,
+        paddingHorizontal: s(14),
+        paddingVertical: s(11),
         borderBottomWidth: expandedSections[section] ? 1 : 0,
         borderBottomColor: colors.border
       }}
@@ -160,27 +169,27 @@ const OrderLineSettingsScreen = () => {
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <View
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
+            width: s(32),
+            height: s(32),
+            borderRadius: s(8),
             backgroundColor: colors.teal + '15',
             alignItems: 'center',
             justifyContent: 'center',
-            marginRight: 10
+            marginRight: s(10)
           }}
         >
           {icon}
         </View>
         <Text
-          style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
         >
           {title}
         </Text>
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={14} color={colors.label} />
+        <ChevronUp size={s(14)} color={colors.label} />
       ) : (
-        <ChevronDown size={14} color={colors.label} />
+        <ChevronDown size={s(14)} color={colors.label} />
       )}
     </TouchableOpacity>
   )
@@ -190,18 +199,18 @@ const OrderLineSettingsScreen = () => {
       style={{
         flex: 1,
         backgroundColor: colors.screen,
-        paddingHorizontal: 14,
-        paddingVertical: 10
+        paddingHorizontal: s(14),
+        paddingVertical: s(10)
       }}
     >
       {/* Page Header */}
-      <View style={{ marginBottom: 2 }}>
+      <View style={{ marginBottom: s(2) }}>
         <Text
-          style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
         >
-          Order Line Settings
+          Orders Processing Settings
         </Text>
-        <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
+        <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
           Configure how orders appear in the order line.
         </Text>
       </View>
@@ -210,22 +219,22 @@ const OrderLineSettingsScreen = () => {
         style={{
           height: 1,
           backgroundColor: colors.border,
-          marginVertical: 10
+          marginVertical: s(10)
         }}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 12 }}
+        contentContainerStyle={{ paddingBottom: s(12) }}
       >
         {/* Order Visibility */}
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 10,
+            marginBottom: s(10),
             overflow: 'hidden'
           }}
         >
@@ -235,16 +244,16 @@ const OrderLineSettingsScreen = () => {
             'visibility'
           )}
           {expandedSections.visibility && (
-            <View style={{ padding: 12 }}>
+            <View style={{ padding: s(12) }}>
               <Text
-                style={{ fontSize: 10, color: colors.muted, marginBottom: 10 }}
+                style={{ fontSize: s(10), color: colors.muted, marginBottom: s(10) }}
               >
                 Choose how many days of orders to display in the order line.
                 Older orders will be hidden from the order line but can still be
                 found in order history.
               </Text>
 
-              <View style={{ gap: 6 }}>
+              <View style={{ gap: s(6) }}>
                 {DAY_OPTIONS.map(option => {
                   const isSelected =
                     orderLineSettings.daysToShow === option.value
@@ -258,9 +267,9 @@ const OrderLineSettingsScreen = () => {
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        paddingHorizontal: 10,
-                        paddingVertical: 9,
-                        borderRadius: 10,
+                        paddingHorizontal: s(10),
+                        paddingVertical: s(9),
+                        borderRadius: s(10),
                         borderWidth: 1,
                         backgroundColor: isSelected
                           ? colors.teal + '10'
@@ -273,7 +282,7 @@ const OrderLineSettingsScreen = () => {
                       <View style={{ flex: 1 }}>
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             fontWeight: '600',
                             color: isSelected ? colors.teal : colors.heading
                           }}
@@ -282,9 +291,9 @@ const OrderLineSettingsScreen = () => {
                         </Text>
                         <Text
                           style={{
-                            fontSize: 10,
+                            fontSize: s(10),
                             color: colors.muted,
-                            marginTop: 1
+                            marginTop: s(1)
                           }}
                         >
                           {option.description}
@@ -293,16 +302,16 @@ const OrderLineSettingsScreen = () => {
                       {isSelected && (
                         <View
                           style={{
-                            width: 22,
-                            height: 22,
-                            borderRadius: 11,
+                            width: s(22),
+                            height: s(22),
+                            borderRadius: s(11),
                             backgroundColor: colors.teal,
                             alignItems: 'center',
                             justifyContent: 'center',
-                            marginLeft: 10
+                            marginLeft: s(10)
                           }}
                         >
-                          <Check size={13} color={colors.onSolid} />
+                          <Check size={s(13)} color={colors.onSolid} />
                         </View>
                       )}
                     </TouchableOpacity>
@@ -316,8 +325,8 @@ const OrderLineSettingsScreen = () => {
         {/* Order Line View Mode */}
         <View
           style={{
-            marginTop: 16,
-            borderRadius: 12,
+            marginTop: s(16),
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden',
@@ -326,17 +335,17 @@ const OrderLineSettingsScreen = () => {
         >
           {renderSectionHeader(
             'Order Line View',
-            <LayoutGrid size={14} color={colors.teal} />,
+            <LayoutGrid size={s(14)} color={colors.teal} />,
             'viewMode'
           )}
           {expandedSections.viewMode && (
-            <View style={{ padding: 12, gap: 6 }}>
+            <View style={{ padding: s(12), gap: s(6) }}>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   color: colors.muted,
-                  marginBottom: 4,
-                  paddingHorizontal: 2
+                  marginBottom: s(4),
+                  paddingHorizontal: s(2)
                 }}
               >
                 Choose whether the order line is always visible, or hidden
@@ -354,9 +363,9 @@ const OrderLineSettingsScreen = () => {
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      paddingHorizontal: 10,
-                      paddingVertical: 9,
-                      borderRadius: 10,
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(9),
+                      borderRadius: s(10),
                       borderWidth: 1,
                       backgroundColor: isSelected
                         ? colors.teal + '10'
@@ -369,7 +378,7 @@ const OrderLineSettingsScreen = () => {
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: '600',
                           color: isSelected ? colors.teal : colors.heading
                         }}
@@ -378,9 +387,9 @@ const OrderLineSettingsScreen = () => {
                       </Text>
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: s(10),
                           color: colors.muted,
-                          marginTop: 1
+                          marginTop: s(1)
                         }}
                       >
                         {option.description}
@@ -389,16 +398,16 @@ const OrderLineSettingsScreen = () => {
                     {isSelected && (
                       <View
                         style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 11,
+                          width: s(22),
+                          height: s(22),
+                          borderRadius: s(11),
                           backgroundColor: colors.teal,
                           alignItems: 'center',
                           justifyContent: 'center',
-                          marginLeft: 10
+                          marginLeft: s(10)
                         }}
                       >
-                        <Check size={13} color={colors.onSolid} />
+                        <Check size={s(13)} color={colors.onSolid} />
                       </View>
                     )}
                   </TouchableOpacity>
@@ -406,13 +415,13 @@ const OrderLineSettingsScreen = () => {
               })}
 
               {(orderLineSettings.viewMode ?? 'default') === 'minimal' && (
-                <View style={{ marginTop: 6, gap: 6 }}>
+                <View style={{ marginTop: s(6), gap: s(6) }}>
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       color: colors.muted,
-                      marginTop: 4,
-                      paddingHorizontal: 2
+                      marginTop: s(4),
+                      paddingHorizontal: s(2)
                     }}
                   >
                     In minimal mode, choose how tall the order sheet opens.
@@ -431,9 +440,9 @@ const OrderLineSettingsScreen = () => {
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
-                          paddingHorizontal: 10,
-                          paddingVertical: 9,
-                          borderRadius: 10,
+                          paddingHorizontal: s(10),
+                          paddingVertical: s(9),
+                          borderRadius: s(10),
                           borderWidth: 1,
                           backgroundColor: isSelected
                             ? colors.teal + '10'
@@ -446,7 +455,7 @@ const OrderLineSettingsScreen = () => {
                         <View style={{ flex: 1 }}>
                           <Text
                             style={{
-                              fontSize: 13,
+                              fontSize: s(13),
                               fontWeight: '600',
                               color: isSelected ? colors.teal : colors.heading
                             }}
@@ -455,9 +464,9 @@ const OrderLineSettingsScreen = () => {
                           </Text>
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               color: colors.muted,
-                              marginTop: 1
+                              marginTop: s(1)
                             }}
                           >
                             {option.description}
@@ -466,16 +475,16 @@ const OrderLineSettingsScreen = () => {
                         {isSelected && (
                           <View
                             style={{
-                              width: 22,
-                              height: 22,
-                              borderRadius: 11,
+                              width: s(22),
+                              height: s(22),
+                              borderRadius: s(11),
                               backgroundColor: colors.teal,
                               alignItems: 'center',
                               justifyContent: 'center',
-                              marginLeft: 10
+                              marginLeft: s(10)
                             }}
                           >
-                            <Check size={13} color={colors.onSolid} />
+                            <Check size={s(13)} color={colors.onSolid} />
                           </View>
                         )}
                       </TouchableOpacity>
@@ -490,8 +499,8 @@ const OrderLineSettingsScreen = () => {
         {/* ── Manager Override Timeout ───────────────────────────────────── */}
         <View
           style={{
-            marginTop: 16,
-            borderRadius: 12,
+            marginTop: s(16),
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden',
@@ -500,17 +509,17 @@ const OrderLineSettingsScreen = () => {
         >
           {renderSectionHeader(
             'Manager Override Timeout',
-            <Lock size={14} color={colors.teal} />,
+            <Lock size={s(14)} color={colors.teal} />,
             'managerOverride'
           )}
           {expandedSections.managerOverride && (
-            <View style={{ padding: 12, gap: 6 }}>
+            <View style={{ padding: s(12), gap: s(6) }}>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   color: colors.muted,
-                  marginBottom: 4,
-                  paddingHorizontal: 2
+                  marginBottom: s(4),
+                  paddingHorizontal: s(2)
                 }}
               >
                 After a manager enters their PIN to unlock a schedule-restricted
@@ -529,9 +538,9 @@ const OrderLineSettingsScreen = () => {
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      paddingHorizontal: 10,
-                      paddingVertical: 9,
-                      borderRadius: 10,
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(9),
+                      borderRadius: s(10),
                       borderWidth: 1,
                       backgroundColor: isSelected
                         ? colors.teal + '10'
@@ -544,7 +553,7 @@ const OrderLineSettingsScreen = () => {
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: '600',
                           color: isSelected ? colors.teal : colors.heading
                         }}
@@ -553,9 +562,9 @@ const OrderLineSettingsScreen = () => {
                       </Text>
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: s(10),
                           color: colors.muted,
-                          marginTop: 1
+                          marginTop: s(1)
                         }}
                       >
                         {option.description}
@@ -564,16 +573,16 @@ const OrderLineSettingsScreen = () => {
                     {isSelected && (
                       <View
                         style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 11,
+                          width: s(22),
+                          height: s(22),
+                          borderRadius: s(11),
                           backgroundColor: colors.teal,
                           alignItems: 'center',
                           justifyContent: 'center',
-                          marginLeft: 10
+                          marginLeft: s(10)
                         }}
                       >
-                        <Check size={13} color={colors.onSolid} />
+                        <Check size={s(13)} color={colors.onSolid} />
                       </View>
                     )}
                   </TouchableOpacity>
@@ -586,8 +595,8 @@ const OrderLineSettingsScreen = () => {
         {/* ── Order Completion Mode ──────────────────────────────────── */}
         <View
           style={{
-            marginTop: 16,
-            borderRadius: 12,
+            marginTop: s(16),
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden',
@@ -596,17 +605,17 @@ const OrderLineSettingsScreen = () => {
         >
           {renderSectionHeader(
             'Order Completion',
-            <CheckCircle2 size={14} color={colors.teal} />,
+            <CheckCircle2 size={s(14)} color={colors.teal} />,
             'orderCompletion'
           )}
           {expandedSections.orderCompletion && (
-            <View style={{ padding: 12, gap: 6 }}>
+            <View style={{ padding: s(12), gap: s(6) }}>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   color: colors.muted,
-                  marginBottom: 4,
-                  paddingHorizontal: 2
+                  marginBottom: s(4),
+                  paddingHorizontal: s(2)
                 }}
               >
                 Control how orders transition to "completed" status. Completed
@@ -623,9 +632,9 @@ const OrderLineSettingsScreen = () => {
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      paddingHorizontal: 10,
-                      paddingVertical: 9,
-                      borderRadius: 10,
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(9),
+                      borderRadius: s(10),
                       borderWidth: 1,
                       backgroundColor: isSelected
                         ? colors.teal + '10'
@@ -638,7 +647,7 @@ const OrderLineSettingsScreen = () => {
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: '600',
                           color: isSelected ? colors.teal : colors.heading
                         }}
@@ -647,9 +656,9 @@ const OrderLineSettingsScreen = () => {
                       </Text>
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: s(10),
                           color: colors.muted,
-                          marginTop: 1
+                          marginTop: s(1)
                         }}
                       >
                         {option.description}
@@ -658,21 +667,192 @@ const OrderLineSettingsScreen = () => {
                     {isSelected && (
                       <View
                         style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 11,
+                          width: s(22),
+                          height: s(22),
+                          borderRadius: s(11),
                           backgroundColor: colors.teal,
                           alignItems: 'center',
                           justifyContent: 'center',
-                          marginLeft: 10
+                          marginLeft: s(10)
                         }}
                       >
-                        <Check size={13} color={colors.onSolid} />
+                        <Check size={s(13)} color={colors.onSolid} />
                       </View>
                     )}
                   </TouchableOpacity>
                 )
               })}
+            </View>
+          )}
+        </View>
+
+        {/* ── Staff Attribution (per-order PIN) ──────────────────────── */}
+        <View
+          style={{
+            marginTop: s(16),
+            borderRadius: s(12),
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden',
+            backgroundColor: colors.panel
+          }}
+        >
+          {renderSectionHeader(
+            'Staff Attribution',
+            <UserCheck size={s(14)} color={colors.teal} />,
+            'staffAttribution'
+          )}
+          {expandedSections.staffAttribution && (
+            <View style={{ padding: s(12) }}>
+              <Text
+                style={{
+                  fontSize: s(11),
+                  color: colors.muted,
+                  marginBottom: s(10),
+                  paddingHorizontal: s(2)
+                }}
+              >
+                On shared registers, require a PIN before each new order so the
+                staff who rings it up is credited as that order&apos;s creator.
+                The PIN is attribution-only — it does not sign anyone in or clock
+                them in/out. When off, the signed-in user is credited for every
+                order.
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() =>
+                  updateField('requirePinPerOrder', !requirePinPerOrder)
+                }
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(9),
+                  borderRadius: s(10),
+                  borderWidth: 1,
+                  backgroundColor: requirePinPerOrder
+                    ? colors.teal + '10'
+                    : colors.screen,
+                  borderColor: requirePinPerOrder
+                    ? colors.teal + '50'
+                    : colors.border
+                }}
+              >
+                <View style={{ flex: 1, marginRight: s(10) }}>
+                  <Text
+                    style={{
+                      fontSize: s(13),
+                      fontWeight: '600',
+                      color: requirePinPerOrder ? colors.teal : colors.heading
+                    }}
+                  >
+                    Require PIN per order
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      color: colors.muted,
+                      marginTop: s(1)
+                    }}
+                  >
+                    Return to a PIN prompt after each order is sent.
+                  </Text>
+                </View>
+                <Switch
+                  value={requirePinPerOrder}
+                  onValueChange={value =>
+                    updateField('requirePinPerOrder', value)
+                  }
+                  trackColor={{ false: colors.border, true: colors.teal }}
+                  thumbColor={colors.onSolid}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* ── Order Creation ─────────────────────────────────────────── */}
+        <View
+          style={{
+            marginTop: s(16),
+            borderRadius: s(12),
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden',
+            backgroundColor: colors.panel
+          }}
+        >
+          {renderSectionHeader(
+            'Order Creation',
+            <PlusCircle size={s(14)} color={colors.teal} />,
+            'orderCreation'
+          )}
+          {expandedSections.orderCreation && (
+            <View style={{ padding: s(12) }}>
+              <Text
+                style={{
+                  fontSize: s(11),
+                  color: colors.muted,
+                  marginBottom: s(10),
+                  paddingHorizontal: s(2)
+                }}
+              >
+                When on, the register auto-creates an order when you open the
+                order screen and after each payment. Turn this off to require the
+                operator to explicitly start an order — the screen stays empty
+                until then, and no order is created until the first item is added.
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() =>
+                  updateField('autoCreateOrder', !autoCreateOrder)
+                }
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(9),
+                  borderRadius: s(10),
+                  borderWidth: 1,
+                  backgroundColor: autoCreateOrder
+                    ? colors.teal + '10'
+                    : colors.screen,
+                  borderColor: autoCreateOrder
+                    ? colors.teal + '50'
+                    : colors.border
+                }}
+              >
+                <View style={{ flex: 1, marginRight: s(10) }}>
+                  <Text
+                    style={{
+                      fontSize: s(13),
+                      fontWeight: '600',
+                      color: autoCreateOrder ? colors.teal : colors.heading
+                    }}
+                  >
+                    Auto-create orders
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      color: colors.muted,
+                      marginTop: s(1)
+                    }}
+                  >
+                    Off: operator must explicitly start each order.
+                  </Text>
+                </View>
+                <Switch
+                  value={autoCreateOrder}
+                  onValueChange={value =>
+                    updateField('autoCreateOrder', value)
+                  }
+                  trackColor={{ false: colors.border, true: colors.teal }}
+                  thumbColor={colors.onSolid}
+                />
+              </TouchableOpacity>
             </View>
           )}
         </View>

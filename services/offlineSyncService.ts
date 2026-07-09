@@ -16,6 +16,7 @@ import { DEADLINES } from "@/lib/network/deadlines";
 import { isBlockedAddItemEnabled } from "@/lib/network/featureFlags";
 import { isSynced, isValidUUID } from "@/lib/offlineIdRegistry";
 import { isOwnershipError } from "@/lib/orderAccessControl";
+import { startInteraction } from "@/lib/perf";
 import { getSyncJSON, setSyncJSON } from "@/lib/storage";
 import * as Sentry from "@sentry/react-native";
 import { v4 as uuidv4 } from "uuid";
@@ -647,24 +648,6 @@ function startAppStateListener(): void {
         connectionQuality.reset();
       }
       _lastBackgroundedAt = null;
-      // Evict stale business day cache on foreground (handles rollover)
-      try {
-        const { getCurrentBusinessDay } = require("@/lib/businessDay");
-        const { todayOrdersCache } = require("@/stores/todayOrdersCache");
-        const {
-          useStoreSettingsStore,
-        } = require("@/stores/useStoreSettingsStore");
-        const store = useStoreSettingsStore.getState().selectedStore;
-        if (store?.id && store?.timezone) {
-          const config = {
-            timezone: store.timezone,
-            rolloverHour: store.business_day_start_hour ?? 0,
-          };
-          todayOrdersCache.evictStale(store.id, getCurrentBusinessDay(config));
-        }
-      } catch {
-        /* non-critical */
-      }
 
       NetInfo.fetch()
         .then(handleNetworkChange)
@@ -2372,6 +2355,13 @@ async function processQueue(): Promise<void> {
       "operations (by priority)",
     );
 
+    // Perf Phase 0: measure real flushes only (zero-ready passes return above)
+    const perfFlush = startInteraction("pos.queue_flush", {
+      ready_ops: readyOps.length,
+      blocked_ops: blocked.length,
+      pending_ops: pending.length,
+    });
+
     let successCount = 0;
     let failCount = 0;
 
@@ -2487,6 +2477,11 @@ async function processQueue(): Promise<void> {
       }
     }
 
+    perfFlush.end({
+      success_count: successCount,
+      fail_count: failCount,
+      went_offline: !isOnline,
+    });
     console.log(
       `[OfflineSync] Sync complete: ${successCount} succeeded, ${failCount} failed`,
     );
@@ -2829,6 +2824,7 @@ export async function reconcileOrderWithBackend(
         seatNumber: backendItem.seat_number ?? null,
         category_name: backendItem.category_name || "Uncategorized",
         is_voided: backendItem.is_voided || false,
+        is_to_go: backendItem.is_to_go || false,
         sync_status: "synced" as const,
         customizations: {
           notes: backendItem.special_instructions || undefined,

@@ -57,7 +57,11 @@ export function useTableSessionInit(options?: { skip?: boolean }): void {
       // 2b. Set up service-charge recalculation on party_size change
       setupServiceChargeSubscriber();
 
-      // 3. If tables already loaded, patch session store immediately
+      // 3. If tables already loaded, patch session store immediately.
+      //    NOT authoritative: on cold start these tables come from the
+      //    rehydrated floor-plan store with sessions STRIPPED, so we omit
+      //    clearMissing (add-only) — otherwise this wipes the persisted
+      //    session store before the first network fetch lands.
       const { tables } = useFloorPlanStore.getState();
       if (tables.length > 0) {
         useTableSessionStore.getState()._patchSessionsFromTables(tables);

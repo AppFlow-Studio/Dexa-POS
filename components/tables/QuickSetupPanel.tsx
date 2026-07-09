@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { TABLE_SHAPES } from '@/lib/table-shapes'
 import { colors } from '@/lib/theme'
 import React, { useState } from 'react'
@@ -27,6 +28,8 @@ const ShapeInputRow = ({
   shape: typeof TABLE_SHAPES[keyof typeof TABLE_SHAPES] & { id: string }
   onQuantityChange: (shapeId: string, quantity: number) => void
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [quantity, setQuantity] = useState('0')
 
   const adjust = (delta: number) => {
@@ -54,29 +57,29 @@ const ShapeInputRow = ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 14,
-        paddingVertical: 10,
+        paddingHorizontal: s(14),
+        paddingVertical: s(10),
         backgroundColor: colors.screen,
-        borderRadius: 10,
+        borderRadius: s(10),
         borderWidth: 1,
         borderColor: qty > 0 ? colors.teal + '40' : colors.border
       }}
     >
       <View
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: s(12), flex: 1 }}
       >
         <View
-          style={{ width: 56, alignItems: 'center', justifyContent: 'center' }}
+          style={{ width: s(56), alignItems: 'center', justifyContent: 'center' }}
         >
           <shape.component
             color={qty > 0 ? colors.teal : colors.label}
-            height={26}
+            height={s(26)}
           />
         </View>
         <Text
           style={{
             color: qty > 0 ? colors.heading : colors.label,
-            fontSize: 13,
+            fontSize: s(13),
             fontWeight: qty > 0 ? '600' : '400'
           }}
         >
@@ -88,7 +91,7 @@ const ShapeInputRow = ({
           flexDirection: 'row',
           alignItems: 'center',
           backgroundColor: colors.card,
-          borderRadius: 8,
+          borderRadius: s(8),
           borderWidth: 1,
           borderColor: colors.border,
           overflow: 'hidden'
@@ -97,8 +100,8 @@ const ShapeInputRow = ({
         <TouchableOpacity
           onPress={() => adjust(-1)}
           style={{
-            width: 30,
-            height: 32,
+            width: s(30),
+            height: s(32),
             alignItems: 'center',
             justifyContent: 'center',
             borderRightWidth: 1,
@@ -108,7 +111,7 @@ const ShapeInputRow = ({
           <Text
             style={{
               color: qty > 0 ? colors.label : colors.muted,
-              fontSize: 16,
+              fontSize: s(16),
               fontWeight: '600'
             }}
           >
@@ -121,11 +124,11 @@ const ShapeInputRow = ({
           keyboardType='number-pad'
           maxLength={2}
           style={{
-            width: 36,
-            height: 32,
+            width: s(36),
+            height: s(32),
             textAlign: 'center',
             color: qty > 0 ? colors.teal : colors.heading,
-            fontSize: 13,
+            fontSize: s(13),
             fontWeight: '700',
             paddingVertical: 0,
             includeFontPadding: false
@@ -134,8 +137,8 @@ const ShapeInputRow = ({
         <TouchableOpacity
           onPress={() => adjust(1)}
           style={{
-            width: 30,
-            height: 32,
+            width: s(30),
+            height: s(32),
             alignItems: 'center',
             justifyContent: 'center',
             borderLeftWidth: 1,
@@ -143,7 +146,7 @@ const ShapeInputRow = ({
           }}
         >
           <Text
-            style={{ color: colors.label, fontSize: 16, fontWeight: '600' }}
+            style={{ color: colors.label, fontSize: s(16), fontWeight: '600' }}
           >
             +
           </Text>
@@ -158,6 +161,8 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
   onClose,
   onAddMultiple
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [quantities, setQuantities] = useState<Record<string, number>>({})
 
   const handleQuantityChange = (shapeId: string, quantity: number) => {
@@ -201,9 +206,9 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
         >
           <View
             style={{
-              width: 520,
+              width: s(520),
               backgroundColor: colors.card,
-              borderRadius: 16,
+              borderRadius: s(16),
               borderWidth: 1,
               borderColor: colors.border,
               overflow: 'hidden'
@@ -212,8 +217,8 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
             {/* Header */}
             <View
               style={{
-                paddingHorizontal: 18,
-                paddingVertical: 14,
+                paddingHorizontal: s(18),
+                paddingVertical: s(14),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border
               }}
@@ -221,13 +226,13 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
               <Text
                 style={{
                   color: colors.heading,
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: '700'
                 }}
               >
                 Quick Floor Setup
               </Text>
-              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>
+              <Text style={{ color: colors.muted, fontSize: s(11), marginTop: s(3) }}>
                 Choose how many of each table type to add. You can rearrange
                 them on the canvas afterwards.
               </Text>
@@ -235,8 +240,8 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
 
             {/* Shape list */}
             <ScrollView
-              style={{ maxHeight: 400 }}
-              contentContainerStyle={{ padding: 14, gap: 8 }}
+              style={{ maxHeight: s(400) }}
+              contentContainerStyle={{ padding: s(14), gap: s(8) }}
             >
               {tableShapes.map(shape => (
                 <ShapeInputRow
@@ -251,8 +256,8 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
             <View
               style={{
                 flexDirection: 'row',
-                gap: 8,
-                padding: 14,
+                gap: s(8),
+                padding: s(14),
                 borderTopWidth: 1,
                 borderTopColor: colors.border
               }}
@@ -261,8 +266,8 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
                 onPress={onClose}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 9,
+                  paddingVertical: s(10),
+                  borderRadius: s(9),
                   alignItems: 'center',
                   backgroundColor: colors.screen,
                   borderWidth: 1,
@@ -273,7 +278,7 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
                   style={{
                     color: colors.label,
                     fontWeight: '600',
-                    fontSize: 13
+                    fontSize: s(13)
                   }}
                 >
                   Blank Canvas
@@ -283,8 +288,8 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
                 onPress={handleApply}
                 style={{
                   flex: 2,
-                  paddingVertical: 10,
-                  borderRadius: 9,
+                  paddingVertical: s(10),
+                  borderRadius: s(9),
                   alignItems: 'center',
                   backgroundColor: colors.teal + '20',
                   borderWidth: 1,
@@ -296,7 +301,7 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
                   style={{
                     color: colors.teal,
                     fontWeight: '800',
-                    fontSize: 13
+                    fontSize: s(13)
                   }}
                 >
                   {totalTables > 0

@@ -8,13 +8,16 @@ import {
   useVoidOrder
 } from '@/hooks/orders/useOrderActions'
 import { usePreviousOrdersListSync } from '@/hooks/pos/usePreviousOrdersListSync'
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { OrderProfile } from '@/lib/types'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { FlashList } from '@shopify/flash-list'
 import {
   AlertTriangle,
   ArrowDown,
@@ -32,7 +35,6 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
@@ -52,6 +54,7 @@ import Animated, {
   withSequence,
   withTiming
 } from 'react-native-reanimated'
+import { useShallow } from 'zustand/react/shallow'
 
 // ─── Skeleton Loading ───────────────────────────────────────
 const SkeletonBar = ({
@@ -98,28 +101,32 @@ const SkeletonBar = ({
   )
 }
 
-const SkeletonRow = () => (
+const SkeletonRow = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <View
     style={{
       backgroundColor: colors.panel,
-      borderRadius: 12,
-      marginHorizontal: 8,
-      marginBottom: 8,
-      padding: 16
+      borderRadius: s(12),
+      marginHorizontal: s(8),
+      marginBottom: s(8),
+      padding: s(16)
     }}
   >
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-      <SkeletonBar width={70} height={20} />
-      <SkeletonBar width={50} height={14} />
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(12) }}>
+      <SkeletonBar width={70} height={s(20)} />
+      <SkeletonBar width={50} height={s(14)} />
       <View style={{ flex: 1 }} />
-      <SkeletonBar width={60} height={24} style={{ borderRadius: 6 }} />
-      <SkeletonBar width={32} height={32} style={{ borderRadius: 16 }} />
-      <SkeletonBar width={40} height={20} style={{ borderRadius: 10 }} />
-      <SkeletonBar width={70} height={20} />
+      <SkeletonBar width={60} height={s(24)} style={{ borderRadius: s(6) }} />
+      <SkeletonBar width={32} height={s(32)} style={{ borderRadius: s(16) }} />
+      <SkeletonBar width={40} height={s(20)} style={{ borderRadius: s(10) }} />
+      <SkeletonBar width={70} height={s(20)} />
     </View>
-    <SkeletonBar width={180} height={12} style={{ marginTop: 6 }} />
+    <SkeletonBar width={180} height={s(12)} style={{ marginTop: s(6) }} />
   </View>
-)
+  )
+}
 
 // ─── Filter Pill Component ──────────────────────────────────
 interface FilterPillProps {
@@ -136,16 +143,19 @@ const FilterPill = ({
   onPress,
   icon,
   count
-}: FilterPillProps) => (
+}: FilterPillProps) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={0.7}
     style={{
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      gap: s(6),
+      paddingHorizontal: s(12),
+      paddingVertical: s(8),
       borderRadius: 999,
       backgroundColor: isActive ? colors.teal + '20' : 'transparent'
     }}
@@ -153,7 +163,7 @@ const FilterPill = ({
     {icon && typeof icon === 'string' ? icon : <View>{icon}</View>}
     <Text
       style={{
-        fontSize: 12,
+        fontSize: s(12),
         fontWeight: isActive ? '700' : '600',
         color: isActive ? colors.heading : colors.label
       }}
@@ -164,19 +174,20 @@ const FilterPill = ({
       <View
         style={{
           borderRadius: 999,
-          paddingHorizontal: 6,
-          minWidth: 20,
+          paddingHorizontal: s(6),
+          minWidth: s(20),
           alignItems: 'center',
           backgroundColor: isActive ? colors.teal + '30' : colors.teal + '15'
         }}
       >
-        <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal }}>
+        <Text style={{ fontSize: s(11), fontWeight: '700', color: colors.teal }}>
           {count}
         </Text>
       </View>
     )}
   </TouchableOpacity>
-)
+  )
+}
 
 // ─── Sort Segment Group ─────────────────────────────────────
 const SortSegmentGroup = ({
@@ -188,6 +199,8 @@ const SortSegmentGroup = ({
   sortOrder: 'asc' | 'desc'
   onSortChange: (field: 'date' | 'total' | 'status') => void
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const segments: { key: 'date' | 'total' | 'status'; label: string }[] = [
     { key: 'date', label: 'Date' },
     { key: 'total', label: 'Amount' },
@@ -199,7 +212,7 @@ const SortSegmentGroup = ({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        borderRadius: 8,
+        borderRadius: s(8),
         overflow: 'hidden',
         borderWidth: 1,
         borderColor: colors.border,
@@ -225,15 +238,15 @@ const SortSegmentGroup = ({
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
+                gap: s(4),
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
                 backgroundColor: isActive ? colors.teal + '20' : 'transparent'
               }}
             >
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: isActive ? '700' : '600',
                   color: isActive ? colors.teal : colors.label
                 }}
@@ -242,9 +255,9 @@ const SortSegmentGroup = ({
               </Text>
               {isActive &&
                 (sortOrder === 'desc' ? (
-                  <ArrowDown color={colors.teal} size={12} />
+                  <ArrowDown color={colors.teal} size={s(12)} />
                 ) : (
-                  <ArrowUp color={colors.teal} size={12} />
+                  <ArrowUp color={colors.teal} size={s(12)} />
                 ))}
             </TouchableOpacity>
           </React.Fragment>
@@ -256,8 +269,10 @@ const SortSegmentGroup = ({
 
 // ─── Main Screen ────────────────────────────────────────────
 const PreviousOrdersScreen = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const router = useRouter()
-  const setActiveOrder = useOrderStore(s => s.setActiveOrder)
+  const setActiveOrder = useOrderStore(storeState => storeState.setActiveOrder)
 
   // Modal state
   const [activeModal, setActiveModal] = useState<'notes' | null>(null)
@@ -274,11 +289,12 @@ const PreviousOrdersScreen = () => {
   const [sortBy, setSortBy] = useState<'date' | 'total' | 'status'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
-  const {
-    refresh: handleRefresh,
-    isRefreshing,
-    isInitialLoading
-  } = usePreviousOrdersListSync()
+  const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync()
+
+  // Store-driven loading flag: true during the initial fetch AND on every
+  // filter/date-window switch (setDateWindow clears the list + flags a refetch).
+  // Drives the skeleton rows so a switch never flashes "No orders found".
+  const isInitialLoading = usePreviousOrdersStore(s => s._isRefreshing)
 
   // Date window
   const dateWindowLabel = usePreviousOrdersStore(
@@ -293,27 +309,78 @@ const PreviousOrdersScreen = () => {
     [setDateWindow]
   )
 
-  // ─── Store-based data layer (mirrors PreviousOrdersSection pattern) ───
-  const ordersById = useOrderStore(s => s.ordersById)
-  const orderIds = useOrderStore(s => s.orderIds)
-  const currentStationId = useOrderStore(s => s.currentStationId)
-  const activeOrderId = useOrderStore(s => s.activeOrderId)
-  const workingSetOrderIds = useOrderStore(s => s.workingSetOrderIds)
-  const dbOrderIdIndex = useOrderStore(s => s.dbOrderIdIndex)
+  // ─── Server-fetched data layer ───
+  // Previous Orders renders ONLY the date-bounded backend fetch (previousOrders).
+  // Live in-memory orders from useOrderStore are not merged in: a just-created /
+  // unsynced order is not a "previous order" and was previously pinned to the
+  // top of every date window. It surfaces here only once it syncs and a fetch /
+  // broadcast returns it.
   const { previousOrders, newOrdersCount } = usePreviousOrdersStore()
   const loadMoreOrders = usePreviousOrdersStore(s => s.loadMoreOrders)
   const isLoadingMore = usePreviousOrdersStore(s => s._isLoadingMore)
   const hasMore = usePreviousOrdersStore(s => s._hasMore)
+  const { rawIsOnline } = useNetworkStatus()
 
-  // Release previous orders from memory when navigating away (~10MB for 500 orders).
-  // Data is re-fetched on next focus via usePreviousOrdersListSync bootstrap.
+  // OFFLINE ONLY: backend unreachable, so previousOrders can't refresh. Surface
+  // the device's own non-final orders (active + working set + own-station open)
+  // so open/unpaid offline orders are visible too, each badged "Offline". Empty
+  // when online (list stays server-fetched only).
+  const offlineLiveOrders = useOrderStore(
+    useShallow(s => {
+      if (rawIsOnline) return [] as OrderProfile[]
+      const finalStatuses = new Set([
+        'completed',
+        'void',
+        'cancelled',
+        'voided'
+      ])
+      const ids = new Set<string>()
+      if (s.activeOrderId) ids.add(s.activeOrderId)
+      for (const wsId of s.workingSetOrderIds || []) {
+        ids.add(s.dbOrderIdIndex[wsId] || wsId)
+      }
+      for (const id of s.orderIds) {
+        if (ids.has(id)) continue
+        const o = s.ordersById[id]
+        if (!o) continue
+        if (o.station_id !== s.currentStationId) continue
+        if (finalStatuses.has(o.order_status ?? '')) continue
+        ids.add(id)
+      }
+      const result: OrderProfile[] = []
+      const seen = new Set<string>()
+      for (const id of ids) {
+        const o = s.ordersById[id]
+        if (!o) continue
+        if (o.order_status === 'draft' && o.items.length === 0) continue
+        const canonical = o.db_order_id ?? o.id
+        if (seen.has(canonical)) continue
+        seen.add(canonical)
+        result.push(o.db_order_id ? o : { ...o, _offlineUnsynced: true })
+      }
+      return result
+    })
+  )
+
+  // Release previous orders from memory when navigating away (~10MB for 500
+  // orders). Nothing is persisted locally — the list is re-fetched from the
+  // backend on next entry via usePreviousOrdersListSync. Also reset pagination
+  // state so a re-entry starts from a clean keyset cursor instead of resuming
+  // the prior session's paging.
   useFocusEffect(
     useCallback(() => {
       return () => {
         usePreviousOrdersStore.setState({
           previousOrders: [],
           _orderLookup: {},
-          newOrdersCount: 0
+          newOrdersCount: 0,
+          _isRefreshing: false,
+          _currentOffset: 0,
+          _hasMore: false,
+          _isLoadingMore: false,
+          _oldestCursor: null,
+          lastHistoryRefreshAt: null,
+          _lastRefreshLocationId: null
         })
       }
     }, [])
@@ -323,101 +390,71 @@ const PreviousOrdersScreen = () => {
     if (hasMore && !isLoadingMore) void loadMoreOrders()
   }, [hasMore, isLoadingMore, loadMoreOrders])
 
-  // Combine active orders + history orders with dedup (same as PreviousOrdersSection)
+  // Server-fetched history mapped to OrderProfile. Online: exactly the
+  // date-bounded backend fetch. Offline: offlineLiveOrders (the device's own
+  // pending orders) is prepended so open/unpaid offline orders show too.
   const allOrders: OrderProfile[] = useMemo(() => {
-    // Only include active + working set + own-station non-final orders.
-    // Do NOT scan all orderIds — useOrderStore has 800+ stale "ready" orders.
-    const finalStatuses = new Set(['completed', 'void', 'cancelled', 'voided'])
-    const liveIds = new Set<string>()
-    if (activeOrderId) liveIds.add(activeOrderId)
-    for (const wsId of workingSetOrderIds || []) {
-      const localId = dbOrderIdIndex[wsId] || wsId
-      liveIds.add(localId)
-    }
-    for (const id of orderIds) {
-      if (liveIds.has(id)) continue
-      const o = ordersById[id]
-      if (!o) continue
-      if (o.station_id !== currentStationId) continue // own station only
-      if (finalStatuses.has(o.order_status ?? '')) continue
-      if (o.order_status === 'draft') continue
-      liveIds.add(id)
-    }
-    // Build lookup from DB-fetched previous orders to patch stale active order statuses.
-    // usePreviousOrdersStore re-fetches from DB on screen focus, so this data is fresh.
-    const poByDbId = new Map<string, typeof previousOrders[number]>()
-    for (const po of previousOrders) {
-      if (po.db_order_id) poByDbId.set(po.db_order_id, po)
-    }
-
-    const activeOrders: OrderProfile[] = []
-    for (const id of liveIds) {
-      const o = ordersById[id]
-      if (!o) continue
-      // Patch stale paid_status using fresh DB data from previous orders store
-      if (o.db_order_id && o.paid_status === 'Refunded') {
-        const po = poByDbId.get(o.db_order_id)
-        if (po && po.paymentStatus === 'Paid') {
-          activeOrders.push({ ...o, paid_status: 'Paid' as const })
-          continue
-        }
-      }
-      activeOrders.push(o)
-    }
-
-    const activeIds = new Set(activeOrders.map(o => o.id))
-    const activeDbIds = new Set(
-      activeOrders.map(o => o.db_order_id).filter(Boolean)
+    const mappedHistory: OrderProfile[] = previousOrders.map(
+      po =>
+        ({
+          id: po.orderId,
+          db_order_id: po.db_order_id,
+          display_number: po.display_number,
+          order_number: po.display_number,
+          customer_name: po.customer,
+          customer_phone: po.customer_phone ?? undefined,
+          server_name: po.server,
+          order_status: po.voided
+            ? 'void'
+            : po.refunded && po.paymentStatus !== 'Paid'
+            ? 'refunded'
+            : po.closed_at
+            ? 'completed'
+            : 'pending',
+          check_status: po.checkStatus || 'Opened',
+          paid_status: po.paymentStatus,
+          order_type: po.type,
+          items: po.items,
+          total_amount: po.total,
+          total_cash_amount: po.total_cash_amount,
+          total_tax: po.tax,
+          service_charge: po.service_charge,
+          service_charge_name: po.service_charge_name,
+          service_charge_rate: po.service_charge_rate,
+          service_charge_is_taxable: po.service_charge_is_taxable,
+          amount_paid: po.amount_paid,
+          amount_due: po.amount_due,
+          cash_amount_due: po.cash_amount_due,
+          opened_at: po.timestamp || po.opened_at,
+          created_at: po.timestamp,
+          closed_at: po.closed_at,
+          service_location_id: po.service_location_id || null,
+          service_location_name: po.service_location_name,
+          station_id: po.station_id || null,
+          _sourceStationName: po.station_name,
+          notes: po.notes,
+          payments: po.payments,
+          order_source: po.order_source ?? null,
+          reversals: po.reversals,
+          order_refund_items: po.order_refund_items,
+          _offlineUnsynced: po._offlineUnsynced
+        } as OrderProfile)
     )
 
-    const mappedHistoryOrders: OrderProfile[] = previousOrders
-      .filter(po => {
-        if (activeIds.has(po.orderId)) return false
-        if (po.db_order_id && activeDbIds.has(po.db_order_id)) return false
-        return true
-      })
-      .map(
-        po =>
-          ({
-            id: po.orderId,
-            db_order_id: po.db_order_id,
-            display_number: po.display_number,
-            order_number: po.display_number,
-            customer_name: po.customer,
-            customer_phone: po.customer_phone ?? undefined,
-            server_name: po.server,
-            order_status: po.voided
-              ? 'void'
-              : po.refunded && po.paymentStatus !== 'Paid'
-              ? 'refunded'
-              : po.closed_at
-              ? 'completed'
-              : 'pending',
-            check_status: po.checkStatus || 'Opened',
-            paid_status: po.paymentStatus,
-            order_type: po.type,
-            items: po.items,
-            total_amount: po.total,
-            amount_paid: po.amount_paid,
-            amount_due: po.amount_due,
-            cash_amount_due: po.cash_amount_due,
-            opened_at: po.timestamp || po.opened_at,
-            created_at: po.timestamp,
-            closed_at: po.closed_at,
-            service_location_id: po.service_location_id || null,
-            service_location_name: po.service_location_name,
-            station_id: po.station_id || null,
-            _sourceStationName: po.station_name,
-            notes: po.notes,
-            payments: po.payments,
-            order_source: po.order_source ?? null,
-            reversals: po.reversals,
-            order_refund_items: po.order_refund_items
-          } as OrderProfile)
-      )
+    if (offlineLiveOrders.length === 0) return mappedHistory
 
-    return [...activeOrders, ...mappedHistoryOrders]
-  }, [ordersById, previousOrders])
+    // Offline: prepend live pending orders, deduped against history (a finalized
+    // order can be in both the cache and the live store). Live copy wins.
+    const liveIds = new Set<string>()
+    for (const o of offlineLiveOrders) {
+      liveIds.add(o.id)
+      if (o.db_order_id) liveIds.add(o.db_order_id)
+    }
+    const historyMinusLive = mappedHistory.filter(
+      o => !liveIds.has(o.id) && !(o.db_order_id && liveIds.has(o.db_order_id))
+    )
+    return [...offlineLiveOrders, ...historyMinusLive]
+  }, [previousOrders, offlineLiveOrders])
 
   // ─── Compute filter counts from allOrders ──────────────
   const filterCounts = useMemo(() => {
@@ -636,7 +673,7 @@ const PreviousOrdersScreen = () => {
     [setActiveOrder, router]
   )
 
-  // ─── FlatList render ────────────────────────────────────
+  // ─── FlashList render ───────────────────────────────────
   const renderItem = useCallback(
     ({ item }: { item: OrderProfile }) => {
       const canContinue =
@@ -682,14 +719,14 @@ const PreviousOrdersScreen = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1, backgroundColor: colors.screen }}
     >
-      <View style={{ flex: 1, padding: 16, backgroundColor: colors.screen }}>
+      <View style={{ flex: 1, padding: s(16), backgroundColor: colors.screen }}>
         {/* ─── Date Pills ─────────────────────────────── */}
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
-            marginBottom: 8
+            gap: s(8),
+            marginBottom: s(8)
           }}
         >
           <DatePillRow
@@ -703,8 +740,8 @@ const PreviousOrdersScreen = () => {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
-            marginBottom: 10
+            gap: s(8),
+            marginBottom: s(10)
           }}
         >
           {/* Search bar */}
@@ -715,22 +752,22 @@ const PreviousOrdersScreen = () => {
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 8,
-              paddingHorizontal: 10,
+              borderRadius: s(8),
+              paddingHorizontal: s(10),
               width: 340
             }}
           >
-            <Search color={colors.label} size={15} />
+            <Search color={colors.label} size={s(15)} />
             <TextInput
               placeholder='Search order, customer, or phone...'
               placeholderTextColor={colors.muted}
               value={searchText}
               onChangeText={setSearchText}
               style={{
-                marginLeft: 6,
-                fontSize: 13,
-                paddingVertical: 8,
-                height: 36,
+                marginLeft: s(6),
+                fontSize: s(13),
+                paddingVertical: s(8),
+                height: s(36),
                 flex: 1,
                 color: colors.heading
               }}
@@ -741,49 +778,49 @@ const PreviousOrdersScreen = () => {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 6, alignItems: 'center' }}
+            contentContainerStyle={{ gap: s(6), alignItems: 'center' }}
             style={{ flex: 1 }}
           >
             <FilterPill
               label='Needs Attention'
               isActive={activeFilter === 'needs-attention'}
               onPress={() => toggleFilter('needs-attention')}
-              icon={<AlertTriangle color={colors.teal} size={13} />}
+              icon={<AlertTriangle color={colors.teal} size={s(13)} />}
               count={filterCounts.needsAttention}
             />
             <FilterPill
               label='Refunded'
               isActive={activeFilter === 'refunded'}
               onPress={() => toggleFilter('refunded')}
-              icon={<RotateCcw color={colors.teal} size={13} />}
+              icon={<RotateCcw color={colors.teal} size={s(13)} />}
               count={filterCounts.refunded}
             />
             <FilterPill
               label='Online'
               isActive={activeFilter === 'online'}
               onPress={() => toggleFilter('online')}
-              icon={<Globe color={colors.teal} size={13} />}
+              icon={<Globe color={colors.teal} size={s(13)} />}
               count={filterCounts.online}
             />
             <FilterPill
               label='Dine-In'
               isActive={activeFilter === 'dine-in'}
               onPress={() => toggleFilter('dine-in')}
-              icon={<Utensils color={colors.teal} size={13} />}
+              icon={<Utensils color={colors.teal} size={s(13)} />}
               count={filterCounts.dineIn}
             />
             <FilterPill
               label='Takeaway'
               isActive={activeFilter === 'takeaway'}
               onPress={() => toggleFilter('takeaway')}
-              icon={<ShoppingBag color={colors.teal} size={13} />}
+              icon={<ShoppingBag color={colors.teal} size={s(13)} />}
               count={filterCounts.takeaway}
             />
             <FilterPill
               label='Delivery'
               isActive={activeFilter === 'delivery'}
               onPress={() => toggleFilter('delivery')}
-              icon={<Truck color={colors.teal} size={13} />}
+              icon={<Truck color={colors.teal} size={s(13)} />}
               count={filterCounts.delivery}
             />
           </ScrollView>
@@ -800,19 +837,28 @@ const PreviousOrdersScreen = () => {
         <View
           style={{
             flex: 1,
-            borderRadius: 12,
+            borderRadius: s(12),
             overflow: 'hidden',
             position: 'relative',
             backgroundColor: colors.screen
           }}
         >
-          <FlatList
+          {/* FlashList recycles row cells for smoother fling scrolling. Rows
+              expand on tap, so `extraData={expandedOrderId}` is REQUIRED to
+              re-render recycled cells when the expanded row changes, and
+              `disableAutoLayout` is intentionally NOT set (variable-height rows
+              need auto-layout correction). FlatList batching props have no
+              FlashList equivalent. */}
+          <FlashList
             data={filteredOrders}
             keyExtractor={item => item.id}
             renderItem={renderItem}
+            extraData={expandedOrderId}
+            estimatedItemSize={90}
+            drawDistance={500}
             ListEmptyComponent={
               isInitialLoading ? (
-                <View style={{ paddingTop: 4 }}>
+                <View style={{ paddingTop: s(4) }}>
                   {Array.from({ length: 6 }).map((_, i) => (
                     <SkeletonRow key={i} />
                   ))}
@@ -822,14 +868,14 @@ const PreviousOrdersScreen = () => {
                   style={{
                     alignItems: 'center',
                     justifyContent: 'center',
-                    paddingVertical: 64
+                    paddingVertical: s(64)
                   }}
                 >
-                  <Text style={{ fontSize: 20, color: colors.muted }}>
+                  <Text style={{ fontSize: s(20), color: colors.muted }}>
                     No orders found
                   </Text>
                   <Text
-                    style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}
+                    style={{ fontSize: s(14), color: colors.muted, marginTop: s(8) }}
                   >
                     Try adjusting your filters or search
                   </Text>
@@ -845,19 +891,15 @@ const PreviousOrdersScreen = () => {
               />
             }
             contentContainerStyle={{
-              paddingTop: 4,
-              paddingBottom: 16,
+              paddingTop: s(4),
+              paddingBottom: s(16),
               backgroundColor: colors.screen
             }}
-            initialNumToRender={10}
-            maxToRenderPerBatch={10}
-            windowSize={5}
-            removeClippedSubviews={true}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.3}
             ListFooterComponent={
               isLoadingMore ? (
-                <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                <View style={{ paddingVertical: s(16), alignItems: 'center' }}>
                   <ActivityIndicator size='small' color={colors.teal} />
                 </View>
               ) : null
@@ -871,7 +913,7 @@ const PreviousOrdersScreen = () => {
               exiting={iosOnly(FadeOut.duration(200))}
               style={{
                 position: 'absolute',
-                top: 16,
+                top: s(16),
                 left: 0,
                 right: 0,
                 alignItems: 'center',
@@ -885,24 +927,24 @@ const PreviousOrdersScreen = () => {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 8,
-                  paddingHorizontal: 20,
-                  paddingVertical: 12,
+                  gap: s(8),
+                  paddingHorizontal: s(20),
+                  paddingVertical: s(12),
                   borderRadius: 999,
                   backgroundColor: colors.teal,
                   shadowColor: colors.teal,
-                  shadowOffset: { width: 0, height: 4 },
+                  shadowOffset: { width: 0, height: s(4) },
                   shadowOpacity: 0.3,
-                  shadowRadius: 8,
+                  shadowRadius: s(8),
                   elevation: 8
                 }}
               >
-                <RefreshCw size={16} color={colors.onSolid} />
+                <RefreshCw size={s(16)} color={colors.onSolid} />
                 <Text
                   style={{
                     color: colors.onSolid,
                     fontWeight: '600',
-                    fontSize: 14
+                    fontSize: s(14)
                   }}
                 >
                   {newOrdersCount} New Order{newOrdersCount > 1 ? 's' : ''} -

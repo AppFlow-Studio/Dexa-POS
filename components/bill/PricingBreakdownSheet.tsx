@@ -12,6 +12,7 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { ArrowRight, CreditCard, Banknote, X } from "lucide-react-native";
 import React, { forwardRef, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { useUiScale } from "@/lib/uiScale";
 
 interface PricingBreakdownSheetProps {
   onClose: () => void;
@@ -36,6 +37,7 @@ function Row({
   bold,
   large,
   negate,
+  s,
 }: {
   label: string;
   card: number;
@@ -45,10 +47,11 @@ function Row({
   bold?: boolean;
   large?: boolean;
   negate?: boolean;
+  s: (n: number) => number;
 }) {
   const lc = labelColor ?? colors.label;
   const vc = valueColor ?? colors.heading;
-  const fs = large ? 15 : 13;
+  const fs = large ? s(15) : s(13);
   const fw = bold ? "700" : "500";
   const prefix = negate ? "−" : "";
   return (
@@ -56,7 +59,7 @@ function Row({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: 7,
+        paddingVertical: s(7),
       }}
     >
       <Text style={{ flex: 1, fontSize: fs, fontWeight: fw, color: lc }}>
@@ -65,7 +68,7 @@ function Row({
       {/* card column */}
       <Text
         style={{
-          width: 90,
+          width: s(90),
           textAlign: "right",
           fontSize: fs,
           fontWeight: fw,
@@ -78,7 +81,7 @@ function Row({
       {/* cash column */}
       <Text
         style={{
-          width: 90,
+          width: s(90),
           textAlign: "right",
           fontSize: fs,
           fontWeight: fw,
@@ -92,13 +95,13 @@ function Row({
   );
 }
 
-function Divider({ dim }: { dim?: boolean }) {
+function Divider({ dim, s }: { dim?: boolean; s: (n: number) => number }) {
   return (
     <View
       style={{
         height: 1,
         backgroundColor: dim ? colors.border + "60" : colors.border,
-        marginVertical: 4,
+        marginVertical: s(4),
       }}
     />
   );
@@ -119,6 +122,8 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   },
   ref,
 ) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const snapPoints = useMemo(() => ["48%"], []);
 
   const activeOrder = useOrderStore((s) =>
@@ -240,7 +245,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
     >
       <BottomSheetScrollView
         style={{ flex: 1, backgroundColor: colors.panel }}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: s(24) }}
       >
         {/* ── Header ─────────────────────────────────────────────── */}
         <View
@@ -248,27 +253,27 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            paddingHorizontal: 16,
-            paddingTop: 14,
-            paddingBottom: 12,
+            paddingHorizontal: s(16),
+            paddingTop: s(14),
+            paddingBottom: s(12),
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
           }}
         >
-          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+          <Text style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}>
             Order Breakdown
           </Text>
           <TouchableOpacity
             onPress={onClose}
             style={{
-              padding: 6,
-              borderRadius: 10,
+              padding: s(6),
+              borderRadius: s(10),
               backgroundColor: colors.teal + "15",
               borderWidth: 1,
               borderColor: colors.teal + "30",
             }}
           >
-            <X size={16} color={colors.teal} />
+            <X size={s(16)} color={colors.teal} />
           </TouchableOpacity>
         </View>
 
@@ -277,46 +282,46 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
           <View
             style={{
               flexDirection: "row",
-              paddingHorizontal: 16,
-              paddingTop: 10,
-              paddingBottom: 6,
+              paddingHorizontal: s(16),
+              paddingTop: s(10),
+              paddingBottom: s(6),
             }}
           >
             <View style={{ flex: 1 }} />
             {/* Card header */}
             <View
               style={{
-                width: 90,
+                width: s(90),
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "flex-end",
-                gap: 4,
+                gap: s(4),
               }}
             >
-              <CreditCard size={12} color={colors.info} />
-              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.info }}>
+              <CreditCard size={s(12)} color={colors.info} />
+              <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.info }}>
                 CARD
               </Text>
             </View>
             {/* Cash header */}
             <View
               style={{
-                width: 90,
+                width: s(90),
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "flex-end",
-                gap: 4,
+                gap: s(4),
               }}
             >
-              <Banknote size={12} color={colors.success} />
-              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.success }}>
+              <Banknote size={s(12)} color={colors.success} />
+              <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.success }}>
                 CASH
               </Text>
             </View>
           </View>
         )}
 
-        <View style={{ paddingHorizontal: 16, paddingTop: hasDualPricing ? 0 : 10 }}>
+        <View style={{ paddingHorizontal: s(16), paddingTop: hasDualPricing ? 0 : s(10) }}>
           {/* ── Paid badge ─────────────────────────────────────── */}
           {hasPayments && paidAmount > 0 && (
             <View
@@ -324,19 +329,19 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                 flexDirection: "row",
                 justifyContent: "space-between",
                 alignItems: "center",
-                paddingVertical: 8,
-                paddingHorizontal: 12,
-                borderRadius: 8,
+                paddingVertical: s(8),
+                paddingHorizontal: s(12),
+                borderRadius: s(8),
                 backgroundColor: colors.success + "15",
                 borderWidth: 1,
                 borderColor: colors.success + "40",
-                marginBottom: 8,
+                marginBottom: s(8),
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.success }}>
+              <Text style={{ fontSize: s(13), fontWeight: "600", color: colors.success }}>
                 Amount Paid
               </Text>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.success }}>
+              <Text style={{ fontSize: s(13), fontWeight: "700", color: colors.success }}>
                 {fmt(paidAmount)}
               </Text>
             </View>
@@ -348,6 +353,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
               label={hasPayments ? "Remaining Subtotal" : "Subtotal"}
               card={displaySubtotal}
               cash={displayCashSubtotal}
+              s={s}
             />
           ) : (
             <View
@@ -355,13 +361,13 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                 flexDirection: "row",
                 justifyContent: "space-between",
                 alignItems: "center",
-                paddingVertical: 7,
+                paddingVertical: s(7),
               }}
             >
-              <Text style={{ fontSize: 13, color: colors.label }}>
+              <Text style={{ fontSize: s(13), color: colors.label }}>
                 {hasPayments ? "Remaining Subtotal" : "Subtotal"}
               </Text>
-              <Text style={{ fontSize: 13, color: colors.heading }}>
+              <Text style={{ fontSize: s(13), color: colors.heading }}>
                 {fmt(displaySubtotal)}
               </Text>
             </View>
@@ -377,6 +383,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                 labelColor={colors.success}
                 valueColor={colors.success}
                 negate
+                s={s}
               />
             ) : (
               <View
@@ -384,11 +391,11 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                   flexDirection: "row",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  paddingVertical: 7,
+                  paddingVertical: s(7),
                 }}
               >
-                <Text style={{ fontSize: 13, color: colors.success }}>Discount</Text>
-                <Text style={{ fontSize: 13, color: colors.success }}>
+                <Text style={{ fontSize: s(13), color: colors.success }}>Discount</Text>
+                <Text style={{ fontSize: s(13), color: colors.success }}>
                   −{fmt(displayDiscount)}
                 </Text>
               </View>
@@ -402,6 +409,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                 label={hasPayments ? `Remaining ${scLabel}` : scLabel}
                 card={displayServiceCharge}
                 cash={displayCashServiceCharge}
+                s={s}
               />
             ) : (
               <View
@@ -409,13 +417,13 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                   flexDirection: "row",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  paddingVertical: 7,
+                  paddingVertical: s(7),
                 }}
               >
-                <Text style={{ fontSize: 13, color: colors.label }}>
+                <Text style={{ fontSize: s(13), color: colors.label }}>
                   {hasPayments ? `Remaining ${scLabel}` : scLabel}
                 </Text>
-                <Text style={{ fontSize: 13, color: colors.heading }}>
+                <Text style={{ fontSize: s(13), color: colors.heading }}>
                   {fmt(displayServiceCharge)}
                 </Text>
               </View>
@@ -428,6 +436,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
               label={hasPayments ? "Remaining Tax" : "Tax"}
               card={displayTax}
               cash={displayCashTax}
+              s={s}
             />
           ) : (
             <View
@@ -435,19 +444,19 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                 flexDirection: "row",
                 justifyContent: "space-between",
                 alignItems: "center",
-                paddingVertical: 7,
+                paddingVertical: s(7),
               }}
             >
-              <Text style={{ fontSize: 13, color: colors.label }}>
+              <Text style={{ fontSize: s(13), color: colors.label }}>
                 {hasPayments ? "Remaining Tax" : "Tax"}
               </Text>
-              <Text style={{ fontSize: 13, color: colors.heading }}>
+              <Text style={{ fontSize: s(13), color: colors.heading }}>
                 {fmt(displayTax)}
               </Text>
             </View>
           )}
 
-          <Divider />
+          <Divider s={s} />
 
           {/* ── Total ──────────────────────────────────────────── */}
           {hasDualPricing ? (
@@ -458,6 +467,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
               bold
               large
               valueColor={hasPayments ? colors.warning : colors.heading}
+              s={s}
             />
           ) : (
             <View
@@ -465,15 +475,15 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                 flexDirection: "row",
                 justifyContent: "space-between",
                 alignItems: "center",
-                paddingVertical: 6,
+                paddingVertical: s(6),
               }}
             >
-              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
+              <Text style={{ fontSize: s(14), fontWeight: "700", color: colors.heading }}>
                 {hasPayments ? "Balance Due" : "Total"}
               </Text>
               <Text
                 style={{
-                  fontSize: 18,
+                  fontSize: s(18),
                   fontWeight: "700",
                   color: hasPayments ? colors.warning : colors.heading,
                 }}
@@ -488,23 +498,23 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
         </View>
 
         {/* ── Proceed button ─────────────────────────────────────── */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+        <View style={{ paddingHorizontal: s(16), paddingTop: s(16) }}>
           <TouchableOpacity
             onPress={onPressProceedToPayment}
             style={{
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
-              gap: 6,
-              paddingVertical: 13,
-              borderRadius: 10,
+              gap: s(6),
+              paddingVertical: s(13),
+              borderRadius: s(10),
               backgroundColor: colors.teal,
             }}
           >
-            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.onSolid }}>
+            <Text style={{ fontSize: s(14), fontWeight: "700", color: colors.onSolid }}>
               Proceed to Payment
             </Text>
-            <ArrowRight size={15} color={colors.onSolid} />
+            <ArrowRight size={s(15)} color={colors.onSolid} />
           </TouchableOpacity>
         </View>
       </BottomSheetScrollView>

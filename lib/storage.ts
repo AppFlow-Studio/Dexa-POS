@@ -18,6 +18,11 @@ import { debounce } from "lodash";
 import { createMMKV } from "react-native-mmkv";
 import type { PersistStorage, StorageValue } from "zustand/middleware";
 import { StateStorage } from "zustand/middleware";
+import {
+  computeEnvSignature,
+  ENV_SIGNATURE_KEY,
+  isEnvSignatureWellFormed,
+} from "@/lib/envSignature";
 
 // ============================================================================
 // MMKV INSTANCES
@@ -49,6 +54,184 @@ export const secureStorage = createMMKV({
 export const syncStorage = createMMKV({
   id: "dexa-pos-sync",
 });
+
+// ============================================================================
+// ENVIRONMENT GUARD (staging <-> production isolation)
+// ============================================================================
+
+/**
+ * Secure-storage keys that survive an environment switch. Only hardware /
+ * device identity belongs here — it is env-agnostic. Everything else in secure
+ * storage (Clerk session JWT, staff PIN hashes) is scoped to a specific
+ * backend + Clerk instance and must be dropped on a switch.
+ *
+ * Kept in sync with lib/deviceId.ts (DEVICE_ID_KEY). Duplicated as a literal
+ * here to avoid an import cycle (lib/deviceId imports from lib/storage).
+ */
+const ENV_SWITCH_PRESERVED_SECURE_KEYS = ["dexa-pos-device-id"] as const;
+
+export interface EnvReconcileResult {
+  /** True only when the signature actually changed (a real staging<->prod switch). */
+  switched: boolean;
+  from: string | null;
+  to: string;
+  /**
+   * True when boot saw a malformed/half-injected ("unknown") signature and
+   * REFUSED to reconcile — it cleared nothing and left the stored baseline
+   * untouched. Surfaced to Sentry from app/_layout.tsx (Sentry isn't yet
+   * initialized when this runs at module load).
+   */
+  refusedUnknownSignature?: boolean;
+}
+
+let lastEnvReconcile: EnvReconcileResult | null = null;
+
+/** Result of the boot-time environment reconciliation (for logging / breadcrumbs). */
+export function getEnvReconcileResult(): EnvReconcileResult | null {
+  return lastEnvReconcile;
+}
+
+/**
+ * Detect a staging<->production switch and purge persisted state belonging to
+ * the previous environment.
+ *
+ * Runs at module init — BEFORE any zustand persist store hydrates — because
+ * stores import this module, so its body executes first. That ordering means
+ * cleared MMKV keys are gone before any store reads them, avoiding in-memory
+ * desync (no need to reset live store state).
+ *
+ * Safety: a MISSING signature (fresh install, or first upgrade to a build that
+ * has this guard) records the current signature and clears NOTHING. Only an
+ * actual change in signature triggers a purge — existing devices are never
+ * wiped by simply shipping this code.
+ *
+ * See lib/envSignature.ts for why the un-namespaced persistence causes the
+ * "Cannot coerce the result to a single JSON object" RLS error after a switch.
+ */
+function reconcileEnvironmentOnBoot(): EnvReconcileResult {
+  const current = computeEnvSignature();
+  const stored = storage.getString(ENV_SIGNATURE_KEY) ?? null;
+
+  // Guardrail: never reconcile on a malformed/half-injected env. A blank
+  // EXPO_PUBLIC_SUPABASE_URL or an unrecognized Clerk key prefix at boot yields
+  // an "unknown" component; treating that as a backend switch would wipe a
+  // healthy production session and every tablet's Clerk token for nothing.
+  // Refuse, clear nothing, and leave the stored baseline untouched so the next
+  // fully-resolved boot reconciles normally.
+  if (!isEnvSignatureWellFormed(current)) {
+    console.error(
+      `[EnvGuard] Refusing to reconcile on malformed env signature "${current}" ` +
+        `(stored="${stored ?? "<none>"}"). Clearing nothing.`,
+    );
+    return (lastEnvReconcile = {
+      switched: false,
+      from: stored,
+      to: current,
+      refusedUnknownSignature: true,
+    });
+  }
+
+  if (stored === null) {
+    // First run with the guard present — record baseline, clear nothing.
+    storage.set(ENV_SIGNATURE_KEY, current);
+    return (lastEnvReconcile = { switched: false, from: null, to: current });
+  }
+
+  // A malformed stored baseline (storage corruption, or a pre-guard build that
+  // stamped an "unknown" half) must not be mistaken for the previous
+  // environment — re-baseline to the current resolved signature without purging.
+  if (!isEnvSignatureWellFormed(stored)) {
+    console.warn(
+      `[EnvGuard] Stored signature "${stored}" was malformed — re-baselining to ` +
+        `"${current}" without purging.`,
+    );
+    storage.set(ENV_SIGNATURE_KEY, current);
+    return (lastEnvReconcile = { switched: false, from: stored, to: current });
+  }
+
+  if (stored === current) {
+    return (lastEnvReconcile = { switched: false, from: stored, to: current });
+  }
+
+  // Real environment switch — both signatures well-formed and genuinely
+  // different. Wipe state from the previous backend.
+  console.warn(
+    `[EnvGuard] Backend environment changed (${stored} -> ${current}). ` +
+      `Clearing persisted state from the previous environment.`,
+  );
+
+  // General + sync stores are entirely env-specific — wipe wholesale. Every
+  // persisted zustand store (orders, settings, floor plan, employees, KDS,
+  // table sessions, etc.) lives in `storage`; offline queues/caches in `syncStorage`.
+  storage.clearAll();
+  syncStorage.clearAll();
+
+  // Secure store: keep hardware identity, drop the rest (Clerk session forces a
+  // re-login against the new instance; stale staff PIN hashes belong to the
+  // other DB and get re-synced after login).
+  try {
+    const preserved: Record<string, string> = {};
+    for (const key of ENV_SWITCH_PRESERVED_SECURE_KEYS) {
+      const v = secureStorage.getString(key);
+      if (v != null) preserved[key] = v;
+    }
+    secureStorage.clearAll();
+    for (const [key, value] of Object.entries(preserved)) {
+      secureStorage.set(key, value);
+    }
+  } catch (e) {
+    console.error("[EnvGuard] Failed to reset secure storage:", e);
+  }
+
+  // clearAll() above removed the old signature from general storage — re-stamp.
+  storage.set(ENV_SIGNATURE_KEY, current);
+
+  return (lastEnvReconcile = { switched: true, from: stored, to: current });
+}
+
+// Run once at module load, before any persisted store hydrates.
+reconcileEnvironmentOnBoot();
+
+// ============================================================================
+// SECURE STORAGE INTEGRITY PROBE
+// ============================================================================
+
+const SECURE_PROBE_KEY = "__secure_probe_v1";
+let secureStorageProbeFailed = false;
+
+/**
+ * Whether the boot-time secure-storage read/write probe failed. A failure means
+ * the encrypted MMKV bucket can't be written/decrypted this boot — every Clerk
+ * token read then returns null and the merchant is silently logged out
+ * fleet-wide. Surfaced to Sentry from app/_layout.tsx (Sentry isn't initialized
+ * when this runs at module load).
+ *
+ * Note: the encryption key (`dexa-pos-secure-key-v1`) is intentionally NEVER
+ * rotated — rotating it would make the existing bucket undecryptable and log
+ * every device out at once. This probe only OBSERVES decrypt health; it never
+ * changes the key.
+ */
+export function didSecureStorageProbeFail(): boolean {
+  return secureStorageProbeFailed;
+}
+
+function probeSecureStorage(): void {
+  try {
+    const sentinel = "ok";
+    secureStorage.set(SECURE_PROBE_KEY, sentinel);
+    if (secureStorage.getString(SECURE_PROBE_KEY) !== sentinel) {
+      secureStorageProbeFailed = true;
+      console.error(
+        "[SecureStorage] Decrypt/read-back probe MISMATCH — encrypted bucket may be unreadable; Clerk tokens at risk.",
+      );
+    }
+  } catch (e) {
+    secureStorageProbeFailed = true;
+    console.error("[SecureStorage] Decrypt probe threw:", e);
+  }
+}
+
+probeSecureStorage();
 
 // ============================================================================
 // ZUSTAND STORAGE ADAPTERS
@@ -438,6 +621,7 @@ export const CLEARABLE_STORAGE_KEYS = [
   "order-store-storage",
   "floor-plan-db-storage",
   "dexa-pos-timeclock",
+  "online-order-drawer-storage",
 ] as const;
 
 export const CLEARABLE_SYNC_KEYS = [
@@ -446,7 +630,6 @@ export const CLEARABLE_SYNC_KEYS = [
   "order_items_cache",
   "offline_orders",
   "offline_id_registry",
-  // today_orders:* keys are cleared per-location via todayOrdersCache.clearLocation()
 ] as const;
 
 /**
@@ -478,6 +661,23 @@ export function clearCacheData(): { clearedKeys: string[]; errors: string[] } {
     } catch (error) {
       errors.push(`Failed to clear ${key}: ${error}`);
     }
+  }
+
+  // Evict the Previous Orders offline-fallback snapshots (one per location),
+  // plus any legacy `today_orders:*` keys from a prior build. Both are
+  // best-effort caches, safe to drop on a full cache clear.
+  try {
+    for (const key of syncStorage.getAllKeys()) {
+      if (
+        key.startsWith("prev_orders_offline:") ||
+        key.startsWith("today_orders:")
+      ) {
+        syncStorage.remove(key);
+        clearedKeys.push(key);
+      }
+    }
+  } catch (error) {
+    errors.push(`Failed to clear previous-orders offline cache: ${error}`);
   }
 
   return { clearedKeys, errors };

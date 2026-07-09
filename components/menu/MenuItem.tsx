@@ -10,7 +10,9 @@ import {
 } from "@/lib/menuItemPlaceholderIcon";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { cancelMenuModifierPreWarm } from "@/lib/menuModifierPreWarmControl";
+import { startInteraction } from "@/lib/perf";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { MenuItemType } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
 import {
@@ -35,13 +37,17 @@ type MenuItemStyles = ReturnType<typeof createStyles>;
 
 const menuItemStylesByScheme = new Map<string, MenuItemStyles>();
 
-const createStyles = () =>
-  StyleSheet.create({
+const createStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale);
+  return StyleSheet.create({
     container: {
-      width: "19%",
+      // Perf F8: fills its FlashList grid cell (1/numColumns of the grid);
+      // gutters come from MenuSection's gridCell wrapper. Was "19%" of the
+      // FlatList row.
+      width: "100%",
       aspectRatio: 1,
-      borderRadius: 12,
-      marginBottom: 4,
+      borderRadius: s(12),
+      marginBottom: s(4),
       backgroundColor: colors.panel,
       borderWidth: 1,
       borderColor: `${colors.teal}30`,
@@ -52,7 +58,36 @@ const createStyles = () =>
     },
     containerNoImage: {
       aspectRatio: undefined,
-      height: 64,
+      height: s(80),
+      backgroundColor: colors.card,
+      borderColor: `${colors.teal}24`,
+    },
+    contentContainerNoImage: {
+      flex: 1,
+      justifyContent: "space-between",
+      paddingHorizontal: s(12),
+      paddingVertical: s(9),
+      gap: s(4),
+    },
+    nameTextNoImage: {
+      fontSize: s(13),
+      lineHeight: s(16),
+      fontWeight: "700",
+      letterSpacing: 0.2,
+      color: colors.heading,
+    },
+    priceRowNoImage: {
+      marginTop: 0,
+    },
+    cardPriceNoImage: {
+      fontSize: s(14),
+      letterSpacing: 0.2,
+    },
+    cashPillNoImage: {
+      paddingHorizontal: s(7),
+      paddingVertical: s(3),
+      borderRadius: 999,
+      gap: s(4),
     },
     // Modifier corner triangle
     modifierCorner: {
@@ -61,8 +96,8 @@ const createStyles = () =>
       right: 0,
       width: 0,
       height: 0,
-      borderTopWidth: 18,
-      borderLeftWidth: 18,
+      borderTopWidth: s(18),
+      borderLeftWidth: s(18),
       borderTopColor: colors.teal,
       borderLeftColor: "transparent",
       zIndex: 10,
@@ -85,15 +120,15 @@ const createStyles = () =>
     },
     // Content area
     contentContainer: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      gap: 2,
+      paddingHorizontal: s(8),
+      paddingVertical: s(4),
+      gap: s(2),
     },
     nameText: {
-      fontSize: 11,
+      fontSize: s(11),
       fontWeight: "600",
       color: colors.heading,
-      lineHeight: 15,
+      lineHeight: s(15),
     },
     // Price row: card price left, cash pill right
     priceRow: {
@@ -103,28 +138,28 @@ const createStyles = () =>
       marginTop: 1,
     },
     cardPrice: {
-      fontSize: 12,
+      fontSize: s(12),
       fontWeight: "700",
       color: colors.heading,
     },
     cardPriceCustom: {
-      fontSize: 12,
+      fontSize: s(12),
       fontWeight: "700",
       color: colors.warning,
     },
     cashPill: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 3,
+      gap: s(3),
       backgroundColor: `${colors.success}18`,
       borderWidth: 1,
       borderColor: `${colors.success}40`,
-      borderRadius: 6,
-      paddingHorizontal: 5,
-      paddingVertical: 2,
+      borderRadius: s(6),
+      paddingHorizontal: s(5),
+      paddingVertical: s(2),
     },
     cashAmount: {
-      fontSize: 11,
+      fontSize: s(11),
       fontWeight: "700",
       color: colors.success,
     },
@@ -132,15 +167,20 @@ const createStyles = () =>
     divider: {
       height: 1,
       backgroundColor: `${colors.teal}20`,
-      marginHorizontal: 10,
+      marginHorizontal: s(10),
     },
   });
+};
 
-const getStylesForScheme = (scheme: string) => {
-  const cached = menuItemStylesByScheme.get(scheme);
+const getStylesForScheme = (scheme: string, scale: number) => {
+  // Cache keyed by scheme + scale so the StyleSheet is built once per
+  // (scheme, scale) combo and shared across every list cell — preserves the
+  // per-render perf this virtualized list depends on.
+  const key = `${scheme}:${scale}`;
+  const cached = menuItemStylesByScheme.get(key);
   if (cached) return cached;
-  const next = createStyles();
-  menuItemStylesByScheme.set(scheme, next);
+  const next = createStyles(scale);
+  menuItemStylesByScheme.set(key, next);
   return next;
 };
 
@@ -212,7 +252,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
   disabled = false,
 }) => {
   const { colorScheme } = useColorScheme();
-  const styles = useMemo(() => getStylesForScheme(colorScheme), [colorScheme]);
+  const uiScale = useUiScale();
+  const styles = useMemo(
+    () => getStylesForScheme(colorScheme, uiScale),
+    [colorScheme, uiScale],
+  );
   const isClockedIn = useTimeclockStore((s) => {
     if (!s.activeEmployeeId) return false;
     return s.sessions[s.activeEmployeeId]?.status === "clockedIn";
@@ -278,11 +322,17 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const handlePress = useCallback(() => {
     if (!isMenuBlockedSync()) return;
+    const perf = startInteraction("pos.open_modifier_sheet", {
+      item_id: item.id,
+      has_modifiers: !!hasModifiers,
+      prewarmed: isModifierPreWarmed(item.id),
+    });
     const { activeOrderId } = useOrderStore.getState();
     useModifierSidebarStore
       .getState()
       .openToAdd(item, activeOrderId, categoryId, menuId);
-  }, [item, categoryId, menuId]);
+    perf.endAfterPaint();
+  }, [item, categoryId, menuId, hasModifiers]);
 
   const resolvedImageSource =
     imageSource ?? resolveMenuItemImageSource(item.image);
@@ -319,7 +369,10 @@ const MenuItem: React.FC<MenuItemProps> = ({
             />
           ) : (
             <View style={styles.placeholderContainer}>
-              <PlaceholderIcon color={`${colors.label}60`} size={16} />
+              <PlaceholderIcon
+                color={`${colors.label}60`}
+                size={Math.round(16 * uiScale)}
+              />
             </View>
           )}
         </View>
@@ -329,25 +382,44 @@ const MenuItem: React.FC<MenuItemProps> = ({
       {showMenuImages && <View style={styles.divider} />}
 
       {/* Content */}
-      <View style={styles.contentContainer}>
-        <Text style={styles.nameText} numberOfLines={2}>
+      <View
+        style={[
+          styles.contentContainer,
+          !showMenuImages && styles.contentContainerNoImage,
+        ]}
+      >
+        <Text
+          style={[styles.nameText, !showMenuImages && styles.nameTextNoImage]}
+          numberOfLines={2}
+        >
           {item.name}
         </Text>
 
         {showMenuItemPrices && (
-          <View style={styles.priceRow}>
+          <View
+            style={[
+              styles.priceRow,
+              !showMenuImages && styles.priceRowNoImage,
+            ]}
+          >
             <Text
-              style={
+              style={[
                 priceData.hasCustomPricing
                   ? styles.cardPriceCustom
-                  : styles.cardPrice
-              }
+                  : styles.cardPrice,
+                !showMenuImages && styles.cardPriceNoImage,
+              ]}
             >
               ${priceData.displayPrice?.toFixed(2)}
             </Text>
 
             {item.cashPrice && (
-              <View style={styles.cashPill}>
+              <View
+                style={[
+                  styles.cashPill,
+                  !showMenuImages && styles.cashPillNoImage,
+                ]}
+              >
                 <Text style={styles.cashAmount}>
                   ${item.cashPrice.toFixed(2)}
                 </Text>

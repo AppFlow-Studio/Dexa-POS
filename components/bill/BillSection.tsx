@@ -1,85 +1,88 @@
+import OrderPinGate from "@/components/auth/OrderPinGate";
+import { SendToKitchenButton } from "@/components/bill/SendToKitchenButton";
 import ClaimOrderModal from "@/components/order/ClaimOrderModal";
 import ReadOnlyBanner from "@/components/order/ReadOnlyBanner";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { getDeviceId } from "@/lib/deviceId";
+import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import {
   findLatestReusableEmptyDraftId,
   getRefreshedReusableDraftNumbers,
   isReusableEmptyDraftOrder,
 } from "@/lib/reusableEmptyDraft";
-import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import {
-    getAutoRetryCount,
-    isAutoRetryInProgress,
+  getAutoRetryCount,
+  isAutoRetryInProgress,
 } from "@/services/offlineSyncService";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { getFloorPlanClient, useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import {
+  getFloorPlanClient,
+  useFloorPlanStore,
+} from "@/stores/useFloorPlanStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
-import { useReservationStore } from "@/stores/useReservationStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { SendToKitchenButton } from "@/components/bill/SendToKitchenButton";
 import { useOrderSyncCounts } from "@/stores/useSyncStatusStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import type {
-    FloorPlanObject,
-    ServerSection,
-    TableSession,
+  FloorPlanObject,
+  ServerSection,
+  TableSession,
 } from "@/types/db-floor-plan-types";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useRouter } from "expo-router";
 import {
-    AlertTriangle,
-    Check,
-    ChevronRight,
-    Clock,
-    CreditCard,
-    Minus,
-    MoreHorizontal,
-    NotebookPen,
-    Plus,
-    RefreshCw,
-    Trash2,
-    Users,
-    WifiOff,
-    X,
+  AlertTriangle,
+  Check,
+  Clock,
+  CreditCard,
+  Minus,
+  MoreHorizontal,
+  NotebookPen,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Users,
+  WifiOff,
+  X
 } from "lucide-react-native";
 import React, {
-    useCallback,
-    useEffect,
-    useRef,
-    useMemo,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import {
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "../ui/dialog";
 import BillSummary from "./BillSummary";
 import DiscountOverlay from "./DiscountOverlay";
@@ -103,16 +106,18 @@ const BillItemsAndTotals = React.memo(
     isNetworkDegraded: boolean;
     onSaveOrderNote: (value: string) => void;
   }) {
-    const activeOrderId = useOrderStore((s) => s.activeOrderId);
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
+    const activeOrderId = useOrderStore((st) => st.activeOrderId);
     const itemIds = useOrderStore(
-      useShallow((s) => {
-        const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+      useShallow((st) => {
+        const order = st.activeOrderId ? st.ordersById[st.activeOrderId] : null;
         return (order?.items ?? EMPTY_CART_ITEMS).map((item) => item.id);
       }),
     );
     const activeOrderPaymentInfo = useOrderStore(
-      useShallow((s) => {
-        const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+      useShallow((st) => {
+        const order = st.activeOrderId ? st.ordersById[st.activeOrderId] : null;
         const payments = order?.payments ?? null;
         return {
           orderHasPayments: !!payments?.some(
@@ -192,18 +197,18 @@ const BillItemsAndTotals = React.memo(
             backgroundColor: colors.panel,
             borderWidth: 1,
             borderColor: colors.border,
-            paddingHorizontal: 10,
-            gap: 7,
+            paddingHorizontal: s(10),
+            gap: s(7),
           }}
         >
-          <NotebookPen size={13} color={colors.muted} />
+          <NotebookPen size={s(13)} color={colors.muted} />
           <Text
             numberOfLines={1}
             style={{
               flex: 1,
               color: orderNoteDraft.trim() ? colors.heading : colors.muted,
-              fontSize: 12,
-              lineHeight: 16,
+              fontSize: s(12),
+              lineHeight: s(16),
               fontFamily: "System",
             }}
           >
@@ -228,9 +233,7 @@ const BillItemsAndTotals = React.memo(
           payments={activeOrderPaymentInfo.payments}
           isNetworkDegraded={isNetworkDegraded}
         />
-        <View className="px-3 pb-1">
-          {renderOrderNoteButton()}
-        </View>
+        <View className="px-3 pb-1">{renderOrderNoteButton()}</View>
 
         <Modal
           transparent
@@ -260,18 +263,18 @@ const BillItemsAndTotals = React.memo(
                 onPress={() => {}}
                 style={{
                   backgroundColor: colors.panel,
-                  borderRadius: 18,
+                  borderRadius: s(18),
                   borderWidth: 1,
                   borderColor: colors.border,
-                  padding: 16,
-                  gap: 14,
+                  padding: s(16),
+                  gap: s(14),
                 }}
               >
-                <View style={{ gap: 6 }}>
+                <View style={{ gap: s(6) }}>
                   <Text
                     style={{
                       color: colors.heading,
-                      fontSize: 18,
+                      fontSize: s(18),
                       fontWeight: "700",
                     }}
                   >
@@ -280,8 +283,8 @@ const BillItemsAndTotals = React.memo(
                   <Text
                     style={{
                       color: colors.heading,
-                      fontSize: 13,
-                      lineHeight: 18,
+                      fontSize: s(13),
+                      lineHeight: s(18),
                     }}
                   >
                     Add a note for this order.
@@ -296,20 +299,20 @@ const BillItemsAndTotals = React.memo(
                   multiline
                   showSoftInputOnFocus
                   style={{
-                    minHeight: 104,
+                    minHeight: s(104),
                     color: colors.heading,
-                    fontSize: 14,
-                    lineHeight: 20,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    borderRadius: 12,
+                    fontSize: s(14),
+                    lineHeight: s(20),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    borderRadius: s(12),
                     borderWidth: 1,
                     borderColor: colors.border,
                     backgroundColor: colors.card,
                     textAlignVertical: "top",
                   }}
                 />
-                <View style={{ flexDirection: "row", gap: 12 }}>
+                <View style={{ flexDirection: "row", gap: s(12) }}>
                   <TouchableOpacity
                     onPress={closeOrderNoteEditor}
                     className="flex-1 h-11 rounded-xl items-center justify-center"
@@ -322,7 +325,7 @@ const BillItemsAndTotals = React.memo(
                     <Text
                       style={{
                         color: colors.heading,
-                        fontSize: 14,
+                        fontSize: s(14),
                         fontWeight: "700",
                       }}
                     >
@@ -337,7 +340,7 @@ const BillItemsAndTotals = React.memo(
                     <Text
                       style={{
                         color: colors.onSolid,
-                        fontSize: 14,
+                        fontSize: s(14),
                         fontWeight: "700",
                       }}
                     >
@@ -370,6 +373,8 @@ const BillSectionContent = ({
   discountSheetRef?: React.RefObject<BottomSheetMethods>;
 }) => {
   const router = useRouter();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   // Wave 2 §C: primitive selectors only — no shallow object, no full-order
   // subscription. Each primitive triggers a re-render of this component
   // ONLY when that specific field changes, decoupled from items-array churn
@@ -410,6 +415,14 @@ const BillSectionContent = ({
   const activeOrderOutstandingTotal = useOrderStore(
     (s) => s.activeOrderOutstandingTotal ?? 0,
   );
+  // Cash-side outstanding. On a cash-discounted split the payment RPC can drive
+  // the card-side outstanding (activeOrderOutstandingTotal) to 0 after a portion
+  // while the cash side still legitimately owes the rest. Reading only the card
+  // side would disable the Pay button / show $0 due and block continuing the
+  // split, so the balance-due below uses whichever side still owes.
+  const activeOrderOutstandingCash = useOrderStore(
+    (s) => s.activeOrderOutstandingCash ?? 0,
+  );
   // Items-array reference: used for the cart-derived useMemos below. This
   // selector still re-renders on every add (intentional — the component
   // updates badges and button-disabled state). Memoized children skip via
@@ -444,6 +457,63 @@ const BillSectionContent = ({
     s.activeOrderId ? s.ordersById[s.activeOrderId] : null,
   );
 
+  // Per-order PIN attribution gate. When `requirePinPerOrder` is on, the
+  // register must verify a PIN (attribution-only) before each new order. The
+  // gate is shown whenever the setting is on and no staff is yet verified for
+  // the current order.
+  const requirePinPerOrder = useStoreSettingsStore((s) => s.requirePinPerOrder);
+  const orderAttributionOrderId = useEmployeeStore(
+    (s) => s.orderAttributionOrderId,
+  );
+  // Gate THIS order until a PIN was verified for THIS order specifically.
+  // Binding to the order id means a stale verification from a different/
+  // unfinished order can't satisfy the gate here (the leak that caused
+  // "sometimes shows, sometimes not"). Dine-in orders are attributed at
+  // seating (already have a db_order_id by the time they reach this screen), so
+  // the db_order_id check stops them re-prompting; the gate also never pops on
+  // the empty / just-paid state.
+  const pinGateOpen =
+    requirePinPerOrder &&
+    !!activeOrderId &&
+    orderAttributionOrderId !== activeOrderId &&
+    !activeOrder?.db_order_id &&
+    activeOrderPaidStatus !== "Paid" &&
+    activeOrder?.check_status !== "Closed";
+
+  // Name of the staff THIS order is credited to. Resolve from the order's own
+  // stored creator first (durable, per-order) so each order shows its real
+  // creator — not the last PIN entered globally. Before the order is stamped
+  // (pre-create window), use the live attribution only if it's bound to THIS
+  // order. Fall back to the signed-in shift user.
+  const orderCreatorStaffId = activeOrder?.created_by_staff_profile_id ?? null;
+  const createdByName = useEmployeeStore((s) => {
+    const resolve = (id: string | null) =>
+      id
+        ? (() => {
+            const emp = s.employees.find((e) => e.profileId === id);
+            return emp ? emp.displayName || emp.fullName : null;
+          })()
+        : null;
+
+    // 1. The order's stored creator.
+    const fromOrder = resolve(orderCreatorStaffId);
+    if (fromOrder) return fromOrder;
+
+    // 2. Live attribution, but only if verified for this exact order.
+    if (
+      s.orderAttributionStaffId &&
+      s.orderAttributionOrderId === activeOrderId
+    ) {
+      const fromLive = resolve(s.orderAttributionStaffId);
+      if (fromLive) return fromLive;
+    }
+
+    // 3. Signed-in shift user.
+    return (
+      s.loggedInEmployee?.displayName ?? s.loggedInEmployee?.fullName ?? null
+    );
+  });
+
   // Offline sync state — subscribe directly to offlineSyncService for reliable updates.
   // `isOnline` is the effective status (false during connection-quality slow-mode, used
   // for routing decisions). `rawIsOnline` is raw NetInfo (used for UI affordances so
@@ -452,13 +522,18 @@ const BillSectionContent = ({
 
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const setSelectedTable = useDineInStore((s) => s.setSelectedTable);
-  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
-  const tables = useFloorPlanStore((s) => s.tables);
-  const sections = useFloorPlanStore((s) => s.sections);
+  // useShallow on the array/map selectors: a single table/session mutation
+  // produces a new top-level array/map ref but shallow-equal contents (Phase-3
+  // Wave T stabilizes per-table identities), so this stops ref churn from
+  // cascading re-renders into BillSummary/Totals. activeFloorPlanId is a
+  // primitive (zustand already compares with Object.is) — no useShallow.
+  const floorPlans = useFloorPlanStore(useShallow((s) => s.floorPlans));
+  const tables = useFloorPlanStore(useShallow((s) => s.tables));
+  const sections = useFloorPlanStore(useShallow((s) => s.sections));
   const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
   const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
   const refreshTableSessions = useFloorPlanStore((s) => s.refreshTableSessions);
-  const liveSessions = useTableSessionStore((s) => s.sessions);
+  const liveSessions = useTableSessionStore(useShallow((s) => s.sessions));
   const { activeEmployeeId } = useEmployeeStore();
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
   const { hideLoading, showLoading } = useLoading();
@@ -544,13 +619,14 @@ const BillSectionContent = ({
   // parent render. For new orders without payments, the outstanding equals
   // the total; after payments, the outstanding is what's left.
   const displayBalanceDue = activeOrderHasPayments
-    ? activeOrderOutstandingTotal
+    ? Math.max(activeOrderOutstandingTotal, activeOrderOutstandingCash)
     : activeOrderTotal;
 
   // Check if order is partially paid (has payments but not fully paid)
   const isPartiallyPaid =
     activeOrderHasPayments &&
-    (activeOrderPaidStatus !== "Paid" || activeOrderOutstandingTotal > 0.01);
+    (activeOrderPaidStatus !== "Paid" ||
+      Math.max(activeOrderOutstandingTotal, activeOrderOutstandingCash) > 0.01);
 
   const isCurrentOrderEmptyDraft = useMemo(() => {
     if (!activeOrder) return false;
@@ -893,9 +969,8 @@ const BillSectionContent = ({
       Object.values(liveSessions).find((session) =>
         isSessionLinkedToOrder(session),
       ) ??
-      useTableSessionStore
-        .getState()
-        .getSessionBySessionId(linkedTableId)?.session ??
+      useTableSessionStore.getState().getSessionBySessionId(linkedTableId)
+        ?.session ??
       null
     );
   }, [isSessionLinkedToOrder, linkedTableId, liveSessions]);
@@ -941,7 +1016,10 @@ const BillSectionContent = ({
   ]);
 
   const ensureDineInOrderTableSession = useCallback(
-    async (table: FloorPlanObject, token?: { cancelled: boolean }): Promise<boolean> => {
+    async (
+      table: FloorPlanObject,
+      token?: { cancelled: boolean },
+    ): Promise<boolean> => {
       if (token?.cancelled) return false;
       if (activeOrderType !== "dine_in" || !activeOrderId) {
         return true;
@@ -1174,7 +1252,8 @@ const BillSectionContent = ({
       ) {
         show({
           title: "Cannot Switch Table",
-          message: "Items have already been sent to the kitchen. Void the order to move to a different table.",
+          message:
+            "Items have already been sent to the kitchen. Void the order to move to a different table.",
           type: "error",
         });
         return;
@@ -1249,7 +1328,9 @@ const BillSectionContent = ({
 
     if (snapOrder) {
       // Clear locally in ordersById.
-      useOrderStore.getState().updateActiveOrderDetails({ service_location_id: null });
+      useOrderStore
+        .getState()
+        .updateActiveOrderDetails({ service_location_id: null });
 
       // Clear in previousOrders store immediately so the order list updates
       // without waiting for a backend round-trip.
@@ -1258,11 +1339,15 @@ const BillSectionContent = ({
         usePreviousOrdersStore.setState((state) => {
           const updated = state.previousOrders.map((o) =>
             o.db_order_id === dbId
-              ? { ...o, service_location_id: undefined, service_location_name: undefined }
+              ? {
+                  ...o,
+                  service_location_id: undefined,
+                  service_location_name: undefined,
+                }
               : o,
           );
           // Rebuild the lookup map inline (buildOrderLookupMap is not exported).
-          const lookup: Record<string, typeof updated[number]> = {};
+          const lookup: Record<string, (typeof updated)[number]> = {};
           for (const o of updated) {
             if (o.db_order_id) lookup[o.db_order_id] = o;
             if (o.orderId) lookup[o.orderId] = o;
@@ -1278,11 +1363,17 @@ const BillSectionContent = ({
         if (supabase) {
           supabase
             .from("orders")
-            .update({ table_number: null, order_type: activeOrderType ?? "takeout" })
+            .update({
+              table_number: null,
+              order_type: activeOrderType ?? "takeout",
+            })
             .eq("id", dbId)
             .then(({ error }) => {
               if (error) {
-                console.error("[BillSection] Failed to unlink order from table:", error);
+                console.error(
+                  "[BillSection] Failed to unlink order from table:",
+                  error,
+                );
               }
             });
         }
@@ -1299,9 +1390,8 @@ const BillSectionContent = ({
         sessionStore.dispatch(snapTableId, { type: "CLEAR" });
         const supabase = getFloorPlanClient();
         if (supabase) {
-          const { FloorPlanService } = require(
-            "@/services/floorPlanService",
-          ) as typeof import("@/services/floorPlanService");
+          const { FloorPlanService } =
+            require("@/services/floorPlanService") as typeof import("@/services/floorPlanService");
           const staffId =
             useEmployeeStore.getState().loggedInEmployee?.profileId;
           FloorPlanService.updateTableSessionStatus(supabase, {
@@ -1310,12 +1400,15 @@ const BillSectionContent = ({
             p_staff_id: staffId,
           }).catch(() => {});
         }
-        useFloorPlanStore.getState().loadFloorPlanStatus().catch(() => {});
+        useFloorPlanStore
+          .getState()
+          .loadFloorPlanStatus()
+          .catch(() => {});
       }
     }
-  // Only re-run when order type actually changes — don't include linkedTableId
-  // since clearing it would re-trigger the effect.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Only re-run when order type actually changes — don't include linkedTableId
+    // since clearing it would re-trigger the effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrderType, clearSelectedTable]);
 
   const handleCloseSession = useCallback(async () => {
@@ -1463,9 +1556,9 @@ const BillSectionContent = ({
     const sessionStore = useTableSessionStore.getState();
     const sessionId = activeOrder.session_id;
     const tableId = sessionId
-      ? sessionStore.sessionTableIndex[sessionId]?.[0] ??
+      ? (sessionStore.sessionTableIndex[sessionId]?.[0] ??
         sessionStore.getSessionBySessionId(sessionId)?.tableId ??
-        ""
+        "")
       : "";
 
     if (tableId) {
@@ -1591,6 +1684,12 @@ const BillSectionContent = ({
       showClockInWall();
       return;
     }
+    // Per-order PIN: block sending until a staff is verified for this order.
+    // The gate overlay (pinGateOpen) is already visible in this state.
+    // (pinGateOpen already exempts dine-in.)
+    if (pinGateOpen) {
+      return;
+    }
     if (hasDraftItems) {
       show({
         title: "Unconfirmed Items",
@@ -1633,20 +1732,44 @@ const BillSectionContent = ({
     }
     // Auto-print is now handled centrally inside sendNewItemsToKitchen
     await sendNewItemsToKitchen();
+    // NOTE: per-order PIN attribution is intentionally NOT cleared here. The
+    // verified staff must stay attached through payment so the order AND its
+    // payment are credited to the same person. Clearing happens when the order
+    // is fully paid/closed (see the payment-complete effect below), which
+    // re-opens the gate for the next order.
   };
 
   // OPTIMIZED: Wrap callback with useCallback
   // Explicit New Order action should always create a fresh order number.
+  // Cancel the per-order PIN: abort starting this order. Drop any pending
+  // attribution and deactivate the draft so the screen returns to the empty
+  // state (no order in progress) instead of staying stuck behind the gate.
+  const handleCancelPinGate = useCallback(() => {
+    useEmployeeStore.getState().clearOrderAttributionStaff();
+    clearSelectedTable();
+    setActiveOrder(null);
+  }, [clearSelectedTable, setActiveOrder]);
+
   const handleStartNewOrder = useCallback(() => {
     clearSelectedTable();
+
+    // Per-order PIN: starting a fresh order must re-prompt, regardless of how
+    // the previous order ended (sent-to-kitchen, paid, or abandoned). The
+    // payment-complete clear only covers the pay path; this covers the rest so
+    // attribution can't leak from one order to the next. (Dine-in sets its
+    // attribution at seating, a separate path, so this QSR-side clear is safe.)
+    useEmployeeStore.getState().clearOrderAttributionStaff();
 
     if (isCurrentOrderEmptyDraft && activeOrder?.id) {
       setActiveOrder(activeOrder.id);
       return;
     }
 
-    const { activeOrderId: currentActiveOrderId, orderIds, ordersById } =
-      useOrderStore.getState();
+    const {
+      activeOrderId: currentActiveOrderId,
+      orderIds,
+      ordersById,
+    } = useOrderStore.getState();
     const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
       ordersById,
       orderIds,
@@ -1712,36 +1835,36 @@ const BillSectionContent = ({
             <View
               style={{
                 width: "100%",
-                maxWidth: 320,
+                maxWidth: s(320),
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 22,
-                paddingHorizontal: 22,
-                paddingVertical: 24,
+                borderRadius: s(22),
+                paddingHorizontal: s(22),
+                paddingVertical: s(24),
                 alignItems: "center",
               }}
             >
               <View
                 style={{
-                  width: 54,
-                  height: 54,
-                  borderRadius: 18,
+                  width: s(54),
+                  height: s(54),
+                  borderRadius: s(18),
                   alignItems: "center",
                   justifyContent: "center",
                   backgroundColor: colors.tealMuted,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  marginBottom: 14,
+                  marginBottom: s(14),
                 }}
               >
-                <Plus size={22} color={colors.teal} />
+                <Plus size={s(22)} color={colors.teal} />
               </View>
 
               <Text
                 style={{
                   color: colors.heading,
-                  fontSize: 19,
+                  fontSize: s(19),
                   fontWeight: "700",
                   textAlign: "center",
                 }}
@@ -1751,11 +1874,11 @@ const BillSectionContent = ({
               <Text
                 style={{
                   color: colors.muted,
-                  fontSize: 12,
-                  lineHeight: 18,
+                  fontSize: s(12),
+                  lineHeight: s(18),
                   textAlign: "center",
-                  marginTop: 8,
-                  marginBottom: 18,
+                  marginTop: s(8),
+                  marginBottom: s(18),
                 }}
               >
                 Start a fresh ticket or jump back into the latest empty draft.
@@ -1765,9 +1888,11 @@ const BillSectionContent = ({
                 className="h-11 px-4 rounded-xl flex-row items-center justify-center gap-2 active:opacity-80"
                 style={{
                   backgroundColor: colors.teal,
-                  minWidth: 176,
+                  minWidth: s(176),
                 }}
                 onPress={() => {
+                  // Per-order PIN: fresh ticket must re-prompt (see handleStartNewOrder).
+                  useEmployeeStore.getState().clearOrderAttributionStaff();
                   const { orderIds, ordersById } = useOrderStore.getState();
                   const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
                     ordersById,
@@ -1778,13 +1903,16 @@ const BillSectionContent = ({
 
                   if (reusableEmptyDraftId) {
                     if (selectedStore) {
-                      const refreshedNumbers = getRefreshedReusableDraftNumbers({
-                        draftId: reusableEmptyDraftId,
-                        ordersById,
-                        orderIds,
-                        locationId: selectedStore.id,
-                        stationNumber: selectedStation?.station_number ?? null,
-                      });
+                      const refreshedNumbers = getRefreshedReusableDraftNumbers(
+                        {
+                          draftId: reusableEmptyDraftId,
+                          ordersById,
+                          orderIds,
+                          locationId: selectedStore.id,
+                          stationNumber:
+                            selectedStation?.station_number ?? null,
+                        },
+                      );
                       if (refreshedNumbers) {
                         useOrderStore.setState((state) => {
                           const draft = state.ordersById[reusableEmptyDraftId];
@@ -1802,11 +1930,11 @@ const BillSectionContent = ({
                   setActiveOrder(newOrder.id);
                 }}
               >
-                <Plus color={colors.onSolid} size={14} />
+                <Plus color={colors.onSolid} size={s(14)} />
                 <Text
                   style={{
                     color: colors.onSolid,
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: "700",
                   }}
                 >
@@ -1816,6 +1944,11 @@ const BillSectionContent = ({
             </View>
           </View>
         </View>
+        <OrderPinGate
+          open={pinGateOpen}
+          attributionOrderId={activeOrderId}
+          onCancel={handleCancelPinGate}
+        />
       </View>
     );
   // Handle retry failed syncs
@@ -1841,52 +1974,65 @@ const BillSectionContent = ({
       >
         <View className="flex-row items-center justify-between mb-2">
           <View className="flex-row items-center gap-2">
-            <Text
-              style={{ color: colors.heading, fontWeight: "700", fontSize: 18 }}
-            >
-              {activeOrderDisplayNumber
-                ? `Order ${activeOrderDisplayNumber}`
-                : "New Order"}
-            </Text>
+            <View>
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontWeight: "700",
+                  fontSize: s(18),
+                }}
+              >
+                {activeOrderDisplayNumber
+                  ? `Order ${activeOrderDisplayNumber}`
+                  : "New Order"}
+              </Text>
+              {createdByName ? (
+                <Text style={{ color: colors.muted, fontSize: s(11) }}>
+                  Created by {createdByName}
+                </Text>
+              ) : null}
+            </View>
             <SendToKitchenButton
               onPress={handleSendToKitchen}
-              extraDisabled={
-                newItemsCount === 0 || hasDraftItems || isReadOnly
-              }
+              extraDisabled={newItemsCount === 0 || hasDraftItems || isReadOnly}
             />
-            {activeOrderType === "dine_in" && linkedTableId ? (
-              (() => {
-                const sessionAlreadyClosed =
-                  !linkedTableSession ||
-                  linkedTableSession.status === "available" ||
-                  linkedTableSession.status === "cleaning";
-                const canClose =
-                  activeOrderPaidStatus === "Paid" && !sessionAlreadyClosed;
-                return (
-                  <TouchableOpacity
-                    onPress={handleCloseSession}
-                    disabled={!canClose}
-                    className="h-8 px-3 rounded-lg flex-row items-center justify-center"
-                    style={{
-                      backgroundColor: canClose ? colors.warning : colors.card,
-                      borderWidth: canClose ? 0 : 1,
-                      borderColor: colors.border,
-                      opacity: canClose ? 1 : 0.5,
-                    }}
-                  >
-                    <Text
+            {activeOrderType === "dine_in" && linkedTableId
+              ? (() => {
+                  const sessionAlreadyClosed =
+                    !linkedTableSession ||
+                    linkedTableSession.status === "available" ||
+                    linkedTableSession.status === "cleaning";
+                  const canClose =
+                    activeOrderPaidStatus === "Paid" && !sessionAlreadyClosed;
+                  return (
+                    <TouchableOpacity
+                      onPress={handleCloseSession}
+                      disabled={!canClose}
+                      className="h-8 px-3 rounded-lg flex-row items-center justify-center"
                       style={{
-                        color: canClose ? colors.onSolid : colors.label,
-                        fontSize: 12,
-                        fontWeight: "500",
+                        backgroundColor: canClose
+                          ? colors.warning
+                          : colors.card,
+                        borderWidth: canClose ? 0 : 1,
+                        borderColor: colors.border,
+                        opacity: canClose ? 1 : 0.5,
                       }}
                     >
-                      {sessionAlreadyClosed ? "Session Closed" : "Close Session"}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })()
-            ) : null}
+                      <Text
+                        style={{
+                          color: canClose ? colors.onSolid : colors.label,
+                          fontSize: s(12),
+                          fontWeight: "500",
+                        }}
+                      >
+                        {sessionAlreadyClosed
+                          ? "Session Closed"
+                          : "Close Session"}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })()
+              : null}
           </View>
 
           <View className="flex-row items-center gap-1.5">
@@ -1895,11 +2041,11 @@ const BillSectionContent = ({
               className="h-8 px-3 rounded-lg flex-row items-center justify-center gap-1"
               style={{ backgroundColor: colors.teal }}
             >
-              <Plus color={colors.onSolid} size={12} />
+              <Plus color={colors.onSolid} size={s(12)} />
               <Text
                 style={{
                   color: colors.onSolid,
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: "500",
                 }}
               >
@@ -1917,7 +2063,7 @@ const BillSectionContent = ({
                   !activeOrderId || cart.length === 0 || isReadOnly ? 0.45 : 1,
               }}
             >
-              <Trash2 color={colors.screen} size={13} />
+              <Trash2 color={colors.screen} size={s(13)} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1939,8 +2085,7 @@ const BillSectionContent = ({
           onViewTable={
             displayedTable
               ? () => {
-                  usePendingTableOverlay.getState().openTable(displayedTable.id)
-                  router.push(`/tables` as any)
+                  router.push(`/tables/${displayedTable.id}` as any);
                 }
               : undefined
           }
@@ -1966,7 +2111,13 @@ const BillSectionContent = ({
           <TouchableOpacity
             activeOpacity={1}
             onPress={closeTableSelector}
-            style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.55)" } as any}
+            style={
+              {
+                position: "absolute",
+                inset: 0,
+                backgroundColor: "rgba(0,0,0,0.55)",
+              } as any
+            }
           />
 
           {/* Panel */}
@@ -1975,8 +2126,11 @@ const BillSectionContent = ({
               position: "absolute",
               top: tableDrawerAnchor.top > 0 ? tableDrawerAnchor.top : 0,
               left: tableDrawerAnchor.left > 0 ? tableDrawerAnchor.left : "38%",
-              height: tableDrawerAnchor.height > 0 ? tableDrawerAnchor.height : "100%",
-              width: 380,
+              height:
+                tableDrawerAnchor.height > 0
+                  ? tableDrawerAnchor.height
+                  : "100%",
+              width: s(380),
               backgroundColor: colors.screen,
               borderLeftWidth: 0,
               borderTopWidth: 1,
@@ -1990,21 +2144,51 @@ const BillSectionContent = ({
             }}
           >
             {/* ── Header ── */}
-            <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 }}>
+            <View
+              style={{
+                paddingHorizontal: s(16),
+                paddingTop: s(14),
+                paddingBottom: s(10),
+              }}
+            >
               {/* Title row */}
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: s(12),
+                }}
+              >
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "700", letterSpacing: -0.3 }}>
+                  <Text
+                    style={{
+                      color: colors.heading,
+                      fontSize: s(15),
+                      fontWeight: "700",
+                      letterSpacing: -0.3,
+                    }}
+                  >
                     Select Table
                   </Text>
                   {(() => {
                     const available = filteredTableOptions.filter(
-                      (t) => (liveSessions[t.id]?.status ?? t.session?.status ?? "available") === "available"
+                      (t) =>
+                        (liveSessions[t.id]?.status ??
+                          t.session?.status ??
+                          "available") === "available",
                     ).length;
                     const occupied = filteredTableOptions.length - available;
                     return (
-                      <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
-                        {available} available{occupied > 0 ? ` · ${occupied} occupied` : ""}
+                      <Text
+                        style={{
+                          color: colors.muted,
+                          fontSize: s(11),
+                          marginTop: s(2),
+                        }}
+                      >
+                        {available} available
+                        {occupied > 0 ? ` · ${occupied} occupied` : ""}
                       </Text>
                     );
                   })()}
@@ -2013,30 +2197,55 @@ const BillSectionContent = ({
                   onPress={closeTableSelector}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{
-                    width: 28, height: 28, borderRadius: 14,
+                    width: s(28),
+                    height: s(28),
+                    borderRadius: s(14),
                     backgroundColor: colors.inset,
-                    alignItems: "center", justifyContent: "center",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
-                  <X size={13} color={colors.muted} />
+                  <X size={s(13)} color={colors.muted} />
                 </TouchableOpacity>
               </View>
 
               {/* Floor plan tabs */}
               {floorPlanOptions.length > 1 && (
-                <View style={{ flexDirection: "row", backgroundColor: colors.inset, borderRadius: 10, padding: 3, marginBottom: 10 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    backgroundColor: colors.inset,
+                    borderRadius: 10,
+                    padding: 3,
+                    marginBottom: 10,
+                  }}
+                >
                   {floorPlanOptions.map((plan) => {
-                    const isActive = (pendingFloorPlanId ?? activeFloorPlanId) === plan.id;
+                    const isActive =
+                      (pendingFloorPlanId ?? activeFloorPlanId) === plan.id;
                     return (
                       <TouchableOpacity
                         key={plan.id}
-                        onPress={() => { void handleSelectFloorPlan(plan.id); }}
+                        onPress={() => {
+                          void handleSelectFloorPlan(plan.id);
+                        }}
                         style={{
-                          flex: 1, paddingVertical: 6, borderRadius: 8, alignItems: "center",
-                          backgroundColor: isActive ? colors.teal : "transparent",
+                          flex: 1,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                          alignItems: "center",
+                          backgroundColor: isActive
+                            ? colors.teal
+                            : "transparent",
                         }}
                       >
-                        <Text style={{ color: isActive ? colors.onSolid : colors.muted, fontSize: 12, fontWeight: isActive ? "700" : "500" }}>
+                        <Text
+                          style={{
+                            color: isActive ? colors.onSolid : colors.muted,
+                            fontSize: s(12),
+                            fontWeight: isActive ? "700" : "500",
+                          }}
+                        >
                           {plan.name}
                         </Text>
                       </TouchableOpacity>
@@ -2051,22 +2260,42 @@ const BillSectionContent = ({
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   style={{ marginHorizontal: -16, marginBottom: 10 }}
-                  contentContainerStyle={{ paddingHorizontal: 16, gap: 6, flexDirection: "row" }}
+                  contentContainerStyle={{
+                    paddingHorizontal: 16,
+                    gap: 6,
+                    flexDirection: "row",
+                  }}
                 >
-                  {[{ id: null, name: "All" }, ...sectionOptions.map((s: ServerSection) => ({ id: s.id, name: s.name }))].map((item) => {
+                  {[
+                    { id: null, name: "All" },
+                    ...sectionOptions.map((s: ServerSection) => ({
+                      id: s.id,
+                      name: s.name,
+                    })),
+                  ].map((item) => {
                     const isActive = selectedSectionId === item.id;
                     return (
                       <TouchableOpacity
                         key={item.id ?? "__all__"}
                         onPress={() => setSelectedSectionId(item.id)}
                         style={{
-                          paddingHorizontal: 11, paddingVertical: 5, borderRadius: 20,
-                          backgroundColor: isActive ? colors.teal : colors.inset,
+                          paddingHorizontal: 11,
+                          paddingVertical: 5,
+                          borderRadius: 20,
+                          backgroundColor: isActive
+                            ? colors.teal
+                            : colors.inset,
                           borderWidth: 1,
                           borderColor: isActive ? colors.teal : "transparent",
                         }}
                       >
-                        <Text style={{ color: isActive ? colors.onSolid : colors.label, fontSize: 11, fontWeight: "600" }}>
+                        <Text
+                          style={{
+                            color: isActive ? colors.onSolid : colors.label,
+                            fontSize: s(11),
+                            fontWeight: "600",
+                          }}
+                        >
                           {item.name}
                         </Text>
                       </TouchableOpacity>
@@ -2076,33 +2305,97 @@ const BillSectionContent = ({
               )}
 
               {/* Guests row */}
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
                 <View>
-                  <Text style={{ color: colors.label, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>Party Size</Text>
-                  <Text style={{ color: colors.heading, fontSize: 22, fontWeight: "700", letterSpacing: -0.5, lineHeight: 26 }}>
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: s(11),
+                      fontWeight: "600",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Party Size
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.heading,
+                      fontSize: s(22),
+                      fontWeight: "700",
+                      letterSpacing: -0.5,
+                      lineHeight: s(26),
+                    }}
+                  >
                     {selectorPartySize}{" "}
-                    <Text style={{ fontSize: 13, fontWeight: "500", color: colors.muted, letterSpacing: 0 }}>
+                    <Text
+                      style={{
+                        fontSize: s(13),
+                        fontWeight: "500",
+                        color: colors.muted,
+                        letterSpacing: 0,
+                      }}
+                    >
                       {selectorPartySize === 1 ? "guest" : "guests"}
                     </Text>
                   </Text>
                 </View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.inset, borderRadius: 8, padding: 3 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    backgroundColor: colors.inset,
+                    borderRadius: 8,
+                    padding: 3,
+                  }}
+                >
                   <TouchableOpacity
-                    onPress={() => setSelectorPartySize((p) => Math.max(1, p - 1))}
+                    onPress={() =>
+                      setSelectorPartySize((p) => Math.max(1, p - 1))
+                    }
                     disabled={selectorPartySize <= 1}
                     style={{
-                      width: 32, height: 32, borderRadius: 7, alignItems: "center", justifyContent: "center",
-                      backgroundColor: selectorPartySize <= 1 ? "transparent" : colors.card,
+                      width: s(32),
+                      height: s(32),
+                      borderRadius: s(7),
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor:
+                        selectorPartySize <= 1 ? "transparent" : colors.card,
                       opacity: selectorPartySize <= 1 ? 0.35 : 1,
                     }}
                   >
-                    <Minus size={14} color={colors.heading} strokeWidth={2.5} />
+                    <Minus
+                      size={s(14)}
+                      color={colors.heading}
+                      strokeWidth={2.5}
+                    />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => setSelectorPartySize((p) => Math.min(99, p + 1))}
-                    style={{ width: 32, height: 32, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: colors.card }}
+                    onPress={() =>
+                      setSelectorPartySize((p) => Math.min(99, p + 1))
+                    }
+                    style={{
+                      width: s(32),
+                      height: s(32),
+                      borderRadius: s(7),
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.card,
+                    }}
                   >
-                    <Plus size={14} color={colors.heading} strokeWidth={2.5} />
+                    <Plus
+                      size={s(14)}
+                      color={colors.heading}
+                      strokeWidth={2.5}
+                    />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2118,36 +2411,82 @@ const BillSectionContent = ({
               showsVerticalScrollIndicator={false}
             >
               {filteredTableOptions.length === 0 ? (
-                <View style={{ alignItems: "center", paddingTop: 56 }}>
-                  <Text style={{ color: colors.heading, fontSize: 14, fontWeight: "600" }}>No tables found</Text>
-                  <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Try a different section</Text>
+                <View style={{ alignItems: "center", paddingTop: s(56) }}>
+                  <Text
+                    style={{
+                      color: colors.heading,
+                      fontSize: s(14),
+                      fontWeight: "600",
+                    }}
+                  >
+                    No tables found
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: s(12),
+                      marginTop: s(4),
+                    }}
+                  >
+                    Try a different section
+                  </Text>
                 </View>
               ) : (
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    gap: 7,
+                    justifyContent: "center",
+                  }}
+                >
                   {[...filteredTableOptions]
                     .sort((a, b) => {
                       // Current/linked always first, then available, then occupied
-                      const aAssigned = a.id === activeOrderServiceLocation || a.name === activeOrderServiceLocation;
-                      const bAssigned = b.id === activeOrderServiceLocation || b.name === activeOrderServiceLocation;
+                      const aAssigned =
+                        a.id === activeOrderServiceLocation ||
+                        a.name === activeOrderServiceLocation;
+                      const bAssigned =
+                        b.id === activeOrderServiceLocation ||
+                        b.name === activeOrderServiceLocation;
                       if (aAssigned !== bAssigned) return aAssigned ? -1 : 1;
-                      const aLinked = isSessionLinkedToOrder(liveSessions[a.id]);
-                      const bLinked = isSessionLinkedToOrder(liveSessions[b.id]);
+                      const aLinked = isSessionLinkedToOrder(
+                        liveSessions[a.id],
+                      );
+                      const bLinked = isSessionLinkedToOrder(
+                        liveSessions[b.id],
+                      );
                       if (aLinked !== bLinked) return aLinked ? -1 : 1;
-                      const aAvail = (liveSessions[a.id]?.status ?? a.session?.status ?? "available") === "available";
-                      const bAvail = (liveSessions[b.id]?.status ?? b.session?.status ?? "available") === "available";
+                      const aAvail =
+                        (liveSessions[a.id]?.status ??
+                          a.session?.status ??
+                          "available") === "available";
+                      const bAvail =
+                        (liveSessions[b.id]?.status ??
+                          b.session?.status ??
+                          "available") === "available";
                       if (aAvail !== bAvail) return aAvail ? -1 : 1;
-                      return a.name.localeCompare(b.name, undefined, { numeric: true });
+                      return a.name.localeCompare(b.name, undefined, {
+                        numeric: true,
+                      });
                     })
                     .map((table) => {
-                      const liveStatusKey = liveSessions[table.id]?.status ?? table.session?.status ?? "available";
+                      const liveStatusKey =
+                        liveSessions[table.id]?.status ??
+                        table.session?.status ??
+                        "available";
                       const statusLabel = getTableStatusLabel(table);
-                      const statusColor = TABLE_STATUS_COLORS[liveStatusKey] || colors.muted;
+                      const statusColor =
+                        TABLE_STATUS_COLORS[liveStatusKey] || colors.muted;
                       const isCurrentlyAssigned =
                         table.id === activeOrderServiceLocation ||
                         table.name === activeOrderServiceLocation;
                       const tableSession = liveSessions[table.id];
-                      const isLinkedToThisOrder = isSessionLinkedToOrder(tableSession);
-                      const isSelected = selectedTable?.id === table.id || (!selectedTable && isCurrentlyAssigned);
+                      const isLinkedToThisOrder =
+                        isSessionLinkedToOrder(tableSession);
+                      const isSelected =
+                        selectedTable?.id === table.id ||
+                        (!selectedTable && isCurrentlyAssigned);
                       const isAvailable = liveStatusKey === "available";
                       const isOfflineTransferLocked =
                         activeOrderType === "dine_in" &&
@@ -2157,9 +2496,9 @@ const BillSectionContent = ({
                         isAvailable;
                       const isSelectable =
                         ((activeOrderType === "dine_in" && isAvailable) ||
-                        isAvailable ||
-                        isCurrentlyAssigned ||
-                        isLinkedToThisOrder) &&
+                          isAvailable ||
+                          isCurrentlyAssigned ||
+                          isLinkedToThisOrder) &&
                         !isOfflineTransferLocked;
                       const cap = table.capacity;
                       return (
@@ -2183,49 +2522,113 @@ const BillSectionContent = ({
                             width: "45%",
                             borderRadius: 12,
                             borderWidth: isSelected ? 2 : 1,
-                            borderColor: isSelected ? colors.teal : isCurrentlyAssigned ? `${colors.teal}50` : colors.border,
+                            borderColor: isSelected
+                              ? colors.teal
+                              : isCurrentlyAssigned
+                                ? `${colors.teal}50`
+                                : colors.border,
                             backgroundColor: isSelected
                               ? `${colors.teal}18`
                               : isCurrentlyAssigned
-                              ? `${colors.teal}08`
-                              : colors.card,
+                                ? `${colors.teal}08`
+                                : colors.card,
                             opacity: isSelectable ? 1 : 0.35,
                             padding: 10,
                           }}
                         >
                           {/* Status dot */}
-                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              marginBottom: s(6),
+                            }}
+                          >
                             <View
                               style={{
-                                width: 8, height: 8, borderRadius: 4,
-                                backgroundColor: isSelected ? colors.teal : statusColor,
+                                width: s(8),
+                                height: s(8),
+                                borderRadius: s(4),
+                                backgroundColor: isSelected
+                                  ? colors.teal
+                                  : statusColor,
                               }}
                             />
                             {isSelected && (
-                              <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: colors.teal, alignItems: "center", justifyContent: "center" }}>
-                                <Check size={9} color={colors.onSolid} strokeWidth={3} />
+                              <View
+                                style={{
+                                  width: s(16),
+                                  height: s(16),
+                                  borderRadius: s(8),
+                                  backgroundColor: colors.teal,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <Check
+                                  size={s(9)}
+                                  color={colors.onSolid}
+                                  strokeWidth={3}
+                                />
                               </View>
                             )}
                           </View>
                           {/* Table name */}
                           <Text
-                            style={{ color: isSelected ? colors.teal : colors.heading, fontSize: 16, fontWeight: "700", letterSpacing: -0.3 }}
+                            style={{
+                              color: isSelected ? colors.teal : colors.heading,
+                              fontSize: s(16),
+                              fontWeight: "700",
+                              letterSpacing: -0.3,
+                            }}
                             numberOfLines={1}
                           >
                             {table.name}
                           </Text>
                           {/* Status + capacity */}
-                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 3 }}>
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              marginTop: s(3),
+                            }}
+                          >
                             <Text
-                              style={{ color: isSelected ? colors.teal : statusColor, fontSize: 9, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4, flexShrink: 1 }}
+                              style={{
+                                color: isSelected ? colors.teal : statusColor,
+                                fontSize: s(9),
+                                fontWeight: "700",
+                                textTransform: "uppercase",
+                                letterSpacing: 0.4,
+                                flexShrink: 1,
+                              }}
                               numberOfLines={1}
                             >
-                              {isCurrentlyAssigned && !isSelected ? "current" : statusLabel}
+                              {isCurrentlyAssigned && !isSelected
+                                ? "current"
+                                : statusLabel}
                             </Text>
                             {cap != null && cap > 0 && (
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 2, marginLeft: 4 }}>
-                                <Users size={8} color={colors.muted} />
-                                <Text style={{ color: colors.muted, fontSize: 9, fontWeight: "600" }}>{cap}</Text>
+                              <View
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: s(2),
+                                  marginLeft: s(4),
+                                }}
+                              >
+                                <Users size={s(8)} color={colors.muted} />
+                                <Text
+                                  style={{
+                                    color: colors.muted,
+                                    fontSize: s(9),
+                                    fontWeight: "600",
+                                  }}
+                                >
+                                  {cap}
+                                </Text>
                               </View>
                             )}
                           </View>
@@ -2249,10 +2652,10 @@ const BillSectionContent = ({
         >
           {!rawIsOnline && (
             <View className="flex-row items-center justify-center bg-amber-600 px-2.5 py-1.5 rounded-md">
-              <WifiOff size={12} color="#FFFFFF" />
+              <WifiOff size={s(12)} color="#FFFFFF" />
               <Text
                 className="text-white font-medium ml-1.5"
-                style={{ fontSize: 11 }}
+                style={{ fontSize: s(11) }}
               >
                 Offline Mode
                 {pendingSyncCount > 0 ? ` • ${pendingSyncCount} pending` : ""}
@@ -2275,7 +2678,7 @@ const BillSectionContent = ({
                     <ActivityIndicator size="small" color="#FFFFFF" />
                     <Text
                       className="text-white font-medium ml-1.5"
-                      style={{ fontSize: 11 }}
+                      style={{ fontSize: s(11) }}
                     >
                       Retrying {autoRetryState.count} op
                       {autoRetryState.count > 1 ? "s" : ""}...
@@ -2283,10 +2686,10 @@ const BillSectionContent = ({
                   </>
                 ) : (
                   <>
-                    <AlertTriangle size={12} color="#FFFFFF" />
+                    <AlertTriangle size={s(12)} color="#FFFFFF" />
                     <Text
                       className="text-white font-medium ml-1.5"
-                      style={{ fontSize: 11 }}
+                      style={{ fontSize: s(11) }}
                     >
                       {syncStatus.failed} failed to sync
                     </Text>
@@ -2295,8 +2698,8 @@ const BillSectionContent = ({
               </View>
               {!autoRetryState.isRetrying && (
                 <View className="flex-row items-center">
-                  <RefreshCw size={11} color="#FFFFFF" />
-                  <Text className="text-white ml-1" style={{ fontSize: 10 }}>
+                  <RefreshCw size={s(11)} color="#FFFFFF" />
+                  <Text className="text-white ml-1" style={{ fontSize: s(10) }}>
                     Retry
                   </Text>
                 </View>
@@ -2308,10 +2711,10 @@ const BillSectionContent = ({
             !hasFailedSyncs &&
             activeOrderHasPendingPaymentSync && (
               <View className="flex-row items-center justify-center bg-amber-600/70 px-2.5 py-1.5 rounded-md">
-                <Clock size={12} color="#FFFFFF" />
+                <Clock size={s(12)} color="#FFFFFF" />
                 <Text
                   className="text-white font-medium ml-1.5"
-                  style={{ fontSize: 11 }}
+                  style={{ fontSize: s(11) }}
                 >
                   Payment syncing...
                 </Text>
@@ -2335,8 +2738,8 @@ const BillSectionContent = ({
           borderLeftWidth: 1,
           borderRightWidth: 1,
           borderColor: colors.border,
-          borderTopLeftRadius: 28,
-          borderTopRightRadius: 28,
+          borderTopLeftRadius: s(28),
+          borderTopRightRadius: s(28),
           shadowColor: "#000000",
           shadowOffset: { width: 0, height: -10 },
           shadowOpacity: 0.16,
@@ -2360,10 +2763,10 @@ const BillSectionContent = ({
                   opacity: isMoreButtonDisabled ? 0.4 : 1,
                 }}
               >
-                <MoreHorizontal size={14} color={colors.label} />
+                <MoreHorizontal size={s(14)} color={colors.label} />
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "700",
                     color: colors.heading,
                   }}
@@ -2385,10 +2788,10 @@ const BillSectionContent = ({
                 {hasPendingSyncs || isProcessing ? (
                   <ActivityIndicator size={12} color="#FFFFFF" />
                 ) : null}
-                <CreditCard size={14} color={colors.onSolid} />
+                <CreditCard size={s(14)} color={colors.onSolid} />
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "700",
                     color: isPayButtonDisabled ? colors.muted : colors.onSolid,
                   }}
@@ -2433,7 +2836,7 @@ const BillSectionContent = ({
             <DialogHeader>
               <DialogTitle
                 style={{
-                  fontSize: 20,
+                  fontSize: s(20),
                   fontWeight: "700",
                   color: colors.heading,
                 }}
@@ -2446,9 +2849,9 @@ const BillSectionContent = ({
             <Text
               style={{
                 color: colors.label,
-                fontSize: 14,
-                marginTop: 8,
-                lineHeight: 20,
+                fontSize: s(14),
+                marginTop: s(8),
+                lineHeight: s(20),
               }}
             >
               {clearCartDialogMode === "voidNonDraft"
@@ -2470,7 +2873,7 @@ const BillSectionContent = ({
               <Text
                 style={{
                   color: colors.heading,
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: "700",
                 }}
               >
@@ -2485,7 +2888,7 @@ const BillSectionContent = ({
               <Text
                 style={{
                   color: colors.onSolid,
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: "700",
                 }}
               >
@@ -2497,6 +2900,11 @@ const BillSectionContent = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <OrderPinGate
+        open={pinGateOpen}
+        attributionOrderId={activeOrderId}
+        onCancel={handleCancelPinGate}
+      />
     </View>
   );
 };

@@ -54,7 +54,7 @@ import {
     CASTLES_SUCCESS_CODE,
 } from "@/types/castles";
 import * as Sentry from "@sentry/react-native";
-import { Mutex } from "async-mutex";
+import { E_TIMEOUT, Mutex, withTimeout } from "async-mutex";
 import {
     type CastlesRawResponse,
     buildCastlesTerminalResponse,
@@ -88,6 +88,14 @@ const STALE_CONNECTION_THRESHOLD_S = 15;
  */
 const CASTLES_HANDSHAKE_TIMEOUT_MS = 3_000;
 
+// Upper bound on how long connect() will wait to ACQUIRE the command mutex
+// (not how long the connect itself runs once acquired). If a prior operation is
+// wedged and never releases the lock, connect() rejects with a clear error
+// instead of queueing forever — the upstream cause of the "infinite testing
+// spinner". 60s comfortably exceeds the longest legitimate hold (a card-present
+// sale) while still guaranteeing the caller is never starved indefinitely.
+const CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS = 60_000;
+
 /** Errors matching these patterns are connection-level (retriable) */
 function isConnectionError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -98,6 +106,42 @@ function isConnectionError(err: unknown): boolean {
     msg.includes("Write failed") ||
     msg.includes("Connection timed out") ||
     msg.includes("not open")
+  );
+}
+
+/**
+ * Broader classifier for "the terminal link is dead / wedged" — i.e. the next
+ * command on this terminal will almost certainly fail too. This is a SUPERSET
+ * of isConnectionError that also covers the symptoms seen in the S1-0002 USB
+ * refund crash that isConnectionError intentionally does NOT match:
+ *   - "USB get_status request failed" (native usb-serial GET_STATUS probe died)
+ *   - "Response timed out ..." (terminal hung mid-transaction)
+ *   - "controlTransfer failed" (native CDC-ACM DTR/RTS failure)
+ *   - "Reconnect failed" / "command queue is busy" (wedge + mutex starvation)
+ *   - CastlesEmptyResponseError / CastlesWedgedError (app-layer wedge)
+ *
+ * Used by the refund-by-item loop to STOP firing further refunds into a
+ * terminal that just died, instead of compounding onto a dead device. It is
+ * deliberately NOT wired into _withRetry's auto-reconnect (that would risk
+ * re-sending a payment/refund); it is a read-only "should I keep going?" gate.
+ */
+export function isTerminalTransportDead(err: unknown): boolean {
+  if (
+    err instanceof CastlesEmptyResponseError ||
+    err instanceof CastlesWedgedError
+  ) {
+    return true;
+  }
+  if (isConnectionError(err)) return true;
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes("get_status request failed") ||
+    msg.includes("response timed out") ||
+    msg.includes("controltransfer failed") ||
+    msg.includes("reconnect failed") ||
+    msg.includes("command queue is busy") ||
+    msg.includes("transport closed") ||
+    msg.includes("port is not open")
   );
 }
 
@@ -184,7 +228,24 @@ export class CastlesService {
       console.log("[CastlesService] connect: auto-clearing _suspended flag");
       this._suspended = false;
     }
-    await this._mutex.runExclusive(() => this._connectInner(config));
+    // Bound the *acquisition* of the command mutex so a wedged prior operation
+    // (e.g. a hung command that never released the lock) can't starve this
+    // connect forever. Once acquired, _connectInner runs to completion with its
+    // own per-step timeouts. E_TIMEOUT surfaces as a clear, actionable error;
+    // callers (the test flow) then force-recover via suspend()/resume().
+    try {
+      await withTimeout(
+        this._mutex,
+        CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS,
+      ).runExclusive(() => this._connectInner(config));
+    } catch (e) {
+      if (e === E_TIMEOUT) {
+        throw new Error(
+          "Castles command queue is busy — a previous operation appears stuck. Reset the connection and try again.",
+        );
+      }
+      throw e;
+    }
     // Start the heartbeat watchdog for TCP connections so half-open sockets
     // are detected proactively (every 30s) instead of waiting for the next
     // sale to time out. USB doesn't suffer from half-open sockets, so we
@@ -232,7 +293,17 @@ export class CastlesService {
     this.config = config;
     let lastError: Error | null = null;
 
-    for (let attempt = 1; attempt <= CASTLES_CONNECT_MAX_RETRIES; attempt++) {
+    // Cold connect (background auto-connect after a plug/power-cycle) uses the
+    // SAME escalated retry loop as a manual Test — the escalation (attempts 2+
+    // send return2Idle 3× with gaps, "the in-app equivalent of toggling WiFi on
+    // the terminal") is exactly what wakes a freshly-replugged, just-booted
+    // terminal; a single light attempt does not. coldConnect's ONLY difference
+    // is that a boot-window empty buffer is NOT treated as a firmware wedge
+    // (see the CastlesEmptyResponseError handling below) so it retries quietly
+    // instead of popping the power-cycle modal.
+    const maxAttempts = CASTLES_CONNECT_MAX_RETRIES;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       // Escalation: attempts 2+ assume the terminal is in a stuck app-layer
       // state (the empty-buffer / response-timeout symptom). One return2Idle
       // and a fresh socket weren't enough — we send return2Idle multiple
@@ -240,6 +311,12 @@ export class CastlesService {
       // or a half-processed transaction state. This is the in-app equivalent
       // of toggling WiFi on the terminal.
       const isEscalated = attempt >= 2;
+
+      this._emitConnectProgress(
+        attempt === 1
+          ? "Connecting to terminal…"
+          : `Reconnecting (attempt ${attempt} of ${maxAttempts})…`,
+      );
 
       try {
         this._createTransport(config);
@@ -254,6 +331,7 @@ export class CastlesService {
 
         // Clear any stuck state from previous session
         if (!this._skipReturn2Idle) {
+          this._emitConnectProgress("Waking terminal…");
           const idleSends = isEscalated ? 3 : 1;
           const idleTimeoutMs = isEscalated ? 4_000 : 3_000;
           for (let i = 0; i < idleSends; i++) {
@@ -286,6 +364,7 @@ export class CastlesService {
         // so the wedge signature is detected fast — on a healthy terminal
         // getData responds in <500ms, and on a wedged one no amount of
         // waiting helps.
+        this._emitConnectProgress("Verifying terminal…");
         try {
           await this._sendAndReceive<Record<string, unknown>>(
             { txnPosTxnId: "000000", txnType: "getData" },
@@ -305,6 +384,7 @@ export class CastlesService {
         console.log(
           `[CastlesService] Connected + verified: ${config.host}:${config.port} (attempt ${attempt})`,
         );
+        this._emitConnectProgress(null);
         // Defensive: clear any lingering wedge state if we ended up here
         // through a probe-driven recovery rather than the supervisor's own
         // probe loop. Cheap no-op when not wedged.
@@ -313,7 +393,7 @@ export class CastlesService {
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         console.warn(
-          `[CastlesService] Attempt ${attempt}/${CASTLES_CONNECT_MAX_RETRIES} failed:`,
+          `[CastlesService] Attempt ${attempt}/${maxAttempts} failed:`,
           lastError.message,
         );
         // NOTE: react-native-tcp-socket does NOT expose setLinger, so this is
@@ -328,7 +408,16 @@ export class CastlesService {
         // recovery via background probe loop, and throw a typed error so
         // callers (testConnection / processSale / etc.) can render the
         // power-cycle modal instead of a cryptic timeout string.
-        if (err instanceof CastlesEmptyResponseError) {
+        //
+        // EXCEPTION — cold connect: a freshly plugged/power-cycled terminal
+        // also returns 0 bytes while CastlesPay is still booting (~5-10s).
+        // That's indistinguishable from a wedge here, so on the background
+        // auto-connect path we DON'T flip to "wedged" (which would pop the
+        // power-cycle modal and hand off to the slow 15s probe loop). We let
+        // it surface as a plain failure and the coordinator's retry ladder
+        // tries again once the app is up.
+        if (err instanceof CastlesEmptyResponseError && !config.coldConnect) {
+          this._emitConnectProgress(null);
           getCastlesConnectionSupervisor().notifyEmptyBuffer({
             connectionType: config.connectionType ?? "local_socket",
             host: config.host,
@@ -339,7 +428,7 @@ export class CastlesService {
           );
         }
 
-        if (attempt < CASTLES_CONNECT_MAX_RETRIES) {
+        if (attempt < maxAttempts) {
           // Give the terminal at least 3s before reconnecting so CastlesPay
           // has some chance to time out its own session state internally.
           // This is best-effort — the app-layer freeze symptom (empty buffer
@@ -354,8 +443,9 @@ export class CastlesService {
       }
     }
 
+    this._emitConnectProgress(null);
     const connectErr = new Error(
-      `[CastlesService] Failed to connect after ${CASTLES_CONNECT_MAX_RETRIES} attempts: ${lastError?.message}`,
+      `[CastlesService] Failed to connect after ${maxAttempts} attempts: ${lastError?.message}`,
     );
     Sentry.captureException(connectErr, {
       tags: {
@@ -484,6 +574,21 @@ export class CastlesService {
 
   setOnStatusNotification(callback: CastlesStatusCallback | null): void {
     this._onStatusNotification = callback;
+  }
+
+  /**
+   * Publish a human-readable connect sub-step ("Connecting to terminal…",
+   * "Waking terminal…", "Verifying terminal…", "Reconnecting…") to the terminal
+   * connection store so progress UIs (Test Connection button, payment sheet,
+   * USB setup wizard) can show what's happening instead of an opaque spinner.
+   * Pass null to clear when the attempt settles. Never throws into connect.
+   */
+  private _emitConnectProgress(phase: string | null): void {
+    try {
+      useTerminalConnectionStore.getState().setConnectActivity(phase);
+    } catch {
+      /* never let a progress write break the connect path */
+    }
   }
 
   getOnStatusNotification(): CastlesStatusCallback | null {
@@ -666,13 +771,43 @@ export class CastlesService {
     return undefined;
   }
 
+  /**
+   * Acquire the command mutex with a bounded wait, then run `fn` exclusively.
+   *
+   * Transaction entry points (sale/void/refund/tip-adjust/settlement) previously
+   * used a BARE `_mutex.runExclusive`, so if a prior command wedged and held the
+   * lock for the full in-flight socket timeout (CASTLES_SOCKET_TIMEOUT_MS=120s),
+   * every other terminal command queued behind it for up to 2 minutes — the
+   * "whole system / card machine froze" symptom in the S1-0002 USB refund crash.
+   *
+   * Bounding the ACQUIRE (mirrors connect() at CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS)
+   * makes a concurrent command fail fast with a clear, classifiable error instead
+   * of freezing. It does NOT shorten the in-flight command itself (that keeps its
+   * own per-command timeout, so legitimate card-present refunds aren't aborted).
+   * The "command queue is busy" message is matched by isTerminalTransportDead so
+   * the refund loop treats it as a stop signal, and does NOT match isConnectionError
+   * so _withRetry will not auto-reconnect/re-send on it.
+   */
+  private _runTxnExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    return withTimeout(this._mutex, CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS)
+      .runExclusive(fn)
+      .catch((e) => {
+        if (e === E_TIMEOUT) {
+          throw new Error(
+            "Castles command queue is busy — a previous operation appears stuck. Reset the connection and try again.",
+          );
+        }
+        throw e;
+      });
+  }
+
   async processSale(params: {
     amount: number;
     tipAmount?: number;
     referenceId: string;
   }): Promise<CastlesSaleResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -750,7 +885,7 @@ export class CastlesService {
     referenceId: string;
   }): Promise<CastlesTipAdjustResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -830,7 +965,7 @@ export class CastlesService {
     }
 
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -919,7 +1054,7 @@ export class CastlesService {
     journalId?: string;
   }): Promise<CastlesRefundResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -1005,7 +1140,7 @@ export class CastlesService {
     referenceId: string;
   }): Promise<CastlesSettlementResult> {
     // No _withRetry — settlement is not idempotent
-    return this._mutex.runExclusive(async () => {
+    return this._runTxnExclusive(async () => {
       await this._ensureConnected();
 
       try {
@@ -1078,7 +1213,7 @@ export class CastlesService {
     referenceId: string;
   }): Promise<CastlesPreAuthResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -1141,7 +1276,7 @@ export class CastlesService {
     }
 
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -1209,7 +1344,7 @@ export class CastlesService {
     }
 
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -1262,7 +1397,7 @@ export class CastlesService {
 
   async getTerminalData(referenceId: string): Promise<CastlesGetDataResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {

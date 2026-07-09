@@ -4,6 +4,7 @@ import {
     getCashPricedOrderTotal,
 } from "@/lib/paymentStatus";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { OrderProfile } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { formatPaymentStatus } from "@/utils/orderStatusHelpers";
@@ -20,6 +21,7 @@ import {
     Truck,
     User,
     Utensils,
+    WifiOff,
     XCircle,
 } from "lucide-react-native";
 import React, { useCallback, useMemo, useRef, useState } from "react";
@@ -41,6 +43,21 @@ if (
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+// Snappy expand/collapse — shorter than the 300ms easeInEaseOut preset so the
+// panel feels instant. Content fades in/out on create/delete.
+const EXPAND_ANIM = {
+  duration: 160,
+  create: {
+    type: LayoutAnimation.Types.easeInEaseOut,
+    property: LayoutAnimation.Properties.opacity,
+  },
+  update: { type: LayoutAnimation.Types.easeInEaseOut },
+  delete: {
+    type: LayoutAnimation.Types.easeInEaseOut,
+    property: LayoutAnimation.Properties.opacity,
+  },
+} as const;
 
 interface PreviousOrderRowProps {
   order: OrderProfile;
@@ -103,26 +120,31 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   onVoid,
   onContinue,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const lastPressRef = useRef<number>(0);
   const DOUBLE_PRESS_DELAY = 400;
 
   const handlePress = () => {
     const now = Date.now();
-    if (
-      now - lastPressRef.current < DOUBLE_PRESS_DELAY &&
-      lastPressRef.current !== 0
-    ) {
-      onDoublePress(order);
+    const isDoubleTap =
+      lastPressRef.current !== 0 &&
+      now - lastPressRef.current < DOUBLE_PRESS_DELAY;
+
+    if (isDoubleTap) {
+      // Second tap inside the window → open the payment detail sheet.
       lastPressRef.current = 0;
-    } else {
-      lastPressRef.current = now;
-      setTimeout(() => {
-        if (lastPressRef.current !== 0) {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          onPress(order);
-        }
-      }, DOUBLE_PRESS_DELAY);
+      onDoublePress(order);
+      return;
     }
+
+    // First tap → expand/collapse INSTANTLY (no setTimeout deferral, which was
+    // the ~400ms "tap and nothing happens" delay). A following second tap is
+    // still caught by the isDoubleTap check above; the brief expand is hidden
+    // behind the payment sheet that slides over it.
+    lastPressRef.current = now;
+    LayoutAnimation.configureNext(EXPAND_ANIM);
+    onPress(order);
   };
 
   const orderTime = order.opened_at
@@ -210,9 +232,9 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   return (
     <View
       style={{
-        marginBottom: 8,
-        marginHorizontal: 8,
-        borderRadius: 12,
+        marginBottom: s(8),
+        marginHorizontal: s(8),
+        borderRadius: s(12),
         overflow: "hidden",
         borderWidth: 1,
         borderColor: needsAttention ? colors.warning + "30" : colors.border,
@@ -226,11 +248,11 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
           backgroundColor: needsAttention
             ? colors.warning + "20"
             : colors.panel,
-          paddingHorizontal: 14,
-          paddingVertical: 10,
+          paddingHorizontal: s(14),
+          paddingVertical: s(10),
           flexDirection: "row",
           alignItems: "center",
-          gap: 12,
+          gap: s(12),
           ...(needsAttention
             ? {}
             : {
@@ -244,15 +266,15 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
       >
         {/* Left: order number + meta line */}
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
             <Text
-              style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}
+              style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
             >
               {order.display_number ||
                 order.order_number ||
                 `#${order.id.slice(-4)}`}
             </Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>
+            <Text style={{ fontSize: s(11), color: colors.muted }}>
               {orderTime}
             </Text>
             {/* {order.customer_name ? (
@@ -277,21 +299,21 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               size="sm"
             />
             {needsAttention && (
-              <AlertTriangle size={12} color={colors.warning} />
+              <AlertTriangle size={s(12)} color={colors.warning} />
             )}
           </View>
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 6,
-              marginTop: 3,
+              gap: s(6),
+              marginTop: s(3),
             }}
           >
-            <TypeIcon color={typeConfig.color} size={11} />
+            <TypeIcon color={typeConfig.color} size={s(11)} />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 color: typeConfig.color,
                 fontWeight: "600",
               }}
@@ -300,9 +322,9 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             </Text>
             {tableName ? (
               <>
-                <Text style={{ fontSize: 11, color: colors.muted }}>-</Text>
+                <Text style={{ fontSize: s(11), color: colors.muted }}>-</Text>
                 <Text
-                  style={{ fontSize: 11, color: colors.label }}
+                  style={{ fontSize: s(11), color: colors.label }}
                   numberOfLines={1}
                 >
                   Table {tableName}
@@ -311,9 +333,9 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             ) : null}
             {order.server_name ? (
               <>
-                <Text style={{ fontSize: 11, color: colors.muted }}>-</Text>
+                <Text style={{ fontSize: s(11), color: colors.muted }}>-</Text>
                 <Text
-                  style={{ fontSize: 11, color: colors.label }}
+                  style={{ fontSize: s(11), color: colors.label }}
                   numberOfLines={1}
                 >
                   Server: {order.server_name}
@@ -326,14 +348,14 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 5,
-                marginTop: 4,
+                gap: s(5),
+                marginTop: s(4),
               }}
             >
-              <User color={colors.teal} size={13} />
+              <User color={colors.teal} size={s(13)} />
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: "700",
                   color: colors.heading,
                 }}
@@ -343,7 +365,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               </Text>
               {order.customer_phone?.trim() ? (
                 <Text
-                  style={{ fontSize: 12, color: colors.muted, marginLeft: 4 }}
+                  style={{ fontSize: s(12), color: colors.muted, marginLeft: s(4) }}
                   numberOfLines={1}
                 >
                   · {order.customer_phone.trim()}
@@ -354,13 +376,35 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         </View>
 
         {/* Status badges */}
-        <View style={{ alignItems: "flex-end", gap: 4 }}>
+        <View style={{ alignItems: "flex-end", gap: s(4) }}>
+          {order._offlineUnsynced && (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: s(3),
+                paddingHorizontal: s(6),
+                paddingVertical: s(2),
+                borderRadius: 999,
+                backgroundColor: colors.muted + "20",
+                borderWidth: 1,
+                borderColor: colors.muted + "40",
+              }}
+            >
+              <WifiOff size={s(9)} color={colors.muted} />
+              <Text
+                style={{ fontSize: s(10), fontWeight: "600", color: colors.muted }}
+              >
+                Offline
+              </Text>
+            </View>
+          )}
           {!isVoided && (
             <View
               style={{
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                borderRadius: 20,
+                paddingHorizontal: s(8),
+                paddingVertical: s(3),
+                borderRadius: 999,
                 backgroundColor: statusConfig.color + statusConfig.bgOpacity,
                 borderWidth: 1,
                 borderColor: statusConfig.color + "40",
@@ -368,7 +412,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: "600",
                   color: statusConfig.color,
                 }}
@@ -380,9 +424,9 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
           {refundBadge && (
             <View
               style={{
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                borderRadius: 20,
+                paddingHorizontal: s(8),
+                paddingVertical: s(3),
+                borderRadius: 999,
                 backgroundColor: refundBadge.color + "20",
                 borderWidth: 1,
                 borderColor: refundBadge.color + "50",
@@ -390,7 +434,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: "600",
                   color: refundBadge.color,
                 }}
@@ -404,19 +448,19 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 3,
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-                borderRadius: 20,
+                gap: s(3),
+                paddingHorizontal: s(6),
+                paddingVertical: s(2),
+                borderRadius: 999,
                 backgroundColor: colors.danger + "20",
                 borderWidth: 1,
                 borderColor: colors.danger + "40",
               }}
             >
-              <XCircle size={9} color={colors.danger} />
+              <XCircle size={s(9)} color={colors.danger} />
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: "600",
                   color: colors.danger,
                 }}
@@ -430,18 +474,18 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 3,
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-                borderRadius: 20,
+                gap: s(3),
+                paddingHorizontal: s(6),
+                paddingVertical: s(2),
+                borderRadius: 999,
                 backgroundColor: colors.muted + "20",
                 borderWidth: 1,
                 borderColor: colors.muted + "40",
               }}
             >
-              <Lock size={9} color={colors.muted} />
+              <Lock size={s(9)} color={colors.muted} />
               <Text
-                style={{ fontSize: 10, fontWeight: "600", color: colors.muted }}
+                style={{ fontSize: s(10), fontWeight: "600", color: colors.muted }}
               >
                 Settled
               </Text>
@@ -450,14 +494,14 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         </View>
 
         {/* Price */}
-        <View style={{ alignItems: "flex-end", minWidth: 70 }}>
+        <View style={{ alignItems: "flex-end", minWidth: s(70) }}>
           <Text
-            style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}
+            style={{ fontSize: s(14), fontWeight: "700", color: colors.heading }}
           >
             ${displayTotal.toFixed(2)}
           </Text>
           {totalRefunded > 0 && (
-            <Text style={{ fontSize: 11, color: colors.danger }}>
+            <Text style={{ fontSize: s(11), color: colors.danger }}>
               −${totalRefunded.toFixed(2)}
             </Text>
           )}
@@ -468,12 +512,12 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
           <TouchableOpacity
             onPress={openMenu}
             style={{
-              padding: 6,
-              borderRadius: 8,
+              padding: s(6),
+              borderRadius: s(8),
               backgroundColor: colors.muted + "15",
             }}
           >
-            <MoreHorizontal color={colors.heading} size={16} />
+            <MoreHorizontal color={colors.heading} size={s(16)} />
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -510,14 +554,14 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               left: menuPos.left,
               width: 220,
               backgroundColor: colors.panel,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
-              paddingVertical: 4,
+              paddingVertical: s(4),
               shadowColor: "#000",
-              shadowOffset: { width: 0, height: 6 },
+              shadowOffset: { width: 0, height: s(6) },
               shadowOpacity: 0.35,
-              shadowRadius: 16,
+              shadowRadius: s(16),
               elevation: 20,
             }}
           >
@@ -525,7 +569,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               order.check_status !== "Closed" &&
               onCloseCheck && (
                 <MenuRow
-                  icon={<CheckCircle color={colors.success} size={15} />}
+                  icon={<CheckCircle color={colors.success} size={s(15)} />}
                   label="Close Check"
                   iconBg={colors.success + "15"}
                   onPress={() => {
@@ -536,7 +580,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               )}
             {order.check_status === "Closed" && onReopenCheck && (
               <MenuRow
-                icon={<RefreshCw color={colors.info} size={15} />}
+                icon={<RefreshCw color={colors.info} size={s(15)} />}
                 label="Reopen Check"
                 iconBg={colors.info + "15"}
                 onPress={() => {
@@ -547,7 +591,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             )}
             {onRefund && !isFullyRefunded && (
               <MenuRow
-                icon={<RotateCcw color={colors.teal} size={15} />}
+                icon={<RotateCcw color={colors.teal} size={s(15)} />}
                 label="Process Refund"
                 iconBg={colors.teal + "15"}
                 onPress={() => {
@@ -557,7 +601,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               />
             )}
             <MenuRow
-              icon={<FileText color={colors.info} size={15} />}
+              icon={<FileText color={colors.info} size={s(15)} />}
               label="View Notes"
               iconBg={colors.info + "15"}
               onPress={() => {
@@ -566,7 +610,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               }}
             />
             <MenuRow
-              icon={<Printer color={colors.label} size={15} />}
+              icon={<Printer color={colors.label} size={s(15)} />}
               label="Print Receipt"
               iconBg={colors.card}
               onPress={() => {
@@ -580,12 +624,12 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
                   style={{
                     height: 1,
                     backgroundColor: colors.border,
-                    marginVertical: 4,
-                    marginHorizontal: 12,
+                    marginVertical: s(4),
+                    marginHorizontal: s(12),
                   }}
                 />
                 <MenuRow
-                  icon={<XCircle color={colors.danger} size={15} />}
+                  icon={<XCircle color={colors.danger} size={s(15)} />}
                   label="Void Order"
                   iconBg={colors.danger + "15"}
                   labelColor={colors.danger}
@@ -615,25 +659,28 @@ const MenuRow = ({
   iconBg: string;
   labelColor?: string;
   onPress: () => void;
-}) => (
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return (
   <TouchableOpacity
     activeOpacity={0.6}
     onPress={onPress}
     style={{
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      marginHorizontal: 4,
-      borderRadius: 8,
+      gap: s(10),
+      paddingHorizontal: s(12),
+      paddingVertical: s(8),
+      marginHorizontal: s(4),
+      borderRadius: s(8),
     }}
   >
     <View
       style={{
-        width: 28,
-        height: 28,
-        borderRadius: 7,
+        width: s(28),
+        height: s(28),
+        borderRadius: s(7),
         backgroundColor: iconBg,
         alignItems: "center",
         justifyContent: "center",
@@ -643,7 +690,7 @@ const MenuRow = ({
     </View>
     <Text
       style={{
-        fontSize: 13,
+        fontSize: s(13),
         color: labelColor ?? colors.heading,
         fontWeight: "500",
       }}
@@ -651,7 +698,8 @@ const MenuRow = ({
       {label}
     </Text>
   </TouchableOpacity>
-);
+  )
+};
 
 const PreviousOrderRow = React.memo(PreviousOrderRowContent, (prev, next) => {
   return (
@@ -672,6 +720,7 @@ const PreviousOrderRow = React.memo(PreviousOrderRowContent, (prev, next) => {
     prev.order.delivery_address === next.order.delivery_address &&
     prev.order.customer_name === next.order.customer_name &&
     prev.order.server_name === next.order.server_name &&
+    prev.order._offlineUnsynced === next.order._offlineUnsynced &&
     prev.isExpanded === next.isExpanded &&
     prev.onContinue === next.onContinue
   );

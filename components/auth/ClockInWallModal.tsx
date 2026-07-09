@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { Href, useRouter } from "expo-router";
 import { AlertTriangle } from "lucide-react-native";
 import React from "react";
@@ -21,6 +22,8 @@ const ClockInWallModal: React.FC<ClockInWallModalProps> = ({
   onClose,
 }) => {
   const router = useRouter();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   const handleGoToClockIn = () => {
     onClose(); // Close the modal first
@@ -31,7 +34,7 @@ const ClockInWallModal: React.FC<ClockInWallModalProps> = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-lg p-4 rounded-2xl bg-panel border border-gray-700 items-center">
         <View className="w-16 h-16 bg-yellow-900/30 rounded-full items-center justify-center border-4 border-yellow-500/30 mb-3">
-          <AlertTriangle color={colors.warning} size={36} />
+          <AlertTriangle color={colors.warning} size={s(36)} />
         </View>
         <DialogHeader className="items-center">
           <DialogTitle className="text-2xl font-bold text-center text-yellow-400">

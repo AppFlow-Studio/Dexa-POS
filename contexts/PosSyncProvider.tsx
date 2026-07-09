@@ -1,18 +1,18 @@
 import { queryClient } from "@/contexts/TanstackProvider";
-import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
+import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
-import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
-import { usePreviousOrdersBootstrap } from "@/hooks/pos/usePreviousOrdersBootstrap";
+import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
 import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
+import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import { getStorageSizeStats } from "@/lib/storage";
 import { MerchantRole } from "@/lib/types";
-import { FloorPlanService } from "@/services/floorPlanService";
+import { initLandiPrinter } from "@/native/LandiPrinter";
 import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
-import { useOrderReconcile } from "@/hooks/useOrderReconcile";
+import { FloorPlanService } from "@/services/floorPlanService";
 import {
     detectAndStoreCapabilities,
     startHeartbeat,
@@ -23,8 +23,6 @@ import {
     stopTerminalHealthCheck,
 } from "@/services/hardware";
 import { initLocationConfigSync } from "@/services/locationConfigSync";
-import { initLandiPrinter } from "@/native/LandiPrinter";
-import { getDriver } from "@/services/printing/DriverFactory";
 import {
     initializeOfflineSync,
     isServiceInitialized,
@@ -34,7 +32,12 @@ import {
     startStarPrinterDiscoveryService,
     stopStarPrinterDiscoveryService,
 } from "@/services/printing/discovery/StarPrinterDiscoveryService";
+import { getDriver } from "@/services/printing/DriverFactory";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import {
+    startCastlesUsbAutoConnect,
+    stopCastlesUsbAutoConnect,
+} from "@/services/terminals/castlesUsbAutoConnect";
 import {
     startTimeclockSyncProcessor,
     stopTimeclockSyncProcessor,
@@ -49,7 +52,8 @@ import { useInventoryStore } from "@/stores/useInventoryStore";
 import { setKDSSupabaseClient } from "@/stores/useKDSStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
-    setOrderStoreSupabaseClient
+    setOrderStoreSupabaseClient,
+    useOrderStore,
 } from "@/stores/useOrderStore";
 import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
@@ -66,7 +70,7 @@ import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { TaxRate } from "@/types/menu";
 import * as Sentry from "@sentry/react-native";
 import React, { useCallback, useEffect, useRef } from "react";
-import { AppState, AppStateStatus } from "react-native";
+import { AppState, AppStateStatus, InteractionManager } from "react-native";
 
 // Debug server URL - use your machine's local IP (run: ipconfig getifaddr en0)
 // Change this IP to match your machine's IP address
@@ -134,11 +138,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     //   setCoursingSupabaseClient(null);
     // };
   }, [supabase]);
-
-  usePreviousOrdersBootstrap({
-    locationId: selectedStore?.id ?? null,
-    enabled: Boolean(supabase && selectedStore?.id && !isKDS),
-  });
 
   useBusinessDayRollover({
     enabled: Boolean(supabase && selectedStore?.id && !isKDS),
@@ -221,7 +220,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
                 (p) => p.printerType === "builtin_landi" && p.isActive,
               );
             const warmUp = landiPrinter
-              ? getDriver(landiPrinter).initialize(landiPrinter).then(() => true)
+              ? getDriver(landiPrinter)
+                  .initialize(landiPrinter)
+                  .then(() => true)
               : initLandiPrinter();
             warmUp
               .then((ok) =>
@@ -261,6 +262,28 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         .catch(() => {});
     };
   }, [supabase, selectedStation?.payment_terminal?.id]);
+
+  // Zero-touch Castles USB auto-connect: plug in a USB pin pad (or have it
+  // already attached at app/station load) and the shared singleton connects
+  // automatically. No-op unless the station's terminal is a USB Castles, and
+  // skipped in KDS mode (no POS hardware there).
+  useEffect(() => {
+    const terminal = selectedStation?.payment_terminal;
+    const isUsbCastles =
+      terminal?.terminal_type === "castles" &&
+      terminal?.connection_type === "usb";
+    if (!isKDS && isUsbCastles) {
+      startCastlesUsbAutoConnect();
+    }
+    return () => {
+      stopCastlesUsbAutoConnect();
+    };
+  }, [
+    isKDS,
+    selectedStation?.payment_terminal?.id,
+    selectedStation?.payment_terminal?.terminal_type,
+    selectedStation?.payment_terminal?.connection_type,
+  ]);
 
   // Star printer health check + background discovery lifecycle
   useEffect(() => {
@@ -369,10 +392,21 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // Load status if we have a floor plan
         if (defaultPlan?.id) {
           await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id);
-          void useFloorPlanStore.getState().prefetchFloorPlans(
-            (floorPlans || []).map((floorPlan) => floorPlan.id),
-          );
+          // Await prefetch so all floorplans are cached before we strip
+          // orphaned sessions below.
+          await useFloorPlanStore
+            .getState()
+            .prefetchFloorPlans(
+              (floorPlans || []).map((floorPlan) => floorPlan.id),
+            );
         }
+
+        // Strip sessions for tables that no longer exist in ANY floorplan
+        // (e.g. after a floorplan was deleted). Safe to call now because all
+        // floorplans have been prefetched and cached.
+        const { useTableSessionStore } =
+          await import("@/stores/useTableSessionStore");
+        useTableSessionStore.getState()._stripOrphanedSessions();
 
         // Load waitlist and reservations
         await Promise.all([
@@ -413,24 +447,25 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     [supabase],
   );
 
-  // Sync employees and floor plans when store is selected (parallel)
-  // KDS only needs employees (for PIN verification)
+  // Sync employees when store is selected.
+  // KDS only needs employees (for PIN verification).
+  // Floor plans + tax rates sync lives in the effect further down (the one
+  // that clears stale floor data first) — it used to ALSO run here, which
+  // double-fetched both on every store selection (perf F3 dedupe).
+  // Deferred past interactions so boot syncs don't compete with first paint.
   useEffect(() => {
-    if (selectedStore?.id) {
-      syncEmployees(selectedStore.id).then(() => {
+    if (!selectedStore?.id) return;
+    const storeId = selectedStore.id;
+    const task = InteractionManager.runAfterInteractions(() => {
+      syncEmployees(storeId).then(() => {
         // Hydrate active shifts after employees are loaded (needs employee data for mapping)
         if (!isKDS) {
-          useTimeclockStore
-            .getState()
-            .hydrateActiveShifts(supabase, selectedStore.id);
+          useTimeclockStore.getState().hydrateActiveShifts(supabase, storeId);
         }
       });
-      if (!isKDS) {
-        syncFloorPlans(selectedStore.id);
-        syncTaxRates(selectedStore.id);
-      }
-    }
-  }, [selectedStore?.id, isKDS, syncEmployees, syncFloorPlans, syncTaxRates]);
+    });
+    return () => task.cancel();
+  }, [selectedStore?.id, isKDS, syncEmployees, supabase]);
 
   // Run timeclock queue processor at app scope so it is not tied to mounted screens.
   useEffect(() => {
@@ -542,17 +577,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           inventory_item_id: r.inventory_item_id,
           quantity: r.quantity,
         })),
-        modifierRecipes: (data.modifier_group_item_ingredients ?? []).map((r) => ({
-          modifier_group_item_id: r.modifier_group_item_id,
-          inventory_item_id: r.inventory_item_id,
-          quantity: r.quantity,
-        })),
+        modifierRecipes: (data.modifier_group_item_ingredients ?? []).map(
+          (r) => ({
+            modifier_group_item_id: r.modifier_group_item_id,
+            inventory_item_id: r.inventory_item_id,
+            quantity: r.quantity,
+          }),
+        ),
       });
     }
   };
 
   // --- END INVENTORY SYNC ---
-
 
   // Update menu store when sync data changes
   useEffect(() => {
@@ -641,43 +677,48 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Cleanup previous subscriptions if switching locations
-    // if (realtimeLocationRef.current && realtimeLocationRef.current !== locationId) {
-    //   useFloorPlanStore.getState().cleanup();
-    //   // REMOVED: Cleanup for duplicate order subscription (now handled by useOrdersRealtime hook)
-    //   // useOrderStore.getState().cleanupOrderRealtime();
-    // }
+    if (
+      realtimeLocationRef.current &&
+      realtimeLocationRef.current !== locationId
+    ) {
+      useFloorPlanStore.getState().cleanup();
+    }
 
     realtimeLocationRef.current = locationId;
 
-    // Setup realtime subscriptions for tables/sessions
-    // useFloorPlanStore.getState().setupRealtimeSubscriptions(locationId);
-
-    // REMOVED: Duplicate order realtime subscription (now handled by LocationRealtimeProvider with useOrdersRealtime hook)
-    // useOrderStore.getState().setupOrderRealtimeSubscriptions(locationId);
-
-    // console.log('[PosSyncProvider] Realtime subscriptions enabled for location:', locationId);
-
     // Cleanup function
-    // return () => {
-    //   useFloorPlanStore.getState().cleanup();
-    //   // REMOVED: Cleanup for duplicate order subscription
-    //   // useOrderStore.getState().cleanupOrderRealtime();
-    //   realtimeLocationRef.current = null;
-    // };
+    return () => {
+      useFloorPlanStore.getState().cleanup();
+      realtimeLocationRef.current = null;
+    };
   }, [selectedStore?.id]);
 
+  // Single owner of floor plan + tax rate + receipt template sync (perf F3:
+  // the employee-sync effect above no longer duplicates these fetches).
+  // Deferred past interactions; the three calls run concurrently.
   useEffect(() => {
-    if (selectedStore?.id && !isKDS) {
-      // Clear potentially stale floor plan data before fresh sync
-      useFloorPlanStore.setState({
-        tables: [],
-        lastSyncAt: null,
-      });
+    if (!selectedStore?.id || isKDS) return;
+    const storeId = selectedStore.id;
+    const task = InteractionManager.runAfterInteractions(() => {
+      // Clear stale floor plan data ONLY on a genuine station switch. On a
+      // same-station cold boot, locationId (persisted) already equals storeId,
+      // so we keep the rehydrated geometry + bridged sessions and let
+      // syncFloorPlans reconcile in the background. Blanking tables here on
+      // every boot caused a blank board (and forced the re-fetch that paints
+      // from the session-stripped cache) before fresh data arrived.
+      const fp = useFloorPlanStore.getState();
+      if (fp.locationId && fp.locationId !== storeId) {
+        useFloorPlanStore.setState({
+          tables: [],
+          lastSyncAt: null,
+        });
+      }
 
-      syncFloorPlans(selectedStore.id);
-      syncTaxRates(selectedStore.id);
-      useReceiptTemplateStore.getState().fetchTemplates(selectedStore.id);
-    }
+      syncFloorPlans(storeId);
+      syncTaxRates(storeId);
+      useReceiptTemplateStore.getState().fetchTemplates(storeId);
+    });
+    return () => task.cancel();
   }, [selectedStore?.id, isKDS, syncFloorPlans, syncTaxRates]);
 
   // App state listener - reconnect realtime and refresh stale data when app becomes active
@@ -711,12 +752,10 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           // queryKey now includes stationId, so use a prefix-matching cache lookup
           // (exact:false) instead of getQueryState (which is exact-match).
           if (storeSettings.selectedStore?.id) {
-            const cached = queryClient
-              .getQueryCache()
-              .find({
-                queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
-                exact: false,
-              });
+            const cached = queryClient.getQueryCache().find({
+              queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
+              exact: false,
+            });
             const dataAge = Date.now() - (cached?.state.dataUpdatedAt ?? 0);
             if (dataAge > 2 * 60 * 1000) {
               queryClient.invalidateQueries({
@@ -753,6 +792,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } else if (nextState === "background") {
+        // Idle GC: reclaim completed-order memory now, while backgrounded and
+        // nobody is waiting on the JS thread — so the app wakes up lean instead
+        // of carrying a shift's worth of archived orders until the next 2-min
+        // prune tick. Deliberately a GC, NOT a purge+resync: blowing away the
+        // working set on idle would force a network re-fetch on the operator's
+        // first tap (the documented ~1hr-idle cold-start lag), trading a quiet
+        // background cost for foreground latency on a busy floor. Skip on KDS
+        // (it owns its own lifecycle and has no POS order workspace).
+        if (!isKDS) {
+          useOrderStore.getState().clearInactiveOrders();
+        }
+
         // Graceful Castles disconnect: send return2Idle + close the socket so
         // the terminal cleans up its side. Fire-and-forget — the method is
         // safe (never throws, never blocks long) but defensively catch.

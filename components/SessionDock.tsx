@@ -3,6 +3,7 @@ import { useTimeClock } from "@/hooks/useTimeclock";
 import { getDeviceId } from "@/lib/deviceId";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
@@ -85,6 +86,10 @@ const BreakCountdown = ({ startTime }: { startTime: Date }) => {
 
 // Individual chip for each user session
 const SessionChip = ({ sessionId }: { sessionId: string }) => {
+  // Inline pixel sizes below don't flow through the global --ui-scale, so
+  // scale them manually to keep the dock proportional on small devices.
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const session = useTimeclockStore((state) => state.sessions[sessionId]);
   const activeEmployeeId = useTimeclockStore((state) => state.activeEmployeeId);
   const endBreak = useTimeclockStore((state) => state.endBreak);
@@ -291,9 +296,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
             {/* Avatar circle — tapping opens dropdown */}
             <DropdownMenuTrigger
               style={{
-                width: 30,
-                height: 30,
-                borderRadius: 21,
+                width: s(30),
+                height: s(30),
+                borderRadius: s(21),
                 backgroundColor: colors.tealMuted,
                 alignItems: "center",
                 justifyContent: "center",
@@ -302,9 +307,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               <Text
                 style={{
                   color: colors.heading,
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: "bold",
-                  lineHeight: 13,
+                  lineHeight: s(13),
                   includeFontPadding: false,
                   textAlignVertical: "center",
                 }}
@@ -317,9 +322,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                     position: "absolute",
                     top: -2,
                     right: -2,
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
+                    width: s(8),
+                    height: s(8),
+                    borderRadius: s(4),
                     backgroundColor: colors.danger,
                   }}
                 />
@@ -355,9 +360,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               <View className="flex-row items-center gap-3">
                 <View
                   style={{
-                    width: 46,
-                    height: 46,
-                    borderRadius: 23,
+                    width: s(46),
+                    height: s(46),
+                    borderRadius: s(23),
                     backgroundColor: colors.tealMuted,
                     alignItems: "center",
                     justifyContent: "center",
@@ -366,9 +371,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   <Text
                     style={{
                       color: colors.heading,
-                      fontSize: 15,
+                      fontSize: s(15),
                       fontWeight: "bold",
-                      lineHeight: 15,
+                      lineHeight: s(15),
                       includeFontPadding: false,
                       textAlignVertical: "center",
                     }}
@@ -379,7 +384,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 <View className="flex-1">
                   <Text
                     style={{
-                      fontSize: 16,
+                      fontSize: s(16),
                       fontWeight: "bold",
                       color: colors.heading,
                     }}
@@ -388,8 +393,12 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                     {employee.fullName}
                   </Text>
                   <View
-                    className="mt-1 self-start px-2 py-0.5 rounded-full"
                     style={{
+                      marginTop: s(4),
+                      alignSelf: "flex-start",
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(2),
+                      borderRadius: 999,
                       backgroundColor: isOnBreak
                         ? `${colors.warning}20`
                         : `${colors.teal}20`,
@@ -399,17 +408,18 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        gap: 4,
+                        gap: s(3),
                       }}
                     >
                       {isOnBreak ? (
-                        <Pause size={10} color={colors.warning} />
+                        <Pause size={s(9)} color={colors.warning} />
                       ) : (
-                        <Clock size={10} color={colors.teal} />
+                        <Clock size={s(9)} color={colors.teal} />
                       )}
                       <Text
-                        className="text-xs font-semibold"
                         style={{
+                          fontSize: s(9),
+                          fontWeight: "600",
                           color: isOnBreak ? colors.warning : colors.teal,
                         }}
                       >
@@ -434,12 +444,12 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   className="w-8 h-8 rounded-lg items-center justify-center"
                   style={{ backgroundColor: colors.screen }}
                 >
-                  <User size={16} color={colors.label} />
+                  <User size={s(16)} color={colors.label} />
                 </View>
                 <Text
                   style={{
                     color: colors.heading,
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: "500",
                     flex: 1,
                   }}
@@ -456,7 +466,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   className="w-8 h-8 rounded-lg items-center justify-center"
                   style={{ backgroundColor: colors.screen }}
                 >
-                  <Bell size={16} color={colors.label} />
+                  <Bell size={s(16)} color={colors.label} />
                   {unreadCount > 0 && (
                     <View
                       className="absolute -top-1 -right-1 w-4 h-4 rounded-full items-center justify-center"
@@ -465,7 +475,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                       <Text
                         style={{
                           color: colors.onSolid,
-                          fontSize: 9,
+                          fontSize: s(9),
                           fontWeight: "bold",
                         }}
                       >
@@ -477,7 +487,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 <Text
                   style={{
                     color: colors.heading,
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: "500",
                     flex: 1,
                   }}
@@ -486,12 +496,19 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 </Text>
                 {unreadCount > 0 && (
                   <View
-                    className="px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: `${colors.teal}20` }}
+                    style={{
+                      paddingHorizontal: s(8),
+                      paddingVertical: s(2),
+                      borderRadius: 999,
+                      backgroundColor: `${colors.teal}20`,
+                    }}
                   >
                     <Text
-                      className="text-xs font-bold"
-                      style={{ color: colors.teal }}
+                      style={{
+                        fontSize: s(10),
+                        fontWeight: "bold",
+                        color: colors.teal,
+                      }}
                     >
                       {unreadCount}
                     </Text>
@@ -507,12 +524,12 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   className="w-8 h-8 rounded-lg items-center justify-center"
                   style={{ backgroundColor: colors.screen }}
                 >
-                  <ArrowLeftRight size={16} color={colors.label} />
+                  <ArrowLeftRight size={s(16)} color={colors.label} />
                 </View>
                 <Text
                   style={{
                     color: colors.heading,
-                    fontSize: 14,
+                    fontSize: s(14),
                     fontWeight: "500",
                     flex: 1,
                   }}
@@ -545,7 +562,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   }}
                 >
                   <Coffee
-                    size={16}
+                    size={s(16)}
                     color={
                       !isClockedIn || isOnBreak ? colors.muted : colors.warning
                     }
@@ -579,7 +596,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                   className="w-8 h-8 rounded-lg items-center justify-center"
                   style={{ backgroundColor: `${colors.danger}20` }}
                 >
-                  <LogOut size={16} color={colors.danger} />
+                  <LogOut size={s(16)} color={colors.danger} />
                 </View>
                 <Text
                   className="text-sm font-medium flex-1"
@@ -650,9 +667,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
             <Text
               style={{
                 color: colors.onSolid,
-                fontSize: 10,
+                fontSize: s(10),
                 fontWeight: "bold",
-                lineHeight: 10,
+                lineHeight: s(10),
                 includeFontPadding: false,
                 textAlignVertical: "center",
               }}

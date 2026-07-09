@@ -1,43 +1,49 @@
-import { ToastRenderer, useToast } from '@/contexts/ToastContext'
-import ReadOnlyBanner from '@/components/order/ReadOnlyBanner'
-import { isOrderReadOnly } from '@/lib/orderAccessControl'
-import { computeItemRefundAmount } from '@/lib/refundScShare'
-import { useOrderDetailsFetch } from '@/hooks/orders/useOrderDetailsFetch'
-import { useOrderPayments } from '@/hooks/orders/useOrderPayments'
-import { OrderDetailMerchantBreakdown } from '@/components/orders/OrderDetailMerchantBreakdown'
+import SplitReceiptSelectorModal from "@/components/bill/SplitReceiptSelectorModal";
+import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
+import ReadOnlyBanner from "@/components/order/ReadOnlyBanner";
+import { OrderDetailMerchantBreakdown } from "@/components/orders/OrderDetailMerchantBreakdown";
+import RefundApprovalModal from "@/components/previous-orders/RefundApprovalModal";
+import SendReceiptSheet from "@/components/receipts/SendReceiptSheet";
+import { ToastRenderer, useToast } from "@/contexts/ToastContext";
+import type { KitchenTimelineData } from "@/hooks/orders/useOrderDetailsFetch";
+import { useOrderDetailsFetch } from "@/hooks/orders/useOrderDetailsFetch";
+import { useOrderPayments } from "@/hooks/orders/useOrderPayments";
 import {
   useRefundMutation,
-  type PerPaymentRefundDetail
-} from '@/hooks/orders/useRefundMutation'
-import { useRefundFraudGuard, type FraudGuardCheckResult } from '@/hooks/useRefundFraudGuard'
-import RefundApprovalModal from '@/components/previous-orders/RefundApprovalModal'
-import { useTipAdjustMutation } from '@/hooks/orders/useTipAdjustMutation'
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
-import { colors } from '@/lib/theme'
+  type PerPaymentRefundDetail,
+} from "@/hooks/orders/useRefundMutation";
+import { useTipAdjustMutation } from "@/hooks/orders/useTipAdjustMutation";
+import {
+  useRefundFraudGuard,
+  type FraudGuardCheckResult,
+} from "@/hooks/useRefundFraudGuard";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { isOrderReadOnly } from "@/lib/orderAccessControl";
+import { computeItemRefundAmount } from "@/lib/refundScShare";
+import { colors } from "@/lib/theme";
 import type {
   CartItem,
   OrderPaymentItemCoverage,
   OrderProfile,
   OrderProfilePayment,
   OrderRefundItemRecord,
-  ReversalRecord
-} from '@/lib/types'
-import { OrderService } from '@/services/orderService'
-import { PrinterService } from '@/services/printing/PrinterService'
-import SendReceiptSheet from '@/components/receipts/SendReceiptSheet'
-import type { SendReceiptDeliveryMethod } from '@/services/messaging/sendReceiptService'
-import { useEmployeeStore } from '@/stores/useEmployeeStore'
-import { useNoPrinterModalStore } from '@/stores/useNoPrinterModalStore'
-import { useOrderStore } from '@/stores/useOrderStore'
-import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
-import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import DeliveryPlatformBadge from '@/components/order/DeliveryPlatformBadge'
-import { getTerminalMatchInfo } from '@/utils/terminalMatchGuard'
-import { round2 } from '@/utils/money'
-import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { formatDistanceToNow } from 'date-fns'
-import { usePathname, useRouter } from 'expo-router'
+  ReversalRecord,
+} from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
+import type { SendReceiptDeliveryMethod } from "@/services/messaging/sendReceiptService";
+import { OrderService } from "@/services/orderService";
+import { PrinterService } from "@/services/printing/PrinterService";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { round2 } from "@/utils/money";
+import { getTerminalMatchInfo } from "@/utils/terminalMatchGuard";
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { formatDistanceToNow } from "date-fns";
+import { usePathname, useRouter } from "expo-router";
 import {
   ArrowLeft,
   Banknote,
@@ -49,22 +55,22 @@ import {
   CreditCard,
   Delete,
   DollarSign,
+  Lock,
   Package,
   Printer,
   RefreshCcw,
-  Lock,
   RotateCcw,
   Send,
-  X
-} from 'lucide-react-native'
+  X,
+} from "lucide-react-native";
 import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
-  useState
-} from 'react'
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -72,81 +78,81 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
-} from 'react-native'
+  View,
+} from "react-native";
 
 // ============================================================================
 // TYPES
 // ============================================================================
 interface PaymentRowData {
-  method: string
-  timestamp: string
-  orderAmount: number
-  tipAmount: number
-  collected: number
-  isVoided: boolean
-  last4?: string
-  cardBrand?: string
+  method: string;
+  timestamp: string;
+  orderAmount: number;
+  tipAmount: number;
+  collected: number;
+  isVoided: boolean;
+  last4?: string;
+  cardBrand?: string;
   cardInfo?: {
-    brand?: string
-    last4?: string
-    entryMode?: string
-    authCode?: string
-    rrn?: string
-    transactionNumber?: string
-    referenceId?: string
-    invoiceNumber?: string
-  }
-  itemsCovered?: OrderPaymentItemCoverage[]
-  isCashPriced?: boolean
-  cashSavings?: number
-  subtotal_portion?: number
-  tax_portion?: number
-  paymentId?: string
-  dbPaymentId?: string
-  originalPaymentIndex: number
-  referenceId?: string
-  refundedAmount?: number
-  original_tip_amount?: number
-  tip_adjusted_at?: string
-  tip_adjusted_by?: string
-  amountTendered?: number
-  changeGiven?: number
-  isPreAuth?: boolean
-  status?: string
+    brand?: string;
+    last4?: string;
+    entryMode?: string;
+    authCode?: string;
+    rrn?: string;
+    transactionNumber?: string;
+    referenceId?: string;
+    invoiceNumber?: string;
+  };
+  itemsCovered?: OrderPaymentItemCoverage[];
+  isCashPriced?: boolean;
+  cashSavings?: number;
+  subtotal_portion?: number;
+  tax_portion?: number;
+  paymentId?: string;
+  dbPaymentId?: string;
+  originalPaymentIndex: number;
+  referenceId?: string;
+  refundedAmount?: number;
+  original_tip_amount?: number;
+  tip_adjusted_at?: string;
+  tip_adjusted_by?: string;
+  amountTendered?: number;
+  changeGiven?: number;
+  isPreAuth?: boolean;
+  status?: string;
   // Platform-fee tracking (manager-only breakdown — never customer-facing).
-  dual_pricing_fee?: number
-  tip_fee?: number
-  refunded_dual_pricing_fee?: number
-  refunded_tip_fee?: number
-  original_tip_fee?: number | null
-  dual_pricing_percentage_snapshot?: number
-  tip_surcharge_percentage_snapshot?: number
+  dual_pricing_fee?: number;
+  tip_fee?: number;
+  refunded_dual_pricing_fee?: number;
+  refunded_tip_fee?: number;
+  original_tip_fee?: number | null;
+  dual_pricing_percentage_snapshot?: number;
+  tip_surcharge_percentage_snapshot?: number;
   // Wave R-SC: per-payment SC share baked into `collected`/`orderAmount` by
   // process_payment_v14. Used by selectedItemsTotal to include the prorated
   // SC slice in the refund preview so the displayed amount matches what the
   // refundService actually returns to the customer.
-  serviceCharge?: number
+  serviceCharge?: number;
 }
 
-type RightPaneView = 'summary' | 'refund' | 'tipAdjust'
+type RightPaneView = "summary" | "refund" | "tipAdjust";
 
 interface TipAdjustPaymentRow {
-  paymentIndex: number
-  paymentId?: string
-  dbPaymentId?: string
-  method: string
-  orderAmount: number
-  currentTip: number
-  referenceId?: string
-  rrn?: string
-  last4?: string
-  cardBrand?: string
-  entryMode?: string
-  timestamp?: string
-  isCard: boolean
+  paymentIndex: number;
+  paymentId?: string;
+  dbPaymentId?: string;
+  method: string;
+  orderAmount: number;
+  currentTip: number;
+  referenceId?: string;
+  rrn?: string;
+  last4?: string;
+  cardBrand?: string;
+  entryMode?: string;
+  timestamp?: string;
+  isCard: boolean;
 }
-type RefundType = 'full' | 'items' | 'payments'
+type RefundType = "full" | "items" | "payments";
 
 // ============================================================================
 // REUSABLE COMPONENTS
@@ -154,37 +160,59 @@ type RefundType = 'full' | 'items' | 'payments'
 
 // Action Button Component
 interface ActionButtonProps {
-  icon: React.ReactNode
-  label: string
-  onPress: () => void
-  variant?: 'default' | 'danger' | 'primary'
-  disabled?: boolean
-  flex?: boolean
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+  variant?: "default" | "danger" | "primary";
+  disabled?: boolean;
+  flex?: boolean;
 }
 
 const ActionButton: React.FC<ActionButtonProps> = ({
   icon,
   label,
   onPress,
-  variant = 'default',
+  variant = "default",
   disabled = false,
-  flex = true
+  flex = true,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const getColors = () => {
     if (disabled) {
-      return { bg: 'transparent', border: colors.border, text: colors.muted, icon: colors.muted }
+      return {
+        bg: "transparent",
+        border: colors.border,
+        text: colors.muted,
+        icon: colors.muted,
+      };
     }
     switch (variant) {
-      case 'danger':
-        return { bg: colors.danger + '15', border: colors.danger + '30', text: colors.danger, icon: colors.danger }
-      case 'primary':
-        return { bg: colors.teal + '20', border: colors.teal + '50', text: colors.teal, icon: colors.teal }
+      case "danger":
+        return {
+          bg: colors.danger + "15",
+          border: colors.danger + "30",
+          text: colors.danger,
+          icon: colors.danger,
+        };
+      case "primary":
+        return {
+          bg: colors.teal + "20",
+          border: colors.teal + "50",
+          text: colors.teal,
+          icon: colors.teal,
+        };
       default:
-        return { bg: 'transparent', border: colors.border, text: colors.label, icon: colors.label }
+        return {
+          bg: "transparent",
+          border: colors.border,
+          text: colors.label,
+          icon: colors.label,
+        };
     }
-  }
+  };
 
-  const { bg, border, text, icon: iconColor } = getColors()
+  const { bg, border, text, icon: iconColor } = getColors();
 
   return (
     <TouchableOpacity
@@ -192,35 +220,46 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       disabled={disabled}
       style={{
         flex: flex ? 1 : undefined,
-        minWidth: 80,
-        paddingVertical: 8,
-        paddingHorizontal: 10,
-        borderRadius: 8,
+        minWidth: s(80),
+        paddingVertical: s(8),
+        paddingHorizontal: s(10),
+        borderRadius: s(8),
         borderWidth: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 5,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: s(5),
         backgroundColor: bg,
         borderColor: border,
         opacity: disabled ? 0.6 : 1,
       }}
     >
-      {React.cloneElement(icon as React.ReactElement, { color: iconColor, size: 16 })}
-      <Text style={{ fontSize: 12, fontWeight: '600', color: text, textAlign: 'center' }} numberOfLines={1}>
+      {React.cloneElement(icon as React.ReactElement<any>, {
+        color: iconColor,
+        size: s(16),
+      })}
+      <Text
+        style={{
+          fontSize: s(12),
+          fontWeight: "600",
+          color: text,
+          textAlign: "center",
+        }}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </TouchableOpacity>
-  )
-}
+  );
+};
 
 // Summary Card Component
 interface SummaryCardProps {
-  amount: number
-  cashAmount?: number
-  label: string
-  icon: React.ReactNode
-  isNegative?: boolean
-  accentColor?: string
+  amount: number;
+  cashAmount?: number;
+  label: string;
+  icon: React.ReactNode;
+  isNegative?: boolean;
+  accentColor?: string;
 }
 
 const SummaryCard: React.FC<SummaryCardProps> = ({
@@ -229,105 +268,176 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   label,
   icon,
   isNegative = false,
-}) => (
-  <View
-    style={{
-      flex: 1,
-      backgroundColor: colors.teal + '10',
-      borderRadius: 12,
-      padding: 14,
-      borderWidth: 1,
-      borderColor: colors.teal + '30',
-    }}
-  >
-    <View style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.teal + '15', marginBottom: 10 }}>
-      {React.cloneElement(icon as React.ReactElement, { color: colors.teal, size: 16 })}
-    </View>
-    <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading, marginBottom: 4 }} numberOfLines={1}>
-      {isNegative && amount > 0 ? '−' : ''}${amount?.toFixed(2)}
-    </Text>
-    {cashAmount !== undefined && cashAmount > 0 && (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-        <Banknote color={colors.teal} size={14} />
-        <Text style={{ fontSize: 11, color: colors.teal, marginLeft: 4, fontWeight: '600' }}>${cashAmount?.toFixed(2)} cash</Text>
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.teal + "10",
+        borderRadius: s(12),
+        padding: s(14),
+        borderWidth: 1,
+        borderColor: colors.teal + "30",
+      }}
+    >
+      <View
+        style={{
+          width: s(32),
+          height: s(32),
+          borderRadius: s(8),
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.teal + "15",
+          marginBottom: s(10),
+        }}
+      >
+        {React.cloneElement(icon as React.ReactElement<any>, {
+          color: colors.teal,
+          size: s(16),
+        })}
       </View>
-    )}
-    <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '500' }}>{label}</Text>
-  </View>
-)
+      <Text
+        style={{
+          fontSize: s(18),
+          fontWeight: "700",
+          color: colors.heading,
+          marginBottom: s(4),
+        }}
+        numberOfLines={1}
+      >
+        {isNegative && amount > 0 ? "−" : ""}${amount?.toFixed(2)}
+      </Text>
+      {cashAmount !== undefined && cashAmount > 0 && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: s(6),
+          }}
+        >
+          <Banknote color={colors.teal} size={s(14)} />
+          <Text
+            style={{
+              fontSize: s(11),
+              color: colors.teal,
+              marginLeft: s(4),
+              fontWeight: "600",
+            }}
+          >
+            ${cashAmount?.toFixed(2)} cash
+          </Text>
+        </View>
+      )}
+      <Text style={{ fontSize: s(11), color: colors.muted, fontWeight: "500" }}>
+        {label}
+      </Text>
+    </View>
+  );
+};
 
-const normalizeCardBrand = (brand?: string) => brand?.trim().toLowerCase() || ''
+const normalizeCardBrand = (brand?: string) =>
+  brand?.trim().toLowerCase() || "";
 
 const formatCardBrand = (brand?: string) => {
   switch (normalizeCardBrand(brand)) {
-    case 'visa':
-      return 'Visa'
-    case 'mastercard':
-      return 'Mastercard'
-    case 'amex':
-    case 'american express':
-      return 'Amex'
-    case 'discover':
-      return 'Discover'
-    case 'diners':
-    case 'diners club':
-      return 'Diners'
-    case 'jcb':
-      return 'JCB'
+    case "visa":
+      return "Visa";
+    case "mastercard":
+      return "Mastercard";
+    case "amex":
+    case "american express":
+      return "Amex";
+    case "discover":
+      return "Discover";
+    case "diners":
+    case "diners club":
+      return "Diners";
+    case "jcb":
+      return "JCB";
     default:
-      return brand ? brand : ''
+      return brand ? brand : "";
   }
-}
+};
 
 const getCardBrandBadgeStyles = (brand?: string) => {
   // All card brands use teal for consistency with design theme
   return {
-    backgroundColor: colors.teal + '15',
-    borderColor: colors.teal + '30',
-    textColor: colors.teal
-  }
-}
+    backgroundColor: colors.teal + "15",
+    borderColor: colors.teal + "30",
+    textColor: colors.teal,
+  };
+};
 
 const CardBrandBadge: React.FC<{ brand?: string }> = ({ brand }) => {
-  const label = formatCardBrand(brand)
-  if (!label) return null
+  const label = formatCardBrand(brand);
+  if (!label) return null;
 
-  const styles = getCardBrandBadgeStyles(brand)
+  const styles = getCardBrandBadgeStyles(brand);
 
   return (
-    <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, backgroundColor: styles.backgroundColor, borderColor: styles.borderColor }}>
-      <Text style={{ fontSize: 10, fontWeight: '600', textTransform: 'uppercase', color: styles.textColor }}>
+    <View
+      style={{
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 6,
+        borderWidth: 1,
+        backgroundColor: styles.backgroundColor,
+        borderColor: styles.borderColor,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 10,
+          fontWeight: "600",
+          textTransform: "uppercase",
+          color: styles.textColor,
+        }}
+      >
         {label}
       </Text>
     </View>
-  )
-}
+  );
+};
 
 const CardInfoItem: React.FC<{ label: string; value?: string }> = ({
   label,
-  value
+  value,
 }) => {
-  if (!value) return null
+  if (!value) return null;
   return (
-    <View style={{ width: '50%', paddingRight: 8, marginBottom: 8 }}>
-      <Text style={{ fontSize: 10, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 }}>{label}</Text>
-      <Text style={{ fontSize: 12, color: colors.heading }} numberOfLines={1}>{value}</Text>
+    <View style={{ width: "50%", paddingRight: 8, marginBottom: 8 }}>
+      <Text
+        style={{
+          fontSize: 10,
+          color: colors.muted,
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+          marginBottom: 2,
+        }}
+      >
+        {label}
+      </Text>
+      <Text style={{ fontSize: 12, color: colors.heading }} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
-  )
-}
+  );
+};
 
 // ============================================================================
 // LEFT PANE - ORDER RECEIPT VIEW
 // ============================================================================
 interface LeftPaneProps {
-  order: any
-  subtotal: number
-  discount: number
-  tax: number
-  serviceCharge: number
-  serviceChargeName: string
-  serviceChargeRate: number | null
-  total: number
+  order: any;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  serviceCharge: number;
+  serviceChargeName: string;
+  serviceChargeRate: number | null;
+  total: number;
 }
 
 const LeftPane: React.FC<LeftPaneProps> = ({
@@ -338,99 +448,103 @@ const LeftPane: React.FC<LeftPaneProps> = ({
   serviceCharge,
   serviceChargeName,
   serviceChargeRate,
-  total
+  total,
 }) => {
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
   // Determine if order was cash-paid for price display
   const wasCashPaid = useMemo(() => {
-    const nonVoided = (order?.payments || []).filter((p: any) => !p.isVoided)
+    const nonVoided = (order?.payments || []).filter((p: any) => !p.isVoided);
     return (
       nonVoided.length > 0 &&
-      nonVoided.every((p: any) => p.isCashPriced || p.method === 'Cash')
-    )
-  }, [order?.payments])
+      nonVoided.every((p: any) => p.isCashPriced || p.method === "Cash")
+    );
+  }, [order?.payments]);
 
   // Build timeline entries for an item
   const getItemTimeline = useCallback(
     (item: CartItem) => {
       const entries: {
-        type: 'ordered' | 'paid' | 'refunded' | 'voided'
-        label: string
-        timestamp?: string
-      }[] = []
+        type: "ordered" | "paid" | "refunded" | "voided";
+        label: string;
+        timestamp?: string;
+      }[] = [];
 
       // Payment entries - match via itemsCovered
       if (order?.payments) {
-        ;(order.payments as OrderProfilePayment[]).forEach(
+        (order.payments as OrderProfilePayment[]).forEach(
           (payment: OrderProfilePayment) => {
             const covered = payment.itemsCovered?.find(
               (c: OrderPaymentItemCoverage) =>
-                c.itemId === item.db_order_item_id
-            )
+                c.itemId === item.db_order_item_id,
+            );
             if (covered && !payment.isVoided) {
               const method =
-                payment.method?.toLowerCase() === 'card' ? 'Card' : 'Cash'
+                payment.method?.toLowerCase() === "card" ? "Card" : "Cash";
               const last4 =
                 payment.last4 ||
-                payment.transactionDetails?.dejavooTransaction?.cardLast4
+                payment.transactionDetails?.dejavooTransaction?.cardLast4;
               const desc =
-                method === 'Card' && last4
-                  ? `Paid — ${payment.cardBrand || 'Card'} ••••${last4}`
-                  : `Paid — ${method}`
+                method === "Card" && last4
+                  ? `Paid — ${payment.cardBrand || "Card"} ••••${last4}`
+                  : `Paid — ${method}`;
               entries.push({
-                type: 'paid',
+                type: "paid",
                 label: desc,
-                timestamp: payment.timestamp
-              })
+                timestamp: payment.timestamp,
+              });
             }
-          }
-        )
+          },
+        );
       }
 
       // Refund entries
       if (order?.order_refund_items) {
-        ;(order.order_refund_items as OrderRefundItemRecord[]).forEach(
+        (order.order_refund_items as OrderRefundItemRecord[]).forEach(
           (refundItem: OrderRefundItemRecord) => {
             if (refundItem.order_item_id === item.db_order_item_id) {
               // Find the linked reversal for reason
               const reversal = (
                 (order.reversals as ReversalRecord[]) || []
-              ).find((r: ReversalRecord) => r.id === refundItem.reversal_id)
+              ).find((r: ReversalRecord) => r.id === refundItem.reversal_id);
               const reason =
                 refundItem.refund_reason_detail ||
                 reversal?.reason_description ||
-                refundItem.refund_reason
-              const desc = reason ? `Refunded — ${reason}` : 'Refunded'
+                refundItem.refund_reason;
+              const desc = reason ? `Refunded — ${reason}` : "Refunded";
               entries.push({
-                type: 'refunded',
+                type: "refunded",
                 label: desc,
-                timestamp: refundItem.created_at
-              })
+                timestamp: refundItem.created_at,
+              });
             }
-          }
-        )
+          },
+        );
       }
 
       // Void entry
       if (item.is_voided) {
         const desc = item.void_reason
           ? `Voided — ${item.void_reason}`
-          : 'Voided'
-        entries.push({ type: 'voided', label: desc })
+          : "Voided";
+        entries.push({ type: "voided", label: desc });
       }
 
       // Sort chronologically so events appear in the order they occurred
       entries.sort((a, b) => {
-        if (!a.timestamp) return 1
-        if (!b.timestamp) return -1
-        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      })
+        if (!a.timestamp) return 1;
+        if (!b.timestamp) return -1;
+        return (
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+      });
 
-      return entries
+      return entries;
     },
-    [order]
-  )
+    [order],
+  );
 
   // Get modifiers display for an item
   const getModifiersDisplay = (item: CartItem) => {
@@ -438,106 +552,141 @@ const LeftPane: React.FC<LeftPaneProps> = ({
       !item.customizations.modifiers ||
       item.customizations.modifiers.length === 0
     ) {
-      return null
+      return null;
     }
 
     return item.customizations.modifiers.map((mod, idx) => {
-      const optionNames = mod.options?.map(opt => opt.name).join(', ') || ''
+      const optionNames = mod.options?.map((opt) => opt.name).join(", ") || "";
       const priceAdjust = mod.options?.reduce(
         (sum, opt) => sum + (opt.price || 0),
-        0
-      )
+        0,
+      );
 
       return (
-        <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginLeft: 12, marginTop: 2 }}>
+        <View
+          key={idx}
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            marginLeft: 12,
+            marginTop: 2,
+          }}
+        >
           <Text style={{ fontSize: 11, color: colors.muted }}>• </Text>
           <Text style={{ fontSize: 11, color: colors.label, flex: 1 }}>
-            {mod.categoryName ? `${mod.categoryName}: ` : ''}
+            {mod.categoryName ? `${mod.categoryName}: ` : ""}
             {optionNames}
-            {priceAdjust && priceAdjust > 0
-              ? <Text style={{ color: colors.success, fontSize: 11 }}> +${priceAdjust?.toFixed(2)}</Text>
-              : <Text style={{ color: colors.muted, fontSize: 11 }}> +${priceAdjust?.toFixed(2)}</Text>
-            }
+            {priceAdjust && priceAdjust > 0 ? (
+              <Text style={{ color: colors.success, fontSize: 11 }}>
+                {" "}
+                +${priceAdjust?.toFixed(2)}
+              </Text>
+            ) : (
+              <Text style={{ color: colors.muted, fontSize: 11 }}>
+                {" "}
+                +${priceAdjust?.toFixed(2)}
+              </Text>
+            )}
           </Text>
         </View>
-      )
-    })
-  }
+      );
+    });
+  };
 
   return (
-    <View style={{ flex: 4, backgroundColor: colors.panel, borderRightWidth: 1, borderRightColor: colors.border }}>
+    <View
+      style={{
+        flex: 4,
+        backgroundColor: colors.panel,
+        borderRightWidth: 1,
+        borderRightColor: colors.border,
+      }}
+    >
       {/* Header */}
-      <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>Order Receipt</Text>
-        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+      <View
+        style={{
+          paddingHorizontal: s(14),
+          paddingVertical: s(12),
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
+        <Text
+          style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}
+        >
+          Order Receipt
+        </Text>
+        <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}>
           {order?.items?.length || 0} items
         </Text>
       </View>
 
       {/* Items List */}
       <ScrollView
-        className='flex-1'
+        className="flex-1"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 16 }}
       >
-        <View className='px-4 py-2'>
+        <View className="px-4 py-2">
           {order?.items?.map((item: CartItem, index: number) => {
-            const isVoided = item.is_voided
+            const isVoided = item.is_voided;
 
             // Count currently-covered quantity from active payments
-            let coveredQty = 0
+            let coveredQty = 0;
             if (order?.payments) {
-              ;(order.payments as OrderProfilePayment[]).forEach(
+              (order.payments as OrderProfilePayment[]).forEach(
                 (payment: OrderProfilePayment) => {
-                  if (payment.isVoided) return
+                  if (payment.isVoided) return;
                   const covered = payment.itemsCovered?.find(
                     (c: OrderPaymentItemCoverage) =>
-                      c.itemId === item.db_order_item_id
-                  )
-                  if (covered) coveredQty += covered.quantity
-                }
-              )
+                      c.itemId === item.db_order_item_id,
+                  );
+                  if (covered) coveredQty += covered.quantity;
+                },
+              );
             }
             // Subtract refunded quantity to get net covered.
             // Only count refunds from non-void reversals linked to non-voided payments.
             // Void reversals cancel the payment — they're not item-level refunds.
             const nonVoidReversalIds = new Set(
               ((order.reversals as ReversalRecord[]) || [])
-                .filter(r => r.status === 'completed' && r.reversal_type !== 'void')
-                .map(r => r.id)
-            )
-            let refundedQty = 0
+                .filter(
+                  (r) => r.status === "completed" && r.reversal_type !== "void",
+                )
+                .map((r) => r.id),
+            );
+            let refundedQty = 0;
             if (order?.order_refund_items) {
-              ;(order.order_refund_items as OrderRefundItemRecord[]).forEach(
+              (order.order_refund_items as OrderRefundItemRecord[]).forEach(
                 (ri: OrderRefundItemRecord) => {
                   if (
                     ri.order_item_id === item.db_order_item_id &&
                     nonVoidReversalIds.has(ri.reversal_id)
                   )
-                    refundedQty += ri.quantity_refunded
-                }
-              )
+                    refundedQty += ri.quantity_refunded;
+                },
+              );
             }
-            const netCoveredQty = coveredQty - refundedQty
+            const netCoveredQty = coveredQty - refundedQty;
 
-            const hasRefundHistory = refundedQty > 0
-            const isPaid = netCoveredQty >= item.quantity
+            const hasRefundHistory = refundedQty > 0;
+            const isPaid = netCoveredQty >= item.quantity;
             const isPartialPaid =
-              netCoveredQty > 0 && netCoveredQty < item.quantity
-            const isFullyRefunded = hasRefundHistory && netCoveredQty <= 0
+              netCoveredQty > 0 && netCoveredQty < item.quantity;
+            const isFullyRefunded = hasRefundHistory && netCoveredQty <= 0;
             const isPartiallyRefunded =
               hasRefundHistory &&
               netCoveredQty > 0 &&
-              netCoveredQty < item.quantity
+              netCoveredQty < item.quantity;
 
             // Item left border - always teal per design theme
-            const borderColor = colors.teal
+            const borderColor = colors.teal;
 
             const isUnpaid =
-              !isVoided && !isPaid && !isPartialPaid && !hasRefundHistory
-            const itemKey = item.id || String(index)
-            const isExpanded = expandedItemId === itemKey
-            const timeline = isExpanded ? getItemTimeline(item) : []
+              !isVoided && !isPaid && !isPartialPaid && !hasRefundHistory;
+            const itemKey = item.id || String(index);
+            const isExpanded = expandedItemId === itemKey;
+            const timeline = isExpanded ? getItemTimeline(item) : [];
 
             return (
               <TouchableOpacity
@@ -551,46 +700,152 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                     borderLeftColor: borderColor,
                     paddingVertical: 10,
                     paddingLeft: 10,
-                    borderBottomWidth: index < (order?.items?.length || 0) - 1 ? 1 : 0,
+                    borderBottomWidth:
+                      index < (order?.items?.length || 0) - 1 ? 1 : 0,
                     borderBottomColor: colors.border,
                     opacity: isVoided ? 0.6 : 1,
                   }}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                    }}
+                  >
                     {/* Item Info */}
                     <View style={{ flex: 1, paddingRight: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 2 }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          gap: 4,
+                          marginBottom: 2,
+                        }}
+                      >
                         {isVoided && (
-                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>VOID</Text>
+                          <View
+                            style={{
+                              backgroundColor: colors.teal + "20",
+                              borderWidth: 1,
+                              borderColor: colors.teal + "50",
+                              paddingHorizontal: s(6),
+                              paddingVertical: s(2),
+                              borderRadius: 20,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                fontWeight: "600",
+                                color: colors.teal,
+                              }}
+                            >
+                              VOID
+                            </Text>
                           </View>
                         )}
                         {isFullyRefunded && !isVoided && (
-                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>REFUNDED</Text>
+                          <View
+                            style={{
+                              backgroundColor: colors.teal + "20",
+                              borderWidth: 1,
+                              borderColor: colors.teal + "50",
+                              paddingHorizontal: s(6),
+                              paddingVertical: s(2),
+                              borderRadius: 20,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                fontWeight: "600",
+                                color: colors.teal,
+                              }}
+                            >
+                              REFUNDED
+                            </Text>
                           </View>
                         )}
                         {isPartiallyRefunded && !isVoided && (
-                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>{item.refundedQuantity} REFUND</Text>
+                          <View
+                            style={{
+                              backgroundColor: colors.teal + "20",
+                              borderWidth: 1,
+                              borderColor: colors.teal + "50",
+                              paddingHorizontal: s(6),
+                              paddingVertical: s(2),
+                              borderRadius: 20,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                fontWeight: "600",
+                                color: colors.teal,
+                              }}
+                            >
+                              {item.refundedQuantity} REFUND
+                            </Text>
                           </View>
                         )}
                         {isPaid && !isVoided && (
-                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>PAID</Text>
+                          <View
+                            style={{
+                              backgroundColor: colors.teal + "20",
+                              borderWidth: 1,
+                              borderColor: colors.teal + "50",
+                              paddingHorizontal: s(6),
+                              paddingVertical: s(2),
+                              borderRadius: 20,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                fontWeight: "600",
+                                color: colors.teal,
+                              }}
+                            >
+                              PAID
+                            </Text>
                           </View>
                         )}
                         {isPartialPaid && !isVoided && !hasRefundHistory && (
-                          <View style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}>{netCoveredQty}/{item.quantity}</Text>
+                          <View
+                            style={{
+                              backgroundColor: colors.teal + "20",
+                              borderWidth: 1,
+                              borderColor: colors.teal + "50",
+                              paddingHorizontal: s(6),
+                              paddingVertical: s(2),
+                              borderRadius: 20,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                fontWeight: "600",
+                                color: colors.teal,
+                              }}
+                            >
+                              {netCoveredQty}/{item.quantity}
+                            </Text>
                           </View>
                         )}
                         <Text
                           style={{
-                            fontSize: 13,
-                            fontWeight: isUnpaid ? '700' : '500',
-                            color: (isVoided || isFullyRefunded) ? colors.muted : colors.heading,
-                            textDecorationLine: (isVoided || isFullyRefunded) ? 'line-through' : 'none',
+                            fontSize: s(13),
+                            fontWeight: isUnpaid ? "700" : "500",
+                            color:
+                              isVoided || isFullyRefunded
+                                ? colors.muted
+                                : colors.heading,
+                            textDecorationLine:
+                              isVoided || isFullyRefunded
+                                ? "line-through"
+                                : "none",
                           }}
                           numberOfLines={2}
                         >
@@ -601,158 +856,317 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                       {getModifiersDisplay(item)}
                       {/* Notes */}
                       {item.customizations.notes && (
-                        <Text style={{ fontSize: 11, color: colors.muted, fontStyle: 'italic', marginTop: 3, marginLeft: 12 }}>
+                        <Text
+                          style={{
+                            fontSize: s(11),
+                            color: colors.muted,
+                            fontStyle: "italic",
+                            marginTop: s(3),
+                            marginLeft: s(12),
+                          }}
+                        >
                           Note: {item.customizations.notes}
                         </Text>
                       )}
                     </View>
 
                     {/* Quantity & Price + Status Icon */}
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
-                      <View style={{ alignItems: 'flex-end', marginRight: 4 }}>
-                        <Text style={{ fontSize: 11, color: isVoided ? colors.muted : colors.label }}>{item.quantity}x</Text>
+                    <View
+                      style={{ flexDirection: "row", alignItems: "flex-end" }}
+                    >
+                      <View
+                        style={{ alignItems: "flex-end", marginRight: s(4) }}
+                      >
                         <Text
                           style={{
-                            fontSize: 13,
-                            fontWeight: '600',
-                            color: isVoided ? colors.muted : isFullyRefunded ? colors.teal : colors.heading,
-                            textDecorationLine: (isVoided || isFullyRefunded) ? 'line-through' : 'none',
+                            fontSize: s(11),
+                            color: isVoided ? colors.muted : colors.label,
                           }}
                         >
-                          {isFullyRefunded && !isVoided ? '-' : ''}$
-                          {((wasCashPaid
-                            ? (item.cashPrice ?? item.baseCashPrice ?? item.price ?? 0)
-                            : (item.price || 0)) * item.quantity)?.toFixed(2)}
+                          {item.quantity}x
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: s(13),
+                            fontWeight: "600",
+                            color: isVoided
+                              ? colors.muted
+                              : isFullyRefunded
+                                ? colors.teal
+                                : colors.heading,
+                            textDecorationLine:
+                              isVoided || isFullyRefunded
+                                ? "line-through"
+                                : "none",
+                          }}
+                        >
+                          {isFullyRefunded && !isVoided ? "-" : ""}$
+                          {(
+                            (wasCashPaid
+                              ? (item.cashPrice ??
+                                item.baseCashPrice ??
+                                item.price ??
+                                0)
+                              : item.price || 0) * item.quantity
+                          )?.toFixed(2)}
                         </Text>
                       </View>
                       {/* Status icon */}
                       {isPaid && !isVoided && (
-                        <Check size={14} color={colors.teal} />
+                        <Check size={s(14)} color={colors.teal} />
                       )}
                       {isFullyRefunded && !isVoided && (
-                        <RotateCcw size={14} color={colors.teal} />
+                        <RotateCcw size={s(14)} color={colors.teal} />
                       )}
                       {isPartiallyRefunded && !isVoided && (
-                        <RotateCcw size={12} color={colors.teal} />
+                        <RotateCcw size={s(12)} color={colors.teal} />
                       )}
                       {/* Expand/collapse chevron */}
                       {isExpanded ? (
-                        <ChevronUp size={14} color={colors.label} style={{ marginLeft: 2 }} />
+                        <ChevronUp
+                          size={s(14)}
+                          color={colors.label}
+                          style={{ marginLeft: s(2) }}
+                        />
                       ) : (
-                        <ChevronDown size={14} color={colors.label} style={{ marginLeft: 2 }} />
+                        <ChevronDown
+                          size={s(14)}
+                          color={colors.label}
+                          style={{ marginLeft: s(2) }}
+                        />
                       )}
                     </View>
                   </View>
 
                   {/* Collapsible Timeline */}
                   {isExpanded && timeline.length > 0 && (
-                    <View style={{ marginTop: 8, marginLeft: 8, paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: colors.border }}>
+                    <View
+                      style={{
+                        marginTop: s(8),
+                        marginLeft: s(8),
+                        paddingLeft: s(12),
+                        borderLeftWidth: 1,
+                        borderLeftColor: colors.border,
+                      }}
+                    >
                       {timeline.map((entry, tIdx) => {
-                        const dotColor = colors.teal
+                        const dotColor = colors.teal;
                         return (
-                          <View key={tIdx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 }}>
-                            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dotColor, marginTop: 3, marginLeft: -16 }} />
-                            <View style={{ marginLeft: 8, flex: 1 }}>
-                              <Text style={{ fontSize: 12, color: colors.label }}>{entry.label}</Text>
+                          <View
+                            key={tIdx}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "flex-start",
+                              marginBottom: s(6),
+                            }}
+                          >
+                            <View
+                              style={{
+                                width: s(7),
+                                height: s(7),
+                                borderRadius: 4,
+                                backgroundColor: dotColor,
+                                marginTop: s(3),
+                                marginLeft: -s(16),
+                              }}
+                            />
+                            <View style={{ marginLeft: s(8), flex: 1 }}>
+                              <Text
+                                style={{ fontSize: s(12), color: colors.label }}
+                              >
+                                {entry.label}
+                              </Text>
                               {entry.timestamp && (
-                                <Text style={{ fontSize: 10, color: colors.muted }}>
-                                  {formatDistanceToNow(new Date(entry.timestamp), { addSuffix: true })}
+                                <Text
+                                  style={{
+                                    fontSize: s(10),
+                                    color: colors.muted,
+                                  }}
+                                >
+                                  {formatDistanceToNow(
+                                    new Date(entry.timestamp),
+                                    { addSuffix: true },
+                                  )}
                                 </Text>
                               )}
                             </View>
                           </View>
-                        )
+                        );
                       })}
                     </View>
                   )}
                   {isExpanded && timeline.length === 0 && (
-                    <View style={{ marginTop: 6, marginLeft: 8 }}>
-                      <Text style={{ fontSize: 10, color: colors.muted, fontStyle: 'italic' }}>No history available</Text>
+                    <View style={{ marginTop: s(6), marginLeft: s(8) }}>
+                      <Text
+                        style={{
+                          fontSize: s(10),
+                          color: colors.muted,
+                          fontStyle: "italic",
+                        }}
+                      >
+                        No history available
+                      </Text>
                     </View>
                   )}
                 </View>
               </TouchableOpacity>
-            )
+            );
           })}
 
           {/* Empty State */}
           {(!order?.items || order.items.length === 0) && (
-            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-              <Package size={28} color={colors.muted} />
-              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 8 }}>No items</Text>
+            <View style={{ paddingVertical: s(40), alignItems: "center" }}>
+              <Package size={s(28)} color={colors.muted} />
+              <Text
+                style={{
+                  fontSize: s(13),
+                  color: colors.muted,
+                  marginTop: s(8),
+                }}
+              >
+                No items
+              </Text>
             </View>
           )}
         </View>
       </ScrollView>
 
       {/* Pricing Footer */}
-      <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.screen }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-          <Text style={{ fontSize: 13, color: colors.label }}>Subtotal</Text>
-          <Text style={{ fontSize: 13, color: colors.heading }}>${subtotal?.toFixed(2)}</Text>
+      <View
+        style={{
+          paddingHorizontal: s(14),
+          paddingVertical: s(12),
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          backgroundColor: colors.screen,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            marginBottom: s(4),
+          }}
+        >
+          <Text style={{ fontSize: s(13), color: colors.label }}>Subtotal</Text>
+          <Text style={{ fontSize: s(13), color: colors.heading }}>
+            ${subtotal?.toFixed(2)}
+          </Text>
         </View>
         {discount > 0 && (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-            <Text style={{ fontSize: 13, color: colors.success }}>Discount</Text>
-            <Text style={{ fontSize: 13, color: colors.success }}>-${discount?.toFixed(2)}</Text>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              marginBottom: s(4),
+            }}
+          >
+            <Text style={{ fontSize: s(13), color: colors.success }}>
+              Discount
+            </Text>
+            <Text style={{ fontSize: s(13), color: colors.success }}>
+              -${discount?.toFixed(2)}
+            </Text>
           </View>
         )}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: serviceCharge > 0.001 ? 4 : 8 }}>
-          <Text style={{ fontSize: 13, color: colors.label }}>Tax</Text>
-          <Text style={{ fontSize: 13, color: colors.heading }}>${tax?.toFixed(2)}</Text>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            marginBottom: serviceCharge > 0.001 ? s(4) : s(8),
+          }}
+        >
+          <Text style={{ fontSize: s(13), color: colors.label }}>Tax</Text>
+          <Text style={{ fontSize: s(13), color: colors.heading }}>
+            ${tax?.toFixed(2)}
+          </Text>
         </View>
         {/* Service Charge — snapshotted at billing time; rate shown in label
             so the customer/staff can verify the gratuity policy applied. */}
         {serviceCharge > 0.001 && (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-            <Text style={{ fontSize: 13, color: colors.label }}>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              marginBottom: s(8),
+            }}
+          >
+            <Text style={{ fontSize: s(13), color: colors.label }}>
               {serviceChargeName}
               {serviceChargeRate != null
                 ? ` (${Number(serviceChargeRate).toFixed(2)}%)`
-                : ''}
+                : ""}
             </Text>
-            <Text style={{ fontSize: 13, color: colors.heading }}>${serviceCharge.toFixed(2)}</Text>
+            <Text style={{ fontSize: s(13), color: colors.heading }}>
+              ${serviceCharge.toFixed(2)}
+            </Text>
           </View>
         )}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>Total</Text>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>${total?.toFixed(2)}</Text>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            paddingTop: s(8),
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: s(14),
+              fontWeight: "700",
+              color: colors.heading,
+            }}
+          >
+            Total
+          </Text>
+          <Text
+            style={{
+              fontSize: s(14),
+              fontWeight: "700",
+              color: colors.heading,
+            }}
+          >
+            ${total?.toFixed(2)}
+          </Text>
         </View>
       </View>
     </View>
-  )
-}
+  );
+};
 
 // ============================================================================
 // RIGHT PANE - PAYMENT SUMMARY VIEW
 // ============================================================================
 interface RightPaneSummaryProps {
-  order: any
-  isPaymentsLoading: boolean
+  order: any;
+  isPaymentsLoading: boolean;
   paymentSummary: {
-    orderTotal: number
-    orderCashTotal: number
-    refunds: number
-    collected: number
-    held?: number
-    payments: PaymentRowData[]
-    tips?: number
-  }
-  onReopenOrder: () => void
-  onCloseOrder: () => void
-  onContinueCharging: () => void
-  onIssueReceipt: () => void
-  onSendReceipt?: () => void
-  onPrintKitchenTicket: () => void
-  onTipAdjust: () => void
-  onRefund: () => void
-  onTakeOver: () => void
-  formatTimestamp: (timestamp: string) => string
-  terminalCanProcess: boolean
-  terminalBlockReason?: string
-  isReadOnly?: boolean
-  isClaiming?: boolean
-  ownerLabel?: string | null
+    orderTotal: number;
+    orderCashTotal: number;
+    refunds: number;
+    collected: number;
+    held?: number;
+    payments: PaymentRowData[];
+    tips?: number;
+  };
+  onReopenOrder: () => void;
+  onCloseOrder: () => void;
+  onContinueCharging: () => void;
+  onIssueReceipt: () => void;
+  onSendReceipt?: () => void;
+  onPrintSplitReceipts?: () => void;
+  onPrintKitchenTicket: () => void;
+  onTipAdjust: () => void;
+  onRefund: () => void;
+  onTakeOver: () => void;
+  formatTimestamp: (timestamp: string) => string;
+  terminalCanProcess: boolean;
+  terminalBlockReason?: string;
+  isReadOnly?: boolean;
+  isClaiming?: boolean;
+  ownerLabel?: string | null;
+  kitchenData?: KitchenTimelineData | null;
 }
 
 const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
@@ -764,6 +1178,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   onContinueCharging,
   onIssueReceipt,
   onSendReceipt,
+  onPrintSplitReceipts,
   onPrintKitchenTicket,
   onTipAdjust,
   onRefund,
@@ -773,32 +1188,35 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   terminalBlockReason,
   isReadOnly = false,
   isClaiming = false,
-  ownerLabel
+  ownerLabel,
+  kitchenData,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const [expandedPaymentIndex, setExpandedPaymentIndex] = useState<
     number | null
-  >(null)
+  >(null);
 
-  const isOpen = order?.check_status === 'Opened'
+  const isOpen = order?.check_status === "Opened";
   const balanceDue =
     paymentSummary.orderTotal -
     (paymentSummary.collected - (paymentSummary.tips ?? 0)) +
-    (paymentSummary.refunds || 0)
-  const hasBalanceDue = balanceDue > 0.01
+    (paymentSummary.refunds || 0);
+  const hasBalanceDue = balanceDue > 0.01;
   const hasCardPayments = paymentSummary.payments.some(
-    p => p.method === 'Card' && !p.isVoided
-  )
+    (p) => p.method === "Card" && !p.isVoided,
+  );
 
   // Helper to get completed reversals for a specific payment
   const getReversalsForPayment = useCallback(
     (paymentId: string | undefined): ReversalRecord[] => {
-      if (!paymentId || !order?.reversals) return []
+      if (!paymentId || !order?.reversals) return [];
       return (order.reversals as ReversalRecord[]).filter(
-        r => r.original_payment_id === paymentId && r.status === 'completed'
-      )
+        (r) => r.original_payment_id === paymentId && r.status === "completed",
+      );
     },
-    [order?.reversals]
-  )
+    [order?.reversals],
+  );
   return (
     <View style={{ flex: 6, backgroundColor: colors.screen }}>
       <ScrollView
@@ -818,244 +1236,437 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
         )}
 
         {/* Summary Cards */}
-        <View style={{ paddingHorizontal: 14, paddingVertical: 14 }}>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ paddingHorizontal: s(14), paddingVertical: s(14) }}>
+          <View style={{ flexDirection: "row", gap: s(8) }}>
             <SummaryCard
               amount={paymentSummary.orderTotal}
               cashAmount={
-                order?.order_source?.toLowerCase() === 'online'
+                order?.order_source?.toLowerCase() === "online"
                   ? undefined
                   : paymentSummary.orderCashTotal
               }
-              label='Order Total'
-              icon={<DollarSign size={18} color={colors.teal} />}
+              label="Order Total"
+              icon={<DollarSign size={s(18)} color={colors.teal} />}
               accentColor={colors.teal}
             />
             <SummaryCard
               amount={paymentSummary.refunds}
               label={
                 ((order?.reversals as ReversalRecord[]) || []).filter(
-                  (r: ReversalRecord) => r.status === 'completed'
+                  (r: ReversalRecord) => r.status === "completed",
                 ).length > 0
                   ? `Refunds (${
                       ((order?.reversals as ReversalRecord[]) || []).filter(
-                        (r: ReversalRecord) => r.status === 'completed'
+                        (r: ReversalRecord) => r.status === "completed",
                       ).length
                     })`
-                  : 'Refunds'
+                  : "Refunds"
               }
-              icon={<RefreshCcw size={14} color={colors.danger} />}
+              icon={<RefreshCcw size={s(14)} color={colors.danger} />}
               isNegative
               accentColor={colors.danger}
             />
             <SummaryCard
               amount={paymentSummary.collected - paymentSummary.refunds}
-              label='Net Collected'
-              icon={<CircleDollarSign size={18} color={colors.teal} />}
+              label="Net Collected"
+              icon={<CircleDollarSign size={s(18)} color={colors.teal} />}
               accentColor={colors.teal}
             />
             {(paymentSummary.held ?? 0) > 0 && (
               <SummaryCard
                 amount={paymentSummary.held!}
-                label='Auth Hold'
-                icon={<Lock size={14} />}
+                label="Auth Hold"
+                icon={<Lock size={s(14)} />}
               />
             )}
           </View>
         </View>
 
+        {/* Order Status Timeline */}
+        <OrderStatusTimeline order={order} kitchenData={kitchenData} />
+
         {/* Transaction History */}
-        <View style={{ paddingHorizontal: 14 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 }}>
-            <View style={{ width: 3, height: 18, backgroundColor: colors.teal, borderRadius: 1.5 }} />
-            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+        <View style={{ paddingHorizontal: s(14) }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginBottom: s(12),
+              gap: s(8),
+            }}
+          >
+            <View
+              style={{
+                width: 3,
+                height: s(18),
+                backgroundColor: colors.teal,
+                borderRadius: 1.5,
+              }}
+            />
+            <Text
+              style={{
+                fontSize: s(11),
+                fontWeight: "700",
+                color: colors.teal,
+                textTransform: "uppercase",
+                letterSpacing: 0.6,
+              }}
+            >
               Transaction History
             </Text>
           </View>
 
           {/* Payment List */}
           {isPaymentsLoading ? (
-            <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-              <ActivityIndicator size='small' color={colors.teal} />
-              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 10 }}>
+            <View style={{ paddingVertical: s(32), alignItems: "center" }}>
+              <ActivityIndicator size="small" color={colors.teal} />
+              <Text
+                style={{
+                  fontSize: s(13),
+                  color: colors.muted,
+                  marginTop: s(10),
+                }}
+              >
                 Loading payment...
               </Text>
             </View>
           ) : paymentSummary.payments.length === 0 ? (
-            <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
-                <CreditCard size={20} color={colors.muted} />
+            <View style={{ paddingVertical: s(32), alignItems: "center" }}>
+              <View
+                style={{
+                  width: s(44),
+                  height: s(44),
+                  borderRadius: s(22),
+                  backgroundColor: colors.card,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: s(10),
+                }}
+              >
+                <CreditCard size={s(20)} color={colors.muted} />
               </View>
-              <Text style={{ fontSize: 13, color: colors.muted }}>No payments recorded</Text>
+              <Text style={{ fontSize: s(13), color: colors.muted }}>
+                No payments recorded
+              </Text>
             </View>
           ) : (
             paymentSummary.payments.map((payment, index) => {
               const hasItemsCovered =
-                payment.itemsCovered && payment.itemsCovered.length > 0
+                payment.itemsCovered && payment.itemsCovered.length > 0;
               const hasCardInfo =
                 !!payment.cardInfo &&
-                Object.values(payment.cardInfo).some(Boolean)
-              const canExpand = hasItemsCovered || hasCardInfo
-              const isExpanded = expandedPaymentIndex === index
+                Object.values(payment.cardInfo).some(Boolean);
+              const canExpand = hasItemsCovered || hasCardInfo;
+              const isExpanded = expandedPaymentIndex === index;
               const cardBrandLabel = formatCardBrand(
-                payment.cardInfo?.brand || payment.cardBrand
-              )
-              const cardLast4 = payment.cardInfo?.last4 || payment.last4
+                payment.cardInfo?.brand || payment.cardBrand,
+              );
+              const cardLast4 = payment.cardInfo?.last4 || payment.last4;
 
               return (
                 <View
                   key={index}
                   className={`${
                     index < paymentSummary.payments.length - 1
-                      ? 'border-b border-gray-800/50'
-                      : ''
+                      ? "border-b border-gray-800/50"
+                      : ""
                   }`}
                 >
                   <TouchableOpacity
-                    onPress={() => canExpand && setExpandedPaymentIndex(isExpanded ? null : index)}
+                    onPress={() =>
+                      canExpand &&
+                      setExpandedPaymentIndex(isExpanded ? null : index)
+                    }
                     activeOpacity={canExpand ? 0.7 : 1}
-                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingVertical: s(10),
+                    }}
                   >
                     {/* Payment Method Icon */}
-                    <View style={{
-                      width: 40, height: 40, borderRadius: 10,
-                      backgroundColor: payment.isVoided ? colors.danger + '15' : colors.teal + '15',
-                      borderWidth: 1.5, borderColor: payment.isVoided ? colors.danger + '40' : colors.teal + '40',
-                      alignItems: 'center', justifyContent: 'center', marginRight: 10
-                    }}>
+                    <View
+                      style={{
+                        width: s(40),
+                        height: s(40),
+                        borderRadius: s(10),
+                        backgroundColor: payment.isVoided
+                          ? colors.danger + "15"
+                          : colors.teal + "15",
+                        borderWidth: 1.5,
+                        borderColor: payment.isVoided
+                          ? colors.danger + "40"
+                          : colors.teal + "40",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: s(10),
+                      }}
+                    >
                       {payment.isVoided ? (
-                        <X size={16} color={colors.danger} />
-                      ) : payment.method === 'Card' ? (
-                        <CreditCard size={18} color={colors.teal} />
+                        <X size={s(16)} color={colors.danger} />
+                      ) : payment.method === "Card" ? (
+                        <CreditCard size={s(18)} color={colors.teal} />
                       ) : (
-                        <Banknote size={18} color={colors.teal} />
+                        <Banknote size={s(18)} color={colors.teal} />
                       )}
                     </View>
 
                     {/* Payment Details */}
                     <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: payment.isVoided ? colors.muted : colors.heading }}>
-                          {payment.method === 'Card' && (cardLast4 || cardBrandLabel)
-                            ? `${cardBrandLabel || 'Card'}${cardLast4 ? ` •••• ${cardLast4}` : ''}`
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: s(6),
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: s(13),
+                            fontWeight: "600",
+                            color: payment.isVoided
+                              ? colors.muted
+                              : colors.heading,
+                          }}
+                        >
+                          {payment.method === "Card" &&
+                          (cardLast4 || cardBrandLabel)
+                            ? `${cardBrandLabel || "Card"}${cardLast4 ? ` •••• ${cardLast4}` : ""}`
                             : payment.method}
                         </Text>
-                        {payment.method === 'Card' && cardBrandLabel && <CardBrandBadge brand={cardBrandLabel} />}
+                        {payment.method === "Card" && cardBrandLabel && (
+                          <CardBrandBadge brand={cardBrandLabel} />
+                        )}
                         {payment.isVoided && (
-                          <View style={{ backgroundColor: colors.danger + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.danger }}>VOIDED</Text>
+                          <View
+                            style={{
+                              backgroundColor: colors.danger + "20",
+                              paddingHorizontal: s(6),
+                              paddingVertical: s(2),
+                              borderRadius: 20,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                fontWeight: "700",
+                                color: colors.danger,
+                              }}
+                            >
+                              VOIDED
+                            </Text>
                           </View>
                         )}
                         {payment.isPreAuth && !payment.isVoided && (
-                          <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning }}>AUTH HOLD</Text>
+                          <View
+                            style={{
+                              backgroundColor: colors.warning + "20",
+                              paddingHorizontal: s(6),
+                              paddingVertical: s(2),
+                              borderRadius: 20,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                fontWeight: "700",
+                                color: colors.warning,
+                              }}
+                            >
+                              AUTH HOLD
+                            </Text>
                           </View>
                         )}
                       </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 6 }}>
-                        <Text style={{ fontSize: 11, color: colors.muted }}>{formatTimestamp(payment.timestamp)}</Text>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          marginTop: s(2),
+                          gap: s(6),
+                        }}
+                      >
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>
+                          {formatTimestamp(payment.timestamp)}
+                        </Text>
                         {canExpand && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                            <Package size={10} color={colors.muted} />
-                            {hasItemsCovered && <Text style={{ fontSize: 11, color: colors.muted }}>{payment.itemsCovered!.length} items</Text>}
-                            {isExpanded ? <ChevronUp size={11} color={colors.muted} /> : <ChevronDown size={11} color={colors.muted} />}
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: s(3),
+                            }}
+                          >
+                            <Package size={s(10)} color={colors.muted} />
+                            {hasItemsCovered && (
+                              <Text
+                                style={{ fontSize: s(11), color: colors.muted }}
+                              >
+                                {payment.itemsCovered!.length} items
+                              </Text>
+                            )}
+                            {isExpanded ? (
+                              <ChevronUp size={s(11)} color={colors.muted} />
+                            ) : (
+                              <ChevronDown size={s(11)} color={colors.muted} />
+                            )}
                           </View>
                         )}
                       </View>
                     </View>
 
                     {/* Amount */}
-                    <View style={{ alignItems: 'flex-end' }}>
+                    <View style={{ alignItems: "flex-end" }}>
                       {payment.tipAmount > 0 && (
-                        <Text style={{ fontSize: 11, color: colors.info }}>+${payment.tipAmount?.toFixed(2)} tip</Text>
+                        <Text style={{ fontSize: s(11), color: colors.info }}>
+                          +${payment.tipAmount?.toFixed(2)} tip
+                        </Text>
                       )}
-                      <Text style={{
-                        fontSize: 14, fontWeight: '700',
-                        color: payment.isVoided ? colors.danger : payment.isPreAuth ? colors.warning : colors.success
-                      }}>
-                        {payment.isVoided ? 'Voided' : payment.isPreAuth ? `$${payment.orderAmount?.toFixed(2)} held` : `$${payment.collected?.toFixed(2)}`}
+                      <Text
+                        style={{
+                          fontSize: s(14),
+                          fontWeight: "700",
+                          color: payment.isVoided
+                            ? colors.danger
+                            : payment.isPreAuth
+                              ? colors.warning
+                              : colors.success,
+                        }}
+                      >
+                        {payment.isVoided
+                          ? "Voided"
+                          : payment.isPreAuth
+                            ? `$${payment.orderAmount?.toFixed(2)} held`
+                            : `$${payment.collected?.toFixed(2)}`}
                       </Text>
                     </View>
                   </TouchableOpacity>
 
                   {/* Expanded Details */}
                   {isExpanded && canExpand && (
-                    <View style={{ backgroundColor: colors.panel, borderRadius: 10, marginBottom: 10, padding: 12, borderWidth: 1, borderColor: colors.border }}>
+                    <View
+                      style={{
+                        backgroundColor: colors.panel,
+                        borderRadius: s(10),
+                        marginBottom: s(10),
+                        padding: s(12),
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
                       {hasCardInfo && (
-                        <View style={hasItemsCovered ? { marginBottom: 12 } : {}}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                            {payment.method === 'Cash' ? <Banknote size={12} color={colors.muted} /> : <CreditCard size={12} color={colors.muted} />}
-                            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted, marginLeft: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                              {payment.method === 'Cash' ? 'Cash Payment Details' : 'Card Details'}
+                        <View
+                          style={hasItemsCovered ? { marginBottom: s(12) } : {}}
+                        >
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              marginBottom: s(8),
+                              paddingBottom: s(8),
+                              borderBottomWidth: 1,
+                              borderBottomColor: colors.border,
+                            }}
+                          >
+                            {payment.method === "Cash" ? (
+                              <Banknote size={s(12)} color={colors.muted} />
+                            ) : (
+                              <CreditCard size={s(12)} color={colors.muted} />
+                            )}
+                            <Text
+                              style={{
+                                fontSize: s(11),
+                                fontWeight: "600",
+                                color: colors.muted,
+                                marginLeft: s(6),
+                                textTransform: "uppercase",
+                                letterSpacing: 0.5,
+                              }}
+                            >
+                              {payment.method === "Cash"
+                                ? "Cash Payment Details"
+                                : "Card Details"}
                             </Text>
                           </View>
                           {/* Card brand/last4 — only for card payments */}
-                          {payment.method !== 'Cash' && (
-                            <View className='flex-row items-center justify-between'>
-                              <View className='flex-row items-center'>
+                          {payment.method !== "Cash" && (
+                            <View className="flex-row items-center justify-between">
+                              <View className="flex-row items-center">
                                 {payment.cardInfo?.brand && (
                                   <CardBrandBadge
                                     brand={payment.cardInfo.brand}
                                   />
                                 )}
                                 {payment.cardInfo?.last4 && (
-                                  <Text style={{ fontSize: 13, color: colors.heading, marginLeft: 8 }}>
+                                  <Text
+                                    style={{
+                                      fontSize: s(13),
+                                      color: colors.heading,
+                                      marginLeft: s(8),
+                                    }}
+                                  >
                                     •••• {payment.cardInfo.last4}
                                   </Text>
                                 )}
                               </View>
                               {payment.cardInfo?.entryMode && (
-                                <Text style={{ fontSize: 11, color: colors.muted }}>
+                                <Text
+                                  style={{
+                                    fontSize: s(11),
+                                    color: colors.muted,
+                                  }}
+                                >
                                   Entry: {payment.cardInfo.entryMode}
                                 </Text>
                               )}
                             </View>
                           )}
                           {/* Cash-specific: Amount Tendered & Change Given */}
-                          {payment.method === 'Cash' && (
-                            <View className='flex-row flex-wrap mt-1'>
+                          {payment.method === "Cash" && (
+                            <View className="flex-row flex-wrap mt-1">
                               {payment.amountTendered != null && (
                                 <CardInfoItem
-                                  label='Amount Tendered'
+                                  label="Amount Tendered"
                                   value={`$${payment.amountTendered.toFixed(
-                                    2
+                                    2,
                                   )}`}
                                 />
                               )}
                               {payment.changeGiven != null &&
                                 payment.changeGiven > 0 && (
                                   <CardInfoItem
-                                    label='Change Given'
+                                    label="Change Given"
                                     value={`$${payment.changeGiven.toFixed(2)}`}
                                   />
                                 )}
                             </View>
                           )}
-                          <View className='flex-row flex-wrap mt-3'>
+                          <View className="flex-row flex-wrap mt-3">
                             {/* Card-only fields */}
-                            {payment.method !== 'Cash' && (
+                            {payment.method !== "Cash" && (
                               <>
                                 <CardInfoItem
-                                  label='Auth Code'
+                                  label="Auth Code"
                                   value={payment.cardInfo?.authCode}
                                 />
                                 <CardInfoItem
-                                  label='RRN'
+                                  label="RRN"
                                   value={payment.cardInfo?.rrn}
                                 />
                                 <CardInfoItem
-                                  label='Invoice'
+                                  label="Invoice"
                                   value={payment.cardInfo?.invoiceNumber}
                                 />
                               </>
                             )}
                             {/* Shared fields */}
                             <CardInfoItem
-                              label='Txn #'
+                              label="Txn #"
                               value={payment.cardInfo?.transactionNumber}
                             />
                             <CardInfoItem
-                              label='Ref ID'
+                              label="Ref ID"
                               value={payment.cardInfo?.referenceId}
                             />
                           </View>
@@ -1065,13 +1676,31 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                       {hasItemsCovered &&
                         (() => {
                           const isCash =
-                            payment.isCashPriced || payment.method === 'Cash'
-                          let totalTax = 0
+                            payment.isCashPriced || payment.method === "Cash";
+                          let totalTax = 0;
                           return (
                             <View>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                                <Package size={12} color={colors.muted} />
-                                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted, marginLeft: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              <View
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  marginBottom: s(8),
+                                  paddingBottom: s(8),
+                                  borderBottomWidth: 1,
+                                  borderBottomColor: colors.border,
+                                }}
+                              >
+                                <Package size={s(12)} color={colors.muted} />
+                                <Text
+                                  style={{
+                                    fontSize: s(11),
+                                    fontWeight: "600",
+                                    color: colors.muted,
+                                    marginLeft: s(6),
+                                    textTransform: "uppercase",
+                                    letterSpacing: 0.5,
+                                  }}
+                                >
                                   Items Covered
                                 </Text>
                               </View>
@@ -1080,18 +1709,19 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                                   // Cross-reference with order items for tax/cash price info
                                   const cartItem = order?.items?.find(
                                     (ci: CartItem) =>
-                                      ci.db_order_item_id === coveredItem.itemId
-                                  )
+                                      ci.db_order_item_id ===
+                                      coveredItem.itemId,
+                                  );
                                   const displaySubtotal =
                                     isCash && cartItem?.cashSubtotal != null
                                       ? (cartItem.cashSubtotal /
                                           cartItem.quantity) *
                                         coveredItem.quantity
-                                      : coveredItem.subtotal
+                                      : coveredItem.subtotal;
                                   const displayUnitPrice =
                                     isCash && cartItem?.cashPrice != null
                                       ? cartItem.cashPrice
-                                      : coveredItem.unitPrice
+                                      : coveredItem.unitPrice;
                                   const itemTax = cartItem
                                     ? isCash && cartItem.cashTaxAmount != null
                                       ? (cartItem.cashTaxAmount /
@@ -1100,44 +1730,142 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                                       : (cartItem.taxAmount /
                                           cartItem.quantity) *
                                         coveredItem.quantity
-                                    : 0
-                                  totalTax += itemTax
+                                    : 0;
+                                  totalTax += itemTax;
                                   return (
                                     <View
                                       key={coveredItem.itemId || itemIndex}
                                       style={{
-                                        paddingVertical: 8,
-                                        borderBottomWidth: itemIndex < payment.itemsCovered!.length - 1 ? 1 : 0,
+                                        paddingVertical: s(8),
+                                        borderBottomWidth:
+                                          itemIndex <
+                                          payment.itemsCovered!.length - 1
+                                            ? 1
+                                            : 0,
                                         borderBottomColor: colors.border,
                                       }}
                                     >
-                                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                                          <View style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
-                                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.label }}>{coveredItem.quantity}x</Text>
+                                      <View
+                                        style={{
+                                          flexDirection: "row",
+                                          alignItems: "center",
+                                          justifyContent: "space-between",
+                                        }}
+                                      >
+                                        <View
+                                          style={{
+                                            flexDirection: "row",
+                                            alignItems: "center",
+                                            flex: 1,
+                                          }}
+                                        >
+                                          <View
+                                            style={{
+                                              width: s(24),
+                                              height: s(24),
+                                              borderRadius: s(6),
+                                              backgroundColor: colors.card,
+                                              borderWidth: 1,
+                                              borderColor: colors.border,
+                                              alignItems: "center",
+                                              justifyContent: "center",
+                                              marginRight: s(8),
+                                            }}
+                                          >
+                                            <Text
+                                              style={{
+                                                fontSize: s(11),
+                                                fontWeight: "700",
+                                                color: colors.label,
+                                              }}
+                                            >
+                                              {coveredItem.quantity}x
+                                            </Text>
                                           </View>
-                                          <Text style={{ fontSize: 12, color: colors.heading }} numberOfLines={1}>{coveredItem.itemName}</Text>
+                                          <Text
+                                            style={{
+                                              fontSize: s(12),
+                                              color: colors.heading,
+                                            }}
+                                            numberOfLines={1}
+                                          >
+                                            {coveredItem.itemName}
+                                          </Text>
                                         </View>
-                                        <View style={{ alignItems: 'flex-end' }}>
-                                          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>${displaySubtotal?.toFixed(2)}</Text>
-                                          {isCash && <Text style={{ fontSize: 10, color: colors.success }}>Cash Price</Text>}
+                                        <View
+                                          style={{ alignItems: "flex-end" }}
+                                        >
+                                          <Text
+                                            style={{
+                                              fontSize: s(13),
+                                              fontWeight: "600",
+                                              color: colors.heading,
+                                            }}
+                                          >
+                                            ${displaySubtotal?.toFixed(2)}
+                                          </Text>
+                                          {isCash && (
+                                            <Text
+                                              style={{
+                                                fontSize: s(10),
+                                                color: colors.success,
+                                              }}
+                                            >
+                                              Cash Price
+                                            </Text>
+                                          )}
                                         </View>
                                       </View>
                                       {cartItem && cartItem.taxRate > 0 && (
-                                        <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 32, marginTop: 2 }}>Tax: ${itemTax.toFixed(2)} ({cartItem.taxRate}%)</Text>
+                                        <Text
+                                          style={{
+                                            fontSize: s(11),
+                                            color: colors.muted,
+                                            marginLeft: s(32),
+                                            marginTop: s(2),
+                                          }}
+                                        >
+                                          Tax: ${itemTax.toFixed(2)} (
+                                          {cartItem.taxRate}%)
+                                        </Text>
                                       )}
                                     </View>
-                                  )
-                                }
+                                  );
+                                },
                               )}
                               {totalTax > 0 && (
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: 1, borderTopColor: colors.border }}>
-                                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>Total Tax</Text>
-                                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>${totalTax.toFixed(2)}</Text>
+                                <View
+                                  style={{
+                                    flexDirection: "row",
+                                    justifyContent: "space-between",
+                                    paddingTop: s(8),
+                                    marginTop: s(4),
+                                    borderTopWidth: 1,
+                                    borderTopColor: colors.border,
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      fontSize: s(12),
+                                      fontWeight: "600",
+                                      color: colors.label,
+                                    }}
+                                  >
+                                    Total Tax
+                                  </Text>
+                                  <Text
+                                    style={{
+                                      fontSize: s(12),
+                                      fontWeight: "600",
+                                      color: colors.heading,
+                                    }}
+                                  >
+                                    ${totalTax.toFixed(2)}
+                                  </Text>
                                 </View>
                               )}
                             </View>
-                          )
+                          );
                         })()}
 
                       {/* Manager-only platform-fee breakdown — never shown to
@@ -1154,150 +1882,302 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
 
                   {/* Refund/Void History for this payment */}
                   {payment.dbPaymentId &&
-                    getReversalsForPayment(payment.dbPaymentId).map((reversal, rIdx) => (
-                      <View key={`reversal-${reversal.id || rIdx}`} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 46, borderTopWidth: 1, borderTopColor: colors.border }}>
-                        <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.danger + '15', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                          <RotateCcw size={13} color={colors.danger} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.danger }}>
-                              {reversal.reversal_type === 'void' ? 'VOIDED' : reversal.reversal_type === 'refund' ? 'REFUNDED' : reversal.reversal_type === 'partial_refund' ? 'PARTIAL REFUND' : 'ITEM RETURN'}
-                            </Text>
-                            {reversal.reason_description && (
-                              <Text style={{ fontSize: 11, color: colors.muted }} numberOfLines={1}>• {reversal.reason_description}</Text>
-                            )}
+                    getReversalsForPayment(payment.dbPaymentId).map(
+                      (reversal, rIdx) => (
+                        <View
+                          key={`reversal-${reversal.id || rIdx}`}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            paddingVertical: s(8),
+                            paddingLeft: s(46),
+                            borderTopWidth: 1,
+                            borderTopColor: colors.border,
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: s(30),
+                              height: s(30),
+                              borderRadius: s(8),
+                              backgroundColor: colors.danger + "15",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              marginRight: s(10),
+                            }}
+                          >
+                            <RotateCcw size={s(13)} color={colors.danger} />
                           </View>
-                          <Text style={{ fontSize: 11, color: colors.muted }}>
-                            {reversal.completed_at ? formatDistanceToNow(new Date(reversal.completed_at), { addSuffix: true }) : reversal.requested_at ? formatDistanceToNow(new Date(reversal.requested_at), { addSuffix: true }) : ''}
+                          <View style={{ flex: 1 }}>
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: s(6),
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: s(11),
+                                  fontWeight: "700",
+                                  color: colors.danger,
+                                }}
+                              >
+                                {reversal.reversal_type === "void"
+                                  ? "VOIDED"
+                                  : reversal.reversal_type === "refund"
+                                    ? "REFUNDED"
+                                    : reversal.reversal_type ===
+                                        "partial_refund"
+                                      ? "PARTIAL REFUND"
+                                      : "ITEM RETURN"}
+                              </Text>
+                              {reversal.reason_description && (
+                                <Text
+                                  style={{
+                                    fontSize: s(11),
+                                    color: colors.muted,
+                                  }}
+                                  numberOfLines={1}
+                                >
+                                  • {reversal.reason_description}
+                                </Text>
+                              )}
+                            </View>
+                            <Text
+                              style={{ fontSize: s(11), color: colors.muted }}
+                            >
+                              {reversal.completed_at
+                                ? formatDistanceToNow(
+                                    new Date(reversal.completed_at),
+                                    { addSuffix: true },
+                                  )
+                                : reversal.requested_at
+                                  ? formatDistanceToNow(
+                                      new Date(reversal.requested_at),
+                                      { addSuffix: true },
+                                    )
+                                  : ""}
+                            </Text>
+                          </View>
+                          <Text
+                            style={{
+                              fontSize: s(13),
+                              fontWeight: "600",
+                              color: colors.danger,
+                            }}
+                          >
+                            -${Number(reversal.amount || 0)?.toFixed(2)}
                           </Text>
                         </View>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>-${Number(reversal.amount || 0)?.toFixed(2)}</Text>
-                      </View>
-                    ))}
+                      ),
+                    )}
 
                   {/* Tip Adjustment Log */}
                   {payment.tip_adjusted_at && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 46, borderTopWidth: 1, borderTopColor: colors.border }}>
-                      <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.info + '15', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                        <CircleDollarSign size={13} color={colors.teal} />
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        paddingVertical: s(8),
+                        paddingLeft: s(46),
+                        borderTopWidth: 1,
+                        borderTopColor: colors.border,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: s(30),
+                          height: s(30),
+                          borderRadius: s(8),
+                          backgroundColor: colors.info + "15",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginRight: s(10),
+                        }}
+                      >
+                        <CircleDollarSign size={s(13)} color={colors.teal} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.info }}>TIP ADJUSTED</Text>
-                          <Text style={{ fontSize: 11, color: colors.muted }}>
-                            • ${Number(payment.original_tip_amount || 0).toFixed(2)} → ${Number(payment.tipAmount).toFixed(2)}
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: s(6),
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(11),
+                              fontWeight: "700",
+                              color: colors.info,
+                            }}
+                          >
+                            TIP ADJUSTED
+                          </Text>
+                          <Text
+                            style={{ fontSize: s(11), color: colors.muted }}
+                          >
+                            • $
+                            {Number(payment.original_tip_amount || 0).toFixed(
+                              2,
+                            )}{" "}
+                            → ${Number(payment.tipAmount).toFixed(2)}
                           </Text>
                         </View>
-                        <Text style={{ fontSize: 11, color: colors.muted }}>
-                          {formatDistanceToNow(new Date(payment.tip_adjusted_at), { addSuffix: true })}
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>
+                          {formatDistanceToNow(
+                            new Date(payment.tip_adjusted_at),
+                            { addSuffix: true },
+                          )}
                         </Text>
                       </View>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: payment.tipAmount >= (payment.original_tip_amount || 0) ? colors.info : colors.danger }}>
-                        {payment.tipAmount >= (payment.original_tip_amount || 0) ? '+' : '-'}${Math.abs(payment.tipAmount - (payment.original_tip_amount || 0)).toFixed(2)}
+                      <Text
+                        style={{
+                          fontSize: s(13),
+                          fontWeight: "600",
+                          color:
+                            payment.tipAmount >=
+                            (payment.original_tip_amount || 0)
+                              ? colors.info
+                              : colors.danger,
+                        }}
+                      >
+                        {payment.tipAmount >= (payment.original_tip_amount || 0)
+                          ? "+"
+                          : "-"}
+                        $
+                        {Math.abs(
+                          payment.tipAmount -
+                            (payment.original_tip_amount || 0),
+                        ).toFixed(2)}
                       </Text>
                     </View>
                   )}
                 </View>
-              )
+              );
             })
           )}
         </View>
       </ScrollView>
 
       {/* Action Buttons Footer */}
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.panel, borderTopWidth: 1.5, borderTopColor: colors.teal + '30' }}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+      <View
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          paddingHorizontal: s(14),
+          paddingVertical: s(12),
+          backgroundColor: colors.panel,
+          borderTopWidth: 1.5,
+          borderTopColor: colors.teal + "30",
+        }}
+      >
+        <View style={{ flexDirection: "row", gap: s(8) }}>
           {/* Management actions (Reopen / Close / Charge / Adjust Tip /
               Process Refund) are hidden when the order belongs to another
               station — Take Over is offered via the ReadOnlyBanner above
               instead. Print Receipt + Print Kitchen always remain. */}
           {!isReadOnly && !isOpen && (
             <ActionButton
-              icon={<RotateCcw size={16} />}
-              label='Reopen'
+              icon={<RotateCcw size={s(16)} />}
+              label="Reopen"
               onPress={onReopenOrder}
-              variant='primary'
+              variant="primary"
             />
           )}
           {!isReadOnly && isOpen && (
             <ActionButton
-              icon={<Check size={16} />}
-              label='Close Order'
+              icon={<Check size={s(16)} />}
+              label="Close Order"
               onPress={onCloseOrder}
-              variant='primary'
+              variant="primary"
             />
           )}
           {!isReadOnly && isOpen && hasBalanceDue && (
             <ActionButton
-              icon={<DollarSign size={16} />}
-              label='Charge'
+              icon={<DollarSign size={s(16)} />}
+              label="Charge"
               onPress={onContinueCharging}
-              variant='primary'
+              variant="primary"
             />
           )}
           {paymentSummary.collected > 0 && (
             <ActionButton
-              icon={<Printer size={16} />}
-              label='Print Receipt'
+              icon={<Printer size={s(16)} />}
+              label="Print Receipt"
               onPress={onIssueReceipt}
-              variant='primary'
+              variant="primary"
             />
           )}
+          {paymentSummary.collected > 0 &&
+            !!order?.split_payment_path &&
+            onPrintSplitReceipts && (
+              <ActionButton
+                icon={<Printer size={s(16)} />}
+                label="Split Receipts"
+                onPress={onPrintSplitReceipts}
+                variant="primary"
+              />
+            )}
           {paymentSummary.collected > 0 && onSendReceipt && (
             <ActionButton
-              icon={<Send size={16} />}
-              label='Send Receipt'
+              icon={<Send size={s(16)} />}
+              label="Send Receipt"
               onPress={onSendReceipt}
-              variant='primary'
+              variant="primary"
             />
           )}
           {order?.items && order.items.length > 0 && (
             <ActionButton
-              icon={<ChefHat size={16} />}
-              label='Print Kitchen'
+              icon={<ChefHat size={s(16)} />}
+              label="Print Kitchen"
               onPress={onPrintKitchenTicket}
-              variant='primary'
+              variant="primary"
             />
           )}
           {!isReadOnly && hasCardPayments && terminalCanProcess && (
             <ActionButton
-              icon={<CircleDollarSign size={16} />}
-              label='Adjust Tip'
+              icon={<CircleDollarSign size={s(16)} />}
+              label="Adjust Tip"
               onPress={onTipAdjust}
-              variant='primary'
+              variant="primary"
             />
           )}
-          {!isReadOnly && paymentSummary.collected > 0 && terminalCanProcess && (
-            <ActionButton
-              icon={<RefreshCcw size={16} />}
-              label='Process Refund'
-              onPress={onRefund}
-              variant='danger'
-            />
-          )}
+          {!isReadOnly &&
+            paymentSummary.collected > 0 &&
+            terminalCanProcess && (
+              <ActionButton
+                icon={<RefreshCcw size={s(16)} />}
+                label="Process Refund"
+                onPress={onRefund}
+                variant="danger"
+              />
+            )}
         </View>
       </View>
     </View>
-  )
-}
+  );
+};
 
 // ============================================================================
 // RIGHT PANE - TIP ADJUST VIEW
 // ============================================================================
 interface RightPaneTipAdjustProps {
-  order: OrderProfile
+  order: OrderProfile;
   paymentSummary: {
-    orderTotal: number
-    orderCashTotal: number
-    refunds: number
-    collected: number
-    held?: number
-    payments: PaymentRowData[]
-  }
-  onBack: () => void
-  onTipAdjusted: () => void
-  onProcessingChange?: (processing: boolean) => void
+    orderTotal: number;
+    orderCashTotal: number;
+    refunds: number;
+    collected: number;
+    held?: number;
+    payments: PaymentRowData[];
+  };
+  onBack: () => void;
+  onTipAdjusted: () => void;
+  onProcessingChange?: (processing: boolean) => void;
 }
 
 const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
@@ -1305,25 +2185,27 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
   paymentSummary,
   onBack,
   onTipAdjusted,
-  onProcessingChange
+  onProcessingChange,
 }) => {
-  const tipAdjustMutation = useTipAdjustMutation()
-  const processing = tipAdjustMutation.isPending
-  console.log('PaymentDetailBottomSheet Payment Summary', paymentSummary)
-  const [tipAmounts, setTipAmounts] = useState<Record<number, string>>({})
-  const [activeInput, setActiveInput] = useState<number | null>(null)
-  const [showHighTipConfirm, setShowHighTipConfirm] = useState(false)
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const tipAdjustMutation = useTipAdjustMutation();
+  const processing = tipAdjustMutation.isPending;
+  console.log("PaymentDetailBottomSheet Payment Summary", paymentSummary);
+  const [tipAmounts, setTipAmounts] = useState<Record<number, string>>({});
+  const [activeInput, setActiveInput] = useState<number | null>(null);
+  const [showHighTipConfirm, setShowHighTipConfirm] = useState(false);
 
   // Notify parent of processing state changes
   useEffect(() => {
-    onProcessingChange?.(processing)
-  }, [processing, onProcessingChange])
+    onProcessingChange?.(processing);
+  }, [processing, onProcessingChange]);
 
   // Filter card payments that are not voided
   const cardPayments: TipAdjustPaymentRow[] = useMemo(() => {
     return paymentSummary.payments
-      .filter(p => p.method === 'Card' && !p.isVoided)
-      .map(p => ({
+      .filter((p) => p.method === "Card" && !p.isVoided)
+      .map((p) => ({
         paymentIndex: p.originalPaymentIndex,
         paymentId: p.paymentId,
         dbPaymentId: p.dbPaymentId,
@@ -1336,89 +2218,90 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
         cardBrand: p.cardBrand || p.cardInfo?.brand,
         entryMode: p.cardInfo?.entryMode,
         timestamp: p.timestamp,
-        isCard: true
-      }))
-  }, [paymentSummary.payments])
+        isCard: true,
+      }));
+  }, [paymentSummary.payments]);
 
   // Initialize tip amounts from current tips (pre-fill existing values)
   useEffect(() => {
-    const initial: Record<number, string> = {}
-    cardPayments.forEach(p => {
-      initial[p.paymentIndex] = p.currentTip > 0 ? p.currentTip?.toFixed(2) : ''
-    })
-    setTipAmounts(initial)
+    const initial: Record<number, string> = {};
+    cardPayments.forEach((p) => {
+      initial[p.paymentIndex] =
+        p.currentTip > 0 ? p.currentTip?.toFixed(2) : "";
+    });
+    setTipAmounts(initial);
     if (cardPayments.length > 0) {
-      setActiveInput(cardPayments[0].paymentIndex)
+      setActiveInput(cardPayments[0].paymentIndex);
     }
-  }, [cardPayments])
+  }, [cardPayments]);
 
   // Computed values
   const totalNewTips = useMemo(() => {
     return Object.values(tipAmounts).reduce(
       (sum, val) => sum + (parseFloat(val) || 0),
-      0
-    )
-  }, [tipAmounts])
+      0,
+    );
+  }, [tipAmounts]);
 
   const totalOrderAmount = useMemo(() => {
-    return cardPayments.reduce((sum, p) => sum + p.orderAmount || 0, 0)
-  }, [cardPayments])
+    return cardPayments.reduce((sum, p) => sum + p.orderAmount || 0, 0);
+  }, [cardPayments]);
 
   const hasChanges = useMemo(() => {
-    return cardPayments.some(p => {
-      const newTip = parseFloat(tipAmounts[p.paymentIndex] || '0') || 0
-      return Math.abs(newTip - p.currentTip) > 0.001
-    })
-  }, [cardPayments, tipAmounts])
+    return cardPayments.some((p) => {
+      const newTip = parseFloat(tipAmounts[p.paymentIndex] || "0") || 0;
+      return Math.abs(newTip - p.currentTip) > 0.001;
+    });
+  }, [cardPayments, tipAmounts]);
 
   const tipDelta = useMemo(() => {
     const totalCurrentTips = cardPayments.reduce(
       (sum, p) => sum + p.currentTip,
-      0
-    )
-    return totalNewTips - totalCurrentTips
-  }, [cardPayments, totalNewTips])
+      0,
+    );
+    return totalNewTips - totalCurrentTips;
+  }, [cardPayments, totalNewTips]);
 
   // Select a payment row for editing
   const handleSelectPayment = useCallback((paymentIndex: number) => {
-    setActiveInput(paymentIndex)
-  }, [])
+    setActiveInput(paymentIndex);
+  }, []);
 
   // Keypad handler
   const handleKeyPress = useCallback(
     (key: string) => {
-      if (activeInput === null) return
+      if (activeInput === null) return;
 
-      setTipAmounts(prev => {
-        const current = prev[activeInput] || ''
+      setTipAmounts((prev) => {
+        const current = prev[activeInput] || "";
 
-        if (key === 'backspace') {
-          const updated = current.slice(0, -1)
-          return { ...prev, [activeInput]: updated }
+        if (key === "backspace") {
+          const updated = current.slice(0, -1);
+          return { ...prev, [activeInput]: updated };
         }
 
-        if (key === '.') {
-          if (current.includes('.')) return prev
-          return { ...prev, [activeInput]: current + '.' }
+        if (key === ".") {
+          if (current.includes(".")) return prev;
+          return { ...prev, [activeInput]: current + "." };
         }
 
         // Limit decimal places to 2
-        const parts = current.split('.')
-        if (parts.length > 1 && parts[1].length >= 2) return prev
+        const parts = current.split(".");
+        if (parts.length > 1 && parts[1].length >= 2) return prev;
 
-        return { ...prev, [activeInput]: current + key }
-      })
+        return { ...prev, [activeInput]: current + key };
+      });
     },
-    [activeInput]
-  )
+    [activeInput],
+  );
 
   // Check if any tip exceeds 30% of the payment amount
   const highTipPayments = useMemo(() => {
-    return cardPayments.filter(p => {
-      const newTip = parseFloat(tipAmounts[p.paymentIndex] || '0') || 0
-      return newTip > 0 && p.orderAmount > 0 && newTip > p.orderAmount * 0.3
-    })
-  }, [cardPayments, tipAmounts])
+    return cardPayments.filter((p) => {
+      const newTip = parseFloat(tipAmounts[p.paymentIndex] || "0") || 0;
+      return newTip > 0 && p.orderAmount > 0 && newTip > p.orderAmount * 0.3;
+    });
+  }, [cardPayments, tipAmounts]);
 
   // Handle adjust tips via mutation
   const handleAdjustTips = async () => {
@@ -1426,74 +2309,76 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
       await tipAdjustMutation.mutateAsync({
         dbOrderId: order.db_order_id || order.id,
         orderId: order.id,
-        payments: cardPayments.map(payment => ({
+        payments: cardPayments.map((payment) => ({
           paymentIndex: payment.paymentIndex,
           dbPaymentId: payment.dbPaymentId,
           orderAmount: payment.orderAmount,
           currentTip: payment.currentTip,
-          newTip: round2(parseFloat(tipAmounts[payment.paymentIndex] || '0') || 0),
+          newTip: round2(
+            parseFloat(tipAmounts[payment.paymentIndex] || "0") || 0,
+          ),
           referenceId: payment.referenceId,
           rrn: payment.rrn,
-          last4: payment.last4
-        }))
-      })
-      onTipAdjusted()
+          last4: payment.last4,
+        })),
+      });
+      onTipAdjusted();
     } catch {
       // Error handling is done by the mutation's onError callback
     }
-  }
+  };
 
   // Entry point: check for high tips before proceeding
   const handleAdjustTipsPress = () => {
     if (highTipPayments.length > 0) {
-      setShowHighTipConfirm(true)
+      setShowHighTipConfirm(true);
     } else {
-      handleAdjustTips()
+      handleAdjustTips();
     }
-  }
+  };
 
   const keypadKeys = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-    ['.', '0', 'backspace']
-  ]
+    ["1", "2", "3"],
+    ["4", "5", "6"],
+    ["7", "8", "9"],
+    [".", "0", "backspace"],
+  ];
 
   // console.log('PaymentDetailBottomSheet', cardPayments);
   return (
     <View
-      style={{ flex: 6, backgroundColor: colors.screen, position: 'relative' }}
+      style={{ flex: 6, backgroundColor: colors.screen, position: "relative" }}
     >
       {/* Processing Overlay */}
       {processing && (
         <View
           style={{
-            position: 'absolute',
+            position: "absolute",
             inset: 0,
             zIndex: 50,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(0,0,0,0.75)'
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(0,0,0,0.75)",
           }}
         >
           <View
             style={{
               backgroundColor: colors.card,
-              borderRadius: 14,
-              padding: 28,
-              alignItems: 'center',
-              marginHorizontal: 32,
+              borderRadius: s(14),
+              padding: s(28),
+              alignItems: "center",
+              marginHorizontal: s(32),
               borderWidth: 1,
-              borderColor: colors.border
+              borderColor: colors.border,
             }}
           >
-            <ActivityIndicator size='large' color={colors.teal} />
+            <ActivityIndicator size="large" color={colors.teal} />
             <Text
               style={{
                 color: colors.heading,
-                fontSize: 15,
-                fontWeight: '700',
-                marginTop: 14
+                fontSize: s(15),
+                fontWeight: "700",
+                marginTop: s(14),
               }}
             >
               Adjusting Tips
@@ -1501,12 +2386,12 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             <Text
               style={{
                 color: colors.label,
-                fontSize: 12,
-                marginTop: 6,
-                textAlign: 'center'
+                fontSize: s(12),
+                marginTop: s(6),
+                textAlign: "center",
               }}
             >
-              Processing tip adjustments on terminal…{'\n'}Please do not close
+              Processing tip adjustments on terminal…{"\n"}Please do not close
               this screen.
             </Text>
           </View>
@@ -1517,115 +2402,115 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
       <Modal
         visible={showHighTipConfirm}
         transparent
-        animationType='fade'
+        animationType="fade"
         onRequestClose={() => setShowHighTipConfirm(false)}
       >
         <View
           style={{
             flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(0,0,0,0.75)'
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(0,0,0,0.75)",
           }}
         >
           <View
             style={{
               backgroundColor: colors.card,
-              borderRadius: 14,
-              padding: 20,
-              marginHorizontal: 32,
+              borderRadius: s(14),
+              padding: s(20),
+              marginHorizontal: s(32),
               borderWidth: 1,
               borderColor: colors.border,
               maxWidth: 400,
-              width: '90%'
+              width: "90%",
             }}
           >
             <Text
               style={{
-                fontSize: 15,
-                fontWeight: '700',
+                fontSize: s(15),
+                fontWeight: "700",
                 color: colors.warning,
-                textAlign: 'center',
-                marginBottom: 8
+                textAlign: "center",
+                marginBottom: s(8),
               }}
             >
               High Tip Warning
             </Text>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 color: colors.label,
-                textAlign: 'center',
-                marginBottom: 12
+                textAlign: "center",
+                marginBottom: s(12),
               }}
             >
               {highTipPayments.length === 1
                 ? `The tip entered is more than 30% of the payment amount.`
                 : `${highTipPayments.length} tips entered are more than 30% of their payment amounts.`}
             </Text>
-            {highTipPayments.map(p => {
-              const newTip = parseFloat(tipAmounts[p.paymentIndex] || '0') || 0
+            {highTipPayments.map((p) => {
+              const newTip = parseFloat(tipAmounts[p.paymentIndex] || "0") || 0;
               const pct =
                 p.orderAmount > 0
                   ? ((newTip / p.orderAmount) * 100).toFixed(0)
-                  : '0'
+                  : "0";
               return (
                 <View
                   key={p.paymentIndex}
                   style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    paddingVertical: 8,
-                    paddingHorizontal: 10,
-                    backgroundColor: colors.warning + '10',
-                    borderRadius: 8,
-                    marginBottom: 6
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    paddingVertical: s(8),
+                    paddingHorizontal: s(10),
+                    backgroundColor: colors.warning + "10",
+                    borderRadius: s(8),
+                    marginBottom: s(6),
                   }}
                 >
-                  <Text style={{ fontSize: 13, color: colors.label }}>
-                    ••••{p.last4 || '????'} (${p.orderAmount?.toFixed(2)})
+                  <Text style={{ fontSize: s(13), color: colors.label }}>
+                    ••••{p.last4 || "????"} (${p.orderAmount?.toFixed(2)})
                   </Text>
                   <Text
                     style={{
-                      fontSize: 13,
-                      fontWeight: '700',
-                      color: colors.warning
+                      fontSize: s(13),
+                      fontWeight: "700",
+                      color: colors.warning,
                     }}
                   >
                     ${newTip.toFixed(2)} ({pct}%)
                   </Text>
                 </View>
-              )
+              );
             })}
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 color: colors.muted,
-                textAlign: 'center',
-                marginTop: 8,
-                marginBottom: 16
+                textAlign: "center",
+                marginTop: s(8),
+                marginBottom: s(16),
               }}
             >
               Are you sure you want to proceed?
             </Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flexDirection: "row", gap: 10 }}>
               <TouchableOpacity
                 onPress={() => setShowHighTipConfirm(false)}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 8,
-                  backgroundColor: 'transparent',
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
+                  backgroundColor: "transparent",
                   borderWidth: 1,
                   borderColor: colors.border,
-                  alignItems: 'center'
+                  alignItems: "center",
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 13,
-                    fontWeight: '700',
-                    color: colors.label
+                    fontSize: s(13),
+                    fontWeight: "700",
+                    color: colors.label,
                   }}
                 >
                   CANCEL
@@ -1633,24 +2518,24 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
-                  setShowHighTipConfirm(false)
-                  handleAdjustTips()
+                  setShowHighTipConfirm(false);
+                  handleAdjustTips();
                 }}
                 style={{
                   flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 8,
-                  backgroundColor: colors.warning + '20',
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
+                  backgroundColor: colors.warning + "20",
                   borderWidth: 1,
-                  borderColor: colors.warning + '50',
-                  alignItems: 'center'
+                  borderColor: colors.warning + "50",
+                  alignItems: "center",
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 13,
-                    fontWeight: '700',
-                    color: colors.warning
+                    fontSize: s(13),
+                    fontWeight: "700",
+                    color: colors.warning,
                   }}
                 >
                   CONFIRM
@@ -1664,89 +2549,89 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
       {/* Header */}
       <View
         style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 14,
-          paddingVertical: 10,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: s(14),
+          paddingVertical: s(10),
           borderBottomWidth: 1,
-          borderBottomColor: colors.border
+          borderBottomColor: colors.border,
         }}
       >
         <TouchableOpacity
           onPress={onBack}
           disabled={processing}
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 10,
-            backgroundColor: colors.teal + '10',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: 10,
-            opacity: processing ? 0.3 : 1
+            width: s(30),
+            height: s(30),
+            borderRadius: s(10),
+            backgroundColor: colors.teal + "10",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: s(10),
+            opacity: processing ? 0.3 : 1,
           }}
         >
-          <ArrowLeft size={16} color={colors.teal} />
+          <ArrowLeft size={s(16)} color={colors.teal} />
         </TouchableOpacity>
         <Text
-          style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}
         >
           Adjust Tips
         </Text>
       </View>
 
       <ScrollView
-        className='flex-1'
+        className="flex-1"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 }}
       >
         {/* Payment Rows Table */}
-        <View style={{ paddingHorizontal: 14, paddingTop: 12 }}>
+        <View style={{ paddingHorizontal: s(14), paddingTop: s(12) }}>
           {/* Column Headers */}
           <View
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              paddingHorizontal: 10,
-              paddingBottom: 8,
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: s(10),
+              paddingBottom: s(8),
               borderBottomWidth: 1,
-              borderBottomColor: colors.border
+              borderBottomColor: colors.border,
             }}
           >
             <Text
               style={{
                 flex: 1,
-                fontSize: 11,
-                fontWeight: '600',
+                fontSize: s(11),
+                fontWeight: "600",
                 color: colors.muted,
-                textTransform: 'uppercase',
-                letterSpacing: 0.5
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
               }}
             >
               Payment
             </Text>
             <Text
               style={{
-                width: 88,
-                fontSize: 11,
-                fontWeight: '600',
+                width: s(88),
+                fontSize: s(11),
+                fontWeight: "600",
                 color: colors.muted,
-                textTransform: 'uppercase',
+                textTransform: "uppercase",
                 letterSpacing: 0.5,
-                textAlign: 'right'
+                textAlign: "right",
               }}
             >
               Order
             </Text>
             <Text
               style={{
-                width: 100,
-                fontSize: 11,
-                fontWeight: '600',
+                width: s(100),
+                fontSize: s(11),
+                fontWeight: "600",
                 color: colors.muted,
-                textTransform: 'uppercase',
+                textTransform: "uppercase",
                 letterSpacing: 0.5,
-                textAlign: 'right'
+                textAlign: "right",
               }}
             >
               New Tip
@@ -1754,11 +2639,11 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           </View>
 
           {/* Payment Rows */}
-          {cardPayments.map(payment => {
-            const brandLabel = formatCardBrand(payment.cardBrand)
-            const isActive = activeInput === payment.paymentIndex
-            const tipValue = tipAmounts[payment.paymentIndex] || ''
-            const hasTip = payment.currentTip > 0
+          {cardPayments.map((payment) => {
+            const brandLabel = formatCardBrand(payment.cardBrand);
+            const isActive = activeInput === payment.paymentIndex;
+            const tipValue = tipAmounts[payment.paymentIndex] || "";
+            const hasTip = payment.currentTip > 0;
 
             return (
               <TouchableOpacity
@@ -1766,68 +2651,70 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                 onPress={() => handleSelectPayment(payment.paymentIndex)}
                 activeOpacity={0.7}
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingVertical: 10,
-                  paddingHorizontal: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingVertical: s(10),
+                  paddingHorizontal: s(10),
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
-                  backgroundColor: isActive ? colors.teal + '08' : 'transparent'
+                  backgroundColor: isActive
+                    ? colors.teal + "08"
+                    : "transparent",
                 }}
               >
                 {/* Payment Column */}
                 <View
                   style={{
                     flex: 1,
-                    flexDirection: 'row',
-                    alignItems: 'center'
+                    flexDirection: "row",
+                    alignItems: "center",
                   }}
                 >
                   <View
                     style={{
-                      width: 20,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 6
+                      width: s(20),
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginRight: s(6),
                     }}
                   >
-                    {hasTip && <Check size={14} color={colors.teal} />}
+                    {hasTip && <Check size={s(14)} color={colors.teal} />}
                   </View>
                   <View
                     style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
+                      width: s(32),
+                      height: s(32),
+                      borderRadius: s(8),
                       backgroundColor: isActive
-                        ? colors.teal + '15'
+                        ? colors.teal + "15"
                         : colors.card,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 8
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginRight: s(8),
                     }}
                   >
                     <CreditCard
-                      size={15}
+                      size={s(15)}
                       color={isActive ? colors.teal : colors.label}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
                     <View
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 13,
-                          fontWeight: '600',
-                          color: colors.heading
+                          fontSize: s(13),
+                          fontWeight: "600",
+                          color: colors.heading,
                         }}
                       >
-                        {payment.last4 || '••••'}
-                        {payment.entryMode ? ` · ${payment.entryMode}` : ''}
+                        {payment.last4 || "••••"}
+                        {payment.entryMode ? ` · ${payment.entryMode}` : ""}
                       </Text>
                       {brandLabel ? (
                         <CardBrandBadge brand={payment.cardBrand} />
@@ -1835,13 +2722,15 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                     </View>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.muted,
-                        marginTop: 1
+                        marginTop: s(1),
                       }}
                     >
-                      {brandLabel || 'Card'}
-                      {payment.timestamp ? ` — ${formatTimestamp(payment.timestamp)}` : ''}
+                      {brandLabel || "Card"}
+                      {payment.timestamp
+                        ? ` — ${formatTimestamp(payment.timestamp)}`
+                        : ""}
                     </Text>
                   </View>
                 </View>
@@ -1849,134 +2738,140 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                 {/* Order Amount */}
                 <Text
                   style={{
-                    width: 88,
-                    fontSize: 13,
-                    fontWeight: '600',
+                    width: s(88),
+                    fontSize: s(13),
+                    fontWeight: "600",
                     color: colors.heading,
-                    textAlign: 'right'
+                    textAlign: "right",
                   }}
                 >
                   ${payment.orderAmount?.toFixed(2)}
                 </Text>
 
                 {/* New Tip */}
-                <View style={{ width: 100, alignItems: 'flex-end' }}>
+                <View style={{ width: s(100), alignItems: "flex-end" }}>
                   <View
                     style={{
-                      borderRadius: 8,
+                      borderRadius: s(8),
                       borderWidth: 1,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(5),
                       backgroundColor: isActive
-                        ? colors.teal + '15'
+                        ? colors.teal + "15"
                         : colors.screen,
-                      borderColor: isActive ? colors.teal + '50' : colors.border
+                      borderColor: isActive
+                        ? colors.teal + "50"
+                        : colors.border,
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 13,
-                        fontWeight: '600',
-                        textAlign: 'right',
+                        fontSize: s(13),
+                        fontWeight: "600",
+                        textAlign: "right",
                         color: tipValue
                           ? isActive
                             ? colors.teal
                             : colors.heading
-                          : colors.muted
+                          : colors.muted,
                       }}
                     >
-                      ${tipValue || '0.00'}
+                      ${tipValue || "0.00"}
                     </Text>
                   </View>
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       color: colors.muted,
-                      marginTop: 2,
-                      textAlign: 'right'
+                      marginTop: s(2),
+                      textAlign: "right",
                     }}
                   >
                     of ${payment.currentTip?.toFixed(2)}
                   </Text>
                 </View>
               </TouchableOpacity>
-            )
+            );
           })}
         </View>
 
         {/* Summary Bar */}
-        <View style={{ paddingHorizontal: 14, marginTop: 12 }}>
+        <View style={{ paddingHorizontal: s(14), marginTop: s(12) }}>
           <View
             style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
+              flexDirection: "row",
+              justifyContent: "space-between",
               backgroundColor: colors.card,
-              borderRadius: 12,
-              padding: 14,
+              borderRadius: s(12),
+              padding: s(14),
               borderWidth: 1,
-              borderColor: colors.border
+              borderColor: colors.border,
             }}
           >
-            <View style={{ alignItems: 'center' }}>
+            <View style={{ alignItems: "center" }}>
               <Text
                 style={{
-                  fontSize: 10,
-                  fontWeight: '600',
+                  fontSize: s(10),
+                  fontWeight: "600",
                   color: colors.muted,
-                  textTransform: 'uppercase',
+                  textTransform: "uppercase",
                   letterSpacing: 0.5,
-                  marginBottom: 4
+                  marginBottom: s(4),
                 }}
               >
                 Order Total
               </Text>
               <Text
                 style={{
-                  fontSize: 14,
-                  fontWeight: '700',
-                  color: colors.heading
+                  fontSize: s(14),
+                  fontWeight: "700",
+                  color: colors.heading,
                 }}
               >
                 ${totalOrderAmount?.toFixed(2)}
               </Text>
             </View>
-            <View style={{ alignItems: 'center' }}>
+            <View style={{ alignItems: "center" }}>
               <Text
                 style={{
-                  fontSize: 10,
-                  fontWeight: '600',
+                  fontSize: s(10),
+                  fontWeight: "600",
                   color: colors.muted,
-                  textTransform: 'uppercase',
+                  textTransform: "uppercase",
                   letterSpacing: 0.5,
-                  marginBottom: 4
+                  marginBottom: s(4),
                 }}
               >
                 New Tips
               </Text>
               <Text
-                style={{ fontSize: 14, fontWeight: '700', color: colors.teal }}
+                style={{
+                  fontSize: s(14),
+                  fontWeight: "700",
+                  color: colors.teal,
+                }}
               >
                 ${totalNewTips?.toFixed(2)}
               </Text>
             </View>
-            <View style={{ alignItems: 'center' }}>
+            <View style={{ alignItems: "center" }}>
               <Text
                 style={{
-                  fontSize: 10,
-                  fontWeight: '600',
+                  fontSize: s(10),
+                  fontWeight: "600",
                   color: colors.muted,
-                  textTransform: 'uppercase',
+                  textTransform: "uppercase",
                   letterSpacing: 0.5,
-                  marginBottom: 4
+                  marginBottom: s(4),
                 }}
               >
                 Grand Total
               </Text>
               <Text
                 style={{
-                  fontSize: 14,
-                  fontWeight: '700',
-                  color: colors.success
+                  fontSize: s(14),
+                  fontWeight: "700",
+                  color: colors.success,
                 }}
               >
                 ${(totalOrderAmount + totalNewTips)?.toFixed(2)}
@@ -1986,35 +2881,35 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
         </View>
 
         {/* Numeric Keypad */}
-        <View style={{ paddingHorizontal: 14, marginTop: 14 }}>
+        <View style={{ paddingHorizontal: s(14), marginTop: s(14) }}>
           {keypadKeys.map((row, rowIndex) => (
             <View
               key={rowIndex}
-              style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}
+              style={{ flexDirection: "row", gap: s(8), marginBottom: s(8) }}
             >
-              {row.map(key => (
+              {row.map((key) => (
                 <TouchableOpacity
                   key={key}
                   onPress={() => handleKeyPress(key)}
                   style={{
                     flex: 1,
-                    paddingVertical: 12,
+                    paddingVertical: s(12),
                     backgroundColor: colors.card,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    borderRadius: s(8),
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
-                  {key === 'backspace' ? (
-                    <Delete size={18} color={colors.heading} />
+                  {key === "backspace" ? (
+                    <Delete size={s(18)} color={colors.heading} />
                   ) : (
                     <Text
                       style={{
-                        fontSize: 18,
-                        fontWeight: '600',
-                        color: colors.heading
+                        fontSize: s(18),
+                        fontWeight: "600",
+                        color: colors.heading,
                       }}
                     >
                       {key}
@@ -2030,34 +2925,38 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
       {/* Footer Buttons */}
       <View
         style={{
-          position: 'absolute',
+          position: "absolute",
           bottom: 0,
           left: 0,
           right: 0,
-          paddingHorizontal: 14,
-          paddingVertical: 12,
+          paddingHorizontal: s(14),
+          paddingVertical: s(12),
           backgroundColor: colors.panel,
           borderTopWidth: 1,
-          borderTopColor: colors.border
+          borderTopColor: colors.border,
         }}
       >
-        <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flexDirection: "row", gap: s(10) }}>
           <TouchableOpacity
             onPress={onBack}
             disabled={processing}
             style={{
               flex: 1,
-              paddingVertical: 11,
-              borderRadius: 8,
-              backgroundColor: 'transparent',
+              paddingVertical: s(11),
+              borderRadius: s(8),
+              backgroundColor: "transparent",
               borderWidth: 1,
               borderColor: colors.border,
-              alignItems: 'center',
-              justifyContent: 'center'
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.label }}
+              style={{
+                fontSize: s(13),
+                fontWeight: "700",
+                color: colors.label,
+              }}
             >
               CANCEL
             </Text>
@@ -2067,15 +2966,15 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             disabled={!hasChanges || processing}
             style={{
               flex: 2,
-              paddingVertical: 11,
-              borderRadius: 8,
-              alignItems: 'center',
-              justifyContent: 'center',
+              paddingVertical: s(11),
+              borderRadius: s(8),
+              alignItems: "center",
+              justifyContent: "center",
               backgroundColor:
-                hasChanges && !processing ? colors.teal + '20' : colors.card,
+                hasChanges && !processing ? colors.teal + "20" : colors.card,
               borderWidth: 1,
               borderColor:
-                hasChanges && !processing ? colors.teal + '50' : colors.border
+                hasChanges && !processing ? colors.teal + "50" : colors.border,
             }}
           >
             {processing ? (
@@ -2083,50 +2982,50 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             ) : (
               <Text
                 style={{
-                  fontSize: 13,
-                  fontWeight: '700',
-                  color: hasChanges ? colors.teal : colors.muted
+                  fontSize: s(13),
+                  fontWeight: "700",
+                  color: hasChanges ? colors.teal : colors.muted,
                 }}
               >
                 {hasChanges
-                  ? `ADJUST ${tipDelta >= 0 ? '+' : '-'}$${Math.abs(
-                      tipDelta
+                  ? `ADJUST ${tipDelta >= 0 ? "+" : "-"}$${Math.abs(
+                      tipDelta,
                     )?.toFixed(2)}`
-                  : 'ADJUST TIPS'}
+                  : "ADJUST TIPS"}
               </Text>
             )}
           </TouchableOpacity>
         </View>
       </View>
     </View>
-  )
-}
+  );
+};
 
 // ============================================================================
 // RIGHT PANE - REFUND VIEW
 // ============================================================================
 interface RightPaneRefundProps {
-  order: any
+  order: any;
   paymentSummary: {
-    orderTotal: number
-    collected: number
-    held?: number
-    refunds: number
-    payments: PaymentRowData[]
-  }
-  onBack: () => void
+    orderTotal: number;
+    collected: number;
+    held?: number;
+    refunds: number;
+    payments: PaymentRowData[];
+  };
+  onBack: () => void;
   onProcessRefund: (
     type: RefundType,
     totalAmount: number,
     reason: string,
     perPaymentDetails: PerPaymentRefundDetail[],
     selectedItems?: {
-      itemId: string
-      quantity: number
-      paymentIndex?: number
-    }[]
-  ) => Promise<boolean>
-  refundProcessing: boolean
+      itemId: string;
+      quantity: number;
+      paymentIndex?: number;
+    }[],
+  ) => Promise<boolean>;
+  refundProcessing: boolean;
 }
 
 const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
@@ -2134,63 +3033,67 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   paymentSummary,
   onBack,
   onProcessRefund,
-  refundProcessing
+  refundProcessing,
 }) => {
-  const { show } = useToast()
-  const processingRef = useRef(false)
-  const [refundType, setRefundType] = useState<RefundType>('full')
-  const [refundReason, setRefundReason] = useState('')
-  const [selectedItems, setSelectedItems] = useState<Record<string, number>>({})
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const { show } = useToast();
+  const processingRef = useRef(false);
+  const [refundType, setRefundType] = useState<RefundType>("full");
+  const [refundReason, setRefundReason] = useState("");
+  const [selectedItems, setSelectedItems] = useState<Record<string, number>>(
+    {},
+  );
   const [paymentRefundAmounts, setPaymentRefundAmounts] = useState<
     Record<number, { orderAmount: string; tipAmount: string }>
-  >({})
+  >({});
   const [itemPaymentAssignment, setItemPaymentAssignment] = useState<
     Record<string, number>
-  >({})
+  >({});
 
   // console.log("paymentSummary", paymentSummary);
-  const maxRefundable = paymentSummary.collected - paymentSummary.refunds
+  const maxRefundable = paymentSummary.collected - paymentSummary.refunds;
 
   // Filter out voided payments and fully refunded payments - only payments with remaining balance can be refunded
   const refundablePayments = useMemo(() => {
-    return paymentSummary.payments.filter(p => {
-      if (p.isVoided) return false
+    return paymentSummary.payments.filter((p) => {
+      if (p.isVoided) return false;
       // Check if payment has remaining balance to refund
-      const remainingBalance = p.collected - (p.refundedAmount || 0)
-      return remainingBalance > 0
-    })
-  }, [paymentSummary.payments])
+      const remainingBalance = p.collected - (p.refundedAmount || 0);
+      return remainingBalance > 0;
+    });
+  }, [paymentSummary.payments]);
 
   // Calculate remaining refundable amounts per payment (after partial refunds)
   const getRemainingAmounts = useCallback((payment: PaymentRowData) => {
-    const refunded = payment.refundedAmount || 0
+    const refunded = payment.refundedAmount || 0;
     // Apply refunds to order portion first, then tips
-    const orderRefunded = Math.min(refunded, payment.orderAmount)
-    const tipRefunded = Math.max(0, refunded - payment.orderAmount)
+    const orderRefunded = Math.min(refunded, payment.orderAmount);
+    const tipRefunded = Math.max(0, refunded - payment.orderAmount);
     return {
       remainingOrder: Math.max(0, payment.orderAmount - orderRefunded),
-      remainingTip: Math.max(0, payment.tipAmount - tipRefunded)
-    }
-  }, [])
+      remainingTip: Math.max(0, payment.tipAmount - tipRefunded),
+    };
+  }, []);
 
   const getRefundableQty = useCallback((item: CartItem) => {
-    const paidQty = item.paidQuantity ?? item.quantity ?? 0
-    const refundedQty = item.refundedQuantity ?? 0
-    return Math.max(0, paidQty - refundedQty)
-  }, [])
+    const paidQty = item.paidQuantity ?? item.quantity ?? 0;
+    const refundedQty = item.refundedQuantity ?? 0;
+    return Math.max(0, paidQty - refundedQty);
+  }, []);
 
   // Helper: find which payment covers a given item via itemsCovered
   const getPaymentForItem = useCallback(
     (itemId: string): PaymentRowData | null => {
       for (const payment of refundablePayments) {
-        if (payment.itemsCovered?.some(ic => ic.itemId === itemId)) {
-          return payment
+        if (payment.itemsCovered?.some((ic) => ic.itemId === itemId)) {
+          return payment;
         }
       }
-      return null
+      return null;
     },
-    [refundablePayments]
-  )
+    [refundablePayments],
+  );
 
   // Calculate selected items total (price + tax + prorated SC share) using
   // discounted prices and correct cash/card pricing per covering payment.
@@ -2201,42 +3104,42 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   // payment, sum items+tax per payment, then fold in the prorated SC slice
   // via computeItemRefundAmount (same helper used in refundService).
   const selectedItemsTotal = useMemo(() => {
-    if (!order?.items) return 0
+    if (!order?.items) return 0;
     // Step 1: aggregate items+tax per covering payment.
     // paymentKey: dbPaymentId || 'unassigned' — unassigned items just contribute
     // their items+tax (no SC share known until the user assigns a payment).
-    const itemsTotalByPayment = new Map<string, number>()
+    const itemsTotalByPayment = new Map<string, number>();
     const paymentMetaByKey = new Map<
       string,
       { amount: number; serviceCharge: number } | null
-    >()
+    >();
     for (const item of order.items as CartItem[]) {
-      const maxQty = getRefundableQty(item)
+      const maxQty = getRefundableQty(item);
       const selectedQty = Math.min(
-        selectedItems[item.db_order_item_id || ''] || 0,
-        maxQty
-      )
-      if (selectedQty <= 0) continue
-      const coveringPayment = getPaymentForItem(item.db_order_item_id || '')
+        selectedItems[item.db_order_item_id || ""] || 0,
+        maxQty,
+      );
+      if (selectedQty <= 0) continue;
+      const coveringPayment = getPaymentForItem(item.db_order_item_id || "");
       const isCash =
-        coveringPayment?.isCashPriced || coveringPayment?.method === 'Cash'
+        coveringPayment?.isCashPriced || coveringPayment?.method === "Cash";
       const effectiveSubtotal = isCash
-        ? item.cashSubtotal ?? item.subtotal ?? 0
-        : item.subtotal ?? 0
+        ? (item.cashSubtotal ?? item.subtotal ?? 0)
+        : (item.subtotal ?? 0);
       const effectiveTax = isCash
-        ? item.cashTaxAmount ?? item.taxAmount ?? 0
-        : item.taxAmount ?? 0
+        ? (item.cashTaxAmount ?? item.taxAmount ?? 0)
+        : (item.taxAmount ?? 0);
       const discountedUnitPrice =
-        item.quantity > 0 ? effectiveSubtotal / item.quantity : item.price || 0
-      const perUnitTax = item.quantity > 0 ? effectiveTax / item.quantity : 0
-      const itemSubtotal = round2(discountedUnitPrice * selectedQty)
-      const itemTax = round2(perUnitTax * selectedQty)
-      const itemSlice = round2(itemSubtotal + itemTax)
-      const key = coveringPayment?.dbPaymentId || 'unassigned'
+        item.quantity > 0 ? effectiveSubtotal / item.quantity : item.price || 0;
+      const perUnitTax = item.quantity > 0 ? effectiveTax / item.quantity : 0;
+      const itemSubtotal = round2(discountedUnitPrice * selectedQty);
+      const itemTax = round2(perUnitTax * selectedQty);
+      const itemSlice = round2(itemSubtotal + itemTax);
+      const key = coveringPayment?.dbPaymentId || "unassigned";
       itemsTotalByPayment.set(
         key,
-        (itemsTotalByPayment.get(key) || 0) + itemSlice
-      )
+        (itemsTotalByPayment.get(key) || 0) + itemSlice,
+      );
       if (!paymentMetaByKey.has(key)) {
         paymentMetaByKey.set(
           key,
@@ -2245,38 +3148,38 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 amount: coveringPayment.orderAmount,
                 serviceCharge: coveringPayment.serviceCharge ?? 0,
               }
-            : null
-        )
+            : null,
+        );
       }
     }
     // Step 2: fold in the SC slice per payment and sum.
-    let total = 0
+    let total = 0;
     for (const [key, itemsTotal] of itemsTotalByPayment) {
-      const meta = paymentMetaByKey.get(key)
+      const meta = paymentMetaByKey.get(key);
       if (!meta || meta.serviceCharge <= 0) {
-        total += itemsTotal
-        continue
+        total += itemsTotal;
+        continue;
       }
-      total += computeItemRefundAmount(meta, itemsTotal).amount
+      total += computeItemRefundAmount(meta, itemsTotal).amount;
     }
-    return round2(total)
-  }, [selectedItems, order?.items, getRefundableQty, getPaymentForItem])
+    return round2(total);
+  }, [selectedItems, order?.items, getRefundableQty, getPaymentForItem]);
 
   // Calculate per-payment refund total
   const paymentRefundTotal = useMemo(() => {
-    let total = 0
-    Object.values(paymentRefundAmounts).forEach(amounts => {
+    let total = 0;
+    Object.values(paymentRefundAmounts).forEach((amounts) => {
       total +=
         (parseFloat(amounts.orderAmount) || 0) +
-        (parseFloat(amounts.tipAmount) || 0)
-    })
-    return total
-  }, [paymentRefundAmounts])
+        (parseFloat(amounts.tipAmount) || 0);
+    });
+    return total;
+  }, [paymentRefundAmounts]);
 
   const customAmountActive = useMemo(() => {
-    if (refundType !== 'payments') return false
-    return paymentRefundTotal > 0
-  }, [paymentRefundTotal, refundType])
+    if (refundType !== "payments") return false;
+    return paymentRefundTotal > 0;
+  }, [paymentRefundTotal, refundType]);
 
   // console.log("customAmountActive debug", {
   //   customAmountActive,
@@ -2286,114 +3189,114 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   // });
 
   const hasCustomAmountRefund = useMemo(() => {
-    if (!order?.reversals) return false
+    if (!order?.reversals) return false;
     return (order.reversals as ReversalRecord[]).some(
-      r =>
-        r.status === 'completed' &&
-        (r.reversal_type === 'partial_refund' || r.reversal_type === 'refund')
-    )
-  }, [order?.reversals])
+      (r) =>
+        r.status === "completed" &&
+        (r.reversal_type === "partial_refund" || r.reversal_type === "refund"),
+    );
+  }, [order?.reversals]);
 
-  const hasRefundablePayments = refundablePayments.length > 0
-  const isZeroRefundable = maxRefundable <= 0 || !hasRefundablePayments
+  const hasRefundablePayments = refundablePayments.length > 0;
+  const isZeroRefundable = maxRefundable <= 0 || !hasRefundablePayments;
 
   const getRefundAmount = () => {
     switch (refundType) {
-      case 'full':
-        return maxRefundable
-      case 'items':
-        return selectedItemsTotal
-      case 'payments':
-        return paymentRefundTotal
+      case "full":
+        return maxRefundable;
+      case "items":
+        return selectedItemsTotal;
+      case "payments":
+        return paymentRefundTotal;
       default:
-        return 0
+        return 0;
     }
-  }
+  };
 
-  const itemsDisabled = isZeroRefundable
+  const itemsDisabled = isZeroRefundable;
 
   // getPaymentForItem moved above selectedItemsTotal (line ~2085) so both
   // selectedItemsTotal and buildPerPaymentDetails can use it for cash/card pricing.
 
   // Helper: get human-readable payment label
   const getPaymentLabel = useCallback((payment: PaymentRowData): string => {
-    if (payment.method === 'Card') {
+    if (payment.method === "Card") {
       const brand = formatCardBrand(
-        payment.cardBrand || payment.cardInfo?.brand
-      )
-      const last4 = payment.last4 || payment.cardInfo?.last4
-      if (brand && last4) return `${brand} ••••${last4}`
-      if (last4) return `Card ••••${last4}`
-      if (brand) return brand
-      return 'Card'
+        payment.cardBrand || payment.cardInfo?.brand,
+      );
+      const last4 = payment.last4 || payment.cardInfo?.last4;
+      if (brand && last4) return `${brand} ••••${last4}`;
+      if (last4) return `Card ••••${last4}`;
+      if (brand) return brand;
+      return "Card";
     }
-    return 'Cash'
-  }, [])
+    return "Cash";
+  }, []);
 
   useEffect(() => {
-    if (!order?.items) return
-    setSelectedItems(prev => {
-      let changed = false
-      const next: Record<string, number> = { ...prev }
+    if (!order?.items) return;
+    setSelectedItems((prev) => {
+      let changed = false;
+      const next: Record<string, number> = { ...prev };
       order.items.forEach((item: CartItem) => {
         // TODO: Need to research offline scenario where item.db_order_item_id is not available
-        if (!item.db_order_item_id) return
-        const maxQty = getRefundableQty(item)
-        if (maxQty <= 0 && next[item.db_order_item_id || '']) {
-          delete next[item.db_order_item_id || '']
-          changed = true
-          return
+        if (!item.db_order_item_id) return;
+        const maxQty = getRefundableQty(item);
+        if (maxQty <= 0 && next[item.db_order_item_id || ""]) {
+          delete next[item.db_order_item_id || ""];
+          changed = true;
+          return;
         }
         if (
-          next[item.db_order_item_id || ''] &&
-          next[item.db_order_item_id || ''] > maxQty
+          next[item.db_order_item_id || ""] &&
+          next[item.db_order_item_id || ""] > maxQty
         ) {
           if (maxQty > 0) {
-            next[item.db_order_item_id || ''] = maxQty
+            next[item.db_order_item_id || ""] = maxQty;
           } else {
-            delete next[item.db_order_item_id || '']
+            delete next[item.db_order_item_id || ""];
           }
-          changed = true
+          changed = true;
         }
-      })
-      return changed ? next : prev
-    })
-  }, [order?.items, getRefundableQty])
-  console.log('[RightPaneRefund] selectedItems', selectedItems)
-  console.log('[RightPaneRefund] order?.items', order?.items)
+      });
+      return changed ? next : prev;
+    });
+  }, [order?.items, getRefundableQty]);
+  console.log("[RightPaneRefund] selectedItems", selectedItems);
+  console.log("[RightPaneRefund] order?.items", order?.items);
   // Validation: all selected unallocated items must have a payment assigned
   const allItemsHavePayment = useMemo(() => {
-    if (refundType !== 'items') return true
+    if (refundType !== "items") return true;
     for (const [itemId, qty] of Object.entries(selectedItems)) {
-      if (qty <= 0) continue
-      const coveringPayment = getPaymentForItem(itemId)
+      if (qty <= 0) continue;
+      const coveringPayment = getPaymentForItem(itemId);
       if (!coveringPayment && itemPaymentAssignment[itemId] === undefined) {
-        return false
+        return false;
       }
     }
-    return true
-  }, [selectedItems, itemPaymentAssignment, refundType, getPaymentForItem])
+    return true;
+  }, [selectedItems, itemPaymentAssignment, refundType, getPaymentForItem]);
 
   // Validation: no per-payment amount exceeds its remaining refundable amount
   const paymentAmountsValid = useMemo(() => {
-    if (refundType !== 'payments') return true
+    if (refundType !== "payments") return true;
     for (const [indexStr, amounts] of Object.entries(paymentRefundAmounts)) {
-      const index = parseInt(indexStr)
-      const payment = refundablePayments[index]
-      if (!payment) continue
-      const { remainingOrder, remainingTip } = getRemainingAmounts(payment)
-      const orderAmt = parseFloat(amounts.orderAmount) || 0
-      const tipAmt = parseFloat(amounts.tipAmount) || 0
-      if (orderAmt > remainingOrder || tipAmt > remainingTip) return false
-      if (orderAmt < 0 || tipAmt < 0) return false
+      const index = parseInt(indexStr);
+      const payment = refundablePayments[index];
+      if (!payment) continue;
+      const { remainingOrder, remainingTip } = getRemainingAmounts(payment);
+      const orderAmt = parseFloat(amounts.orderAmount) || 0;
+      const tipAmt = parseFloat(amounts.tipAmount) || 0;
+      if (orderAmt > remainingOrder || tipAmt > remainingTip) return false;
+      if (orderAmt < 0 || tipAmt < 0) return false;
     }
-    return true
+    return true;
   }, [
     paymentRefundAmounts,
     refundablePayments,
     refundType,
-    getRemainingAmounts
-  ])
+    getRemainingAmounts,
+  ]);
 
   const canProcess =
     refundReason.trim().length > 0 &&
@@ -2401,7 +3304,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     getRefundAmount() <= maxRefundable &&
     allItemsHavePayment &&
     paymentAmountsValid &&
-    !isZeroRefundable
+    !isZeroRefundable;
   // console.log('Can Process Refund', {
   //   refundReason,
   //   refundAmount: getRefundAmount(),
@@ -2412,89 +3315,89 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   //   customAmountActive,
   // });
   const handleToggleItem = (itemId: string, maxQty: number) => {
-    if (isZeroRefundable || maxQty <= 0) return
-    setSelectedItems(prev => {
+    if (isZeroRefundable || maxQty <= 0) return;
+    setSelectedItems((prev) => {
       if (prev[itemId]) {
-        const { [itemId]: removed, ...rest } = prev
-        return rest
+        const { [itemId]: removed, ...rest } = prev;
+        return rest;
       }
-      return { ...prev, [itemId]: maxQty }
-    })
-  }
+      return { ...prev, [itemId]: maxQty };
+    });
+  };
 
   const handleQuantityChange = (
     itemId: string,
     qty: number,
-    maxQty: number
+    maxQty: number,
   ) => {
     if (qty <= 0) {
-      const { [itemId]: removed, ...rest } = selectedItems
-      setSelectedItems(rest)
+      const { [itemId]: removed, ...rest } = selectedItems;
+      setSelectedItems(rest);
     } else {
-      setSelectedItems(prev => ({
+      setSelectedItems((prev) => ({
         ...prev,
-        [itemId]: Math.min(qty, maxQty)
-      }))
+        [itemId]: Math.min(qty, maxQty),
+      }));
     }
-  }
+  };
 
   const handlePaymentAmountChange = (
     index: number,
-    field: 'orderAmount' | 'tipAmount',
-    value: string
+    field: "orderAmount" | "tipAmount",
+    value: string,
   ) => {
-    const cleaned = value.replace(/[^0-9.]/g, '')
-    const parts = cleaned.split('.')
-    if (parts.length > 2) return
-    if (parts[1]?.length > 2) return
-    setPaymentRefundAmounts(prev => ({
+    const cleaned = value.replace(/[^0-9.]/g, "");
+    const parts = cleaned.split(".");
+    if (parts.length > 2) return;
+    if (parts[1]?.length > 2) return;
+    setPaymentRefundAmounts((prev) => ({
       ...prev,
       [index]: {
-        orderAmount: prev[index]?.orderAmount || '',
-        tipAmount: prev[index]?.tipAmount || '',
-        [field]: cleaned
-      }
-    }))
-  }
+        orderAmount: prev[index]?.orderAmount || "",
+        tipAmount: prev[index]?.tipAmount || "",
+        [field]: cleaned,
+      },
+    }));
+  };
 
   const handleFillAllForPayment = (index: number) => {
-    const payment = refundablePayments[index]
-    if (!payment) return
-    const { remainingOrder, remainingTip } = getRemainingAmounts(payment)
-    setPaymentRefundAmounts(prev => ({
+    const payment = refundablePayments[index];
+    if (!payment) return;
+    const { remainingOrder, remainingTip } = getRemainingAmounts(payment);
+    setPaymentRefundAmounts((prev) => ({
       ...prev,
       [index]: {
         orderAmount: remainingOrder.toFixed(2),
-        tipAmount: remainingTip.toFixed(2)
-      }
-    }))
-  }
+        tipAmount: remainingTip.toFixed(2),
+      },
+    }));
+  };
 
   const resetRefundState = useCallback(() => {
-    setRefundType('full')
-    setRefundReason('')
-    setSelectedItems({})
-    setPaymentRefundAmounts({})
-    setItemPaymentAssignment({})
-  }, [])
+    setRefundType("full");
+    setRefundReason("");
+    setSelectedItems({});
+    setPaymentRefundAmounts({});
+    setItemPaymentAssignment({});
+  }, []);
 
   const refundLogs = useMemo(() => {
-    const logs = (order?.reversals || []) as any[]
+    const logs = (order?.reversals || []) as any[];
     return logs
       .slice()
       .sort(
         (a, b) =>
           new Date(b.requested_at).getTime() -
-          new Date(a.requested_at).getTime()
-      )
-  }, [order?.reversals])
+          new Date(a.requested_at).getTime(),
+      );
+  }, [order?.reversals]);
 
   // Build per-payment refund details for processing
   const buildPerPaymentDetails = (): PerPaymentRefundDetail[] => {
-    const details: PerPaymentRefundDetail[] = []
+    const details: PerPaymentRefundDetail[] = [];
 
-    if (refundType === 'full') {
-      refundablePayments.forEach(payment => {
+    if (refundType === "full") {
+      refundablePayments.forEach((payment) => {
         details.push({
           paymentIndex: payment.originalPaymentIndex,
           originalPaymentId: payment.paymentId,
@@ -2505,17 +3408,17 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           totalRefund: payment.collected,
           referenceId: payment.referenceId,
           last4: payment.last4 || payment.cardInfo?.last4,
-          cardBrand: payment.cardBrand || payment.cardInfo?.brand
-        })
-      })
-    } else if (refundType === 'payments') {
+          cardBrand: payment.cardBrand || payment.cardInfo?.brand,
+        });
+      });
+    } else if (refundType === "payments") {
       Object.entries(paymentRefundAmounts).forEach(([indexStr, amounts]) => {
-        const index = parseInt(indexStr)
-        const payment = refundablePayments[index]
-        if (!payment) return
-        const orderAmt = parseFloat(amounts.orderAmount) || 0
-        const tipAmt = parseFloat(amounts.tipAmount) || 0
-        if (orderAmt + tipAmt <= 0) return
+        const index = parseInt(indexStr);
+        const payment = refundablePayments[index];
+        if (!payment) return;
+        const orderAmt = parseFloat(amounts.orderAmount) || 0;
+        const tipAmt = parseFloat(amounts.tipAmount) || 0;
+        if (orderAmt + tipAmt <= 0) return;
         details.push({
           paymentIndex: payment.originalPaymentIndex,
           originalPaymentId: payment.paymentId,
@@ -2526,52 +3429,58 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           totalRefund: orderAmt + tipAmt,
           referenceId: payment.referenceId,
           last4: payment.last4 || payment.cardInfo?.last4,
-          cardBrand: payment.cardBrand || payment.cardInfo?.brand
-        })
-      })
-    } else if (refundType === 'items' && !isZeroRefundable) {
+          cardBrand: payment.cardBrand || payment.cardInfo?.brand,
+        });
+      });
+    } else if (refundType === "items" && !isZeroRefundable) {
       // Group selected items by their covering payment
       const paymentItemMap: Record<
         number,
         { itemId: string; quantity: number; amount: number }[]
-      > = {}
+      > = {};
 
       for (const [itemId, qty] of Object.entries(selectedItems)) {
-        if (qty <= 0) continue
-        const item = order?.items?.find((i: CartItem) => i.id === itemId)
-        if (!item) continue
+        if (qty <= 0) continue;
+        const item = order?.items?.find((i: CartItem) => i.id === itemId);
+        if (!item) continue;
         // Use discounted price based on covering payment's pricing mode
-        const coveringPayment = getPaymentForItem(itemId)
-        const isCash = coveringPayment?.isCashPriced || coveringPayment?.method === 'Cash'
-        const effectiveSubtotal = isCash ? (item.cashSubtotal ?? item.subtotal ?? 0) : (item.subtotal ?? 0)
-        const effectiveTax = isCash ? (item.cashTaxAmount ?? item.taxAmount ?? 0) : (item.taxAmount ?? 0)
-        const discountedUnitPrice = item.quantity > 0
-          ? effectiveSubtotal / item.quantity
-          : (item.price || 0)
-        const perUnitTax = item.quantity > 0 ? effectiveTax / item.quantity : 0
-        const itemSubtotal = discountedUnitPrice * qty
-        const amount = itemSubtotal + perUnitTax * qty
+        const coveringPayment = getPaymentForItem(itemId);
+        const isCash =
+          coveringPayment?.isCashPriced || coveringPayment?.method === "Cash";
+        const effectiveSubtotal = isCash
+          ? (item.cashSubtotal ?? item.subtotal ?? 0)
+          : (item.subtotal ?? 0);
+        const effectiveTax = isCash
+          ? (item.cashTaxAmount ?? item.taxAmount ?? 0)
+          : (item.taxAmount ?? 0);
+        const discountedUnitPrice =
+          item.quantity > 0
+            ? effectiveSubtotal / item.quantity
+            : item.price || 0;
+        const perUnitTax = item.quantity > 0 ? effectiveTax / item.quantity : 0;
+        const itemSubtotal = discountedUnitPrice * qty;
+        const amount = itemSubtotal + perUnitTax * qty;
 
-        let paymentIdx: number | undefined
+        let paymentIdx: number | undefined;
         if (coveringPayment) {
-          paymentIdx = coveringPayment.originalPaymentIndex
+          paymentIdx = coveringPayment.originalPaymentIndex;
         } else if (itemPaymentAssignment[itemId] !== undefined) {
           paymentIdx =
             refundablePayments[itemPaymentAssignment[itemId]]
-              ?.originalPaymentIndex
+              ?.originalPaymentIndex;
         }
 
         if (paymentIdx !== undefined) {
-          if (!paymentItemMap[paymentIdx]) paymentItemMap[paymentIdx] = []
-          paymentItemMap[paymentIdx].push({ itemId, quantity: qty, amount })
+          if (!paymentItemMap[paymentIdx]) paymentItemMap[paymentIdx] = [];
+          paymentItemMap[paymentIdx].push({ itemId, quantity: qty, amount });
         }
       }
 
       for (const [paymentIdxStr, items] of Object.entries(paymentItemMap)) {
-        const paymentIdx = parseInt(paymentIdxStr)
-        const payment = paymentSummary.payments[paymentIdx]
-        if (!payment) continue
-        const totalAmount = items.reduce((sum, i) => sum + i.amount, 0)
+        const paymentIdx = parseInt(paymentIdxStr);
+        const payment = paymentSummary.payments[paymentIdx];
+        if (!payment) continue;
+        const totalAmount = items.reduce((sum, i) => sum + i.amount, 0);
         details.push({
           paymentIndex: paymentIdx,
           originalPaymentId: payment.paymentId,
@@ -2582,40 +3491,42 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           totalRefund: totalAmount,
           referenceId: payment.referenceId,
           last4: payment.last4 || payment.cardInfo?.last4,
-          cardBrand: payment.cardBrand || payment.cardInfo?.brand
-        })
+          cardBrand: payment.cardBrand || payment.cardInfo?.brand,
+        });
       }
     }
 
-    return details
-  }
+    return details;
+  };
 
   return (
-    <View style={{ flex: 6, backgroundColor: colors.screen, position: 'relative' }}>
+    <View
+      style={{ flex: 6, backgroundColor: colors.screen, position: "relative" }}
+    >
       {/* Processing Overlay */}
       {refundProcessing && (
         <View
-          className='absolute inset-0 z-50 items-center justify-center'
-          style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
+          className="absolute inset-0 z-50 items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
         >
           <View
             style={{
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 14,
-              padding: 28,
-              alignItems: 'center',
-              marginHorizontal: 32
+              borderRadius: s(14),
+              padding: s(28),
+              alignItems: "center",
+              marginHorizontal: s(32),
             }}
           >
-            <ActivityIndicator size='large' color={colors.danger} />
+            <ActivityIndicator size="large" color={colors.danger} />
             <Text
               style={{
                 color: colors.heading,
-                fontSize: 15,
-                fontWeight: '700',
-                marginTop: 14
+                fontSize: s(15),
+                fontWeight: "700",
+                marginTop: s(14),
               }}
             >
               Processing Refund
@@ -2623,12 +3534,12 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             <Text
               style={{
                 color: colors.label,
-                fontSize: 12,
-                marginTop: 6,
-                textAlign: 'center'
+                fontSize: s(12),
+                marginTop: s(6),
+                textAlign: "center",
               }}
             >
-              Processing refund on terminal…{'\n'}Please do not close this
+              Processing refund on terminal…{"\n"}Please do not close this
               screen.
             </Text>
           </View>
@@ -2638,129 +3549,133 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
       {/* Header */}
       <View
         style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 14,
-          paddingVertical: 10,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: s(14),
+          paddingVertical: s(10),
           borderBottomWidth: 1,
-          borderBottomColor: colors.border
+          borderBottomColor: colors.border,
         }}
       >
         <TouchableOpacity
           onPress={onBack}
           disabled={refundProcessing}
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 10,
-            backgroundColor: colors.teal + '10',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: 10,
-            opacity: refundProcessing ? 0.3 : 1
+            width: s(30),
+            height: s(30),
+            borderRadius: s(10),
+            backgroundColor: colors.teal + "10",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: s(10),
+            opacity: refundProcessing ? 0.3 : 1,
           }}
         >
-          <ArrowLeft size={16} color={colors.teal} />
+          <ArrowLeft size={s(16)} color={colors.teal} />
         </TouchableOpacity>
         <Text
-          style={{ color: colors.heading, fontSize: 15, fontWeight: '700' }}
+          style={{ color: colors.heading, fontSize: s(15), fontWeight: "700" }}
         >
           Process Refund
         </Text>
       </View>
 
       <ScrollView
-        className='flex-1'
+        className="flex-1"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 }}
       >
         {/* Refund Type Tabs */}
         <View
-          style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8 }}
+          style={{
+            paddingHorizontal: s(14),
+            paddingTop: s(12),
+            paddingBottom: s(8),
+          }}
         >
           <Text
             style={{
-              fontSize: 11,
-              fontWeight: '600',
+              fontSize: s(11),
+              fontWeight: "600",
               color: colors.muted,
-              textTransform: 'uppercase',
+              textTransform: "uppercase",
               letterSpacing: 0.5,
-              marginBottom: 8
+              marginBottom: s(8),
             }}
           >
             Refund Type
           </Text>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
+          <View style={{ flexDirection: "row", gap: s(6) }}>
             {[
-              { key: 'full', label: 'Full Refund' },
-              { key: 'items', label: 'By Item' },
-              { key: 'payments', label: 'By Payment' }
-            ].map(type => {
+              { key: "full", label: "Full Refund" },
+              { key: "items", label: "By Item" },
+              { key: "payments", label: "By Payment" },
+            ].map((type) => {
               const isDisabled =
-                type.key === 'items' &&
-                (hasCustomAmountRefund || isZeroRefundable)
-              const isActive = refundType === type.key
+                type.key === "items" &&
+                (hasCustomAmountRefund || isZeroRefundable);
+              const isActive = refundType === type.key;
               return (
                 <TouchableOpacity
                   key={type.key}
                   onPress={() => {
-                    if (isDisabled) return
-                    const newType = type.key as RefundType
-                    if (newType === 'items') {
-                      setPaymentRefundAmounts({})
-                    } else if (newType === 'payments' || newType === 'full') {
-                      setSelectedItems({})
-                      setItemPaymentAssignment({})
+                    if (isDisabled) return;
+                    const newType = type.key as RefundType;
+                    if (newType === "items") {
+                      setPaymentRefundAmounts({});
+                    } else if (newType === "payments" || newType === "full") {
+                      setSelectedItems({});
+                      setItemPaymentAssignment({});
                     }
-                    setRefundType(newType)
+                    setRefundType(newType);
                   }}
                   disabled={isDisabled}
                   style={{
                     flex: 1,
-                    paddingVertical: 7,
-                    paddingHorizontal: 10,
-                    borderRadius: 8,
+                    paddingVertical: s(7),
+                    paddingHorizontal: s(10),
+                    borderRadius: s(8),
                     borderWidth: 1,
-                    alignItems: 'center',
+                    alignItems: "center",
                     opacity: isDisabled ? 0.4 : 1,
                     backgroundColor: isActive
-                      ? colors.teal + '15'
+                      ? colors.teal + "15"
                       : colors.screen,
-                    borderColor: isActive ? colors.teal + '50' : colors.border
+                    borderColor: isActive ? colors.teal + "50" : colors.border,
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 12,
-                      fontWeight: '600',
+                      fontSize: s(12),
+                      fontWeight: "600",
                       color: isDisabled
                         ? colors.muted
                         : isActive
-                        ? colors.teal
-                        : colors.label
+                          ? colors.teal
+                          : colors.label,
                     }}
                   >
                     {type.label}
                   </Text>
                 </TouchableOpacity>
-              )
+              );
             })}
           </View>
         </View>
 
         {isZeroRefundable && (
-          <View style={{ paddingHorizontal: 14, paddingBottom: 8 }}>
+          <View style={{ paddingHorizontal: s(14), paddingBottom: s(8) }}>
             <View
               style={{
-                backgroundColor: colors.warning + '10',
+                backgroundColor: colors.warning + "10",
                 borderWidth: 1,
-                borderColor: colors.warning + '30',
-                borderRadius: 8,
-                paddingHorizontal: 12,
-                paddingVertical: 8
+                borderColor: colors.warning + "30",
+                borderRadius: s(8),
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
               }}
             >
-              <Text style={{ fontSize: 12, color: colors.warning }}>
+              <Text style={{ fontSize: s(12), color: colors.warning }}>
                 No refundable balance available. All refundable payments are
                 voided or fully refunded.
               </Text>
@@ -2769,107 +3684,121 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         )}
 
         {/* Full Refund View */}
-        {refundType === 'full' && (
-          <View style={{ paddingHorizontal: 14 }}>
+        {refundType === "full" && (
+          <View style={{ paddingHorizontal: s(14) }}>
             <Text
-              style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}
+              style={{
+                fontSize: s(12),
+                color: colors.muted,
+                marginBottom: s(10),
+              }}
             >
               All payments will be fully reversed
             </Text>
             {refundablePayments.map((payment, index) => {
-              const label = getPaymentLabel(payment)
+              const label = getPaymentLabel(payment);
               return (
                 <View
                   key={index}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingVertical: 10,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingVertical: s(10),
                     borderBottomWidth: 1,
-                    borderBottomColor: colors.border
+                    borderBottomColor: colors.border,
                   }}
                 >
                   <View
                     style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      backgroundColor: colors.teal + '15',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 10
+                      width: s(32),
+                      height: s(32),
+                      borderRadius: s(8),
+                      backgroundColor: colors.teal + "15",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginRight: s(10),
                     }}
                   >
-                    {payment.method === 'Card' ? (
-                      <CreditCard size={16} color={colors.teal} />
+                    {payment.method === "Card" ? (
+                      <CreditCard size={s(16)} color={colors.teal} />
                     ) : (
-                      <Banknote size={16} color={colors.teal} />
+                      <Banknote size={s(16)} color={colors.teal} />
                     )}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text
                       style={{
-                        fontSize: 13,
-                        fontWeight: '600',
-                        color: colors.heading
+                        fontSize: s(13),
+                        fontWeight: "600",
+                        color: colors.heading,
                       }}
                     >
                       {label}
                     </Text>
-                    {payment.method === 'Card' && (
+                    {payment.method === "Card" && (
                       <CardBrandBadge
                         brand={payment.cardBrand || payment.cardInfo?.brand}
                       />
                     )}
                   </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 11, color: colors.muted }}>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={{ fontSize: s(11), color: colors.muted }}>
                       Order: ${payment.orderAmount?.toFixed(2)}
                     </Text>
                     {payment.tipAmount > 0 && (
-                      <Text style={{ fontSize: 11, color: colors.info }}>
+                      <Text style={{ fontSize: s(11), color: colors.info }}>
                         Tip: ${payment.tipAmount?.toFixed(2)}
                       </Text>
                     )}
                     <Text
                       style={{
-                        fontSize: 13,
-                        fontWeight: '700',
-                        color: colors.danger
+                        fontSize: s(13),
+                        fontWeight: "700",
+                        color: colors.danger,
                       }}
                     >
                       ${payment.collected?.toFixed(2)}
                     </Text>
                   </View>
                 </View>
-              )
+              );
             })}
             <View
               style={{
-                marginTop: 12,
+                marginTop: s(12),
                 backgroundColor: colors.card,
-                borderRadius: 12,
-                padding: 14,
+                borderRadius: s(12),
+                padding: s(14),
                 borderWidth: 1,
-                borderColor: colors.border
+                borderColor: colors.border,
               }}
             >
               <Text
-                style={{ fontSize: 12, color: colors.label, marginBottom: 2 }}
+                style={{
+                  fontSize: s(12),
+                  color: colors.label,
+                  marginBottom: s(2),
+                }}
               >
                 {refundablePayments.length} payment
-                {refundablePayments.length !== 1 ? 's' : ''} to reverse
+                {refundablePayments.length !== 1 ? "s" : ""} to reverse
               </Text>
               <Text
                 style={{
-                  fontSize: 24,
-                  fontWeight: '700',
-                  color: colors.danger
+                  fontSize: s(24),
+                  fontWeight: "700",
+                  color: colors.danger,
                 }}
               >
                 ${maxRefundable?.toFixed(2)}
               </Text>
-              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+              <Text
+                style={{
+                  fontSize: s(11),
+                  color: colors.muted,
+                  marginTop: s(2),
+                }}
+              >
                 Full refund of collected amount
               </Text>
             </View>
@@ -2877,26 +3806,30 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         )}
 
         {/* Items Selection View */}
-        {refundType === 'items' && (
-          <View style={{ paddingHorizontal: 14 }}>
+        {refundType === "items" && (
+          <View style={{ paddingHorizontal: s(14) }}>
             <Text
-              style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}
+              style={{
+                fontSize: s(12),
+                color: colors.muted,
+                marginBottom: s(10),
+              }}
             >
               Select items to refund
             </Text>
             {itemsDisabled && (
               <View
                 style={{
-                  marginBottom: 10,
+                  marginBottom: s(10),
                   backgroundColor: colors.screen,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 8,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8
+                  borderRadius: s(8),
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(8),
                 }}
               >
-                <Text style={{ fontSize: 12, color: colors.label }}>
+                <Text style={{ fontSize: s(12), color: colors.label }}>
                   Clear custom refund amounts to refund by items.
                 </Text>
               </View>
@@ -2904,91 +3837,103 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             {order?.items
               ?.filter((item: CartItem) => !item.is_voided)
               .map((item: CartItem) => {
-                const maxQty = getRefundableQty(item)
-                const itemId = item?.db_order_item_id || ''
-                const isSelected = selectedItems[itemId] !== undefined
-                const selectedQty = selectedItems[itemId] || 0
-                const coveringPayment = getPaymentForItem(itemId)
-                const needsAssignment = isSelected && !coveringPayment
-                const assignedPaymentIdx = itemPaymentAssignment[itemId]
+                const maxQty = getRefundableQty(item);
+                const itemId = item?.db_order_item_id || "";
+                const isSelected = selectedItems[itemId] !== undefined;
+                const selectedQty = selectedItems[itemId] || 0;
+                const coveringPayment = getPaymentForItem(itemId);
+                const needsAssignment = isSelected && !coveringPayment;
+                const assignedPaymentIdx = itemPaymentAssignment[itemId];
 
                 return (
                   <View key={item.id}>
                     <View
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingVertical: 10,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        paddingVertical: s(10),
                         borderBottomWidth: 1,
                         borderBottomColor: colors.border,
                         backgroundColor: isSelected
-                          ? colors.teal + '08'
-                          : 'transparent'
+                          ? colors.teal + "08"
+                          : "transparent",
                       }}
                     >
                       <TouchableOpacity
                         onPress={() =>
-                          handleToggleItem(item.db_order_item_id || '', maxQty)
+                          handleToggleItem(item.db_order_item_id || "", maxQty)
                         }
                         disabled={itemsDisabled || maxQty <= 0}
                         style={{
-                          width: 22,
-                          height: 22,
-                          borderRadius: 6,
+                          width: s(22),
+                          height: s(22),
+                          borderRadius: s(6),
                           borderWidth: 1.5,
-                          marginRight: 10,
-                          alignItems: 'center',
-                          justifyContent: 'center',
+                          marginRight: s(10),
+                          alignItems: "center",
+                          justifyContent: "center",
                           backgroundColor: isSelected
                             ? colors.teal
-                            : 'transparent',
-                          borderColor: isSelected ? colors.teal : colors.border
+                            : "transparent",
+                          borderColor: isSelected ? colors.teal : colors.border,
                         }}
                       >
                         {isSelected && (
-                          <Check size={13} color={colors.onSolid} />
+                          <Check size={s(13)} color={colors.onSolid} />
                         )}
                       </TouchableOpacity>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 13, color: colors.heading }}>
+                        <Text
+                          style={{ fontSize: s(13), color: colors.heading }}
+                        >
                           {item.name}
                         </Text>
-                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>
                           {(() => {
-                            const isCash = coveringPayment?.isCashPriced || coveringPayment?.method === 'Cash'
-                            const effSub = isCash ? (item.cashSubtotal ?? item.subtotal ?? 0) : (item.subtotal ?? 0)
-                            const effTax = isCash ? (item.cashTaxAmount ?? item.taxAmount ?? 0) : (item.taxAmount ?? 0)
-                            const unitPrice = item.quantity > 0 ? effSub / item.quantity : (item.price || 0)
-                            const unitTax = item.quantity > 0 ? effTax / item.quantity : 0
-                            return `$${unitPrice.toFixed(2)}${unitTax > 0 ? ` + $${unitTax.toFixed(2)} tax` : ''} each${(item.discount_amount || 0) > 0 ? ' (discounted)' : ''}`
+                            const isCash =
+                              coveringPayment?.isCashPriced ||
+                              coveringPayment?.method === "Cash";
+                            const effSub = isCash
+                              ? (item.cashSubtotal ?? item.subtotal ?? 0)
+                              : (item.subtotal ?? 0);
+                            const effTax = isCash
+                              ? (item.cashTaxAmount ?? item.taxAmount ?? 0)
+                              : (item.taxAmount ?? 0);
+                            const unitPrice =
+                              item.quantity > 0
+                                ? effSub / item.quantity
+                                : item.price || 0;
+                            const unitTax =
+                              item.quantity > 0 ? effTax / item.quantity : 0;
+                            return `$${unitPrice.toFixed(2)}${unitTax > 0 ? ` + $${unitTax.toFixed(2)} tax` : ""} each${(item.discount_amount || 0) > 0 ? " (discounted)" : ""}`;
                           })()}
                         </Text>
                         {maxQty <= 0 && (
                           <Text
                             style={{
-                              fontSize: 10,
+                              fontSize: s(10),
                               color: colors.muted,
-                              marginTop: 2
+                              marginTop: s(2),
                             }}
                           >
                             Fully refunded
                           </Text>
                         )}
                         {coveringPayment && (
-                          <View style={{ marginTop: 4 }}>
+                          <View style={{ marginTop: s(4) }}>
                             <View
                               style={{
                                 backgroundColor: colors.screen,
                                 borderWidth: 1,
                                 borderColor: colors.border,
-                                borderRadius: 20,
-                                paddingHorizontal: 8,
-                                paddingVertical: 2,
-                                alignSelf: 'flex-start'
+                                borderRadius: s(20),
+                                paddingHorizontal: s(8),
+                                paddingVertical: s(2),
+                                alignSelf: "flex-start",
                               }}
                             >
                               <Text
-                                style={{ fontSize: 10, color: colors.muted }}
+                                style={{ fontSize: s(10), color: colors.muted }}
                               >
                                 Covered by {getPaymentLabel(coveringPayment)}
                               </Text>
@@ -2998,33 +3943,33 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       </View>
                       {isSelected && (
                         <View
-                          style={{ flexDirection: 'row', alignItems: 'center' }}
+                          style={{ flexDirection: "row", alignItems: "center" }}
                         >
                           <TouchableOpacity
                             onPress={() =>
                               handleQuantityChange(
-                                item.db_order_item_id || '',
+                                item.db_order_item_id || "",
                                 selectedQty - 1,
-                                maxQty
+                                maxQty,
                               )
                             }
                             disabled={itemsDisabled}
                             style={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: 8,
+                              width: s(28),
+                              height: s(28),
+                              borderRadius: s(8),
                               backgroundColor: colors.card,
                               borderWidth: 1,
                               borderColor: colors.border,
-                              alignItems: 'center',
-                              justifyContent: 'center'
+                              alignItems: "center",
+                              justifyContent: "center",
                             }}
                           >
                             <Text
                               style={{
                                 color: colors.heading,
-                                fontWeight: '700',
-                                fontSize: 14
+                                fontWeight: "700",
+                                fontSize: s(14),
                               }}
                             >
                               -
@@ -3033,9 +3978,9 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                           <Text
                             style={{
                               color: colors.heading,
-                              fontWeight: '600',
-                              fontSize: 13,
-                              marginHorizontal: 10
+                              fontWeight: "600",
+                              fontSize: s(13),
+                              marginHorizontal: s(10),
                             }}
                           >
                             {selectedQty}
@@ -3043,29 +3988,29 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                           <TouchableOpacity
                             onPress={() =>
                               handleQuantityChange(
-                                item.db_order_item_id || '',
+                                item.db_order_item_id || "",
                                 selectedQty + 1,
-                                maxQty
+                                maxQty,
                               )
                             }
                             disabled={itemsDisabled || selectedQty >= maxQty}
                             style={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: 8,
+                              width: s(28),
+                              height: s(28),
+                              borderRadius: s(8),
                               backgroundColor: colors.card,
                               borderWidth: 1,
                               borderColor: colors.border,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              opacity: selectedQty >= maxQty ? 0.3 : 1
+                              alignItems: "center",
+                              justifyContent: "center",
+                              opacity: selectedQty >= maxQty ? 0.3 : 1,
                             }}
                           >
                             <Text
                               style={{
                                 color: colors.heading,
-                                fontWeight: '700',
-                                fontSize: 14
+                                fontWeight: "700",
+                                fontSize: s(14),
                               }}
                             >
                               +
@@ -3074,7 +4019,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                         </View>
                       )}
                       {!isSelected && (
-                        <Text style={{ fontSize: 12, color: colors.muted }}>
+                        <Text style={{ fontSize: s(12), color: colors.muted }}>
                           max {maxQty}
                         </Text>
                       )}
@@ -3084,94 +4029,94 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                     {needsAssignment && !itemsDisabled && (
                       <View
                         style={{
-                          paddingLeft: 42,
-                          paddingRight: 14,
-                          paddingVertical: 8,
+                          paddingLeft: s(42),
+                          paddingRight: s(14),
+                          paddingVertical: s(8),
                           borderBottomWidth: 1,
                           borderBottomColor: colors.border,
-                          backgroundColor: colors.screen
+                          backgroundColor: colors.screen,
                         }}
                       >
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: s(11),
                             color: colors.label,
-                            marginBottom: 6
+                            marginBottom: s(6),
                           }}
                         >
                           Select refund destination:
                         </Text>
                         <View
                           style={{
-                            flexDirection: 'row',
-                            flexWrap: 'wrap',
-                            gap: 6
+                            flexDirection: "row",
+                            flexWrap: "wrap",
+                            gap: 6,
                           }}
                         >
                           {refundablePayments.map((payment, pIdx) => {
-                            const isAssigned = assignedPaymentIdx === pIdx
+                            const isAssigned = assignedPaymentIdx === pIdx;
                             return (
                               <TouchableOpacity
                                 key={pIdx}
                                 onPress={() =>
-                                  setItemPaymentAssignment(prev => ({
+                                  setItemPaymentAssignment((prev) => ({
                                     ...prev,
-                                    [item.db_order_item_id || '']: pIdx
+                                    [item.db_order_item_id || ""]: pIdx,
                                   }))
                                 }
                                 style={{
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 5,
-                                  borderRadius: 20,
+                                  paddingHorizontal: s(10),
+                                  paddingVertical: s(5),
+                                  borderRadius: s(20),
                                   borderWidth: 1,
                                   backgroundColor: isAssigned
-                                    ? colors.teal + '15'
+                                    ? colors.teal + "15"
                                     : colors.card,
                                   borderColor: isAssigned
-                                    ? colors.teal + '50'
-                                    : colors.border
+                                    ? colors.teal + "50"
+                                    : colors.border,
                                 }}
                               >
                                 <Text
                                   style={{
-                                    fontSize: 11,
-                                    fontWeight: '600',
+                                    fontSize: s(11),
+                                    fontWeight: "600",
                                     color: isAssigned
                                       ? colors.teal
-                                      : colors.label
+                                      : colors.label,
                                   }}
                                 >
                                   {getPaymentLabel(payment)}
                                 </Text>
                               </TouchableOpacity>
-                            )
+                            );
                           })}
                         </View>
                       </View>
                     )}
                   </View>
-                )
+                );
               })}
 
             {selectedItemsTotal > 0 && (
               <View
                 style={{
-                  marginTop: 12,
+                  marginTop: s(12),
                   backgroundColor: colors.card,
-                  borderRadius: 12,
-                  padding: 14,
+                  borderRadius: s(12),
+                  padding: s(14),
                   borderWidth: 1,
-                  borderColor: colors.border
+                  borderColor: colors.border,
                 }}
               >
-                <Text style={{ fontSize: 12, color: colors.label }}>
+                <Text style={{ fontSize: s(12), color: colors.label }}>
                   Refund Amount
                 </Text>
                 <Text
                   style={{
-                    fontSize: 22,
-                    fontWeight: '700',
-                    color: colors.danger
+                    fontSize: s(22),
+                    fontWeight: "700",
+                    color: colors.danger,
                   }}
                 >
                   ${selectedItemsTotal?.toFixed(2)}
@@ -3182,29 +4127,33 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         )}
 
         {/* By Payment View */}
-        {refundType === 'payments' && (
-          <View style={{ paddingHorizontal: 14 }}>
+        {refundType === "payments" && (
+          <View style={{ paddingHorizontal: s(14) }}>
             <Text
-              style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}
+              style={{
+                fontSize: s(12),
+                color: colors.muted,
+                marginBottom: s(10),
+              }}
             >
               Enter refund amounts per payment
             </Text>
             {refundablePayments.length === 0 ? (
-              <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+              <View style={{ paddingVertical: s(32), alignItems: "center" }}>
                 <View
                   style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 20,
+                    width: s(40),
+                    height: s(40),
+                    borderRadius: s(20),
                     backgroundColor: colors.card,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: 10
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: s(10),
                   }}
                 >
-                  <CreditCard size={18} color={colors.muted} />
+                  <CreditCard size={s(18)} color={colors.muted} />
                 </View>
-                <Text style={{ fontSize: 13, color: colors.muted }}>
+                <Text style={{ fontSize: s(13), color: colors.muted }}>
                   No refundable payments
                 </Text>
               </View>
@@ -3213,74 +4162,74 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 {/* Column Headers */}
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingVertical: 8,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingVertical: s(8),
                     borderBottomWidth: 1,
                     borderBottomColor: colors.border,
-                    marginBottom: 6
+                    marginBottom: s(6),
                   }}
                 >
                   <Text
                     style={{
                       flex: 1,
-                      fontSize: 11,
-                      fontWeight: '600',
+                      fontSize: s(11),
+                      fontWeight: "600",
                       color: colors.muted,
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.5
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
                     }}
                   >
                     Payment
                   </Text>
                   <Text
                     style={{
-                      width: 88,
-                      fontSize: 11,
-                      fontWeight: '600',
+                      width: s(88),
+                      fontSize: s(11),
+                      fontWeight: "600",
                       color: colors.muted,
-                      textTransform: 'uppercase',
+                      textTransform: "uppercase",
                       letterSpacing: 0.5,
-                      textAlign: 'center'
+                      textAlign: "center",
                     }}
                   >
                     Order
                   </Text>
                   <Text
                     style={{
-                      width: 88,
-                      fontSize: 11,
-                      fontWeight: '600',
+                      width: s(88),
+                      fontSize: s(11),
+                      fontWeight: "600",
                       color: colors.muted,
-                      textTransform: 'uppercase',
+                      textTransform: "uppercase",
                       letterSpacing: 0.5,
-                      textAlign: 'center'
+                      textAlign: "center",
                     }}
                   >
                     Tips + Grat
                   </Text>
                   <Text
                     style={{
-                      width: 88,
-                      fontSize: 11,
-                      fontWeight: '600',
+                      width: s(88),
+                      fontSize: s(11),
+                      fontWeight: "600",
                       color: colors.muted,
-                      textTransform: 'uppercase',
+                      textTransform: "uppercase",
                       letterSpacing: 0.5,
-                      textAlign: 'center'
+                      textAlign: "center",
                     }}
                   >
                     Collected
                   </Text>
                   <Text
                     style={{
-                      width: 56,
-                      fontSize: 11,
-                      fontWeight: '600',
+                      width: s(56),
+                      fontSize: s(11),
+                      fontWeight: "600",
                       color: colors.muted,
-                      textTransform: 'uppercase',
+                      textTransform: "uppercase",
                       letterSpacing: 0.5,
-                      textAlign: 'center'
+                      textAlign: "center",
                     }}
                   >
                     All
@@ -3289,60 +4238,60 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
 
                 {refundablePayments.map((payment, index) => {
                   const amounts = paymentRefundAmounts[index] || {
-                    orderAmount: '',
-                    tipAmount: ''
-                  }
+                    orderAmount: "",
+                    tipAmount: "",
+                  };
                   const { remainingOrder, remainingTip } =
-                    getRemainingAmounts(payment)
-                  const orderAmt = parseFloat(amounts.orderAmount) || 0
-                  const tipAmt = parseFloat(amounts.tipAmount) || 0
-                  const orderExceeds = orderAmt > remainingOrder
-                  const tipExceeds = tipAmt > remainingTip
+                    getRemainingAmounts(payment);
+                  const orderAmt = parseFloat(amounts.orderAmount) || 0;
+                  const tipAmt = parseFloat(amounts.tipAmount) || 0;
+                  const orderExceeds = orderAmt > remainingOrder;
+                  const tipExceeds = tipAmt > remainingTip;
 
                   return (
                     <View
                       key={index}
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingVertical: 10,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        paddingVertical: s(10),
                         borderWidth: 1,
                         borderColor: colors.border,
-                        borderRadius: 12,
-                        marginBottom: 6,
-                        backgroundColor: colors.card
+                        borderRadius: s(12),
+                        marginBottom: s(6),
+                        backgroundColor: colors.card,
                       }}
                     >
                       <View
                         style={{
                           flex: 1,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          paddingLeft: 10
+                          flexDirection: "row",
+                          alignItems: "center",
+                          paddingLeft: s(10),
                         }}
                       >
                         <View
                           style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: 8,
-                            backgroundColor: colors.teal + '15',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginRight: 8
+                            width: s(32),
+                            height: s(32),
+                            borderRadius: s(8),
+                            backgroundColor: colors.teal + "15",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginRight: s(8),
                           }}
                         >
-                          {payment.method === 'Card' ? (
-                            <CreditCard size={16} color={colors.teal} />
+                          {payment.method === "Card" ? (
+                            <CreditCard size={s(16)} color={colors.teal} />
                           ) : (
-                            <Banknote size={16} color={colors.teal} />
+                            <Banknote size={s(16)} color={colors.teal} />
                           )}
                         </View>
                         <Text
                           style={{
-                            fontSize: 13,
-                            fontWeight: '600',
-                            color: colors.heading
+                            fontSize: s(13),
+                            fontWeight: "600",
+                            color: colors.heading,
                           }}
                           numberOfLines={1}
                         >
@@ -3351,59 +4300,59 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       </View>
 
                       {/* Order amount input */}
-                      <View style={{ width: 88, paddingHorizontal: 4 }}>
+                      <View style={{ width: s(88), paddingHorizontal: s(4) }}>
                         <TextInput
                           value={amounts.orderAmount}
-                          onChangeText={v =>
-                            handlePaymentAmountChange(index, 'orderAmount', v)
+                          onChangeText={(v) =>
+                            handlePaymentAmountChange(index, "orderAmount", v)
                           }
                           placeholder={remainingOrder.toFixed(2)}
                           placeholderTextColor={colors.muted}
-                          keyboardType='decimal-pad'
+                          keyboardType="decimal-pad"
                           style={{
-                            fontSize: 13,
-                            textAlign: 'center',
-                            paddingVertical: 6,
-                            paddingHorizontal: 8,
-                            borderRadius: 8,
+                            fontSize: s(13),
+                            textAlign: "center",
+                            paddingVertical: s(6),
+                            paddingHorizontal: s(8),
+                            borderRadius: s(8),
                             borderWidth: 1,
                             color: orderExceeds
                               ? colors.danger
                               : colors.heading,
                             backgroundColor: orderExceeds
-                              ? colors.danger + '10'
+                              ? colors.danger + "10"
                               : colors.screen,
                             borderColor: orderExceeds
-                              ? colors.danger + '50'
-                              : colors.border
+                              ? colors.danger + "50"
+                              : colors.border,
                           }}
                         />
                       </View>
 
                       {/* Tip amount input */}
-                      <View style={{ width: 88, paddingHorizontal: 4 }}>
+                      <View style={{ width: s(88), paddingHorizontal: s(4) }}>
                         <TextInput
                           value={amounts.tipAmount}
-                          onChangeText={v =>
-                            handlePaymentAmountChange(index, 'tipAmount', v)
+                          onChangeText={(v) =>
+                            handlePaymentAmountChange(index, "tipAmount", v)
                           }
                           placeholder={remainingTip.toFixed(2)}
                           placeholderTextColor={colors.muted}
-                          keyboardType='decimal-pad'
+                          keyboardType="decimal-pad"
                           style={{
-                            fontSize: 13,
-                            textAlign: 'center',
-                            paddingVertical: 6,
-                            paddingHorizontal: 8,
-                            borderRadius: 8,
+                            fontSize: s(13),
+                            textAlign: "center",
+                            paddingVertical: s(6),
+                            paddingHorizontal: s(8),
+                            borderRadius: s(8),
                             borderWidth: 1,
                             color: tipExceeds ? colors.danger : colors.heading,
                             backgroundColor: tipExceeds
-                              ? colors.danger + '10'
+                              ? colors.danger + "10"
                               : colors.screen,
                             borderColor: tipExceeds
-                              ? colors.danger + '50'
-                              : colors.border
+                              ? colors.danger + "50"
+                              : colors.border,
                           }}
                         />
                       </View>
@@ -3411,10 +4360,10 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       {/* Collected */}
                       <Text
                         style={{
-                          width: 88,
-                          fontSize: 13,
+                          width: s(88),
+                          fontSize: s(13),
                           color: colors.label,
-                          textAlign: 'center'
+                          textAlign: "center",
                         }}
                       >
                         ${payment.collected?.toFixed(2)}
@@ -3424,26 +4373,26 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       <TouchableOpacity
                         onPress={() => handleFillAllForPayment(index)}
                         style={{
-                          width: 56,
-                          alignItems: 'center',
-                          paddingRight: 6
+                          width: s(56),
+                          alignItems: "center",
+                          paddingRight: s(6),
                         }}
                       >
                         <View
                           style={{
-                            backgroundColor: colors.teal + '15',
+                            backgroundColor: colors.teal + "15",
                             borderWidth: 1,
-                            borderColor: colors.teal + '40',
-                            borderRadius: 8,
-                            paddingHorizontal: 10,
-                            paddingVertical: 5
+                            borderColor: colors.teal + "40",
+                            borderRadius: s(8),
+                            paddingHorizontal: s(10),
+                            paddingVertical: s(5),
                           }}
                         >
                           <Text
                             style={{
-                              fontSize: 11,
-                              fontWeight: '700',
-                              color: colors.teal
+                              fontSize: s(11),
+                              fontWeight: "700",
+                              color: colors.teal,
                             }}
                           >
                             ALL
@@ -3451,28 +4400,28 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                         </View>
                       </TouchableOpacity>
                     </View>
-                  )
+                  );
                 })}
 
                 {paymentRefundTotal > 0 && (
                   <View
                     style={{
-                      marginTop: 12,
+                      marginTop: s(12),
                       backgroundColor: colors.card,
-                      borderRadius: 12,
-                      padding: 14,
+                      borderRadius: s(12),
+                      padding: s(14),
                       borderWidth: 1,
-                      borderColor: colors.border
+                      borderColor: colors.border,
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: colors.label }}>
+                    <Text style={{ fontSize: s(12), color: colors.label }}>
                       Total Refund
                     </Text>
                     <Text
                       style={{
-                        fontSize: 22,
-                        fontWeight: '700',
-                        color: colors.danger
+                        fontSize: s(22),
+                        fontWeight: "700",
+                        color: colors.danger,
                       }}
                     >
                       ${paymentRefundTotal?.toFixed(2)}
@@ -3485,94 +4434,94 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         )}
 
         {/* Reason Input */}
-        <View style={{ paddingHorizontal: 14, marginTop: 14 }}>
+        <View style={{ paddingHorizontal: s(14), marginTop: s(14) }}>
           <Text
             style={{
-              fontSize: 11,
-              fontWeight: '600',
+              fontSize: s(11),
+              fontWeight: "600",
               color: colors.muted,
-              textTransform: 'uppercase',
+              textTransform: "uppercase",
               letterSpacing: 0.5,
-              marginBottom: 8
+              marginBottom: 8,
             }}
           >
             Reason (Required)
           </Text>
           <View
             style={{
-              flexDirection: 'row',
-              flexWrap: 'wrap',
+              flexDirection: "row",
+              flexWrap: "wrap",
               gap: 6,
-              marginBottom: 8
+              marginBottom: 8,
             }}
           >
             {[
-              'Incorrect amount',
-              'Missing item',
-              'Paid by other means',
-              'Returned/cancelled order'
-            ].map(preset => {
+              "Incorrect amount",
+              "Missing item",
+              "Paid by other means",
+              "Returned/cancelled order",
+            ].map((preset) => {
               const isActive =
-                refundReason.trim().toLowerCase() === preset.toLowerCase()
+                refundReason.trim().toLowerCase() === preset.toLowerCase();
               return (
                 <TouchableOpacity
                   key={preset}
-                  onPress={() => setRefundReason(isActive ? '' : preset)}
+                  onPress={() => setRefundReason(isActive ? "" : preset)}
                   style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 20,
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(6),
+                    borderRadius: s(20),
                     borderWidth: 1,
                     backgroundColor: isActive
-                      ? colors.teal + '15'
+                      ? colors.teal + "15"
                       : colors.card,
-                    borderColor: isActive ? colors.teal + '50' : colors.border
+                    borderColor: isActive ? colors.teal + "50" : colors.border,
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 12,
-                      fontWeight: '600',
-                      color: isActive ? colors.teal : colors.label
+                      fontSize: s(12),
+                      fontWeight: "600",
+                      color: isActive ? colors.teal : colors.label,
                     }}
                   >
                     {preset}
                   </Text>
                 </TouchableOpacity>
-              )
+              );
             })}
           </View>
           <TextInput
             value={refundReason}
             onChangeText={setRefundReason}
-            placeholder='Or type a custom reason...'
+            placeholder="Or type a custom reason..."
             placeholderTextColor={colors.muted}
             multiline={false}
             numberOfLines={1}
             style={{
               backgroundColor: colors.screen,
-              borderRadius: 10,
-              padding: 12,
+              borderRadius: s(10),
+              padding: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               color: colors.heading,
-              fontSize: 13,
-              minHeight: 72,
-              textAlignVertical: 'top'
+              fontSize: s(13),
+              minHeight: s(72),
+              textAlignVertical: "top",
             }}
           />
         </View>
 
         {refundLogs.length > 0 && (
-          <View style={{ paddingHorizontal: 14, marginTop: 14 }}>
+          <View style={{ paddingHorizontal: s(14), marginTop: s(14) }}>
             <Text
               style={{
-                fontSize: 11,
-                fontWeight: '600',
+                fontSize: s(11),
+                fontWeight: "600",
                 color: colors.muted,
-                textTransform: 'uppercase',
+                textTransform: "uppercase",
                 letterSpacing: 0.5,
-                marginBottom: 8
+                marginBottom: 8,
               }}
             >
               Refund Log
@@ -3580,59 +4529,67 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             <View
               style={{
                 backgroundColor: colors.card,
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
-                borderColor: colors.border
+                borderColor: colors.border,
               }}
             >
               {refundLogs.map((log, index) => (
                 <View
                   key={log.id || index}
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(10),
                     borderTopWidth: index !== 0 ? 1 : 0,
-                    borderTopColor: colors.border
+                    borderTopColor: colors.border,
                   }}
                 >
                   <View
                     style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 13,
-                        fontWeight: '600',
-                        color: colors.heading
+                        fontSize: s(13),
+                        fontWeight: "600",
+                        color: colors.heading,
                       }}
                     >
-                      {String(log.reversal_type || 'refund').toUpperCase()}
+                      {String(log.reversal_type || "refund").toUpperCase()}
                     </Text>
                     <Text
                       style={{
-                        fontSize: 13,
-                        fontWeight: '600',
-                        color: colors.danger
+                        fontSize: s(13),
+                        fontWeight: "600",
+                        color: colors.danger,
                       }}
                     >
                       ${Number(log.amount || 0)?.toFixed(2)}
                     </Text>
                   </View>
                   <Text
-                    style={{ fontSize: 11, color: colors.label, marginTop: 2 }}
+                    style={{
+                      fontSize: s(11),
+                      color: colors.label,
+                      marginTop: s(2),
+                    }}
                   >
-                    {log.reason_description || log.reason_code || '—'}
+                    {log.reason_description || log.reason_code || "—"}
                   </Text>
                   <Text
-                    style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}
+                    style={{
+                      fontSize: s(10),
+                      color: colors.muted,
+                      marginTop: s(2),
+                    }}
                   >
                     {log.requested_at
                       ? new Date(log.requested_at).toLocaleString()
-                      : '—'}
-                    {log.status ? ` • ${log.status}` : ''}
+                      : "—"}
+                    {log.status ? ` • ${log.status}` : ""}
                   </Text>
                 </View>
               ))}
@@ -3644,26 +4601,26 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
       {/* Process Button */}
       <View
         style={{
-          position: 'absolute',
+          position: "absolute",
           bottom: 0,
           left: 0,
           right: 0,
-          paddingHorizontal: 14,
-          paddingVertical: 12,
+          paddingHorizontal: s(14),
+          paddingVertical: s(12),
           backgroundColor: colors.panel,
           borderTopWidth: 1,
-          borderTopColor: colors.border
+          borderTopColor: colors.border,
         }}
       >
         <TouchableOpacity
           onPress={async () => {
             if (refundProcessing || processingRef.current) {
-              console.log('[Refund] Already processing')
-              return
+              console.log("[Refund] Already processing");
+              return;
             }
 
             if (!canProcess) {
-              console.log('[Refund] Blocked by validation', {
+              console.log("[Refund] Blocked by validation", {
                 refundType,
                 maxRefundable,
                 refundReason,
@@ -3672,68 +4629,68 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 allItemsHavePayment,
                 paymentAmountsValid,
                 isZeroRefundable,
-                customAmountActive
-              })
+                customAmountActive,
+              });
               show({
-                title: 'Refund Not Ready',
+                title: "Refund Not Ready",
                 message:
-                  'Check reason, amounts, and refundable balance before processing.',
-                type: 'warning'
-              })
-              return
+                  "Check reason, amounts, and refundable balance before processing.",
+                type: "warning",
+              });
+              return;
             }
-            processingRef.current = true
+            processingRef.current = true;
             try {
-              const perPaymentDetails = buildPerPaymentDetails()
+              const perPaymentDetails = buildPerPaymentDetails();
               const items =
-                refundType === 'items' && !itemsDisabled
+                refundType === "items" && !itemsDisabled
                   ? Object.entries(selectedItems).map(([id, qty]) => ({
                       itemId: id,
                       quantity: qty,
                       paymentIndex: (() => {
-                        const covering = getPaymentForItem(id)
-                        if (covering) return covering.originalPaymentIndex
-                        const assigned = itemPaymentAssignment[id]
+                        const covering = getPaymentForItem(id);
+                        if (covering) return covering.originalPaymentIndex;
+                        const assigned = itemPaymentAssignment[id];
                         if (assigned !== undefined)
                           return refundablePayments[assigned]
-                            ?.originalPaymentIndex
-                        return undefined
-                      })()
+                            ?.originalPaymentIndex;
+                        return undefined;
+                      })(),
                     }))
-                  : undefined
+                  : undefined;
               const success = await onProcessRefund(
                 refundType,
                 getRefundAmount(),
                 refundReason,
                 perPaymentDetails,
-                items
-              )
+                items,
+              );
               if (success) {
-                resetRefundState()
+                resetRefundState();
               }
             } catch (error) {
-              console.error('[Refund] Unexpected error:', error)
+              console.error("[Refund] Unexpected error:", error);
               show({
-                title: 'Refund Failed',
-                message: 'Unexpected error while processing refund.',
-                type: 'error'
-              })
+                title: "Refund Failed",
+                message: "Unexpected error while processing refund.",
+                type: "error",
+              });
             } finally {
-              processingRef.current = false
+              processingRef.current = false;
             }
           }}
           disabled={!canProcess || refundProcessing}
           style={{
-            width: '100%',
+            width: "100%",
             paddingVertical: 12,
             borderRadius: 10,
-            alignItems: 'center',
-            justifyContent: 'center',
+            alignItems: "center",
+            justifyContent: "center",
             backgroundColor:
               canProcess && !refundProcessing ? colors.danger : colors.card,
             borderWidth: 1,
             borderColor:
-              canProcess && !refundProcessing ? colors.danger : colors.border
+              canProcess && !refundProcessing ? colors.danger : colors.border,
           }}
         >
           {refundProcessing ? (
@@ -3742,8 +4699,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             <Text
               style={{
                 fontSize: 13,
-                fontWeight: '700',
-                color: canProcess ? '#FFFFFF' : colors.muted
+                fontWeight: "700",
+                color: canProcess ? "#FFFFFF" : colors.muted,
               }}
             >
               Process Refund • ${getRefundAmount()?.toFixed(2)}
@@ -3752,33 +4709,501 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         </TouchableOpacity>
       </View>
     </View>
-  )
+  );
+};
+
+// ============================================================================
+// TIMELINE BUILDER
+// ============================================================================
+
+interface TimelineEntry {
+  timestamp: string;
+  label: string;
+  description?: string;
+  color: string;
+  isPast: boolean;
+  isActive: boolean;
 }
+
+/** Collective kitchen summary derived from all non-voided items. */
+interface KitchenSummary {
+  /** True when at least one item has been sent to kitchen. */
+  hasSent: boolean;
+  /** True when at least one item is currently preparing (or past it). */
+  hasPreparing: boolean;
+  /** True when at least one item is ready/served. */
+  hasReadyOrServed: boolean;
+  /** True when ALL non-voided items are ready or served. */
+  allReadyOrServed: boolean;
+  /** Total non-voided item count. */
+  totalItems: number;
+}
+
+/**
+ * Scan order items and return a collective kitchen-status summary.
+ * Uses `kitchen_status` (KDS-updated) over legacy `item_status`.
+ */
+function summarizeKitchen(order: OrderProfile): KitchenSummary {
+  const items = (order.items || []).filter((i: CartItem) => !i.is_voided);
+  const result: KitchenSummary = {
+    hasSent: false,
+    hasPreparing: false,
+    hasReadyOrServed: false,
+    allReadyOrServed: true,
+    totalItems: items.length,
+  };
+  if (items.length === 0) {
+    result.allReadyOrServed = false;
+    return result;
+  }
+  for (const item of items) {
+    const ks = (item as any).kitchen_status as string | undefined;
+    const effective = ks || item.item_status?.toLowerCase() || "new";
+    if (
+      effective === "sent" ||
+      effective === "preparing" ||
+      effective === "ready" ||
+      effective === "served"
+    ) {
+      result.hasSent = true;
+    }
+    if (
+      effective === "preparing" ||
+      effective === "ready" ||
+      effective === "served"
+    ) {
+      result.hasPreparing = true;
+    }
+    if (effective === "ready" || effective === "served") {
+      result.hasReadyOrServed = true;
+    } else {
+      result.allReadyOrServed = false;
+    }
+  }
+  return result;
+}
+
+/**
+ * Build an order-level status timeline using real timestamps from the
+ * order profile and the backend-fetched kitchen timeline data.
+ *
+ * Kitchen-progress states that are inferred from per-item `kitchen_status`
+ * but lack a precise timestamp are shown as a single summary line instead
+ * of individual timeline entries.
+ *
+ * Real-timestamp sources:
+ *  - "Order Created"   → `order.opened_at` / `created_at`
+ *  - "Sent to Kitchen" → `order.sent_to_kitchen_at`
+ *  - "Preparing"       → `kitchenData.startedPreparingAt` (from order_items table)
+ *  - "Ready"           → `kitchenData.readyAt` (from order_items table)
+ *  - Status history    → `kitchenData.statusHistory` (from order_status_history table)
+ *  - "Completed"       → `order.closed_at` / `check_status`
+ */
+function buildOrderTimeline(
+  order: OrderProfile,
+  kitchenData?: KitchenTimelineData | null,
+): TimelineEntry[] {
+  const entries: TimelineEntry[] = [];
+  const kitchen = summarizeKitchen(order);
+
+  // 1. Order Created
+  const createdAt = order.opened_at || (order as any).created_at;
+  if (createdAt) {
+    entries.push({
+      timestamp: createdAt,
+      label: "Order Created",
+      color: colors.teal,
+      isPast: true,
+      isActive: true,
+    });
+  }
+
+  // 2. Sent to Kitchen
+  const sentAt = order.sent_to_kitchen_at || (order as any).sent_to_kitchen_at;
+  if (sentAt) {
+    entries.push({
+      timestamp: sentAt,
+      label: "Sent to Kitchen",
+      color: colors.teal,
+      isPast: true,
+      isActive: true,
+    });
+  }
+
+  // 3. Preparing (from backend order_items.started_preparing_at)
+  const preparingAt = kitchenData?.startedPreparingAt;
+  if (preparingAt) {
+    entries.push({
+      timestamp: preparingAt,
+      label: "Preparing",
+      color: colors.teal,
+      isPast: true,
+      isActive: true,
+    });
+  }
+
+  // 4. Ready (from backend order_items.completed_at — earliest item)
+  const readyAt = kitchenData?.readyAt;
+  if (readyAt) {
+    entries.push({
+      timestamp: readyAt,
+      label: "Ready",
+      color: colors.success,
+      isPast: true,
+      isActive: true,
+    });
+  }
+
+  // 5. Status history entries from order_status_history table.
+  //    We use a tracked-labels set so we don't push duplicate entries for
+  //    statuses already covered by dedicated fields above (sent_to_kitchen,
+  //    preparing, ready, completed). Unknown statuses get a readable label.
+  const trackedLabels = new Set(entries.map((e) => e.label));
+  if (kitchenData?.statusHistory) {
+    const statusLabel: Record<string, string> = {
+      sent_to_kitchen: "Sent to Kitchen",
+      preparing: "Preparing",
+      ready: "Ready",
+      completed: "Completed",
+      cancelled: "Cancelled",
+      void: "Voided",
+      refunded: "Refunded",
+      draft: "Draft",
+      pending: "Pending",
+    };
+    const statusColor: Record<string, string> = {
+      sent_to_kitchen: colors.teal,
+      preparing: colors.teal,
+      ready: colors.success,
+      completed: colors.success,
+      cancelled: colors.danger,
+      void: colors.danger,
+      refunded: colors.danger,
+    };
+
+    for (const entry of kitchenData.statusHistory) {
+      const label = statusLabel[entry.status];
+      // Skip if this status is already represented in the timeline
+      // (handled by dedicated fields above).
+      if (!label || trackedLabels.has(label)) continue;
+
+      trackedLabels.add(label);
+      entries.push({
+        timestamp: entry.changed_at,
+        label,
+        description: entry.notes || undefined,
+        color: statusColor[entry.status] || colors.teal,
+        isPast: true,
+        isActive: true,
+      });
+    }
+  }
+
+  // 6. Completed / Closed — ONLY add when we have a real closed_at timestamp.
+  //    Never fall back to createdAt to avoid "Completed at same time as Created".
+  const closedAt = order.closed_at;
+  const isEffectivelyClosed =
+    !!closedAt ||
+    order.check_status === "Closed" ||
+    order.order_status === "completed" ||
+    order.order_status === "refunded";
+  if (
+    isEffectivelyClosed &&
+    closedAt &&
+    !trackedLabels.has("Completed") &&
+    !trackedLabels.has("Refunded")
+  ) {
+    entries.push({
+      timestamp: closedAt,
+      label: order.order_status === "refunded" ? "Refunded" : "Completed",
+      color: order.order_status === "refunded" ? colors.danger : colors.success,
+      isPast: true,
+      isActive: true,
+    });
+  }
+
+  // 7. Cancelled / Voided
+  if (
+    (order.order_status === "cancelled" || order.order_status === "void") &&
+    !trackedLabels.has("Cancelled") &&
+    !trackedLabels.has("Voided")
+  ) {
+    entries.push({
+      timestamp: createdAt || new Date().toISOString(),
+      label: order.order_status === "cancelled" ? "Cancelled" : "Voided",
+      color: colors.danger,
+      isPast: true,
+      isActive: true,
+    });
+  }
+
+  // Sort chronologically by timestamp, deduplicating entries with same
+  // timestamp and label
+  entries.sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  );
+
+  // Remove strict duplicates (same timestamp + same label)
+  const seen = new Set<string>();
+  return entries.filter((e) => {
+    const key = `${e.timestamp}|${e.label}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * Build a kitchen-progress summary string from item kitchen_status values.
+ * This is shown as a supplemental note below the timestamped timeline when
+ * items have progressed through the KDS but we lack per-item timestamps on
+ * the client-side model.
+ */
+function buildKitchenSummary(order: OrderProfile): string | null {
+  const kitchen = summarizeKitchen(order);
+  if (kitchen.totalItems === 0) return null;
+
+  const parts: string[] = [];
+
+  if (kitchen.allReadyOrServed) {
+    // All items ready — no summary text needed since the "Ready" entry
+    // in the timeline already covers this.
+  } else if (kitchen.hasReadyOrServed) {
+    const readyCount = (order.items || []).filter((i: CartItem) => {
+      if (i.is_voided) return false;
+      const ks = (i as any).kitchen_status as string | undefined;
+      const eff = ks || i.item_status?.toLowerCase() || "";
+      return eff === "ready" || eff === "served";
+    }).length;
+    parts.push(`${readyCount}/${kitchen.totalItems} items ready`);
+  }
+
+  if (kitchen.hasPreparing && !kitchen.allReadyOrServed) {
+    parts.push(
+      `${kitchen.totalItems} item${kitchen.totalItems !== 1 ? "s" : ""} in progress`,
+    );
+  }
+
+  if (kitchen.hasSent && !kitchen.hasPreparing && !kitchen.allReadyOrServed) {
+    parts.push("Sent to kitchen");
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+// ============================================================================
+// ORDER STATUS TIMELINE COMPONENT
+// ============================================================================
+
+interface OrderStatusTimelineProps {
+  order: OrderProfile;
+  kitchenData?: KitchenTimelineData | null;
+}
+
+const OrderStatusTimeline: React.FC<OrderStatusTimelineProps> = ({
+  order,
+  kitchenData,
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const events = useMemo(
+    () => buildOrderTimeline(order, kitchenData),
+    [order, kitchenData],
+  );
+  const kitchenSummary = useMemo(() => buildKitchenSummary(order), [order]);
+
+  if (events.length === 0 && !kitchenSummary) return null;
+
+  return (
+    <View style={{ paddingHorizontal: s(14), marginBottom: s(10) }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginBottom: s(12),
+          gap: s(8),
+        }}
+      >
+        <View
+          style={{
+            width: 3,
+            height: s(18),
+            backgroundColor: colors.teal,
+            borderRadius: 1.5,
+          }}
+        />
+        <Text
+          style={{
+            fontSize: s(11),
+            fontWeight: "700",
+            color: colors.teal,
+            textTransform: "uppercase",
+            letterSpacing: 0.6,
+          }}
+        >
+          Order Timeline
+        </Text>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: colors.panel,
+          borderRadius: s(10),
+          borderWidth: 1,
+          borderColor: colors.border,
+          paddingVertical: s(8),
+          paddingHorizontal: s(14),
+        }}
+      >
+        {/* Timestamped timeline entries — vertical dot-connector style */}
+        {events.map((event, idx) => {
+          const isLast = idx === events.length - 1;
+          return (
+            <View key={`tl-${idx}`} style={{ flexDirection: "row" }}>
+              {/* Timeline column — dot + connector */}
+              <View
+                style={{
+                  alignItems: "center",
+                  width: s(20),
+                  marginRight: s(10),
+                }}
+              >
+                <View
+                  style={{
+                    width: s(12),
+                    height: s(12),
+                    borderRadius: s(6),
+                    backgroundColor: event.isPast
+                      ? event.color
+                      : colors.muted + "40",
+                    borderWidth: event.isActive && !event.isPast ? 2 : 0,
+                    borderColor: event.color,
+                    marginTop: s(4),
+                  }}
+                />
+                {!isLast && (
+                  <View
+                    style={{
+                      flex: 1,
+                      width: 2,
+                      backgroundColor: colors.border,
+                      minHeight: s(32),
+                    }}
+                  />
+                )}
+              </View>
+
+              {/* Content card */}
+              <View
+                style={{
+                  flex: 1,
+                  paddingBottom: isLast && !kitchenSummary ? 0 : s(12),
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: colors.card,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: s(8),
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(8),
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      fontWeight: "600",
+                      color: event.isPast ? colors.heading : colors.muted,
+                    }}
+                  >
+                    {event.label}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      color: colors.teal,
+                      marginTop: s(4),
+                      fontWeight: "600",
+                    }}
+                  >
+                    {formatTimestamp(event.timestamp)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+
+        {/* Kitchen summary — shows current item progress without fake timestamps */}
+        {kitchenSummary && (
+          <View style={{ flexDirection: "row" }}>
+            <View
+              style={{ alignItems: "center", width: s(20), marginRight: s(10) }}
+            >
+              <View
+                style={{
+                  width: s(12),
+                  height: s(12),
+                  borderRadius: s(6),
+                  backgroundColor: colors.teal,
+                  marginTop: s(4),
+                }}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View
+                style={{
+                  backgroundColor: colors.teal + "10",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "30",
+                  borderRadius: s(8),
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(8),
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: s(11),
+                    fontWeight: "500",
+                    color: colors.teal,
+                  }}
+                >
+                  {kitchenSummary}
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
 
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 const formatTimestamp = (timestamp: string): string => {
-  const date = new Date(timestamp)
-  const now = new Date()
-  const isToday = date.toDateString() === now.toDateString()
+  const date = new Date(timestamp);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
 
   if (isToday) {
-    return `Today, ${date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    })}`
+    return `Today, ${date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })}`;
   }
 
-  return date.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  })
-}
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
 
 // ============================================================================
 // MAIN COMPONENT
@@ -3787,83 +5212,93 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   {}
 > = (props, ref) => {
-  const { show } = useToast()
-  const router = useRouter()
-  const pathname = usePathname()
-  const supabase = useSupabaseClient()
-  const [tipProcessing, setTipProcessing] = useState(false)
-  const [isClaiming, setIsClaiming] = useState(false)
-  const selectedStation = useStoreSettingsStore(s => s.selectedStation)
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const currentStationId = useOrderStore(s => s.currentStationId)
+  const { show } = useToast();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const router = useRouter();
+  const pathname = usePathname();
+  const supabase = useSupabaseClient();
+  const [tipProcessing, setTipProcessing] = useState(false);
+  const [isClaiming, setIsClaiming] = useState(false);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const currentStationId = useOrderStore((s) => s.currentStationId);
 
   // Mutation hooks
-  const refundMutation = useRefundMutation()
-  const { checkRefund, recordAndNotify } = useRefundFraudGuard()
-  const [refundApprovalVisible, setRefundApprovalVisible] = useState(false)
+  const refundMutation = useRefundMutation();
+  const { checkRefund, recordAndNotify } = useRefundFraudGuard();
+  const [refundApprovalVisible, setRefundApprovalVisible] = useState(false);
   const pendingRefundRef = useRef<{
-    type: RefundType
-    totalAmount: number
-    reason: string
-    perPaymentDetails: PerPaymentRefundDetail[]
-    selectedItems?: { itemId: string; quantity: number; paymentIndex?: number }[]
-  } | null>(null)
-  const lastFraudGuardRef = useRef<FraudGuardCheckResult | null>(null)
+    type: RefundType;
+    totalAmount: number;
+    reason: string;
+    perPaymentDetails: PerPaymentRefundDetail[];
+    selectedItems?: {
+      itemId: string;
+      quantity: number;
+      paymentIndex?: number;
+    }[];
+  } | null>(null);
+  const lastFraudGuardRef = useRef<FraudGuardCheckResult | null>(null);
 
-  const { isOpen, orderId, initialView, close } = usePaymentDetailSheetStore()
-  const updateOrderCheckStatus = useOrderStore(s => s.updateOrderCheckStatus)
+  const { isOpen, orderId, initialView, close } = usePaymentDetailSheetStore();
+  const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
 
-  const [rightPaneView, setRightPaneView] = useState<RightPaneView>('summary')
+  const [rightPaneView, setRightPaneView] = useState<RightPaneView>("summary");
   const [receiptSheet, setReceiptSheet] = useState<{
-    open: boolean
-    method: SendReceiptDeliveryMethod
-  }>({ open: false, method: 'email' })
+    open: boolean;
+    method: SendReceiptDeliveryMethod;
+  }>({ open: false, method: "email" });
+  const [splitSelectorOpen, setSplitSelectorOpen] = useState(false);
 
   // Get order data - first try active orders, then previous orders
-  const activeOrder = useOrderStore(state => {
-    if (!orderId) return null
-    return state.ordersById[orderId] || null
-  })
+  const activeOrder = useOrderStore((state) => {
+    if (!orderId) return null;
+    return state.ordersById[orderId] || null;
+  });
 
   // Fallback to previousOrders for history orders
-  const previousOrder = usePreviousOrdersStore(state => {
-    if (!orderId || activeOrder) return null
-    return state.previousOrders.find(po => po.orderId === orderId) || null
-  })
+  const previousOrder = usePreviousOrdersStore((state) => {
+    if (!orderId || activeOrder) return null;
+    return state.previousOrders.find((po) => po.orderId === orderId) || null;
+  });
 
   // Fetch reversals and refund_items via TanStack Query
-  const dbOrderId = activeOrder?.db_order_id || previousOrder?.db_order_id
+  const dbOrderId = activeOrder?.db_order_id || previousOrder?.db_order_id;
   const hasExistingReversals = !!(
     (activeOrder?.reversals && activeOrder.reversals.length > 0) ||
     (previousOrder?.reversals && previousOrder.reversals.length > 0)
-  )
+  );
 
-  const { reversals: fetchedReversals, orderRefundItems: fetchedRefundItems } =
-    useOrderDetailsFetch({
-      dbOrderId,
-      localOrderId: orderId,
-      isActiveOrder: !!activeOrder,
-      hasExistingReversals,
-      enabled: isOpen && !!orderId
-    })
+  const {
+    reversals: fetchedReversals,
+    orderRefundItems: fetchedRefundItems,
+    kitchenTimeline,
+  } = useOrderDetailsFetch({
+    dbOrderId,
+    localOrderId: orderId,
+    isActiveOrder: !!activeOrder,
+    hasExistingReversals,
+    enabled: isOpen && !!orderId,
+  });
 
   const {
     payments: hydratedPayments,
     isPending: isPaymentsPending,
-    isFetching: isPaymentsFetching
+    isFetching: isPaymentsFetching,
   } = useOrderPayments(dbOrderId, {
-    enabled: isOpen && !!dbOrderId
-  })
+    enabled: isOpen && !!dbOrderId,
+  });
 
   const storedPaymentsCount =
-    activeOrder?.payments?.length ?? previousOrder?.payments?.length ?? 0
+    activeOrder?.payments?.length ?? previousOrder?.payments?.length ?? 0;
   const isPaymentsLoading =
     !!dbOrderId &&
     storedPaymentsCount === 0 &&
-    (isPaymentsPending || isPaymentsFetching)
+    (isPaymentsPending || isPaymentsFetching);
 
   // Map previousOrder to OrderProfile format (same as PreviousOrdersSection)
-  const order = useMemo((): OrderProfile | null => {
+  const resolvedOrder = useMemo((): OrderProfile | null => {
     if (activeOrder) {
       // Merge fetched details into active order if it's missing reversals
       if (fetchedReversals.length > 0 && !activeOrder.reversals?.length) {
@@ -3874,18 +5309,18 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
               ? hydratedPayments
               : activeOrder.payments,
           reversals: fetchedReversals,
-          order_refund_items: fetchedRefundItems
-        }
+          order_refund_items: fetchedRefundItems,
+        };
       }
       if (hydratedPayments.length > 0) {
         return {
           ...activeOrder,
-          payments: hydratedPayments
-        }
+          payments: hydratedPayments,
+        };
       }
-      return activeOrder
+      return activeOrder;
     }
-    if (!previousOrder) return null
+    if (!previousOrder) return null;
 
     return {
       id: previousOrder.orderId,
@@ -3895,11 +5330,11 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       customer_name: previousOrder.customer,
       server_name: previousOrder.server,
       order_status: previousOrder.refunded
-        ? 'refunded'
+        ? "refunded"
         : previousOrder.closed_at
-        ? 'completed'
-        : 'pending',
-      check_status: previousOrder.checkStatus || 'Opened',
+          ? "completed"
+          : "pending",
+      check_status: previousOrder.checkStatus || "Opened",
       paid_status: previousOrder.paymentStatus,
       order_type: previousOrder.type,
       items: previousOrder.items || [],
@@ -3929,15 +5364,36 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       order_refund_items:
         fetchedRefundItems.length > 0
           ? fetchedRefundItems
-          : previousOrder.order_refund_items
-    } as OrderProfile
+          : previousOrder.order_refund_items,
+    } as OrderProfile;
   }, [
     activeOrder,
     previousOrder,
     fetchedReversals,
     fetchedRefundItems,
-    hydratedPayments
-  ])
+    hydratedPayments,
+  ]);
+
+  // Retain the last-known order so a transient eviction from the store doesn't
+  // blank the sheet. When the app is foregrounded after >2min, PosSyncProvider
+  // invalidates the active-orders query → hydrateWorkspace replaces ordersById,
+  // which can evict a closed/previous order this sheet is showing. Without this
+  // fallback, `order` flips to null and the sheet is stuck on "Loading order...".
+  const lastOrderRef = useRef<{ orderId: string; order: OrderProfile } | null>(
+    null,
+  );
+  if (resolvedOrder && orderId) {
+    lastOrderRef.current = { orderId, order: resolvedOrder };
+  } else if (!isOpen || !orderId) {
+    // Clear once the sheet is closed (or has no target) so reopening a
+    // different order can't flash the previous one.
+    lastOrderRef.current = null;
+  }
+  const order: OrderProfile | null =
+    resolvedOrder ??
+    (lastOrderRef.current?.orderId === orderId
+      ? lastOrderRef.current.order
+      : null);
 
   // Check if active terminal matches the order's payment terminal type
   const { canProcess: terminalCanProcess, blockReason: terminalBlockReason } =
@@ -3945,17 +5401,17 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       () =>
         getTerminalMatchInfo(
           order?.payments,
-          selectedStation?.payment_terminal?.terminal_type
+          selectedStation?.payment_terminal?.terminal_type,
         ),
-      [order?.payments, selectedStation?.payment_terminal?.terminal_type]
-    )
+      [order?.payments, selectedStation?.payment_terminal?.terminal_type],
+    );
 
   // Reset view when sheet opens (Modal is controlled by isOpen state directly)
   useEffect(() => {
     if (isOpen && orderId) {
-      setRightPaneView(initialView || 'summary')
+      setRightPaneView(initialView || "summary");
     }
-  }, [isOpen, orderId, initialView])
+  }, [isOpen, orderId, initialView]);
 
   // Expose methods for compatibility (not needed for Modal but keeps the interface)
   useImperativeHandle(
@@ -3967,9 +5423,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         expand: () => {},
         collapse: () => {},
         close: () => close(),
-        forceClose: () => close()
-      } as BottomSheetMethods)
-  )
+        forceClose: () => close(),
+      }) as BottomSheetMethods,
+  );
 
   // Calculate payment summary
   const paymentSummary = useMemo(() => {
@@ -3980,88 +5436,89 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         refunds: 0,
         collected: 0,
         tips: 0,
-        payments: [] as PaymentRowData[]
-      }
+        payments: [] as PaymentRowData[],
+      };
     }
 
-    let totalRefunded = 0
-    let totalCollected = 0
-    let totalTips = 0
-    let totalHeld = 0
-    const payments: PaymentRowData[] = []
+    let totalRefunded = 0;
+    let totalCollected = 0;
+    let totalTips = 0;
+    let totalHeld = 0;
+    const payments: PaymentRowData[] = [];
     if (order.payments && order.payments.length > 0) {
       order.payments.forEach((payment: OrderProfilePayment, index: number) => {
-        const orderAmount = payment.amount || 0
-        const tipAmount = payment.tip_amount || 0
-        const isVoided = payment.isVoided || false
-        const collected = isVoided ? 0 : orderAmount + tipAmount
-        const txDetails = payment.transactionDetails?.dejavooTransaction
+        const orderAmount = payment.amount || 0;
+        const tipAmount = payment.tip_amount || 0;
+        const isVoided = payment.isVoided || false;
+        const collected = isVoided ? 0 : orderAmount + tipAmount;
+        const txDetails = payment.transactionDetails?.dejavooTransaction;
         const castlesRaw = payment.transactionDetails?.castlesTransaction as
           | Record<string, any>
-          | undefined
+          | undefined;
         // Handle both shapes: full buildCastlesTerminalResponse (same-session) vs inner castles_transaction (reloaded)
         const castlesTx = (castlesRaw?.castles_transaction ?? castlesRaw) as
           | Record<string, string>
-          | undefined
-        const cardBrand = payment.cardBrand || txDetails?.cardType
-        const last4 = payment.last4 || txDetails?.cardLast4
+          | undefined;
+        const cardBrand = payment.cardBrand || txDetails?.cardType;
+        const last4 = payment.last4 || txDetails?.cardLast4;
         const cardInfo =
-          payment.method === 'Card' || txDetails || castlesTx
+          payment.method === "Card" || txDetails || castlesTx
             ? {
                 brand: cardBrand,
                 last4,
                 entryMode: txDetails?.entryMode
                   ? String(txDetails.entryMode)
                   : castlesTx?.entryMode
-                  ? String(castlesTx.entryMode)
-                  : undefined,
+                    ? String(castlesTx.entryMode)
+                    : undefined,
                 authCode: txDetails?.authCode
                   ? String(txDetails.authCode)
                   : castlesTx?.approvalCode
-                  ? String(castlesTx.approvalCode)
-                  : undefined,
+                    ? String(castlesTx.approvalCode)
+                    : undefined,
                 rrn: txDetails?.rrn
                   ? String(txDetails.rrn)
                   : castlesTx?.rrn
-                  ? String(castlesTx.rrn)
-                  : payment.transactionDetails?.rrn
-                  ? String(payment.transactionDetails.rrn)
-                  : undefined,
+                    ? String(castlesTx.rrn)
+                    : payment.transactionDetails?.rrn
+                      ? String(payment.transactionDetails.rrn)
+                      : undefined,
                 transactionNumber: txDetails?.transactionNumber
                   ? String(txDetails.transactionNumber)
                   : undefined,
                 referenceId: txDetails?.referenceId
                   ? String(txDetails.referenceId)
                   : castlesTx?.referenceId
-                  ? String(castlesTx.referenceId)
-                  : undefined,
+                    ? String(castlesTx.referenceId)
+                    : undefined,
                 invoiceNumber: txDetails?.invoiceNumber
                   ? String(txDetails.invoiceNumber)
-                  : undefined
+                  : undefined,
               }
-            : undefined
+            : undefined;
 
         // Only count non-voided payments for collected and refunded totals
         // Voided payments were never collected, so they don't affect the refundable balance
         // Authorized holds (pre-auth) are not yet collected — track separately
-        const isAuthorizedHold = !isVoided && (payment.isPreAuth || payment.status === 'authorized')
+        const isAuthorizedHold =
+          !isVoided && (payment.isPreAuth || payment.status === "authorized");
         if (!isVoided && !isAuthorizedHold) {
-          totalCollected += collected
-          totalTips += tipAmount
+          totalCollected += collected;
+          totalTips += tipAmount;
           // Track actual refunds from this payment (not voided amounts)
-          totalRefunded += payment.refundedAmount || 0
+          totalRefunded += payment.refundedAmount || 0;
         }
         if (isAuthorizedHold) {
-          totalHeld += orderAmount
+          totalHeld += orderAmount;
         }
 
         payments.push({
           method:
-            payment.method?.toLowerCase() === 'card'
-              ? 'Card'
-              : payment.method?.toLowerCase() === 'cash'
-              ? 'Cash'
-              : payment.method || 'Unknown',
+            payment.method?.toLowerCase() === "card"
+              ? "Card"
+              : payment.method?.toLowerCase() === "cash"
+                ? "Cash"
+                : payment.method || "Unknown",
           timestamp: payment.timestamp || new Date().toISOString(),
           orderAmount,
           tipAmount,
@@ -4081,8 +5538,8 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           referenceId: txDetails?.referenceId
             ? String(txDetails.referenceId)
             : castlesTx?.referenceId
-            ? String(castlesTx.referenceId)
-            : undefined,
+              ? String(castlesTx.referenceId)
+              : undefined,
           refundedAmount: payment.refundedAmount || 0,
           original_tip_amount: payment.original_tip_amount,
           tip_adjusted_at: payment.tip_adjusted_at,
@@ -4096,11 +5553,13 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           refunded_dual_pricing_fee: payment.refunded_dual_pricing_fee,
           refunded_tip_fee: payment.refunded_tip_fee,
           original_tip_fee: payment.original_tip_fee,
-          dual_pricing_percentage_snapshot: payment.dual_pricing_percentage_snapshot,
-          tip_surcharge_percentage_snapshot: payment.tip_surcharge_percentage_snapshot,
+          dual_pricing_percentage_snapshot:
+            payment.dual_pricing_percentage_snapshot,
+          tip_surcharge_percentage_snapshot:
+            payment.tip_surcharge_percentage_snapshot,
           serviceCharge: payment.service_charge ?? 0,
-        })
-      })
+        });
+      });
     }
 
     // Compute refunds from reversals (authoritative source) — reversals update
@@ -4110,18 +5569,20 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     // Exclude void reversals (payment cancellations, not item refunds) and
     // refunds from voided payments (the item return is part of the cancelled payment).
     const nonVoidedPaymentIds = new Set(
-      payments.filter(p => !p.isVoided).map(p => p.dbPaymentId)
-    )
+      payments.filter((p) => !p.isVoided).map((p) => p.dbPaymentId),
+    );
     const reversalRefundTotal = ((order.reversals as ReversalRecord[]) || [])
-      .filter(r =>
-        r.status === 'completed' &&
-        r.reversal_type !== 'void' &&
-        nonVoidedPaymentIds.has(r.original_payment_id)
+      .filter(
+        (r) =>
+          r.status === "completed" &&
+          r.reversal_type !== "void" &&
+          nonVoidedPaymentIds.has(r.original_payment_id),
       )
-      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
     // Use reversals when available, fall back to payment-level for legacy orders
-    const effectiveRefunds = reversalRefundTotal > 0 ? reversalRefundTotal : totalRefunded
+    const effectiveRefunds =
+      reversalRefundTotal > 0 ? reversalRefundTotal : totalRefunded;
 
     return {
       orderTotal: order.total_amount || 0,
@@ -4130,14 +5591,14 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       collected: totalCollected,
       held: totalHeld,
       tips: totalTips,
-      payments
-    }
-  }, [order])
+      payments,
+    };
+  }, [order]);
 
   // Diagnostic: log when refund button would be disabled
   useEffect(() => {
     if (isOpen && order) {
-      console.log('[PaymentDetail] Payment summary:', {
+      console.log("[PaymentDetail] Payment summary:", {
         collected: paymentSummary.collected,
         refunds: paymentSummary.refunds,
         paymentsCount: paymentSummary.payments.length,
@@ -4147,11 +5608,11 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           amount: p.amount,
           isVoided: p.isVoided,
           method: p.method,
-          refundedAmount: p.refundedAmount
-        }))
-      })
+          refundedAmount: p.refundedAmount,
+        })),
+      });
     }
-  }, [isOpen, order, paymentSummary])
+  }, [isOpen, order, paymentSummary]);
 
   // Calculate order totals for left pane
   // Use cash pricing when all non-voided payments are cash-priced
@@ -4162,41 +5623,43 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         discount: 0,
         tax: 0,
         serviceCharge: 0,
-        serviceChargeName: 'Service Charge',
+        serviceChargeName: "Service Charge",
         serviceChargeRate: null as number | null,
         total: 0,
-      }
+      };
 
     const nonVoidedPayments = (order.payments || []).filter(
-      (p: any) => !p.isVoided
-    )
+      (p: any) => !p.isVoided,
+    );
     const wasCashPaid =
       nonVoidedPayments.length > 0 &&
       nonVoidedPayments.every(
-        (p: any) => p.isCashPriced || p.method === 'Cash'
-      )
+        (p: any) => p.isCashPriced || p.method === "Cash",
+      );
 
     const subtotal = (order.items || []).reduce(
       (sum: number, item: CartItem) => {
-        if (item.is_voided) return sum
+        if (item.is_voided) return sum;
         const unitPrice = wasCashPaid
           ? (item.cashPrice ?? item.baseCashPrice ?? item.price ?? 0)
-          : (item.price || 0)
-        return sum + unitPrice * item.quantity
+          : item.price || 0;
+        return sum + unitPrice * item.quantity;
       },
-      0
-    )
-    const discount = order.total_discount || 0
-    const tax = order.total_tax || 0
-    const serviceCharge = order.service_charge || 0
+      0,
+    );
+    const discount = order.total_discount || 0;
+    const tax = order.total_tax || 0;
+    const serviceCharge = order.service_charge || 0;
     const serviceChargeName: string =
-      order.service_charge_name || 'Service Charge'
+      order.service_charge_name || "Service Charge";
     const serviceChargeRate: number | null =
-      order.service_charge_rate != null ? Number(order.service_charge_rate) : null
+      order.service_charge_rate != null
+        ? Number(order.service_charge_rate)
+        : null;
     const total =
       wasCashPaid && order.total_cash_amount != null
         ? order.total_cash_amount
-        : order.total_amount || 0
+        : order.total_amount || 0;
 
     return {
       subtotal,
@@ -4206,144 +5669,146 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       serviceChargeName,
       serviceChargeRate,
       total,
-    }
-  }, [order])
+    };
+  }, [order]);
 
   // Handlers
   const handleReopenOrder = useCallback(async () => {
-    if (!orderId) return
+    if (!orderId) return;
 
     // Check if the order is in the active store
-    const storeKey = useOrderStore.getState().dbOrderIdIndex[orderId] ?? orderId
-    const isActiveOrder = !!useOrderStore.getState().ordersById[storeKey]
+    const storeKey =
+      useOrderStore.getState().dbOrderIdIndex[orderId] ?? orderId;
+    const isActiveOrder = !!useOrderStore.getState().ordersById[storeKey];
 
     if (isActiveOrder) {
-      await updateOrderCheckStatus(orderId, 'Opened')
-      const current = useOrderStore.getState().ordersById[storeKey]
-      if (current?.check_status === 'Opened') {
+      await updateOrderCheckStatus(orderId, "Opened");
+      const current = useOrderStore.getState().ordersById[storeKey];
+      if (current?.check_status === "Opened") {
         show({
-          title: 'Order Reopened',
-          message: 'This order is now open for editing and payments.',
-          type: 'success'
-        })
+          title: "Order Reopened",
+          message: "This order is now open for editing and payments.",
+          type: "success",
+        });
       } else {
         show({
-          title: 'Reopen Failed',
-          message: 'Could not reopen this order. Please try again.',
-          type: 'error'
-        })
+          title: "Reopen Failed",
+          message: "Could not reopen this order. Please try again.",
+          type: "error",
+        });
       }
     } else {
       // Previous order — call OrderService directly
       const dbId =
         usePreviousOrdersStore.getState().getOrderById(orderId)?.db_order_id ||
-        orderId
-      const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId
+        orderId;
+      const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId;
       if (!supabase || !staffId) {
         show({
-          title: 'Reopen Failed',
-          message: 'Missing authentication.',
-          type: 'error'
-        })
-        return
+          title: "Reopen Failed",
+          message: "Missing authentication.",
+          type: "error",
+        });
+        return;
       }
-      const result = await OrderService.reopenCheck(supabase, dbId, staffId)
+      const result = await OrderService.reopenCheck(supabase, dbId, staffId);
       if (result.success) {
         usePreviousOrdersStore
           .getState()
-          .patchPreviousOrder(orderId, { checkStatus: 'Opened' })
+          .patchPreviousOrder(orderId, { checkStatus: "Opened" });
         show({
-          title: 'Order Reopened',
-          message: 'This order is now open for editing and payments.',
-          type: 'success'
-        })
+          title: "Order Reopened",
+          message: "This order is now open for editing and payments.",
+          type: "success",
+        });
       } else {
         show({
-          title: 'Reopen Failed',
-          message: result.error || 'Could not reopen this order.',
-          type: 'error'
-        })
+          title: "Reopen Failed",
+          message: result.error || "Could not reopen this order.",
+          type: "error",
+        });
       }
     }
-  }, [orderId, updateOrderCheckStatus, show, supabase])
+  }, [orderId, updateOrderCheckStatus, show, supabase]);
 
   const handleCloseOrder = useCallback(async () => {
-    if (!orderId) return
+    if (!orderId) return;
 
     // Check if the order is in the active store
-    const storeKey = useOrderStore.getState().dbOrderIdIndex[orderId] ?? orderId
-    const isActiveOrder = !!useOrderStore.getState().ordersById[storeKey]
+    const storeKey =
+      useOrderStore.getState().dbOrderIdIndex[orderId] ?? orderId;
+    const isActiveOrder = !!useOrderStore.getState().ordersById[storeKey];
 
     if (isActiveOrder) {
-      await updateOrderCheckStatus(orderId, 'Closed')
-      const current = useOrderStore.getState().ordersById[storeKey]
-      if (current?.check_status === 'Closed') {
+      await updateOrderCheckStatus(orderId, "Closed");
+      const current = useOrderStore.getState().ordersById[storeKey];
+      if (current?.check_status === "Closed") {
         show({
-          title: 'Order Closed',
-          message: 'This order has been closed.',
-          type: 'success'
-        })
+          title: "Order Closed",
+          message: "This order has been closed.",
+          type: "success",
+        });
       } else {
         show({
-          title: 'Close Failed',
+          title: "Close Failed",
           message:
-            'Could not close this order. There may be an outstanding balance.',
-          type: 'error'
-        })
+            "Could not close this order. There may be an outstanding balance.",
+          type: "error",
+        });
       }
     } else {
       // Previous order — call OrderService directly
       const dbId =
         usePreviousOrdersStore.getState().getOrderById(orderId)?.db_order_id ||
-        orderId
-      const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId
+        orderId;
+      const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId;
       if (!supabase) {
         show({
-          title: 'Close Failed',
-          message: 'Missing connection.',
-          type: 'error'
-        })
-        return
+          title: "Close Failed",
+          message: "Missing connection.",
+          type: "error",
+        });
+        return;
       }
-      const result = await OrderService.closeCheck(supabase, dbId, staffId)
+      const result = await OrderService.closeCheck(supabase, dbId, staffId);
       if (result.success) {
         usePreviousOrdersStore
           .getState()
-          .patchPreviousOrder(orderId, { checkStatus: 'Closed' })
+          .patchPreviousOrder(orderId, { checkStatus: "Closed" });
         show({
-          title: 'Order Closed',
-          message: 'This order has been closed.',
-          type: 'success'
-        })
+          title: "Order Closed",
+          message: "This order has been closed.",
+          type: "success",
+        });
       } else {
         show({
-          title: 'Close Failed',
-          message: result.error || 'Could not close this order.',
-          type: 'error'
-        })
+          title: "Close Failed",
+          message: result.error || "Could not close this order.",
+          type: "error",
+        });
       }
     }
-  }, [orderId, updateOrderCheckStatus, show, supabase])
+  }, [orderId, updateOrderCheckStatus, show, supabase]);
 
   const handleContinueCharging = useCallback(async () => {
-    if (!orderId) return
+    if (!orderId) return;
 
-    let activeId = orderId
+    let activeId = orderId;
 
     // If order not in local store, fetch from DB first
     if (!useOrderStore.getState().ordersById[orderId]) {
       const localId = await useOrderStore
         .getState()
-        .syncOrderFromDatabase(orderId)
+        .syncOrderFromDatabase(orderId);
       if (!localId) {
         show({
-          title: 'Error',
-          message: 'Could not load order data.',
-          type: 'error'
-        })
-        return
+          title: "Error",
+          message: "Could not load order data.",
+          type: "error",
+        });
+        return;
       }
-      activeId = localId
+      activeId = localId;
     }
 
     // Wave 2.2: defense-in-depth ownership pre-flight. The OrderBadge popover
@@ -4351,26 +5816,26 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     // deep-link / programmatic / racy caller that gets past the UI gate
     // before any RPC dispatch.
     {
-      const state = useOrderStore.getState()
-      const order = state.ordersById[activeId]
+      const state = useOrderStore.getState();
+      const order = state.ordersById[activeId];
       if (isOrderReadOnly(order, state.currentStationId)) {
         show({
-          title: 'Order owned by another station',
-          message: 'Claim it via Take Over before charging.',
-          type: 'error'
-        })
-        return
+          title: "Order owned by another station",
+          message: "Claim it via Take Over before charging.",
+          type: "error",
+        });
+        return;
       }
     }
 
-    useOrderStore.getState().setActiveOrder(activeId)
-    close()
+    useOrderStore.getState().setActiveOrder(activeId);
+    close();
 
     // Navigate to order-processing if not already there
-    if (!pathname.includes('order-processing')) {
-      router.replace('/order-processing')
+    if (!pathname.includes("order-processing")) {
+      router.replace("/order-processing");
     }
-  }, [orderId, close, show, pathname, router])
+  }, [orderId, close, show, pathname, router]);
 
   // Take Over: claim ownership from another station. Mirrors the sync-then-
   // claim flow in handleContinueCharging so historical (closed) orders that
@@ -4380,113 +5845,111 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   // sheet on the previous owner; here we keep it open so the new owner sees
   // the buttons swap to the full set.
   const handleTakeOver = useCallback(async () => {
-    if (!orderId) return
-    setIsClaiming(true)
+    if (!orderId) return;
+    setIsClaiming(true);
     try {
-      let localId: string | null = orderId
+      let localId: string | null = orderId;
       if (!useOrderStore.getState().ordersById[localId]) {
-        localId = await useOrderStore
-          .getState()
-          .syncOrderFromDatabase(localId)
+        localId = await useOrderStore.getState().syncOrderFromDatabase(localId);
         if (!localId) {
           show({
             title: "Couldn't take over",
-            message: 'Could not load order data — please refresh.',
-            type: 'error'
-          })
-          return
+            message: "Could not load order data — please refresh.",
+            type: "error",
+          });
+          return;
         }
       }
-      const result = await useOrderStore.getState().claimOrderById(localId)
-      if (!result.success) return
+      const result = await useOrderStore.getState().claimOrderById(localId);
+      if (!result.success) return;
 
-      const claimedOrder = useOrderStore.getState().ordersById[localId]
+      const claimedOrder = useOrderStore.getState().ordersById[localId];
       const isEmptyDraft =
-        claimedOrder?.order_status === 'draft' &&
-        (claimedOrder.items?.length ?? 0) === 0
+        claimedOrder?.order_status === "draft" &&
+        (claimedOrder.items?.length ?? 0) === 0;
 
       if (isEmptyDraft) {
-        useOrderStore.getState().setActiveOrder(localId)
-        close()
-        if (!pathname.includes('order-processing')) {
-          router.replace('/order-processing')
+        useOrderStore.getState().setActiveOrder(localId);
+        close();
+        if (!pathname.includes("order-processing")) {
+          router.replace("/order-processing");
         }
       }
     } finally {
-      setIsClaiming(false)
+      setIsClaiming(false);
     }
-  }, [orderId, show, close, pathname, router])
+  }, [orderId, show, close, pathname, router]);
 
   const handleIssueReceipt = useCallback(async () => {
     if (!order || !selectedStore) {
       show({
-        title: 'Print Error',
-        message: 'No order or store available.',
-        type: 'error'
-      })
-      return
+        title: "Print Error",
+        message: "No order or store available.",
+        type: "error",
+      });
+      return;
     }
-    const success = await PrinterService.printReceipt(order, selectedStore)
+    const success = await PrinterService.printReceipt(order, selectedStore);
     if (success) {
       show({
-        title: 'Receipt Sent',
-        message: 'Receipt sent to printer.',
-        type: 'success'
-      })
+        title: "Receipt Sent",
+        message: "Receipt sent to printer.",
+        type: "success",
+      });
     } else {
-      useNoPrinterModalStore.getState().show('receipt')
+      useNoPrinterModalStore.getState().show("receipt");
     }
-  }, [order, selectedStore, show])
+  }, [order, selectedStore, show]);
 
   const handlePrintKitchenTicket = useCallback(async () => {
     if (!order || !selectedStore) {
       show({
-        title: 'Print Error',
-        message: 'No order or store available.',
-        type: 'error'
-      })
-      return
+        title: "Print Error",
+        message: "No order or store available.",
+        type: "error",
+      });
+      return;
     }
-    const nonVoidedItems = order.items.filter(item => !item.is_voided)
+    const nonVoidedItems = order.items.filter((item) => !item.is_voided);
     if (nonVoidedItems.length === 0) {
       show({
-        title: 'No Items',
-        message: 'No items to print on kitchen ticket.',
-        type: 'warning'
-      })
-      return
+        title: "No Items",
+        message: "No items to print on kitchen ticket.",
+        type: "warning",
+      });
+      return;
     }
     const success = await PrinterService.printKitchenTickets(
       order,
       nonVoidedItems,
-      selectedStore
-    )
+      selectedStore,
+    );
     if (success) {
       show({
-        title: 'Kitchen Ticket Sent',
-        message: 'Kitchen ticket sent to printer.',
-        type: 'success'
-      })
+        title: "Kitchen Ticket Sent",
+        message: "Kitchen ticket sent to printer.",
+        type: "success",
+      });
     } else {
-      useNoPrinterModalStore.getState().show('kitchen')
+      useNoPrinterModalStore.getState().show("kitchen");
     }
-  }, [order, selectedStore, show])
+  }, [order, selectedStore, show]);
 
   const handleRefund = useCallback(() => {
     console.log(
-      '[PaymentDetail] Refund button pressed, navigating to refund view'
-    )
-    setRightPaneView('refund')
-  }, [])
+      "[PaymentDetail] Refund button pressed, navigating to refund view",
+    );
+    setRightPaneView("refund");
+  }, []);
 
   const handleTipAdjust = useCallback(() => {
-    setRightPaneView('tipAdjust')
-  }, [])
+    setRightPaneView("tipAdjust");
+  }, []);
 
   const handleTipAdjusted = useCallback(() => {
-    setTipProcessing(false)
-    setRightPaneView('summary')
-  }, [])
+    setTipProcessing(false);
+    setRightPaneView("summary");
+  }, []);
 
   const executeRefund = useCallback(
     async (
@@ -4494,27 +5957,35 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       totalAmount: number,
       reason: string,
       perPaymentDetails: PerPaymentRefundDetail[],
-      selectedItems?: { itemId: string; quantity: number; paymentIndex?: number }[]
+      selectedItems?: {
+        itemId: string;
+        quantity: number;
+        paymentIndex?: number;
+      }[],
     ): Promise<boolean> => {
       if (!order) {
-        show({ title: 'Refund Failed', message: 'Order not found.', type: 'error' })
-        return false
+        show({
+          title: "Refund Failed",
+          message: "Order not found.",
+          type: "error",
+        });
+        return false;
       }
-      const orderDbId = order.db_order_id || order.id
+      const orderDbId = order.db_order_id || order.id;
       try {
-        if (type === 'items') {
+        if (type === "items") {
           await refundMutation.mutateAsync({
-            type: 'items',
+            type: "items",
             totalAmount,
             reason,
             perPaymentDetails,
             selectedItems: selectedItems || [],
             orderId: orderId!,
             dbOrderId: orderDbId,
-            paymentTerminalId: selectedStation?.payment_terminal?.id || '',
+            paymentTerminalId: selectedStation?.payment_terminal?.id || "",
             paymentTerminal: selectedStation?.payment_terminal || undefined,
-            stationId: selectedStation?.id
-          })
+            stationId: selectedStation?.id,
+          });
         } else {
           await refundMutation.mutateAsync({
             type,
@@ -4523,60 +5994,64 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
             perPaymentDetails,
             orderId: orderId!,
             dbOrderId: orderDbId,
-            paymentTerminalId: selectedStation?.payment_terminal?.id || '',
+            paymentTerminalId: selectedStation?.payment_terminal?.id || "",
             paymentTerminal: selectedStation?.payment_terminal || undefined,
-            stationId: selectedStation?.id
-          })
+            stationId: selectedStation?.id,
+          });
         }
-        setRightPaneView('summary')
-        return true
+        setRightPaneView("summary");
+        return true;
       } catch {
-        return false
+        return false;
       }
     },
-    [order, orderId, show, selectedStation, refundMutation]
-  )
+    [order, orderId, show, selectedStation, refundMutation],
+  );
 
   const writeFraudAuditLog = useCallback(
     (params: {
-      totalAmount: number
-      velocityCount: number
-      wasBlocked: boolean
-      approvedByManagerId?: string
-      approvedByManagerName?: string
+      totalAmount: number;
+      velocityCount: number;
+      wasBlocked: boolean;
+      approvedByManagerId?: string;
+      approvedByManagerName?: string;
     }) => {
-      if (!supabase || !orderId) return
-      const empStore = useEmployeeStore.getState()
-      const activeEmpId = empStore.activeEmployeeId
-      const emp = activeEmpId ? empStore.getEmployeeById(activeEmpId) : null
-      if (!emp?.profileId) return
+      if (!supabase || !orderId) return;
+      const empStore = useEmployeeStore.getState();
+      const activeEmpId = empStore.activeEmployeeId;
+      const emp = activeEmpId ? empStore.getEmployeeById(activeEmpId) : null;
+      if (!emp?.profileId) return;
 
-      const flags = ['same_cashier_refund']
-      if (params.wasBlocked) flags.push('velocity_blocked')
+      const flags = ["same_cashier_refund"];
+      if (params.wasBlocked) flags.push("velocity_blocked");
 
-      supabase.from('audit_logs').insert({
-        action: 'same_cashier_refund',
-        action_category: 'fraud_detection',
-        actor_name: emp.fullName,
-        staff_profile_id: emp.profileId,
-        resource_type: 'order',
-        resource_id: orderId,
-        severity: params.wasBlocked ? 'high' : 'medium',
-        metadata: {
-          fraud_flags: flags,
-          refund_amount: params.totalAmount,
-          velocity_count: params.velocityCount,
-          approved_by: params.approvedByManagerId,
-          approved_by_name: params.approvedByManagerName,
-        },
-        location_id: selectedStore?.id,
-        merchant_id: selectedStore?.merchant_id,
-      }).then(({ error: auditErr }) => {
-        if (auditErr) console.warn('[FraudGuard] audit_logs insert failed:', auditErr)
-      })
+      supabase
+        .from("audit_logs")
+        .insert({
+          action: "same_cashier_refund",
+          action_category: "fraud_detection",
+          actor_name: emp.fullName,
+          staff_profile_id: emp.profileId,
+          resource_type: "order",
+          resource_id: orderId,
+          severity: params.wasBlocked ? "high" : "medium",
+          metadata: {
+            fraud_flags: flags,
+            refund_amount: params.totalAmount,
+            velocity_count: params.velocityCount,
+            approved_by: params.approvedByManagerId,
+            approved_by_name: params.approvedByManagerName,
+          },
+          location_id: selectedStore?.id,
+          merchant_id: selectedStore?.merchant_id,
+        })
+        .then(({ error: auditErr }) => {
+          if (auditErr)
+            console.warn("[FraudGuard] audit_logs insert failed:", auditErr);
+        });
     },
-    [supabase, orderId, selectedStore]
-  )
+    [supabase, orderId, selectedStore],
+  );
 
   const handleProcessRefund = useCallback(
     async (
@@ -4585,51 +6060,88 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       reason: string,
       perPaymentDetails: PerPaymentRefundDetail[],
       selectedItems?: {
-        itemId: string
-        quantity: number
-        paymentIndex?: number
-      }[]
+        itemId: string;
+        quantity: number;
+        paymentIndex?: number;
+      }[],
     ): Promise<boolean> => {
       // Determine if any payment in this refund involves cash
       const hasCashPayment = perPaymentDetails.some(
-        d => d.method?.toLowerCase() === 'cash'
-      )
-      const paymentMethod = hasCashPayment ? 'Cash' as const : 'Card' as const
+        (d) => d.method?.toLowerCase() === "cash",
+      );
+      const paymentMethod = hasCashPayment
+        ? ("Cash" as const)
+        : ("Card" as const);
 
       const guard = checkRefund({
         orderCreatedByStaffProfileId: order?.created_by_staff_profile_id,
         paymentMethod,
-      })
-      lastFraudGuardRef.current = guard
+      });
+      lastFraudGuardRef.current = guard;
 
-      if (guard.isSelfRefund && guard.isCashRefund && guard.velocity.shouldBlock) {
-        pendingRefundRef.current = { type, totalAmount, reason, perPaymentDetails, selectedItems }
-        setRefundApprovalVisible(true)
-        return false
+      if (
+        guard.isSelfRefund &&
+        guard.isCashRefund &&
+        guard.velocity.shouldBlock
+      ) {
+        pendingRefundRef.current = {
+          type,
+          totalAmount,
+          reason,
+          perPaymentDetails,
+          selectedItems,
+        };
+        setRefundApprovalVisible(true);
+        return false;
       }
 
-      const success = await executeRefund(type, totalAmount, reason, perPaymentDetails, selectedItems)
+      const success = await executeRefund(
+        type,
+        totalAmount,
+        reason,
+        perPaymentDetails,
+        selectedItems,
+      );
 
       if (success && guard.isSelfRefund && guard.isCashRefund) {
-        const velocity = recordAndNotify({ orderId: orderId || '', amount: totalAmount })
-        writeFraudAuditLog({ totalAmount, velocityCount: velocity?.selfRefundCount ?? 1, wasBlocked: false })
+        const velocity = recordAndNotify({
+          orderId: orderId || "",
+          amount: totalAmount,
+        });
+        writeFraudAuditLog({
+          totalAmount,
+          velocityCount: velocity?.selfRefundCount ?? 1,
+          wasBlocked: false,
+        });
         if (velocity?.shouldAlert) {
           setTimeout(() => {
-            show({ title: 'Refund Flagged', message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. Flagged for review.`, type: 'warning' })
-          }, 100)
+            show({
+              title: "Refund Flagged",
+              message: `Same-cashier cash refund #${velocity.selfRefundCount} in the past hour. Flagged for review.`,
+              type: "warning",
+            });
+          }, 100);
         }
       }
 
-      return success
+      return success;
     },
-    [order, orderId, show, checkRefund, recordAndNotify, executeRefund, writeFraudAuditLog]
-  )
+    [
+      order,
+      orderId,
+      show,
+      checkRefund,
+      recordAndNotify,
+      executeRefund,
+      writeFraudAuditLog,
+    ],
+  );
 
   const handleRefundManagerApproved = useCallback(
     async (managerProfileId: string, managerName: string) => {
-      setRefundApprovalVisible(false)
-      const pending = pendingRefundRef.current
-      if (!pending) return
+      setRefundApprovalVisible(false);
+      const pending = pendingRefundRef.current;
+      if (!pending) return;
 
       const success = await executeRefund(
         pending.type,
@@ -4637,79 +6149,170 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         pending.reason,
         pending.perPaymentDetails,
         pending.selectedItems,
-      )
+      );
 
       if (success) {
         const velocity = recordAndNotify({
-          orderId: orderId || '',
+          orderId: orderId || "",
           amount: pending.totalAmount,
           approvedByManagerId: managerProfileId,
           approvedByManagerName: managerName,
-        })
+        });
         writeFraudAuditLog({
           totalAmount: pending.totalAmount,
           velocityCount: velocity?.selfRefundCount ?? 1,
           wasBlocked: true,
           approvedByManagerId: managerProfileId,
           approvedByManagerName: managerName,
-        })
+        });
         if (velocity?.shouldAlert) {
           setTimeout(() => {
-            show({ title: 'Refund Flagged', message: `Same-cashier cash refund #${velocity.selfRefundCount} (manager-approved). Flagged for review.`, type: 'warning' })
-          }, 100)
+            show({
+              title: "Refund Flagged",
+              message: `Same-cashier cash refund #${velocity.selfRefundCount} (manager-approved). Flagged for review.`,
+              type: "warning",
+            });
+          }, 100);
         }
       }
-      pendingRefundRef.current = null
+      pendingRefundRef.current = null;
     },
-    [orderId, show, executeRefund, recordAndNotify, writeFraudAuditLog]
-  )
+    [orderId, show, executeRefund, recordAndNotify, writeFraudAuditLog],
+  );
 
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   return (
     <Modal
       visible={isOpen}
-      animationType='slide'
+      animationType="slide"
       transparent={true}
       onRequestClose={() => {
-        if (refundMutation.isPending || tipProcessing) return
-        close()
+        if (refundMutation.isPending || tipProcessing) return;
+        close();
       }}
       statusBarTranslucent
     >
       <View
         style={{
           flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.6)',
-          justifyContent: 'flex-end'
+          backgroundColor: "rgba(0,0,0,0.6)",
+          justifyContent: "flex-end",
         }}
       >
         <View
           style={{
-            height: '90%',
+            height: "90%",
             backgroundColor: colors.screen,
-            borderTopLeftRadius: 16,
-            borderTopRightRadius: 16
+            borderTopLeftRadius: s(16),
+            borderTopRightRadius: s(16),
           }}
         >
           {!order ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: colors.muted, fontSize: 13 }}>Loading order...</Text>
+            <View style={{ flex: 1 }}>
+              {/* Header with an always-available escape hatch — never trap the
+                  user on the loading state if the order can't be resolved. */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingHorizontal: s(14),
+                  paddingVertical: s(12),
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: s(16),
+                    fontWeight: "700",
+                    color: colors.heading,
+                  }}
+                >
+                  Payment Details
+                </Text>
+                <TouchableOpacity
+                  onPress={close}
+                  style={{
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(7),
+                    borderRadius: s(8),
+                    backgroundColor: colors.card,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      fontWeight: "700",
+                      color: colors.label,
+                    }}
+                  >
+                    CLOSE
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ color: colors.muted, fontSize: s(13) }}>
+                  Loading order...
+                </Text>
+              </View>
             </View>
           ) : (
             <View style={{ flex: 1 }}>
               {/* Header */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}>Payment Details</Text>
-                  <Text style={{ fontSize: 14, color: colors.label }}>
-                    #{order.display_number || order.order_number?.slice(-6) || '—'}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingHorizontal: s(14),
+                  paddingVertical: s(12),
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(10),
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(16),
+                      fontWeight: "700",
+                      color: colors.heading,
+                    }}
+                  >
+                    Payment Details
                   </Text>
-                  <Text style={{ fontSize: 12, color: colors.muted }}>
-                    {order.opened_at ? formatTimestamp(order.opened_at) : '—'}
+                  <Text style={{ fontSize: s(14), color: colors.label }}>
+                    #
+                    {order.display_number ||
+                      order.order_number?.slice(-6) ||
+                      "—"}
+                  </Text>
+                  <Text style={{ fontSize: s(12), color: colors.muted }}>
+                    {order.opened_at ? formatTimestamp(order.opened_at) : "—"}
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(10),
+                  }}
+                >
                   {/* Delivery Platform / Online Badge */}
                   <DeliveryPlatformBadge
                     deliveryPlatform={order.delivery_platform}
@@ -4717,15 +6320,48 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     size="sm"
                   />
                   {/* Status Badge */}
-                  <View style={{
-                    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, gap: 6,
-                    backgroundColor: order.check_status === 'Opened' ? colors.success + '20' : colors.card,
-                    borderWidth: 1,
-                    borderColor: order.check_status === 'Opened' ? colors.success + '50' : colors.border,
-                  }}>
-                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: order.check_status === 'Opened' ? colors.success : colors.muted }} />
-                    <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', color: order.check_status === 'Opened' ? colors.success : colors.muted }}>
-                      {order.check_status === 'Opened' ? 'Open' : 'Closed'}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(4),
+                      borderRadius: s(20),
+                      gap: s(6),
+                      backgroundColor:
+                        order.check_status === "Opened"
+                          ? colors.success + "20"
+                          : colors.card,
+                      borderWidth: 1,
+                      borderColor:
+                        order.check_status === "Opened"
+                          ? colors.success + "50"
+                          : colors.border,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: s(6),
+                        height: s(6),
+                        borderRadius: s(3),
+                        backgroundColor:
+                          order.check_status === "Opened"
+                            ? colors.success
+                            : colors.muted,
+                      }}
+                    />
+                    <Text
+                      style={{
+                        fontSize: s(11),
+                        fontWeight: "700",
+                        textTransform: "uppercase",
+                        color:
+                          order.check_status === "Opened"
+                            ? colors.success
+                            : colors.muted,
+                      }}
+                    >
+                      {order.check_status === "Opened" ? "Open" : "Closed"}
                     </Text>
                   </View>
                   {/* Close Button */}
@@ -4733,18 +6369,31 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     onPress={close}
                     disabled={refundMutation.isPending || tipProcessing}
                     style={{
-                      paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
-                      backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
-                      opacity: refundMutation.isPending || tipProcessing ? 0.3 : 1
+                      paddingHorizontal: s(14),
+                      paddingVertical: s(7),
+                      borderRadius: s(8),
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      opacity:
+                        refundMutation.isPending || tipProcessing ? 0.3 : 1,
                     }}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.label }}>CLOSE</Text>
+                    <Text
+                      style={{
+                        fontSize: s(12),
+                        fontWeight: "700",
+                        color: colors.label,
+                      }}
+                    >
+                      CLOSE
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
               {/* Split Pane Content */}
-              <View style={{ flex: 1, flexDirection: 'row' }}>
+              <View style={{ flex: 1, flexDirection: "row" }}>
                 {/* Left Pane - Order Receipt */}
                 <LeftPane
                   order={order}
@@ -4758,7 +6407,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                 />
 
                 {/* Right Pane - Summary, Refund, or Tip Adjust */}
-                {rightPaneView === 'summary' ? (
+                {rightPaneView === "summary" ? (
                   <RightPaneSummary
                     order={order}
                     isPaymentsLoading={isPaymentsLoading}
@@ -4768,8 +6417,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     onContinueCharging={handleContinueCharging}
                     onIssueReceipt={handleIssueReceipt}
                     onSendReceipt={() =>
-                      setReceiptSheet({ open: true, method: 'email' })
+                      setReceiptSheet({ open: true, method: "email" })
                     }
+                    onPrintSplitReceipts={() => setSplitSelectorOpen(true)}
                     onPrintKitchenTicket={handlePrintKitchenTicket}
                     onTipAdjust={handleTipAdjust}
                     onRefund={handleRefund}
@@ -4784,12 +6434,13 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                       (order as any)?.station_name ||
                       null
                     }
+                    kitchenData={kitchenTimeline}
                   />
-                ) : rightPaneView === 'refund' ? (
+                ) : rightPaneView === "refund" ? (
                   <RightPaneRefund
                     order={order}
                     paymentSummary={paymentSummary}
-                    onBack={() => setRightPaneView('summary')}
+                    onBack={() => setRightPaneView("summary")}
                     onProcessRefund={handleProcessRefund}
                     refundProcessing={refundMutation.isPending}
                   />
@@ -4797,7 +6448,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   <RightPaneTipAdjust
                     order={order}
                     paymentSummary={paymentSummary}
-                    onBack={() => setRightPaneView('summary')}
+                    onBack={() => setRightPaneView("summary")}
                     onTipAdjusted={handleTipAdjusted}
                     onProcessingChange={setTipProcessing}
                   />
@@ -4811,12 +6462,14 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
 
       <RefundApprovalModal
         visible={refundApprovalVisible}
-        employeeName={lastFraudGuardRef.current?.activeEmployeeName || 'Cashier'}
+        employeeName={
+          lastFraudGuardRef.current?.activeEmployeeName || "Cashier"
+        }
         refundCount={lastFraudGuardRef.current?.velocity.selfRefundCount || 0}
         onApproved={handleRefundManagerApproved}
         onCancel={() => {
-          setRefundApprovalVisible(false)
-          pendingRefundRef.current = null
+          setRefundApprovalVisible(false);
+          pendingRefundRef.current = null;
         }}
       />
 
@@ -4828,13 +6481,20 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         defaultEmail={(order as any)?.customer_email}
         defaultPhone={(order as any)?.customer_phone}
       />
+
+      <SplitReceiptSelectorModal
+        isOpen={splitSelectorOpen}
+        onClose={() => setSplitSelectorOpen(false)}
+        order={(order as OrderProfile) ?? null}
+        location={selectedStore ?? null}
+      />
     </Modal>
-  )
-}
+  );
+};
 
 const PaymentDetailBottomSheet = React.forwardRef(
-  PaymentDetailBottomSheetComponent
-)
-PaymentDetailBottomSheet.displayName = 'PaymentDetailBottomSheet'
+  PaymentDetailBottomSheetComponent,
+);
+PaymentDetailBottomSheet.displayName = "PaymentDetailBottomSheet";
 
-export default PaymentDetailBottomSheet
+export default PaymentDetailBottomSheet;

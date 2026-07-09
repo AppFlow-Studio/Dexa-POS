@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { colors } from '@/lib/theme'
 import {
   useActiveOrder,
@@ -31,27 +32,28 @@ type PaymentMethod =
   | 'Open Tab'
   | 'Close Tab'
 
-const getStyles = () =>
-  StyleSheet.create({
+const getStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale)
+  return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.screen },
     header: {
       alignItems: 'center',
-      paddingVertical: 14,
-      paddingHorizontal: 16
+      paddingVertical: s(14),
+      paddingHorizontal: s(16)
     },
     title: {
-      fontSize: 15,
+      fontSize: s(15),
       fontWeight: '700',
       color: colors.heading,
-      marginBottom: 3
+      marginBottom: s(3)
     },
-    subtitle: { fontSize: 12, color: colors.muted },
-    list: { gap: 8, paddingHorizontal: 16 },
+    subtitle: { fontSize: s(12), color: colors.muted },
+    list: { gap: s(8), paddingHorizontal: s(16) },
     card: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 12,
-      borderRadius: 10,
+      padding: s(12),
+      borderRadius: s(10),
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.panel
@@ -61,40 +63,40 @@ const getStyles = () =>
       backgroundColor: `${colors.teal}10`
     },
     iconBox: {
-      width: 36,
-      height: 36,
-      borderRadius: 9,
+      width: s(36),
+      height: s(36),
+      borderRadius: s(9),
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: `${colors.border}60`,
-      marginRight: 12
+      marginRight: s(12)
     },
     iconBoxActive: { backgroundColor: `${colors.teal}20` },
-    methodTitle: { fontSize: 13, fontWeight: '600', color: colors.muted },
+    methodTitle: { fontSize: s(13), fontWeight: '600', color: colors.muted },
     methodTitleActive: { color: colors.heading },
-    methodDesc: { fontSize: 11, color: colors.muted, marginTop: 1 },
+    methodDesc: { fontSize: s(11), color: colors.muted, marginTop: 1 },
     methodDescActive: { color: colors.teal },
     radio: {
-      width: 18,
-      height: 18,
-      borderRadius: 9,
+      width: s(18),
+      height: s(18),
+      borderRadius: s(9),
       borderWidth: 1.5,
       borderColor: colors.border
     },
     footer: {
-      paddingHorizontal: 16,
-      paddingTop: 10,
-      paddingBottom: 20,
+      paddingHorizontal: s(16),
+      paddingTop: s(10),
+      paddingBottom: s(20),
       borderTopWidth: 1,
       borderTopColor: colors.border,
       backgroundColor: colors.screen,
       flexDirection: 'row',
-      gap: 10
+      gap: s(10)
     },
     backBtn: {
       flex: 1,
-      paddingVertical: 10,
-      borderRadius: 8,
+      paddingVertical: s(10),
+      borderRadius: s(8),
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.panel,
@@ -102,14 +104,16 @@ const getStyles = () =>
     },
     proceedBtn: {
       flex: 1,
-      paddingVertical: 10,
-      borderRadius: 8,
+      paddingVertical: s(10),
+      borderRadius: s(8),
       backgroundColor: colors.teal,
       alignItems: 'center'
     }
   })
+}
 
 const PaymentMethodSelectionView: React.FC = () => {
+  const uiScale = useUiScale()
   const setView = usePaymentStore(s => s.setView)
   const close = usePaymentStore(s => s.close)
   const markPaymentAsDirty = usePaymentStore(s => s.markPaymentAsDirty)
@@ -219,27 +223,30 @@ const PaymentMethodSelectionView: React.FC = () => {
     setView(splitSourceView || 'split-options')
   }
 
+  const s = (n: number) => Math.round(n * uiScale)
+  const styles = getStyles(uiScale)
+
   return (
-    <View style={getStyles().container}>
+    <View style={styles.container}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{ paddingBottom: s(20) }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={getStyles().header}>
-          <Text style={getStyles().title}>
+        <View style={styles.header}>
+          <Text style={styles.title}>
             {activeSplit
               ? `Payment for ${activeSplit.customerName}`
               : 'Select Payment Method'}
           </Text>
-          <Text style={getStyles().subtitle}>
+          <Text style={styles.subtitle}>
             {activeSplit
               ? `Amount Due: $${activeSplit.amount.toFixed(2)}`
               : 'Choose how the customer would like to pay'}
           </Text>
         </View>
 
-        <View style={getStyles().list}>
+        <View style={styles.list}>
           {availableMethods.map(method => {
             const isSelected = selectedMethod === method.name
             const Icon = method.icon
@@ -248,48 +255,48 @@ const PaymentMethodSelectionView: React.FC = () => {
                 key={method.name}
                 onPress={() => setSelectedMethod(method.name)}
                 activeOpacity={0.8}
-                style={[getStyles().card, isSelected && getStyles().cardActive]}
+                style={[styles.card, isSelected && styles.cardActive]}
               >
                 <View
                   style={[
-                    getStyles().iconBox,
-                    isSelected && getStyles().iconBoxActive
+                    styles.iconBox,
+                    isSelected && styles.iconBoxActive
                   ]}
                 >
                   <Icon
                     color={isSelected ? colors.teal : colors.label}
-                    size={16}
+                    size={s(16)}
                     strokeWidth={2}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
                     style={[
-                      getStyles().methodTitle,
-                      isSelected && getStyles().methodTitleActive
+                      styles.methodTitle,
+                      isSelected && styles.methodTitleActive
                     ]}
                   >
                     {method.title}
                   </Text>
                   <Text
                     style={[
-                      getStyles().methodDesc,
-                      isSelected && getStyles().methodDescActive
+                      styles.methodDesc,
+                      isSelected && styles.methodDescActive
                     ]}
                   >
                     {method.description}
                   </Text>
                 </View>
-                <View style={{ marginLeft: 12 }}>
+                <View style={{ marginLeft: s(12) }}>
                   {isSelected ? (
                     <CheckCircle2
-                      size={18}
+                      size={s(18)}
                       color={colors.teal}
                       fill={colors.teal}
                       stroke={colors.screen}
                     />
                   ) : (
-                    <View style={getStyles().radio} />
+                    <View style={styles.radio} />
                   )}
                 </View>
               </TouchableOpacity>
@@ -298,23 +305,23 @@ const PaymentMethodSelectionView: React.FC = () => {
         </View>
       </ScrollView>
 
-      <View style={getStyles().footer}>
+      <View style={styles.footer}>
         <TouchableOpacity
-          style={getStyles().backBtn}
+          style={styles.backBtn}
           onPress={() => (activeSplit ? handleBack() : close())}
         >
           <Text
-            style={{ color: colors.heading, fontWeight: '600', fontSize: 13 }}
+            style={{ color: colors.heading, fontWeight: '600', fontSize: s(13) }}
           >
             {activeSplit ? 'Back' : 'Cancel'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={getStyles().proceedBtn}
+          style={styles.proceedBtn}
           onPress={handleProceed}
         >
           <Text
-            style={{ color: colors.onSolid, fontWeight: '700', fontSize: 13 }}
+            style={{ color: colors.onSolid, fontWeight: '700', fontSize: s(13) }}
           >
             Proceed
           </Text>

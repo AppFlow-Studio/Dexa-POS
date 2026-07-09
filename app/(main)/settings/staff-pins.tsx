@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { MerchantRole } from "@/lib/types";
 import { useEmployeeStore, EmployeeProfile } from "@/stores/useEmployeeStore";
 import { Eye, EyeOff } from "lucide-react-native";
@@ -6,23 +7,26 @@ import React, { useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 
 const ROLE_LABELS: Record<MerchantRole, string> = {
-  cashier: "Cashier",
-  manager: "Manager",
-  admin: "Admin",
-  owner: "Owner",
+  "merchant.cashier": "Cashier",
+  "merchant.manager": "Manager",
+  "merchant.admin": "Admin",
+  "merchant.owner": "Owner",
 };
 
 const ROLE_COLORS: Record<MerchantRole, { bg: string; text: string }> = {
-  cashier: { bg: colors.info + "20", text: colors.info },
-  manager: { bg: colors.warning + "20", text: colors.warning },
-  admin: { bg: colors.teal + "20", text: colors.teal },
-  owner: { bg: colors.danger + "20", text: colors.danger },
+  "merchant.cashier": { bg: colors.info + "20", text: colors.info },
+  "merchant.manager": { bg: colors.warning + "20", text: colors.warning },
+  "merchant.admin": { bg: colors.teal + "20", text: colors.teal },
+  "merchant.owner": { bg: colors.danger + "20", text: colors.danger },
 };
 
 export default function StaffPinsScreen() {
   const employees = useEmployeeStore((s) => s.employees);
   const [showAll, setShowAll] = useState(false);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   const sorted = [...employees].sort((a, b) =>
     a.fullName.localeCompare(b.fullName)
@@ -42,7 +46,7 @@ export default function StaffPinsScreen() {
     showAll || !!revealed[emp.id];
 
   const renderItem = ({ item: emp }: { item: EmployeeProfile }) => {
-    const roleStyle = ROLE_COLORS[emp.role] ?? ROLE_COLORS.cashier;
+    const roleStyle = ROLE_COLORS[emp.role] ?? ROLE_COLORS["merchant.cashier"];
     const visible = isPinVisible(emp);
     const initial = (emp.displayName || emp.fullName)[0]?.toUpperCase() ?? "?";
 
@@ -51,8 +55,8 @@ export default function StaffPinsScreen() {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingVertical: 12,
-          paddingHorizontal: 16,
+          paddingVertical: s(12),
+          paddingHorizontal: s(16),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
         }}
@@ -60,63 +64,63 @@ export default function StaffPinsScreen() {
         {/* Avatar */}
         <View
           style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
+            width: s(40),
+            height: s(40),
+            borderRadius: s(20),
             backgroundColor: colors.teal + "25",
             alignItems: "center",
             justifyContent: "center",
-            marginRight: 12,
+            marginRight: s(12),
           }}
         >
-          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.teal }}>
+          <Text style={{ fontSize: s(16), fontWeight: "700", color: colors.teal }}>
             {initial}
           </Text>
         </View>
 
         {/* Name + role */}
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.label }}>
+          <Text style={{ fontSize: s(14), fontWeight: "600", color: colors.label }}>
             {emp.fullName}
           </Text>
           {emp.displayName && emp.displayName !== emp.fullName && (
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>
+            <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(1) }}>
               {emp.displayName}
             </Text>
           )}
           <View
             style={{
               alignSelf: "flex-start",
-              marginTop: 4,
-              paddingHorizontal: 7,
-              paddingVertical: 2,
-              borderRadius: 4,
+              marginTop: s(4),
+              paddingHorizontal: s(7),
+              paddingVertical: s(2),
+              borderRadius: s(4),
               backgroundColor: roleStyle.bg,
             }}
           >
-            <Text style={{ fontSize: 10, fontWeight: "600", color: roleStyle.text }}>
+            <Text style={{ fontSize: s(10), fontWeight: "600", color: roleStyle.text }}>
               {ROLE_LABELS[emp.role] ?? emp.role}
             </Text>
           </View>
         </View>
 
         {/* PIN + toggle */}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: s(10) }}>
           <View
             style={{
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 8,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              minWidth: 72,
+              borderRadius: s(8),
+              paddingHorizontal: s(14),
+              paddingVertical: s(8),
+              minWidth: s(72),
               alignItems: "center",
             }}
           >
             <Text
               style={{
-                fontSize: 16,
+                fontSize: s(16),
                 fontWeight: "700",
                 color: visible ? colors.label : colors.muted,
                 letterSpacing: visible ? 3 : 6,
@@ -128,12 +132,12 @@ export default function StaffPinsScreen() {
 
           <TouchableOpacity
             onPress={() => toggleOne(emp.id)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            hitSlop={{ top: s(8), bottom: s(8), left: s(8), right: s(8) }}
           >
             {visible ? (
-              <EyeOff size={18} color={colors.muted} />
+              <EyeOff size={s(18)} color={colors.muted} />
             ) : (
-              <Eye size={18} color={colors.muted} />
+              <Eye size={s(18)} color={colors.muted} />
             )}
           </TouchableOpacity>
         </View>
@@ -149,14 +153,14 @@ export default function StaffPinsScreen() {
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          paddingHorizontal: 20,
-          paddingVertical: 16,
+          paddingHorizontal: s(20),
+          paddingVertical: s(16),
           backgroundColor: colors.panel,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
         }}
       >
-        <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>
+        <Text style={{ fontSize: s(18), fontWeight: "700", color: colors.heading }}>
           Staff PINs
         </Text>
 
@@ -165,21 +169,21 @@ export default function StaffPinsScreen() {
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: 6,
-            paddingHorizontal: 12,
-            paddingVertical: 7,
-            borderRadius: 8,
+            gap: s(6),
+            paddingHorizontal: s(12),
+            paddingVertical: s(7),
+            borderRadius: s(8),
             borderWidth: 1,
             borderColor: colors.border,
             backgroundColor: colors.card,
           }}
         >
           {showAll ? (
-            <EyeOff size={15} color={colors.label} />
+            <EyeOff size={s(15)} color={colors.label} />
           ) : (
-            <Eye size={15} color={colors.label} />
+            <Eye size={s(15)} color={colors.label} />
           )}
-          <Text style={{ fontSize: 13, fontWeight: "500", color: colors.label }}>
+          <Text style={{ fontSize: s(13), fontWeight: "500", color: colors.label }}>
             {showAll ? "Hide All" : "Show All"}
           </Text>
         </TouchableOpacity>
@@ -187,7 +191,7 @@ export default function StaffPinsScreen() {
 
       {sorted.length === 0 ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ fontSize: 15, color: colors.muted }}>
+          <Text style={{ fontSize: s(15), color: colors.muted }}>
             No employees loaded
           </Text>
         </View>
@@ -197,7 +201,7 @@ export default function StaffPinsScreen() {
           keyExtractor={(emp) => emp.id}
           renderItem={renderItem}
           style={{ backgroundColor: colors.panel }}
-          contentContainerStyle={{ paddingBottom: 24 }}
+          contentContainerStyle={{ paddingBottom: s(24) }}
         />
       )}
     </View>

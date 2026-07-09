@@ -1,6 +1,7 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getJSON, setJSON } from "@/lib/storage";
 import { colors, spinnerColor } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { clearLocationData } from "@/services/cacheService";
 import {
   SelectedLocation,
@@ -36,7 +37,10 @@ interface StoreSelectItemProps {
   onPress: () => void;
 }
 
-const StoreSelectItem = ({ store, isSelected, onPress }: StoreSelectItemProps) => (
+const StoreSelectItem = ({ store, isSelected, onPress }: StoreSelectItemProps) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return (
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={0.7}
@@ -44,21 +48,21 @@ const StoreSelectItem = ({ store, isSelected, onPress }: StoreSelectItemProps) =
       backgroundColor: isSelected ? colors.teal + "10" : colors.card,
       borderWidth: 1,
       borderColor: isSelected ? colors.teal + "50" : colors.border,
-      borderRadius: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      marginBottom: 8,
+      borderRadius: s(10),
+      paddingHorizontal: s(14),
+      paddingVertical: s(10),
+      marginBottom: s(8),
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
     }}
   >
-    <View style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: 12 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: s(12) }}>
       <View
         style={{
-          width: 34,
-          height: 34,
-          borderRadius: 8,
+          width: s(34),
+          height: s(34),
+          borderRadius: s(8),
           backgroundColor: isSelected ? colors.teal + "20" : colors.screen,
           borderWidth: 1,
           borderColor: isSelected ? colors.teal + "40" : colors.border,
@@ -66,32 +70,32 @@ const StoreSelectItem = ({ store, isSelected, onPress }: StoreSelectItemProps) =
           justifyContent: "center",
         }}
       >
-        <Store size={16} color={isSelected ? colors.teal : colors.muted} />
+        <Store size={s(16)} color={isSelected ? colors.teal : colors.muted} />
       </View>
 
       <View style={{ flex: 1 }}>
         <Text
           style={{
-            fontSize: 13,
+            fontSize: s(13),
             fontWeight: "600",
             color: isSelected ? colors.teal : colors.heading,
-            marginBottom: 2,
+            marginBottom: s(2),
           }}
         >
           {store.name}
         </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <MapPin size={10} color={colors.muted} />
-          <Text style={{ fontSize: 11, color: colors.muted }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: s(4) }}>
+          <MapPin size={s(10)} color={colors.muted} />
+          <Text style={{ fontSize: s(11), color: colors.muted }}>
             {store.city}, {store.state}
           </Text>
         </View>
       </View>
     </View>
 
-    <View style={{ alignItems: "flex-end", gap: 4 }}>
+    <View style={{ alignItems: "flex-end", gap: s(4) }}>
       {store.code && (
-        <Text style={{ fontSize: 10, fontWeight: "600", color: colors.muted }}>
+        <Text style={{ fontSize: s(10), fontWeight: "600", color: colors.muted }}>
           {store.code}
         </Text>
       )}
@@ -101,25 +105,28 @@ const StoreSelectItem = ({ store, isSelected, onPress }: StoreSelectItemProps) =
             backgroundColor: colors.success + "15",
             borderWidth: 1,
             borderColor: colors.success + "40",
-            borderRadius: 20,
-            paddingHorizontal: 8,
-            paddingVertical: 2,
+            borderRadius: s(20),
+            paddingHorizontal: s(8),
+            paddingVertical: s(2),
           }}
         >
-          <Text style={{ fontSize: 10, fontWeight: "600", color: colors.success }}>
+          <Text style={{ fontSize: s(10), fontWeight: "600", color: colors.success }}>
             Active
           </Text>
         </View>
       )}
     </View>
   </TouchableOpacity>
-);
+  );
+};
 
 const StoreSelectScreen = () => {
   const router = useRouter();
   const { userId } = useAuth();
   const { signOut } = useClerk();
   const supabase = useSupabaseClient();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   const handleLogout = async () => {
     try {
@@ -226,7 +233,7 @@ const StoreSelectScreen = () => {
       // Resolve effective pricing: merchant defaults unless location overrides
       if (resolved.use_merchant_pricing_defaults && merchantPricing) {
         resolved.pricing_strategy = merchantPricing.pricing_strategy;
-        resolved.dual_pricing_percentage = parseFloat(merchantPricing.dual_pricing_percentage);
+        resolved.dual_pricing_percentage = merchantPricing.dual_pricing_percentage;
       }
       setSelectedStore(resolved as SelectedLocation);
     }
@@ -238,21 +245,21 @@ const StoreSelectScreen = () => {
     <TouchableOpacity
       onPress={handleLogout}
       style={{
-        marginTop: 10,
+        marginTop: s(10),
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        gap: 6,
-        paddingVertical: 9,
-        paddingHorizontal: 14,
-        borderRadius: 10,
+        gap: s(6),
+        paddingVertical: s(9),
+        paddingHorizontal: s(14),
+        borderRadius: s(10),
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.card,
       }}
     >
-      <LogOut size={13} color={colors.muted} />
-      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>
+      <LogOut size={s(13)} color={colors.muted} />
+      <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.muted }}>
         Log out
       </Text>
     </TouchableOpacity>
@@ -260,9 +267,9 @@ const StoreSelectScreen = () => {
 
   if (isLoading) {
     return (
-      <View style={{ width: "100%", alignItems: "center", justifyContent: "center", paddingVertical: 60 }}>
+      <View style={{ width: "100%", alignItems: "center", justifyContent: "center", paddingVertical: s(60) }}>
         <ActivityIndicator size="small" color={spinnerColor} />
-        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 10 }}>
+        <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(10) }}>
           Loading your locations...
         </Text>
         {logoutButton}
@@ -272,11 +279,11 @@ const StoreSelectScreen = () => {
 
   if (error) {
     return (
-      <View style={{ width: "100%", alignItems: "center", justifyContent: "center", paddingVertical: 60, gap: 6 }}>
-        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.danger, textAlign: "center" }}>
+      <View style={{ width: "100%", alignItems: "center", justifyContent: "center", paddingVertical: s(60), gap: s(6) }}>
+        <Text style={{ fontSize: s(13), fontWeight: "600", color: colors.danger, textAlign: "center" }}>
           Failed to load locations
         </Text>
-        <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center" }}>
+        <Text style={{ fontSize: s(12), color: colors.muted, textAlign: "center" }}>
           {(error as Error).message || "Please try again later"}
         </Text>
         {logoutButton}
@@ -286,11 +293,11 @@ const StoreSelectScreen = () => {
 
   if (!locations || locations.length === 0) {
     return (
-      <View style={{ width: "100%", alignItems: "center", justifyContent: "center", paddingVertical: 60, gap: 6 }}>
-        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label, textAlign: "center" }}>
+      <View style={{ width: "100%", alignItems: "center", justifyContent: "center", paddingVertical: s(60), gap: s(6) }}>
+        <Text style={{ fontSize: s(13), fontWeight: "600", color: colors.label, textAlign: "center" }}>
           No locations available
         </Text>
-        <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center" }}>
+        <Text style={{ fontSize: s(12), color: colors.muted, textAlign: "center" }}>
           Contact your administrator for access
         </Text>
         {logoutButton}
@@ -301,14 +308,14 @@ const StoreSelectScreen = () => {
   return (
     <View style={{ width: "100%" }}>
       {/* Header */}
-      <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading, marginBottom: 4 }}>
+      <Text style={{ fontSize: s(15), fontWeight: "700", color: colors.heading, marginBottom: s(4) }}>
         Select Store
       </Text>
-      <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 14 }}>
+      <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(14) }}>
         Choose a location to continue
       </Text>
 
-      <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ maxHeight: s(320) }} showsVerticalScrollIndicator={false}>
         {locations.map((store) => (
           <StoreSelectItem
             key={store.id}
@@ -323,16 +330,16 @@ const StoreSelectScreen = () => {
         onPress={handleContinue}
         disabled={!selectedStoreId}
         style={{
-          marginTop: 14,
+          marginTop: s(14),
           backgroundColor: selectedStoreId ? colors.teal : colors.teal + "30",
-          borderRadius: 10,
-          paddingVertical: 11,
+          borderRadius: s(10),
+          paddingVertical: s(11),
           alignItems: "center",
         }}
       >
         <Text
           style={{
-            fontSize: 13,
+            fontSize: s(13),
             fontWeight: "700",
             color: selectedStoreId ? colors.onSolid : colors.muted,
           }}

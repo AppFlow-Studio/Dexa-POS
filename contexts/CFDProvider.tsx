@@ -292,6 +292,11 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   )
   const loyaltyFlowRequestIdRef = useRef(0)
   const merchantClosedDuringLoyaltyRef = useRef(false)
+  // Latched when a sale finishes (Done/Skip on the approved screen) while the
+  // operator's payment sheet is still open. Keeps the CFD on idle instead of
+  // snapping back to the live `ordering` payload. Cleared once the operator
+  // actually moves on (active order changes or order-processing goes idle).
+  const saleCompletedAwaitingCloseRef = useRef(false)
   const queuedLoyaltyOrderIdsRef = useRef<Set<string>>(new Set())
   // Dedupe via cheap structural fingerprints — replaces a per-flush
   // JSON.stringify of the entire cart. The fingerprint is checked at flush
@@ -553,6 +558,17 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   const activeOrderOutstandingTotal = useOrderStore(
     s => s.activeOrderOutstandingTotal
   )
+  // Cash-side outstanding. On a cash-discounted split the payment RPC can leave
+  // the card-side outstanding at 0 while the cash side still owes a portion, so
+  // a non-split CFD payload that reads only the card side shows $0 due. Use
+  // whichever side still owes for the order-level (non-split) outstanding.
+  const activeOrderOutstandingCash = useOrderStore(
+    s => s.activeOrderOutstandingCash
+  )
+  const activeOrderOutstandingEffective = Math.max(
+    activeOrderOutstandingTotal ?? 0,
+    activeOrderOutstandingCash ?? 0
+  )
 
   // Granular field selectors — used as effect deps so unrelated `activeOrder`
   // mutations (status, sync state, etc.) don't re-fire the CFD payload pipelines.
@@ -610,6 +626,14 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
   // surfaces it as a brief Android system crash dialog on Landi devices.
   const cfdItems: CFDCartItem[] = useMemo(() => {
     try {
+      // Idle gate: skip the O(n) dual-pricing transform entirely when there is
+      // no CFD surface to render it. `isConnected` (external paired CFD) is in
+      // deps; the built-in CFD is read via getCachedCapabilities() (cache-first,
+      // same source used at mount detection) to avoid a TDZ ReferenceError —
+      // `hasBuiltinCfd` state is declared far below this memo. Downstream push
+      // effects + displayItems already gate on isConnected/hasBuiltinCfd, so an
+      // empty result while idle changes nothing the CFD surface renders.
+      if (!isConnected && !getCachedCapabilities()?.hasBuiltinCfd) return []
       if (!activeOrder?.items) return []
       const hideCourseNumbersOnCfd = pathname.includes('order-processing')
 
@@ -695,7 +719,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       return []
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsFingerprint, activeOrderSeating, pathname])
+  }, [itemsFingerprint, activeOrderSeating, pathname, isConnected])
 
   // Initialize CFD controller
   useEffect(() => {
@@ -1287,7 +1311,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       : Math.round(currentTip.amount * 100)
     let displayOutstandingTotal = frozen
       ? frozen.outstandingTotal
-      : Math.round((activeOrderOutstandingTotal + currentTip.amount) * 100)
+      : Math.round((activeOrderOutstandingEffective + currentTip.amount) * 100)
     let displayAmountPaid = frozen
       ? frozen.amountPaid
       : Math.round((activeOrder?.amount_paid ?? 0) * 100)
@@ -1477,6 +1501,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     activeOrderTax,
     activeOrderTotal,
     activeOrderOutstandingTotal,
+    activeOrderOutstandingCash,
     orderTotals,
     currentTip,
     activeScreenState,
@@ -1554,9 +1579,33 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       // Shared helper — see lib/cfdRouting.ts. Floor-plan / waitlist /
       // edit-layout / clean-table are NOT sales context.
       const isSalesScreen = isCFDSalesPathname(pathname)
+
+      // A sale just finished (Done/Skip) but the operator hasn't closed the
+      // payment sheet yet. Stay idle and clear the latch once they actually
+      // move on. "Moved on" = payment sheet closed, OR they left the sales
+      // screen / cleared the order / order-processing went idle.
+      //
+      // Closing the sheet is the key signal: the latch only exists to avoid
+      // flashing order data BEHIND the still-open sheet. Once it's closed, a
+      // still-active order on the sales screen should repaint as `ordering`
+      // rather than be stranded on branding idle — previously the latch only
+      // cleared when the order was emptied (isOrderProcessingIdle requires an
+      // empty order), so a live, non-empty order kept the CFD stuck idle.
+      if (saleCompletedAwaitingCloseRef.current) {
+        if (
+          !paymentIsOpen ||
+          !isSalesScreen ||
+          !activeOrder ||
+          isOrderProcessingIdle
+        ) {
+          saleCompletedAwaitingCloseRef.current = false
+        }
+      }
+
       const shouldShowOrderData =
-        !!activeScreenState ||
-        (isSalesScreen && !!activeOrder && !isOrderProcessingIdle)
+        !saleCompletedAwaitingCloseRef.current &&
+        (!!activeScreenState ||
+          (isSalesScreen && !!activeOrder && !isOrderProcessingIdle))
 
       if (!shouldShowOrderData) {
         // Build the idle payload once — used by both the immediate-dispatch
@@ -1675,7 +1724,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       let savingsAmount = Math.max(0, liveCardTotal - liveCashTotal)
       const displayTipAmount = Math.round(currentTip.amount * 100)
       let displayOutstandingTotal = Math.round(
-        (activeOrderOutstandingTotal + currentTip.amount) * 100
+        (activeOrderOutstandingEffective + currentTip.amount) * 100
       )
       let displayAmountPaid = Math.round((activeOrder?.amount_paid ?? 0) * 100)
       let displayDiscountAmount = Math.round(activeOrderDiscount * 100)
@@ -1864,6 +1913,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     activeOrderTax,
     activeOrderTotal,
     activeOrderOutstandingTotal,
+    activeOrderOutstandingCash,
     // `orderTotals` intentionally NOT in deps: it returns a fresh object on
     // every order mutation (status, sync_version, etc.), defeating the granular
     // selectors above. The body still reads it via closure; it's captured fresh
@@ -1880,7 +1930,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     organizationLogoUrl,
     showCFDOrderingRightPanel,
     cfdOrderingRightPanelMode,
-    paymentActiveSplit
+    paymentActiveSplit,
+    paymentIsOpen
   ])
 
   useEffect(() => {
@@ -1930,6 +1981,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       presetPercentages?: number[],
       paymentMethod?: 'cash' | 'card' | 'manual'
     ) => {
+      // New payment activity — release any prior sale-completed latch.
+      saleCompletedAwaitingCloseRef.current = false
       const currentBase = baseAmount ?? activeOrderSubtotal
       setBaseAmountOverride(baseAmount ?? null)
       setActiveScreenState('tip_selection')
@@ -1996,6 +2049,8 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
 
   const showPayment = useCallback(
     (paymentMethod?: 'cash' | 'card' | 'manual') => {
+      // New payment activity — release any prior sale-completed latch.
+      saleCompletedAwaitingCloseRef.current = false
       lastShowPaymentAtRef.current = Date.now()
       setActiveScreenState('payment')
       setActivePaymentMethod(paymentMethod ?? null)
@@ -2033,7 +2088,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         ? selectedPaymentMethod === 'cash'
           ? splitCashBase
           : splitCardBase
-        : Math.round(activeOrderOutstandingTotal * 100)
+        : Math.round(activeOrderOutstandingEffective * 100)
       const cardTotal = cardBaseTotal + tipAmt
       const cashTotal = cashBaseTotal + tipAmt
       const savings = Math.max(0, cardTotal - cashTotal)
@@ -2111,6 +2166,7 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       activeOrder,
       activeOrderDiscount,
       activeOrderOutstandingTotal,
+      activeOrderOutstandingCash,
       activeOrderSubtotal,
       activeOrderTax,
       activeOrderTotal,
@@ -2214,12 +2270,11 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
     (source: string) => {
       const currentPathname = pathnameRef.current
       const currentlyOrderProcessingIdle = isOrderProcessingIdleRef.current
-      const shouldFinishToIdle =
-        !isCFDSalesPathname(currentPathname) ||
-        !activeOrderRef.current ||
-        currentlyOrderProcessingIdle
 
       merchantClosedDuringLoyaltyRef.current = false
+      // Latch so the order-sync effect doesn't repaint `ordering` while the
+      // operator's payment sheet is still open behind the approved screen.
+      saleCompletedAwaitingCloseRef.current = true
       frozenTotalsRef.current = null
       activeScreenStateRef.current = null
       setActiveScreenState(null)
@@ -2228,30 +2283,15 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
       setCurrentTip({ amount: 0, percentage: null })
 
       logLoyaltyTrace(`${source}:finish`, {
-        to: shouldFinishToIdle ? 'idle' : 'order',
+        to: 'idle',
         pathname: currentPathname,
         hasActiveOrder: !!activeOrderRef.current,
         isOrderProcessingIdle: currentlyOrderProcessingIdle
       })
 
-      if (shouldFinishToIdle) {
-        showIdle()
-        return
-      }
-
-      controllerRef.current?.resumeOrderDisplay()
-
-      const builtinState = useCFDBuiltinStore.getState()
-      const nextScreenState: CFDScreenState =
-        activeOrderRef.current || builtinState.items.length > 0
-          ? 'ordering'
-          : 'idle'
-      useCFDBuiltinStore.getState().update({
-        screenState: nextScreenState,
-        loyaltyPrompt: null,
-        loyaltyResult: null
-      })
-      lastBuiltinScreenStateRef.current = nextScreenState
+      // Always return to idle/branding once the sale is done, regardless of
+      // whether the operator still has a live order open on the sales screen.
+      showIdle()
     },
     [showIdle]
   )
