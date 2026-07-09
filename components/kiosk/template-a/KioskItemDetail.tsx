@@ -1,5 +1,7 @@
+import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
 import { useItemModifiers } from "@/components/kiosk/shared/useItemModifiers";
+import { useKioskUiScale } from "@/lib/uiScale";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
@@ -31,6 +33,7 @@ export function KioskItemDetail({
   onBack: () => void;
   onAdded: () => void;
 }) {
+  const s = useKioskUiScale();
   const {
     groups,
     selected,
@@ -68,12 +71,12 @@ export function KioskItemDetail({
         onPress={onBack}
         style={{
           position: "absolute",
-          top: 20,
-          left: 20,
+          top: kioskPx(20, s),
+          left: kioskPx(20, s),
           zIndex: 10,
-          width: 48,
-          height: 48,
-          borderRadius: 24,
+          width: kioskPx(48, s),
+          height: kioskPx(48, s),
+          borderRadius: kioskPx(24, s),
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: config.backgroundColor,
@@ -84,17 +87,17 @@ export function KioskItemDetail({
           elevation: 4,
         }}
       >
-        <ChevronLeft size={26} color={config.textColor} />
+        <ChevronLeft size={kioskPx(26, s)} color={config.textColor} />
       </Pressable>
 
       <View
         style={{
-          width: isHorizontal ? "100%" : 280,
-          height: isHorizontal ? "100%" : 280,
-          maxWidth: 400,
-          maxHeight: 400,
+          width: isHorizontal ? "100%" : kioskPx(280, s),
+          height: isHorizontal ? "100%" : kioskPx(280, s),
+          maxWidth: kioskPx(400, s),
+          maxHeight: kioskPx(400, s),
           aspectRatio: 1,
-          borderRadius: 28,
+          borderRadius: kioskPx(28, s),
           overflow: "hidden",
           backgroundColor: `${config.primaryColor}12`,
           alignItems: "center",
@@ -113,17 +116,17 @@ export function KioskItemDetail({
             resizeMode="cover"
           />
         ) : (
-          <PlaceholderIcon color={`${config.textColor}40`} size={88} />
+          <PlaceholderIcon color={`${config.textColor}40`} size={kioskPx(88, s)} />
         )}
       </View>
     </>
   );
 
   const titleBlock = (
-    <View style={{ paddingTop: 24, alignItems: "center" }}>
+    <View style={{ paddingTop: kioskPx(24, s), alignItems: "center" }}>
       <Text
         style={{
-          fontSize: 30,
+          fontSize: kioskPx(30, s),
           fontWeight: "800",
           color: config.textColor,
           textAlign: "center",
@@ -134,10 +137,10 @@ export function KioskItemDetail({
       {item.description ? (
         <Text
           style={{
-            fontSize: 16,
+            fontSize: kioskPx(16, s),
             color: muted,
-            marginTop: 10,
-            lineHeight: 23,
+            marginTop: kioskPx(10, s),
+            lineHeight: kioskPx(23, s),
             textAlign: "center",
           }}
         >
@@ -146,10 +149,10 @@ export function KioskItemDetail({
       ) : null}
       <Text
         style={{
-          fontSize: 24,
+          fontSize: kioskPx(24, s),
           fontWeight: "800",
           color: config.primaryColor,
-          marginTop: 14,
+          marginTop: kioskPx(14, s),
         }}
       >
         ${item.price.toFixed(2)}
@@ -164,8 +167,8 @@ export function KioskItemDetail({
       <View
         key={group.id}
         style={{
-          marginTop: 24,
-          paddingTop: 20,
+          marginTop: kioskPx(24, s),
+          paddingTop: kioskPx(20, s),
           borderTopWidth: 1,
           borderTopColor: `${config.textColor}0F`,
         }}
@@ -176,20 +179,20 @@ export function KioskItemDetail({
             flexDirection: "row",
             alignItems: "baseline",
             justifyContent: "center",
-            gap: 8,
-            marginBottom: 4,
+            gap: kioskPx(8, s),
+            marginBottom: kioskPx(4, s),
           }}
         >
           <Text
             style={{
-              fontSize: 19,
+              fontSize: kioskPx(19, s),
               fontWeight: "700",
               color: config.textColor,
             }}
           >
             {group.name}
           </Text>
-          <Text style={{ fontSize: 13, color: muted }}>
+          <Text style={{ fontSize: kioskPx(13, s), color: muted }}>
             {group.type === "required" ? "Required" : "Optional"}
             {!isSingle && group.maxSelections
               ? ` · up to ${group.maxSelections}`
@@ -203,8 +206,8 @@ export function KioskItemDetail({
             flexDirection: "row",
             flexWrap: "wrap",
             justifyContent: "center",
-            gap: 10,
-            marginTop: 12,
+            gap: kioskPx(10, s),
+            marginTop: kioskPx(12, s),
           }}
         >
           {group.options.map((option) => {
@@ -218,9 +221,9 @@ export function KioskItemDetail({
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 8,
-                  paddingHorizontal: 18,
-                  paddingVertical: 13,
+                  gap: kioskPx(8, s),
+                  paddingHorizontal: kioskPx(18, s),
+                  paddingVertical: kioskPx(13, s),
                   borderRadius: 999,
                   borderWidth: 1.5,
                   borderColor: checked
@@ -234,7 +237,7 @@ export function KioskItemDetail({
               >
                 <Text
                   style={{
-                    fontSize: 16,
+                    fontSize: kioskPx(16, s),
                     fontWeight: checked ? "700" : "500",
                     color: checked ? "#FFFFFF" : config.textColor,
                   }}
@@ -244,7 +247,7 @@ export function KioskItemDetail({
                 {option.price > 0 && (
                   <Text
                     style={{
-                      fontSize: 14,
+                      fontSize: kioskPx(14, s),
                       fontWeight: "600",
                       color: checked ? "#FFFFFF" : muted,
                     }}
@@ -267,10 +270,10 @@ export function KioskItemDetail({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: 16,
-        paddingHorizontal: 24,
-        paddingTop: 16,
-        paddingBottom: 22,
+        gap: kioskPx(16, s),
+        paddingHorizontal: kioskPx(24, s),
+        paddingTop: kioskPx(16, s),
+        paddingBottom: kioskPx(22, s),
         borderTopWidth: 1,
         borderTopColor: faint,
         backgroundColor: config.backgroundColor,
@@ -286,9 +289,9 @@ export function KioskItemDetail({
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: 20,
-          paddingHorizontal: 18,
-          height: 60,
+          gap: kioskPx(20, s),
+          paddingHorizontal: kioskPx(18, s),
+          height: kioskPx(60, s),
           borderRadius: 999,
           borderWidth: 2,
           borderColor: faint,
@@ -298,21 +301,21 @@ export function KioskItemDetail({
           onPress={() => setQuantity((q) => Math.max(1, q - 1))}
           hitSlop={8}
         >
-          <Minus size={24} color={config.textColor} />
+          <Minus size={kioskPx(24, s)} color={config.textColor} />
         </Pressable>
         <Text
           style={{
-            fontSize: 20,
+            fontSize: kioskPx(20, s),
             fontWeight: "800",
             color: config.textColor,
-            minWidth: 24,
+            minWidth: kioskPx(24, s),
             textAlign: "center",
           }}
         >
           {quantity}
         </Text>
         <Pressable onPress={() => setQuantity((q) => q + 1)} hitSlop={8}>
-          <Plus size={24} color={config.textColor} />
+          <Plus size={kioskPx(24, s)} color={config.textColor} />
         </Pressable>
       </View>
 
@@ -325,14 +328,14 @@ export function KioskItemDetail({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",
-          height: 60,
-          borderRadius: 18,
+          height: kioskPx(60, s),
+          borderRadius: kioskPx(18, s),
           backgroundColor: canAdd
             ? config.primaryColor
             : `${config.primaryColor}40`,
         }}
       >
-        <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "800" }}>
+        <Text style={{ color: "#FFFFFF", fontSize: kioskPx(18, s), fontWeight: "800" }}>
           {canAdd
             ? `Add to Cart · $${total.toFixed(2)}`
             : `Select ${missingRequired[0]?.name ?? "options"}`}
@@ -358,8 +361,8 @@ export function KioskItemDetail({
               flex: 1,
               alignItems: "center",
               justifyContent: "center",
-              padding: 24,
-              gap: 24,
+              padding: kioskPx(24, s),
+              gap: kioskPx(24, s),
               backgroundColor: `${config.primaryColor}08`,
             }}
           >
@@ -372,13 +375,13 @@ export function KioskItemDetail({
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{
-                paddingBottom: 32,
-                paddingHorizontal: 24,
+                paddingBottom: kioskPx(32, s),
+                paddingHorizontal: kioskPx(24, s),
                 flexGrow: 1,
               }}
               style={{ flex: 1 }}
             >
-              <View style={{ width: "100%", maxWidth: 640 }}>
+              <View style={{ width: "100%", maxWidth: kioskPx(640, s) }}>
                 {modifierGroups}
               </View>
             </ScrollView>
@@ -399,24 +402,24 @@ export function KioskItemDetail({
     >
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 32, alignItems: "center" }}
+        contentContainerStyle={{ paddingBottom: kioskPx(32, s), alignItems: "center" }}
       >
         {/* Hero — contained, rounded, with soft tinted backdrop */}
         <View
           style={{
             width: "100%",
-            paddingTop: 20,
-            paddingHorizontal: 20,
+            paddingTop: kioskPx(20, s),
+            paddingHorizontal: kioskPx(20, s),
             alignItems: "center",
             backgroundColor: `${config.primaryColor}08`,
-            paddingBottom: 28,
+            paddingBottom: kioskPx(28, s),
           }}
         >
           {imageBlock}
         </View>
 
         {/* Content column */}
-        <View style={{ width: "100%", maxWidth: 640, paddingHorizontal: 24 }}>
+        <View style={{ width: "100%", maxWidth: kioskPx(640, s), paddingHorizontal: kioskPx(24, s) }}>
           {titleBlock}
           {modifierGroups}
         </View>

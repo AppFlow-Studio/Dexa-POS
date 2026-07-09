@@ -1,3 +1,5 @@
+import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { ShoppingCart } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
@@ -18,6 +20,7 @@ export function KioskCartButton({
   subtotal?: number;
   onPress: () => void;
 }) {
+  const s = useKioskUiScale();
   if (itemCount <= 0) return null;
 
   return (
@@ -25,14 +28,14 @@ export function KioskCartButton({
       onPress={onPress}
       style={{
         position: "absolute",
-        right: 24,
-        bottom: 24,
+        right: kioskPx(24, s),
+        bottom: kioskPx(24, s),
         flexDirection: "row",
         alignItems: "center",
-        gap: 14,
-        paddingLeft: 20,
-        paddingRight: 24,
-        height: 64,
+        gap: kioskPx(14, s),
+        paddingLeft: kioskPx(20, s),
+        paddingRight: kioskPx(24, s),
+        height: kioskPx(64, s),
         borderRadius: 999,
         backgroundColor: config.primaryColor,
         shadowColor: "#000000",
@@ -43,16 +46,16 @@ export function KioskCartButton({
       }}
     >
       <View>
-        <ShoppingCart size={26} color="#FFFFFF" />
+        <ShoppingCart size={kioskPx(26, s)} color="#FFFFFF" />
         <View
           style={{
             position: "absolute",
-            top: -8,
-            right: -10,
-            minWidth: 22,
-            height: 22,
-            paddingHorizontal: 5,
-            borderRadius: 11,
+            top: kioskPx(-8, s),
+            right: kioskPx(-10, s),
+            minWidth: kioskPx(22, s),
+            height: kioskPx(22, s),
+            paddingHorizontal: kioskPx(5, s),
+            borderRadius: kioskPx(11, s),
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: config.accentColor,
@@ -60,13 +63,13 @@ export function KioskCartButton({
             borderColor: config.primaryColor,
           }}
         >
-          <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "800" }}>
+          <Text style={{ color: "#FFFFFF", fontSize: kioskPx(11, s), fontWeight: "800" }}>
             {itemCount}
           </Text>
         </View>
       </View>
 
-      <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "700" }}>
+      <Text style={{ color: "#FFFFFF", fontSize: kioskPx(17, s), fontWeight: "700" }}>
         View Cart
         {subtotal != null ? `  ·  $${subtotal.toFixed(2)}` : ""}
       </Text>

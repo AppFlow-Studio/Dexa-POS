@@ -1,3 +1,5 @@
+import { useKioskUiScale } from "@/lib/uiScale";
+import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import type { KioskOrderType } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { ShoppingBag, UtensilsCrossed, X } from "lucide-react-native";
@@ -34,14 +36,15 @@ export function KioskHeader({
   onChangeOrderType: (type: KioskOrderType) => void;
   onExit: () => void;
 }) {
+  const s = useKioskUiScale();
   return (
     <View
       style={{
-        height: 88,
+        height: kioskPx(88, s),
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingHorizontal: 24,
+        paddingHorizontal: kioskPx(24, s),
         backgroundColor: config.primaryColor,
       }}
     >
@@ -57,11 +60,11 @@ export function KioskHeader({
         {config.logoUrl ? (
           <Image
             source={{ uri: config.logoUrl }}
-            style={{ height: 48, width: 140 }}
+            style={{ height: kioskPx(48, s), width: kioskPx(140, s) }}
             resizeMode="contain"
           />
         ) : (
-          <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "700" }}>
+          <Text style={{ color: "#FFFFFF", fontSize: kioskPx(22, s), fontWeight: "700" }}>
             {config.profileName}
           </Text>
         )}
@@ -73,7 +76,7 @@ export function KioskHeader({
           flexDirection: "row",
           backgroundColor: "rgba(255,255,255,0.18)",
           borderRadius: 999,
-          padding: 4,
+          padding: kioskPx(4, s),
         }}
       >
         {SEGMENTS.map(({ type, label, Icon }) => {
@@ -85,20 +88,20 @@ export function KioskHeader({
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 8,
-                paddingHorizontal: 22,
-                paddingVertical: 11,
+                gap: kioskPx(8, s),
+                paddingHorizontal: kioskPx(22, s),
+                paddingVertical: kioskPx(11, s),
                 borderRadius: 999,
                 backgroundColor: active ? "#FFFFFF" : "transparent",
               }}
             >
               <Icon
-                size={18}
+                size={kioskPx(18, s)}
                 color={active ? config.primaryColor : "rgba(255,255,255,0.9)"}
               />
               <Text
                 style={{
-                  fontSize: 15,
+                  fontSize: kioskPx(15, s),
                   fontWeight: active ? "700" : "500",
                   color: active ? config.primaryColor : "rgba(255,255,255,0.9)",
                 }}
@@ -124,17 +127,17 @@ export function KioskHeader({
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: 8,
-            paddingHorizontal: 18,
-            paddingVertical: 10,
+            gap: kioskPx(8, s),
+            paddingHorizontal: kioskPx(18, s),
+            paddingVertical: kioskPx(10, s),
             borderRadius: 999,
             backgroundColor: "rgba(255,255,255,0.14)",
             borderWidth: 1.5,
             borderColor: "rgba(255,255,255,0.6)",
           }}
         >
-          <X size={18} color="#FFFFFF" />
-          <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}>
+          <X size={kioskPx(18, s)} color="#FFFFFF" />
+          <Text style={{ color: "#FFFFFF", fontSize: kioskPx(15, s), fontWeight: "600" }}>
             Cancel
           </Text>
         </Pressable>

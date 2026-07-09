@@ -1,5 +1,6 @@
 import { useWindowDimensions } from "react-native";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 
 /**
  * Automatic UI scaling so the app looks proportionally consistent across
@@ -19,6 +20,12 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
  * tailwind.config.js resolve through that variable, so every existing utility
  * class (p-4, text-lg, gap-2, rounded-xl, …) reflows automatically with zero
  * per-component changes.
+ *
+ * Kiosk screens use a higher ceiling (KIOSK_MAX_UI_SCALE = 3.0) because
+ * self-service kiosk displays can be much larger (43–65" portrait/landscape
+ * touchscreens at 1080p–4K). The kiosk scale is injected as `--kiosk-ui-scale`
+ * via KioskScaleProvider and consumed by kiosk components that need larger
+ * raw sizes.
  */
 
 /**
@@ -29,12 +36,21 @@ export const BASELINE_WIDTH_DP = 1333;
 export const BASELINE_HEIGHT_DP = 752;
 
 /**
- * Clamp range. Floor is low enough that small phones (e.g. a 832x384dp
- * handset) shrink to actually fit rather than overflowing; ceiling keeps
- * huge displays from ballooning. The app spans phones → tablets.
+ * Clamp range for POS / handheld mode. Floor is low enough that small phones
+ * (e.g. a 832x384dp handset) shrink to actually fit rather than overflowing;
+ * ceiling keeps huge displays from ballooning during normal POS use.
  */
 export const MIN_UI_SCALE = 0.6;
 export const MAX_UI_SCALE = 1.25;
+
+/**
+ * Kiosk clamp range. Huge self-service touchscreens (43–65", 1080p–4K) need a
+ * much higher ceiling. The baseline reference is still the Samsung tablet, so a
+ * 1920×1080dp kiosk display would land at ~1.44× — the ceiling catches even
+ * larger 4K screens in portrait (e.g. 3840×2160dp → ~2.88×).
+ */
+export const KIOSK_MIN_UI_SCALE = 0.7;
+export const KIOSK_MAX_UI_SCALE = 3.0;
 
 /**
  * Scale tracks whichever axis is tightest relative to the baseline, so the
@@ -51,6 +67,19 @@ export function computeUiScale(widthDp: number, heightDp?: number): number {
 }
 
 /**
+ * Kiosk-specific scale computation. Same logic as computeUiScale but clamped
+ * to KIOSK_MIN/MAX_UI_SCALE so huge kiosk displays get proportionally larger UI.
+ */
+export function computeKioskUiScale(widthDp: number, heightDp?: number): number {
+  if (!widthDp || widthDp <= 0) return 1;
+  const widthRatio = widthDp / BASELINE_WIDTH_DP;
+  const heightRatio =
+    heightDp && heightDp > 0 ? heightDp / BASELINE_HEIGHT_DP : widthRatio;
+  const raw = Math.min(widthRatio, heightRatio);
+  return Math.min(KIOSK_MAX_UI_SCALE, Math.max(KIOSK_MIN_UI_SCALE, raw));
+}
+
+/**
  * Reactive UI scale. Re-computes if the window dimensions change (e.g. a
  * foldable, or split-screen). Use this in components that do raw numeric
  * sizing off Dimensions and need to scale manually.
@@ -61,4 +90,27 @@ export function useUiScale(): number {
   const base = computeUiScale(width, height);
   if (override == null) return base;
   return Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, base * override));
+}
+
+/**
+ * Reactive kiosk UI scale. Uses the higher kiosk clamp range so huge
+ * self-service displays get proportionally larger UI. Also respects the
+ * manual uiScaleOverride.
+ */
+export function useKioskUiScale(): number {
+  const { width, height } = useWindowDimensions();
+  const override = useSettingsStore((s) => s.uiScaleOverride);
+  const base = computeKioskUiScale(width, height);
+  if (override == null) return base;
+  return Math.min(KIOSK_MAX_UI_SCALE, Math.max(KIOSK_MIN_UI_SCALE, base * override));
+}
+
+/**
+ * Hook that returns true when the currently selected station is a kiosk
+ * (self_service). Useful for conditional scaling logic.
+ */
+export function useIsKiosk(): boolean {
+  return useStoreSettingsStore(
+    (s) => s.selectedStation?.station_type === "self_service",
+  );
 }

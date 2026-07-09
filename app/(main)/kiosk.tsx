@@ -1,4 +1,5 @@
 import { KioskAttractScreen } from "@/components/kiosk/KioskAttractScreen";
+import { KioskScaleProvider } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskTemplateRouter } from "@/components/kiosk/KioskTemplateRouter";
 import { KioskAdminPinModal } from "@/components/kiosk/shared/KioskAdminPinModal";
 import { KioskDiagnosticsScreen } from "@/components/kiosk/shared/KioskDiagnosticsScreen";
@@ -63,16 +64,18 @@ export default function KioskScreen() {
 
   if (showDiagnostics) {
     return (
-      <KioskDiagnosticsScreen
-        config={config}
-        onClose={() => setShowDiagnostics(false)}
-      />
+      <KioskScaleProvider>
+        <KioskDiagnosticsScreen
+          config={config}
+          onClose={() => setShowDiagnostics(false)}
+        />
+      </KioskScaleProvider>
     );
   }
 
   if (isIdle) {
     return (
-      <>
+      <KioskScaleProvider>
         <KioskAttractScreen
           config={config}
           onStart={() => setIdle(false)}
@@ -86,19 +89,21 @@ export default function KioskScreen() {
             setShowDiagnostics(true);
           }}
         />
-      </>
+      </KioskScaleProvider>
     );
   }
 
   // Active session — Template A ordering flow. Returning to idle clears the
   // cart and commits any config change that arrived during the session.
   return (
-    <KioskTemplateRouter
-      config={config}
-      onExit={() => {
-        clearCart();
-        setIdle(true);
-      }}
-    />
+    <KioskScaleProvider>
+      <KioskTemplateRouter
+        config={config}
+        onExit={() => {
+          clearCart();
+          setIdle(true);
+        }}
+      />
+    </KioskScaleProvider>
   );
 }

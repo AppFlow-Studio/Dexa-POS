@@ -1,3 +1,5 @@
+import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
+import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskOrderType } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { ShoppingBag, UtensilsCrossed } from "lucide-react-native";
@@ -25,6 +27,7 @@ export function KioskOrderTypeScreen({
     { type: "takeout", label: "Takeaway", Icon: ShoppingBag },
   ];
 
+  const s = useKioskUiScale();
   return (
     <View
       className="flex-1 items-center justify-center px-10"
@@ -49,21 +52,21 @@ export function KioskOrderTypeScreen({
             key={type}
             onPress={() => onSelect(type)}
             style={{
-              width: 240,
-              height: 240,
-              borderRadius: 24,
+              width: kioskPx(240, s),
+              height: kioskPx(240, s),
+              borderRadius: kioskPx(24, s),
               alignItems: "center",
               justifyContent: "center",
-              gap: 20,
+              gap: kioskPx(20, s),
               backgroundColor: `${config.primaryColor}12`,
               borderWidth: 2,
               borderColor: `${config.primaryColor}40`,
             }}
           >
-            <Icon color={config.primaryColor} size={72} />
+            <Icon color={config.primaryColor} size={kioskPx(72, s)} />
             <Text
               style={{
-                fontSize: 24,
+                fontSize: kioskPx(24, s),
                 fontWeight: "700",
                 color: config.textColor,
               }}

@@ -1,4 +1,6 @@
+import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { resolveMenuItemFallbackIconKey } from "@/components/kiosk/shared/menuItemFallbackIcon";
+import { useKioskUiScale } from "@/lib/uiScale";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { getMenuItemPlaceholderIcon } from "@/lib/menuItemPlaceholderIcon";
 import type { MenuItemType } from "@/lib/types";
@@ -23,86 +25,89 @@ interface KioskMenuItemProps {
   onPress: (item: MenuItemType) => void;
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    aspectRatio: 1,
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 1,
-  },
-  containerDisabled: {
-    opacity: 0.4,
-  },
-  modifierCorner: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    width: 0,
-    height: 0,
-    borderTopWidth: 22,
-    borderLeftWidth: 22,
-    borderLeftColor: "transparent",
-    zIndex: 10,
-  },
-  imageWrapper: {
-    flex: 1,
-    width: "100%",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
-  placeholderContainer: {
-    width: "100%",
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  divider: {
-    height: 1,
-    marginHorizontal: 12,
-  },
-  contentContainer: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 4,
-  },
-  nameText: {
-    fontSize: 15,
-    fontWeight: "600",
-    lineHeight: 19,
-  },
-  priceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 2,
-  },
-  cardPrice: {
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  cashPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  cashAmount: {
-    fontSize: 13,
-    fontWeight: "700",
-  },
-});
+const useStyles = (s: number) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      aspectRatio: 1,
+      borderRadius: kioskPx(16, s),
+      overflow: "hidden",
+      borderWidth: 1,
+    },
+    containerDisabled: {
+      opacity: 0.4,
+    },
+    modifierCorner: {
+      position: "absolute",
+      top: 0,
+      right: 0,
+      width: 0,
+      height: 0,
+      borderTopWidth: kioskPx(22, s),
+      borderLeftWidth: kioskPx(22, s),
+      borderLeftColor: "transparent",
+      zIndex: 10,
+    },
+    imageWrapper: {
+      flex: 1,
+      width: "100%",
+    },
+    image: {
+      width: "100%",
+      height: "100%",
+    },
+    placeholderContainer: {
+      width: "100%",
+      height: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    divider: {
+      height: 1,
+      marginHorizontal: kioskPx(12, s),
+    },
+    contentContainer: {
+      paddingHorizontal: kioskPx(12, s),
+      paddingVertical: kioskPx(8, s),
+      gap: kioskPx(4, s),
+    },
+    nameText: {
+      fontSize: kioskPx(15, s),
+      fontWeight: "600",
+      lineHeight: kioskPx(19, s),
+    },
+    priceRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: kioskPx(2, s),
+    },
+    cardPrice: {
+      fontSize: kioskPx(15, s),
+      fontWeight: "700",
+    },
+    cashPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: kioskPx(3, s),
+      borderWidth: 1,
+      borderRadius: kioskPx(8, s),
+      paddingHorizontal: kioskPx(6, s),
+      paddingVertical: kioskPx(2, s),
+    },
+    cashAmount: {
+      fontSize: kioskPx(13, s),
+      fontWeight: "700",
+    },
+  });
 
 const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
   item,
   config,
   onPress,
 }) => {
+  const s = useKioskUiScale();
+  const styles = useStyles(s);
   const isDisabled = item.availability === false;
   const hasModifiers = !!item.modifierGroupIds?.length;
 
@@ -152,7 +157,7 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
               { backgroundColor: `${accent}10` },
             ]}
           >
-            <PlaceholderIcon color={`${config.textColor}55`} size={40} />
+            <PlaceholderIcon color={`${config.textColor}55`} size={kioskPx(40, s)} />
           </View>
         )}
       </View>
