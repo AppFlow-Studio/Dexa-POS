@@ -3,10 +3,10 @@ import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import {
-    getBucketedElapsed,
-    getUrgencyLevel,
-    useKDSTimer,
-    type UrgencyThresholds,
+  getBucketedElapsed,
+  getUrgencyLevel,
+  useKDSTimer,
+  type UrgencyThresholds,
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
@@ -16,7 +16,7 @@ import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { clearStationData } from "@/services/cacheService";
 import KDSSoundService, {
-    DEFAULT_SOUND_CONFIG,
+  DEFAULT_SOUND_CONFIG,
 } from "@/services/kds/kdsSoundService";
 import { refreshLocationConfig } from "@/services/locationConfigSync";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -26,33 +26,33 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import { useRouter } from "expo-router";
 import {
-    ArrowUpToLine,
-    CheckSquare,
-    Flame,
-    RotateCcw,
-    Settings,
-    ShoppingBag,
-    Square,
-    Star,
-    Truck,
-    UtensilsCrossed,
+  ArrowUpToLine,
+  CheckSquare,
+  Flame,
+  RotateCcw,
+  Settings,
+  ShoppingBag,
+  Square,
+  Star,
+  Truck,
+  UtensilsCrossed,
 } from "lucide-react-native";
 import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    Dimensions,
-    GestureResponderEvent,
-    Pressable,
-    Animated as RNAnimated,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  GestureResponderEvent,
+  Pressable,
+  Animated as RNAnimated,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // ─── Status Tab Config ────────────────────────────────────────────
@@ -74,6 +74,159 @@ const TYPE_TABS: { key: OrderTypeFilter; label: string }[] = [
 ];
 
 const MODIFIER_ADD_COLOR = "#0B5E56";
+
+// Helper: count undone (non-ready, non-voided, non-refunded) items in a ticket
+function countUndoneItems(ticket: KDSTicket): number {
+  return ticket.items.filter(
+    (i) => i.kitchen_status !== "ready" && !i.is_voided && !i.is_refunded,
+  ).length;
+}
+
+// ─── Confirm Bump Modal ─────────────────────────────────────────
+interface ConfirmBumpModalProps {
+  isOpen: boolean;
+  ticketLabel: string;
+  undoneCount: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+const ConfirmBumpModal: React.FC<ConfirmBumpModalProps> = ({
+  isOpen,
+  ticketLabel,
+  undoneCount,
+  onConfirm,
+  onCancel,
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
+  if (!isOpen) return null;
+
+  return (
+    <Pressable
+      onPress={onCancel}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 200,
+        backgroundColor: "rgba(0,0,0,0.45)",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Pressable
+        onPress={() => {}}
+        style={{
+          width: s(340),
+          backgroundColor: "#FFFFFF",
+          borderRadius: s(16),
+          padding: s(24),
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: s(8) },
+          shadowOpacity: 0.2,
+          shadowRadius: s(16),
+          elevation: 16,
+        }}
+      >
+        <Text
+          style={{
+            color: "#111827",
+            fontSize: s(18),
+            fontWeight: "800",
+            textAlign: "center",
+            marginBottom: s(8),
+          }}
+        >
+          Bump ticket #{ticketLabel}?
+        </Text>
+
+        <View
+          style={{
+            backgroundColor: "#FEF3C7",
+            borderWidth: 1,
+            borderColor: "#FDE68A",
+            borderRadius: s(10),
+            padding: s(14),
+            marginBottom: s(20),
+          }}
+        >
+          <Text
+            style={{
+              color: "#92400E",
+              fontSize: s(14),
+              fontWeight: "700",
+              textAlign: "center",
+            }}
+          >
+            {undoneCount} item{undoneCount !== 1 ? "s" : ""} not yet marked done
+          </Text>
+          <Text
+            style={{
+              color: "#A16207",
+              fontSize: s(12),
+              fontWeight: "500",
+              textAlign: "center",
+              marginTop: s(4),
+            }}
+          >
+            These items will move to the next stage without a "done" mark.
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: "row", gap: s(12) }}>
+          <TouchableOpacity
+            onPress={onCancel}
+            style={{
+              flex: 1,
+              height: s(44),
+              borderRadius: s(10),
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "#F3F4F6",
+              borderWidth: 1,
+              borderColor: "#D1D5DB",
+            }}
+          >
+            <Text
+              style={{
+                color: "#374151",
+                fontSize: s(15),
+                fontWeight: "700",
+              }}
+            >
+              Cancel
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onConfirm}
+            style={{
+              flex: 1,
+              height: s(44),
+              borderRadius: s(10),
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "#DC2626",
+            }}
+          >
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: s(15),
+                fontWeight: "700",
+              }}
+            >
+              Bump Anyway
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Pressable>
+    </Pressable>
+  );
+};
 
 function dedupeTicketsForRender(tickets: KDSTicket[]): KDSTicket[] {
   if (tickets.length <= 1) return tickets;
@@ -2185,6 +2338,13 @@ const KitchenDisplayScreen = () => {
     "selected" | "all" | "done-selected" | "done-all" | "settings" | null
   >(null);
 
+  // Confirm bump modal state (undone items warning)
+  const [confirmBump, setConfirmBump] = useState<{
+    ticketId: string;
+    itemIds: string[];
+    newStatus: "preparing" | "ready" | "served";
+  } | null>(null);
+
   // Action menu state (long-press)
   const [actionMenu, setActionMenu] = useState<{
     ticketId: string;
@@ -2793,8 +2953,8 @@ const KitchenDisplayScreen = () => {
     [acknowledgeNoticeItem],
   );
 
-  // Wrap advanceTicketStatus with undo toast
-  const advanceWithUndo = useCallback(
+  // Confirm and execute bump — shows modal if there are undone items
+  const doAdvance = useCallback(
     (
       ticketId: string,
       itemIds: string[],
@@ -2847,6 +3007,30 @@ const KitchenDisplayScreen = () => {
       toast,
       setFocusedTicketId,
     ],
+  );
+
+  // Wrap advanceWithUndo with confirm modal when there are undone items
+  const advanceWithUndo = useCallback(
+    (
+      ticketId: string,
+      itemIds: string[],
+      newStatus: "preparing" | "ready" | "served",
+    ) => {
+      // Only warn about undone items in 2-step mode where per-item marking is possible
+      if (workflowMode === "2-step") {
+        const ticket = useKDSStore.getState()._ticketsById[ticketId];
+        if (ticket) {
+          const undoneCount = countUndoneItems(ticket);
+          if (undoneCount > 0) {
+            // Show confirm modal instead of advancing immediately
+            setConfirmBump({ ticketId, itemIds, newStatus });
+            return;
+          }
+        }
+      }
+      doAdvance(ticketId, itemIds, newStatus);
+    },
+    [doAdvance, workflowMode],
   );
 
   // ─── Single-Select Mode (header action bar) ─────────────────────
@@ -3850,11 +4034,7 @@ const KitchenDisplayScreen = () => {
                       const ticket = actionMenu.ticket;
                       if (ticket) {
                         const itemIds = getTicketItems(ticket).map((i) => i.id);
-                        advanceTicketStatus(
-                          ticket.ticket_id,
-                          itemIds,
-                          "served",
-                        );
+                        advanceWithUndo(ticket.ticket_id, itemIds, "served");
                         handleDismissActionMenu();
                       }
                     }}
@@ -3995,11 +4175,7 @@ const KitchenDisplayScreen = () => {
                       else if (ticket.status === "cooking") newStatus = "ready";
                       else if (ticket.status === "ready") newStatus = "served";
                       if (newStatus) {
-                        advanceTicketStatus(
-                          ticket.ticket_id,
-                          itemIds,
-                          newStatus,
-                        );
+                        advanceWithUndo(ticket.ticket_id, itemIds, newStatus);
                         handleDismissActionMenu();
                       }
                     }
@@ -4042,6 +4218,32 @@ const KitchenDisplayScreen = () => {
           })()}
         </Pressable>
       )}
+
+      {/* ─── Confirm Bump Modal (undone items warning) ─── */}
+      {confirmBump &&
+        (() => {
+          const ticket =
+            useKDSStore.getState()._ticketsById[confirmBump.ticketId];
+          const label =
+            ticket?.display_number || ticket?.order_number?.slice(-4) || "----";
+          const undoneCount = ticket ? countUndoneItems(ticket) : 0;
+          return (
+            <ConfirmBumpModal
+              isOpen={true}
+              ticketLabel={label}
+              undoneCount={undoneCount}
+              onConfirm={() => {
+                doAdvance(
+                  confirmBump.ticketId,
+                  confirmBump.itemIds,
+                  confirmBump.newStatus,
+                );
+                setConfirmBump(null);
+              }}
+              onCancel={() => setConfirmBump(null)}
+            />
+          );
+        })()}
 
       {/* ─── KDS Settings Modal ─── */}
       {/* Settings are now accessed via the Settings button in the header,
