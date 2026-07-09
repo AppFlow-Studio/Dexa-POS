@@ -8,9 +8,9 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { getDeviceId } from "@/lib/deviceId";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import {
-  findLatestReusableEmptyDraftId,
-  getRefreshedReusableDraftNumbers,
-  isReusableEmptyDraftOrder,
+    findLatestReusableEmptyDraftId,
+    getRefreshedReusableDraftNumbers,
+    isReusableEmptyDraftOrder,
 } from "@/lib/reusableEmptyDraft";
 import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
@@ -23,8 +23,8 @@ import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
-  getFloorPlanClient,
-  useFloorPlanStore,
+    getFloorPlanClient,
+    useFloorPlanStore,
 } from "@/stores/useFloorPlanStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -43,26 +43,26 @@ import type {
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useRouter } from "expo-router";
 import {
-  AlertTriangle,
-  Check,
-  Clock,
-  CreditCard,
-  Minus,
-  MoreHorizontal,
-  NotebookPen,
-  Plus,
-  RefreshCw,
-  Trash2,
-  Users,
-  WifiOff,
-  X
+    AlertTriangle,
+    Check,
+    Clock,
+    CreditCard,
+    Minus,
+    MoreHorizontal,
+    NotebookPen,
+    Plus,
+    RefreshCw,
+    Trash2,
+    Users,
+    WifiOff,
+    X,
 } from "lucide-react-native";
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
   ActivityIndicator,
@@ -1814,7 +1814,15 @@ const BillSectionContent = ({
     setActiveOrder,
   ]);
 
-  if (!activeOrderId)
+  // Guard against stale/orphaned activeOrderId: if the ID is set but the order
+  // object no longer exists in ordersById (e.g. after rehydration from MMKV
+  // where the order was pruned but activeOrderId persisted, or after a race),
+  // fall back to the "No Active Order" empty state instead of rendering a
+  // broken bill with "New Order" as the name.
+  const effectiveActiveOrderId =
+    activeOrderId && activeOrder ? activeOrderId : null;
+
+  if (!effectiveActiveOrderId)
     return (
       <View
         className="w-[38%] px-4 py-5"

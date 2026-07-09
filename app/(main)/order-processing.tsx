@@ -17,14 +17,14 @@ import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwn
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { getHeaderHeight } from "@/lib/headerHeight";
 import {
-  forceSetLocalSequence,
-  parseSequenceFromDisplayNumber,
+    forceSetLocalSequence,
+    parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
 import { markEnd } from "@/lib/perf";
 import {
-  findLatestReusableEmptyDraftId,
-  getRefreshedReusableDraftNumbers,
-  isReusableEmptyDraftOrder,
+    findLatestReusableEmptyDraftId,
+    getRefreshedReusableDraftNumbers,
+    isReusableEmptyDraftOrder,
 } from "@/lib/reusableEmptyDraft";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
@@ -36,56 +36,57 @@ import { useSearchStore } from "@/stores/searchStore";
 import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import {
-  formatOrderStatus,
-  formatPaymentStatus,
+    formatOrderStatus,
+    formatPaymentStatus,
 } from "@/utils/orderStatusHelpers";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import {
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  Logs,
-  Plus,
-  Printer,
-  Search,
-  ShoppingBag,
-  Sofa,
-  UtensilsCrossed,
-  X,
+    CheckCircle2,
+    ChevronLeft,
+    ChevronRight,
+    Eye,
+    Logs,
+    Plus,
+    Printer,
+    Search,
+    ShoppingBag,
+    Sofa,
+    UtensilsCrossed,
+    X,
 } from "lucide-react-native";
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  Dimensions,
-  InteractionManager,
-  Keyboard,
-  Modal,
-  PanResponder,
-  Pressable,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    Dimensions,
+    InteractionManager,
+    Keyboard,
+    Modal,
+    PanResponder,
+    Pressable,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from "react-native";
 import Animated, {
-  LinearTransition,
-  SlideInLeft,
-  useAnimatedStyle,
-  useSharedValue,
+    LinearTransition,
+    SlideInLeft,
+    useAnimatedStyle,
+    useSharedValue,
 } from "react-native-reanimated";
 
 const EMPTY_ORDERS: OrderProfile[] = [];
@@ -503,16 +504,43 @@ const OrderProcessing = () => {
     // is already usable; this just pre-persists it so the first item-add is
     // faster. ensureActiveOrderCreated is idempotent + single-flight, so the
     // add-item path still creates on demand if this hasn't run yet.
-    const task = InteractionManager.runAfterInteractions(() => {
-      void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(async () => {
+      if (cancelled) return;
+      const result = await useOrderStore
+        .getState()
+        .ensureActiveOrderCreated(activeOrderId);
+      if (cancelled) return;
+      // If the first attempt failed (returned null — not a db_order_id, not
+      // "pending_offline"), retry once after a short delay. This addresses
+      // transient network or RPC failures that would otherwise leave the
+      // order permanently stuck.
+      if (!result) {
+        if (__DEV__) {
+          console.log(
+            `[order-processing] Eager create returned null for ${activeOrderId}; retrying once in 2s`,
+          );
+        }
+        await new Promise((r) => setTimeout(r, 2_000));
+        if (cancelled) return;
+        void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+      }
     });
-    return () => task.cancel();
+    return () => {
+      cancelled = true;
+      task.cancel();
+    };
   }, [activeOrderId, orderAttributionOrderId]);
 
   const handleViewItems = useCallback((orderId: string) => {
     setSelectedOrderId(orderId);
     setIsOrdersModuleOpen(false);
     setItemsModalOpen(true);
+  }, []);
+
+  const handleRefund = useCallback((orderId: string) => {
+    setItemsModalOpen(false);
+    usePaymentDetailSheetStore.getState().open(orderId, "refund");
   }, []);
 
   const handleMarkDone = useCallback(
@@ -1919,6 +1947,9 @@ const OrderProcessing = () => {
           orderId={selectedOrderId}
           onRetrieve={
             selectedOrderId ? () => handleRetrieve(selectedOrderId) : undefined
+          }
+          onRefund={
+            selectedOrderId ? () => handleRefund(selectedOrderId) : undefined
           }
         />
       )}

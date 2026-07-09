@@ -1,10 +1,11 @@
 import CancelOnlineOrderDialog, {
-    type CancelReasonCode,
+  type CancelReasonCode,
 } from "@/components/online-orders/CancelOnlineOrderDialog";
 import MarkOrderReadyDialog from "@/components/online-orders/MarkOrderReadyDialog";
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
 import { useOnlineOrderActions } from "@/hooks/orders/useOnlineOrderActions";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Href, Link } from "expo-router";
@@ -61,6 +62,8 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
   variant,
   hideDetailsLink = false,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const order = useOrder(orderId);
   const {
     acceptOrder,
@@ -178,18 +181,31 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
   const canMarkDone = variant === "ready";
 
   const retryRow = retryable ? (
-    <View className="mt-2 flex-row items-center justify-between">
-      <Text className="text-xs text-danger flex-1">Server unreachable.</Text>
+    <View
+      style={{
+        marginTop: Math.round(8 * uiScale),
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}
+    >
+      <Text style={{ fontSize: s(12), color: colors.danger, flex: 1 }}>
+        Server unreachable.
+      </Text>
       <TouchableOpacity
         onPress={onRetry}
-        className="px-3 py-1.5 rounded-lg"
         style={{
+          paddingHorizontal: Math.round(12 * uiScale),
+          paddingVertical: Math.round(6 * uiScale),
+          borderRadius: Math.round(8 * uiScale),
           backgroundColor: colors.info + "20",
           borderWidth: 1,
           borderColor: colors.info + "40",
         }}
       >
-        <Text className="text-xs font-semibold" style={{ color: colors.info }}>
+        <Text
+          style={{ fontSize: s(12), fontWeight: "600", color: colors.info }}
+        >
           Retry
         </Text>
       </TouchableOpacity>
@@ -200,8 +216,8 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
     <View
       style={{
         backgroundColor: colors.card,
-        padding: 16,
-        borderRadius: 16,
+        padding: s(16),
+        borderRadius: s(16),
         borderWidth: 1,
         borderColor: colors.border,
         width: "100%",
@@ -215,10 +231,10 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           alignItems: "center",
         }}
       >
-        <Text style={{ fontSize: 14, color: colors.label }}>
+        <Text style={{ fontSize: s(14), color: colors.label }}>
           Items: {itemCount}
         </Text>
-        <Text style={{ fontSize: 14, color: colors.label }}>
+        <Text style={{ fontSize: s(14), color: colors.label }}>
           {formatTime(order.opened_at)}
         </Text>
       </View>
@@ -228,24 +244,31 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
         style={{
           flexDirection: "row",
           alignItems: "center",
-          marginVertical: 12,
+          marginVertical: s(12),
         }}
       >
         <View style={{ flex: 1 }}>
           <Text
-            style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}
+            style={{
+              fontSize: s(16),
+              fontWeight: "700",
+              color: colors.heading,
+            }}
           >
             #{label}
           </Text>
-          <Text style={{ fontSize: 14, color: colors.label }} numberOfLines={1}>
+          <Text
+            style={{ fontSize: s(14), color: colors.label }}
+            numberOfLines={1}
+          >
             {order.customer_name || "Guest"}
           </Text>
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
-              marginTop: 4,
-              gap: 6,
+              marginTop: s(4),
+              gap: s(6),
             }}
           >
             <DeliveryPlatformBadge
@@ -254,7 +277,7 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
               size="sm"
             />
             <Text
-              style={{ fontSize: 12, color: colors.muted, flexShrink: 1 }}
+              style={{ fontSize: s(12), color: colors.muted, flexShrink: 1 }}
               numberOfLines={1}
             >
               {sourceLabel(
@@ -266,7 +289,7 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           </View>
         </View>
         <Text
-          style={{ fontSize: 24, fontWeight: "700", color: colors.heading }}
+          style={{ fontSize: s(24), fontWeight: "700", color: colors.heading }}
         >
           ${total.toFixed(2)}
         </Text>
@@ -274,18 +297,20 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
 
       {/* Item preview — first 3 + overflow */}
       {shownItems.length > 0 && (
-        <View style={{ marginBottom: 12 }}>
+        <View style={{ marginBottom: s(12) }}>
           {shownItems.map((it) => (
             <Text
               key={it.id}
-              style={{ fontSize: 14, color: colors.label }}
+              style={{ fontSize: s(14), color: colors.label }}
               numberOfLines={1}
             >
               {it.quantity}× {it.open_item_name || it.name}
             </Text>
           ))}
           {remainingItems > 0 && (
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+            <Text
+              style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}
+            >
               +{remainingItems} more
             </Text>
           )}
@@ -300,7 +325,9 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           asChild
         >
           <TouchableOpacity>
-            <Text style={{ fontWeight: "700", color: colors.teal }}>
+            <Text
+              style={{ fontWeight: "700", color: colors.teal, fontSize: s(14) }}
+            >
               View Order Details
             </Text>
           </TouchableOpacity>
@@ -309,17 +336,17 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
 
       {/* Footer */}
       {variant === "new" ? (
-        <View style={{ marginTop: 16 }}>
-          <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ marginTop: s(16) }}>
+          <View style={{ flexDirection: "row", gap: s(8) }}>
             <TouchableOpacity
               onPress={onDecline}
               disabled={submitting !== null}
               style={{
                 flex: 1,
-                paddingVertical: 10,
+                paddingVertical: s(10),
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 12,
+                borderRadius: s(12),
                 alignItems: "center",
               }}
             >
@@ -336,8 +363,8 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
               disabled={submitting !== null}
               style={{
                 flex: 1,
-                paddingVertical: 10,
-                borderRadius: 12,
+                paddingVertical: s(10),
+                borderRadius: s(12),
                 alignItems: "center",
                 backgroundColor: colors.teal,
               }}
@@ -355,14 +382,14 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           <TouchableOpacity
             onPress={() => setShowCancel(true)}
             disabled={submitting !== null}
-            style={{ marginTop: 8, alignSelf: "center" }}
+            style={{ marginTop: s(8), alignSelf: "center" }}
           >
             {submitting === "cancel" ? (
               <ActivityIndicator size="small" color={colors.danger} />
             ) : (
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: "600",
                   color: colors.danger,
                 }}
@@ -373,7 +400,7 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={{ marginTop: 16 }}>
+        <View style={{ marginTop: s(16) }}>
           <View
             style={{
               flexDirection: "row",
@@ -382,16 +409,16 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
             }}
           >
             <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}
             >
               {canMarkReady && (
                 <TouchableOpacity
                   onPress={() => setShowMarkReady(true)}
                   disabled={submitting !== null}
                   style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 8,
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(6),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     backgroundColor: colors.teal + "14",
                     borderColor: colors.teal + "40",
@@ -402,7 +429,7 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                   ) : (
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "600",
                         color: colors.teal,
                       }}
@@ -417,9 +444,9 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                   onPress={onMarkDone}
                   disabled={submitting !== null}
                   style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 8,
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(6),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     backgroundColor: colors.success + "14",
                     borderColor: colors.success + "40",
@@ -430,7 +457,7 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                   ) : (
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "600",
                         color: colors.success,
                       }}
@@ -445,9 +472,9 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                   onPress={() => setShowCancel(true)}
                   disabled={submitting !== null}
                   style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 8,
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(6),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     backgroundColor: colors.danger + "14",
                     borderColor: colors.danger + "40",
@@ -458,7 +485,7 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
                   ) : (
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: "600",
                         color: colors.danger,
                       }}

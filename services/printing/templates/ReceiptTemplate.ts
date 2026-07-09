@@ -4,6 +4,38 @@ import { formatCurrency } from "@/utils/currency";
 import { EscPosBuilder } from "../escpos/EscPosBuilder";
 
 /**
+ * Split a string into lines that each fit within maxLen, breaking at word
+ * boundaries. Lines are trimmed. Used for notes / long text that should never
+ * be silently truncated.
+ */
+function wordWrap(s: string, maxLen: number): string[] {
+  if (maxLen <= 0) return [];
+  if (!s) return [""];
+  const lines: string[] = [];
+  let current = "";
+  for (const word of s.split(/\s+/)) {
+    if (!word) continue;
+    const sep = current.length > 0 ? 1 : 0;
+    if (current.length + sep + word.length <= maxLen) {
+      current = current ? `${current} ${word}` : word;
+    } else {
+      if (current) {
+        lines.push(current);
+      }
+      if (word.length > maxLen) {
+        for (let i = 0; i < word.length; i += maxLen) {
+          lines.push(word.slice(i, i + maxLen));
+        }
+      } else {
+        current = word;
+      }
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [""];
+}
+
+/**
  * Builds ESC/POS commands for a receipt.
  * Layout matches the sales receipt mockup with conditional flags from templateConfig.
  */
@@ -134,9 +166,10 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
     b.twoColumnRow(scLabel, formatCurrency(data.serviceCharge!), w);
   }
   if (data.tip > 0) {
-    const tipPct = data.subtotal > 0
-      ? ` (${((data.tip / data.subtotal) * 100).toFixed(1)}%)`
-      : "";
+    const tipPct =
+      data.subtotal > 0
+        ? ` (${((data.tip / data.subtotal) * 100).toFixed(1)}%)`
+        : "";
     b.twoColumnRow(`Tip${tipPct}`, formatCurrency(data.tip), w);
   }
   b.bold(false);
@@ -178,11 +211,22 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
 
     for (const payment of data.payments) {
       b.bold(true);
-      b.twoColumnRow(`Paid: ${payment.method}`, formatCurrency(payment.amount), w);
+      b.twoColumnRow(
+        `Paid: ${payment.method}`,
+        formatCurrency(payment.amount),
+        w,
+      );
       b.bold(false);
       if (payment.tipAmount && payment.tipAmount > 0) {
-        if (payment.originalTipAmount != null && payment.originalTipAmount !== payment.tipAmount) {
-          b.twoColumnRow("  Orig. Tip", formatCurrency(payment.originalTipAmount), w);
+        if (
+          payment.originalTipAmount != null &&
+          payment.originalTipAmount !== payment.tipAmount
+        ) {
+          b.twoColumnRow(
+            "  Orig. Tip",
+            formatCurrency(payment.originalTipAmount),
+            w,
+          );
           b.twoColumnRow("  Adj. Tip", formatCurrency(payment.tipAmount), w);
         } else {
           b.twoColumnRow("  Tip", formatCurrency(payment.tipAmount), w);
@@ -316,13 +360,24 @@ function pushEscPosSingleItem(
       b.textLine(modLine);
       b.bold(false);
     }
+    // Un-itemized modifier upcharge (priced modifier whose per-option price
+    // didn't round-trip) — shown in aggregate so it isn't invisible.
+    if (item.modifiersUpcharge && item.modifiersUpcharge > 0) {
+      b.bold(true);
+      b.textLine(`  Modifiers  +${formatCurrency(item.modifiersUpcharge)}`);
+      b.bold(false);
+    }
   }
 
-  // Notes
+  // Notes — word-wrap long notes instead of sending a single line that the
+  // printer hardware may truncate or garble at the buffer boundary.
   if (item.notes) {
-    b.bold(true);
-    b.textLine(`  Note: ${item.notes}`);
-    b.bold(false);
+    const noteLines = wordWrap(`${item.notes}`, w - 2);
+    for (const line of noteLines) {
+      b.bold(true);
+      b.textLine(`  ${line}`);
+      b.bold(false);
+    }
   }
 }
 

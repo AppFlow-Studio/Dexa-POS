@@ -1,32 +1,32 @@
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import {
-  getBusinessDayBounds,
-  getCurrentBusinessDay,
-  type BusinessDayConfig,
+    getBusinessDayBounds,
+    getCurrentBusinessDay,
+    type BusinessDayConfig,
 } from "@/lib/businessDay";
+import { DEADLINES } from "@/lib/network/deadlines";
+import { withDeadline } from "@/lib/network/withDeadline";
 import {
-  derivePaidStatus,
-  derivePaymentRefundState,
+    derivePaidStatus,
+    derivePaymentRefundState,
 } from "@/lib/paymentStatus";
 import { applyRefundRecovery } from "@/lib/refundRecovery";
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
-import { DEADLINES } from "@/lib/network/deadlines";
-import { withDeadline } from "@/lib/network/withDeadline";
 import { OrderService } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
 import { previousOrdersOfflineCache } from "@/stores/previousOrdersOfflineCache";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type {
-  RefundReasonType,
-  RefundRequest,
-  RefundResult,
-  RefundRpcOutcome,
+    RefundReasonType,
+    RefundRequest,
+    RefundResult,
+    RefundRpcOutcome,
 } from "@/types/refunds";
 import {
-  FetchedOrderData,
-  normalizeFetchedOrder,
-  transformBroadcastToOrder,
+    FetchedOrderData,
+    normalizeFetchedOrder,
+    transformBroadcastToOrder,
 } from "@/utils/orderTransformers";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
@@ -56,7 +56,9 @@ function resolvePreviousOrderTableName(
   if (!tableIdOrName) return undefined;
   return (
     useFloorPlanStore.getState().tablesById[tableIdOrName]?.name ??
-    (tableName ? useFloorPlanStore.getState().tablesById[tableName]?.name : null) ??
+    (tableName
+      ? useFloorPlanStore.getState().tablesById[tableName]?.name
+      : null) ??
     tableIdOrName
   );
 }
@@ -338,6 +340,28 @@ function _transformFetchedOrder(
   totalCount: number,
 ): PreviousOrder {
   const broadcastData = normalizeFetchedOrder(fo);
+
+  // Derive online order info from the online_orders join (authoritative
+  // source — NOT `order_source` column which may carry platform-specific
+  // values). Supabase returns [{order_id, provider, delivery_company}]
+  // for online orders, [] for non-online orders.
+  const onlineOrderRows = (fo as any).online_orders as
+    | {
+        order_id: string;
+        provider?: string;
+        delivery_company?: string | null;
+      }[]
+    | undefined;
+  const isOnlineOrder =
+    Array.isArray(onlineOrderRows) && onlineOrderRows.length > 0;
+
+  // Extract the platform provider from the online_orders join so
+  // DeliveryPlatformBadge can show the correct logo (UberEats, DoorDash, etc.).
+  // Falls back to: delivery_company → provider → "online".
+  const onlineProvider = isOnlineOrder ? onlineOrderRows![0] : null;
+  const _deliveryPlatform =
+    onlineProvider?.delivery_company ?? onlineProvider?.provider ?? null;
+
   const profile = transformBroadcastToOrder(broadcastData, undefined);
 
   const serialNo = profile.display_number
@@ -407,10 +431,11 @@ function _transformFetchedOrder(
     checkStatus: profile.check_status || "Opened",
     db_order_id: profile.db_order_id,
     order_source: profile.order_source ?? null,
-    delivery_platform: profile.delivery_platform ?? null,
+    delivery_platform: _deliveryPlatform ?? profile.delivery_platform ?? null,
     reversals: profile.reversals,
     order_refund_items: profile.order_refund_items,
     created_by_staff_profile_id: profile.created_by_staff_profile_id ?? null,
+    _isOnlineOrder: isOnlineOrder,
   };
 }
 
@@ -582,6 +607,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         order_source: order.order_source ?? null,
         delivery_platform: order.delivery_platform ?? null,
         created_by_staff_profile_id: order.created_by_staff_profile_id ?? null,
+        // Broadcast orders don't carry the online_orders join, so fall back to
+        // order_source. Server-fetched orders (in _transformFetchedOrder) use
+        // the authoritative online_orders join instead.
+        _isOnlineOrder: order.order_source?.toLowerCase() === "online",
         // Flag as offline/unsynced when archived without a backend row while the
         // device is offline. Drives the row's "Offline" badge; cleared when the
         // order later syncs and a server fetch replaces this entry.

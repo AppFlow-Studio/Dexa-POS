@@ -4,8 +4,8 @@ import {
     getCashPricedOrderTotal,
 } from "@/lib/paymentStatus";
 import { colors } from "@/lib/theme";
-import { useUiScale } from "@/lib/uiScale";
 import { OrderProfile } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { formatPaymentStatus } from "@/utils/orderStatusHelpers";
 import {
@@ -164,7 +164,8 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   const displayTotal =
     getCashPricedOrderTotal(order) ?? order.total_amount ?? 0;
 
-  const status = deriveEffectivePaidStatus(order) ?? order.paid_status ?? "Unpaid";
+  const status =
+    deriveEffectivePaidStatus(order) ?? order.paid_status ?? "Unpaid";
   const statusConfig = statusColorMap[status] ?? {
     color: colors.label,
     bgOpacity: "15",
@@ -179,7 +180,8 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   const displayType = displayTypeLabels[orderType] || orderType;
   const tableName = useFloorPlanStore((s) => {
     // Only show table name for dine-in orders.
-    if (order.order_type !== "dine_in" && order.order_type !== "Dine In") return null;
+    if (order.order_type !== "dine_in" && order.order_type !== "Dine In")
+      return null;
     const explicitName = order.service_location_name?.trim();
     const uuidLike =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -266,9 +268,15 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
       >
         {/* Left: order number + meta line */}
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
+          >
             <Text
-              style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
+              style={{
+                fontSize: s(13),
+                fontWeight: "700",
+                color: colors.heading,
+              }}
             >
               {order.display_number ||
                 order.order_number ||
@@ -297,6 +305,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               deliveryPlatform={order.delivery_platform}
               orderSource={order.order_source}
               size="sm"
+              uiScale={uiScale}
             />
             {needsAttention && (
               <AlertTriangle size={s(12)} color={colors.warning} />
@@ -331,7 +340,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
                 </Text>
               </>
             ) : null}
-            {order.server_name ? (
+            {order.server_name && !order._isOnlineOrder ? (
               <>
                 <Text style={{ fontSize: s(11), color: colors.muted }}>-</Text>
                 <Text
@@ -365,7 +374,11 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               </Text>
               {order.customer_phone?.trim() ? (
                 <Text
-                  style={{ fontSize: s(12), color: colors.muted, marginLeft: s(4) }}
+                  style={{
+                    fontSize: s(12),
+                    color: colors.muted,
+                    marginLeft: s(4),
+                  }}
                   numberOfLines={1}
                 >
                   · {order.customer_phone.trim()}
@@ -393,7 +406,11 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             >
               <WifiOff size={s(9)} color={colors.muted} />
               <Text
-                style={{ fontSize: s(10), fontWeight: "600", color: colors.muted }}
+                style={{
+                  fontSize: s(10),
+                  fontWeight: "600",
+                  color: colors.muted,
+                }}
               >
                 Offline
               </Text>
@@ -485,7 +502,11 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             >
               <Lock size={s(9)} color={colors.muted} />
               <Text
-                style={{ fontSize: s(10), fontWeight: "600", color: colors.muted }}
+                style={{
+                  fontSize: s(10),
+                  fontWeight: "600",
+                  color: colors.muted,
+                }}
               >
                 Settled
               </Text>
@@ -496,7 +517,11 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         {/* Price */}
         <View style={{ alignItems: "flex-end", minWidth: s(70) }}>
           <Text
-            style={{ fontSize: s(14), fontWeight: "700", color: colors.heading }}
+            style={{
+              fontSize: s(14),
+              fontWeight: "700",
+              color: colors.heading,
+            }}
           >
             ${displayTotal.toFixed(2)}
           </Text>
@@ -663,42 +688,42 @@ const MenuRow = ({
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   return (
-  <TouchableOpacity
-    activeOpacity={0.6}
-    onPress={onPress}
-    style={{
-      flexDirection: "row",
-      alignItems: "center",
-      gap: s(10),
-      paddingHorizontal: s(12),
-      paddingVertical: s(8),
-      marginHorizontal: s(4),
-      borderRadius: s(8),
-    }}
-  >
-    <View
+    <TouchableOpacity
+      activeOpacity={0.6}
+      onPress={onPress}
       style={{
-        width: s(28),
-        height: s(28),
-        borderRadius: s(7),
-        backgroundColor: iconBg,
+        flexDirection: "row",
         alignItems: "center",
-        justifyContent: "center",
+        gap: s(10),
+        paddingHorizontal: s(12),
+        paddingVertical: s(8),
+        marginHorizontal: s(4),
+        borderRadius: s(8),
       }}
     >
-      {icon}
-    </View>
-    <Text
-      style={{
-        fontSize: s(13),
-        color: labelColor ?? colors.heading,
-        fontWeight: "500",
-      }}
-    >
-      {label}
-    </Text>
-  </TouchableOpacity>
-  )
+      <View
+        style={{
+          width: s(28),
+          height: s(28),
+          borderRadius: s(7),
+          backgroundColor: iconBg,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {icon}
+      </View>
+      <Text
+        style={{
+          fontSize: s(13),
+          color: labelColor ?? colors.heading,
+          fontWeight: "500",
+        }}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
 };
 
 const PreviousOrderRow = React.memo(PreviousOrderRowContent, (prev, next) => {

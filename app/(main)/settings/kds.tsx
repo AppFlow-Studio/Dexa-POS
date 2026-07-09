@@ -1,21 +1,44 @@
+import PinDisplay from "@/components/auth/PinDisplay";
+import PinNumpad from "@/components/auth/PinNumpad";
+import SessionLogoutModal from "@/components/auth/SessionLogoutModal";
+import { useSessionKick } from "@/contexts/SessionKickListenerProvider";
 import { useToast } from "@/contexts/ToastContext";
 import { useLocationStations } from "@/hooks/useLocationStations";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { getDeviceId } from "@/lib/deviceId";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { colors } from "@/lib/theme";
+import { toastService } from "@/lib/toastService";
+import type { MerchantRole } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
+import { clearStationData, resetClientSession } from "@/services/cacheService";
 import KDSSoundService, {
-    DEFAULT_SOUND_CONFIG,
-    type KDSSoundConfig,
-    type SoundPreset
+  DEFAULT_SOUND_CONFIG,
+  type KDSSoundConfig,
+  type SoundPreset,
 } from "@/services/kds/kdsSoundService";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { KdsConfig } from "@/types/locationConfig";
 import type { Station } from "@/types/station";
-import { Minus, Play, Plus } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useClerk } from "@clerk/clerk-expo";
+import { LogOut, Minus, Play, Plus } from "lucide-react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Modal,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { Switch } from "~/components/ui/switch";
 
 // ---------------------------------------------------------------------------
@@ -780,6 +803,165 @@ function StationDisplayPanel({
   );
 }
 
+// ─── Manager PIN Gate Modal ────────────────────────────────────────────────
+const MANAGER_ROLES: MerchantRole[] = [
+  "merchant.manager",
+  "merchant.admin",
+  "merchant.owner",
+];
+
+interface PinGateModalProps {
+  visible: boolean;
+  title: string;
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+const PinGateModal: React.FC<PinGateModalProps> = ({
+  visible,
+  title,
+  onSuccess,
+  onCancel,
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const [pin, setPin] = useState("");
+  const shakeX = useSharedValue(0);
+  const shakeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shakeX.value }],
+  }));
+
+  const handleVerify = useCallback(() => {
+    const employee = useEmployeeStore.getState().findEmployeeByPin(pin);
+    const isManager = employee && MANAGER_ROLES.includes(employee.role);
+    if (isManager) {
+      setPin("");
+      onSuccess();
+    } else {
+      shakeX.value = withSequence(
+        withTiming(-10, { duration: 100 }),
+        withTiming(10, { duration: 100 }),
+        withTiming(-10, { duration: 100 }),
+        withTiming(10, { duration: 100 }),
+        withTiming(0, { duration: 100 }),
+      );
+      setPin("");
+      toastService.show({
+        title: "Invalid PIN",
+        message: employee
+          ? "This employee does not have manager access."
+          : "PIN does not match any employee.",
+        type: "error",
+      });
+    }
+  }, [pin, onSuccess, shakeX]);
+
+  const handleCancel = () => {
+    setPin("");
+    onCancel();
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={handleCancel}
+      statusBarTranslucent
+    >
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={handleCancel}
+        className="flex-1 bg-black/60 items-center justify-center px-6"
+      >
+        <TouchableOpacity activeOpacity={1} className="w-full max-w-sm">
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderColor: colors.border,
+              borderWidth: 1,
+              borderRadius: s(16),
+              padding: s(24),
+            }}
+          >
+            <Text
+              style={{
+                textAlign: "center",
+                fontSize: s(18),
+                fontWeight: "700",
+                color: colors.heading,
+                marginBottom: s(4),
+              }}
+            >
+              Manager PIN Required
+            </Text>
+            <Text
+              style={{
+                textAlign: "center",
+                fontSize: s(13),
+                color: colors.label,
+                marginBottom: s(16),
+              }}
+            >
+              {title}
+            </Text>
+            <Animated.View style={shakeStyle}>
+              <PinDisplay pinLength={pin.length} maxLength={4} />
+              <PinNumpad
+                onKeyPress={(input) => {
+                  if (typeof input === "number") {
+                    if (pin.length < 4) setPin(pin + input.toString());
+                  } else if (input === "clear") {
+                    setPin("");
+                  } else if (input === "backspace") {
+                    setPin(pin.slice(0, -1));
+                  }
+                }}
+              />
+            </Animated.View>
+            <TouchableOpacity
+              onPress={handleVerify}
+              style={{
+                paddingVertical: s(10),
+                backgroundColor: colors.teal + "20",
+                borderWidth: 1,
+                borderColor: colors.teal + "50",
+                borderRadius: s(8),
+                marginTop: s(12),
+              }}
+            >
+              <Text
+                style={{
+                  textAlign: "center",
+                  fontSize: s(13),
+                  fontWeight: "700",
+                  color: colors.teal,
+                }}
+              >
+                Verify
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleCancel}
+              style={{ paddingVertical: s(8), marginTop: s(8) }}
+            >
+              <Text
+                style={{
+                  textAlign: "center",
+                  fontSize: s(13),
+                  color: colors.label,
+                }}
+              >
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
 const KdsSettingsScreen = () => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
@@ -804,8 +986,31 @@ const KdsSettingsScreen = () => {
     [allStations],
   );
 
-  // Active tab index
+  // When the current device itself is a KDS station, only show that station's
+  // settings (no tab bar). When on a non-KDS device, show all KDS tabs.
+  const isKDSDevice = selectedStation?.station_type === "kds";
+
+  // Active tab index — auto-select the current KDS station if applicable.
+  // Uses a ref to avoid re-selecting after the initial match is found.
   const [activeStationIdx, setActiveStationIdx] = useState(0);
+  const hasAutoSelected = useRef(false);
+  useEffect(() => {
+    if (hasAutoSelected.current) return;
+    if (isKDSDevice && selectedStation?.id && kdsStations.length > 0) {
+      const idx = kdsStations.findIndex((s) => s.id === selectedStation.id);
+      if (idx >= 0) {
+        setActiveStationIdx(idx);
+        hasAutoSelected.current = true;
+      }
+    }
+  }, [isKDSDevice, selectedStation?.id, kdsStations]);
+
+  // Non-KDS devices always show all tabs starting at index 0; ensure the
+  // auto-select ref doesn't lock us out of switching away from index 0.
+  useEffect(() => {
+    if (!isKDSDevice) hasAutoSelected.current = false;
+  }, [isKDSDevice]);
+
   const activeStation = kdsStations[activeStationIdx];
 
   // Fetch display config when station tab changes
@@ -833,6 +1038,88 @@ const KdsSettingsScreen = () => {
       await supabase.rpc("migrate_pending_to_preparing", {
         p_location_id: selectedStore.id,
       });
+    }
+  };
+
+  // ── Logout state & handlers ──────────────────────────────────────
+  const { signOut } = useClerk();
+  const { markVoluntaryLogout } = useSessionKick();
+  const stationSessionId = useStoreSettingsStore((s) => s.stationSessionId);
+  const clearStationSession = useStoreSettingsStore(
+    (s) => s.clearStationSession,
+  );
+  const clearSelectedStore = useStoreSettingsStore((s) => s.clearSelectedStore);
+
+  const [showLogoutPinGate, setShowLogoutPinGate] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleEndStationSession = async () => {
+    setIsLoggingOut(true);
+    markVoluntaryLogout();
+    try {
+      if (stationSessionId && selectedStore) {
+        await supabase.rpc("pos_staff_logout", {
+          p_session_id: stationSessionId,
+          p_location_id: selectedStore.id,
+          p_pin_code: "",
+          p_device_id: getDeviceId(),
+          p_clock_out: false,
+        });
+      }
+      clearStationSession();
+      clearStationData();
+      setShowLogoutModal(false);
+      toastService.show({
+        title: "Session Ended",
+        message: "Station session has been ended.",
+        type: "success",
+      });
+      replaceRoute("(auth)", "station-select");
+    } catch {
+      toastService.show({
+        title: "Error",
+        message: "Failed to end session. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  const handleFullLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    markVoluntaryLogout();
+    try {
+      if (stationSessionId && selectedStore) {
+        await supabase.rpc("pos_staff_logout", {
+          p_session_id: stationSessionId,
+          p_location_id: selectedStore.id,
+          p_pin_code: "",
+          p_device_id: getDeviceId(),
+          p_clock_out: false,
+        });
+      }
+      await resetClientSession();
+      try {
+        await signOut();
+      } catch (error) {
+        console.warn(
+          "Settings logout network call failed after local reset:",
+          error,
+        );
+      }
+      setShowLogoutModal(false);
+      replaceRoute("(auth)", "login");
+    } catch {
+      toastService.show({
+        title: "Error",
+        message: "Failed to logout. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setIsLoggingOut(false);
     }
   };
 
@@ -874,55 +1161,71 @@ const KdsSettingsScreen = () => {
         {kdsStations.length > 0 && (
           <>
             <SectionHeader title="Per-Station Settings" />
-            <Text
-              style={{
-                fontSize: s(11),
-                color: colors.muted,
-                marginBottom: s(8),
-                paddingHorizontal: s(2),
-              }}
-            >
-              Select a KDS station to configure its display, sound, and server
-              name settings.
-            </Text>
-            <View
-              style={{
-                flexDirection: "row",
-                gap: s(6),
-                marginBottom: s(12),
-                flexWrap: "wrap",
-              }}
-            >
-              {kdsStations.map((station, idx) => {
-                const isActive = idx === activeStationIdx;
-                return (
-                  <TouchableOpacity
-                    key={station.id}
-                    onPress={() => setActiveStationIdx(idx)}
-                    style={{
-                      paddingHorizontal: s(14),
-                      paddingVertical: s(8),
-                      borderRadius: s(20),
-                      backgroundColor: isActive ? colors.teal : colors.card,
-                      borderWidth: 1,
-                      borderColor: isActive
-                        ? colors.teal + "50"
-                        : colors.border,
-                    }}
-                  >
-                    <Text
+            {isKDSDevice ? (
+              <Text
+                style={{
+                  fontSize: s(11),
+                  color: colors.muted,
+                  marginBottom: s(8),
+                  paddingHorizontal: s(2),
+                }}
+              >
+                Configuring settings for this KDS station (
+                {activeStation?.station_name}).
+              </Text>
+            ) : (
+              <Text
+                style={{
+                  fontSize: s(11),
+                  color: colors.muted,
+                  marginBottom: s(8),
+                  paddingHorizontal: s(2),
+                }}
+              >
+                Select a KDS station to configure its display, sound, and server
+                name settings.
+              </Text>
+            )}
+            {!isKDSDevice && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: s(6),
+                  marginBottom: s(12),
+                  flexWrap: "wrap",
+                }}
+              >
+                {kdsStations.map((station, idx) => {
+                  const isActive = idx === activeStationIdx;
+                  return (
+                    <TouchableOpacity
+                      key={station.id}
+                      onPress={() => setActiveStationIdx(idx)}
                       style={{
-                        color: isActive ? colors.onSolid : colors.heading,
-                        fontSize: s(12),
-                        fontWeight: isActive ? "700" : "500",
+                        paddingHorizontal: s(14),
+                        paddingVertical: s(8),
+                        borderRadius: s(20),
+                        backgroundColor: isActive ? colors.teal : colors.card,
+                        borderWidth: 1,
+                        borderColor: isActive
+                          ? colors.teal + "50"
+                          : colors.border,
                       }}
                     >
-                      {station.station_name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                      <Text
+                        style={{
+                          color: isActive ? colors.onSolid : colors.heading,
+                          fontSize: s(12),
+                          fontWeight: isActive ? "700" : "500",
+                        }}
+                      >
+                        {station.station_name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
 
             {/* Active Station Panel */}
             {activeStation && (
@@ -1230,7 +1533,115 @@ const KdsSettingsScreen = () => {
           suffix="m"
           onChange={(v) => updateConfig("kds", { redThresholdMinutes: v })}
         />
+
+        {/* ── Log Out (requires manager PIN) ── */}
+        {isKDSDevice && (
+          <>
+            <View
+              style={{
+                height: 1,
+                backgroundColor: colors.border,
+                marginVertical: s(16),
+              }}
+            />
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: s(12),
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: s(14),
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(10),
+                  }}
+                >
+                  <View
+                    style={{
+                      width: s(32),
+                      height: s(32),
+                      borderRadius: s(8),
+                      backgroundColor: colors.danger + "15",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <LogOut size={s(16)} color={colors.danger} />
+                  </View>
+                  <View>
+                    <Text
+                      style={{
+                        fontSize: s(13),
+                        fontWeight: "700",
+                        color: colors.heading,
+                      }}
+                    >
+                      Log Out
+                    </Text>
+                    <Text style={{ fontSize: s(11), color: colors.label }}>
+                      Requires manager PIN
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowLogoutPinGate(true)}
+                  disabled={isLoggingOut}
+                  style={{
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(7),
+                    backgroundColor: colors.danger + "15",
+                    borderWidth: 1,
+                    borderColor: colors.danger + "30",
+                    borderRadius: s(8),
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(13),
+                      fontWeight: "600",
+                      color: colors.danger,
+                    }}
+                  >
+                    Log Out
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        )}
       </ScrollView>
+
+      {/* ── Manager PIN gate for logout ── */}
+      <PinGateModal
+        visible={showLogoutPinGate}
+        title="Approve logout from this station"
+        onSuccess={() => {
+          setShowLogoutPinGate(false);
+          setShowLogoutModal(true);
+        }}
+        onCancel={() => setShowLogoutPinGate(false)}
+      />
+
+      {/* ── Logout options modal (shown after PIN) ── */}
+      <SessionLogoutModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onEndStationSession={handleEndStationSession}
+        onFullLogout={handleFullLogout}
+        isLoading={isLoggingOut}
+        stationName={selectedStation?.station_name}
+      />
     </View>
   );
 };
