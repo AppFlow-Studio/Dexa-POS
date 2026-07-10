@@ -1887,6 +1887,14 @@ const addItemToBackend = async (
                     ...i,
                     db_order_item_id: addResult.order_item_id,
                     sync_status: "synced" as const,
+                    // Backfill the server-authoritative dual-priced cash values
+                    // so the cart's cash totals match the DB exactly. The server
+                    // (add_open_item) is the single source of truth for the
+                    // card/cash split; the optimistic value may lag if the local
+                    // pricing config differs.
+                    cashPrice: addResult.cash_price ?? i.cashPrice,
+                    baseCashPrice: addResult.cash_price ?? i.baseCashPrice,
+                    cashSubtotal: addResult.cash_subtotal ?? i.cashSubtotal,
                   }
                 : i,
             );
