@@ -92,3 +92,60 @@ describe("printed receipt pricing mode", () => {
     expect(escPosText).not.toContain("Cash Total");
   });
 });
+
+function extractDocumentTextLines(data: ReceiptTemplateData): string[] {
+  return buildReceiptDocument(data)
+    .nodes.filter((node) => node.type === "text_line")
+    .map((node) => (node as { content: string }).content);
+}
+
+describe("printed receipt modifier upcharge", () => {
+  const mensaf = {
+    name: "Mensaf",
+    quantity: 1,
+    price: 170.0,
+    isVoided: false,
+    // Priced modifier whose per-option price didn't round-trip: name renders
+    // with no inline price, and the upcharge is recovered in aggregate.
+    modifiers: [{ name: "Family Size Mensaf", price: 0 }],
+  };
+
+  it("prints an aggregate Modifiers line when the upcharge is not itemized", () => {
+    const data = makeReceiptData({
+      pricingMode: "card",
+      items: [{ ...mensaf, modifiersUpcharge: 140 }],
+    });
+
+    const textLines = extractDocumentTextLines(data);
+    expect(textLines.some((l) => l.includes("Modifiers") && l.includes("140.00")))
+      .toBe(true);
+
+    const escPosText = extractEscPosText(data);
+    expect(escPosText).toContain("Modifiers");
+    expect(escPosText).toContain("140.00");
+  });
+
+  it("does not print an aggregate line when there is no un-itemized upcharge", () => {
+    const data = makeReceiptData({
+      pricingMode: "card",
+      items: [
+        {
+          name: "Mensaf",
+          quantity: 1,
+          price: 170.0,
+          isVoided: false,
+          // Option price round-tripped intact → shows inline, no aggregate line.
+          modifiers: [{ name: "Family Size Mensaf", price: 140 }],
+          modifiersUpcharge: 0,
+        },
+      ],
+    });
+
+    const textLines = extractDocumentTextLines(data);
+    expect(textLines.some((l) => l.trim().startsWith("Modifiers"))).toBe(false);
+    // The itemized option price still renders.
+    const escPosText = extractEscPosText(data);
+    expect(escPosText).toContain("Family Size Mensaf");
+    expect(escPosText).toContain("140.00");
+  });
+});

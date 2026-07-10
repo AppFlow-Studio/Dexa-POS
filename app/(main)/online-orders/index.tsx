@@ -1,359 +1,177 @@
-import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
 import KanbanColumn from "@/components/online-orders/KanbanColumn";
-import { bottomSheetTheme, colors } from "@/lib/theme";
-import { useOnlineOrderStore } from "@/stores/useOnlineOrderStore";
-import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import { Href, Link } from "expo-router";
-import { Search, Table, X } from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
+import type { OnlineColumnVariant } from "@/components/online-orders/OnlineOrderCard";
+import { startInteraction } from "@/lib/perf";
+import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import {
-  KeyboardAvoidingView, // <--- Imported
-  Platform, // <--- Imported
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { TextInput } from "react-native-gesture-handler";
+  useOnlineOrders,
+  usePendingOnlineOrderCount,
+} from "@/stores/selectors/orderSelectors";
+import { Link } from "expo-router";
+import { Table } from "lucide-react-native";
+import { useMemo, useState } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 
-const PARTNERS = ["All", "Door Dash", "grubhub", "Uber-Eats", "Food Panda"];
-const COLUMNS = [
-  { title: "New Orders", color: "#3b82f6" }, // blue-500
-  { title: "Confirmed/In-Process", color: "#ef4444" }, // red-500
-  { title: "Ready to Dispatch", color: "#a855f7" }, // purple-500
-  { title: "Dispatched", color: "#22c55e" }, // green-500
+type ColumnKey = "new" | "kitchen" | "ready" | "done";
+
+const COLUMNS: {
+  key: ColumnKey;
+  title: string;
+  color: string;
+  variant: OnlineColumnVariant;
+}[] = [
+  { key: "new", title: "New Orders", color: "#3b82f6", variant: "new" },
+  { key: "kitchen", title: "In Kitchen", color: "#ef4444", variant: "kitchen" },
+  { key: "ready", title: "Ready", color: "#a855f7", variant: "ready" },
+  { key: "done", title: "Done", color: "#22c55e", variant: "done" },
 ];
 
 const OnlineOrdersScreen = () => {
-  const [activePartner, setActivePartner] = useState("All");
-  const [dateRange, setDateRange] = useState<DateRange>({
-    from: new Date("2025-02-03"),
-    to: new Date("2025-02-03"),
-  });
-  const [searchCustomer, setSearchCustomer] = useState("");
-  const [searchOrderId, setSearchOrderId] = useState("");
-  const [searchPartner, setSearchPartner] = useState("All");
-  const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
+  const uiScale = useUiScale();
+  const [focusedColumn, setFocusedColumn] = useState<ColumnKey | null>(null);
 
-  const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ["40%", "85%"], []);
+  const onlineOrders = useOnlineOrders();
+  const pendingCount = usePendingOnlineOrderCount();
 
-  const orders = useOnlineOrderStore((state) => state.orders);
-  const updateOrderStatus = useOnlineOrderStore((s) => s.updateOrderStatus);
-  const rejectOrder = useOnlineOrderStore((s) => s.rejectOrder);
-  const archiveOrder = useOnlineOrderStore((s) => s.archiveOrder);
-
-  const groupedOrders = useMemo(() => {
-    let filtered = [...orders];
-
-    if (dateRange.from) {
-      const startDate = new Date(dateRange.from);
-      startDate.setUTCHours(0, 0, 0, 0);
-
-      const endDate = dateRange.to
-        ? new Date(dateRange.to)
-        : new Date(dateRange.from);
-      endDate.setUTCHours(23, 59, 59, 999);
-
-      filtered = filtered.filter((order) => {
-        // Parse the custom timestamp format "MM/DD/YY, HH:MM AM/PM"
-        const [datePart, timePart] = order.timestamp.split(", ");
-        const [month, day, year] = datePart.split("/").map(Number);
-        const [time, modifier] = timePart.split(" ");
-        let [hours, minutes] = time.split(":").map(Number);
-
-        // Convert to 24-hour format
-        if (modifier === "PM" && hours < 12) hours += 12;
-        if (modifier === "AM" && hours === 12) hours = 0;
-
-        // Create date (add 2000 to handle 2-digit year)
-        const orderDate = new Date(2000 + year, month - 1, day, hours, minutes);
-        return orderDate >= startDate && orderDate <= endDate;
-      });
-    }
-
-    // Filter by active partner tab
-    if (activePartner !== "All") {
-      filtered = filtered.filter(
-        (order) => order.deliveryPartner === activePartner
-      );
-    }
-
-    // Group by status for Kanban columns
-    return filtered.reduce(
-      (acc, order) => {
-        if (!acc[order.status]) acc[order.status] = [];
-        acc[order.status].push(order);
-        return acc;
-      },
-      {} as Record<string, typeof orders>
-    );
-  }, [orders, activePartner, dateRange]);
-
-  const filteredForSearch = useMemo(() => {
-    return orders.filter((order) => {
-      const matchesCustomer = searchCustomer
-        ? order.customerName
-            .toLowerCase()
-            .includes(searchCustomer.toLowerCase())
-        : true;
-      const matchesOrderId = searchOrderId
-        ? order.id.toLowerCase().includes(searchOrderId.toLowerCase())
-        : true;
-      const matchesPartner =
-        searchPartner === "All" || order.deliveryPartner === searchPartner;
-      return matchesCustomer && matchesOrderId && matchesPartner;
-    });
-  }, [orders, searchCustomer, searchOrderId, searchPartner]);
-
-  const clearSearch = () => {
-    setSearchCustomer("");
-    setSearchOrderId("");
-    setSearchPartner("All");
+  const focusColumn = (key: ColumnKey | null) => {
+    const span = startInteraction("pos.kanban_focus_column");
+    setFocusedColumn(key);
+    span.endAfterPaint();
   };
 
-  const openSearchSheet = () => bottomSheetRef.current?.expand();
-  const closeSearchSheet = () => bottomSheetRef.current?.close();
-
-  const handleSheetClose = () => {
-    clearSearch(); // Clear state whenever the sheet closes for any reason
-  };
+  // Bucket the (already-stable) online orders into column key-lists. Cards
+  // subscribe to their own order via the key, so this grouping is the only
+  // per-board work and it's a single linear pass.
+  const buckets = useMemo(() => {
+    const next: Record<ColumnKey, string[]> = {
+      new: [],
+      kitchen: [],
+      ready: [],
+      done: [],
+    };
+    for (const o of onlineOrders) {
+      const key = o.db_order_id ?? o.id;
+      switch (o.order_status) {
+        case "pending":
+          next.new.push(key);
+          break;
+        case "accepted":
+        case "sent_to_kitchen":
+        case "preparing":
+          next.kitchen.push(key);
+          break;
+        case "ready":
+          next.ready.push(key);
+          break;
+        case "completed":
+          next.done.push(key);
+          break;
+      }
+    }
+    return next;
+  }, [onlineOrders]);
 
   const renderKanbanView = () => {
-    // If a column is focused, render only that column in focused mode
     if (focusedColumn) {
-      const col = COLUMNS.find((c) => c.title === focusedColumn);
-      if (!col) return null; // Should not happen
-
+      const col = COLUMNS.find((c) => c.key === focusedColumn);
+      if (!col) return null;
       return (
         <KanbanColumn
-          key={col.title}
+          key={col.key}
           title={col.title}
           color={col.color}
-          orders={groupedOrders[col.title] || []}
-          isFocused={true}
-          onHeaderPress={() => setFocusedColumn(null)} // Header press now acts as a back button
+          orderIds={buckets[col.key]}
+          variant={col.variant}
+          isFocused
+          onHeaderPress={() => focusColumn(null)}
         />
       );
     }
 
-    // Otherwise, render the standard 4-column layout
     return COLUMNS.map((col) => (
       <KanbanColumn
-        key={col.title}
+        key={col.key}
         title={col.title}
         color={col.color}
-        orders={groupedOrders[col.title] || []}
+        orderIds={buckets[col.key]}
+        variant={col.variant}
         isFocused={false}
-        onHeaderPress={() => setFocusedColumn(col.title)} // Header press focuses the column
+        onHeaderPress={() => focusColumn(col.key)}
       />
     ));
   };
 
   return (
-    <View className="flex-1 px-4 bg-screen">
-      <View className="flex-row items-center justify-between my-3">
-        <View className="flex-row items-center justify-end gap-x-3">
-          <TouchableOpacity
-            onPress={openSearchSheet}
-            activeOpacity={0.8}
-            className="flex-row items-center bg-panel rounded-xl border border-border p-3"
-          >
-            <Search color={colors.label} size={20} />
-          </TouchableOpacity>
-          <Link href="/order-processing" asChild>
-            <TouchableOpacity className="flex-row items-center bg-panel rounded-xl border border-border p-3">
-              <Table color={colors.label} size={20} />
-            </TouchableOpacity>
-          </Link>
-        </View>
-        <View className="flex-row items-center bg-panel border border-border p-1 rounded-xl">
-          {PARTNERS.map((partner) => (
-            <TouchableOpacity
-              key={partner}
-              onPress={() => setActivePartner(partner)}
-              className={`py-2 px-4 rounded-lg ${
-                activePartner === partner ? "bg-screen" : ""
-              }`}
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.screen,
+        paddingHorizontal: 16 * uiScale,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          marginVertical: 12 * uiScale,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12 * uiScale,
+          }}
+        >
+          {pendingCount > 0 && (
+            <View
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 999,
+                backgroundColor: colors.teal,
+              }}
             >
               <Text
-                className={`text-lg font-semibold ${
-                  activePartner === partner ? "text-blue-400" : "text-gray-300"
-                }`}
+                style={{
+                  color: colors.onSolid,
+                  fontSize: 14 * uiScale,
+                  fontWeight: "700",
+                }}
               >
-                {partner}
+                {pendingCount} new
               </Text>
-            </TouchableOpacity>
-          ))}
+            </View>
+          )}
         </View>
-        <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
+        <Link href="/order-processing" asChild>
+          <TouchableOpacity
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.panel,
+              borderRadius: Math.round(12 * uiScale),
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: Math.round(12 * uiScale),
+            }}
+          >
+            <Table color={colors.label} size={Math.round(20 * uiScale)} />
+          </TouchableOpacity>
+        </Link>
       </View>
 
-      <View className="flex-1 flex-row gap-x-4 px-4 pb-4">
+      <View
+        style={{
+          flex: 1,
+          flexDirection: "row",
+          gap: Math.round(16 * uiScale),
+          paddingBottom: Math.round(16 * uiScale),
+        }}
+      >
         {renderKanbanView()}
       </View>
-
-      <BottomSheet
-        ref={bottomSheetRef}
-        index={-1}
-        snapPoints={snapPoints}
-        {...bottomSheetTheme}
-        onClose={handleSheetClose}
-        enablePanDownToClose
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
-        >
-          <BottomSheetScrollView contentContainerStyle={{ padding: 12 }}>
-            <View className="flex-row justify-between items-center mb-3">
-              <Text className="text-white text-xl font-bold">
-                Search Online Orders
-              </Text>
-              <TouchableOpacity onPress={closeSearchSheet} className="p-2">
-                <X size={20} color={colors.label} />
-              </TouchableOpacity>
-            </View>
-            <View className="gap-y-2 mb-3">
-              <View className="bg-panel border border-border rounded-xl px-3">
-                <Text className="text-gray-400 mt-2 mb-1 text-sm">
-                  Customer Name
-                </Text>
-                <TextInput
-                  value={searchCustomer}
-                  onChangeText={setSearchCustomer}
-                  placeholder="e.g. John Smith"
-                  className="text-white text-base py-2"
-                  placeholderTextColor={colors.label}
-                />
-              </View>
-              <View className="bg-panel border border-border rounded-xl px-3">
-                <Text className="text-gray-400 mt-2 mb-1 text-sm">
-                  Order ID
-                </Text>
-                <TextInput
-                  value={searchOrderId}
-                  onChangeText={setSearchOrderId}
-                  placeholder="#45654"
-                  className="text-white text-base py-2"
-                  placeholderTextColor={colors.label}
-                />
-              </View>
-              <View>
-                <Text className="text-gray-400 mb-1.5 text-sm">Service</Text>
-                <View className="flex-row flex-wrap gap-1.5">
-                  {PARTNERS.map((partner) => (
-                    <TouchableOpacity
-                      key={`filter_${partner}`}
-                      onPress={() => setSearchPartner(partner)}
-                      className={`px-2 py-1.5 rounded-lg border ${
-                        searchPartner === partner
-                          ? "bg-blue-900/30 border-blue-500"
-                          : "bg-panel border-border"
-                      }`}
-                    >
-                      <Text
-                        className={`text-sm ${
-                          searchPartner === partner
-                            ? "text-blue-400"
-                            : "text-gray-300"
-                        }`}
-                      >
-                        {partner}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            </View>
-
-            <View className="mt-1.5">
-              <Text className="text-gray-300 mb-2 text-sm">
-                Results ({filteredForSearch.length})
-              </Text>
-              <View className="gap-y-2">
-                {filteredForSearch.map((order) => (
-                  <View
-                    key={order.id}
-                    className="bg-panel border border-border rounded-xl p-3"
-                  >
-                    <View className="flex-row justify-between items-start mb-2">
-                      <View>
-                        <Text className="text-white text-sm font-semibold">
-                          {order.id}
-                        </Text>
-                        <Text className="text-gray-300 text-xs">
-                          {order.customerName} • {order.deliveryPartner}
-                        </Text>
-                        <Text className="text-gray-400 text-[10px] mt-0.5">
-                          Status: {order.status}
-                        </Text>
-                      </View>
-                      <Text className="text-white font-semibold text-sm">
-                        ${order.total.toFixed(2)}
-                      </Text>
-                    </View>
-                    <View className="flex-row flex-wrap gap-1.5">
-                      <TouchableOpacity
-                        onPress={() =>
-                          updateOrderStatus(order.id, "Confirmed/In-Process")
-                        }
-                        className="px-2 py-1.5 rounded-lg bg-green-600/20 border border-green-500/40"
-                      >
-                        <Text className="text-green-400 text-xs">Accept</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => rejectOrder(order.id)}
-                        className="px-2 py-1.5 rounded-lg bg-red-600/20 border border-red-500/40"
-                      >
-                        <Text className="text-red-400 text-xs">Reject</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() =>
-                          updateOrderStatus(order.id, "Ready to Dispatch")
-                        }
-                        className="px-2 py-1.5 rounded-lg bg-purple-600/20 border border-purple-500/40"
-                      >
-                        <Text className="text-purple-300 text-xs">Ready</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() =>
-                          updateOrderStatus(order.id, "Dispatched")
-                        }
-                        className="px-2 py-1.5 rounded-lg bg-blue-600/20 border border-blue-500/40"
-                      >
-                        <Text className="text-blue-300 text-xs">
-                          Dispatched
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => archiveOrder(order.id)}
-                        className="px-2 py-1.5 rounded-lg bg-gray-600/20 border border-gray-500/40"
-                      >
-                        <Text className="text-gray-300 text-xs">Archive</Text>
-                      </TouchableOpacity>
-                      <Link
-                        href={
-                          `/online-orders/${order.id.replace("#", "")}` as Href
-                        }
-                        asChild
-                      >
-                        <TouchableOpacity
-                          onPress={() => {
-                            closeSearchSheet();
-                          }}
-                          className="px-2 py-1.5 rounded-lg bg-card border border-border"
-                        >
-                          <Text className="text-white text-xs">Details</Text>
-                        </TouchableOpacity>
-                      </Link>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </BottomSheetScrollView>
-        </KeyboardAvoidingView>
-      </BottomSheet>
     </View>
   );
 };

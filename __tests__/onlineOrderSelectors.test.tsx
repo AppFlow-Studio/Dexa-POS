@@ -1,0 +1,171 @@
+/**
+ * Pending/online order selectors — they key on order_source==='online' +
+ * order_status, NOT order_type (QR orders transform to 'takeout'). Confirm the
+ * "New" queue is pending-only, the badge count matches, and the board feed
+ * excludes pos/declined while keeping completed for the Done column.
+ *
+ * useOrderStore is mocked as a one-shot selector-runner so we don't drag the
+ * store's heavy native dependency chain (tcp-socket, etc.) into the test — the
+ * selectors under test only read ordersById / orderIds.
+ */
+let mockStoreState: any;
+jest.mock("@/stores/useOrderStore", () => {
+  const useOrderStore = (selector: any) => selector(mockStoreState);
+  useOrderStore.getState = () => mockStoreState;
+  return { useOrderStore };
+});
+
+// orderSelectors imports several sibling stores at module load (which pull
+// native chains). The selectors under test don't use them — stub to no-ops.
+jest.mock("@/stores/useSeatingStore", () => ({ useSeatingStore: () => ({}) }));
+jest.mock("@/stores/useServiceChargeRulesStore", () => ({
+  useServiceChargeRulesStore: () => ({}),
+}));
+jest.mock("@/stores/useSettingsStore", () => ({ useSettingsStore: () => ({}) }));
+jest.mock("@/stores/useStoreSettingsStore", () => ({
+  useStoreSettingsStore: () => ({}),
+}));
+jest.mock("@/stores/useTableSessionStore", () => ({
+  useTableSessionStore: () => ({}),
+}));
+
+import { renderHook } from "@testing-library/react-native";
+import {
+  getActiveOnlineOrderKeys,
+  useActiveOnlineOrderCount,
+  useOnlineOrders,
+  usePendingOnlineOrderCount,
+  usePendingOnlineOrders,
+  useUnseenOnlineOrderCount,
+} from "@/stores/selectors/orderSelectors";
+import { useOnlineOrderDrawerStore } from "@/stores/useOnlineOrderDrawerStore";
+
+function order(over: Record<string, any>) {
+  return {
+    items: [],
+    opened_at: "2026-06-25T10:00:00.000Z",
+    ...over,
+  };
+}
+
+beforeEach(() => {
+  mockStoreState = {
+    ordersById: {
+      // QR dine-in transforms to order_type 'takeout' — must still match.
+      onPending: order({
+        id: "onPending",
+        db_order_id: "onPending",
+        order_source: "online",
+        order_status: "pending",
+        order_type: "takeout",
+      }),
+      onKitchen: order({
+        id: "onKitchen",
+        db_order_id: "onKitchen",
+        order_source: "online",
+        order_status: "sent_to_kitchen",
+      }),
+      onCompleted: order({
+        id: "onCompleted",
+        db_order_id: "onCompleted",
+        order_source: "online",
+        order_status: "completed",
+      }),
+      onDeclined: order({
+        id: "onDeclined",
+        db_order_id: "onDeclined",
+        order_source: "online",
+        order_status: "declined",
+      }),
+      posPending: order({
+        id: "posPending",
+        db_order_id: "posPending",
+        order_source: "pos",
+        order_status: "pending",
+      }),
+    },
+    orderIds: [
+      "onPending",
+      "onKitchen",
+      "onCompleted",
+      "onDeclined",
+      "posPending",
+    ],
+  };
+});
+
+describe("online order selectors", () => {
+  it("usePendingOnlineOrders returns only online+pending (incl. QR), excludes pos/sent/declined", () => {
+    const { result } = renderHook(() => usePendingOnlineOrders());
+    expect(result.current.map((o) => o.id)).toEqual(["onPending"]);
+  });
+
+  it("usePendingOnlineOrderCount counts pending online orders only", () => {
+    const { result } = renderHook(() => usePendingOnlineOrderCount());
+    expect(result.current).toBe(1);
+  });
+
+  it("useOnlineOrders feeds the board: keeps pending/kitchen/completed, drops pos + declined", () => {
+    const { result } = renderHook(() => useOnlineOrders());
+    expect(result.current.map((o) => o.id).sort()).toEqual(
+      ["onCompleted", "onKitchen", "onPending"].sort(),
+    );
+  });
+});
+
+describe("edge-tab selectors (active/unseen)", () => {
+  beforeEach(() => {
+    useOnlineOrderDrawerStore.setState({ isOpen: false, seenOrderIds: {} });
+  });
+
+  it("useActiveOnlineOrderCount counts pending→ready only (no completed/declined/pos)", () => {
+    // Fixture: onPending + onKitchen are active; onCompleted/onDeclined/posPending are not.
+    const { result } = renderHook(() => useActiveOnlineOrderCount());
+    expect(result.current).toBe(2);
+  });
+
+  it("useActiveOnlineOrderCount includes ready orders", () => {
+    mockStoreState.ordersById.onReady = order({
+      id: "onReady",
+      db_order_id: "onReady",
+      order_source: "online",
+      order_status: "ready",
+    });
+    mockStoreState.orderIds.push("onReady");
+    const { result } = renderHook(() => useActiveOnlineOrderCount());
+    expect(result.current).toBe(3);
+  });
+
+  it("useUnseenOnlineOrderCount counts active orders not in the seen set", () => {
+    const { result } = renderHook(() => useUnseenOnlineOrderCount());
+    expect(result.current).toBe(2);
+  });
+
+  it("useUnseenOnlineOrderCount excludes seen keys (keyed by db_order_id)", () => {
+    useOnlineOrderDrawerStore.setState({ seenOrderIds: { onPending: true } });
+    const { result } = renderHook(() => useUnseenOnlineOrderCount());
+    expect(result.current).toBe(1);
+  });
+
+  it("useUnseenOnlineOrderCount falls back to local id when db_order_id is missing", () => {
+    mockStoreState.ordersById.onPending.db_order_id = undefined;
+    useOnlineOrderDrawerStore.setState({ seenOrderIds: { onPending: true } });
+    const { result } = renderHook(() => useUnseenOnlineOrderCount());
+    expect(result.current).toBe(1);
+  });
+
+  it("unseen count drops to 0 after openDrawer marks the active keys seen", () => {
+    useOnlineOrderDrawerStore
+      .getState()
+      .openDrawer(getActiveOnlineOrderKeys());
+    const { result } = renderHook(() => useUnseenOnlineOrderCount());
+    expect(result.current).toBe(0);
+  });
+
+  it("getActiveOnlineOrderKeys snapshots active keys only", () => {
+    expect(getActiveOnlineOrderKeys().sort()).toEqual([
+      "onKitchen",
+      "onPending",
+    ]);
+  });
+});

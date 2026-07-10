@@ -1,8 +1,8 @@
 import { useIsNetworkDegraded } from "@/hooks/useNetworkStatus";
 import { useIsActiveOrderReadOnly } from "@/lib/orderAccessControlHooks";
 import { colors } from "@/lib/theme";
-import { useUiScale } from "@/lib/uiScale";
 import { CartItem } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -319,7 +319,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   );
 
   const handleDelete = () => {
-    if (!activeOrderId || !isEditable || item.is_voided) return;
+    if (!activeOrderId || !isEditable || item.is_voided || isPaidItem) return;
 
     if (item.isDraft || !isKitchenItem) {
       const now = Date.now();
@@ -346,7 +346,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   handleDeleteRef.current = handleDelete;
 
   const handleLeftSwipe = () => {
-    if (!activeOrderId || !isEditable || item.is_voided) return;
+    if (!activeOrderId || !isEditable || item.is_voided || isPaidItem) return;
 
     if ((item.isDraft || !isKitchenItem) && displayQuantityRef.current <= 1) {
       const now = Date.now();
@@ -400,7 +400,13 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   };
 
   const handleIncrement = () => {
-    if (!activeOrderId || !isEditable || item.is_voided || isKitchenItem)
+    if (
+      !activeOrderId ||
+      !isEditable ||
+      item.is_voided ||
+      isPaidItem ||
+      isKitchenItem
+    )
       return;
     const now = Date.now();
     if (now - incrementThrottleRef.current < 400) return;
@@ -536,6 +542,9 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     isVoided,
   ]);
 
+  // Block swiping on fully paid items — they should be refunded, not deleted/voided.
+  const isPaidItem = paymentCoverage.isFullyPaid;
+
   // Check if item has any modifiers to show
   const hasModifiers =
     (item.customizations.modifiers &&
@@ -585,10 +594,9 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     item.isDraft === true ||
     normalizedKitchenStatus === "" ||
     normalizedKitchenStatus === "new";
-  const effectivePrepStatus =
-    isUnsentItem
-      ? "new"
-      : normalizedKitchenStatus
+  const effectivePrepStatus = isUnsentItem
+    ? "new"
+    : normalizedKitchenStatus
       ? normalizedKitchenStatus
       : normalizedItemStatus;
 
@@ -663,7 +671,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         />
       )}
 
-      {isEditable && !isVoided && (
+      {isEditable && !isVoided && !isPaidItem && (
         <Animated.View
           style={deleteButtonStyle}
           className="absolute right-1 top-0 bottom-0 justify-center items-end z-10"
@@ -681,7 +689,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         </Animated.View>
       )}
 
-      {isEditable && !isVoided && !isKitchenItem && (
+      {isEditable && !isVoided && !isPaidItem && !isKitchenItem && (
         <Animated.View
           style={incrementButtonStyle}
           className="absolute left-2 top-0 bottom-0 justify-center items-center z-10"
@@ -695,7 +703,9 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         </Animated.View>
       )}
 
-      <GestureDetector gesture={isVoided || item.isDraft ? Gesture.Pan() : pan}>
+      <GestureDetector
+        gesture={isVoided || isPaidItem || item.isDraft ? Gesture.Pan() : pan}
+      >
         <Animated.View
           style={[
             animatedStyle,
@@ -739,9 +749,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       numberOfLines={1}
                     >
                       {item.is_to_go ? (
-                        <Text
-                          style={{ color: colors.teal, fontWeight: "700" }}
-                        >
+                        <Text style={{ color: colors.teal, fontWeight: "700" }}>
                           [TO GO]{" "}
                         </Text>
                       ) : null}
