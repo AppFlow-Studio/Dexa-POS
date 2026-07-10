@@ -1,4 +1,5 @@
 import { useOrderPayments } from '@/hooks/orders/useOrderPayments'
+import { formatTaxRate } from '@/utils/money'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
@@ -200,7 +201,7 @@ const TotalsComponent: React.FC = () => {
 
       <View className='flex-row justify-between items-center mb-1.5'>
         <Text style={{ color: colors.heading, fontSize: s(11) }}>
-          Tax ({defaultTaxRate.toFixed(2)}%)
+          Tax ({formatTaxRate(defaultTaxRate)}%)
         </Text>
         <Text
           style={{ color: colors.heading, fontSize: s(11), fontWeight: '600' }}
@@ -214,7 +215,7 @@ const TotalsComponent: React.FC = () => {
           <Text style={{ color: colors.heading, fontSize: s(11) }}>
             {totals.serviceChargeName || 'Service Charge'}
             {totals.serviceChargeRate != null
-              ? ` (${Number(totals.serviceChargeRate).toFixed(2)}%)`
+              ? ` (${formatTaxRate(Number(totals.serviceChargeRate))}%)`
               : ''}
           </Text>
           <Text

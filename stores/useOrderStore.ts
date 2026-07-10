@@ -98,6 +98,7 @@ import {
   scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
 import { snapshotTableName } from "@/lib/orderDisplay";
+import { aggregateTaxByCategory } from "@/utils/money";
 import { resolveInboundToGo } from "@/lib/pendingToGo";
 import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
 
@@ -546,13 +547,22 @@ function hasItemLevelChanges(
       return true; // Item missing from backend (shouldn't happen)
     }
 
-    // Compare critical financial fields (backend is source of truth)
+    // Compare critical financial fields (backend is source of truth).
+    // Tax is compared with a ±1¢ tolerance: the server computes order tax as an
+    // aggregate per rate group and redistributes the rounding residual onto one
+    // item per group (largest (created_at, id)), which the client intentionally
+    // does NOT replicate per item (it lacks the created_at/db id for unsynced
+    // items). So a synced item's per-item tax can legitimately differ from the
+    // client's per-item value by a cent without indicating real drift. Subtotal
+    // and quantity remain exact.
+    const taxCentDrift =
+      Math.abs((localItem.taxAmount ?? 0) - (backendItem.tax_amount ?? 0)) > 0.01 ||
+      Math.abs((localItem.cashTaxAmount ?? 0) - (backendItem.cash_tax_amount ?? 0)) > 0.01;
     if (
       localItem.quantity !== backendItem.quantity ||
       localItem.subtotal !== backendItem.subtotal ||
       localItem.cashSubtotal !== backendItem.cash_subtotal ||
-      localItem.taxAmount !== backendItem.tax_amount ||
-      localItem.cashTaxAmount !== backendItem.cash_tax_amount
+      taxCentDrift
     ) {
       return true; // Financial data differs
     }
@@ -1877,6 +1887,14 @@ const addItemToBackend = async (
                     ...i,
                     db_order_item_id: addResult.order_item_id,
                     sync_status: "synced" as const,
+                    // Backfill the server-authoritative dual-priced cash values
+                    // so the cart's cash totals match the DB exactly. The server
+                    // (add_open_item) is the single source of truth for the
+                    // card/cash split; the optimistic value may lag if the local
+                    // pricing config differs.
+                    cashPrice: addResult.cash_price ?? i.cashPrice,
+                    baseCashPrice: addResult.cash_price ?? i.baseCashPrice,
+                    cashSubtotal: addResult.cash_subtotal ?? i.cashSubtotal,
                   }
                 : i,
             );
@@ -12254,20 +12272,16 @@ export const useOrderStore = create<OrderState>()(
                 0,
               total_tax:
                 order.total_tax ||
-                (() => {
-                  // Calculate per-item tax if total_tax not set
-                  const taxRatesMap =
-                    useStoreSettingsStore.getState().taxRatesMap;
-                  let taxSum = 0;
-                  for (const item of order.items) {
-                    if (item.is_tax_exempt) continue;
-                    const taxCategory = item.tax_category || "standard";
-                    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-                    taxSum +=
-                      item.price * item.quantity * (taxRatePercent / 100);
-                  }
-                  return taxSum;
-                })(),
+                // v6: fallback tax when total_tax unset — aggregate per rate
+                // group (round once per group), matching the server.
+                aggregateTaxByCategory(
+                  order.items.map((item) => ({
+                    netSubtotal: item.price * item.quantity,
+                    taxCategory: item.tax_category,
+                    isTaxExempt: item.is_tax_exempt,
+                  })),
+                  useStoreSettingsStore.getState().taxRatesMap,
+                ),
             };
 
             // Audit log
