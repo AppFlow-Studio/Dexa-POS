@@ -1,15 +1,13 @@
 import { getDeviceId } from "@/lib/deviceId";
 import { DEADLINES } from "@/lib/network/deadlines";
-import { clearPendingToGo, markPendingToGo } from "@/lib/pendingToGo";
 import {
     rpcWithIdempotency,
     withIdempotency,
 } from "@/lib/network/idempotencyKey";
-import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { runWithDeadline as _runWithDeadline } from "@/lib/network/runWithDeadline";
+import { clearPendingToGo, markPendingToGo } from "@/lib/pendingToGo";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { v4 as uuidv4 } from "uuid";
 import {
     AddOrderItemParams,
     AddOrderItemResult,
@@ -29,6 +27,15 @@ import {
     UpdateOrderItemResult,
 } from "@/types/db-order-management-types";
 import { SupabaseClient } from "@supabase/supabase-js";
+import { v4 as uuidv4 } from "uuid";
+
+/**
+ * JSON envelope returned by accept_online_order / decline_online_order.
+ * These RPCs return HTTP 200 with success:false on guard failures (e.g. the
+ * order is no longer pending), so outcome detection reads this shape, not the
+ * transport `error`.
+ */
+
 
 /**
  * JSON envelope returned by accept_online_order / decline_online_order.
@@ -619,9 +626,7 @@ export class OrderService {
         ok: false,
         error:
           verifyError ??
-          new Error(
-            `Order ${orderId} remained draft after status update`,
-          ),
+          new Error(`Order ${orderId} remained draft after status update`),
       };
     }
     return { ok: true };
@@ -1192,7 +1197,8 @@ export class OrderService {
         order_payments (*),
         order_discounts (*),
         stations (station_name),
-        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name)
+        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name),
+        online_orders:online_orders!online_orders_order_id_fkey (order_id, provider, delivery_company)
       `,
       )
       .eq("location_id", locationId)
@@ -1237,7 +1243,8 @@ export class OrderService {
         order_payments (*),
         order_discounts (*),
         stations (station_name),
-        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name)
+        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name),
+        online_orders:online_orders!online_orders_order_id_fkey (order_id, provider, delivery_company)
       `,
       )
       .eq("location_id", locationId)
@@ -1272,7 +1279,12 @@ export class OrderService {
     startTs?: string | null,
     endTs?: string | null,
     signal?: AbortSignal,
-  ): Promise<{ data: any[] | null; error: any; hasMore: boolean; nextCursor: string | null }> {
+  ): Promise<{
+    data: any[] | null;
+    error: any;
+    hasMore: boolean;
+    nextCursor: string | null;
+  }> {
     let query = client
       .from("orders")
       .select(
@@ -1282,7 +1294,8 @@ export class OrderService {
         order_payments (*),
         order_discounts (*),
         stations (station_name),
-        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name)
+        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name),
+        online_orders:online_orders!online_orders_order_id_fkey (order_id, provider, delivery_company)
       `,
       )
       .eq("location_id", locationId)
@@ -1304,7 +1317,7 @@ export class OrderService {
     const rows = data ?? [];
     const hasMore = rows.length === limit;
     const nextCursor = hasMore
-      ? (rows[rows.length - 1] as { created_at?: string })?.created_at ?? null
+      ? ((rows[rows.length - 1] as { created_at?: string })?.created_at ?? null)
       : null;
     return { data, error, hasMore, nextCursor };
   }
@@ -2040,7 +2053,7 @@ export class OrderService {
     params: {
       p_order_id: string;
       p_manager_id: string;
-      p_mode?: 'amount' | 'percent';
+      p_mode?: "amount" | "percent";
       p_amount?: number | null;
       p_rate?: number | null;
       p_reason?: string | null;
@@ -2050,19 +2063,19 @@ export class OrderService {
     },
   ): Promise<{ data: { success: boolean } | null; error: Error | null }> {
     const { data, error } = await _runWithDeadline<any>(
-      'override_service_charge_v3',
+      "override_service_charge_v3",
       DEADLINES.hotMutation,
       async (signal) => {
         const { data: d, error: e } = await client
-          .rpc('override_service_charge_v3', {
-            p_order_id:    params.p_order_id,
-            p_manager_id:  params.p_manager_id,
-            p_mode:        params.p_mode ?? 'amount',
-            p_amount:      params.p_amount ?? null,
-            p_rate:        params.p_rate ?? null,
-            p_reason:      params.p_reason ?? null,
-            p_station_id:  params.p_station_id ?? null,
-            p_is_taxable:  params.p_is_taxable ?? null,
+          .rpc("override_service_charge_v3", {
+            p_order_id: params.p_order_id,
+            p_manager_id: params.p_manager_id,
+            p_mode: params.p_mode ?? "amount",
+            p_amount: params.p_amount ?? null,
+            p_rate: params.p_rate ?? null,
+            p_reason: params.p_reason ?? null,
+            p_station_id: params.p_station_id ?? null,
+            p_is_taxable: params.p_is_taxable ?? null,
           })
           .abortSignal(signal);
         return { data: d, error: e };

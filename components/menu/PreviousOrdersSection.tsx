@@ -11,11 +11,11 @@ import { useFocusEffect } from "expo-router";
 import { RefreshCw, Search, X } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  Pressable,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Pressable,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useShallow } from "zustand/react/shallow";
@@ -303,6 +303,7 @@ const PreviousOrdersSection = () => {
           payments: po.payments,
           order_source: po.order_source ?? null,
           delivery_platform: po.delivery_platform ?? null,
+          _isOnlineOrder: po._isOnlineOrder,
           reversals: po.reversals,
           order_refund_items: po.order_refund_items,
           _offlineUnsynced: po._offlineUnsynced,
@@ -336,7 +337,7 @@ const PreviousOrdersSection = () => {
       if (DINE_IN_VALUES.has(t)) dineIn++;
       else if (TAKEAWAY_VALUES.has(t)) takeaway++;
       else if (DELIVERY_VALUES.has(t)) delivery++;
-      if (o.order_source?.toLowerCase() === "online") online++;
+      if (o._isOnlineOrder) online++;
     }
     return {
       All: allOrders.length,
@@ -353,9 +354,7 @@ const PreviousOrdersSection = () => {
 
     // Filter by tab
     if (activeTab === "Online") {
-      filtered = filtered.filter(
-        (o) => o.order_source?.toLowerCase() === "online",
-      );
+      filtered = filtered.filter((o) => o._isOnlineOrder);
     } else if (activeTab !== "All") {
       const tabSet =
         activeTab === "Dine In"
