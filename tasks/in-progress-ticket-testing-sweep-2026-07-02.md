@@ -32,7 +32,7 @@ Website repo coordination:
 | [POS+Web Orders/KDS] Delivery-platform logo everywhere | POS/KDS/Previous Orders | POS part implemented; web part is separate | Ali QA | High |
 | [POS/Web] Location POS Settings + station overrides | POS/schema + web coordination | POS/schema side implemented; web UI/settings side separate | Ali QA + web branch | High |
 | Timesheets manual hour adjustment + configurable auto clock-out | POS/backend + web coordination | POS/backend auto clock-out implemented; website manual adjustment is separate | Ali QA + migration apply | High |
-| QA: Table Merge & Transfer + POS Dates/Calendars | POS QA | Not implemented by me; likely table/order sync QA ticket | Ali QA / owner branch | High if bugs found |
+| QA: Table Merge & Transfer + POS Dates/Calendars | POS/backend QA | Transfer/merge safety migration + POS client guard added; full tablet/Supabase QA still pending | Ali QA | High |
 | [DATA] Owner mis-provisioned - Bay Ridge owner relink | Data/admin | Not POS code; needs senior/prod-authorized repair | Senior/prod repair | Low/Medium |
 | P0 cash payment records `$0.00` / Paid with balance | POS/backend | Not implemented in this branch | Owner branch / new work | High |
 | POS offline order never syncs / pay-after-paid / clipped New Order | POS/offline | Not implemented in this branch | POS owner / new work | High |
@@ -46,6 +46,7 @@ Run these in Supabase before testing the migration-backed tickets:
 - `supabase/migrations/20260629130000_order_numbers_location_timezone.sql`
 - `supabase/migrations/20260630120000_station_pos_config_overrides.sql`
 - `supabase/migrations/20260702120000_auto_clock_out_stale_shifts.sql`
+- `supabase/migrations/20260710120000_table_transfer_session_safety.sql`
 
 Important:
 
@@ -589,8 +590,10 @@ Record video:
 
 Status:
 
-- Not part of the completed POS ticket set in this branch.
-- Treat as separate POS table/order sync QA unless another branch owns it.
+- POS/backend safety work is now implemented in this branch.
+- Migration added: `supabase/migrations/20260710120000_table_transfer_session_safety.sql`.
+- POS client guard added in `services/floorPlanService.ts`.
+- Full tablet and Supabase QA is still required before Done.
 
 POS QA:
 
@@ -607,6 +610,8 @@ POS QA:
 11. Expected: newest order appears first.
 12. Use Previous Orders calendar/date picker for today and previous date.
 13. Expected: order appears under the correct local date.
+14. Attempt transfer while offline.
+15. Expected: POS blocks transfer with connection warning and does not queue an optimistic move.
 
 Supabase QA:
 
@@ -621,9 +626,29 @@ WHERE order_id = '<order_id>'
 ORDER BY created_at;
 ```
 
+RPC edge QA after migration:
+
+```sql
+-- Empty target array must error and preserve existing table links.
+SELECT public.transfer_table_session('<SESSION_ID>'::uuid, ARRAY[]::uuid[], 'qa empty');
+
+-- Duplicate target IDs must error and preserve existing table links.
+SELECT public.transfer_table_session(
+  '<SESSION_ID>'::uuid,
+  ARRAY['<TABLE_ID>'::uuid, '<TABLE_ID>'::uuid],
+  'qa duplicate'
+);
+
+-- Confirm the session still has its original active table links.
+SELECT session_id, table_id, is_primary, seated_position, is_active
+FROM public.table_session_tables
+WHERE session_id = '<SESSION_ID>'::uuid
+ORDER BY is_active DESC, seated_position;
+```
+
 Record video:
 
-- Yes if this is being closed, because merge/transfer is a complex flow.
+- Yes. Required proof should include transfer happy path, occupied target blocked, offline blocked, and Supabase edge-case query results.
 
 ## 12. Bay Ridge Owner Identity Relink
 
@@ -634,8 +659,10 @@ Ticket title:
 Status:
 
 - Not POS code.
+- Data/admin runbook added: `tasks/bay-ridge-owner-misprovisioned-relink.md`.
 - Requires senior/prod-authorized Clerk and Supabase repair.
 - POS is only affected indirectly through shared staff/member identity.
+- POS PIN login reads `location_members` + `staff_profiles`; the Staff Directory reactivate failure is not in this repo.
 
 Supabase QA after repair:
 
