@@ -28,6 +28,7 @@ import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { calculateCustomSplitCashAmount } from "@/utils/custom-split-amounts";
+import { aggregateTaxByCategory } from "@/utils/money";
 import { create } from "zustand";
 import {
     calculateItemEffectiveCashPrice,
@@ -815,7 +816,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     // Helper function to calculate tax for split items using CARD pricing
     const calculateSplitCardAmount = (items: typeof masterItems): number => {
       let subtotal = 0;
-      let tax = 0;
+      const taxLines: Array<{
+        netSubtotal: number;
+        taxCategory?: string | null;
+        isTaxExempt?: boolean;
+      }> = [];
 
       for (const item of items) {
         const originalItem = originalItemsMap.get(item.id);
@@ -831,20 +836,16 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           item.price * item.quantity - discountAmount,
         );
         subtotal += itemSubtotal;
-
-        // Skip tax-exempt items
-        if (item.is_tax_exempt) continue;
-
-        // Get the tax rate for this item's category (default to "standard" if not set)
-        const taxCategory = item.tax_category || "standard";
-        const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-        const taxRateDecimal = taxRatePercent / 100;
-
-        // Calculate tax for this item
-        tax += itemSubtotal * taxRateDecimal;
+        taxLines.push({
+          netSubtotal: itemSubtotal,
+          taxCategory: item.tax_category,
+          isTaxExempt: item.is_tax_exempt,
+        });
       }
 
-      // Round to 2 decimal places
+      // v6: aggregate tax per rate group (round once per group), matching the
+      // server's calculation for this item subset. Not per-item rounding.
+      const tax = aggregateTaxByCategory(taxLines, taxRatesMap);
       return round2(subtotal + tax);
     };
 
@@ -852,7 +853,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     // Uses calculateItemEffectiveCashPrice to include modifiers and add-ons
     const calculateSplitCashAmount = (items: typeof masterItems): number => {
       let subtotal = 0;
-      let tax = 0;
+      const taxLines: Array<{
+        netSubtotal: number;
+        taxCategory?: string | null;
+        isTaxExempt?: boolean;
+      }> = [];
 
       for (const item of items) {
         const originalItem = originalItemsMap.get(item.id);
@@ -870,20 +875,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           itemCashPrice * item.quantity - discountAmount,
         );
         subtotal += itemSubtotal;
-
-        // Skip tax-exempt items
-        if (item.is_tax_exempt) continue;
-
-        // Get the tax rate for this item's category (default to "standard" if not set)
-        const taxCategory = item.tax_category || "standard";
-        const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-        const taxRateDecimal = taxRatePercent / 100;
-
-        // Calculate tax for this item
-        tax += itemSubtotal * taxRateDecimal;
+        taxLines.push({
+          netSubtotal: itemSubtotal,
+          taxCategory: item.tax_category,
+          isTaxExempt: item.is_tax_exempt,
+        });
       }
 
-      // Round to 2 decimal places
+      // v6: aggregate tax per rate group on the cash base (round once per group).
+      const tax = aggregateTaxByCategory(taxLines, taxRatesMap);
       return round2(subtotal + tax);
     };
 

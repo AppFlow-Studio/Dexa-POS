@@ -289,6 +289,12 @@ const OpenItemAdder = ({
   const basePrice = parseFloat(openItemPrice);
   const parsedBasePrice = Number.isFinite(basePrice) ? basePrice : 0;
   const totalEnteredPrice = round2(parsedBasePrice + modifierTotal);
+  // The cashier enters the CASH/base price; under dual pricing the card price is
+  // surcharged by the dual-pricing %. The "Final" summary is labelled "Card
+  // adjusted N%", so it must show the card-adjusted price, not the base.
+  const cardAdjustedPrice = isDualPricing
+    ? round2(totalEnteredPrice * (1 + dualPricingPct! / 100))
+    : totalEnteredPrice;
 
   const resetForm = () => {
     setOpenItemName("");
@@ -665,7 +671,7 @@ const OpenItemAdder = ({
                 <View style={styles.summaryCard}>
                   <Text style={styles.label}>Final</Text>
                   <Text style={[styles.summaryValue, { color: colors.teal }]}>
-                    ${totalEnteredPrice.toFixed(2)}
+                    ${cardAdjustedPrice.toFixed(2)}
                   </Text>
                   <Text style={styles.summarySubtext}>
                     {isDualPricing

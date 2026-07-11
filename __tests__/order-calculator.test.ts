@@ -918,3 +918,139 @@ describe("Scenario 17: Dual Pricing with Percentage Discount", () => {
     expect(result.cash_total_amount).toBe(23.26);
   });
 });
+
+// ============================================================================
+// SCENARIO 18: Aggregate-per-rate-group tax (v6)
+// Regression for the penny-drift bug: tax must be ROUND(Σ net * rate, 2) once
+// per rate group, NOT Σ ROUND(net_i * rate, 2). These differ by a cent on
+// multi-item orders — the exact bug reported ($6378.68 vs expected $6378.69).
+// ============================================================================
+
+describe("Scenario 18: Aggregate-per-rate-group tax (v6)", () => {
+  const money = (price: number, overrides: Partial<CartItem> = {}): CartItem =>
+    createMockItem({
+      originalPrice: price,
+      price,
+      unitPrice: price,
+      cashPrice: price,
+      baseCardPrice: price,
+      baseCashPrice: price,
+      ...overrides,
+    });
+
+  it("rounds tax once on the aggregate, not per item (aggregate higher)", () => {
+    // 3 items @ $2.28. Per-item: ROUND(2.28*8.875%,2)=0.20 each -> sum 0.60 (old bug).
+    // Aggregate: ROUND(6.84*8.875%,2)=ROUND(0.60705,2)=0.61 (correct).
+    const items = [
+      money(2.28, { id: "a1" }),
+      money(2.28, { id: "a2" }),
+      money(2.28, { id: "a3" }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    expect(result.subtotal).toBe(6.84);
+    expect(result.tax_amount).toBe(0.61); // NOT the old per-item-sum 0.60
+    expect(result.total_amount).toBe(7.45); // NOT 7.44
+    // Fully unpaid: outstanding (what the cashier collects) must match the total.
+    expect(result.outstanding_total).toBe(7.45);
+  });
+
+  it("rounds tax once on the aggregate (aggregate lower)", () => {
+    // 3 items @ $3.33. Per-item: ROUND(3.33*8.875%,2)=0.30 each -> 0.90.
+    // Aggregate: ROUND(9.99*8.875%,2)=ROUND(0.886613,2)=0.89.
+    const items = [
+      money(3.33, { id: "b1" }),
+      money(3.33, { id: "b2" }),
+      money(3.33, { id: "b3" }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    expect(result.subtotal).toBe(9.99);
+    expect(result.tax_amount).toBe(0.89); // NOT the old per-item-sum 0.90
+    expect(result.total_amount).toBe(10.88);
+  });
+
+  it("groups by rate: multi-rate order rounds each group once, then sums", () => {
+    // Standard 8.875%: 3 @ $2.28 -> group tax ROUND(6.84*8.875%)=0.61
+    // Alcohol 12.0%:   2 @ $7.77 -> group tax ROUND(15.54*12%)=ROUND(1.8648)=1.86
+    const items = [
+      money(2.28, { id: "s1", taxRate: 8.875, tax_category: "standard" }),
+      money(2.28, { id: "s2", taxRate: 8.875, tax_category: "standard" }),
+      money(2.28, { id: "s3", taxRate: 8.875, tax_category: "standard" }),
+      money(7.77, { id: "l1", taxRate: 12.0, tax_category: "alcohol" }),
+      money(7.77, { id: "l2", taxRate: 12.0, tax_category: "alcohol" }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    expect(result.subtotal).toBe(22.38); // 6.84 + 15.54
+    expect(result.tax_amount).toBe(2.47); // 0.61 + 1.86
+    expect(result.total_amount).toBe(24.85);
+  });
+
+  it("computes cash tax on the cash base independently of card", () => {
+    // Card net 3 @ $2.28 = 6.84 -> tax 0.61; cash net 3 @ $2.00 = 6.00 -> tax 0.53
+    const items = [
+      money(2.28, { id: "c1", cashPrice: 2.0, baseCashPrice: 2.0 }),
+      money(2.28, { id: "c2", cashPrice: 2.0, baseCashPrice: 2.0 }),
+      money(2.28, { id: "c3", cashPrice: 2.0, baseCashPrice: 2.0 }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    expect(result.tax_amount).toBe(0.61); // ROUND(6.84 * 8.875%)
+    expect(result.cash_tax_amount).toBe(0.53); // ROUND(6.00 * 8.875%) = ROUND(0.5325)
+  });
+
+  it("excludes exempt items from the aggregate base", () => {
+    const items = [
+      money(2.28, { id: "t1" }),
+      money(2.28, { id: "t2" }),
+      money(2.28, { id: "t3" }),
+      money(50.0, { id: "ex", is_tax_exempt: true }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    // Only the 3 taxable items form the base; exempt item adds subtotal but no tax.
+    expect(result.tax_amount).toBe(0.61);
+    expect(result.subtotal).toBe(56.84);
+  });
+
+  it("partially-paid: outstanding tax also uses aggregate-per-rate-group", () => {
+    // 3 @ $2.28, one fully paid -> unpaid net 4.56 -> outstanding tax ROUND(4.56*8.875%)=0.40
+    const items = [
+      money(2.28, { id: "p1", quantity: 1, paidQuantity: 1 }),
+      money(2.28, { id: "p2" }),
+      money(2.28, { id: "p3" }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    // Full order tax is still the aggregate 0.61.
+    expect(result.tax_amount).toBe(0.61);
+    // Outstanding on the 2 unpaid items: ROUND(4.56 * 8.875%, 2) = ROUND(0.4047) = 0.40
+    expect(result.outstanding_tax).toBe(0.4);
+    expect(result.outstanding_total).toBe(4.96); // 4.56 + 0.40
+  });
+});
