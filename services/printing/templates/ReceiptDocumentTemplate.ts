@@ -178,7 +178,7 @@
 
 //   return { nodes, maxCharsPerLine: w };
 // }
-// //  still not flush aligned only the sections A and I are flush aligned if that help   
+// //  still not flush aligned only the sections A and I are flush aligned if that help
 
 // // ============================================================================
 // // ITEM HELPERS
@@ -268,7 +268,11 @@
 //   }
 // }
 
-import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-document";
+import {
+    PrintDocument,
+    PrintNode,
+    PrintTextFormat,
+} from "@/types/print-document";
 import { ReceiptItemData, ReceiptTemplateData } from "@/types/printer";
 import { formatCurrency } from "@/utils/currency";
 import { sanitizeForPrint } from "../utils/sanitizeText";
@@ -279,7 +283,11 @@ import { sanitizeForPrint } from "../utils/sanitizeText";
 
 const BOLD: PrintTextFormat = { bold: true };
 const BOLD_DW: PrintTextFormat = { bold: true, doubleWidth: true };
-const ORDER_NUM: PrintTextFormat = { bold: true, doubleHeight: true, doubleWidth: true };
+const ORDER_NUM: PrintTextFormat = {
+  bold: true,
+  doubleHeight: true,
+  doubleWidth: true,
+};
 
 // ============================================================================
 // LAYOUT CONSTANTS
@@ -304,6 +312,40 @@ function truncate(s: string, maxLen: number): string {
   if (s.length <= maxLen) return s;
   if (maxLen <= ELLIPSIS.length) return s.slice(0, maxLen);
   return s.slice(0, maxLen - ELLIPSIS.length).trimEnd() + ELLIPSIS;
+}
+
+/**
+ * Split a string into lines that each fit within maxLen, breaking at word
+ * boundaries. Lines are trimmed. Used for notes / long text that should never
+ * be silently truncated.
+ */
+function wordWrap(s: string, maxLen: number): string[] {
+  if (maxLen <= 0) return [];
+  if (!s) return [""];
+  const lines: string[] = [];
+  let current = "";
+  for (const word of s.split(/\s+/)) {
+    if (!word) continue;
+    // +1 for the space separator between words
+    const sep = current.length > 0 ? 1 : 0;
+    if (current.length + sep + word.length <= maxLen) {
+      current = current ? `${current} ${word}` : word;
+    } else {
+      if (current) {
+        lines.push(current);
+      }
+      // If a single word is longer than maxLen, hard-break it
+      if (word.length > maxLen) {
+        for (let i = 0; i < word.length; i += maxLen) {
+          lines.push(word.slice(i, i + maxLen));
+        }
+      } else {
+        current = word;
+      }
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [""];
 }
 
 function safeCurrency(n: number | undefined | null): string {
@@ -361,7 +403,7 @@ function validateAndDefault(data: ReceiptTemplateData): ReceiptTemplateData {
  */
 export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   const validated = validateAndDefault(data);
-  const w = 32
+  const w = 32;
   const cfg = validated.templateConfig;
   const nodes: PrintNode[] = [];
   const CENTER_TRIGGER = 3;
@@ -456,7 +498,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   // ═══ SEAM: handoff from DEXA top to Figure body ══════════════════════
   nodes.push({ type: "empty_line" });
 
-
   // ── D. Items (Figure style: bold name left, bold price right) ────────
   nodes.push({ type: "divider", style: "solid", lineWidth: w, weight: "bold" });
   nodes.push({ type: "empty_line" });
@@ -517,9 +558,10 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   }
 
   if ((validated.tip ?? 0) > 0) {
-    const tipPct = validated.subtotal > 0
-      ? ` (${((validated.tip / validated.subtotal) * 100).toFixed(1)}%)`
-      : "";
+    const tipPct =
+      validated.subtotal > 0
+        ? ` (${((validated.tip / validated.subtotal) * 100).toFixed(1)}%)`
+        : "";
     nodes.push({
       type: "two_column",
       left: `Tip${tipPct}`,
@@ -529,13 +571,19 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     });
   }
 
-  nodes.push({ type : 'empty_line' })
+  nodes.push({ type: "empty_line" });
   // ── F. Grand Total (Figure: heavy rule, stacked totals, flush left) ──
-  nodes.push({ type: "divider", style: "double", lineWidth: w, weight: "bold" });
+  nodes.push({
+    type: "divider",
+    style: "double",
+    lineWidth: w,
+    weight: "bold",
+  });
   nodes.push({ type: "empty_line" });
   const hasDualPricing =
     validated.pricingMode === "dual" &&
-    validated.cashTotal !== undefined && validated.cashTotal !== validated.total;
+    validated.cashTotal !== undefined &&
+    validated.cashTotal !== validated.total;
   const totalLabel =
     validated.pricingMode === "cash"
       ? "TOTAL (CASH)"
@@ -613,7 +661,10 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
         format: BOLD,
       });
       if (payment.tipAmount && payment.tipAmount > 0) {
-        if (payment.originalTipAmount != null && payment.originalTipAmount !== payment.tipAmount) {
+        if (
+          payment.originalTipAmount != null &&
+          payment.originalTipAmount !== payment.tipAmount
+        ) {
           nodes.push({
             type: "two_column",
             left: "  Orig. Tip",
@@ -703,16 +754,17 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   // Longest label is "Date & Time of Print" = 20 chars.
   // Leave the rest of the line (w - 20 - 1 gap) for the value.
   // const META_VALUE_MAX = Math.max(8, w - 21);
-  const META_VALUE_MAX = 27
+  const META_VALUE_MAX = 27;
 
   if (validated.orderDate || validated.orderTime) {
-    const created = `${validated.orderDate ?? ""} ${validated.orderTime ?? ""}`.trim();
+    const created =
+      `${validated.orderDate ?? ""} ${validated.orderTime ?? ""}`.trim();
     nodes.push({
       type: "two_column",
       left: "Order Date",
       right: truncate(created, META_VALUE_MAX),
       lineWidth: w,
-      labelAlign : 'meta'
+      labelAlign: "meta",
     });
   }
 
@@ -722,7 +774,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Assignee",
       right: truncate(sanitizeForPrint(validated.serverName), META_VALUE_MAX),
       lineWidth: w,
-      labelAlign : 'meta'
+      labelAlign: "meta",
     });
   }
 
@@ -732,7 +784,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Type",
       right: truncate(sanitizeForPrint(validated.orderType), META_VALUE_MAX),
       lineWidth: w,
-      labelAlign : 'meta'
+      labelAlign: "meta",
     });
   }
   if (validated.tableName) {
@@ -741,7 +793,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Table",
       right: truncate(sanitizeForPrint(validated.tableName), META_VALUE_MAX),
       lineWidth: w,
-      labelAlign : 'meta'
+      labelAlign: "meta",
     });
   }
 
@@ -751,7 +803,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Customer",
       right: truncate(sanitizeForPrint(validated.customerName), META_VALUE_MAX),
       lineWidth: w,
-      labelAlign : 'meta'
+      labelAlign: "meta",
     });
   }
 
@@ -759,9 +811,12 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     nodes.push({
       type: "two_column",
       left: "Phone",
-      right: truncate(sanitizeForPrint(validated.customerPhone), META_VALUE_MAX),
+      right: truncate(
+        sanitizeForPrint(validated.customerPhone),
+        META_VALUE_MAX,
+      ),
       lineWidth: w,
-      labelAlign : 'meta'
+      labelAlign: "meta",
     });
   }
 
@@ -772,10 +827,9 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Print Date",
       right: truncate(printed, META_VALUE_MAX),
       lineWidth: w,
-      labelAlign : 'meta'
+      labelAlign: "meta",
     });
   }
-
 
   // ── J. Footer (Figure restraint: big gap → Copy label → brand) ───────
   if (cfg?.showBarcode !== false && validated.orderNumber) {
@@ -850,11 +904,24 @@ function pushSingleItem(
         : `  ${prefix}${modName}`;
       nodes.push({ type: "text_line", content: truncate(modLine, w) });
     }
+    // Un-itemized modifier upcharge (priced modifier whose per-option price
+    // didn't round-trip) — shown in aggregate so it isn't invisible.
+    if (item.modifiersUpcharge && item.modifiersUpcharge > 0) {
+      nodes.push({
+        type: "text_line",
+        content: truncate(
+          `  Modifiers  +${safeCurrency(item.modifiersUpcharge)}`,
+          w,
+        ),
+      });
+    }
   }
 
   if (item.notes) {
-    const noteLine = `  Note: ${sanitizeForPrint(item.notes)}`;
-    nodes.push({ type: "text_line", content: truncate(noteLine, w) });
+    const noteLines = wordWrap(`Note: ${sanitizeForPrint(item.notes)}`, w - 2);
+    for (const line of noteLines) {
+      nodes.push({ type: "text_line", content: `  ${line}` });
+    }
   }
 }
 

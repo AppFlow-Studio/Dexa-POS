@@ -1,22 +1,23 @@
 import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
-import { payableQuantity } from "@/lib/payableQuantity";
+import { calculateEvenSplitSpread } from "@/lib/order-calculator";
 import { isOrderReadOnly } from "@/lib/orderAccessControl";
+import { payableQuantity } from "@/lib/payableQuantity";
 import { startInteraction } from "@/lib/perf";
 import {
-  findLatestReusableEmptyDraftId,
-  getRefreshedReusableDraftNumbers,
+    findLatestReusableEmptyDraftId,
+    getRefreshedReusableDraftNumbers,
 } from "@/lib/reusableEmptyDraft";
 import { toastService } from "@/lib/toastService";
 import {
-  CartItem,
-  OrderPaymentTransactionDetails,
-  SplitPaymentPath,
+    CartItem,
+    OrderPaymentTransactionDetails,
+    SplitPaymentPath,
 } from "@/lib/types";
 import {
-  getFailedPayments,
-  getPendingPaymentsCount,
-  OfflineOperation,
-  retryFailedOperation,
+    getFailedPayments,
+    getPendingPaymentsCount,
+    OfflineOperation,
+    retryFailedOperation,
 } from "@/services/offlineSyncService";
 import { OrderService } from "@/services/orderService";
 import { trackCashPaymentInDrawer } from "@/services/paymentService";
@@ -26,14 +27,14 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
-import { calculateEvenSplitSpread } from "@/lib/order-calculator";
 import { calculateCustomSplitCashAmount } from "@/utils/custom-split-amounts";
+import { aggregateTaxByCategory } from "@/utils/money";
 import { create } from "zustand";
 import {
-  calculateItemEffectiveCashPrice,
-  getOrderStoreSupabaseClient,
-  round2,
-  useOrderStore,
+    calculateItemEffectiveCashPrice,
+    getOrderStoreSupabaseClient,
+    round2,
+    useOrderStore,
 } from "./useOrderStore";
 type PaymentMethod = "Card" | "Cash" | "Split";
 export type PaymentView =
@@ -437,13 +438,20 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     if (activeOrderId) {
       const order = orderState.ordersById[activeOrderId];
-      // A split is "in progress" once a portion has been captured (which locks
-      // split_payment_path) or any payment exists on the order.
-      const inSplit =
-        !!order?.split_payment_path ||
-        (order?.payments?.length ?? 0) > 0;
 
-      if (inSplit) {
+      // Determine whether ANY payment has been confirmed by the backend.
+      // A payment with db_payment_id is real money — must use voidAllPayments
+      // to reverse it (which calls void_payment RPC). If ALL payments are
+      // still pending (optimistic, never synced), we can silently discard them
+      // locally without touching the backend.
+      const hasConfirmedPayment = (order?.payments ?? []).some(
+        (p) =>
+          !p.isVoided &&
+          !p.isPreAuth &&
+          (!!p.db_payment_id || p.sync_status !== "pending"),
+      );
+
+      if (hasConfirmedPayment) {
         // Abandon the WHOLE split. voidAllPayments fires void_payment on every
         // backend-confirmed portion (reversing the real charge) AND removes any
         // never-synced locals, restores paidQuantity, and clears the split lock.
@@ -451,14 +459,24 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         // plain local rollback can't, since that portion is real money on the
         // server. Fire-and-forget: the sheet closes immediately; voidAllPayments
         // rolls itself back and toasts if any RPC fails.
-        void orderState.voidAllPayments(activeOrderId).catch(() => {
-          // Errors are surfaced + rolled back inside voidPayment; nothing to do.
+        //
+        // After voidAllPayments completes (or fails), always do a backend sync
+        // to converge local state. Even if voidAllPayments succeeds, the
+        // broadcast race could leave local state with stale optimistic values.
+        // If it fails (e.g. _checkCartEditable blocks), the sync still recovers.
+        void orderState.voidAllPayments(activeOrderId).finally(() => {
+          // Always sync from backend after void attempt. This converges local
+          // state whether voids succeeded or failed:
+          // - Success: backend already has correct totals; sync refreshes them
+          // - Failure: backend may have diverged; sync pulls authoritative state
+          void orderState
+            .syncOrderFromBackendComplete(activeOrderId, { force: true })
+            .catch(() => {});
         });
       } else {
         // No captured portion yet — just drop optimistic, never-confirmed
         // payments and defer amount_due to the backend.
-        const rolledBack =
-          orderState.discardUnsyncedPayments(activeOrderId);
+        const rolledBack = orderState.discardUnsyncedPayments(activeOrderId);
         if (rolledBack) {
           void orderState
             .syncOrderFromBackendComplete(activeOrderId, { force: true })
@@ -791,12 +809,18 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       (item) => !item.is_voided,
     );
 
-    const originalItemsMap = new Map(masterItems.map((item) => [item.id, item]));
+    const originalItemsMap = new Map(
+      masterItems.map((item) => [item.id, item]),
+    );
 
     // Helper function to calculate tax for split items using CARD pricing
     const calculateSplitCardAmount = (items: typeof masterItems): number => {
       let subtotal = 0;
-      let tax = 0;
+      const taxLines: Array<{
+        netSubtotal: number;
+        taxCategory?: string | null;
+        isTaxExempt?: boolean;
+      }> = [];
 
       for (const item of items) {
         const originalItem = originalItemsMap.get(item.id);
@@ -808,22 +832,20 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
                   originalQuantity,
               )
             : 0;
-        const itemSubtotal = round2(item.price * item.quantity - discountAmount);
+        const itemSubtotal = round2(
+          item.price * item.quantity - discountAmount,
+        );
         subtotal += itemSubtotal;
-
-        // Skip tax-exempt items
-        if (item.is_tax_exempt) continue;
-
-        // Get the tax rate for this item's category (default to "standard" if not set)
-        const taxCategory = item.tax_category || "standard";
-        const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-        const taxRateDecimal = taxRatePercent / 100;
-
-        // Calculate tax for this item
-        tax += itemSubtotal * taxRateDecimal;
+        taxLines.push({
+          netSubtotal: itemSubtotal,
+          taxCategory: item.tax_category,
+          isTaxExempt: item.is_tax_exempt,
+        });
       }
 
-      // Round to 2 decimal places
+      // v6: aggregate tax per rate group (round once per group), matching the
+      // server's calculation for this item subset. Not per-item rounding.
+      const tax = aggregateTaxByCategory(taxLines, taxRatesMap);
       return round2(subtotal + tax);
     };
 
@@ -831,7 +853,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     // Uses calculateItemEffectiveCashPrice to include modifiers and add-ons
     const calculateSplitCashAmount = (items: typeof masterItems): number => {
       let subtotal = 0;
-      let tax = 0;
+      const taxLines: Array<{
+        netSubtotal: number;
+        taxCategory?: string | null;
+        isTaxExempt?: boolean;
+      }> = [];
 
       for (const item of items) {
         const originalItem = originalItemsMap.get(item.id);
@@ -849,20 +875,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           itemCashPrice * item.quantity - discountAmount,
         );
         subtotal += itemSubtotal;
-
-        // Skip tax-exempt items
-        if (item.is_tax_exempt) continue;
-
-        // Get the tax rate for this item's category (default to "standard" if not set)
-        const taxCategory = item.tax_category || "standard";
-        const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-        const taxRateDecimal = taxRatePercent / 100;
-
-        // Calculate tax for this item
-        tax += itemSubtotal * taxRateDecimal;
+        taxLines.push({
+          netSubtotal: itemSubtotal,
+          taxCategory: item.tax_category,
+          isTaxExempt: item.is_tax_exempt,
+        });
       }
 
-      // Round to 2 decimal places
+      // v6: aggregate tax per rate group on the cash base (round once per group).
+      const tax = aggregateTaxByCategory(taxLines, taxRatesMap);
       return round2(subtotal + tax);
     };
 
@@ -1185,10 +1206,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         const { autoPrintSplitReceipts } =
           useLocationConfigStore.getState().config.printing;
         if (autoPrintSplitReceipts) {
-          const selectedStore =
-            useStoreSettingsStore.getState().selectedStore;
-          const afterOrder =
-            useOrderStore.getState().ordersById[activeOrderId];
+          const selectedStore = useStoreSettingsStore.getState().selectedStore;
+          const afterOrder = useOrderStore.getState().ordersById[activeOrderId];
           const justPaid = (afterOrder?.payments ?? []).find(
             (p) => !prePaymentPaymentIds.has(p.id),
           );

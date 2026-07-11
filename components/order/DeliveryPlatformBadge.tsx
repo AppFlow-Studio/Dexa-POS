@@ -24,6 +24,11 @@ interface DeliveryPlatformBadgeProps {
   onlineOrderProvider?: string | null;
   orderSource?: string | null;
   size?: "sm" | "md" | "kds";
+  /**
+   * UI scale factor (passed from useUiScale()).
+   * When provided, all spacing/font sizes are scaled proportionally.
+   * Applies to all size variants.
+   */
   uiScale?: number;
   solidBackground?: boolean;
 }
@@ -48,17 +53,16 @@ export default function DeliveryPlatformBadge({
 
   if (resolved.kind === "none") return null;
 
+  // Scale helper - applied to all size variants when uiScale is provided.
   const s =
-    size === "kds" && uiScale != null
-      ? (n: number) => Math.round(n * uiScale)
-      : (n: number) => n;
+    uiScale != null ? (n: number) => Math.round(n * uiScale) : (n: number) => n;
   const logo = resolved.provider ? PLATFORM_LOGOS[resolved.provider] : undefined;
   const accent =
     (resolved.provider ? PLATFORM_COLORS[resolved.provider] : undefined) ??
     colors.teal;
-  const logoSize = size === "md" ? 20 : 14;
-  const containerSize = size === "md" ? 28 : 20;
-  const fontSize = size === "kds" ? s(11) : size === "md" ? 11 : 10;
+  const logoSize = size === "md" ? s(20) : s(14);
+  const containerSize = size === "md" ? s(28) : s(20);
+  const fontSize = size === "kds" ? s(11) : size === "md" ? s(11) : s(10);
 
   if (resolved.kind === "marketplace" && logo) {
     if (size === "kds") {
@@ -128,12 +132,12 @@ export default function DeliveryPlatformBadge({
         borderWidth: 1,
         borderColor: badgeBorder,
         borderRadius: s(20),
-        paddingHorizontal: size === "kds" ? s(8) : size === "md" ? 8 : 6,
-        paddingVertical: size === "kds" ? s(3) : size === "md" ? 3 : 2,
+        paddingHorizontal: s(size === "kds" ? 8 : size === "md" ? 8 : 6),
+        paddingVertical: s(size === "kds" ? 3 : size === "md" ? 3 : 2),
       }}
     >
       <FallbackIcon
-        size={size === "kds" ? s(12) : size === "md" ? 12 : 9}
+        size={s(size === "kds" ? 12 : size === "md" ? 12 : 9)}
         color={colors.teal}
       />
       <Text style={{ fontSize, fontWeight: "700", color: colors.teal }}>

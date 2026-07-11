@@ -94,7 +94,9 @@ const OnlineOrderEdgeTab: React.FC = () => {
   }));
 
   const onPress = () => {
-    useOnlineOrderDrawerStore.getState().toggleDrawer(getActiveOnlineOrderKeys());
+    useOnlineOrderDrawerStore
+      .getState()
+      .toggleDrawer(getActiveOnlineOrderKeys());
   };
 
   return (
@@ -126,8 +128,8 @@ const OnlineOrderEdgeTab: React.FC = () => {
       >
         <ShoppingBag size={Math.round(24 * uiScale)} color={NEW_ORDER_BLUE} />
         <Text
-          className="font-bold"
           style={{
+            fontWeight: "700",
             color: colors.label,
             fontSize: Math.round(10 * uiScale),
             marginTop: 6,

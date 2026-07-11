@@ -5,13 +5,13 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { prefetchMenuItemRemoteImages } from "@/lib/menuImagePrefetch";
+import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import {
     beginMenuModifierPreWarm,
     isMenuModifierPreWarmCurrent,
 } from "@/lib/menuModifierPreWarmControl";
-import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
-import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { MenuItemType } from "@/lib/types";
 // import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -26,6 +26,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { BlurView } from "expo-blur";
 import { Link } from "expo-router";
 import {
@@ -47,10 +48,6 @@ import React, {
     useRef,
     useState,
 } from "react";
-import {
-  FlashList,
-  type ListRenderItemInfo,
-} from "@shopify/flash-list";
 import {
     ActivityIndicator,
     InteractionManager,
@@ -88,9 +85,9 @@ import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { useSearchStore } from "@/stores/searchStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { StyleSheet, ViewStyle } from "react-native";
 
 const menuSectionStyles = StyleSheet.create({
@@ -280,9 +277,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   );
   const hiddenMenuIds = useMenuVisibilityStore(
     (s) =>
-      (selectedStoreId
-        ? s.hiddenMenuIdsByLocation[selectedStoreId]
-        : null) ?? EMPTY_HIDDEN_MENU_IDS,
+      (selectedStoreId ? s.hiddenMenuIdsByLocation[selectedStoreId] : null) ??
+      EMPTY_HIDDEN_MENU_IDS,
   );
 
   // OPTIMIZED: Use computed selector to get only order_type, avoiding re-renders on item changes
@@ -338,15 +334,68 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // (mirrors the offline carve-out in addItemToActiveOrder). Only block while
   // ONLINE, otherwise the overlay would stick on "Creating order" forever offline.
   const { isOnline } = useNetworkStatus();
-  const isCreatingOrder = isOnline && !!activeOrderId && !currentOrderDbId;
+  // Also guard against stale/orphaned activeOrderId: if the order object doesn't
+  // exist in ordersById, don't block — BillSection will show "No Active
+  // Order" and the user can start fresh. Checking currentOrderPaidStatus as a
+  // proxy; if it's null and activeOrderId is set, the order doesn't exist.
+  const currentOrderExists = useOrderStore((s) =>
+    s.activeOrderId ? !!s.ordersById[s.activeOrderId] : false,
+  );
+  const isCreatingOrder =
+    isOnline && !!activeOrderId && !currentOrderDbId && currentOrderExists;
+
+  // Timeout + retry for the "Creating order" gate. If the eager-create RPC
+  // failed or was skipped, the order is permanently stuck with no db_order_id
+  // and the menu overlay blocks all interaction — the deadlock described in
+  // order-processing.tsx eager-create comment ("addItemToActiveOrder shows a
+  // toast and returns without triggering creation"). After the timeout elapses,
+  // retry ensureActiveOrderCreated once. If it still doesn't produce a
+  // db_order_id, unblock the menu so the on-demand creation path in
+  // addItemToActiveOrder can fire when the user taps an item.
+  const CREATE_ORDER_TIMEOUT_MS = 8_000;
+  const [creationRetryAt, setCreationRetryAt] = useState<number | null>(null);
+  const creationRetryRef = useRef(false);
+  useEffect(() => {
+    if (!isCreatingOrder) {
+      setCreationRetryAt(null);
+      creationRetryRef.current = false;
+      return;
+    }
+    if (creationRetryAt === null) {
+      setCreationRetryAt(Date.now() + CREATE_ORDER_TIMEOUT_MS);
+      return;
+    }
+    if (Date.now() < creationRetryAt) return;
+    if (creationRetryRef.current) return; // already retried
+    creationRetryRef.current = true;
+    console.log(
+      "[MenuSection] Creating order timed out — retrying ensureActiveOrderCreated",
+    );
+    void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+    // After the retry, give it another window; if still no db_order_id,
+    // unblock so addItemToActiveOrder's on-demand path can fire.
+    const secondChanceMs = 3_000;
+    const timer = setTimeout(() => {
+      const dbId =
+        useOrderStore.getState().ordersById[activeOrderId]?.db_order_id;
+      if (!dbId) {
+        console.log(
+          "[MenuSection] Second chance expired — unblocking menu (addItemToActiveOrder will handle creation on-demand)",
+        );
+        setCreationRetryAt(0); // sentinel: unblock
+      }
+    }, secondChanceMs);
+    return () => clearTimeout(timer);
+  }, [isCreatingOrder, creationRetryAt, activeOrderId]);
+
+  // Effective gate: blocked while creating (unless we've unblocked after timeout).
+  const effectiveCreatingOrder = isCreatingOrder && creationRetryAt !== 0;
   // Per-order PIN attribution: block adding items (which is what creates the
   // backend order row) until the staff who's ringing has been verified. This
   // closes the timing gap where an order could be created — and attributed —
   // before the PIN is entered. The PIN prompt itself (OrderPinGate) is rendered
   // by BillSection; here we only gate adds and surface the right message.
-  const requirePinPerOrder = useStoreSettingsStore(
-    (s) => s.requirePinPerOrder,
-  );
+  const requirePinPerOrder = useStoreSettingsStore((s) => s.requirePinPerOrder);
   const orderAttributionOrderId = useEmployeeStore(
     (s) => s.orderAttributionOrderId,
   );
@@ -365,7 +414,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     !currentOrderDbId &&
     currentOrderPaidStatus !== "Paid";
   const isMenuAddDisabled =
-    isTableSeating || isCreatingOrder || isAwaitingOrderPin;
+    isTableSeating || effectiveCreatingOrder || isAwaitingOrderPin;
   // Seating takes precedence over "creating" in the label (a dine-in order is
   // also db_order_id-less while seating, but "Seating in progress" is clearer).
   const menuDisabledTitle = isTableSeating
@@ -496,7 +545,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // Auto-scroll to selected menu when dialog opens
   useEffect(() => {
     if (isMenuDialogOpen && activeMeal) {
-      const selectedIndex = visibleMenus.findIndex((m) => m.name === activeMeal);
+      const selectedIndex = visibleMenus.findIndex(
+        (m) => m.name === activeMeal,
+      );
       if (selectedIndex >= 0) {
         // Estimate ~140px per menu item (card height + gap)
         const scrollOffset = selectedIndex * 140;
@@ -727,27 +778,30 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
       // Image prefetch is fire-and-forget — kick it off immediately, it
       // doesn't compete with the JS thread.
-      pendingTimeout = setTimeout(() => {
-        if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
-        prefetchMenuItemRemoteImages(visibleItems);
-
-        // Dine-in favors responsiveness: warm fewer items in smaller chunks.
-        const chunkSize = isTableOrder ? 2 : 5;
-        const store = useModifierSidebarStore.getState();
-        let cursor = 0;
-        const step = () => {
+      pendingTimeout = setTimeout(
+        () => {
           if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
-          const slice = itemsToWarm.slice(cursor, cursor + chunkSize);
-          if (slice.length === 0) {
-            pendingRaf = null;
-            return;
-          }
-          store.preWarmMany(slice, currentCategoryId, activeMenuId);
-          cursor += chunkSize;
+          prefetchMenuItemRemoteImages(visibleItems);
+
+          // Dine-in favors responsiveness: warm fewer items in smaller chunks.
+          const chunkSize = isTableOrder ? 2 : 5;
+          const store = useModifierSidebarStore.getState();
+          let cursor = 0;
+          const step = () => {
+            if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
+            const slice = itemsToWarm.slice(cursor, cursor + chunkSize);
+            if (slice.length === 0) {
+              pendingRaf = null;
+              return;
+            }
+            store.preWarmMany(slice, currentCategoryId, activeMenuId);
+            cursor += chunkSize;
+            pendingRaf = requestAnimationFrame(step);
+          };
           pendingRaf = requestAnimationFrame(step);
-        };
-        pendingRaf = requestAnimationFrame(step);
-      }, isTableOrder ? 180 : 0);
+        },
+        isTableOrder ? 180 : 0,
+      );
     });
 
     return () => {
@@ -797,7 +851,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
   // FlashList recycles by type — keep spacer cells out of the MenuItem pool.
   const getItemType = useCallback(
-    (item: MenuItemType) => ((item as any).name === "spacer" ? "spacer" : "item"),
+    (item: MenuItemType) =>
+      (item as any).name === "spacer" ? "spacer" : "item",
     [],
   );
 
@@ -938,8 +993,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   backgroundColor: colors.screen,
                   borderColor: colors.border,
                   maxWidth: sc(480),
-                  alignSelf: 'center',
-                  width: '90%',
+                  alignSelf: "center",
+                  width: "90%",
                 }}
               >
                 <DialogHeader
@@ -981,8 +1036,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                         className="p-4 rounded-xl border"
                         style={{
                           backgroundColor: !isAvailable
-                              ? colors.panel + "cc"
-                              : colors.panel,
+                            ? colors.panel + "cc"
+                            : colors.panel,
                           borderColor: isSelected
                             ? colors.teal + "b0"
                             : !isAvailable
@@ -1001,7 +1056,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                             style={{
                               fontWeight: "600",
                               fontSize: sc(16),
-                              color: !isAvailable ? colors.muted : colors.heading,
+                              color: !isAvailable
+                                ? colors.muted
+                                : colors.heading,
                             }}
                           >
                             {menu.name}
@@ -1045,7 +1102,10 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                               >
                                 <Lock size={sc(11)} color={colors.danger} />
                                 <Text
-                                  style={{ fontSize: sc(10), color: colors.danger }}
+                                  style={{
+                                    fontSize: sc(10),
+                                    color: colors.danger,
+                                  }}
                                 >
                                   Schedule
                                 </Text>
@@ -1057,7 +1117,10 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                             {isSelected ? (
                               <CheckCircle2 size={sc(16)} color={colors.teal} />
                             ) : isAvailable ? (
-                              <CheckCircle2 size={sc(16)} color={colors.success} />
+                              <CheckCircle2
+                                size={sc(16)}
+                                color={colors.success}
+                              />
                             ) : (
                               <Lock size={sc(16)} color={colors.muted} />
                             )}

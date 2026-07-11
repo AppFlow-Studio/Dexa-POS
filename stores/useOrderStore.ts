@@ -1,51 +1,51 @@
 import { getDeviceId } from "@/lib/deviceId";
 import {
-  getKitchenSentStatus,
-  getOrderSentStatus,
+    getKitchenSentStatus,
+    getOrderSentStatus,
 } from "@/lib/kitchenStatusUtils";
 import { payableQuantity } from "@/lib/payableQuantity";
 import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
-  createLazyPersistStorage,
-  getSyncJSON,
-  setSyncJSON,
+    createLazyPersistStorage,
+    getSyncJSON,
+    setSyncJSON,
 } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import {
-  CartItem,
-  Discount,
-  OrderAppliedDiscount,
-  OrderPaymentItemCoverage,
-  OrderPaymentTransactionDetails,
-  OrderProfile,
-  OrderProfilePayment,
-  PaymentType,
+    CartItem,
+    Discount,
+    OrderAppliedDiscount,
+    OrderPaymentItemCoverage,
+    OrderPaymentTransactionDetails,
+    OrderProfile,
+    OrderProfilePayment,
+    PaymentType,
 } from "@/lib/types";
 import {
-  decrementDiscountUsage,
-  incrementDiscountUsage,
+    decrementDiscountUsage,
+    incrementDiscountUsage,
 } from "@/services/discountUsageTracker";
 import { OrderService } from "@/services/orderService";
 import {
-  completePaymentJournal,
-  failPaymentJournal,
-  getJournalById,
-  updatePaymentJournal,
-  writePaymentJournal,
+    completePaymentJournal,
+    failPaymentJournal,
+    getJournalById,
+    updatePaymentJournal,
+    writePaymentJournal,
 } from "@/services/paymentJournal";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import type {
-  AddOrderItemParams,
-  CreateOrderParams,
-  OrderStatus as DbOrderStatus,
-  OrderType as DbOrderType,
+    AddOrderItemParams,
+    CreateOrderParams,
+    OrderStatus as DbOrderStatus,
+    OrderType as DbOrderType,
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
 import type {
-  ItemPaymentAllocation,
-  OrderTotals,
+    ItemPaymentAllocation,
+    OrderTotals,
 } from "@/types/order-calculations";
 import type { Station } from "@/types/station";
 import * as Sentry from "@sentry/react-native";
@@ -69,77 +69,78 @@ import { useTableSessionStore } from "./useTableSessionStore";
 // Import pure calculation functions from order-calculator module
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
 import {
-  forceSetLocalSequence,
-  generateLocalOrderNumbers,
-  parseSequenceFromDisplayNumber,
-  seedLocalSequence,
+    forceSetLocalSequence,
+    generateLocalOrderNumbers,
+    parseSequenceFromDisplayNumber,
+    seedLocalSequence,
 } from "@/lib/localOrderSequence";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
 import {
-  rpcWithIdempotency,
-  toBulkUpdateStatusKey,
-  toIdempotencyKey,
-  toUpdateItemKey,
-  toUpdateQuantityKey,
+    rpcWithIdempotency,
+    toBulkUpdateStatusKey,
+    toIdempotencyKey,
+    toUpdateItemKey,
+    toUpdateQuantityKey,
 } from "@/lib/network/idempotencyKey";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { mapLocalToBackend, registerLocalId } from "@/lib/offlineIdRegistry";
 import { ITEM_BOUND_OPS } from "@/lib/offlineSyncSubtitles";
 import {
-  applyPaymentToItems,
-  calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
-  calculateOrderTotals as calculateOrderTotalsFromModule,
-  calculatePaidStatus,
-  distributeDiscountToItems as distributeDiscountToItemsFromModule,
-  invalidateCalculationCache,
-  round2,
-  scheduleCalculationCacheInvalidation,
+    applyPaymentToItems,
+    calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
+    calculateOrderTotals as calculateOrderTotalsFromModule,
+    calculatePaidStatus,
+    distributeDiscountToItems as distributeDiscountToItemsFromModule,
+    invalidateCalculationCache,
+    round2,
+    scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
 import { snapshotTableName } from "@/lib/orderDisplay";
+import { aggregateTaxByCategory } from "@/utils/money";
 import { resolveInboundToGo } from "@/lib/pendingToGo";
 import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
 
 import { normalizePlatform } from "@/lib/platformAliases";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
-  cancelOrderOperations,
-  cancelPendingByEntity,
-  dropQueuedOpsForItem,
-  getDeadLetterOperations,
-  getIsOnline,
-  getOperationsForOrder,
-  getOrderCreationOperationId,
-  getPendingOperations,
-  processQueueNow,
-  queueOperation,
-  removeOperation,
-  retryDeadLetterOperation,
-  retrySyncForItem as retrySyncForItemQueue,
-  updateOperationParams,
+    cancelOrderOperations,
+    cancelPendingByEntity,
+    dropQueuedOpsForItem,
+    getDeadLetterOperations,
+    getIsOnline,
+    getOperationsForOrder,
+    getOrderCreationOperationId,
+    getPendingOperations,
+    processQueueNow,
+    queueOperation,
+    removeOperation,
+    retryDeadLetterOperation,
+    retrySyncForItem as retrySyncForItemQueue,
+    updateOperationParams,
 } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { paymentPreviewService } from "@/services/paymentPreviewService";
 import {
-  deriveCashSavings,
-  isHeaderOnlyBroadcast,
-  mapBackendItemToCartItem,
-  mapOrderType,
-  mapPaymentStatus,
-  normalizeFetchedOrder,
-  transformBroadcastItems,
-  transformBroadcastPaymentsToProfile,
-  transformBroadcastToOrder,
-  type BackendItemInput,
-  type FetchedOrderData,
+    deriveCashSavings,
+    isHeaderOnlyBroadcast,
+    mapBackendItemToCartItem,
+    mapOrderType,
+    mapPaymentStatus,
+    normalizeFetchedOrder,
+    transformBroadcastItems,
+    transformBroadcastPaymentsToProfile,
+    transformBroadcastToOrder,
+    type BackendItemInput,
+    type FetchedOrderData,
 } from "@/utils/orderTransformers";
 import { useSyncStatusStore } from "./useSyncStatusStore";
 // import { queueFailedOperation } from "@/services/offlineSyncInit";
 // import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import {
-  BroadcastOrderData,
-  OrderBroadcastPayload,
+    BroadcastOrderData,
+    OrderBroadcastPayload,
 } from "@/hooks/realtime/useOrdersRealtime";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
@@ -148,21 +149,21 @@ import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
 import { isOrderReadOnly, isOwnershipError } from "@/lib/orderAccessControl";
 import {
-  clearItemPendingRemoval,
-  isItemPendingRemoval,
-  markItemPendingRemoval,
+    clearItemPendingRemoval,
+    isItemPendingRemoval,
+    markItemPendingRemoval,
 } from "@/lib/pendingItemRemovals";
 import {
-  clearOrderPendingVoid,
-  isOrderPendingVoid,
+    clearOrderPendingVoid,
+    isOrderPendingVoid,
 } from "@/lib/pendingVoidOrderIds";
 import { maybeFireTakeoverToast } from "@/lib/takeoverToast";
 import { detectConflict } from "@/services/conflictDetectionService";
 import { autoPrintKitchenTicketsIfEnabled } from "@/services/printing/autoPrintKitchen";
 import { useConflictStore } from "@/stores/useConflictStore";
 import {
-  generateConflictToast,
-  isConflictCritical,
+    generateConflictToast,
+    isConflictCritical,
 } from "@/types/conflict-resolution";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { restoreDiscountsFromBackend } from "@/utils/discountUtils";
@@ -546,13 +547,22 @@ function hasItemLevelChanges(
       return true; // Item missing from backend (shouldn't happen)
     }
 
-    // Compare critical financial fields (backend is source of truth)
+    // Compare critical financial fields (backend is source of truth).
+    // Tax is compared with a ±1¢ tolerance: the server computes order tax as an
+    // aggregate per rate group and redistributes the rounding residual onto one
+    // item per group (largest (created_at, id)), which the client intentionally
+    // does NOT replicate per item (it lacks the created_at/db id for unsynced
+    // items). So a synced item's per-item tax can legitimately differ from the
+    // client's per-item value by a cent without indicating real drift. Subtotal
+    // and quantity remain exact.
+    const taxCentDrift =
+      Math.abs((localItem.taxAmount ?? 0) - (backendItem.tax_amount ?? 0)) > 0.01 ||
+      Math.abs((localItem.cashTaxAmount ?? 0) - (backendItem.cash_tax_amount ?? 0)) > 0.01;
     if (
       localItem.quantity !== backendItem.quantity ||
       localItem.subtotal !== backendItem.subtotal ||
       localItem.cashSubtotal !== backendItem.cash_subtotal ||
-      localItem.taxAmount !== backendItem.tax_amount ||
-      localItem.cashTaxAmount !== backendItem.cash_tax_amount
+      taxCentDrift
     ) {
       return true; // Financial data differs
     }
@@ -1877,6 +1887,14 @@ const addItemToBackend = async (
                     ...i,
                     db_order_item_id: addResult.order_item_id,
                     sync_status: "synced" as const,
+                    // Backfill the server-authoritative dual-priced cash values
+                    // so the cart's cash totals match the DB exactly. The server
+                    // (add_open_item) is the single source of truth for the
+                    // card/cash split; the optimistic value may lag if the local
+                    // pricing config differs.
+                    cashPrice: addResult.cash_price ?? i.cashPrice,
+                    baseCashPrice: addResult.cash_price ?? i.baseCashPrice,
+                    cashSubtotal: addResult.cash_subtotal ?? i.cashSubtotal,
                   }
                 : i,
             );
@@ -11510,6 +11528,21 @@ export const useOrderStore = create<OrderState>()(
               // server's authoritative value.
               o.amount_due = undefined as unknown as number;
               o.cash_amount_due = undefined as unknown as number;
+
+              // Reset paid_status — after discarding all pending payments we
+              // must revert to Unpaid. Leaving a stale "Partial"/"Paid" from
+              // a prior backend sync causes the order to show the wrong badge
+              // and makes resolveOutstandingAmount prefer the backend amount_due
+              // (which is stale on the order object) over the correct
+              // calculated outstanding.
+              o.paid_status = "Unpaid" as const;
+
+              // Clear split_payment_path when all payments are discarded.
+              // This allows the next payment attempt to start fresh without
+              // being locked into a stale split mode.
+              if ((o.payments ?? []).length === 0) {
+                o.split_payment_path = null;
+              }
             });
 
             // Recompute totals / outstanding from the restored item coverage.
@@ -12254,20 +12287,16 @@ export const useOrderStore = create<OrderState>()(
                 0,
               total_tax:
                 order.total_tax ||
-                (() => {
-                  // Calculate per-item tax if total_tax not set
-                  const taxRatesMap =
-                    useStoreSettingsStore.getState().taxRatesMap;
-                  let taxSum = 0;
-                  for (const item of order.items) {
-                    if (item.is_tax_exempt) continue;
-                    const taxCategory = item.tax_category || "standard";
-                    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-                    taxSum +=
-                      item.price * item.quantity * (taxRatePercent / 100);
-                  }
-                  return taxSum;
-                })(),
+                // v6: fallback tax when total_tax unset — aggregate per rate
+                // group (round once per group), matching the server.
+                aggregateTaxByCategory(
+                  order.items.map((item) => ({
+                    netSubtotal: item.price * item.quantity,
+                    taxCategory: item.tax_category,
+                    isTaxExempt: item.is_tax_exempt,
+                  })),
+                  useStoreSettingsStore.getState().taxRatesMap,
+                ),
             };
 
             // Audit log
@@ -13927,13 +13956,17 @@ export const useOrderStore = create<OrderState>()(
 
             // 2. SYNC TO BACKEND
             const supabase = getOrderStoreSupabaseClient();
-            if (
-              supabase &&
-              order.db_order_id &&
-              (paymentToVoid.db_payment_id ?? paymentToVoid.id)
-            ) {
+
+            // Only call backend RPC if this payment has a real db_payment_id
+            // (backend UUID). Payments with only a local ID (pending/optimistic,
+            // never confirmed) must NOT be sent to void_payment — the RPC will
+            // reject the phantom UUID, trigger a rollback, and corrupt state.
+            const hasBackendPaymentId =
+              supabase && order.db_order_id && !!paymentToVoid.db_payment_id;
+
+            if (hasBackendPaymentId) {
               try {
-                // Call the void_payment RPC — prefer db_payment_id (backend UUID)
+                // Call the void_payment RPC
                 // rpc-discipline-allow: inline-wrapped Category A — void_payment with retry safety
                 const { error } = await runWithDeadline(
                   "void_payment_inline",
@@ -13941,8 +13974,7 @@ export const useOrderStore = create<OrderState>()(
                   async (signal) =>
                     await supabase
                       .rpc("void_payment", {
-                        p_payment_id:
-                          paymentToVoid.db_payment_id ?? paymentToVoid.id,
+                        p_payment_id: paymentToVoid.db_payment_id,
                         p_void_reason: "User voided from split review",
                       })
                       .abortSignal(signal),
@@ -13987,7 +14019,7 @@ export const useOrderStore = create<OrderState>()(
               }
             }
 
-            // If no backend sync needed (no db_order_id or payment.id), just succeed locally
+            // If no backend sync needed (no db_payment_id), just succeed locally
             toastService.show({
               title: "Payment Voided",
               message: "Payment has been voided locally.",
@@ -14006,16 +14038,72 @@ export const useOrderStore = create<OrderState>()(
             // Snapshot payments before the loop — each voidPayment call removes one
             // payment from the live array, so we must iterate the snapshot.
             // Reverse order preserves intent for any UI that cares about order.
-            const paymentsSnapshot = [...order.payments];
-            for (let i = paymentsSnapshot.length - 1; i >= 0; i--) {
-              const p = paymentsSnapshot[i];
+            //
+            // CRITICAL: Skip payments that are still pending (no db_payment_id).
+            // These are optimistic local-only records that were never confirmed by
+            // the backend — calling void_payment RPC with a local UUID would fail,
+            // trigger a rollback, and corrupt the state for the already-voided
+            // backend-confirmed payments. Pending payments are silently discarded
+            // inline after the confirmed voids complete.
+            const confirmedPayments: typeof order.payments = [];
+            const pendingPayments: typeof order.payments = [];
+            for (const p of order.payments) {
+              if (p.db_payment_id && !p.isVoided && !p.isPreAuth) {
+                confirmedPayments.push(p);
+              } else if (!p.isVoided && !p.isPreAuth) {
+                pendingPayments.push(p);
+              }
+            }
+
+            // Void backend-confirmed payments first (reverse order).
+            // If any confirmed void fails, stop immediately — the caller
+            // handles rollback via voidPayment's internal rollback.
+            for (let i = confirmedPayments.length - 1; i >= 0; i--) {
+              const p = confirmedPayments[i];
               const success = await get().voidPayment(
                 orderId,
-                p.db_payment_id ?? p.id,
+                p.db_payment_id!,
               );
               if (!success) {
-                return false; // Stop if any void fails
+                return false; // Stop if any void fails — rollback handled inside voidPayment
               }
+            }
+
+            // After all confirmed voids succeed, discard pending payments locally.
+            // These never reached the backend so no RPC is needed.
+            const pendingIds = new Set(pendingPayments.map((p) => p.id));
+            if (pendingIds.size > 0) {
+              // Aggregate paidQuantity to restore for each item
+              const restoreQtyByItemKey = new Map<string, number>();
+              for (const p of pendingPayments) {
+                for (const cov of p.itemsCovered ?? []) {
+                  restoreQtyByItemKey.set(
+                    cov.itemId,
+                    (restoreQtyByItemKey.get(cov.itemId) ?? 0) + cov.quantity,
+                  );
+                }
+              }
+              set((state) => {
+                const o = state.ordersById[orderId];
+                if (!o) return;
+                o.items = o.items.map((item) => {
+                  const restore =
+                    restoreQtyByItemKey.get(item.db_order_item_id || "") ??
+                    restoreQtyByItemKey.get(item.id);
+                  if (!restore || restore <= 0) return item;
+                  return {
+                    ...item,
+                    paidQuantity: Math.max(
+                      0,
+                      (item.paidQuantity || 0) - restore,
+                    ),
+                    pendingPaymentSeq: undefined,
+                  };
+                });
+                o.payments = (o.payments ?? []).filter(
+                  (p) => !pendingIds.has(p.id),
+                );
+              });
             }
 
             // Safety-net: ensure split payment path lock is cleared
