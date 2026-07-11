@@ -1,51 +1,51 @@
 import { getDeviceId } from "@/lib/deviceId";
 import {
-    getKitchenSentStatus,
-    getOrderSentStatus,
+  getKitchenSentStatus,
+  getOrderSentStatus,
 } from "@/lib/kitchenStatusUtils";
 import { payableQuantity } from "@/lib/payableQuantity";
 import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
-    createLazyPersistStorage,
-    getSyncJSON,
-    setSyncJSON,
+  createLazyPersistStorage,
+  getSyncJSON,
+  setSyncJSON,
 } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import {
-    CartItem,
-    Discount,
-    OrderAppliedDiscount,
-    OrderPaymentItemCoverage,
-    OrderPaymentTransactionDetails,
-    OrderProfile,
-    OrderProfilePayment,
-    PaymentType,
+  CartItem,
+  Discount,
+  OrderAppliedDiscount,
+  OrderPaymentItemCoverage,
+  OrderPaymentTransactionDetails,
+  OrderProfile,
+  OrderProfilePayment,
+  PaymentType,
 } from "@/lib/types";
 import {
-    decrementDiscountUsage,
-    incrementDiscountUsage,
+  decrementDiscountUsage,
+  incrementDiscountUsage,
 } from "@/services/discountUsageTracker";
 import { OrderService } from "@/services/orderService";
 import {
-    completePaymentJournal,
-    failPaymentJournal,
-    getJournalById,
-    updatePaymentJournal,
-    writePaymentJournal,
+  completePaymentJournal,
+  failPaymentJournal,
+  getJournalById,
+  updatePaymentJournal,
+  writePaymentJournal,
 } from "@/services/paymentJournal";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePaymentRecoveryStore } from "@/stores/usePaymentRecoveryStore";
 import type {
-    AddOrderItemParams,
-    CreateOrderParams,
-    OrderStatus as DbOrderStatus,
-    OrderType as DbOrderType,
+  AddOrderItemParams,
+  CreateOrderParams,
+  OrderStatus as DbOrderStatus,
+  OrderType as DbOrderType,
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
 import type {
-    ItemPaymentAllocation,
-    OrderTotals,
+  ItemPaymentAllocation,
+  OrderTotals,
 } from "@/types/order-calculations";
 import type { Station } from "@/types/station";
 import * as Sentry from "@sentry/react-native";
@@ -69,33 +69,33 @@ import { useTableSessionStore } from "./useTableSessionStore";
 // Import pure calculation functions from order-calculator module
 import { resolveBackendPrices } from "@/lib/cartItemPricing";
 import {
-    forceSetLocalSequence,
-    generateLocalOrderNumbers,
-    parseSequenceFromDisplayNumber,
-    seedLocalSequence,
+  forceSetLocalSequence,
+  generateLocalOrderNumbers,
+  parseSequenceFromDisplayNumber,
+  seedLocalSequence,
 } from "@/lib/localOrderSequence";
 import { DEADLINES } from "@/lib/network/deadlines";
 import { isPaymentRecoveryUIEnabled } from "@/lib/network/featureFlags";
 import {
-    rpcWithIdempotency,
-    toBulkUpdateStatusKey,
-    toIdempotencyKey,
-    toUpdateItemKey,
-    toUpdateQuantityKey,
+  rpcWithIdempotency,
+  toBulkUpdateStatusKey,
+  toIdempotencyKey,
+  toUpdateItemKey,
+  toUpdateQuantityKey,
 } from "@/lib/network/idempotencyKey";
 import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { mapLocalToBackend, registerLocalId } from "@/lib/offlineIdRegistry";
 import { ITEM_BOUND_OPS } from "@/lib/offlineSyncSubtitles";
 import {
-    applyPaymentToItems,
-    calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
-    calculateOrderTotals as calculateOrderTotalsFromModule,
-    calculatePaidStatus,
-    distributeDiscountToItems as distributeDiscountToItemsFromModule,
-    invalidateCalculationCache,
-    round2,
-    scheduleCalculationCacheInvalidation,
+  applyPaymentToItems,
+  calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
+  calculateOrderTotals as calculateOrderTotalsFromModule,
+  calculatePaidStatus,
+  distributeDiscountToItems as distributeDiscountToItemsFromModule,
+  invalidateCalculationCache,
+  round2,
+  scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
 import { snapshotTableName } from "@/lib/orderDisplay";
 import { resolveInboundToGo } from "@/lib/pendingToGo";
@@ -104,42 +104,42 @@ import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
 import { normalizePlatform } from "@/lib/platformAliases";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
-    cancelOrderOperations,
-    cancelPendingByEntity,
-    dropQueuedOpsForItem,
-    getDeadLetterOperations,
-    getIsOnline,
-    getOperationsForOrder,
-    getOrderCreationOperationId,
-    getPendingOperations,
-    processQueueNow,
-    queueOperation,
-    removeOperation,
-    retryDeadLetterOperation,
-    retrySyncForItem as retrySyncForItemQueue,
-    updateOperationParams,
+  cancelOrderOperations,
+  cancelPendingByEntity,
+  dropQueuedOpsForItem,
+  getDeadLetterOperations,
+  getIsOnline,
+  getOperationsForOrder,
+  getOrderCreationOperationId,
+  getPendingOperations,
+  processQueueNow,
+  queueOperation,
+  removeOperation,
+  retryDeadLetterOperation,
+  retrySyncForItem as retrySyncForItemQueue,
+  updateOperationParams,
 } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { paymentPreviewService } from "@/services/paymentPreviewService";
 import {
-    deriveCashSavings,
-    isHeaderOnlyBroadcast,
-    mapBackendItemToCartItem,
-    mapOrderType,
-    mapPaymentStatus,
-    normalizeFetchedOrder,
-    transformBroadcastItems,
-    transformBroadcastPaymentsToProfile,
-    transformBroadcastToOrder,
-    type BackendItemInput,
-    type FetchedOrderData,
+  deriveCashSavings,
+  isHeaderOnlyBroadcast,
+  mapBackendItemToCartItem,
+  mapOrderType,
+  mapPaymentStatus,
+  normalizeFetchedOrder,
+  transformBroadcastItems,
+  transformBroadcastPaymentsToProfile,
+  transformBroadcastToOrder,
+  type BackendItemInput,
+  type FetchedOrderData,
 } from "@/utils/orderTransformers";
 import { useSyncStatusStore } from "./useSyncStatusStore";
 // import { queueFailedOperation } from "@/services/offlineSyncInit";
 // import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import {
-    BroadcastOrderData,
-    OrderBroadcastPayload,
+  BroadcastOrderData,
+  OrderBroadcastPayload,
 } from "@/hooks/realtime/useOrdersRealtime";
 import { isServiceChargeEnabled } from "@/lib/serviceCharge";
 import { useServiceChargeRulesStore } from "@/stores/useServiceChargeRulesStore";
@@ -148,24 +148,36 @@ import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
 import { isOrderReadOnly, isOwnershipError } from "@/lib/orderAccessControl";
 import {
-    clearItemPendingRemoval,
-    isItemPendingRemoval,
-    markItemPendingRemoval,
+  clearItemPendingRemoval,
+  isItemPendingRemoval,
+  markItemPendingRemoval,
 } from "@/lib/pendingItemRemovals";
 import {
-    clearOrderPendingVoid,
-    isOrderPendingVoid,
+  clearOrderPendingVoid,
+  isOrderPendingVoid,
 } from "@/lib/pendingVoidOrderIds";
 import { maybeFireTakeoverToast } from "@/lib/takeoverToast";
 import { detectConflict } from "@/services/conflictDetectionService";
 import { autoPrintKitchenTicketsIfEnabled } from "@/services/printing/autoPrintKitchen";
 import { useConflictStore } from "@/stores/useConflictStore";
 import {
-    generateConflictToast,
-    isConflictCritical,
+  generateConflictToast,
+  isConflictCritical,
 } from "@/types/conflict-resolution";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { restoreDiscountsFromBackend } from "@/utils/discountUtils";
+
+/**
+ * Return the staff profile id to attribute as the order creator — but only when
+ * the station is NOT a self-service kiosk. Kiosk orders must not be attributed
+ * to the employee who happened to enter the PIN to start the kiosk session,
+ * otherwise KDS tickets show "Server: [employee name]" instead of "Self Service".
+ */
+function getKioskSafeCreatorStaffId(): string | null {
+  const station = useOrderStore.getState().currentStation;
+  if (station?.station_type === "self_service") return null;
+  return useEmployeeStore.getState().getEffectiveCreatorStaffId() || null;
+}
 
 const resolveTableNameForOrder = (
   tableIdOrName?: string | null,
@@ -1110,7 +1122,11 @@ const ensureOrderCreated = async (
   // above already short-circuit orders that exist). Dine-in orders are created
   // via seat_guests (guarded separately at the seating path), but if one ever
   // reaches here pre-seating it should be gated too.
+  // Self-service kiosk orders are exempt — no staff is ringing the order.
+  const currentStation = useOrderStore.getState().currentStation;
+  const isKiosk = currentStation?.station_type === "self_service";
   if (
+    !isKiosk &&
     useStoreSettingsStore.getState().requirePinPerOrder &&
     useEmployeeStore.getState().orderAttributionOrderId !== order.id
   ) {
@@ -1160,8 +1176,7 @@ const ensureOrderCreated = async (
       p_customer_phone: order.customer_phone || null,
       p_special_instructions: null,
       p_device_id: getDeviceId(),
-      p_created_by_staff_id:
-        useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
+      p_created_by_staff_id: getKioskSafeCreatorStaffId(),
       p_station_id:
         useStoreSettingsStore.getState().selectedStation?.id || null,
     };
@@ -1292,8 +1307,7 @@ const ensureOrderCreated = async (
         p_customer_phone: order.customer_phone || null,
         p_special_instructions: null,
         p_device_id: getDeviceId(),
-        p_created_by_staff_id:
-          useEmployeeStore.getState().getEffectiveCreatorStaffId() || null,
+        p_created_by_staff_id: getKioskSafeCreatorStaffId(),
         p_station_id:
           useStoreSettingsStore.getState().selectedStation?.id || null,
       };
@@ -1418,6 +1432,22 @@ const ensureOrderCreated = async (
             } catch (e) {
               console.warn(
                 "[ensureOrderCreated] Failed to sync pre-set customer_id:",
+                e,
+              );
+            }
+          }
+
+          // Self-service (kiosk) — set order_source on the backend row so KDS
+          // tickets and order-source filtering reflect the correct origin.
+          if (order.order_source === "kiosk" && supabase) {
+            try {
+              await supabase
+                .from("orders")
+                .update({ order_source: "kiosk" })
+                .eq("id", backendId);
+            } catch (e) {
+              console.warn(
+                "[ensureOrderCreated] Failed to sync kiosk order_source:",
                 e,
               );
             }
@@ -7728,6 +7758,16 @@ export const useOrderStore = create<OrderState>()(
             // Phase 1 Foundation: Get station context for new orders
             const { currentStationId, currentStation } = get();
 
+            // Self-service (kiosk) — no employee is ringing the order, so
+            // server_name is "Self Service" and there's no staff attribution.
+            const isKiosk = currentStation?.station_type === "self_service";
+            const serverName = isKiosk
+              ? "Self Service"
+              : activeEmployee?.fullName || "Unknown";
+            const staffProfileId = isKiosk
+              ? null
+              : activeEmployee?.profileId || null;
+
             // Generate local order numbers (station-aware if station is set)
             const selectedStore =
               useStoreSettingsStore.getState().selectedStore;
@@ -7764,7 +7804,8 @@ export const useOrderStore = create<OrderState>()(
               payments: [],
               opened_at: new Date().toISOString(),
               guest_count: details?.guestCount || 1,
-              server_name: activeEmployee?.fullName || "Unknown",
+              server_name: serverName,
+              order_source: isKiosk ? "kiosk" : undefined,
 
               // Local order numbers (station-aware)
               display_number: localNumbers?.displayNumber,
@@ -7788,7 +7829,7 @@ export const useOrderStore = create<OrderState>()(
               _sourceStationName: currentStation?.station_name || null,
 
               // Staff attribution
-              created_by_staff_profile_id: activeEmployee?.profileId || null,
+              created_by_staff_profile_id: staffProfileId,
             };
             set((state) => {
               state.ordersById[newOrder.id] = newOrder;
@@ -7880,10 +7921,14 @@ export const useOrderStore = create<OrderState>()(
             // attribution since cleared) accept items without a second PIN, while
             // still gating brand-new QSR orders. Covers every add surface since
             // they all funnel through here.
+            // Self-service kiosk orders are exempt — no staff is ringing.
+            const currentStation = get().currentStation;
+            const isKiosk = currentStation?.station_type === "self_service";
             const orderNotYetCreated =
               !activeOrder.db_order_id &&
               !getOrderCreationOperationId(activeOrder.id);
             if (
+              !isKiosk &&
               orderNotYetCreated &&
               useStoreSettingsStore.getState().requirePinPerOrder &&
               useEmployeeStore.getState().orderAttributionOrderId !==
