@@ -6,7 +6,12 @@ import {
 import { useKioskUiScale } from "@/lib/uiScale";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
-import { CheckCircle2, ChevronLeft, Heart } from "lucide-react-native";
+import {
+  CheckCircle2,
+  ChevronLeft,
+  CreditCard,
+  Heart,
+} from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
@@ -170,6 +175,8 @@ export function KioskCheckoutView({
             </Pressable>
           </View>
         </>
+      ) : status === "charging" ? (
+        <TapCardScreen config={config} scale={scale} />
       ) : (
         <>
           <ActivityIndicator size="large" color={config.primaryColor} />
@@ -180,15 +187,68 @@ export function KioskCheckoutView({
               color: config.textColor,
             }}
           >
-            {status === "charging"
-              ? "Follow the prompts on the card reader…"
-              : "Processing your order…"}
+            Processing your order…
           </Text>
           <Text style={{ fontSize: kioskPx(15, scale), color: muted }}>
-            Please don’t leave this screen.
+            Please don't leave this screen.
           </Text>
         </>
       )}
+    </View>
+  );
+}
+
+/**
+ * Prominent "Swipe / Tap your card" screen shown while waiting for the card
+ * terminal. Uses the same CreditCard icon from lucide that the POS uses.
+ */
+function TapCardScreen({
+  config,
+  scale,
+}: {
+  config: KioskConfig;
+  scale: number;
+}) {
+  const muted = `${config.textColor}99`;
+
+  return (
+    <View
+      className="flex-1 items-center justify-center px-10"
+      style={{
+        backgroundColor: config.backgroundColor,
+        gap: kioskPx(20, scale),
+      }}
+    >
+      <CreditCard size={kioskPx(96, scale)} color={config.primaryColor} />
+
+      <Text
+        style={{
+          fontSize: kioskPx(26, scale),
+          fontWeight: "800",
+          color: config.textColor,
+          textAlign: "center",
+        }}
+      >
+        Swipe, Tap, or Insert your card
+      </Text>
+
+      <Text
+        style={{
+          fontSize: kioskPx(16, scale),
+          color: muted,
+          textAlign: "center",
+          lineHeight: kioskPx(24, scale),
+        }}
+      >
+        Follow the prompts on the card reader.
+        {"\n"}Please don't leave this screen.
+      </Text>
+
+      <ActivityIndicator
+        size="large"
+        color={config.primaryColor}
+        style={{ marginTop: kioskPx(8, scale) }}
+      />
     </View>
   );
 }

@@ -1,5 +1,18 @@
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { calculateOrderTotals } from "@/lib/order-calculator";
+import type { CartItem } from "@/lib/types";
+import {
+  failPaymentJournal,
+  updatePaymentJournal,
+  writePaymentJournal,
+} from "@/services/paymentJournal";
 import { payFullCard } from "@/services/paymentService";
+import {
+  extractLast4,
+  parseCastlesReturnCode,
+} from "@/services/terminals/castles-response-mapper";
+import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import {
   lineCashUnitPrice,
   lineUnitPrice,
@@ -8,7 +21,7 @@ import {
 } from "@/stores/useKioskCartStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import type { CartItem } from "@/lib/types";
+import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { useCallback, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
@@ -91,27 +104,136 @@ function toCartItem(line: KioskCartLine): CartItem {
   } as CartItem;
 }
 
-/** Charge the card on the configured terminal, or simulate success when no
- * terminal is set (dev / kiosk without hardware). Returns the terminal response
- * to attach to the payment record. */
-async function chargeCard(
-  amount: number,
-): Promise<
-  | { ok: true; terminalResponse?: Record<string, unknown>; terminalId?: string }
-  | { ok: false; message: string }
-> {
-  // MOCK: always simulate an approved sale for now. The real Castles/Dejavoo
-  // charge is wired in a later step.
-  // TODO(kiosk-terminal): replace with getSharedCastlesService()/DejavooAPI
-  // using station.payment_terminal (see CardPaymentView.tsx for the POS path).
+/** Result shape from charging the card terminal. */
+export interface ChargeCardResult {
+  ok: boolean;
+  message?: string;
+  terminalResponse?: Record<string, unknown>;
+  terminalId?: string;
+}
+
+/** Charge the card on the configured terminal, or simulate when none is
+ * configured. Mirrors the POS CardPaymentView Castles flow exactly:
+ *   1. Connect (shared singleton) + resetTerminalState
+ *   2. Get counter → txnPosTxnId
+ *   3. Write payment journal (crash recovery, pre-TCP)
+ *   4. processSale on the terminal
+ *   5. Promote journal to terminal_approved
+ *   6. Return response for payFullCard
+ */
+async function chargeCardWithTerminal(
+  total: number,
+  tipAmount: number,
+  orderId: string,
+  dbOrderId: string | undefined,
+  supabase: ReturnType<typeof useSupabaseClient>,
+): Promise<ChargeCardResult> {
+  const station = useStoreSettingsStore.getState().selectedStation;
+  const terminal = station?.payment_terminal;
+  if (!terminal) {
+    await new Promise((r) => setTimeout(r, 800));
+    return { ok: true, terminalResponse: { simulated: true, amount: total } };
+  }
+
+  if (terminal.terminal_type === "castles") {
+    const isUsb = terminal.connection_type === "usb";
+    const host = isUsb ? undefined : terminal.ip_address;
+    if (!isUsb && !host) {
+      return {
+        ok: false,
+        message: "Castles terminal has no IP address configured.",
+      };
+    }
+    const port = isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT);
+
+    const service = getSharedCastlesService();
+    await service.connect({
+      connectionType: isUsb ? "usb" : "local_socket",
+      host,
+      port,
+      timeout: 120_000,
+      terminalId: terminal.id,
+    });
+    await service.resetTerminalState();
+
+    const counter = getOrCreateCounter({
+      terminalId: terminal.id,
+      supabaseClient: supabase,
+    });
+    if (!counter.isInitialized) await counter.initialize();
+    const referenceId = counter.next();
+
+    const paymentJournalKey = uuidv4();
+    const paymentJournalId = writePaymentJournal({
+      orderId,
+      dbOrderId: dbOrderId ?? undefined,
+      amount: total - tipAmount,
+      tipAmount,
+      paymentMethod: "Card",
+      idempotencyKey: paymentJournalKey,
+    });
+
+    let result: Awaited<ReturnType<typeof service.processSale>>;
+    try {
+      result = await service.processSale({
+        amount: total - tipAmount,
+        tipAmount,
+        referenceId,
+      });
+    } catch (err) {
+      throw err;
+    }
+
+    updatePaymentJournal(paymentJournalId, {
+      status: "terminal_approved",
+      terminalTxnId: referenceId,
+      ...(dbOrderId ? { dbOrderId } : {}),
+    });
+
+    if (!result.success) {
+      const errorInfo = result.raw?.txnReturnCode
+        ? parseCastlesReturnCode(result.raw.txnReturnCode)
+        : { message: result.error || "Transaction failed" };
+      failPaymentJournal(
+        paymentJournalId,
+        `terminal_declined: ${errorInfo.message}`,
+      );
+      return { ok: false, message: errorInfo.message };
+    }
+
+    const castlesLast4 = result.raw
+      ? extractLast4(
+          result.raw.txnMaskedCardNum ?? result.raw.txnCardMaskedPan ?? "",
+        )
+      : undefined;
+
+    return {
+      ok: true,
+      terminalId: terminal.id,
+      terminalResponse: {
+        castles_transaction: {
+          cardLast4: castlesLast4,
+          approvalCode: result.raw?.txnApprovalCode,
+          cardType: result.raw?.txnCardBrand ?? result.raw?.txnCardType,
+          rrn: result.raw?.txnRrn ?? result.raw?.txnRRN,
+          cardAID: result.raw?.txnCardAid,
+        },
+        transactionId: referenceId,
+        paymentJournalHandle: {
+          id: paymentJournalId,
+          idempotencyKey: paymentJournalKey,
+        },
+      },
+    };
+  }
+
+  // Dejavoo or unsupported terminal type — simulate for now
   await new Promise((r) => setTimeout(r, 800));
-  return {
-    ok: true,
-    terminalResponse: { simulated: true, amount },
-  };
+  return { ok: true, terminalResponse: { simulated: true, amount: total } };
 }
 
 export function useKioskCheckout() {
+  const supabase = useSupabaseClient();
   const [status, setStatus] = useState<KioskCheckoutStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<KioskCheckoutResult | null>(null);
@@ -188,7 +310,7 @@ export function useKioskCheckout() {
         // row is created, so it's sent on creation rather than defaulting to
         // takeout. startNewOrder({ tableId: null }) always yields takeout, so we
         // patch it from the cart selection.
-        const order = orderStore.startNewOrder({ tableId: null });
+        const order = orderStore.startNewOrder({});
         if (cart.orderType) {
           orderStore.patchOrder(order.id, { order_type: cart.orderType });
         }
@@ -203,7 +325,9 @@ export function useKioskCheckout() {
         // The order may be re-keyed (local id → db_order_id) during creation.
         const liveOrderId =
           useOrderStore.getState().activeOrderId ??
-          useOrderStore.getState().dbOrderIdIndex?.[createdDbId] ??
+          (createdDbId
+            ? useOrderStore.getState().dbOrderIdIndex?.[createdDbId]
+            : undefined) ??
           order.id;
 
         // 2. Add items and wait for them to land on the backend.
@@ -248,9 +372,15 @@ export function useKioskCheckout() {
           return null;
         }
 
-        // 4. Charge the card (mock for now).
+        // 4. Charge the card via the configured terminal (same path as POS).
         setStatus("charging");
-        const charge = await chargeCard(amountToCharge);
+        const charge = await chargeCardWithTerminal(
+          amountToCharge,
+          tipAmount,
+          liveOrderId,
+          createdDbId,
+          supabase,
+        );
         if (!charge.ok) {
           // No charge happened — void the unpaid order so it doesn't linger.
           try {
@@ -259,7 +389,7 @@ export function useKioskCheckout() {
             /* best-effort */
           }
           setStatus("error");
-          setError(charge.message);
+          setError(charge.message ?? "Payment declined.");
           return null;
         }
 
