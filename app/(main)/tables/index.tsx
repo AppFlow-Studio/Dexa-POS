@@ -20,18 +20,18 @@ import { useColorScheme } from "@/lib/useColorScheme";
 import { transferTableServer } from "@/services/serverAssignmentService";
 import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
 import {
-  PENDING_SEAT_ATTRIBUTION,
-  useEmployeeStore,
+    PENDING_SEAT_ATTRIBUTION,
+    useEmployeeStore,
 } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import {
-  registerPendingOrderCreation,
-  useOrderStore,
+    registerPendingOrderCreation,
+    useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import {
-  setReservationSupabaseClient,
-  useReservationStore,
+    setReservationSupabaseClient,
+    useReservationStore,
 } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
@@ -40,20 +40,20 @@ import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import { FloorPlanObject, Reservation } from "@/types/db-floor-plan-types";
 import { Href, useFocusEffect, useRouter } from "expo-router";
 import {
-  GitMerge,
-  HelpCircle,
-  Pencil,
-  Search,
-  Users,
-  X,
+    GitMerge,
+    HelpCircle,
+    Pencil,
+    Search,
+    Users,
+    X,
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  InteractionManager,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    InteractionManager,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 
@@ -1063,6 +1063,7 @@ const TablesScreen = () => {
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
               <TableLayoutView
+                key={activeFloorPlanId}
                 tables={filteredTables || []}
                 isSelectionMode={true}
                 onTableSelect={handleTablePress}

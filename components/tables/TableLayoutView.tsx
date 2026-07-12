@@ -424,46 +424,76 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const initialTranslateXRef = useRef(0);
   const initialTranslateYRef = useRef(0);
 
-  const scale = useSharedValue(1);
-  const savedScale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const savedTranslateX = useSharedValue(0);
-  const savedTranslateY = useSharedValue(0);
-
-  const initialLoadDone = useRef(false);
-  const lastCenterKey = useRef("");
-  const cameraStateRef = useRef<PersistedCameraState | null>(null);
-
-  const readPersistedCameraState = (
-    key: string,
-  ): PersistedCameraState | null => {
-    const raw = storage.getString(key);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw) as PersistedCameraState;
-      if (
-        Number.isFinite(parsed.scale) &&
-        Number.isFinite(parsed.translateX) &&
-        Number.isFinite(parsed.translateY)
-      ) {
-        return parsed;
+  const readPersistedCameraState = useCallback(
+    (key: string): PersistedCameraState | null => {
+      const raw = storage.getString(key);
+      if (!raw) return null;
+      try {
+        const parsed = JSON.parse(raw) as PersistedCameraState;
+        if (
+          Number.isFinite(parsed.scale) &&
+          Number.isFinite(parsed.translateX) &&
+          Number.isFinite(parsed.translateY)
+        ) {
+          return parsed;
+        }
+      } catch {
+        return null;
       }
-    } catch {
       return null;
+    },
+    [],
+  );
+
+  // Initialize shared values from persisted camera state immediately,
+  // so objects render in the correct position from frame 1 (no jump).
+  const initialCameraState = useMemo(() => {
+    const cachedDims = (() => {
+      const raw = storage.getString(dimsKey);
+      if (raw) {
+        try {
+          const p = JSON.parse(raw);
+          if (p.width > 0 && p.height > 0) return p;
+        } catch {}
+      }
+      return null;
+    })();
+
+    const cameraKey = `floor_plan.view_state.${layoutId}`;
+    const parsed = readPersistedCameraState(cameraKey);
+    if (parsed && cachedDims) {
+      const restoredScale = clamp(parsed.scale, 0.5, 3);
+      const restoredTranslate = clampCanvasTranslation(
+        parsed.translateX,
+        parsed.translateY,
+        restoredScale,
+        cachedDims.width,
+        cachedDims.height,
+        6000,
+        6000,
+      );
+      initialScaleRef.current = restoredScale;
+      initialTranslateXRef.current = restoredTranslate.x;
+      initialTranslateYRef.current = restoredTranslate.y;
+      return {
+        scale: restoredScale,
+        translateX: restoredTranslate.x,
+        translateY: restoredTranslate.y,
+      };
     }
     return null;
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutId]);
 
-  useEffect(() => {
-    if (!initialLoadDone.current) {
-      setIsLoading(true);
-      initialLoadDone.current = true;
-    }
-    if (containerDims.width > 0) {
-      setIsLoading(false);
-    }
-  }, [containerDims.width, worldDims.height, worldDims.width]);
+  const scale = useSharedValue(initialCameraState?.scale ?? 1);
+  const savedScale = useSharedValue(initialCameraState?.scale ?? 1);
+  const translateX = useSharedValue(initialCameraState?.translateX ?? 0);
+  const translateY = useSharedValue(initialCameraState?.translateY ?? 0);
+  const savedTranslateX = useSharedValue(initialCameraState?.translateX ?? 0);
+  const savedTranslateY = useSharedValue(initialCameraState?.translateY ?? 0);
+
+  const lastCenterKey = useRef("");
+  const cameraStateRef = useRef<PersistedCameraState | null>(null);
 
   // 2. Calculate and set initial scale and position once we have dimensions
   useEffect(() => {
@@ -682,6 +712,14 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   useEffect(() => {
     containerDimsSV.value = containerDims;
   }, [containerDims, containerDimsSV]);
+
+  // Keep skeleton visible until camera is positioned (shared values applied).
+  // This prevents a flash where objects render at (1,0,0) then jump.
+  useEffect(() => {
+    if (cameraReady) {
+      setIsLoading(false);
+    }
+  }, [cameraReady]);
 
   // Debounced viewport setter: defers the expensive windowedTables recomputation
   // to a requestAnimationFrame callback, so the gesture-end frame completes
