@@ -266,9 +266,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   );
 
   const worldDims = useMemo(() => {
-    // Always use 6000×6000 regardless of backend canvas size
-    const contentWidth = 6000;
-    const contentHeight = 6000;
+    // Always use 4000×4000 regardless of backend canvas size
+    const contentWidth = 4000;
+    const contentHeight = 4000;
 
     return { width: contentWidth, height: contentHeight };
   }, []);
@@ -548,8 +548,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         restoredScale,
         cachedDims.width,
         cachedDims.height,
-        6000,
-        6000,
+        4000,
+        4000,
       );
       initialScaleRef.current = restoredScale;
       initialTranslateXRef.current = restoredTranslate.x;

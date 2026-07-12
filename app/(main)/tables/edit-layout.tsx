@@ -35,10 +35,9 @@ import Svg, { Defs, Pattern, Rect, Line as SvgLine } from "react-native-svg";
 
 const SHAPE_SIZE = 100;
 const FINGER_Y_OFFSET = 0;
-const DEFAULT_CANVAS_WORLD_WIDTH = 6000;
-const DEFAULT_CANVAS_WORLD_HEIGHT = 6000;
-const MIN_CANVAS_DIMENSION = 600;
-const MAX_CANVAS_DIMENSION = 6000;
+const DEFAULT_CANVAS_WORLD_WIDTH = 4000;
+const DEFAULT_CANVAS_WORLD_HEIGHT = 4000;
+
 const MAX_OBJECTS_PER_FLOOR_PLAN = 250;
 
 // Shape size lookup for ghost rendering — plain object, accessible in worklets.
@@ -274,7 +273,7 @@ const LayoutEditorScreenContent = () => {
 
   useEffect(() => {
     // Always force 6000×6000 — ignore backend canvas_width/canvas_height
-    console.log("[edit-layout] forcing canvas to 6000×6000 (backend ignored)");
+    console.log("[edit-layout] forcing canvas to 4000×4000 (backend ignored)");
     canvasWorldWidthSV.value = DEFAULT_CANVAS_WORLD_WIDTH;
     canvasWorldHeightSV.value = DEFAULT_CANVAS_WORLD_HEIGHT;
   }, [canvasWorldHeightSV, canvasWorldWidthSV]);
