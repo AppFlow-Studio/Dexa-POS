@@ -19,6 +19,10 @@ interface QuickSetupPanelProps {
   onAddMultiple: (
     items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]
   ) => void
+  /** Objects already on the floor plan. */
+  existingCount: number
+  /** Max objects allowed per floor plan. */
+  maxObjects: number
 }
 
 const ShapeInputRow = ({
@@ -159,7 +163,9 @@ const ShapeInputRow = ({
 const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
   isOpen,
   onClose,
-  onAddMultiple
+  onAddMultiple,
+  existingCount,
+  maxObjects
 }) => {
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
@@ -169,7 +175,12 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
     setQuantities(prev => ({ ...prev, [shapeId]: quantity }))
   }
 
+  const totalTables = Object.values(quantities).reduce((sum, q) => sum + q, 0)
+  const remaining = Math.max(0, maxObjects - existingCount)
+  const exceedsLimit = totalTables > remaining
+
   const handleApply = () => {
+    if (exceedsLimit) return
     const itemsToAdd = Object.entries(quantities)
       .filter(([, q]) => q > 0)
       .map(([shapeId, quantity]) => ({
@@ -179,8 +190,6 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
     if (itemsToAdd.length > 0) onAddMultiple(itemsToAdd)
     onClose()
   }
-
-  const totalTables = Object.values(quantities).reduce((sum, q) => sum + q, 0)
 
   const tableShapes = Object.entries(TABLE_SHAPES)
     .filter(([, data]) => data.type === 'table')
@@ -252,6 +261,36 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
               ))}
             </ScrollView>
 
+            {/* Limit warning */}
+            {exceedsLimit && (
+              <View
+                style={{
+                  marginHorizontal: s(14),
+                  marginBottom: s(4),
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(10),
+                  borderRadius: s(9),
+                  backgroundColor: colors.danger + '18',
+                  borderWidth: 1,
+                  borderColor: colors.danger + '55'
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.danger,
+                    fontSize: s(12),
+                    fontWeight: '600'
+                  }}
+                >
+                  {remaining === 0
+                    ? `This floor plan is full (max ${maxObjects} objects). Remove some before adding more.`
+                    : `Only ${remaining} more object${
+                        remaining !== 1 ? 's' : ''
+                      } can be added (max ${maxObjects} per floor plan). You have ${existingCount} already.`}
+                </Text>
+              </View>
+            )}
+
             {/* Footer */}
             <View
               style={{
@@ -294,8 +333,9 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
                   backgroundColor: colors.teal + '20',
                   borderWidth: 1,
                   borderColor: colors.teal + '60',
-                  opacity: totalTables === 0 ? 0.5 : 1
+                  opacity: totalTables === 0 || exceedsLimit ? 0.5 : 1
                 }}
+                disabled={exceedsLimit}
               >
                 <Text
                   style={{
