@@ -20,18 +20,18 @@ import { useColorScheme } from "@/lib/useColorScheme";
 import { transferTableServer } from "@/services/serverAssignmentService";
 import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
 import {
-    PENDING_SEAT_ATTRIBUTION,
-    useEmployeeStore,
+  PENDING_SEAT_ATTRIBUTION,
+  useEmployeeStore,
 } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import {
-    registerPendingOrderCreation,
-    useOrderStore,
+  registerPendingOrderCreation,
+  useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import {
-    setReservationSupabaseClient,
-    useReservationStore,
+  setReservationSupabaseClient,
+  useReservationStore,
 } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
@@ -40,20 +40,20 @@ import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import { FloorPlanObject, Reservation } from "@/types/db-floor-plan-types";
 import { Href, useFocusEffect, useRouter } from "expo-router";
 import {
-    GitMerge,
-    HelpCircle,
-    Pencil,
-    Search,
-    Users,
-    X,
+  GitMerge,
+  HelpCircle,
+  Pencil,
+  Search,
+  Users,
+  X,
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    InteractionManager,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  InteractionManager,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 
@@ -145,6 +145,31 @@ const TablesScreen = () => {
     sessionId: string;
   } | null>(null);
   // overlayTableId removed in favor of router.push
+
+  // Camera zoom-to-table: set by sidebar tap, consumed by TableLayoutView effect
+  const [zoomToTableId, setZoomToTableId] = useState<string | null>(null);
+  const zoomTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When zoomToTableId is set, the TableLayoutView effect will animate the
+  // camera. We clear any pending timer, set null → tableId to guarantee the
+  // effect fires even for the same table twice, then clear back to null after
+  // a grace period so stale values don't re-trigger on subsequent re-renders.
+  const handleFocusTable = useCallback((tableId: string) => {
+    if (zoomTimerRef.current) {
+      clearTimeout(zoomTimerRef.current);
+      zoomTimerRef.current = null;
+    }
+    setZoomToTableId(null);
+    requestAnimationFrame(() => {
+      setZoomToTableId(tableId);
+      // Clear after animation settles so a sidebar collapse/re-render doesn't
+      // re-trigger the zoom for a stale ID.
+      zoomTimerRef.current = setTimeout(() => {
+        setZoomToTableId(null);
+        zoomTimerRef.current = null;
+      }, 600);
+    });
+  }, []);
 
   useEffect(() => {
     if (supabaseClient) {
@@ -775,6 +800,7 @@ const TablesScreen = () => {
         <Sidebar
           activeLayoutId={activeFloorPlanId}
           setActiveLayout={setActiveFloorPlan}
+          onFocusTable={handleFocusTable}
         />
 
         {/* Right Side: Floor Plan */}
@@ -1075,6 +1101,7 @@ const TablesScreen = () => {
                 }
                 disableLongPress={isMergeMode}
                 interactionMode={isMergeMode ? "merge" : "normal"}
+                zoomToTableId={zoomToTableId}
               />
             )}
 

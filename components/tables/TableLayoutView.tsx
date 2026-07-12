@@ -106,6 +106,8 @@ interface TableLayoutViewProps {
   onTableLongPress?: (table: FloorPlanObject) => void;
   disableLongPress?: boolean;
   interactionMode?: "normal" | "selection" | "merge";
+  /** When set to a table ID, the camera animates to zoom in on that table. Reset to null after handling. */
+  zoomToTableId?: string | null;
 }
 
 type PersistedCameraState = {
@@ -128,6 +130,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   onTableLongPress,
   disableLongPress = false,
   interactionMode = "normal",
+  zoomToTableId,
 }) => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
@@ -1148,6 +1151,94 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutId, persistCameraState]);
 
+  // ── Zoom to table (sidebar tap) ──────────────────────────────────────────
+  // When zoomToTableId changes to a non-null value, compute the target camera
+  // position for that specific table and animate with spring physics.
+  // Uses a ref to track the last-processed ID so that layout changes (e.g.
+  // sidebar collapse/expand) don't re-trigger the zoom for a stale ID.
+  const lastZoomTarget = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!zoomToTableId) return;
+    if (zoomToTableId === lastZoomTarget.current) return;
+    lastZoomTarget.current = zoomToTableId;
+
+    const targetTable = tablesById[zoomToTableId];
+    if (!targetTable || containerDims.width <= 0 || containerDims.height <= 0)
+      return;
+
+    const shapeDef =
+      TABLE_SHAPES[targetTable.shape_id as keyof typeof TABLE_SHAPES];
+    const w = targetTable.width ?? shapeDef?.width ?? 100;
+    const h = targetTable.height ?? shapeDef?.height ?? 100;
+
+    // Center of the table in world coords
+    const tableCenterX = targetTable.x + w / 2;
+    const tableCenterY = targetTable.y + h / 2;
+
+    // Target scale: zoom in so the table + padding fills ~50% of viewport
+    const tableDiag = Math.sqrt(w * w + h * h);
+    const viewportDiag = Math.sqrt(
+      containerDims.width * containerDims.width +
+        containerDims.height * containerDims.height,
+    );
+    const idealScale = clamp(viewportDiag / (tableDiag + 400), 0.5, 3);
+
+    // Translate so table center maps to viewport center
+    const vcx = containerDims.width / 2;
+    const vcy = containerDims.height / 2;
+    const tx = (vcx - tableCenterX) * idealScale;
+    const ty = (vcy - tableCenterY) * idealScale;
+
+    const clamped = clampCanvasTranslation(
+      tx,
+      ty,
+      idealScale,
+      containerDims.width,
+      containerDims.height,
+      worldDims.width,
+      worldDims.height,
+    );
+
+    scale.value = withSpring(idealScale, {
+      damping: 14,
+      mass: 1,
+      stiffness: 120,
+    });
+    translateX.value = withSpring(clamped.x, {
+      damping: 14,
+      mass: 1,
+      stiffness: 120,
+    });
+    translateY.value = withSpring(clamped.y, {
+      damping: 14,
+      mass: 1,
+      stiffness: 120,
+    });
+    savedScale.value = idealScale;
+    savedTranslateX.value = clamped.x;
+    savedTranslateY.value = clamped.y;
+    persistCameraState({
+      scale: idealScale,
+      translateX: clamped.x,
+      translateY: clamped.y,
+    });
+  }, [
+    zoomToTableId,
+    tablesById,
+    containerDims.width,
+    containerDims.height,
+    scale,
+    translateX,
+    translateY,
+    savedScale,
+    savedTranslateX,
+    savedTranslateY,
+    persistCameraState,
+    worldDims.width,
+    worldDims.height,
+  ]);
+
   const [skeletonVisible, setSkeletonVisible] = useState(true);
   useEffect(() => {
     if (!isLoading) {
@@ -1623,6 +1714,7 @@ export default React.memo(TableLayoutView, (prev, next) => {
   if (prev.sectionsById !== next.sectionsById) return false;
   if (prev.onTableSelect !== next.onTableSelect) return false;
   if (prev.onTableLongPress !== next.onTableLongPress) return false;
+  if (prev.zoomToTableId !== next.zoomToTableId) return false;
   // Only check geometry (x, y, width, height, rotation, shape_id) — not session fields
   for (let i = 0; i < prev.tables.length; i++) {
     const p = prev.tables[i];
