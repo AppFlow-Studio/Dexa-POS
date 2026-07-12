@@ -6,6 +6,7 @@ import {
     DragToAddProvider,
     useDragToAddContext,
 } from "@/contexts/DragToAddContext";
+import { useToast } from "@/contexts/ToastContext";
 import { storage } from "@/lib/storage";
 import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes";
 import { colors } from "@/lib/theme";
@@ -38,6 +39,7 @@ const DEFAULT_CANVAS_WORLD_WIDTH = 6000;
 const DEFAULT_CANVAS_WORLD_HEIGHT = 6000;
 const MIN_CANVAS_DIMENSION = 600;
 const MAX_CANVAS_DIMENSION = 6000;
+const MAX_OBJECTS_PER_FLOOR_PLAN = 250;
 
 // Shape size lookup for ghost rendering — plain object, accessible in worklets.
 const SHAPE_SIZES: Record<string, { w: number; h: number }> =
@@ -203,6 +205,7 @@ const LayoutEditorScreenContent = () => {
     loadingFloorPlanId,
   } = useFloorPlanStore();
 
+  const { show } = useToast();
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
 
@@ -505,6 +508,26 @@ const LayoutEditorScreenContent = () => {
       Array.from({ length: item.quantity }, () => item.shapeId),
     );
 
+    const remaining = MAX_OBJECTS_PER_FLOOR_PLAN - tables.length;
+    if (remaining <= 0) {
+      show({
+        title: "Object limit reached",
+        message: `A floor plan can hold at most ${MAX_OBJECTS_PER_FLOOR_PLAN} objects.`,
+        type: "error",
+      });
+      return;
+    }
+    if (allShapes.length > remaining) {
+      show({
+        title: "Object limit reached",
+        message: `Only ${remaining} more object${
+          remaining !== 1 ? "s" : ""
+        } can be added (max ${MAX_OBJECTS_PER_FLOOR_PLAN} per floor plan). The rest were not added.`,
+        type: "error",
+      });
+      allShapes.length = remaining;
+    }
+
     const reservedNames = new Set(tables.map((table) => table.name.trim()));
 
     const additions = allShapes.map((shapeId, index) => {
@@ -567,6 +590,16 @@ const LayoutEditorScreenContent = () => {
     }
     const shapeDef = TABLE_SHAPES[shapeId as keyof typeof TABLE_SHAPES];
     if (!shapeDef) {
+      resetDragToAddState();
+      return;
+    }
+
+    if (tablesRef.current.length >= MAX_OBJECTS_PER_FLOOR_PLAN) {
+      show({
+        title: "Object limit reached",
+        message: `A floor plan can hold at most ${MAX_OBJECTS_PER_FLOOR_PLAN} objects.`,
+        type: "error",
+      });
       resetDragToAddState();
       return;
     }
@@ -851,12 +884,12 @@ const LayoutEditorScreenContent = () => {
               })
             }
           >
-            <Animated.View
-              style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
-              pointerEvents="none"
-            >
+            {/* Grid fills the visible viewport only — a world-sized SVG would
+                rasterize a huge bitmap (6000×6000×4B ≈ 324MB → Android crash).
+                Static so it always covers the whole screen at any pan/zoom. */}
+            <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
               <GridPattern />
-            </Animated.View>
+            </View>
 
             <Animated.View
               style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
@@ -927,6 +960,8 @@ const LayoutEditorScreenContent = () => {
         isOpen={isQuickSetupOpen}
         onClose={() => setQuickSetupOpen(false)}
         onAddMultiple={handleAddMultipleTables}
+        existingCount={tables.length}
+        maxObjects={MAX_OBJECTS_PER_FLOOR_PLAN}
       />
 
       {selectedTable && layoutId && (
