@@ -9,33 +9,33 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
 import { Lock, LockOpen, Minus, Plus } from "lucide-react-native";
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  LayoutChangeEvent,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    LayoutChangeEvent,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  cancelAnimation,
-  runOnJS,
-  useAnimatedReaction,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
+    cancelAnimation,
+    runOnJS,
+    useAnimatedReaction,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
 } from "react-native-reanimated";
 import Svg, {
-  Line,
-  Path as SvgPath,
-  Rect as SvgRect,
-  Text as SvgText,
+    Line,
+    Path as SvgPath,
+    Rect as SvgRect,
+    Text as SvgText,
 } from "react-native-svg";
 import { useShallow } from "zustand/react/shallow";
 import DraggableTable from "./DraggableTable";
@@ -264,21 +264,12 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   );
 
   const worldDims = useMemo(() => {
-    const cw = activeLayout?.canvas_width;
-    const ch = activeLayout?.canvas_height;
-    if (__DEV__) {
-      console.log("[TableLayoutView] worldDims canvas dims:", {
-        cw,
-        ch,
-        activeLayoutId: activeLayout?.id,
-        layoutId,
-      });
-    }
-    const contentWidth = cw ?? DEFAULT_CANVAS_WORLD_WIDTH;
-    const contentHeight = ch ?? DEFAULT_CANVAS_WORLD_HEIGHT;
+    // Always use 6000×6000 regardless of backend canvas size
+    const contentWidth = 6000;
+    const contentHeight = 6000;
 
     return { width: contentWidth, height: contentHeight };
-  }, [activeLayout]);
+  }, []);
 
   const objectMedian = useMemo(() => {
     const medianSourceTables = tables.filter((table) => {

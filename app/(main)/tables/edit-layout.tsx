@@ -3,8 +3,8 @@ import DraggableTable from "@/components/tables/DraggableTable";
 import PropertiesPanel from "@/components/tables/PropertiesPanel";
 import QuickSetupPanel from "@/components/tables/QuickSetupPanel";
 import {
-  DragToAddProvider,
-  useDragToAddContext,
+    DragToAddProvider,
+    useDragToAddContext,
 } from "@/contexts/DragToAddContext";
 import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes";
 import { colors } from "@/lib/theme";
@@ -15,30 +15,26 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Maximize2, Minus, Plus, Redo2, Undo2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  runOnJS,
-  useAnimatedReaction,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
+    runOnJS,
+    useAnimatedReaction,
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
 } from "react-native-reanimated";
 import Svg, { Defs, Pattern, Rect, Line as SvgLine } from "react-native-svg";
 
 const SHAPE_SIZE = 100;
 const FINGER_Y_OFFSET = 0;
-const DEFAULT_CANVAS_WORLD_WIDTH = 2400;
-const DEFAULT_CANVAS_WORLD_HEIGHT = 1600;
+const DEFAULT_CANVAS_WORLD_WIDTH = 6000;
+const DEFAULT_CANVAS_WORLD_HEIGHT = 6000;
 const MIN_CANVAS_DIMENSION = 600;
 const MAX_CANVAS_DIMENSION = 6000;
 
@@ -213,9 +209,6 @@ const LayoutEditorScreenContent = () => {
   }, [layoutId, setActiveFloorPlan, clearSelection]);
 
   const [isQuickSetupOpen, setQuickSetupOpen] = useState(tables.length === 0);
-  const [isCanvasSizeModalOpen, setCanvasSizeModalOpen] = useState(false);
-  const [canvasWidthInput, setCanvasWidthInput] = useState("");
-  const [canvasHeightInput, setCanvasHeightInput] = useState("");
   const canvasRef = useRef<View>(null);
   const outerViewRef = useRef<View>(null);
   const scale = useSharedValue(1);
@@ -237,21 +230,11 @@ const LayoutEditorScreenContent = () => {
   const outerOffsetY = useSharedValue(0);
 
   useEffect(() => {
-    const rawWidth = activeLayout?.canvas_width;
-    const rawHeight = activeLayout?.canvas_height;
-    console.log("[edit-layout] activeLayout canvas dimensions:", {
-      rawWidth,
-      rawHeight,
-      activeLayoutId: activeLayout?.id,
-      layoutId,
-    });
-    const nextWidth = rawWidth ?? DEFAULT_CANVAS_WORLD_WIDTH;
-    const nextHeight = rawHeight ?? DEFAULT_CANVAS_WORLD_HEIGHT;
-    canvasWorldWidthSV.value = nextWidth;
-    canvasWorldHeightSV.value = nextHeight;
-    setCanvasWidthInput(String(nextWidth));
-    setCanvasHeightInput(String(nextHeight));
-  }, [activeLayout, canvasWorldHeightSV, canvasWorldWidthSV]);
+    // Always force 6000×6000 — ignore backend canvas_width/canvas_height
+    console.log("[edit-layout] forcing canvas to 6000×6000 (backend ignored)");
+    canvasWorldWidthSV.value = DEFAULT_CANVAS_WORLD_WIDTH;
+    canvasWorldHeightSV.value = DEFAULT_CANVAS_WORLD_HEIGHT;
+  }, [canvasWorldHeightSV, canvasWorldWidthSV]);
 
   const { draggedShapeId, dragPosition, isDraggingNewObject, dropPending } =
     useDragToAddContext();
@@ -369,49 +352,6 @@ const LayoutEditorScreenContent = () => {
     savedScale.value = 1;
     savedTranslateX.value = 0;
     savedTranslateY.value = 0;
-  };
-
-  const handleSaveCanvasSize = async () => {
-    if (!activeLayout) return;
-
-    const nextWidth = clamp(
-      parseInt(canvasWidthInput, 10) || activeLayout.canvas_width,
-      MIN_CANVAS_DIMENSION,
-      MAX_CANVAS_DIMENSION,
-    );
-    const nextHeight = clamp(
-      parseInt(canvasHeightInput, 10) || activeLayout.canvas_height,
-      MIN_CANVAS_DIMENSION,
-      MAX_CANVAS_DIMENSION,
-    );
-
-    try {
-      await updateFloorPlan(activeLayout.id, {
-        canvas_width: nextWidth,
-        canvas_height: nextHeight,
-      });
-      canvasWorldWidthSV.value = nextWidth;
-      canvasWorldHeightSV.value = nextHeight;
-
-      const next = clampCanvasTranslation(
-        translateX.value,
-        translateY.value,
-        scale.value,
-        canvasWidthSV.value,
-        canvasHeightSV.value,
-        nextWidth,
-        nextHeight,
-      );
-      translateX.value = withTiming(next.x);
-      translateY.value = withTiming(next.y);
-      savedTranslateX.value = next.x;
-      savedTranslateY.value = next.y;
-      setCanvasWidthInput(String(nextWidth));
-      setCanvasHeightInput(String(nextHeight));
-      setCanvasSizeModalOpen(false);
-    } catch (e) {
-      console.error("[edit-layout] save canvas size failed", e);
-    }
   };
 
   const handleAddMultipleTables = (
@@ -713,27 +653,6 @@ const LayoutEditorScreenContent = () => {
         {/* Right: Add + Save */}
         <View style={{ flexDirection: "row", gap: s(8) }}>
           <TouchableOpacity
-            onPress={() => setCanvasSizeModalOpen(true)}
-            style={{
-              paddingHorizontal: s(14),
-              paddingVertical: s(8),
-              borderRadius: s(8),
-              backgroundColor: colors.screen,
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            <Text
-              style={{
-                color: colors.label,
-                fontWeight: "600",
-                fontSize: s(13),
-              }}
-            >
-              Canvas
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             onPress={() => addTableSheetRef.current?.expand()}
             style={{
               flexDirection: "row",
@@ -877,182 +796,6 @@ const LayoutEditorScreenContent = () => {
         onClose={() => setQuickSetupOpen(false)}
         onAddMultiple={handleAddMultipleTables}
       />
-
-      <Modal
-        visible={isCanvasSizeModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCanvasSizeModalOpen(false)}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.6)",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
-            <View
-              style={{
-                width: s(360),
-                backgroundColor: colors.card,
-                borderRadius: s(16),
-                borderWidth: 1,
-                borderColor: colors.border,
-                overflow: "hidden",
-              }}
-            >
-              <View
-                style={{
-                  paddingHorizontal: s(18),
-                  paddingVertical: s(14),
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    color: colors.heading,
-                    fontSize: s(14),
-                    fontWeight: "700",
-                  }}
-                >
-                  Canvas Size
-                </Text>
-                <Text
-                  style={{
-                    color: colors.muted,
-                    fontSize: s(11),
-                    marginTop: s(3),
-                  }}
-                >
-                  Set the stored floor plan workspace size.
-                </Text>
-              </View>
-
-              <View style={{ padding: s(16), gap: s(12) }}>
-                <View>
-                  <Text
-                    style={{
-                      color: colors.muted,
-                      fontSize: s(10),
-                      marginBottom: s(6),
-                    }}
-                  >
-                    Width
-                  </Text>
-                  <TextInput
-                    value={canvasWidthInput}
-                    onChangeText={setCanvasWidthInput}
-                    keyboardType="number-pad"
-                    maxLength={4}
-                    style={{
-                      backgroundColor: colors.screen,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: s(8),
-                      paddingHorizontal: s(10),
-                      paddingVertical: s(10),
-                      color: colors.heading,
-                      fontSize: s(13),
-                    }}
-                  />
-                </View>
-
-                <View>
-                  <Text
-                    style={{
-                      color: colors.muted,
-                      fontSize: s(10),
-                      marginBottom: s(6),
-                    }}
-                  >
-                    Height
-                  </Text>
-                  <TextInput
-                    value={canvasHeightInput}
-                    onChangeText={setCanvasHeightInput}
-                    keyboardType="number-pad"
-                    maxLength={4}
-                    style={{
-                      backgroundColor: colors.screen,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: s(8),
-                      paddingHorizontal: s(10),
-                      paddingVertical: s(10),
-                      color: colors.heading,
-                      fontSize: s(13),
-                    }}
-                  />
-                </View>
-
-                <Text style={{ color: colors.muted, fontSize: s(11) }}>
-                  Min {MIN_CANVAS_DIMENSION}, max {MAX_CANVAS_DIMENSION}.
-                </Text>
-              </View>
-
-              <View
-                style={{
-                  flexDirection: "row",
-                  gap: s(8),
-                  padding: s(14),
-                  borderTopWidth: 1,
-                  borderTopColor: colors.border,
-                }}
-              >
-                <TouchableOpacity
-                  onPress={() => setCanvasSizeModalOpen(false)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: s(10),
-                    borderRadius: s(9),
-                    alignItems: "center",
-                    backgroundColor: colors.screen,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.label,
-                      fontWeight: "600",
-                      fontSize: s(13),
-                    }}
-                  >
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleSaveCanvasSize}
-                  style={{
-                    flex: 1,
-                    paddingVertical: s(10),
-                    borderRadius: s(9),
-                    alignItems: "center",
-                    backgroundColor: colors.teal + "20",
-                    borderWidth: 1,
-                    borderColor: colors.teal + "60",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.teal,
-                      fontWeight: "700",
-                      fontSize: s(13),
-                    }}
-                  >
-                    Save
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
 
       {selectedTable && layoutId && (
         <PropertiesPanel table={selectedTable} layoutId={layoutId} />
