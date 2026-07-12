@@ -2,12 +2,13 @@ import ReceiptModal from "@/components/receipts/ReceiptModal";
 import { useToast } from "@/contexts/ToastContext";
 import { useTableDuration } from "@/hooks/useTableDuration";
 import {
-  getReadOnlyTableAccess,
-  isOrderReadOnly,
+    getReadOnlyTableAccess,
+    isOrderReadOnly,
 } from "@/lib/orderAccessControl";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import {
     useOrderByAnyId,
     useOrderTotals,
@@ -19,9 +20,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
-import { useShallow } from "zustand/react/shallow";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import { useUiScale } from "@/lib/uiScale";
 import {
     BrushCleaning,
     CheckCircle,
@@ -33,10 +32,8 @@ import {
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import Animated, {
-    FadeIn,
-    FadeOut,
-} from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { useShallow } from "zustand/react/shallow";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
 import { type PaymentStatus } from "./PaymentStatusBadge";
 
@@ -87,10 +84,10 @@ const getStatusAccentColor = (status: string, isOvertime: boolean): string => {
 };
 
 const useScale = () => {
-  const uiScale = useUiScale()
-  const s = (n: number) => Math.round(n * uiScale)
-  return { uiScale, s }
-}
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return { uiScale, s };
+};
 
 const StatusIndicator = ({
   status,
@@ -101,7 +98,7 @@ const StatusIndicator = ({
   tableId?: string;
   isOvertime: boolean;
 }) => {
-  const { s } = useScale()
+  const { s } = useScale();
   // Get the session directly from the store to ensure we have the latest status
   const sessionStatus = tableId
     ? useTableSessionStore((s) => s.sessions[tableId])?.status
@@ -163,7 +160,7 @@ const QuickActionButton: React.FC<{
   variant?: "primary" | "secondary" | "destructive";
   disabled?: boolean;
 }> = ({ onPress, label, variant = "secondary", disabled = false }) => {
-  const { s } = useScale()
+  const { s } = useScale();
   const bg =
     variant === "primary"
       ? colors.teal + "20"
@@ -393,7 +390,7 @@ const ExpandedView: React.FC<{
   onToggleExpand: () => void;
   table: FloorPlanObject;
 }> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
-  const { s } = useScale()
+  const { s } = useScale();
   const updateSessionStatus = useTableSessionStore(
     (s) => s.updateSessionStatus,
   );
@@ -418,8 +415,9 @@ const ExpandedView: React.FC<{
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const foreignOwnedOrder = useMemo(() => {
     const directMatch =
-      tableData.orders.find((order) => isOrderReadOnly(order, currentStationId)) ??
-      null;
+      tableData.orders.find((order) =>
+        isOrderReadOnly(order, currentStationId),
+      ) ?? null;
     if (directMatch) return directMatch;
 
     const liveSessions = useTableSessionStore.getState().sessions;
@@ -428,7 +426,8 @@ const ExpandedView: React.FC<{
       tableId: tableData.primaryTableId,
       currentStationId,
       getSession: (id) => liveSessions[id] ?? tablesById[id]?.session,
-      getOrder: (orderId) => getOrder(orderId) ?? getOrderByDbId(orderId) ?? null,
+      getOrder: (orderId) =>
+        getOrder(orderId) ?? getOrderByDbId(orderId) ?? null,
     });
 
     if (!readOnlyAccess) return null;
@@ -688,7 +687,9 @@ const ExpandedView: React.FC<{
         )}
 
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: s(11), color: colors.muted }}>Remaining</Text>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>
+            Remaining
+          </Text>
           <Text
             style={{
               fontSize: s(11),
@@ -711,12 +712,20 @@ const ExpandedView: React.FC<{
           }}
         >
           <Text
-            style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
+            style={{
+              fontSize: s(13),
+              fontWeight: "700",
+              color: colors.heading,
+            }}
           >
             Total
           </Text>
           <Text
-            style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
+            style={{
+              fontSize: s(13),
+              fontWeight: "700",
+              color: colors.heading,
+            }}
           >
             ${tableData.total?.toFixed(2)}
           </Text>
@@ -790,7 +799,7 @@ const TableListItem: React.FC<{
   onNavigateToOrder,
   handleTablePress,
 }) => {
-  const { s } = useScale()
+  const { s } = useScale();
   const tableData = useTableData(table);
 
   const isActiveStatus = useMemo(() => {
@@ -830,6 +839,7 @@ const TableListItem: React.FC<{
       status === "paid"
     ) {
       onToggleExpand();
+      handleTablePress(table);
     } else {
       handleTablePress(table);
     }
@@ -860,7 +870,10 @@ const TableListItem: React.FC<{
 
   return (
     <Animated.View
-      style={{ marginBottom: s(4), overflow: isExpanded ? "visible" : "hidden" }}
+      style={{
+        marginBottom: s(4),
+        overflow: isExpanded ? "visible" : "hidden",
+      }}
     >
       <TouchableOpacity
         onPress={handlePress}
@@ -895,14 +908,22 @@ const TableListItem: React.FC<{
           {/* Name + meta */}
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text
-              style={{ fontSize: s(12), fontWeight: "700", color: colors.heading }}
+              style={{
+                fontSize: s(12),
+                fontWeight: "700",
+                color: colors.heading,
+              }}
               numberOfLines={1}
             >
               {tableData.displayName}
             </Text>
             {metaLine ? (
               <Text
-                style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
+                style={{
+                  fontSize: s(10),
+                  color: colors.muted,
+                  marginTop: s(1),
+                }}
                 numberOfLines={1}
               >
                 {metaLine}
@@ -911,7 +932,9 @@ const TableListItem: React.FC<{
           </View>
 
           {/* Right side */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
+          >
             {/* Available label */}
             {normalizedStatus === "available" && (
               <Text
@@ -929,7 +952,11 @@ const TableListItem: React.FC<{
             {(normalizedStatus === "cleaning" ||
               normalizedStatus === "closing") && (
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: s(3) }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(3),
+                }}
               >
                 <BrushCleaning size={s(11)} color={colors.muted} />
                 <Text style={{ fontSize: s(10), color: colors.muted }}>

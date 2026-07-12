@@ -5,6 +5,7 @@ import { BrushCleaning, Lock } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
 import { GestureDetector, GestureType } from "react-native-gesture-handler";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { TableCardData } from "./useTableCardData";
 
 /**
@@ -82,12 +83,46 @@ export const PulsingBorder = React.memo(function PulsingBorder({
   );
 });
 
+/**
+ * Yellow border shown while a table is being dragged (long-press held).
+ * Uses useAnimatedStyle to toggle opacity on the UI thread without a JS re-render.
+ */
+const DraggingBorder = React.memo(function DraggingBorder({
+  sharedValue,
+}: {
+  sharedValue: Animated.SharedValue<boolean>;
+}) {
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: sharedValue.value ? 1 : 0,
+  }));
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        {
+          position: "absolute",
+          top: -3,
+          left: -3,
+          right: -3,
+          bottom: -3,
+          borderWidth: 2.5,
+          borderColor: colors.warning,
+          borderRadius: 18,
+        },
+        animatedStyle,
+      ]}
+    />
+  );
+});
+
 interface TableCardContentProps {
   table: FloorPlanObject;
   data: TableCardData;
   isTableType: boolean;
   isWall: boolean;
   isSelected: boolean;
+  isDragging?: Animated.SharedValue<boolean>;
   isEditMode: boolean;
   isLocked: boolean;
   sectionColor?: string;
@@ -109,6 +144,7 @@ const TableCardContent: React.FC<TableCardContentProps> = ({
   isTableType,
   isWall,
   isSelected,
+  isDragging,
   isEditMode,
   isLocked,
   sectionColor,
@@ -181,6 +217,9 @@ const TableCardContent: React.FC<TableCardContentProps> = ({
           }}
         />
       )}
+
+      {/* Drag-active border — yellow when user holds + starts dragging */}
+      {isDragging && <DraggingBorder sharedValue={isDragging} />}
 
       {isLocked && (
         <View

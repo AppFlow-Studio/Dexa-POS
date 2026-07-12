@@ -61,7 +61,7 @@ export interface PrintingConfig {
   // When true, split-payment orders auto-print one receipt per portion as each
   // portion completes (instead of the single combined receipt).
   autoPrintSplitReceipts: boolean;
-  autoPrintVoidReceipt: boolean;
+  autoPrintVoidReceipt: boolean;                                                                                                                                                                                                                                                                                                                                                                                                  
   printVoidTickets: boolean;
   printRefundTickets: boolean;
   printMerchantCopy: boolean;
@@ -150,8 +150,8 @@ export interface TimeclockConfig {
   clockInRequirePin: boolean;
   preventEarlyClockIn: boolean;
   preventOpenOrdersClockOut: boolean;
-  autoCloseStaleShifts: boolean; // Auto-close shifts open longer than maxShiftHours
-  maxShiftHours: number; // Threshold for stale shift detection (default: 24)
+  autoCloseStaleShifts: boolean; // Legacy only; auto clock-out is now locations.auto_clock_out_enabled/time
+  maxShiftHours: number; // Legacy only; cutoff-time auto clock-out is handled server-side
 }
 
 export interface NotificationsConfig {
@@ -195,6 +195,21 @@ export type ConfigNamespace = keyof Omit<
   LocationPosConfig,
   "_version" | "_updated_at"
 >;
+
+export type DeepPartialConfig<T> = {
+  [K in keyof T]?: T[K] extends readonly unknown[]
+    ? T[K]
+    : T[K] extends object
+      ? DeepPartialConfig<T[K]>
+      : T[K]
+}
+
+export type LocationPosConfigPatch = DeepPartialConfig<LocationPosConfig>
+
+/** Station override payload. Version metadata remains location-owned. */
+export type StationPosConfigOverrides = DeepPartialConfig<
+  Omit<LocationPosConfig, '_version' | '_updated_at'>
+>
 
 /** Map from namespace to its config type */
 export type ConfigForNamespace<N extends ConfigNamespace> =
