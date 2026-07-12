@@ -9,33 +9,33 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
 import { Lock, LockOpen, Minus, Plus } from "lucide-react-native";
 import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    LayoutChangeEvent,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  LayoutChangeEvent,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-    cancelAnimation,
-    runOnJS,
-    useAnimatedReaction,
-    useAnimatedStyle,
-    useSharedValue,
-    withSpring,
+  cancelAnimation,
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
 } from "react-native-reanimated";
 import Svg, {
-    Line,
-    Path as SvgPath,
-    Rect as SvgRect,
-    Text as SvgText,
+  Line,
+  Path as SvgPath,
+  Rect as SvgRect,
+  Text as SvgText,
 } from "react-native-svg";
 import { useShallow } from "zustand/react/shallow";
 import DraggableTable from "./DraggableTable";
@@ -44,10 +44,9 @@ import TableLayoutSkeleton from "./TableLayoutSkeleton";
 // Precomputed grid paths — built once at module load, not on every render
 const GRID_MINOR = 20;
 const GRID_MAJOR = 100;
-const DEFAULT_CANVAS_WORLD_WIDTH = 2400;
-const DEFAULT_CANVAS_WORLD_HEIGHT = 1600;
+
 const INITIAL_ZOOM_MULTIPLIER = 2.0;
-const ENTRY_ANIMATION_OBJECT_LIMIT = 40;
+
 const PROGRESSIVE_RENDER_THRESHOLD = 80;
 const INITIAL_RENDER_BATCH = 80;
 const PROGRESSIVE_RENDER_BATCH = 20;
@@ -480,14 +479,13 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
 
       const persistedKey = `floor_plan.view_state.${layoutId}`;
       const parsedCamera = readPersistedCameraState(persistedKey);
-      const shouldRestoreLockedCamera =
-        viewLocked &&
+      const shouldRestoreCamera =
         parsedCamera &&
         Number.isFinite(parsedCamera.scale) &&
         Number.isFinite(parsedCamera.translateX) &&
         Number.isFinite(parsedCamera.translateY);
 
-      if (shouldRestoreLockedCamera) {
+      if (shouldRestoreCamera) {
         const restoredScale = clamp(parsedCamera.scale, 0.5, 3);
         const restoredTranslate = clampCanvasTranslation(
           parsedCamera.translateX,
@@ -773,6 +771,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         right: wr + VIEWPORT_OVERSCAN_PX,
         bottom: wb + VIEWPORT_OVERSCAN_PX,
       });
+      runOnJS(persistCameraState)({
+        scale: current.s,
+        translateX: current.tx,
+        translateY: current.ty,
+      });
     },
   );
 
@@ -840,10 +843,13 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     savedTranslateY.value = initialTranslateYRef.current;
   };
 
-  const persistCameraState = (state: PersistedCameraState) => {
-    cameraStateRef.current = state;
-    storage.set(`floor_plan.view_state.${layoutId}`, JSON.stringify(state));
-  };
+  const persistCameraState = useCallback(
+    (state: PersistedCameraState) => {
+      cameraStateRef.current = state;
+      storage.set(`floor_plan.view_state.${layoutId}`, JSON.stringify(state));
+    },
+    [layoutId],
+  );
 
   const handleLockToggle = () => {
     if (viewLocked) {
@@ -886,11 +892,14 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     };
   }, []);
 
-  // Cancel all in-flight canvas animations on unmount.
-  // Keep the gesture shared values (scale/translate/saved*) cancellation
-  // because they may have in-flight withSpring momentum.
+  // Persist final camera state on unmount, then cancel animations.
   useEffect(() => {
     return () => {
+      persistCameraState({
+        scale: scale.value,
+        translateX: translateX.value,
+        translateY: translateY.value,
+      });
       cancelAnimation(scale);
       cancelAnimation(savedScale);
       cancelAnimation(translateX);
@@ -902,7 +911,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         viewportRafId.current = null;
       }
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutId, persistCameraState]);
 
   const [skeletonVisible, setSkeletonVisible] = useState(true);
   useEffect(() => {
@@ -1223,13 +1233,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             savedScale.value = newScale;
             savedTranslateX.value = next.x;
             savedTranslateY.value = next.y;
-            if (viewLocked) {
-              persistCameraState({
-                scale: newScale,
-                translateX: next.x,
-                translateY: next.y,
-              });
-            }
+            persistCameraState({
+              scale: newScale,
+              translateX: next.x,
+              translateY: next.y,
+            });
           }}
           style={{
             pointerEvents: "auto",
@@ -1275,13 +1283,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             savedScale.value = newScale;
             savedTranslateX.value = next.x;
             savedTranslateY.value = next.y;
-            if (viewLocked) {
-              persistCameraState({
-                scale: newScale,
-                translateX: next.x,
-                translateY: next.y,
-              });
-            }
+            persistCameraState({
+              scale: newScale,
+              translateX: next.x,
+              translateY: next.y,
+            });
           }}
           style={{
             pointerEvents: "auto",
