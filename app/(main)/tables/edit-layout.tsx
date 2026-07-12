@@ -299,58 +299,117 @@ const LayoutEditorScreenContent = () => {
 
   const { draggedShapeId, dragPosition, isDraggingNewObject, dropPending } =
     useDragToAddContext();
+
+  // ── Single-basis camera gesture ─────────────────────────────────────────
+  // Pan and pinch run Simultaneous, but they must NOT each write translate from
+  // their own base or they fight (pinch moves the centroid → pan activates and
+  // drags the canvas = "scrolling away"). We capture ONE basis when the combined
+  // gesture starts and rebuild the transform every frame from cumulative inputs
+  // (pan translation + pinch scale) around a fixed focal.
+  //
+  // Transform model — RN scales around the view CENTER; translate is applied in
+  // the parent (unscaled) space:
+  //   screen = (world - viewportCenter) * scale + viewportCenter + translate
+  // Focal-fixed zoom around start-focal f0 (canvas-local), plus pan disp P:
+  //   translate = t0 + P - (f0 - viewportCenter - t0) * (scale/s0 - 1)
+  const gActive = useSharedValue(0);
+  const gStartScale = useSharedValue(1);
+  const gStartTx = useSharedValue(0);
+  const gStartTy = useSharedValue(0);
+  const gFocalX = useSharedValue(0); // canvas-local focal px; center for pan-only
+  const gFocalY = useSharedValue(0);
+  const gPanX = useSharedValue(0);
+  const gPanY = useSharedValue(0);
+  const gPinchScale = useSharedValue(1);
+
+  const applyCamera = useCallback(() => {
+    "worklet";
+    const s = clamp(gStartScale.value * gPinchScale.value, 0.5, 3);
+    const factor = gStartScale.value > 0 ? s / gStartScale.value : 1;
+    const vcx = canvasWidthSV.value / 2;
+    const vcy = canvasHeightSV.value / 2;
+    scale.value = s;
+    // No clamp during the gesture — overscroll allowed so the pinched point can
+    // reach the fingers near the edge; we clamp + settle when it fully ends.
+    translateX.value =
+      gStartTx.value + gPanX.value - (gFocalX.value - vcx - gStartTx.value) * (factor - 1);
+    translateY.value =
+      gStartTy.value + gPanY.value - (gFocalY.value - vcy - gStartTy.value) * (factor - 1);
+  }, [canvasWidthSV, canvasHeightSV, gStartScale, gPinchScale, gStartTx, gStartTy, gFocalX, gFocalY, gPanX, gPanY, scale, translateX, translateY]);
+
+  const beginCameraGesture = useCallback(() => {
+    "worklet";
+    if (gActive.value === 0) {
+      gStartScale.value = scale.value;
+      gStartTx.value = translateX.value;
+      gStartTy.value = translateY.value;
+      gPanX.value = 0;
+      gPanY.value = 0;
+      gPinchScale.value = 1;
+      gFocalX.value = canvasWidthSV.value / 2;
+      gFocalY.value = canvasHeightSV.value / 2;
+    }
+    gActive.value += 1;
+  }, [canvasWidthSV, canvasHeightSV, gActive, gStartScale, gStartTx, gStartTy, gPanX, gPanY, gPinchScale, gFocalX, gFocalY, scale, translateX, translateY]);
+
+  const endCameraGesture = useCallback(() => {
+    "worklet";
+    gActive.value -= 1;
+    if (gActive.value > 0) return;
+    gActive.value = 0;
+    savedScale.value = scale.value;
+    const settled = clampCanvasTranslation(
+      translateX.value,
+      translateY.value,
+      scale.value,
+      canvasWidthSV.value,
+      canvasHeightSV.value,
+      canvasWorldWidthSV.value,
+      canvasWorldHeightSV.value,
+    );
+    translateX.value = withTiming(settled.x, { duration: 180 });
+    translateY.value = withTiming(settled.y, { duration: 180 });
+    savedTranslateX.value = settled.x;
+    savedTranslateY.value = settled.y;
+    runOnJS(persistCameraState)({
+      scale: scale.value,
+      translateX: settled.x,
+      translateY: settled.y,
+    });
+  }, [canvasWidthSV, canvasHeightSV, canvasWorldWidthSV, canvasWorldHeightSV, gActive, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, persistCameraState]);
+
   const panGesture = Gesture.Pan()
     .minDistance(8)
     .activeOffsetX([-8, 8])
     .activeOffsetY([-8, 8])
+    .averageTouches(true)
+    .onStart(() => {
+      beginCameraGesture();
+    })
     .onUpdate((e) => {
-      const next = clampCanvasTranslation(
-        savedTranslateX.value + e.translationX,
-        savedTranslateY.value + e.translationY,
-        scale.value,
-        canvasWidthSV.value,
-        canvasHeightSV.value,
-        canvasWorldWidthSV.value,
-        canvasWorldHeightSV.value,
-      );
-      translateX.value = next.x;
-      translateY.value = next.y;
+      gPanX.value = e.translationX;
+      gPanY.value = e.translationY;
+      applyCamera();
     })
     .onEnd(() => {
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
-      runOnJS(persistCameraState)({
-        scale: scale.value,
-        translateX: translateX.value,
-        translateY: translateY.value,
-      });
+      endCameraGesture();
     });
 
   const pinchGesture = Gesture.Pinch()
+    .onStart((e) => {
+      beginCameraGesture();
+      // focalX/focalY are relative to the gesture view (the canvas View this
+      // GestureDetector wraps), whose top-left IS the canvas origin — so this
+      // is already canvas-local. No origin subtraction needed.
+      gFocalX.value = e.focalX;
+      gFocalY.value = e.focalY;
+    })
     .onUpdate((e) => {
-      const nextScale = Math.max(0.5, Math.min(3, savedScale.value * e.scale));
-      const next = clampCanvasTranslation(
-        translateX.value,
-        translateY.value,
-        nextScale,
-        canvasWidthSV.value,
-        canvasHeightSV.value,
-        canvasWorldWidthSV.value,
-        canvasWorldHeightSV.value,
-      );
-      scale.value = nextScale;
-      translateX.value = next.x;
-      translateY.value = next.y;
+      gPinchScale.value = e.scale;
+      applyCamera();
     })
     .onEnd(() => {
-      savedScale.value = scale.value;
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
-      runOnJS(persistCameraState)({
-        scale: scale.value,
-        translateX: translateX.value,
-        translateY: translateY.value,
-      });
+      endCameraGesture();
     });
 
   const canvasTapGesture = Gesture.Tap().onEnd(() => {
