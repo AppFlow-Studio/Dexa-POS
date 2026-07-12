@@ -82,6 +82,15 @@ function countUndoneItems(ticket: KDSTicket): number {
   ).length;
 }
 
+function isTicketElevated(ticket: KDSTicket): boolean {
+  const items = Array.isArray(ticket.items) ? ticket.items : [];
+  return (
+    Boolean(ticket.prioritized) ||
+    Boolean(ticket.any_rush) ||
+    items.some((item) => Boolean(item.rush) || Boolean(item.is_prioritized))
+  );
+}
+
 // ─── Confirm Bump Modal ─────────────────────────────────────────
 interface ConfirmBumpModalProps {
   isOpen: boolean;
@@ -3185,7 +3194,12 @@ const KitchenDisplayScreen = () => {
   const ticketsForLayout = useMemo(
     () =>
       [...dedupeTicketsForRender(activeTabTickets)].sort((a, b) => {
-        // For non-active tabs, use ticket_id tiebreaker only (don't re-sort)
+        if (activeStatus !== "done") {
+          const priorityDiff =
+            Number(isTicketElevated(b)) - Number(isTicketElevated(a));
+          if (priorityDiff !== 0) return priorityDiff;
+        }
+
         const aTs =
           activeStatus === "done"
             ? (a.done_time_epoch ?? a.start_time_epoch ?? 0)

@@ -50,6 +50,7 @@ export interface KDSTicket {
   ready_time_epoch?: number;
   item_count: number;
   items: KDSTicketItem[];
+  any_rush?: boolean;
   prioritized?: boolean;
   session_id?: string | null;
 }
