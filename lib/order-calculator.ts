@@ -225,6 +225,12 @@ export function calculateItemEffectiveCardPrice (item: CartItem): number {
 
 /**
  * Calculate tax for a single item given its taxable amount and tax rate.
+ *
+ * NOTE (v6): this is a PER-ITEM display/split value only. The authoritative
+ * order-level `tax_amount` is computed as an aggregate per rate group in
+ * `calculateOrderTotals` (round once per group, not per item), so the sum of
+ * per-item `calculateItemTax` values may differ from the order tax by up to a
+ * cent per rate group. Do not sum these to derive the order total.
  */
 export function calculateItemTax (
   taxableAmount: number,
@@ -559,7 +565,10 @@ export function calculateOrderTotals (
 
   // =========================================================================
   // SECOND PASS: Calculate tax on discounted amounts
-  // Per-item: ROUND((itemSubtotal - itemDiscount) * taxRate / 100, 2)
+  // v6: AGGREGATE PER TAX-RATE GROUP — accumulate net subtotals per resolved
+  // rate here, then ROUND(groupBase * rate / 100, 2) ONCE per group after the
+  // loop (see below). This matches calculate_order_totals_fast v6; summing
+  // per-item-rounded taxes drifted a cent low on multi-item orders.
   // =========================================================================
 
   let totalCardTax = new Decimal(0)
@@ -573,6 +582,14 @@ export function calculateOrderTotals (
   let outstandingCardTax = new Decimal(0)
   let outstandingCashTax = new Decimal(0)
 
+  // v6: net subtotal accumulated per resolved rate (card/cash, full + unpaid).
+  // Tax is rounded once per group after the loop — never per item. Keys are the
+  // resolved numeric rate (e.g. 8.875), matching the server's group-by tax_rate.
+  const cardBaseByRate = new Map<number, Decimal>()
+  const cashBaseByRate = new Map<number, Decimal>()
+  const cardUnpaidByRate = new Map<number, Decimal>()
+  const cashUnpaidByRate = new Map<number, Decimal>()
+
   for (let i = 0; i < itemData.length; i++) {
     const data = itemData[i]
     const itemDiscount = itemDiscounts[i]
@@ -585,20 +602,18 @@ export function calculateOrderTotals (
     netCardSubtotal = netCardSubtotal.plus(itemNetCardSubtotal)
     netCashSubtotal = netCashSubtotal.plus(itemNetCashSubtotal)
 
-    // Tax: ROUND(discounted_subtotal * rate / 100, 2) - PER ITEM
+    // v6: accumulate net subtotal into the item's rate group; the group tax is
+    // rounded once after the loop (aggregate-per-rate-group, matches server).
     if (!data.isTaxExempt && data.taxRatePercent > 0) {
-      const itemCardTax = itemNetCardSubtotal
-        .times(data.taxRatePercent)
-        .dividedBy(100)
-        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
-
-      const itemCashTax = itemNetCashSubtotal
-        .times(data.taxRatePercent)
-        .dividedBy(100)
-        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
-
-      totalCardTax = totalCardTax.plus(itemCardTax)
-      totalCashTax = totalCashTax.plus(itemCashTax)
+      const rate = data.taxRatePercent
+      cardBaseByRate.set(
+        rate,
+        (cardBaseByRate.get(rate) ?? new Decimal(0)).plus(itemNetCardSubtotal)
+      )
+      cashBaseByRate.set(
+        rate,
+        (cashBaseByRate.get(rate) ?? new Decimal(0)).plus(itemNetCashSubtotal)
+      )
 
       // Outstanding calculations
       // Account for refunded quantities - refunded items need to be paid again
@@ -622,19 +637,16 @@ export function calculateOrderTotals (
         outstandingCashSubtotal =
           outstandingCashSubtotal.plus(unpaidCashSubtotal)
 
-        // Tax on unpaid portion - round per item
-        const unpaidCardTax = unpaidCardSubtotal
-          .times(data.taxRatePercent)
-          .dividedBy(100)
-          .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
-
-        const unpaidCashTax = unpaidCashSubtotal
-          .times(data.taxRatePercent)
-          .dividedBy(100)
-          .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
-
-        outstandingCardTax = outstandingCardTax.plus(unpaidCardTax)
-        outstandingCashTax = outstandingCashTax.plus(unpaidCashTax)
+        // v6: accumulate unpaid net into the rate group; outstanding tax is
+        // rounded once per group after the loop (aggregate-per-rate-group).
+        cardUnpaidByRate.set(
+          rate,
+          (cardUnpaidByRate.get(rate) ?? new Decimal(0)).plus(unpaidCardSubtotal)
+        )
+        cashUnpaidByRate.set(
+          rate,
+          (cashUnpaidByRate.get(rate) ?? new Decimal(0)).plus(unpaidCashSubtotal)
+        )
       }
     } else {
       // Tax exempt item - still track outstanding subtotals
@@ -658,6 +670,31 @@ export function calculateOrderTotals (
         )
       }
     }
+  }
+
+  // v6: round tax ONCE per rate group (aggregate-per-rate-group), card and cash
+  // independently, for both the full and unpaid/outstanding buckets. Summing
+  // already-2dp group taxes is order-independent, so Map iteration order is
+  // irrelevant. Accumulators stay in Decimal — never coerce to number here.
+  for (const [rate, base] of cardBaseByRate) {
+    totalCardTax = totalCardTax.plus(
+      base.times(rate).dividedBy(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    )
+  }
+  for (const [rate, base] of cashBaseByRate) {
+    totalCashTax = totalCashTax.plus(
+      base.times(rate).dividedBy(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    )
+  }
+  for (const [rate, base] of cardUnpaidByRate) {
+    outstandingCardTax = outstandingCardTax.plus(
+      base.times(rate).dividedBy(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    )
+  }
+  for (const [rate, base] of cashUnpaidByRate) {
+    outstandingCashTax = outstandingCashTax.plus(
+      base.times(rate).dividedBy(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    )
   }
 
   // =========================================================================

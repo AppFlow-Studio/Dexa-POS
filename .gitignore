@@ -67,3 +67,6 @@ android/.cxx
 
 # Sentry
 sentry.properties
+
+# Supabase CLI ephemeral local state (version markers, etc.) — conflicts on merges
+supabase/.temp/
