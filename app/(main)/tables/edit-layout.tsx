@@ -6,6 +6,7 @@ import {
     DragToAddProvider,
     useDragToAddContext,
 } from "@/contexts/DragToAddContext";
+import { storage } from "@/lib/storage";
 import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
@@ -13,7 +14,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Maximize2, Minus, Plus, Redo2, Undo2 } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     StyleSheet,
@@ -50,6 +51,38 @@ const SHAPE_SIZES: Record<string, { w: number; h: number }> =
 const clamp = (value: number, min: number, max: number) => {
   "worklet";
   return Math.min(Math.max(value, min), max);
+};
+
+type PersistedCameraState = {
+  scale: number;
+  translateX: number;
+  translateY: number;
+};
+
+// Shared with TableLayoutView: both screens read/write this key so the edit
+// canvas opens at the same camera position the tables view was left at.
+const cameraStateKey = (layoutId: string) =>
+  `floor_plan.view_state.${layoutId}`;
+
+const readPersistedCameraState = (
+  layoutId: string,
+): PersistedCameraState | null => {
+  if (!layoutId) return null;
+  const raw = storage.getString(cameraStateKey(layoutId));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as PersistedCameraState;
+    if (
+      Number.isFinite(parsed.scale) &&
+      Number.isFinite(parsed.translateX) &&
+      Number.isFinite(parsed.translateY)
+    ) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 };
 
 const getNextAvailableTableNumber = (names: string[]) => {
@@ -211,12 +244,19 @@ const LayoutEditorScreenContent = () => {
   const [isQuickSetupOpen, setQuickSetupOpen] = useState(tables.length === 0);
   const canvasRef = useRef<View>(null);
   const outerViewRef = useRef<View>(null);
-  const scale = useSharedValue(1);
-  const savedScale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const savedTranslateX = useSharedValue(0);
-  const savedTranslateY = useSharedValue(0);
+  // Restore camera from the same MMKV key the tables view persists, so edit
+  // mode opens at the position the user left. Read once at mount.
+  const initialCamera = useMemo(
+    () => readPersistedCameraState(layoutId ?? ""),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const scale = useSharedValue(initialCamera?.scale ?? 1);
+  const savedScale = useSharedValue(initialCamera?.scale ?? 1);
+  const translateX = useSharedValue(initialCamera?.translateX ?? 0);
+  const translateY = useSharedValue(initialCamera?.translateY ?? 0);
+  const savedTranslateX = useSharedValue(initialCamera?.translateX ?? 0);
+  const savedTranslateY = useSharedValue(initialCamera?.translateY ?? 0);
 
   // Canvas screen bounds — updated via onLayout, read on UI thread for instant drop calc.
   const canvasOriginXSV = useSharedValue(0);
@@ -235,6 +275,27 @@ const LayoutEditorScreenContent = () => {
     canvasWorldWidthSV.value = DEFAULT_CANVAS_WORLD_WIDTH;
     canvasWorldHeightSV.value = DEFAULT_CANVAS_WORLD_HEIGHT;
   }, [canvasWorldHeightSV, canvasWorldWidthSV]);
+
+  // Persist camera so both this screen and the tables view stay in sync.
+  // Called from gesture-end worklets via runOnJS, and on unmount.
+  const persistCameraState = useCallback(
+    (state: PersistedCameraState) => {
+      if (!layoutId) return;
+      storage.set(cameraStateKey(layoutId), JSON.stringify(state));
+    },
+    [layoutId],
+  );
+
+  useEffect(() => {
+    return () => {
+      persistCameraState({
+        scale: scale.value,
+        translateX: translateX.value,
+        translateY: translateY.value,
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistCameraState]);
 
   const { draggedShapeId, dragPosition, isDraggingNewObject, dropPending } =
     useDragToAddContext();
@@ -258,6 +319,11 @@ const LayoutEditorScreenContent = () => {
     .onEnd(() => {
       savedTranslateX.value = translateX.value;
       savedTranslateY.value = translateY.value;
+      runOnJS(persistCameraState)({
+        scale: scale.value,
+        translateX: translateX.value,
+        translateY: translateY.value,
+      });
     });
 
   const pinchGesture = Gesture.Pinch()
@@ -280,6 +346,11 @@ const LayoutEditorScreenContent = () => {
       savedScale.value = scale.value;
       savedTranslateX.value = translateX.value;
       savedTranslateY.value = translateY.value;
+      runOnJS(persistCameraState)({
+        scale: scale.value,
+        translateX: translateX.value,
+        translateY: translateY.value,
+      });
     });
 
   const canvasTapGesture = Gesture.Tap().onEnd(() => {
@@ -343,6 +414,7 @@ const LayoutEditorScreenContent = () => {
     savedScale.value = clamped;
     savedTranslateX.value = next.x;
     savedTranslateY.value = next.y;
+    persistCameraState({ scale: clamped, translateX: next.x, translateY: next.y });
   };
 
   const recenterCanvas = () => {
@@ -352,6 +424,7 @@ const LayoutEditorScreenContent = () => {
     savedScale.value = 1;
     savedTranslateX.value = 0;
     savedTranslateY.value = 0;
+    persistCameraState({ scale: 1, translateX: 0, translateY: 0 });
   };
 
   const handleAddMultipleTables = (

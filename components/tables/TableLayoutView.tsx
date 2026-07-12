@@ -47,10 +47,10 @@ const GRID_MAJOR = 100;
 
 const INITIAL_ZOOM_MULTIPLIER = 2.0;
 
-const PROGRESSIVE_RENDER_THRESHOLD = 80;
-const INITIAL_RENDER_BATCH = 80;
-const PROGRESSIVE_RENDER_BATCH = 20;
-const PROGRESSIVE_RENDER_DELAY_MS = 8;
+const PROGRESSIVE_RENDER_THRESHOLD = 150;
+const INITIAL_RENDER_BATCH = 100;
+const PROGRESSIVE_RENDER_BATCH = 150;
+const PROGRESSIVE_RENDER_DELAY_MS =10;
 
 // Viewport windowing: keep all tables mounted but hide off-screen ones via
 // opacity/pointerEvents to avoid React mount/unmount churn on scroll.
@@ -620,58 +620,131 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     setLayoutMeasured(true);
   };
 
+  // Shared value mirror of containerDims — worklet-safe reads for gestures and
+  // useAnimatedReaction. Synced in a useEffect (not during render) to avoid the
+  // Reanimated "Reading from `value` during render" warning.
+  const containerDimsSV = useSharedValue(containerDims);
+  useEffect(() => {
+    containerDimsSV.value = containerDims;
+  }, [containerDims, containerDimsSV]);
+
+  // ── Single-basis camera gesture ─────────────────────────────────────────
+  // Pan and pinch run Simultaneous, but they must NOT each write translate from
+  // their own base or they fight (pinch moves the centroid → pan activates and
+  // drags the canvas = "scrolling away"). Instead we capture ONE basis when the
+  // combined gesture starts and rebuild the transform every frame from the
+  // cumulative gesture inputs (pan translation + pinch scale) around a fixed
+  // focal. Order-independent: both handlers call the same applyCamera worklet.
+  //
+  // VERIFIED transform model — RN scales around the view CENTER, translate is
+  // applied in the parent (unscaled) space:
+  //   screen = (world - viewportCenter) * scale + viewportCenter + translate
+  // Focal-fixed zoom around start-focal f0, plus pan displacement P:
+  //   translate = t0 + P - (f0 - viewportCenter - t0) * (scale/s0 - 1)
+  const gActive = useSharedValue(0); // active-handler count (pan + pinch)
+  const gStartScale = useSharedValue(1);
+  const gStartTx = useSharedValue(0);
+  const gStartTy = useSharedValue(0);
+  const gFocalX = useSharedValue(0); // pinch focal (screen px); center for pan-only
+  const gFocalY = useSharedValue(0);
+  const gPanX = useSharedValue(0); // cumulative pan translation (screen px)
+  const gPanY = useSharedValue(0);
+  const gPinchScale = useSharedValue(1); // cumulative pinch factor (1 = none)
+
+  const applyCamera = useCallback(() => {
+    "worklet";
+    const s = clamp(gStartScale.value * gPinchScale.value, 0.5, 3);
+    const factor = gStartScale.value > 0 ? s / gStartScale.value : 1;
+    const dims = containerDimsSV.value;
+    const vcx = dims.width / 2;
+    const vcy = dims.height / 2;
+    scale.value = s;
+    // NOTE: no clamp here — overscroll is allowed during the gesture so the
+    // pinched point can reach the fingers even near the canvas edge. We clamp
+    // (with a settle spring) once, when the combined gesture fully ends.
+    translateX.value =
+      gStartTx.value + gPanX.value - (gFocalX.value - vcx - gStartTx.value) * (factor - 1);
+    translateY.value =
+      gStartTy.value + gPanY.value - (gFocalY.value - vcy - gStartTy.value) * (factor - 1);
+  }, [containerDimsSV, gStartScale, gPinchScale, gStartTx, gStartTy, gFocalX, gFocalY, gPanX, gPanY, scale, translateX, translateY]);
+
+  const beginCameraGesture = useCallback(() => {
+    "worklet";
+    if (gActive.value === 0) {
+      // First handler to activate captures the shared basis for this gesture.
+      gStartScale.value = scale.value;
+      gStartTx.value = translateX.value;
+      gStartTy.value = translateY.value;
+      gPanX.value = 0;
+      gPanY.value = 0;
+      gPinchScale.value = 1;
+      // Default focal = viewport center (used when only pan is active). Pinch
+      // overrides this with its real focal in onStart.
+      const dims = containerDimsSV.value;
+      gFocalX.value = dims.width / 2;
+      gFocalY.value = dims.height / 2;
+    }
+    gActive.value += 1;
+  }, [containerDimsSV, gActive, gStartScale, gStartTx, gStartTy, gPanX, gPanY, gPinchScale, gFocalX, gFocalY, scale, translateX, translateY]);
+
+  const endCameraGesture = useCallback(() => {
+    "worklet";
+    gActive.value -= 1;
+    if (gActive.value > 0) return;
+    gActive.value = 0;
+    // Combined gesture fully released: commit and settle back into bounds.
+    savedScale.value = scale.value;
+    const dims = containerDimsSV.value;
+    const settled = clampCanvasTranslation(
+      translateX.value,
+      translateY.value,
+      scale.value,
+      dims.width,
+      dims.height,
+      worldDims.width,
+      worldDims.height,
+    );
+    translateX.value = withSpring(settled.x, { damping: 20, mass: 1, stiffness: 200 });
+    translateY.value = withSpring(settled.y, { damping: 20, mass: 1, stiffness: 200 });
+    savedTranslateX.value = settled.x;
+    savedTranslateY.value = settled.y;
+  }, [containerDimsSV, gActive, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, worldDims.height, worldDims.width]);
+
   const panGesture = Gesture.Pan()
     .enabled(!viewLocked)
     .minDistance(10) // Require 10px movement to start pan
     .activeOffsetX([-10, 10])
     .activeOffsetY([-10, 10])
+    .averageTouches(true)
+    .onStart(() => {
+      beginCameraGesture();
+    })
     .onUpdate((event) => {
-      const next = clampCanvasTranslation(
-        savedTranslateX.value + event.translationX,
-        savedTranslateY.value + event.translationY,
-        scale.value,
-        containerDims.width,
-        containerDims.height,
-        worldDims.width,
-        worldDims.height,
-      );
-      translateX.value = next.x;
-      translateY.value = next.y;
+      gPanX.value = event.translationX;
+      gPanY.value = event.translationY;
+      applyCamera();
     })
     .onEnd(() => {
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
+      endCameraGesture();
     });
 
   const pinchGesture = Gesture.Pinch()
     .enabled(!viewLocked)
+    .onStart((event) => {
+      beginCameraGesture();
+      gFocalX.value = event.focalX;
+      gFocalY.value = event.focalY;
+    })
     .onUpdate((event) => {
-      // Clamp scale between 0.5x and 3x
-      const newScale = Math.max(
-        0.5,
-        Math.min(3, savedScale.value * event.scale),
-      );
-      const next = clampCanvasTranslation(
-        translateX.value,
-        translateY.value,
-        newScale,
-        containerDims.width,
-        containerDims.height,
-        worldDims.width,
-        worldDims.height,
-      );
-      scale.value = newScale;
-      translateX.value = next.x;
-      translateY.value = next.y;
+      gPinchScale.value = event.scale;
+      applyCamera();
     })
     .onEnd(() => {
-      savedScale.value = scale.value;
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
+      endCameraGesture();
     });
 
-  // Use Simultaneous with minDistance to allow both gestures
-  // Pan requires 10px movement, so pinch can work independently
+  // Simultaneous, but both handlers feed one shared basis (see above) so they
+  // compose instead of fighting.
   const combinedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
 
   const canvasAnimatedStyle = useAnimatedStyle(() => ({
@@ -704,14 +777,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
 
   // Camera-ready flag: set true at the end of the camera-positioning effect.
   const [cameraReady, setCameraReady] = useState(false);
-
-  // Shared value to sync containerDims for useAnimatedReaction (worklet-safe).
-  const containerDimsSV = useSharedValue(containerDims);
-  // Sync in useEffect (not during render) to avoid Reanimated warning:
-  // "Reading from `value` during component render"
-  useEffect(() => {
-    containerDimsSV.value = containerDims;
-  }, [containerDims, containerDimsSV]);
 
   // Keep skeleton visible until camera is positioned (shared values applied).
   // This prevents a flash where objects render at (1,0,0) then jump.
@@ -782,6 +847,19 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     });
     viewportInitialized.value = true;
   }, [sortedTables.length, scale, translateX, debouncedSetViewport]);
+
+  // Defined before useAnimatedReaction below: the reaction worklet captures
+  // this via runOnJS at build time. If it were declared after the reaction, it
+  // would be in the temporal dead zone (undefined) when the worklet closure is
+  // built on first render — which in release/Hermes throws
+  // "Cannot read property '__remoteFunction' of undefined".
+  const persistCameraState = useCallback(
+    (state: PersistedCameraState) => {
+      cameraStateRef.current = state;
+      storage.set(`floor_plan.view_state.${layoutId}`, JSON.stringify(state));
+    },
+    [layoutId],
+  );
 
   // useAnimatedReaction watches savedScale/savedTranslate — these only change
   // on gesture end (set in .onEnd). The reaction fires on the UI thread where
@@ -880,14 +958,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     savedTranslateX.value = initialTranslateXRef.current;
     savedTranslateY.value = initialTranslateYRef.current;
   };
-
-  const persistCameraState = useCallback(
-    (state: PersistedCameraState) => {
-      cameraStateRef.current = state;
-      storage.set(`floor_plan.view_state.${layoutId}`, JSON.stringify(state));
-    },
-    [layoutId],
-  );
 
   const handleLockToggle = () => {
     if (viewLocked) {
