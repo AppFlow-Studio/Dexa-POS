@@ -1,13 +1,13 @@
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
-import { useUiScale } from "@/lib/uiScale";
 import { CartItem, ModifierCategory } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { OrderService } from "@/services/orderService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
-    getLastModifierOpenStartedAt,
-    useModifierSidebarStore,
+  getLastModifierOpenStartedAt,
+  useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
@@ -19,17 +19,17 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    InteractionManager,
-    Keyboard,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  InteractionManager,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useImmerReducer } from "use-immer";
 import { useShallow } from "zustand/react/shallow";
@@ -237,9 +237,15 @@ const NotesInput = memo(
   }) => {
     const [localValue, setLocalValue] = useState(initialValue);
     const latestValueRef = useRef(initialValue);
+    const hasUserTypedRef = useRef(false);
 
-    // Sync if initialValue changes from outside
+    // Sync if initialValue changes from outside, but ONLY if the user hasn't
+    // typed yet (e.g. opening a different item). Once the user has started
+    // typing, the parent re-render that updated state.notes via the debounce
+    // MUST NOT clobber localValue — that's what causes the "eating characters"
+    // bug when the 220ms debounce fires while the user is mid-typing.
     useEffect(() => {
+      if (hasUserTypedRef.current) return;
       setLocalValue(initialValue);
       latestValueRef.current = initialValue;
     }, [initialValue]);
@@ -275,6 +281,7 @@ const NotesInput = memo(
             editable={!isReadOnly}
             value={localValue}
             onChangeText={(text) => {
+              hasUserTypedRef.current = true;
               latestValueRef.current = text;
               setLocalValue(text);
             }}
@@ -1365,267 +1372,267 @@ const ModifierScreenContent = ({
     closeModal();
 
     setTimeout(() => {
-    if (
-      isOpenItem &&
-      (currentMode === "edit" || currentMode === "fullscreen") &&
-      currentCartItem
-    ) {
-      // Re-read the LIVE store item so we resolve a fresh db_order_item_id —
-      // the sheet snapshot can predate the backend sync (same reason as the
-      // regular-item branch below) — and so we don't write a stale null id back.
-      const liveStoreItem = useOrderStore
-        .getState()
-        .ordersById[useOrderStore.getState().activeOrderId ?? ""]?.items.find(
-          (i) => i.id === currentCartItem.id,
+      if (
+        isOpenItem &&
+        (currentMode === "edit" || currentMode === "fullscreen") &&
+        currentCartItem
+      ) {
+        // Re-read the LIVE store item so we resolve a fresh db_order_item_id —
+        // the sheet snapshot can predate the backend sync (same reason as the
+        // regular-item branch below) — and so we don't write a stale null id back.
+        const liveStoreItem = useOrderStore
+          .getState()
+          .ordersById[
+            useOrderStore.getState().activeOrderId ?? ""
+          ]?.items.find((i) => i.id === currentCartItem.id);
+        const resolvedDbItemId =
+          liveStoreItem?.db_order_item_id ?? currentCartItem.db_order_item_id;
+
+        const updatedOpenItem = {
+          ...currentCartItem,
+          db_order_item_id: resolvedDbItemId,
+          quantity: currentState.quantity,
+          unitPrice:
+            currentCartItem.unitPrice ||
+            currentCartItem.price ||
+            currentTotal / currentState.quantity,
+          baseCardPrice:
+            currentCartItem.baseCardPrice ||
+            currentCartItem.price ||
+            currentTotal / currentState.quantity,
+          customizations: {
+            ...currentCartItem.customizations,
+            notes: currentState.notes || "Open Item",
+          },
+          isDraft: false,
+          is_to_go: currentState.isToGo,
+        };
+        updateItemInActiveOrder(updatedOpenItem);
+
+        // Persist the per-item TO GO flag (mirrors the regular-item branch). If
+        // the item has no db id yet, addItemToBackend's reconcile fires the toggle
+        // when the id lands, so the change is never lost.
+        persistToGoIfChanged(
+          supabaseRef.current,
+          resolvedDbItemId,
+          currentCartItem.is_to_go,
+          currentState.isToGo,
         );
-      const resolvedDbItemId =
-        liveStoreItem?.db_order_item_id ?? currentCartItem.db_order_item_id;
 
-      const updatedOpenItem = {
-        ...currentCartItem,
-        db_order_item_id: resolvedDbItemId,
-        quantity: currentState.quantity,
-        unitPrice:
-          currentCartItem.unitPrice ||
-          currentCartItem.price ||
-          currentTotal / currentState.quantity,
-        baseCardPrice:
-          currentCartItem.baseCardPrice ||
-          currentCartItem.price ||
-          currentTotal / currentState.quantity,
-        customizations: {
-          ...currentCartItem.customizations,
-          notes: currentState.notes || "Open Item",
-        },
-        isDraft: false,
-        is_to_go: currentState.isToGo,
-      };
-      updateItemInActiveOrder(updatedOpenItem);
-
-      // Persist the per-item TO GO flag (mirrors the regular-item branch). If
-      // the item has no db id yet, addItemToBackend's reconcile fires the toggle
-      // when the id lands, so the change is never lost.
-      persistToGoIfChanged(
-        supabaseRef.current,
-        resolvedDbItemId,
-        currentCartItem.is_to_go,
-        currentState.isToGo,
-      );
-
-      // Apply seat override for open items
-      if (shouldApplySeat && currentCartItem) {
-        const ordId = useOrderStore.getState().activeOrderId;
-        if (ordId) {
-          useSeatingStore
-            .getState()
-            .setItemSeat(
-              ordId,
-              currentCartItem.id,
-              seatVal,
-              currentCartItem.db_order_item_id,
-              true,
-            );
+        // Apply seat override for open items
+        if (shouldApplySeat && currentCartItem) {
+          const ordId = useOrderStore.getState().activeOrderId;
+          if (ordId) {
+            useSeatingStore
+              .getState()
+              .setItemSeat(
+                ordId,
+                currentCartItem.id,
+                seatVal,
+                currentCartItem.db_order_item_id,
+                true,
+              );
+          }
         }
-      }
 
-      // Backend sync is already handled above: updateItemInActiveOrder syncs
-      // quantity + instructions (each deadline-wrapped via
-      // updateOrderItemQuantity / updateOrderItem with toUpdateItemKey, and
-      // queued on failure — useOrderStore.ts ~8243-8367), and setItemSeat syncs
-      // the seat. The previous raw OrderService.updateOpenItem call here was a
-      // REDUNDANT second sync of the same edit (keyless update_order_item_v2,
-      // no deadline, fire-and-forget) — it double-wrote on good WiFi and hung
-      // 30s+ on bad WiFi with no recovery. Removed: the path above is the
-      // single, deadline-wrapped, offline-queue-backed writer.
+        // Backend sync is already handled above: updateItemInActiveOrder syncs
+        // quantity + instructions (each deadline-wrapped via
+        // updateOrderItemQuantity / updateOrderItem with toUpdateItemKey, and
+        // queued on failure — useOrderStore.ts ~8243-8367), and setItemSeat syncs
+        // the seat. The previous raw OrderService.updateOpenItem call here was a
+        // REDUNDANT second sync of the same edit (keyless update_order_item_v2,
+        // no deadline, fire-and-forget) — it double-wrote on good WiFi and hung
+        // 30s+ on bad WiFi with no recovery. Removed: the path above is the
+        // single, deadline-wrapped, offline-queue-backed writer.
 
-      showToast({
-        title: "Item Updated",
-        message: `${currentCartItem.name} quantity updated to ${currentState.quantity}.`,
-        type: "success",
-      });
-      return;
-    }
-
-    if (!baseItem) return;
-    const storeState = useModifierSidebarStore.getState();
-    const baseItemId =
-      baseItem.id ||
-      ("menuItemId" in (item || {})
-        ? (item as CartItem)?.menuItemId
-        : undefined);
-    let safeCashPrice: number | null = null;
-
-    if (storeState.precomputedForItemId !== baseItemId) {
-      const freshMenuItem = baseItem.id
-        ? useMenuStore.getState().getMenuItemById(baseItem.id)
-        : null;
-      safeCashPrice =
-        freshMenuItem?.cashPrice ?? baseItem.cashPrice ?? baseItem.price;
-    }
-
-    const resolvedCashPrice =
-      safeCashPrice ?? getCurrentItemCashPrice(baseItem);
-
-    const selectedModifiers = modifiersItem?.modifiers
-      ? Object.entries(currentState.modifierSelections)
-          .map(([cId, selections]) => {
-            const category = categoriesMap.get(cId);
-            const selectedOptions = Object.entries(selections)
-              .filter(([_, val]) => val === true || val === "no")
-              .map(([optionId, val]) => {
-                const optionData = optsMap.get(optionId);
-                return {
-                  id: optionId,
-                  name: optionData?.option.name || "",
-                  price: val === "no" ? 0 : optionData?.option.price || 0,
-                  isNo: val === "no" ? true : undefined,
-                };
-              });
-            return {
-              categoryId: cId,
-              categoryName: category?.name || "",
-              options: selectedOptions,
-            };
-          })
-          .filter((mod) => mod.options.length > 0)
-      : [];
-
-    if (currentState.customModifiers.length > 0) {
-      selectedModifiers.push({
-        categoryId: CUSTOM_MODIFIER_CATEGORY_ID,
-        categoryName: CUSTOM_MODIFIER_CATEGORY_NAME,
-        options: currentState.customModifiers.map((m) => ({
-          id: m.id,
-          name: m.name,
-          price: m.price,
-          isNo: undefined,
-        })),
-      });
-    }
-
-    const finalCustomizations = {
-      modifiers: selectedModifiers,
-      notes: currentState.notes,
-    };
-
-    if (
-      currentMode === "edit" ||
-      (currentMode === "fullscreen" && currentCartItem)
-    ) {
-      if (!currentCartItem) {
+        showToast({
+          title: "Item Updated",
+          message: `${currentCartItem.name} quantity updated to ${currentState.quantity}.`,
+          type: "success",
+        });
         return;
       }
-      // The modifier's cartItem is a snapshot captured when the sheet opened;
-      // for a freshly-added item it can predate the backend sync and therefore
-      // lack db_order_item_id even though the item has since synced. Re-read the
-      // LIVE order-store item so we (a) don't wipe the linked db_order_item_id by
-      // writing the stale snapshot back, and (b) can actually persist the TO GO
-      // change instead of silently dropping it (the bug where an item shows
-      // [TO GO] locally but is_to_go stays false on the server).
-      const liveStoreItem = useOrderStore
-        .getState()
-        .ordersById[useOrderStore.getState().activeOrderId ?? ""]?.items.find(
-          (i) => i.id === currentCartItem.id,
+
+      if (!baseItem) return;
+      const storeState = useModifierSidebarStore.getState();
+      const baseItemId =
+        baseItem.id ||
+        ("menuItemId" in (item || {})
+          ? (item as CartItem)?.menuItemId
+          : undefined);
+      let safeCashPrice: number | null = null;
+
+      if (storeState.precomputedForItemId !== baseItemId) {
+        const freshMenuItem = baseItem.id
+          ? useMenuStore.getState().getMenuItemById(baseItem.id)
+          : null;
+        safeCashPrice =
+          freshMenuItem?.cashPrice ?? baseItem.cashPrice ?? baseItem.price;
+      }
+
+      const resolvedCashPrice =
+        safeCashPrice ?? getCurrentItemCashPrice(baseItem);
+
+      const selectedModifiers = modifiersItem?.modifiers
+        ? Object.entries(currentState.modifierSelections)
+            .map(([cId, selections]) => {
+              const category = categoriesMap.get(cId);
+              const selectedOptions = Object.entries(selections)
+                .filter(([_, val]) => val === true || val === "no")
+                .map(([optionId, val]) => {
+                  const optionData = optsMap.get(optionId);
+                  return {
+                    id: optionId,
+                    name: optionData?.option.name || "",
+                    price: val === "no" ? 0 : optionData?.option.price || 0,
+                    isNo: val === "no" ? true : undefined,
+                  };
+                });
+              return {
+                categoryId: cId,
+                categoryName: category?.name || "",
+                options: selectedOptions,
+              };
+            })
+            .filter((mod) => mod.options.length > 0)
+        : [];
+
+      if (currentState.customModifiers.length > 0) {
+        selectedModifiers.push({
+          categoryId: CUSTOM_MODIFIER_CATEGORY_ID,
+          categoryName: CUSTOM_MODIFIER_CATEGORY_NAME,
+          options: currentState.customModifiers.map((m) => ({
+            id: m.id,
+            name: m.name,
+            price: m.price,
+            isNo: undefined,
+          })),
+        });
+      }
+
+      const finalCustomizations = {
+        modifiers: selectedModifiers,
+        notes: currentState.notes,
+      };
+
+      if (
+        currentMode === "edit" ||
+        (currentMode === "fullscreen" && currentCartItem)
+      ) {
+        if (!currentCartItem) {
+          return;
+        }
+        // The modifier's cartItem is a snapshot captured when the sheet opened;
+        // for a freshly-added item it can predate the backend sync and therefore
+        // lack db_order_item_id even though the item has since synced. Re-read the
+        // LIVE order-store item so we (a) don't wipe the linked db_order_item_id by
+        // writing the stale snapshot back, and (b) can actually persist the TO GO
+        // change instead of silently dropping it (the bug where an item shows
+        // [TO GO] locally but is_to_go stays false on the server).
+        const liveStoreItem = useOrderStore
+          .getState()
+          .ordersById[
+            useOrderStore.getState().activeOrderId ?? ""
+          ]?.items.find((i) => i.id === currentCartItem.id);
+        const resolvedDbItemId =
+          liveStoreItem?.db_order_item_id ?? currentCartItem.db_order_item_id;
+
+        const updatedItem = {
+          ...currentCartItem,
+          db_order_item_id: resolvedDbItemId,
+          quantity: currentState.quantity,
+          price: currentTotal / Math.max(1, currentState.quantity),
+          customizations: finalCustomizations,
+          isDraft: false,
+          is_to_go: currentState.isToGo,
+          seatNumber:
+            shouldApplySeat && seatVal !== undefined
+              ? seatVal
+              : currentCartItem.seatNumber,
+          subtotal: undefined,
+          cashSubtotal: undefined,
+          taxAmount: undefined,
+          cashTaxAmount: undefined,
+        };
+        updateItemInActiveOrder(updatedItem);
+
+        // Persist the per-item TO GO flag whenever it changed and the item has a
+        // backend row (resolved fresh above). If it still has no db id (truly not
+        // synced yet), addItemToBackend's reconcile fires the toggle when the id
+        // lands, so the change is never lost.
+        persistToGoIfChanged(
+          supabaseRef.current,
+          resolvedDbItemId,
+          currentCartItem.is_to_go,
+          currentState.isToGo,
         );
-      const resolvedDbItemId =
-        liveStoreItem?.db_order_item_id ?? currentCartItem.db_order_item_id;
 
-      const updatedItem = {
-        ...currentCartItem,
-        db_order_item_id: resolvedDbItemId,
-        quantity: currentState.quantity,
-        price: currentTotal / Math.max(1, currentState.quantity),
-        customizations: finalCustomizations,
-        isDraft: false,
-        is_to_go: currentState.isToGo,
-        seatNumber:
-          shouldApplySeat && seatVal !== undefined
-            ? seatVal
-            : currentCartItem.seatNumber,
-        subtotal: undefined,
-        cashSubtotal: undefined,
-        taxAmount: undefined,
-        cashTaxAmount: undefined,
-      };
-      updateItemInActiveOrder(updatedItem);
+        // Ensure manual sync matches the updated seat
+        if (shouldApplySeat) {
+          const ordId = useOrderStore.getState().activeOrderId;
+          if (ordId) {
+            useSeatingStore
+              .getState()
+              .setItemSeat(
+                ordId,
+                currentCartItem.id,
+                seatVal,
+                currentCartItem.db_order_item_id,
+                true,
+              );
 
-      // Persist the per-item TO GO flag whenever it changed and the item has a
-      // backend row (resolved fresh above). If it still has no db id (truly not
-      // synced yet), addItemToBackend's reconcile fires the toggle when the id
-      // lands, so the change is never lost.
-      persistToGoIfChanged(
-        supabaseRef.current,
-        resolvedDbItemId,
-        currentCartItem.is_to_go,
-        currentState.isToGo,
-      );
+            // Sync back to global active seat so subsequent items pick it up
+            useSeatingStore.getState().setActiveSeat(ordId, seatVal);
+          }
+        }
+        showToast({
+          title: "Item Updated",
+          message: `Your changes to ${item?.name} have been saved.`,
+          type: "success",
+        });
+      } else {
+        const itemCashPrice = resolvedCashPrice;
+        const categoryName = catId
+          ? useMenuStore.getState().getCategoryById(catId)?.name
+          : undefined;
+        const newItem = {
+          id: generateCartItemId(baseItem.id, finalCustomizations),
+          menuItemId: baseItem.id,
+          name: baseItem.name,
+          quantity: currentState.quantity,
+          originalPrice: itemCashPrice,
+          unitPrice: baseItem.price,
+          price: currentTotal / Math.max(1, currentState.quantity),
+          image: baseItem.image,
+          cashPrice: itemCashPrice,
+          customizations: finalCustomizations,
+          availableDiscount: baseItem.availableDiscount,
+          appliedDiscount: null,
+          paidQuantity: 0,
+          isDraft: false,
+          is_to_go: currentState.isToGo,
+          seatNumber:
+            shouldApplySeat && seatVal !== undefined ? seatVal : undefined,
+          addedFromCategoryId: catId || null,
+          addedFromMenuId: mId || null,
+          category_name: categoryName || undefined,
+          baseCardPrice: baseItem.price,
+          baseCashPrice: baseItem.cashPrice ?? baseItem.price,
+        };
+        addItemToActiveOrder(newItem);
+        // Apply seat override synchronously so useTableSeating's effect skips this item
+        if (shouldApplySeat) {
+          const ordId = useOrderStore.getState().activeOrderId;
+          if (ordId) {
+            useSeatingStore
+              .getState()
+              .setItemSeat(ordId, newItem.id, seatVal, undefined, true);
 
-      // Ensure manual sync matches the updated seat
-      if (shouldApplySeat) {
-        const ordId = useOrderStore.getState().activeOrderId;
-        if (ordId) {
-          useSeatingStore
-            .getState()
-            .setItemSeat(
-              ordId,
-              currentCartItem.id,
-              seatVal,
-              currentCartItem.db_order_item_id,
-              true,
-            );
-
-          // Sync back to global active seat so subsequent items pick it up
-          useSeatingStore.getState().setActiveSeat(ordId, seatVal);
+            // Sync back to global active seat so subsequent items pick it up
+            useSeatingStore.getState().setActiveSeat(ordId, seatVal);
+          }
         }
       }
-      showToast({
-        title: "Item Updated",
-        message: `Your changes to ${item?.name} have been saved.`,
-        type: "success",
-      });
-    } else {
-      const itemCashPrice = resolvedCashPrice;
-      const categoryName = catId
-        ? useMenuStore.getState().getCategoryById(catId)?.name
-        : undefined;
-      const newItem = {
-        id: generateCartItemId(baseItem.id, finalCustomizations),
-        menuItemId: baseItem.id,
-        name: baseItem.name,
-        quantity: currentState.quantity,
-        originalPrice: itemCashPrice,
-        unitPrice: baseItem.price,
-        price: currentTotal / Math.max(1, currentState.quantity),
-        image: baseItem.image,
-        cashPrice: itemCashPrice,
-        customizations: finalCustomizations,
-        availableDiscount: baseItem.availableDiscount,
-        appliedDiscount: null,
-        paidQuantity: 0,
-        isDraft: false,
-        is_to_go: currentState.isToGo,
-        seatNumber:
-          shouldApplySeat && seatVal !== undefined ? seatVal : undefined,
-        addedFromCategoryId: catId || null,
-        addedFromMenuId: mId || null,
-        category_name: categoryName || undefined,
-        baseCardPrice: baseItem.price,
-        baseCashPrice: baseItem.cashPrice ?? baseItem.price,
-      };
-      addItemToActiveOrder(newItem);
-      // Apply seat override synchronously so useTableSeating's effect skips this item
-      if (shouldApplySeat) {
-        const ordId = useOrderStore.getState().activeOrderId;
-        if (ordId) {
-          useSeatingStore
-            .getState()
-            .setItemSeat(ordId, newItem.id, seatVal, undefined, true);
-
-          // Sync back to global active seat so subsequent items pick it up
-          useSeatingStore.getState().setActiveSeat(ordId, seatVal);
-        }
-      }
-    }
     }, 0);
   }, []);
 
@@ -1776,7 +1783,10 @@ const ModifierScreenContent = ({
               and shows/hides the TO GO pill. */}
           <View
             className="rounded-xl p-3 mt-3 w-full border flex-row items-center justify-between"
-            style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+            style={{
+              backgroundColor: colors.panel,
+              borderColor: colors.border,
+            }}
           >
             <View className="flex-1 pr-3">
               <Text
@@ -1884,7 +1894,11 @@ const ModifierScreenContent = ({
               }}
             >
               <Text
-                style={{ fontSize: s(11), fontWeight: "600", color: colors.teal }}
+                style={{
+                  fontSize: s(11),
+                  fontWeight: "600",
+                  color: colors.teal,
+                }}
               >
                 {seatOverride === null ? "Shared" : `Seat ${seatOverride}`}
               </Text>
@@ -2039,12 +2053,12 @@ const ModifierScreenContent = ({
               <TouchableOpacity
                 onPressIn={handleOpenCustomModifierModal}
                 className="flex-row items-center gap-x-1 px-3 py-1.5 rounded-full border"
-              style={{
-                backgroundColor: "transparent",
-                borderColor: colors.teal,
-                borderStyle: "dashed",
-              }}
-            >
+                style={{
+                  backgroundColor: "transparent",
+                  borderColor: colors.teal,
+                  borderStyle: "dashed",
+                }}
+              >
                 <Plus color={colors.teal} size={s(11)} strokeWidth={3} />
                 <Text
                   className="text-xs font-semibold"
@@ -2158,7 +2172,7 @@ const ModifierScreenContent = ({
             </Text>
             <View className="flex-row flex-wrap gap-2">
               {state.customModifiers.map((mod) => (
-                  <View
+                <View
                   key={mod.id}
                   className="flex-row items-center gap-x-1.5 pl-3 pr-1.5 py-1 rounded-full border"
                   style={{
@@ -2219,7 +2233,7 @@ const ModifierScreenContent = ({
                   borderWidth: 1,
                   borderColor: colors.border,
                 }}
-                >
+              >
                 <Minus color={colors.heading} size={s(14)} />
               </TouchableOpacity>
               <TouchableOpacity

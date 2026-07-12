@@ -146,6 +146,31 @@ const TablesScreen = () => {
   } | null>(null);
   // overlayTableId removed in favor of router.push
 
+  // Camera zoom-to-table: set by sidebar tap, consumed by TableLayoutView effect
+  const [zoomToTableId, setZoomToTableId] = useState<string | null>(null);
+  const zoomTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When zoomToTableId is set, the TableLayoutView effect will animate the
+  // camera. We clear any pending timer, set null → tableId to guarantee the
+  // effect fires even for the same table twice, then clear back to null after
+  // a grace period so stale values don't re-trigger on subsequent re-renders.
+  const handleFocusTable = useCallback((tableId: string) => {
+    if (zoomTimerRef.current) {
+      clearTimeout(zoomTimerRef.current);
+      zoomTimerRef.current = null;
+    }
+    setZoomToTableId(null);
+    requestAnimationFrame(() => {
+      setZoomToTableId(tableId);
+      // Clear after animation settles so a sidebar collapse/re-render doesn't
+      // re-trigger the zoom for a stale ID.
+      zoomTimerRef.current = setTimeout(() => {
+        setZoomToTableId(null);
+        zoomTimerRef.current = null;
+      }, 600);
+    });
+  }, []);
+
   useEffect(() => {
     if (supabaseClient) {
       setWaitlistSupabaseClient(supabaseClient);
@@ -775,6 +800,7 @@ const TablesScreen = () => {
         <Sidebar
           activeLayoutId={activeFloorPlanId}
           setActiveLayout={setActiveFloorPlan}
+          onFocusTable={handleFocusTable}
         />
 
         {/* Right Side: Floor Plan */}
@@ -1063,6 +1089,7 @@ const TablesScreen = () => {
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
               <TableLayoutView
+                key={activeFloorPlanId}
                 tables={filteredTables || []}
                 isSelectionMode={true}
                 onTableSelect={handleTablePress}
@@ -1074,6 +1101,7 @@ const TablesScreen = () => {
                 }
                 disableLongPress={isMergeMode}
                 interactionMode={isMergeMode ? "merge" : "normal"}
+                zoomToTableId={zoomToTableId}
               />
             )}
 

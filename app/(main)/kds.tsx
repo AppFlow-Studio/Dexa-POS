@@ -3,10 +3,10 @@ import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import {
-  getBucketedElapsed,
-  getUrgencyLevel,
-  useKDSTimer,
-  type UrgencyThresholds,
+    getBucketedElapsed,
+    getUrgencyLevel,
+    useKDSTimer,
+    type UrgencyThresholds,
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
@@ -16,7 +16,7 @@ import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { clearStationData } from "@/services/cacheService";
 import KDSSoundService, {
-  DEFAULT_SOUND_CONFIG,
+    DEFAULT_SOUND_CONFIG,
 } from "@/services/kds/kdsSoundService";
 import { refreshLocationConfig } from "@/services/locationConfigSync";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -26,33 +26,33 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import { useRouter } from "expo-router";
 import {
-  ArrowUpToLine,
-  CheckSquare,
-  Flame,
-  RotateCcw,
-  Settings,
-  ShoppingBag,
-  Square,
-  Star,
-  Truck,
-  UtensilsCrossed,
+    ArrowUpToLine,
+    CheckSquare,
+    Flame,
+    RotateCcw,
+    Settings,
+    ShoppingBag,
+    Square,
+    Star,
+    Truck,
+    UtensilsCrossed,
 } from "lucide-react-native";
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  Dimensions,
-  GestureResponderEvent,
-  Pressable,
-  Animated as RNAnimated,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    GestureResponderEvent,
+    Pressable,
+    Animated as RNAnimated,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // ─── Status Tab Config ────────────────────────────────────────────
@@ -1712,13 +1712,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       <Text
                         style={{
                           color: displaySettings.highlightNotes
-                            ? colors.heading
-                            : colors.muted,
-                          fontSize: s(10),
+                            ? "#92400E"
+                            : "#374151",
+                          fontSize: s(11),
                           fontStyle: "italic",
                           fontWeight: displaySettings.highlightNotes
                             ? "700"
-                            : "400",
+                            : "600",
                           marginLeft: s(30),
                           marginTop: s(3),
                           opacity: shouldStrike ? 0.4 : 1,

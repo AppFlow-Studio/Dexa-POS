@@ -236,7 +236,9 @@ function InlineSelect<T extends string>({
   );
 }
 
-const TablesPanel: React.FC = () => {
+const TablesPanel: React.FC<{ onFocusTable?: (tableId: string) => void }> = ({
+  onFocusTable,
+}) => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
 
@@ -437,6 +439,13 @@ const TablesPanel: React.FC = () => {
       }));
   }, [activeFloorPlanId]);
 
+  const handleFocusTable = useCallback(
+    (table: FloorPlanObject) => {
+      onFocusTable?.(table.id);
+    },
+    [onFocusTable],
+  );
+
   const noopFn = useCallback(() => {}, []);
   const toggleTableExpand = useCallback((tableId: string) => {
     setExpandedTableIds((prev) => ({ ...prev, [tableId]: !prev[tableId] }));
@@ -464,10 +473,15 @@ const TablesPanel: React.FC = () => {
         isExpanded={!!expandedTableIds[item.id]}
         onToggleExpand={toggleTableExpand}
         onNavigateToOrder={navigateToTableOrder}
-        handleTablePress={noopFn}
+        handleTablePress={handleFocusTable}
       />
     ),
-    [expandedTableIds, navigateToTableOrder, noopFn, toggleTableExpand],
+    [
+      expandedTableIds,
+      navigateToTableOrder,
+      handleFocusTable,
+      toggleTableExpand,
+    ],
   );
   const keyExtractor = useCallback((item: FloorPlanObject) => item.id, []);
 
