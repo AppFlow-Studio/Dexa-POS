@@ -7,7 +7,7 @@ import { useUiScale } from "@/lib/uiScale";
 import { getWallEdgeFlags, WallEdgeFlags } from "@/lib/wallCornerSnap";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
-import { Lock, LockOpen, Minus, Plus } from "lucide-react-native";
+import { Crosshair, Lock, LockOpen, Minus, Plus } from "lucide-react-native";
 import React, {
   useCallback,
   useEffect,
@@ -50,12 +50,12 @@ const INITIAL_ZOOM_MULTIPLIER = 2.0;
 const PROGRESSIVE_RENDER_THRESHOLD = 150;
 const INITIAL_RENDER_BATCH = 100;
 const PROGRESSIVE_RENDER_BATCH = 150;
-const PROGRESSIVE_RENDER_DELAY_MS =10;
+const PROGRESSIVE_RENDER_DELAY_MS = 10;
 
 // Viewport windowing: keep all tables mounted but hide off-screen ones via
 // opacity/pointerEvents to avoid React mount/unmount churn on scroll.
-const VIEWPORT_WINDOW_THRESHOLD = 20;
-const VIEWPORT_OVERSCAN_PX = 800;
+const VIEWPORT_WINDOW_THRESHOLD = 100;
+const VIEWPORT_OVERSCAN_PX = 1000;
 
 const getMedian = (values: number[]) => {
   if (values.length === 0) return 0;
@@ -304,6 +304,82 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       y: getMedian(centerYs),
     };
   }, [tables, worldDims.height, worldDims.width]);
+
+  /** Mean center of all tables (excluding walls/structures). */
+  const tableMeanCenter = useMemo(() => {
+    const tableObjects = tables.filter((table) => {
+      const shapeDef =
+        TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
+      if (shapeDef?.type) return shapeDef.type === "table";
+      return table.category === "table" || table.category === "booth";
+    });
+
+    if (tableObjects.length === 0) {
+      return { x: worldDims.width / 2, y: worldDims.height / 2, count: 0 };
+    }
+
+    let sumX = 0;
+    let sumY = 0;
+
+    for (const table of tableObjects) {
+      const shapeDef =
+        TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
+      const w = table.width ?? shapeDef?.width ?? 100;
+      const h = table.height ?? shapeDef?.height ?? 100;
+      sumX += table.x + w / 2;
+      sumY += table.y + h / 2;
+    }
+
+    return {
+      x: sumX / tableObjects.length,
+      y: sumY / tableObjects.length,
+      count: tableObjects.length,
+    };
+  }, [tables, worldDims.height, worldDims.width]);
+
+  /** Bounding box of all tables (excluding walls/structures) — zooms to fit them. */
+  const tableBoundingBox = useMemo(() => {
+    const tableObjects = tables.filter((table) => {
+      const shapeDef =
+        TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
+      if (shapeDef?.type) return shapeDef.type === "table";
+      return table.category === "table" || table.category === "booth";
+    });
+
+    if (tableObjects.length === 0) {
+      return {
+        width: 0,
+        height: 0,
+        hasContent: false as const,
+        centerX: 0,
+        centerY: 0,
+      };
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const table of tableObjects) {
+      const shapeDef =
+        TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
+      const w = table.width ?? shapeDef?.width ?? 100;
+      const h = table.height ?? shapeDef?.height ?? 100;
+      if (table.x < minX) minX = table.x;
+      if (table.y < minY) minY = table.y;
+      if (table.x + w > maxX) maxX = table.x + w;
+      if (table.y + h > maxY) maxY = table.y + h;
+    }
+
+    return {
+      hasContent: true as const,
+      width: maxX - minX,
+      height: maxY - minY,
+      centerX: (minX + maxX) / 2,
+      centerY: (minY + maxY) / 2,
+    };
+  }, [tables]);
 
   const gridPaths = useMemo(() => {
     let minor = "";
@@ -663,10 +739,27 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     // pinched point can reach the fingers even near the canvas edge. We clamp
     // (with a settle spring) once, when the combined gesture fully ends.
     translateX.value =
-      gStartTx.value + gPanX.value - (gFocalX.value - vcx - gStartTx.value) * (factor - 1);
+      gStartTx.value +
+      gPanX.value -
+      (gFocalX.value - vcx - gStartTx.value) * (factor - 1);
     translateY.value =
-      gStartTy.value + gPanY.value - (gFocalY.value - vcy - gStartTy.value) * (factor - 1);
-  }, [containerDimsSV, gStartScale, gPinchScale, gStartTx, gStartTy, gFocalX, gFocalY, gPanX, gPanY, scale, translateX, translateY]);
+      gStartTy.value +
+      gPanY.value -
+      (gFocalY.value - vcy - gStartTy.value) * (factor - 1);
+  }, [
+    containerDimsSV,
+    gStartScale,
+    gPinchScale,
+    gStartTx,
+    gStartTy,
+    gFocalX,
+    gFocalY,
+    gPanX,
+    gPanY,
+    scale,
+    translateX,
+    translateY,
+  ]);
 
   const beginCameraGesture = useCallback(() => {
     "worklet";
@@ -685,7 +778,21 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       gFocalY.value = dims.height / 2;
     }
     gActive.value += 1;
-  }, [containerDimsSV, gActive, gStartScale, gStartTx, gStartTy, gPanX, gPanY, gPinchScale, gFocalX, gFocalY, scale, translateX, translateY]);
+  }, [
+    containerDimsSV,
+    gActive,
+    gStartScale,
+    gStartTx,
+    gStartTy,
+    gPanX,
+    gPanY,
+    gPinchScale,
+    gFocalX,
+    gFocalY,
+    scale,
+    translateX,
+    translateY,
+  ]);
 
   const endCameraGesture = useCallback(() => {
     "worklet";
@@ -704,11 +811,30 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       worldDims.width,
       worldDims.height,
     );
-    translateX.value = withSpring(settled.x, { damping: 20, mass: 1, stiffness: 200 });
-    translateY.value = withSpring(settled.y, { damping: 20, mass: 1, stiffness: 200 });
+    translateX.value = withSpring(settled.x, {
+      damping: 20,
+      mass: 1,
+      stiffness: 200,
+    });
+    translateY.value = withSpring(settled.y, {
+      damping: 20,
+      mass: 1,
+      stiffness: 200,
+    });
     savedTranslateX.value = settled.x;
     savedTranslateY.value = settled.y;
-  }, [containerDimsSV, gActive, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, worldDims.height, worldDims.width]);
+  }, [
+    containerDimsSV,
+    gActive,
+    savedScale,
+    savedTranslateX,
+    savedTranslateY,
+    scale,
+    translateX,
+    translateY,
+    worldDims.height,
+    worldDims.width,
+  ]);
 
   const panGesture = Gesture.Pan()
     .enabled(!viewLocked)
@@ -1299,6 +1425,76 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
           </View>
         )}
       </View>
+
+      {/* Focus Tables button — zooms to fit all canvas objects */}
+      <TouchableOpacity
+        onPress={() => {
+          const bb = tableBoundingBox;
+          const idealScale =
+            bb.hasContent && containerDims.width > 0 && containerDims.height > 0
+              ? clamp(
+                  Math.min(
+                    (containerDims.width * 0.85) / (bb.width + 200),
+                    (containerDims.height * 0.85) / (bb.height + 200),
+                  ),
+                  0.5,
+                  3,
+                )
+              : 1;
+          const vcx = containerDims.width / 2;
+          const vcy = containerDims.height / 2;
+          const tx = (vcx - bb.centerX) * idealScale;
+          const ty = (vcy - bb.centerY) * idealScale;
+          const clamped = clampCanvasTranslation(
+            tx,
+            ty,
+            idealScale,
+            containerDims.width,
+            containerDims.height,
+            worldDims.width,
+            worldDims.height,
+          );
+          scale.value = withSpring(idealScale, {
+            damping: 14,
+            mass: 1,
+            stiffness: 120,
+          });
+          translateX.value = withSpring(clamped.x, {
+            damping: 14,
+            mass: 1,
+            stiffness: 120,
+          });
+          translateY.value = withSpring(clamped.y, {
+            damping: 14,
+            mass: 1,
+            stiffness: 120,
+          });
+          savedScale.value = idealScale;
+          savedTranslateX.value = clamped.x;
+          savedTranslateY.value = clamped.y;
+          persistCameraState({
+            scale: idealScale,
+            translateX: clamped.x,
+            translateY: clamped.y,
+          });
+        }}
+        style={{
+          position: "absolute",
+          bottom: s(12),
+          right: s(52),
+          zIndex: 20,
+          width: s(36),
+          height: s(36),
+          borderRadius: s(8),
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+        }}
+      >
+        <Crosshair size={s(14)} color={colors.label} />
+      </TouchableOpacity>
 
       {/* Zoom Buttons - fixed at bottom-right of canvas */}
       <View
