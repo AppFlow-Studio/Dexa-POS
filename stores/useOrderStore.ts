@@ -1076,7 +1076,7 @@ const ensureOrderCreated = async (
 
   const selectedStore = useStoreSettingsStore.getState().selectedStore;
   if (!selectedStore) {
-    console.log("[ensureOrderCreated] No store selected");
+    if (__DEV__) console.log("[ensureOrderCreated] No store selected");
     return null;
   }
 
@@ -1084,9 +1084,10 @@ const ensureOrderCreated = async (
   // Re-check from store in case it was set by another call
   const currentOrder = useOrderStore.getState().ordersById[order.id];
   if (currentOrder?.db_order_id) {
-    console.log(
-      `[ensureOrderCreated] Order ${order.id} already has db_order_id: ${currentOrder.db_order_id}`,
-    );
+    if (__DEV__)
+      console.log(
+        `[ensureOrderCreated] Order ${order.id} already has db_order_id: ${currentOrder.db_order_id}`,
+      );
     return currentOrder.db_order_id;
   }
 
@@ -1094,9 +1095,10 @@ const ensureOrderCreated = async (
   if (order.db_order_id) {
     const reKeyedOrder = useOrderStore.getState().ordersById[order.db_order_id];
     if (reKeyedOrder?.db_order_id) {
-      console.log(
-        `[ensureOrderCreated] Order ${order.id} was re-keyed, found at ${order.db_order_id}`,
-      );
+      if (__DEV__)
+        console.log(
+          `[ensureOrderCreated] Order ${order.id} was re-keyed, found at ${order.db_order_id}`,
+        );
       return reKeyedOrder.db_order_id;
     }
   }
@@ -1108,9 +1110,10 @@ const ensureOrderCreated = async (
   if (knownDbId) {
     const knownOrder = useOrderStore.getState().ordersById[knownDbId];
     if (knownOrder?.db_order_id) {
-      console.log(
-        `[ensureOrderCreated] Order ${order.id} resolved via localIdToDbOrderId: ${knownDbId}`,
-      );
+      if (__DEV__)
+        console.log(
+          `[ensureOrderCreated] Order ${order.id} resolved via localIdToDbOrderId: ${knownDbId}`,
+        );
       return knownOrder.db_order_id;
     }
   }
@@ -1131,9 +1134,10 @@ const ensureOrderCreated = async (
     useStoreSettingsStore.getState().requirePinPerOrder &&
     useEmployeeStore.getState().orderAttributionOrderId !== order.id
   ) {
-    console.log(
-      `[ensureOrderCreated] Blocked: per-order PIN required, no verified staff for ${order.id}`,
-    );
+    if (__DEV__)
+      console.log(
+        `[ensureOrderCreated] Blocked: per-order PIN required, no verified staff for ${order.id}`,
+      );
     toastService.show({
       title: "Enter PIN to start",
       message: "Enter your PIN to start this order.",
@@ -1146,17 +1150,19 @@ const ensureOrderCreated = async (
   // OFFLINE MODE: Queue order creation and return special marker
   // ========================================================================
   if (!supabase || !isNetworkOnline) {
-    console.log("[ensureOrderCreated] ====== OFFLINE MODE ======");
-    console.log(`[ensureOrderCreated] Order ID: ${order.id}`);
-    console.log(`[ensureOrderCreated] Order Type: ${order.order_type}`);
-    console.log(`[ensureOrderCreated] Store: ${selectedStore?.id}`);
+    if (__DEV__) console.log("[ensureOrderCreated] ====== OFFLINE MODE ======");
+    if (__DEV__) console.log(`[ensureOrderCreated] Order ID: ${order.id}`);
+    if (__DEV__)
+      console.log(`[ensureOrderCreated] Order Type: ${order.order_type}`);
+    if (__DEV__) console.log(`[ensureOrderCreated] Store: ${selectedStore?.id}`);
 
     // Check if we've already queued this order
     const existingQueuedOrder = pendingOrderCreations.get(order.id);
     if (existingQueuedOrder) {
-      console.log(
-        `[ensureOrderCreated] Already queued - returning pending_offline`,
-      );
+      if (__DEV__)
+        console.log(
+          `[ensureOrderCreated] Already queued - returning pending_offline`,
+        );
       return "pending_offline";
     }
 
@@ -1219,11 +1225,15 @@ const ensureOrderCreated = async (
 
     // Register in ID registry for future lookups
     await registerLocalId(order.id, "order");
-    console.log(`[ensureOrderCreated] Registered local ID: ${order.id}`);
+    if (__DEV__)
+      console.log(`[ensureOrderCreated] Registered local ID: ${order.id}`);
 
-    console.log(`[ensureOrderCreated] ====== QUEUED SUCCESSFULLY ======`);
-    console.log(`[ensureOrderCreated] Operation ID: ${operationId}`);
-    console.log(`[ensureOrderCreated] Local Order ID: ${order.id}`);
+    if (__DEV__)
+      console.log(`[ensureOrderCreated] ====== QUEUED SUCCESSFULLY ======`);
+    if (__DEV__)
+      console.log(`[ensureOrderCreated] Operation ID: ${operationId}`);
+    if (__DEV__)
+      console.log(`[ensureOrderCreated] Local Order ID: ${order.id}`);
     return "pending_offline";
   }
 
@@ -1240,20 +1250,22 @@ const ensureOrderCreated = async (
 
     if (creationStarted && now - creationStarted < ORDER_CREATION_TIMEOUT_MS) {
       // Still within timeout - wait for existing promise
-      console.log(
-        `[ensureOrderCreated] Waiting for pending creation for order ${
-          order.id
-        } (${Math.round((now - creationStarted) / 1000)}s old)`,
-      );
+      if (__DEV__)
+        console.log(
+          `[ensureOrderCreated] Waiting for pending creation for order ${
+            order.id
+          } (${Math.round((now - creationStarted) / 1000)}s old)`,
+        );
       const result = await existingPromise;
       // After waiting, re-check the store for the db_order_id (it should be set now)
       const updatedOrder = useOrderStore.getState().ordersById[order.id];
       return updatedOrder?.db_order_id || result;
     } else {
       // Stale promise - clear it
-      console.log(
-        `[ensureOrderCreated] Clearing stale creation promise for order ${order.id}`,
-      );
+      if (__DEV__)
+        console.log(
+          `[ensureOrderCreated] Clearing stale creation promise for order ${order.id}`,
+        );
       pendingOrderCreations.delete(order.id);
       orderCreationTimestamps.delete(order.id);
 
@@ -1262,9 +1274,10 @@ const ensureOrderCreated = async (
       // completed the create_order and cleaned up pendingOrderCreations)
       const knownDbId = localIdToDbOrderId.get(order.id);
       if (knownDbId) {
-        console.log(
-          `[ensureOrderCreated] Order ${order.id} already synced via queue: ${knownDbId}`,
-        );
+        if (__DEV__)
+          console.log(
+            `[ensureOrderCreated] Order ${order.id} already synced via queue: ${knownDbId}`,
+          );
         return knownDbId;
       }
       // Also re-check the store (order may be rekeyed under the backend UUID)
@@ -1284,9 +1297,10 @@ const ensureOrderCreated = async (
   }
 
   // ACQUIRE LOCK: We are the first caller - create the order
-  console.log(
-    `[ensureOrderCreated] Acquiring lock and creating order ${order.id}`,
-  );
+  if (__DEV__)
+    console.log(
+      `[ensureOrderCreated] Acquiring lock and creating order ${order.id}`,
+    );
 
   // Record creation start time for timeout tracking
   orderCreationTimestamps.set(order.id, Date.now());
@@ -1326,7 +1340,8 @@ const ensureOrderCreated = async (
       const { data: createResult, error: createError } =
         await OrderService.createOrder(supabase, createOrderParams);
 
-      console.log("[ensureOrderCreated] createOrder Result:", createResult);
+      if (__DEV__)
+        console.log("[ensureOrderCreated] createOrder Result:", createResult);
 
       if (createError) {
         console.error(
@@ -1339,9 +1354,10 @@ const ensureOrderCreated = async (
           createError.message?.includes("network") ||
           createError.code === "NETWORK_ERROR"
         ) {
-          console.log(
-            "[ensureOrderCreated] Network error - switching to offline mode",
-          );
+          if (__DEV__)
+            console.log(
+              "[ensureOrderCreated] Network error - switching to offline mode",
+            );
 
           // Queue the operation for later
           await queueOperation({
@@ -1359,7 +1375,10 @@ const ensureOrderCreated = async (
 
         // Non-network error — queue for offline retry instead of silently dropping
         if (!hasPendingOrderCreation(order.id)) {
-          console.log("[ensureOrderCreated] Server error - queueing for retry");
+          if (__DEV__)
+            console.log(
+              "[ensureOrderCreated] Server error - queueing for retry",
+            );
           await queueOperation({
             type: "create_order",
             params: { localOrderId: order.id, createOrderParams },
@@ -1381,9 +1400,10 @@ const ensureOrderCreated = async (
         const backendId = orderData.order_id || orderData.id;
 
         if (backendId) {
-          console.log(
-            `[ensureOrderCreated] Order created successfully, ID: ${backendId}`,
-          );
+          if (__DEV__)
+            console.log(
+              `[ensureOrderCreated] Order created successfully, ID: ${backendId}`,
+            );
 
           // Update the store with the new db_order_id
           setOrderDbId(
@@ -1447,9 +1467,10 @@ const ensureOrderCreated = async (
             createResult,
           );
           if (!hasPendingOrderCreation(order.id)) {
-            console.log(
-              "[ensureOrderCreated] Invalid response - queueing for retry",
-            );
+            if (__DEV__)
+              console.log(
+                "[ensureOrderCreated] Invalid response - queueing for retry",
+              );
             await queueOperation({
               type: "create_order",
               params: { localOrderId: order.id, createOrderParams },
@@ -1479,7 +1500,10 @@ const ensureOrderCreated = async (
       // RELEASE LOCK: Always clean up, even on error
       pendingOrderCreations.delete(order.id);
       orderCreationTimestamps.delete(order.id);
-      console.log(`[ensureOrderCreated] Released lock for order ${order.id}`);
+      if (__DEV__)
+        console.log(
+          `[ensureOrderCreated] Released lock for order ${order.id}`,
+        );
     }
   })();
 
@@ -2062,9 +2086,10 @@ const addItemToBackend = async (
                 i.kitchen_status === kitchenSentStatus && i.db_order_item_id,
             )
             .map((i) => i.db_order_item_id!);
-          console.log(
-            `[addItemToBackend] Last item synced, batch-sending ${allDbItemIds.length} items to kitchen`,
-          );
+          if (__DEV__)
+            console.log(
+              `[addItemToBackend] Last item synced, batch-sending ${allDbItemIds.length} items to kitchen`,
+            );
           try {
             // Update order status first (draft → sent_to_kitchen) before setting
             // item statuses — the DB constraint rejects sent_to_kitchen_at on draft orders.
@@ -2500,9 +2525,10 @@ const addItemToBackend = async (
       const hasPendingSiblings2 = useOrderStore
         .getState()
         .hasPendingSyncs(resolveOrderKey());
-      console.log(
-        `[RetroKitchen] item=${item.id} kitchen_status=${postSyncItem?.kitchen_status} expected=${kitchenSentStatus2} hasPendingSiblings=${hasPendingSiblings2} db_id=${addResult.order_item_id}`,
-      );
+      if (__DEV__)
+        console.log(
+          `[RetroKitchen] item=${item.id} kitchen_status=${postSyncItem?.kitchen_status} expected=${kitchenSentStatus2} hasPendingSiblings=${hasPendingSiblings2} db_id=${addResult.order_item_id}`,
+        );
       if (
         postSyncItem?.kitchen_status === kitchenSentStatus2 &&
         addResult.order_item_id &&
@@ -3519,10 +3545,11 @@ const syncPaymentToBackend = async (
                   });
                 }
               } else {
-                console.log(
-                  "[syncPayment] Auto-closed check successfully:",
-                  order.db_order_id,
-                );
+                if (__DEV__)
+                  console.log(
+                    "[syncPayment] Auto-closed check successfully:",
+                    order.db_order_id,
+                  );
               }
             })
             .catch((err) =>
@@ -6131,17 +6158,18 @@ export const useOrderStore = create<OrderState>()(
               });
 
             if (!currentLocationId || !shouldAccept) {
-              console.warn(
-                "❌ [_handleOrderBroadcast] REJECTED - Order does not pass view_scope filter",
-                {
-                  reason: !currentLocationId
-                    ? "No current location ID"
-                    : "Failed _shouldAcceptRemoteOrder check",
-                  orderId: dbOrderId,
-                  orderStation: backendOrder.station_id,
-                  currentStation: currentStationId,
-                },
-              );
+              if (__DEV__)
+                console.warn(
+                  "❌ [_handleOrderBroadcast] REJECTED - Order does not pass view_scope filter",
+                  {
+                    reason: !currentLocationId
+                      ? "No current location ID"
+                      : "Failed _shouldAcceptRemoteOrder check",
+                    orderId: dbOrderId,
+                    orderStation: backendOrder.station_id,
+                    currentStation: currentStationId,
+                  },
+                );
               return;
             }
 
@@ -16449,17 +16477,19 @@ export const useOrderStore = create<OrderState>()(
             let order = get().ordersById[storeKey];
 
             if (!order?.db_order_id) {
-              console.log(
-                "[syncOrderFromBackendComplete] Order not found or not synced to DB",
-              );
+              if (__DEV__)
+                console.log(
+                  "[syncOrderFromBackendComplete] Order not found or not synced to DB",
+                );
               return;
             }
 
             const supabase = _supabaseClient;
             if (!supabase || !getIsOnline()) {
-              console.log(
-                "[syncOrderFromBackendComplete] Offline or no client",
-              );
+              if (__DEV__)
+                console.log(
+                  "[syncOrderFromBackendComplete] Offline or no client",
+                );
               return;
             }
 
@@ -16472,27 +16502,30 @@ export const useOrderStore = create<OrderState>()(
               lastSyncedAt &&
               Date.now() - lastSyncedAt < ORDER_DETAIL_SYNC_COOLDOWN_MS
             ) {
-              console.log(
-                `[syncOrderFromBackendComplete] Skipping recent sync for ${detailSyncKey}`,
-              );
+              if (__DEV__)
+                console.log(
+                  `[syncOrderFromBackendComplete] Skipping recent sync for ${detailSyncKey}`,
+                );
               return;
             }
             const existingDetailSync =
               inFlightOrderDetailSyncs.get(detailSyncKey);
             if (existingDetailSync) {
-              console.log(
-                `[syncOrderFromBackendComplete] Reusing in-flight sync for ${detailSyncKey}`,
-              );
+              if (__DEV__)
+                console.log(
+                  `[syncOrderFromBackendComplete] Reusing in-flight sync for ${detailSyncKey}`,
+                );
               return existingDetailSync;
             }
 
             const detailSyncPromise = (async (): Promise<void> => {
               try {
-                console.log("[syncOrderFromBackendComplete] Starting sync:", {
-                  localOrderId: storeKey,
-                  dbOrderId: order.db_order_id,
-                  currentItemsCount: order.items?.length || 0,
-                });
+                if (__DEV__)
+                  console.log("[syncOrderFromBackendComplete] Starting sync:", {
+                    localOrderId: storeKey,
+                    dbOrderId: order.db_order_id,
+                    currentItemsCount: order.items?.length || 0,
+                  });
 
                 // Wave-0 telemetry (Audit B #3): real full-detail sync rate.
                 recordCount(KEY_RPC_GET_ORDER_DETAILS);
@@ -16525,18 +16558,19 @@ export const useOrderStore = create<OrderState>()(
                   return;
                 }
 
-                console.log(
-                  "[syncOrderFromBackendComplete] RPC response received:",
-                  {
-                    hasOrder: !!data.order,
-                    itemsCount: data.items?.length || 0,
-                    paymentsCount: data.payments?.length || 0,
-                    reversalsCount: data.reversals?.length || 0,
-                    refundItemsCount: data.order_refund_items?.length || 0,
-                    discountsCount: data.order_discounts?.length || 0,
-                    stationName: data.station_name,
-                  },
-                );
+                if (__DEV__)
+                  console.log(
+                    "[syncOrderFromBackendComplete] RPC response received:",
+                    {
+                      hasOrder: !!data.order,
+                      itemsCount: data.items?.length || 0,
+                      paymentsCount: data.payments?.length || 0,
+                      reversalsCount: data.reversals?.length || 0,
+                      refundItemsCount: data.order_refund_items?.length || 0,
+                      discountsCount: data.order_discounts?.length || 0,
+                      stationName: data.station_name,
+                    },
+                  );
 
                 // Extract response components (including new fields from updated RPC)
                 const orderData = data.order;
@@ -17365,16 +17399,17 @@ export const useOrderStore = create<OrderState>()(
 
                 // Verify the update
                 const updatedOrder = get().ordersById[storeKey];
-                console.log(
-                  "[syncOrderFromBackendComplete] ✅ Order synced successfully:",
-                  {
-                    orderId: storeKey,
-                    itemsInStore: updatedOrder?.items?.length || 0,
-                    paymentsInStore: updatedOrder?.payments?.length || 0,
-                    checkStatus: updatedOrder?.check_status,
-                    paidStatus: updatedOrder?.paid_status,
-                  },
-                );
+                if (__DEV__)
+                  console.log(
+                    "[syncOrderFromBackendComplete] ✅ Order synced successfully:",
+                    {
+                      orderId: storeKey,
+                      itemsInStore: updatedOrder?.items?.length || 0,
+                      paymentsInStore: updatedOrder?.payments?.length || 0,
+                      checkStatus: updatedOrder?.check_status,
+                      paidStatus: updatedOrder?.paid_status,
+                    },
+                  );
               } catch (error: any) {
                 console.error("[syncOrderFromBackendComplete] Failed:", error);
                 throw error;
