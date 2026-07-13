@@ -1,5 +1,6 @@
 import { createLazyPersistStorage } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
+import { PosBillingAccessStatus } from "@/lib/posAccessControl";
 import { TaxRate, TaxRatesMap } from "@/types/menu";
 import { SelectedStation } from "@/types/station";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -87,6 +88,7 @@ export interface StoreSettings {
 
   // Selected store from database
   selectedStore: SelectedLocation | null;
+  billingAccess: PosBillingAccessStatus | null;
 
   // Organization branding
   organizationLogoUrl: string | null;
@@ -194,6 +196,7 @@ interface StoreSettingsState extends StoreSettings {
   setSelectedStore: (store: SelectedLocation) => void;
   clearSelectedStore: () => void;
   refreshSelectedStore: (supabase: SupabaseClient) => Promise<void>;
+  setBillingAccess: (access: PosBillingAccessStatus | null) => void;
 
   // Organization branding
   setOrganizationLogoUrl: (url: string | null) => void;
@@ -305,6 +308,7 @@ const initialData: StoreSettings = {
 
   // No store selected initially
   selectedStore: null,
+  billingAccess: null,
 
   // Organization branding
   organizationLogoUrl: null,
@@ -490,7 +494,11 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
       },
 
       clearSelectedStore: () => {
-        set({ selectedStore: null, organizationLogoUrl: null });
+        set({ selectedStore: null, billingAccess: null, organizationLogoUrl: null });
+      },
+
+      setBillingAccess: (access) => {
+        set({ billingAccess: access });
       },
 
       refreshSelectedStore: async (supabase: SupabaseClient) => {
@@ -591,6 +599,7 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
       partialize: (state) => ({
         // Only persist these fields
         selectedStore: state.selectedStore,
+        billingAccess: state.billingAccess,
         storeTaxId: state.storeTaxId,
         taxRates: state.taxRates,
         taxRatesMap: state.taxRatesMap,
