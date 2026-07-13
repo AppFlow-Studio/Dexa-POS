@@ -19,6 +19,7 @@
  * visible on-device without the Sentry dashboard.
  */
 import * as Sentry from "@sentry/react-native";
+import { telemetryRecordSpan } from "@/lib/telemetry/registry";
 
 type PerfAttributeValue = string | number | boolean;
 export type PerfAttributes = Record<string, PerfAttributeValue>;
@@ -91,6 +92,9 @@ export function startInteraction(
     try {
       span!.end();
     } catch {}
+    // Wave-0 tap: mirror every ended span into the local telemetry ring,
+    // independent of Sentry's tracesSampleRate.
+    telemetryRecordSpan(name, nowMs() - startedAt);
     if (__DEV__) {
       console.log(`[perf] ${name}: ${Math.round(nowMs() - startedAt)}ms`);
     }

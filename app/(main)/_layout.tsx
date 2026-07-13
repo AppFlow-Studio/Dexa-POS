@@ -46,6 +46,16 @@ import {
   View
 } from 'react-native'
 import { hintNativeGc } from '@/lib/nativeMemory'
+import {
+  KEY_FANOUT_KDS_MS,
+  KEY_FANOUT_ORDER_STORE_MS,
+  KEY_FANOUT_PREV_ORDERS_MS
+} from '@/lib/telemetry/keys'
+import {
+  noteBroadcastFanoutEnd,
+  recordSpan,
+  setCurrentRoute
+} from '@/lib/telemetry/registry'
 import { SafeAreaView } from 'react-native-safe-area-context'
 /** Side-effect component: keeps POS orders in sync when realtime drops */
 function OrderSyncRecoveryBridge ({ locationId }: { locationId: string }) {
@@ -79,6 +89,11 @@ export default function MainLayout () {
       hintNativeGc(pathname)
     })
     return () => task.cancel()
+  }, [pathname])
+
+  // Wave-0 telemetry: tag long-task samples with the screen they blocked.
+  useEffect(() => {
+    setCurrentRoute(pathname)
   }, [pathname])
 
   useEffect(() => {
@@ -200,14 +215,21 @@ export default function MainLayout () {
       })
     }
     unstable_batchedUpdates(() => {
+      const t0 = performance.now()
       useOrderStore.getState()._handleOrderBroadcast(broadcastPayload)
+      const t1 = performance.now()
+      recordSpan(KEY_FANOUT_ORDER_STORE_MS, t1 - t0)
       usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload)
+      const t2 = performance.now()
+      recordSpan(KEY_FANOUT_PREV_ORDERS_MS, t2 - t1)
       // Keep the KDS store warm on POS stations too — the /kds screen relies
       // on broadcasts while realtime is connected (its polling is disabled
       // then, see kds.tsx schedulePoll), and its own pre-gate skips
       // non-kitchen-relevant broadcasts cheaply.
       useKDSStore.getState().handleOrderBroadcast(broadcastPayload)
+      recordSpan(KEY_FANOUT_KDS_MS, performance.now() - t2)
     })
+    noteBroadcastFanoutEnd()
     if (broadcastPayload.operation === 'INSERT') {
       const src = broadcastPayload.data?.order?.order_source
       if (src && src !== 'pos' && src !== 'in_store') {

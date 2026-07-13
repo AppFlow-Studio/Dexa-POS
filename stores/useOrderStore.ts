@@ -8,6 +8,12 @@ import { payableQuantity } from "@/lib/payableQuantity";
 import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
+  KEY_RPC_GET_ORDER_DETAILS,
+  KEY_RT_OWN_ECHO,
+  KEY_RT_OWN_ECHO_SLIP,
+} from "@/lib/telemetry/keys";
+import { recordCount } from "@/lib/telemetry/registry";
+import {
     createLazyPersistStorage,
     getSyncJSON,
     setSyncJSON,
@@ -5213,10 +5219,17 @@ export const useOrderStore = create<OrderState>()(
                         backendOrder._broadcast_version,
                       );
 
+                    // Wave-0 telemetry (Audit B #2): how often do our own
+                    // echoes slip past the noMeaningfulChange skip (server
+                    // totals differing by >=1¢, item-count drift, etc.)?
+                    if (isOwnStationOrder) recordCount(KEY_RT_OWN_ECHO);
+
                     if (noMeaningfulChange && !hasPendingChanges) {
                       // No meaningful change - skip state update to prevent re-renders
                       return;
                     }
+
+                    if (isOwnStationOrder) recordCount(KEY_RT_OWN_ECHO_SLIP);
 
                     // ═══════════════════════════════════════════════════════════
                     // Phase 6: Conflict Detection
@@ -16447,6 +16460,9 @@ export const useOrderStore = create<OrderState>()(
                   dbOrderId: order.db_order_id,
                   currentItemsCount: order.items?.length || 0,
                 });
+
+                // Wave-0 telemetry (Audit B #3): real full-detail sync rate.
+                recordCount(KEY_RPC_GET_ORDER_DETAILS);
 
                 // Call get_order_details RPC
                 // rpc-discipline-allow: inline-wrapped Category C read — get_order_details deadline-only

@@ -4,6 +4,12 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getOrderPaymentsQueryOptions, orderPaymentsQueryKey } from '@/hooks/orders/useOrderPayments'
 import { isOnlineOrderSource } from '@/lib/orderSource'
+import {
+  KEY_RT_HANDLER_MS,
+  KEY_RT_MSG,
+  KEY_RT_PAYLOAD_BYTES_SAMPLED
+} from '@/lib/telemetry/keys'
+import { recordCount, recordSpan } from '@/lib/telemetry/registry'
 import type {
   OrderPayload,
   RealtimeEventType,
@@ -13,6 +19,9 @@ import * as Sentry from '@sentry/react-native'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 import { useRealtimeChannel } from './useRealtimechannel'
+
+// Wave-0 telemetry: 1-in-10 sampling counter for broadcast payload sizes.
+let rtPayloadSampleCounter = 0
 
 // Modifier data in broadcast payload (Phase 2.5: Order Item Sync with Modifiers)
 export interface BroadcastModifierData {
@@ -362,6 +371,20 @@ export function useOrdersRealtime ({
   // (handled by useOrderSyncRecovery), not per-broadcast invalidation.
   const handleMessage = useCallback(
     (event: RealtimeEventType, payload: unknown) => {
+      const handlerStart = performance.now()
+      recordCount(KEY_RT_MSG)
+      // Broadcast payload size (Audit B #4): the message arrives parsed, so
+      // byte size costs a stringify — sample 1-in-10 to keep it honest and
+      // cheap rather than paying it on every message.
+      if (rtPayloadSampleCounter++ % 10 === 0) {
+        try {
+          recordCount(
+            KEY_RT_PAYLOAD_BYTES_SAMPLED,
+            JSON.stringify(payload)?.length ?? 0
+          )
+        } catch {}
+      }
+
       if (__DEV__)
         console.log(`[OrdersRealtime] Received ${event} event:`, {
           event,
@@ -412,6 +435,7 @@ export function useOrdersRealtime ({
           console.warn('[OrdersRealtime] No onOrderChange callback registered!')
         }
       }
+      recordSpan(KEY_RT_HANDLER_MS, performance.now() - handlerStart)
     },
     [onOrderChange, queryClient, supabase]
   )

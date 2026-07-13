@@ -23,6 +23,15 @@ import {
   ENV_SIGNATURE_KEY,
   isEnvSignatureWellFormed,
 } from "@/lib/envSignature";
+// Wave-0 telemetry. Leaf modules (registry imports only react-native-mmkv;
+// keys imports only registry) — no cycle back into lib/storage.
+import { KEY_FLUSH_ALL_MS, persistKeyIds } from "@/lib/telemetry/keys";
+import {
+  noteFlushAllEnd,
+  noteStringifyEnd,
+  recordCount,
+  recordSample,
+} from "@/lib/telemetry/registry";
 
 // ============================================================================
 // MMKV INSTANCES
@@ -258,6 +267,7 @@ function debouncedSetItem(name: string, value: string): void {
  * Call this on app background/inactive to prevent data loss if the app is killed.
  */
 export function flushAllPendingWrites(): void {
+  const flushStart = performance.now();
   for (const key of Object.keys(debouncedWriters)) {
     debouncedWriters[key]?.flush();
   }
@@ -267,6 +277,8 @@ export function flushAllPendingWrites(): void {
     lazyWriters[key]?.flush();
   }
   isFlushing = false;
+  recordSample(KEY_FLUSH_ALL_MS, performance.now() - flushStart);
+  noteFlushAllEnd();
 }
 
 /**
@@ -314,13 +326,24 @@ function lazyDebouncedWrite(name: string, value: unknown): void {
   // same object as the last write, the stringified payload is identical too.
   // Skip the stringify (50–150ms saved on hot mutations that don't touch
   // persistable orders, e.g. payment-only flows).
-  if (lastPersistedValue[name] === value) return;
+  if (lastPersistedValue[name] === value) {
+    recordCount(persistKeyIds(name).skip);
+    return;
+  }
   lastPersistedValue[name] = value;
+  recordCount(persistKeyIds(name).arm);
 
   const delay = 300;
   if (!lazyWriters[name]) {
     lazyWriters[name] = debounce((v: unknown) => {
+      const stringifyStart = performance.now();
       const str = JSON.stringify(v);
+      // Prime suspect in the rush-lag model: full-slice stringify wall time
+      // and payload bytes per fire. Sample always rings (never downsampled).
+      const ids = persistKeyIds(name);
+      recordSample(ids.stringifyMs, performance.now() - stringifyStart);
+      recordCount(ids.bytes, str.length);
+      noteStringifyEnd();
       if (isFlushing) {
         // Synchronous write during flush (app backgrounding) — must complete
         // before the OS suspends the process.
