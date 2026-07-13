@@ -9,6 +9,7 @@ import type {
   RealtimeEventType,
   UseOrdersRealtimeOptions
 } from '@/types/real-time'
+import * as Sentry from '@sentry/react-native'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 import { useRealtimeChannel } from './useRealtimechannel'
@@ -81,7 +82,9 @@ export interface BroadcastOrderPaymentData {
     | 'voided'
     | 'refunded'
 
-  // Portions
+  // Portions — nullable in DB and read WITHOUT coalescing by the transformer,
+  // so v3 broadcasts always keep these keys present (possibly null at
+  // runtime; typed non-null here to match OrderProfilePayment, pre-existing)
   subtotal_portion: number
   tax_portion: number
   discount_portion?: number
@@ -89,39 +92,42 @@ export interface BroadcastOrderPaymentData {
   // Void timestamp
   voided_at?: string | null
 
+  // v3 broadcasts strip null-valued keys per payment (jsonb_strip_nulls), so
+  // every nullable field below may be ABSENT rather than null. All client
+  // reads coalesce via ??/||, making absent ≡ null.
   // Cash fields
-  amount_tendered: number | null
+  amount_tendered?: number | null
   change_given: number
   is_cash_priced: boolean
-  original_amount: number | null
+  original_amount?: number | null
 
   // Split tracking
-  split_portion_index: number | null
-  split_count: number | null
+  split_portion_index?: number | null
+  split_count?: number | null
 
   // Item coverage (just UUIDs - quantities derived from order_items.paid_quantity)
   covers_items: string[]
 
   // Card/Terminal (simplified)
-  card_type: string | null
-  card_last_four: string | null
-  transaction_id: string | null
-  terminal_type: string | null
-  reference_id: string | null
+  card_type?: string | null
+  card_last_four?: string | null
+  transaction_id?: string | null
+  terminal_type?: string | null
+  reference_id?: string | null
 
   // Card transaction detail fields
-  authorization_code: string | null
-  auth_code: string | null
-  rrn: string | null
-  batch_number: string | null
-  dejavoo_batch_number: string | null
-  dejavoo_invoice_number: string | null
-  entry_mode: string | null
-  result_code: string | null
+  authorization_code?: string | null
+  auth_code?: string | null
+  rrn?: string | null
+  batch_number?: string | null
+  dejavoo_batch_number?: string | null
+  dejavoo_invoice_number?: string | null
+  entry_mode?: string | null
+  result_code?: string | null
 
   // Void tracking
   is_voided: boolean
-  void_reason: string | null
+  void_reason?: string | null
   refunded_amount?: number
   refunded_at?: string | null
 
@@ -142,7 +148,7 @@ export interface BroadcastOrderPaymentData {
 
   // Timestamps
   authorized_at?: string | null
-  captured_at: string | null
+  captured_at?: string | null
   created_at: string
 
   // Settlement tracking
@@ -154,14 +160,19 @@ export interface BroadcastOrderPaymentData {
 }
 
 export interface BroadcastOrderData {
+  // NOTE: fields marked "v3: dropped" below are no longer emitted by
+  // _broadcast_version >= 3 realtime broadcasts (never read from broadcasts
+  // by any client — W1-2 payload trim). They remain optional here because
+  // this shape is also produced by normalizeFetchedOrder() for RPC-fetched
+  // rows, which still carry them.
   // Identifiers
   id: string
   order_number: string
   display_number: string
-  external_id: string | null
+  external_id?: string | null // v3: dropped
 
   // Relationships
-  merchant_id: string
+  merchant_id?: string // v3: dropped
   location_id: string
   customer_id: string | null
   customer_name: string | null
@@ -169,7 +180,7 @@ export interface BroadcastOrderData {
   customer_email: string | null
   delivery_address: string | null
   created_by_staff_id: string | null
-  created_by_user_id: string | null
+  created_by_user_id?: string | null // v3: dropped
   assigned_server_id: string | null
   session_id: string | null // Bidirectional link to table sessions
   server_name?: string | null // Staff name who created the order
@@ -194,13 +205,13 @@ export interface BroadcastOrderData {
     | 'refunded'
     | 'void'
   table_number: string | null
-  seat_number: string | null
+  seat_number?: string | null // v3: dropped
   special_instructions?: string | null
 
   // Legacy/Generic totals (backward compatibility)
-  subtotal: number
+  subtotal?: number // v3: dropped
   tax_amount: number
-  tip_amount: number
+  tip_amount?: number // v3: dropped (header-level; payment tip_amount kept)
   discount_amount: number
   service_charge: number
   service_charge_name?: string | null
@@ -217,17 +228,17 @@ export interface BroadcastOrderData {
   card_total: number
 
   // Cash pricing (4% discount)
-  cash_subtotal: number
-  cash_tax_amount: number
+  cash_subtotal?: number // v3: dropped
+  cash_tax_amount?: number // v3: dropped
   cash_total: number
-  cash_discount_applied: boolean
-  cash_discount_amount: number
+  cash_discount_applied?: boolean // v3: dropped
+  cash_discount_amount?: number // v3: dropped
 
-  // Effective pricing (what's actually being charged based on payment method)
-  effective_subtotal: number
-  effective_tax_amount: number
-  effective_total: number
-  payment_pricing_mode: 'card' | 'cash' | null
+  // Effective pricing — v3: block dropped (never read from broadcasts)
+  effective_subtotal?: number
+  effective_tax_amount?: number
+  effective_total?: number
+  payment_pricing_mode?: 'card' | 'cash' | null
 
   // Payment status
   payment_status: 'pending' | 'partial' | 'paid' | 'refunded' | 'unpaid'
@@ -241,24 +252,26 @@ export interface BroadcastOrderData {
   created_at: string
   updated_at: string
   sent_to_kitchen_at: string | null
-  started_preparing_at: string | null
-  ready_at: string | null
+  started_preparing_at?: string | null // v3: dropped
+  ready_at?: string | null // v3: dropped
   completed_at: string | null
-  cancelled_at: string | null
-  voided_at: string | null
+  cancelled_at?: string | null // v3: dropped
+  voided_at?: string | null // v3: dropped
 
-  // Void info
-  voided_by: string | null
-  void_reason: string | null
-  cancellation_reason: string | null
+  // Void info — v3: block dropped (never read from broadcasts)
+  voided_by?: string | null
+  void_reason?: string | null
+  cancellation_reason?: string | null
 
   // Sync info
   sync_version: number
-  is_offline: boolean
+  is_offline?: boolean // v3: dropped
 
-  // Broadcast version: 1 = legacy full payload, 2 = header-only (no items/reversals/refund_items)
+  // Broadcast version: 1 = legacy full payload, 2 = header-only (no
+  // items/reversals/refund_items), 3 = consumed-field contract (W1-2 trim:
+  // 22 never-read header fields dropped, payments null-stripped)
   _broadcast_version?: number
-  // Computed non-voided item count (present in v2 broadcasts)
+  // Computed non-voided item count (present in v2+ broadcasts)
   item_count?: number
 
   // Order items (Phase 2: Remote Order Management)
@@ -274,7 +287,7 @@ export interface BroadcastOrderData {
 
   // Per-payment item coverage (from order_payment_items junction table)
   payment_items?: Array<{
-    id: string
+    id?: string // v3: dropped (junction row PK, never read)
     order_payment_id: string
     order_item_id: string
     quantity_paid: number
@@ -289,6 +302,21 @@ export interface OrderBroadcastPayload {
   timestamp: string
   data: {
     order: BroadcastOrderData
+  }
+}
+
+// Sentry tag recording which order-broadcast payload version this station is
+// hydrating from (v1 legacy / v2 header-only / v3 trimmed). Set once per
+// distinct version so the W1-2 rollout is observable per device without
+// per-message overhead. DELETE payloads carry no version — skipped.
+let _lastTaggedBroadcastVersion: number | null = null
+function tagReceivedBroadcastVersion (version: number | undefined): void {
+  if (version === undefined || version === _lastTaggedBroadcastVersion) return
+  _lastTaggedBroadcastVersion = version
+  try {
+    Sentry.setTag('order_broadcast_version', String(version))
+  } catch {
+    // Sentry unavailable (tests) — telemetry is best-effort
   }
 }
 
@@ -344,6 +372,7 @@ export function useOrdersRealtime ({
       if (event === 'INSERT' || event === 'UPDATE' || event === 'DELETE') {
         const broadcastPayload = payload as OrderBroadcastPayload
         const broadcastOrder = broadcastPayload.data?.order
+        tagReceivedBroadcastVersion(broadcastOrder?._broadcast_version)
         const orderId = broadcastOrder?.id
         const orderSource = broadcastOrder?.order_source?.toLowerCase()
 
