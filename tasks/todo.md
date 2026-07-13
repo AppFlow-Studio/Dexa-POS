@@ -259,3 +259,10 @@ Branches: `chore/wave0-skip-probe` (Step 0 temp logs, revert after capture) · `
 - [x] Settings→General toggle (default ON) + hidden long-press hooks-mute (overhead A/B, release-reachable — moved off dev-flags because that screen redirects in release); hidden export = long-press version value in Devices & Connections
 - [x] 22 new tests pass; tsc error delta 0 (141 pre-existing); full-jest delta 0 (27 failures pre-existing on base)
 - [ ] ON-DEVICE (needs Landi + native rebuild for expo-sharing): Step 0 probe capture → attach numbers; 30-min hooks-on vs hooks-muted overhead A/B; Charcoal Load Profile 2h capture on staging (NOT the 1,000-table rig); export screen-recording → Ali Dika verifies
+
+### Step 0 skip-probe RESULTS (2026-07-13, Landi via USB, ~4 min order building)
+
+- **skip-hits: 0** — prediction CONFIRMED. The ref-equality skip (`lib/storage.ts` `lastPersistedValue[name] === value`) never fires for `order-store-storage`; zustand persist hands a fresh StorageValue wrapper per setItem, so the branch is structurally dead.
+- **stringify cost: 0–1ms per fire at 3.7–16KB payloads.** Payload grew ~3.7KB → ~16KB as one order accumulated items (~0.5–0.7KB/item incl. modifiers). Fire cadence during active editing ≈ 1/s (12 fires in 14s burst) — matches the Audit B model.
+- **Interpretation:** at THIS payload size W1-1 is a ~1ms lever — nothing. Cost scales ~linearly with bytes, so the decisive number is real payload size at Charcoal hour-5 (25 open orders in the persisted set). Extrapolation: 150–300KB payload ⇒ ~10–20ms/fire ⇒ at ~1 fire/s bursts, a 1–6% JS-thread tax — meaningful but not obviously THE lag. Do NOT green-light or kill W1-1 yet; the harness's `persist.bytes.order-store-storage` max/avg during the Charcoal Load Profile capture decides it (Audit A #1).
+- TEMP probe commit reverted on both counts: harness branch revert commit after capture; `chore/wave0-skip-probe` branch retained for the ticket record (console.warn variant — babel strips console.log in preview builds).
