@@ -5,6 +5,7 @@ import { OrderDetailMerchantBreakdown } from "@/components/orders/OrderDetailMer
 import RefundApprovalModal from "@/components/previous-orders/RefundApprovalModal";
 import SendReceiptSheet from "@/components/receipts/SendReceiptSheet";
 import { ToastRenderer, useToast } from "@/contexts/ToastContext";
+import { isOnlineOrderSource } from "@/lib/orderSource";
 import type { KitchenTimelineData } from "@/hooks/orders/useOrderDetailsFetch";
 import { useOrderDetailsFetch } from "@/hooks/orders/useOrderDetailsFetch";
 import { useOrderPayments } from "@/hooks/orders/useOrderPayments";
@@ -1241,7 +1242,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
             <SummaryCard
               amount={paymentSummary.orderTotal}
               cashAmount={
-                order?.order_source?.toLowerCase() === "online"
+                isOnlineOrderSource(order?.order_source)
                   ? undefined
                   : paymentSummary.orderCashTotal
               }

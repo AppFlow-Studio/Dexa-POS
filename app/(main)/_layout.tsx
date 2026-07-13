@@ -13,6 +13,7 @@ import { useOrderSyncRecovery } from '@/hooks/pos/useOrderSyncRecovery'
 import type { OrderBroadcastPayload } from '@/hooks/realtime/useOrdersRealtime'
 import { useTableSessionInit } from '@/hooks/useTableSessionInit'
 import { setHeaderHeight } from '@/lib/headerHeight'
+import { isOnlineOrderSource } from '@/lib/orderSource'
 import { colors, spinnerColor } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { hydrateDrawerSession } from '@/services/cashDrawerService'
@@ -178,7 +179,7 @@ export default function MainLayout () {
     if (order) {
       const orderStore = useOrderStore.getState()
       if (
-        order.order_source === 'online' ||
+        isOnlineOrderSource(order.order_source) ||
         orderStore.dbOrderIdIndex[order.id] ||
         orderStore.ordersById[order.id]
       ) {

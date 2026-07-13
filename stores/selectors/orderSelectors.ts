@@ -10,6 +10,7 @@
  */
 
 import { calculateOrderTotals } from "@/lib/order-calculator";
+import { isOnlineOrderSource } from "@/lib/orderSource";
 import type { CartItem, OrderProfile, OrderProfilePayment } from "@/lib/types";
 import { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -983,11 +984,12 @@ export function useIsOwnStationOrder(order: OrderProfile | null): boolean {
 // ═══════════════════════════════════════════════════════════════════════════
 // Incoming online/QR orders awaiting manual Accept/Decline.
 //
-// Keyed on order_source==='online' + order_status==='pending' — NOT order_type.
-// QR dine-in orders transform to order_type='takeout' (mapOrderType has no
-// qr_dine_in case), so order_type cannot distinguish them. order_source is set
-// to 'online' by process_online_order for ALL ingress paths (website/QR +
-// Orderout aggregators), so this queue surfaces every pending online order.
+// Keyed on isOnlineOrderSource(order_source) + order_status==='pending' — NOT
+// order_type. QR dine-in orders transform to order_type='takeout' (mapOrderType
+// has no qr_dine_in case), so order_type cannot distinguish them. order_source
+// is derived from the provider by process_online_order ('orderout' for
+// aggregators, 'online_store' for website/QR; legacy rows carry 'online'), so
+// this queue surfaces every pending online order.
 // Auto-accepted aggregator orders are never 'pending', so they won't appear.
 
 export function usePendingOnlineOrders(): OrderProfile[] {
@@ -999,7 +1001,7 @@ export function usePendingOnlineOrders(): OrderProfile[] {
     for (let i = 0; i < orderIds.length; i++) {
       const o = ordersById[orderIds[i]];
       if (!o) continue;
-      if (o.order_source !== "online") continue;
+      if (!isOnlineOrderSource(o.order_source)) continue;
       if (o.order_status !== "pending") continue;
       result.push(o);
     }
@@ -1035,7 +1037,7 @@ export function useOnlineOrders(): OrderProfile[] {
     for (let i = 0; i < orderIds.length; i++) {
       const o = ordersById[orderIds[i]];
       if (!o) continue;
-      if (o.order_source !== "online") continue;
+      if (!isOnlineOrderSource(o.order_source)) continue;
       if (ONLINE_EXCLUDED_STATUSES.has(o.order_status ?? "")) continue;
       result.push(o);
     }
@@ -1056,7 +1058,8 @@ export function usePendingOnlineOrderCount(): number {
     let n = 0;
     for (let i = 0; i < s.orderIds.length; i++) {
       const o = s.ordersById[s.orderIds[i]];
-      if (o && o.order_source === "online" && o.order_status === "pending") n++;
+      if (o && isOnlineOrderSource(o.order_source) && o.order_status === "pending")
+        n++;
     }
     return n;
   });
@@ -1076,7 +1079,7 @@ const TAB_ACTIVE_ONLINE_STATUSES = new Set([
 function isTabActiveOnlineOrder(o: OrderProfile | undefined): o is OrderProfile {
   return (
     !!o &&
-    o.order_source === "online" &&
+    isOnlineOrderSource(o.order_source) &&
     TAB_ACTIVE_ONLINE_STATUSES.has(o.order_status ?? "")
   );
 }

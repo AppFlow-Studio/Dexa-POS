@@ -1,4 +1,5 @@
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
+import { isOnlineOrderSource } from "@/lib/orderSource";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
@@ -356,7 +357,7 @@ const OrderRow = memo<OrderRowProps>(({ order, onMoreClick }) => {
             style={{ fontSize: s(12), color: colors.muted }}
             numberOfLines={1}
           >
-            {order?.order_source == "online"
+            {isOnlineOrderSource(order?.order_source)
               ? "Online"
               : order.server_name || order._sourceStationName || "—"}
           </Text>

@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { getOrderSentStatus } from "@/lib/kitchenStatusUtils";
 import { startInteraction } from "@/lib/perf";
 import { getIsOnline } from "@/services/offlineSyncService";
 import {
@@ -149,7 +150,7 @@ export function useOnlineOrderActions() {
       const prevSyncVersion = order.sync_version ?? 0;
       const optimisticStatus =
         kind === "accept"
-          ? "sent_to_kitchen"
+          ? getOrderSentStatus() // 'preparing' in 2-step, 'sent_to_kitchen' in 3-step
           : kind === "decline"
             ? "declined"
             : kind === "cancel"
@@ -330,7 +331,7 @@ function resolveEnvelope(
       current === "ready" ||
       current === "accepted"
     ) {
-      patchTo(current === "accepted" ? "sent_to_kitchen" : (current as any));
+      patchTo(current === "accepted" ? getOrderSentStatus() : (current as any));
       return { ok: true };
     }
     // Already declined/cancelled → do NOT imply a kitchen send.
@@ -418,7 +419,7 @@ function resolveEnvelope(
     current === "accepted"
   ) {
     // Someone already accepted it — decline failed; reconcile to kitchen.
-    patchTo(current === "accepted" ? "sent_to_kitchen" : (current as any));
+    patchTo(current === "accepted" ? getOrderSentStatus() : (current as any));
     ctx.showToast({
       title: "Already accepted",
       message: "Order was already accepted and sent to the kitchen.",

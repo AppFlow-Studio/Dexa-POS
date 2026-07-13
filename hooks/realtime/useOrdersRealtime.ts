@@ -3,6 +3,7 @@
 
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getOrderPaymentsQueryOptions, orderPaymentsQueryKey } from '@/hooks/orders/useOrderPayments'
+import { isOnlineOrderSource } from '@/lib/orderSource'
 import type {
   OrderPayload,
   RealtimeEventType,
@@ -179,6 +180,7 @@ export interface BroadcastOrderData {
   // Order info
   order_source?: string | null
   delivery_platform?: string | null
+  platform_order_number?: string | null
   split_payment_path?: string | null
   order_type: 'dine_in' | 'takeout' | 'delivery'
   status:
@@ -364,7 +366,7 @@ export function useOrdersRealtime ({
 
           // Prefetch stays online-only — eagerly fetching payments for every
           // POS broadcast would add a round trip per order mutation.
-          if (orderSource === 'online') {
+          if (isOnlineOrderSource(orderSource)) {
             void queryClient.prefetchQuery(
               getOrderPaymentsQueryOptions(supabase, orderId)
             )

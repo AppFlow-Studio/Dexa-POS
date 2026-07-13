@@ -3,6 +3,7 @@ import {
     getKitchenSentStatus,
     getOrderSentStatus,
 } from "@/lib/kitchenStatusUtils";
+import { isOnlineOrderSource } from "@/lib/orderSource";
 import { payableQuantity } from "@/lib/payableQuantity";
 import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
@@ -16068,6 +16069,42 @@ export const useOrderStore = create<OrderState>()(
                 outstanding_service_charge: 0,
                 cash_outstanding_service_charge: 0,
                 service_charge_name: "",
+              };
+            }
+
+            // External online orders (OrderOut / online store): the platform is
+            // the payment authority — its totals are already paid and its tax
+            // (platform-configured rate) can differ from the location's
+            // taxRatesMap. Recomputing here re-taxed the platform's prices at
+            // the local rate and overwrote the true total (e.g. $40.59 →
+            // $40.83). Keep the server-synced totals verbatim.
+            if (isOnlineOrderSource(order.order_source)) {
+              const tax = order.total_tax ?? 0;
+              const sc = order.service_charge ?? 0;
+              const total = order.total_amount ?? 0;
+              const due = order.amount_due ?? 0;
+              const cashDue = order.cash_amount_due ?? due;
+              const subtotal = Math.max(0, total - tax - sc);
+              return {
+                subtotal,
+                discount_amount: order.total_discount ?? 0,
+                tax_amount: tax,
+                total_amount: total,
+                outstanding_subtotal: Math.min(subtotal, due),
+                outstanding_tax: 0,
+                outstanding_total: due,
+                cash_subtotal: subtotal,
+                cash_discount_amount: order.total_discount ?? 0,
+                cash_tax_amount: tax,
+                cash_total_amount: order.total_cash_amount ?? total,
+                cash_outstanding_subtotal: Math.min(subtotal, cashDue),
+                cash_outstanding_tax: 0,
+                cash_outstanding_total: cashDue,
+                service_charge: sc,
+                cash_service_charge: sc,
+                outstanding_service_charge: 0,
+                cash_outstanding_service_charge: 0,
+                service_charge_name: order.service_charge_name ?? "",
               };
             }
 
