@@ -328,11 +328,6 @@ function lazyDebouncedWrite(name: string, value: unknown): void {
   // persistable orders, e.g. payment-only flows).
   if (lastPersistedValue[name] === value) {
     recordCount(persistKeyIds(name).skip);
-    // TEMP Wave-0 skip probe (revert after Landi capture): does the
-    // ref-equality skip EVER fire for the order store? console.warn, NOT
-    // console.log — babel strips log/info/debug in production AND preview
-    // builds (transform-remove-console), and the capture runs on preview.
-    if (name === "order-store-storage") console.warn("[probe] skip-hit");
     return;
   }
   lastPersistedValue[name] = value;
@@ -349,13 +344,6 @@ function lazyDebouncedWrite(name: string, value: unknown): void {
       recordSample(ids.stringifyMs, performance.now() - stringifyStart);
       recordCount(ids.bytes, str.length);
       noteStringifyEnd();
-      // TEMP Wave-0 skip probe (revert after Landi capture): per-fire
-      // stringify cost + payload bytes on hardware. console.warn — see above.
-      if (name === "order-store-storage") {
-        console.warn(
-          `[probe] stringify ${Math.round(performance.now() - stringifyStart)}ms ${str.length}B`,
-        );
-      }
       if (isFlushing) {
         // Synchronous write during flush (app backgrounding) — must complete
         // before the OS suspends the process.
