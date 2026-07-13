@@ -448,6 +448,17 @@ export class FloorPlanService {
     client: SupabaseClient,
     params: TransferTableSessionParams,
   ): Promise<{ error: any }> {
+    const targetTableIds = params.p_new_table_ids;
+    if (!Array.isArray(targetTableIds) || targetTableIds.length === 0) {
+      return { error: { message: "At least one target table is required" } };
+    }
+    if (targetTableIds.some(tableId => !tableId)) {
+      return { error: { message: "Target table IDs cannot be empty" } };
+    }
+    if (new Set(targetTableIds).size !== targetTableIds.length) {
+      return { error: { message: "Duplicate target tables are not allowed" } };
+    }
+
     const { error } = await client.rpc("transfer_table_session", {
       ...params,
       p_reason: null,

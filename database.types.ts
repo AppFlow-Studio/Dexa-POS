@@ -6396,6 +6396,8 @@ export type Database = {
         Row: {
           address_line1: string | null
           address_line2: string | null
+          auto_clock_out_enabled: boolean
+          auto_clock_out_time: string
           business_day_end_hour: number
           business_day_start_hour: number | null
           business_hours: Json | null
@@ -6442,6 +6444,8 @@ export type Database = {
         Insert: {
           address_line1?: string | null
           address_line2?: string | null
+          auto_clock_out_enabled?: boolean
+          auto_clock_out_time?: string
           business_day_end_hour?: number
           business_day_start_hour?: number | null
           business_hours?: Json | null
@@ -6488,6 +6492,8 @@ export type Database = {
         Update: {
           address_line1?: string | null
           address_line2?: string | null
+          auto_clock_out_enabled?: boolean
+          auto_clock_out_time?: string
           business_day_end_hour?: number
           business_day_start_hour?: number | null
           business_hours?: Json | null
@@ -16603,6 +16609,7 @@ export type Database = {
           network_ssid: string | null
           network_type: string | null
           os_version: string | null
+          pos_config_overrides: Json
           ram_free_mb: number | null
           screen_density: number | null
           screen_height: number | null
@@ -16652,6 +16659,7 @@ export type Database = {
           network_ssid?: string | null
           network_type?: string | null
           os_version?: string | null
+          pos_config_overrides?: Json
           ram_free_mb?: number | null
           screen_density?: number | null
           screen_height?: number | null
@@ -16701,6 +16709,7 @@ export type Database = {
           network_ssid?: string | null
           network_type?: string | null
           os_version?: string | null
+          pos_config_overrides?: Json
           ram_free_mb?: number | null
           screen_density?: number | null
           screen_height?: number | null
@@ -20432,6 +20441,10 @@ export type Database = {
         Args: { p_kds_display_id?: string; p_order_item_id: string }
         Returns: Json
       }
+      auto_clock_out_stale_shifts: {
+        Args: { p_location_id?: string | null; p_now?: string }
+        Returns: Json
+      }
       activate_nmi_payment_device: {
         Args: {
           p_device_id: string
@@ -22308,6 +22321,10 @@ export type Database = {
           p_merchant_id: string
           p_start_date: string
         }
+        Returns: Json
+      }
+      get_effective_pos_config: {
+        Args: { p_station_id: string }
         Returns: Json
       }
       get_items_for_location: {
@@ -24249,6 +24266,10 @@ export type Database = {
       }
       update_location_pos_config: {
         Args: { p_config: Json; p_location_id: string; p_namespace: string }
+        Returns: Json
+      }
+      update_station_pos_config_overrides: {
+        Args: { p_overrides: Json; p_station_id: string }
         Returns: Json
       }
       update_order_details_v1: {

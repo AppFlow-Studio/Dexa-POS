@@ -2,15 +2,14 @@
  * Location Config Sync Service
  *
  * Centralizes all per-location config synchronization:
- * 1. Fetches pos_config from locations table on init
+ * 1. Fetches effective POS config on init
  * 2. Polls every 5 minutes for config changes from other stations
  *
  * Config changes are infrequent (settings page only). Polling is simpler,
- * cheaper, and more reliable than maintaining dedicated realtime channels
- * that had no auth token refresh and silently died after JWT expiry.
+ * cheaper, and more reliable than maintaining dedicated realtime channels.
  *
  * Outbound broadcasts (when THIS station updates config) still happen via
- * useLocationConfigStore._broadcastConfigUpdate — fire-and-forget ephemeral
+ * useLocationConfigStore._broadcastConfigUpdate - fire-and-forget ephemeral
  * channels that self-cleanup.
  *
  * Usage (in PosSyncProvider):
@@ -30,7 +29,7 @@ const CONFIG_POLL_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
 
 /**
  * Initialize location config sync.
- * Call once when location is selected. Returns cleanup function.
+ * Call once when location/station is selected. Returns cleanup function.
  */
 export function initLocationConfigSync(
   supabase: SupabaseClient,
@@ -40,15 +39,14 @@ export function initLocationConfigSync(
   // 1. Provide supabase client to the store for outbound syncing
   useLocationConfigStore.getState()._setSupabase(supabase, stationId)
 
-  // 2. Fetch current pos_config from backend and hydrate
-  _fetchAndHydrate(supabase, locationId)
+  // 2. Fetch current effective POS config from backend and hydrate
+  _fetchAndHydrate(supabase, locationId, stationId)
 
   // 3. Poll every 5 minutes for config changes from other stations
   const pollInterval = setInterval(() => {
-    _fetchAndHydrate(supabase, locationId)
+    _fetchAndHydrate(supabase, locationId, stationId)
   }, CONFIG_POLL_INTERVAL_MS)
 
-  // Return cleanup
   return () => {
     clearInterval(pollInterval)
   }
@@ -61,69 +59,58 @@ export function initLocationConfigSync(
 export async function refreshLocationConfig(
   supabase: SupabaseClient,
   locationId: string,
+  stationId: string | null = null
 ) {
-  await _fetchAndHydrate(supabase, locationId)
+  const resolvedStationId =
+    stationId ?? useStoreSettingsStore.getState().selectedStation?.id ?? null
+  await _fetchAndHydrate(supabase, locationId, resolvedStationId)
 }
 
-async function _fetchAndHydrate(supabase: SupabaseClient, locationId: string) {
+async function _fetchAndHydrate(
+  supabase: SupabaseClient,
+  locationId: string,
+  stationId: string | null = null
+) {
   try {
-    const { data, error } = await supabase
-      .from('locations')
-      .select('pos_config, public_metadata, kds_workflow_mode')
-      .eq('id', locationId)
-      .maybeSingle()
+    let config: Record<string, any> | null = null
+    let shouldBackfillLocationDefaults = false
 
-    if (error) {
-      console.error(`${LOG_TAG} Failed to fetch pos_config:`, error.message)
-      return
-    }
+    if (stationId) {
+      const { data: effectiveConfig, error: effectiveError } =
+        await supabase.rpc('get_effective_pos_config', {
+          p_station_id: stationId,
+        })
 
-    if (!data) {
-      // 0 rows. RLS on `locations` is authenticated-only and scoped to
-      // (user_belongs_to_merchant OR is_location_member), so an empty result
-      // means the active session can't see this location. Almost always the
-      // persisted selectedStore belongs to a different environment/identity
-      // than the one now running (e.g. a staging location id or a stale Clerk
-      // session against the prod instance), or the signed-in user isn't a
-      // member of this location. Config falls back to defaults rather than
-      // surfacing the cryptic PGRST116 "cannot coerce" error.
-      console.warn(
-        `${LOG_TAG} Location ${locationId} not visible to current session — ` +
-        `wrong environment for this store, or no access. Skipping config hydrate; using defaults.`
-      )
-      return
-    }
-
-    let config = (data.pos_config as Record<string, any>) ?? {}
-
-    // Backward compat: if pos_config.dining is empty but public_metadata.dining_settings exists,
-    // use that as the dining config source
-    const publicMeta = data.public_metadata as Record<string, any> | null
-    if (
-      (!config.dining || Object.keys(config.dining).length === 0) &&
-      publicMeta?.dining_settings
-    ) {
-      config = { ...config, dining: publicMeta.dining_settings }
-    }
-
-    // Backward compat: if kds.workflowMode not in pos_config, pull from column
-    if (
-      (!config.kds || !config.kds.workflowMode) &&
-      data.kds_workflow_mode
-    ) {
-      config = {
-        ...config,
-        kds: { ...(config.kds ?? {}), workflowMode: data.kds_workflow_mode },
+      if (effectiveError) {
+        console.warn(
+          `${LOG_TAG} Effective station config unavailable; falling back to location config:`,
+          effectiveError.message
+        )
+      } else if (effectiveConfig) {
+        config = (effectiveConfig as Record<string, any>) ?? {}
       }
     }
 
-    useLocationConfigStore.getState().hydrateConfig(locationId, config)
-    if (__DEV__) console.log(`${LOG_TAG} Hydrated config for location ${locationId}`)
+    if (!config) {
+      config = await _fetchLocationConfig(supabase, locationId)
+      if (!config) return
+      shouldBackfillLocationDefaults = true
+    }
 
-    // Backfill: if any namespace in the DB is missing fields that have defaults,
-    // write the complete merged config back so the DB is fully populated.
-    // This is a one-time heal — subsequent updates are partial and that's fine.
-    _backfillMissingDefaults(supabase, locationId, config)
+    useLocationConfigStore.getState().hydrateConfig(locationId, config, stationId)
+    if (__DEV__) {
+      console.log(
+        `${LOG_TAG} Hydrated config for location ${locationId}` +
+          (stationId ? ` / station ${stationId}` : '')
+      )
+    }
+
+    // Backfill only when reading raw location config. Effective station config
+    // may include station overrides and must not be written back to location
+    // defaults.
+    if (shouldBackfillLocationDefaults) {
+      void _backfillMissingDefaults(supabase, locationId, config)
+    }
 
     // Sync resolved workflowMode to selectedStore for backward compat
     const resolvedMode = useLocationConfigStore.getState().config.kds.workflowMode
@@ -139,11 +126,64 @@ async function _fetchAndHydrate(supabase: SupabaseClient, locationId: string) {
   }
 }
 
+async function _fetchLocationConfig(
+  supabase: SupabaseClient,
+  locationId: string
+): Promise<Record<string, any> | null> {
+  const { data, error } = await supabase
+    .from('locations')
+    .select('pos_config, public_metadata, kds_workflow_mode')
+    .eq('id', locationId)
+    .maybeSingle()
+
+  if (error) {
+    console.error(`${LOG_TAG} Failed to fetch pos_config:`, error.message)
+    return null
+  }
+
+  if (!data) {
+    // 0 rows. RLS on `locations` is authenticated-only and scoped to
+    // (user_belongs_to_merchant OR is_location_member), so an empty result
+    // means the active session cannot see this location. Almost always the
+    // persisted selectedStore belongs to a different environment/identity
+    // than the one now running, or the signed-in user is not a member of this
+    // location. Config falls back to defaults rather than surfacing a cryptic
+    // PGRST116 error.
+    console.warn(
+      `${LOG_TAG} Location ${locationId} not visible to current session - ` +
+        `wrong environment for this store, or no access. Skipping config hydrate; using defaults.`
+    )
+    return null
+  }
+
+  let config = (data.pos_config as Record<string, any>) ?? {}
+
+  // Backward compat: if pos_config.dining is empty but
+  // public_metadata.dining_settings exists, use that as the dining config.
+  const publicMeta = data.public_metadata as Record<string, any> | null
+  if (
+    (!config.dining || Object.keys(config.dining).length === 0) &&
+    publicMeta?.dining_settings
+  ) {
+    config = { ...config, dining: publicMeta.dining_settings }
+  }
+
+  // Backward compat: if kds.workflowMode is absent, pull from legacy column.
+  if ((!config.kds || !config.kds.workflowMode) && data.kds_workflow_mode) {
+    config = {
+      ...config,
+      kds: { ...(config.kds ?? {}), workflowMode: data.kds_workflow_mode },
+    }
+  }
+
+  return config
+}
+
 /**
  * Backfill missing default fields into the DB.
  * If a namespace exists in the DB but is missing fields that have defaults,
  * write the full merged config back so the DB is complete.
- * Uses the RPC (deep merge) so it won't overwrite existing values.
+ * Uses the RPC (deep merge) so it will not overwrite existing values.
  */
 async function _backfillMissingDefaults(
   supabase: SupabaseClient,
@@ -170,7 +210,12 @@ async function _backfillMissingDefaults(
     }
 
     if (Object.keys(missingFields).length > 0) {
-      if (__DEV__) console.log(`${LOG_TAG} Backfilling ${Object.keys(missingFields).length} missing defaults for ${ns}:`, Object.keys(missingFields))
+      if (__DEV__) {
+        console.log(
+          `${LOG_TAG} Backfilling ${Object.keys(missingFields).length} missing defaults for ${ns}:`,
+          Object.keys(missingFields)
+        )
+      }
       try {
         await supabase.rpc('update_location_pos_config', {
           p_location_id: locationId,
@@ -183,4 +228,3 @@ async function _backfillMissingDefaults(
     }
   }
 }
-
