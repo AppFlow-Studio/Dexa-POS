@@ -1,10 +1,13 @@
 // /components/tables/TableLayoutView.tsx
 
+import { hitTestTables } from "@/lib/floorPlanHitTest";
 import { storage } from "@/lib/storage";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
+import { useColorScheme } from "@/lib/useColorScheme";
 import { getWallEdgeFlags, WallEdgeFlags } from "@/lib/wallCornerSnap";
+import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
 import { Crosshair, Lock, LockOpen, Minus, Plus } from "lucide-react-native";
@@ -16,6 +19,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Alert,
   LayoutChangeEvent,
   StyleSheet,
   Text,
@@ -39,7 +43,14 @@ import Svg, {
 } from "react-native-svg";
 import { useShallow } from "zustand/react/shallow";
 import DraggableTable from "./DraggableTable";
+import SkiaTableLayer from "./skia/SkiaTableLayer";
+import TableDataPublisher from "./skia/TableDataPublisher";
 import TableLayoutSkeleton from "./TableLayoutSkeleton";
+
+// Feature flag (MMKV): render view-mode table SHAPES on one shared Skia surface
+// instead of one react-native-svg surface per table. Off by default; ships dark
+// until validated on-device. Edit mode / palette are never affected.
+const SKIA_VIEW_MODE_KEY = "floor_plan.skia_view_mode";
 
 // Precomputed grid paths — built once at module load, not on every render
 const GRID_MINOR = 20;
@@ -134,6 +145,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
 }) => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
+  const { isDarkColorScheme } = useColorScheme();
 
   const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
   // useShallow: both selectors return arrays. Without shallow equality, every
@@ -872,9 +884,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       endCameraGesture();
     });
 
-  // Simultaneous, but both handlers feed one shared basis (see above) so they
-  // compose instead of fighting.
-  const combinedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+  // Pan + pinch compose Simultaneously, both feeding one shared basis (see above)
+  // so they don't fight. In Skia mode `rootGesture` (below) wraps these with the
+  // canvas-level tap/long-press; in the classic path it uses them directly.
 
   const canvasAnimatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -1060,6 +1072,120 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const windowedTableIds = useMemo(
     () => new Set(windowedTables.map((t) => t.id)),
     [windowedTables],
+  );
+
+  // ── Skia single-surface view mode ───────────────────────────────────────
+  // When enabled (and NOT in edit mode), real table/booth shapes are drawn on one
+  // shared Skia surface (SkiaTableLayer) with a lightweight RN text overlay, and a
+  // canvas-level hit-test replaces per-table GestureDetectors. Structures
+  // (walls/doors/etc.) still render through DraggableTable → ReadonlyStructure.
+  // Toggled on-device by long-pressing the "Focus Tables" (crosshair) button.
+  const [, setSkiaFlagTick] = useState(0);
+  const skiaViewMode =
+    !isEditMode && (storage.getBoolean(SKIA_VIEW_MODE_KEY) ?? false);
+
+  const toggleSkiaViewMode = useCallback(() => {
+    const next = !(storage.getBoolean(SKIA_VIEW_MODE_KEY) ?? false);
+    storage.set(SKIA_VIEW_MODE_KEY, next);
+    setSkiaFlagTick((t) => t + 1);
+    Alert.alert(
+      "Skia floor plan",
+      next
+        ? "Enabled — tables now render on a single Skia surface."
+        : "Disabled — back to the classic per-table renderer.",
+    );
+  }, []);
+
+  const isTableObject = useCallback((t: FloorPlanObject) => {
+    const shapeDef = TABLE_SHAPES[t.shape_id as keyof typeof TABLE_SHAPES];
+    if (shapeDef?.type) return shapeDef.type === "table";
+    return t.category === "table" || t.category === "booth";
+  }, []);
+
+  const windowedTableObjects = useMemo(
+    () => (skiaViewMode ? windowedTables.filter(isTableObject) : []),
+    [skiaViewMode, windowedTables, isTableObject],
+  );
+  const windowedStructureObjects = useMemo(
+    () => (skiaViewMode ? windowedTables.filter((t) => !isTableObject(t)) : []),
+    [skiaViewMode, windowedTables, isTableObject],
+  );
+
+  // Canvas-level tap/long-press for Skia mode. Hit-tests the tap point (converted
+  // to world coords via the inverse camera transform) against the on-screen tables.
+  const resolveCanvasHit = useCallback(
+    (screenX: number, screenY: number): FloorPlanObject | null => {
+      const s = scale.value;
+      if (s <= 0) return null;
+      const dims = containerDimsSV.value;
+      const vcx = dims.width / 2;
+      const vcy = dims.height / 2;
+      // Invert: screen = (world - vc) * s + vc + t  ⇒  world = (screen - vc - t)/s + vc
+      const worldX = (screenX - vcx - translateX.value) / s + vcx;
+      const worldY = (screenY - vcy - translateY.value) / s + vcy;
+      return hitTestTables(worldX, worldY, windowedTableObjects);
+    },
+    [scale, translateX, translateY, containerDimsSV, windowedTableObjects],
+  );
+
+  const handleCanvasTap = useCallback(
+    (screenX: number, screenY: number) => {
+      const hit = resolveCanvasHit(screenX, screenY);
+      if (!hit) return;
+      const orderId = hit.session?.order_id;
+      if (orderId) ensureOrderPrefetched(orderId).catch(() => {});
+      handleTableSelect(hit);
+    },
+    [resolveCanvasHit, handleTableSelect],
+  );
+
+  const handleCanvasLongPress = useCallback(
+    (screenX: number, screenY: number) => {
+      if (disableLongPress || !onTableLongPress) return;
+      const hit = resolveCanvasHit(screenX, screenY);
+      if (hit) handleTableLongPress(hit);
+    },
+    [
+      resolveCanvasHit,
+      handleTableLongPress,
+      disableLongPress,
+      onTableLongPress,
+    ],
+  );
+
+  const canvasTapGesture = useMemo(
+    () =>
+      Gesture.Tap().onEnd((e) => {
+        runOnJS(handleCanvasTap)(e.x, e.y);
+      }),
+    [handleCanvasTap],
+  );
+  const canvasLongPressGesture = useMemo(
+    () =>
+      Gesture.LongPress()
+        .minDuration(300)
+        .onStart((e) => {
+          runOnJS(handleCanvasLongPress)(e.x, e.y);
+        }),
+    [handleCanvasLongPress],
+  );
+
+  // Root gesture: in Skia mode the canvas-level tap/long-press replaces per-table
+  // GestureDetectors. Composed Exclusive with pan/pinch so a drag doesn't also fire
+  // a tap. In the classic path only pan/pinch run (each table owns its own tap).
+  const rootGesture = useMemo(
+    () =>
+      skiaViewMode
+        ? Gesture.Exclusive(
+            Gesture.Simultaneous(pinchGesture, panGesture),
+            canvasLongPressGesture,
+            canvasTapGesture,
+          )
+        : Gesture.Simultaneous(pinchGesture, panGesture),
+    // pinch/pan gestures are rebuilt each render (not memoized); combinedGesture
+    // above captures the same instances for the classic path.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [skiaViewMode, canvasLongPressGesture, canvasTapGesture],
   );
 
   // ── Lock toggle ──
@@ -1271,8 +1397,35 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         </View>
       )}
 
+      {/* Skia single-surface table layer — untransformed sibling under the camera
+          Animated.View. It applies the camera internally via a Group transform.
+          Drawn beneath the RN overlays / structures (which sit inside the
+          transformed Animated.View above it in paint order). */}
+      {skiaViewMode && (
+        <SkiaTableLayer
+          tables={windowedTableObjects}
+          structures={windowedStructureObjects}
+          scale={scale}
+          translateX={translateX}
+          translateY={translateY}
+          viewportWidth={containerDims.width}
+          viewportHeight={containerDims.height}
+          selectedTableIds={selectedTableIdsSet}
+          darkMode={isDarkColorScheme}
+          wallEdgeFlagsById={wallEdgeFlagsById}
+        />
+      )}
+
+      {/* Data publishers: run useTableCardData in the RN tree (hooks/stores DON'T
+          work inside the Skia Canvas) and publish plain draw-data to tableDrawStore,
+          which SkiaTableLayer reads. Render nothing. */}
+      {skiaViewMode &&
+        windowedTableObjects.map((table) => (
+          <TableDataPublisher key={table.id} table={table} />
+        ))}
+
       {/* Gesture Detector wraps entire canvas - must be at top level to catch touches */}
-      <GestureDetector gesture={combinedGesture}>
+      <GestureDetector gesture={rootGesture}>
         {/* Main Content */}
         <Animated.View style={{ flex: 1 }}>
           <Animated.View
@@ -1422,7 +1575,10 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 })}
               </Svg>
             )}
-            {windowedTables.map((table, index) => (
+            {/* Classic path: every object as a DraggableTable.
+                Skia path: BOTH tables and structures are drawn on the shared Skia
+                surface above, so nothing renders through DraggableTable here. */}
+            {(skiaViewMode ? [] : windowedTables).map((table, index) => (
               <DraggableTable
                 key={table.id}
                 table={table}
@@ -1517,8 +1673,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         )}
       </View>
 
-      {/* Focus Tables button — zooms to fit all canvas objects */}
+      {/* Focus Tables button — zooms to fit all canvas objects.
+          Long-press toggles the experimental Skia single-surface renderer. */}
       <TouchableOpacity
+        onLongPress={isEditMode ? undefined : toggleSkiaViewMode}
+        delayLongPress={600}
         onPress={() => {
           const bb = tableBoundingBox;
           const idealScale =
