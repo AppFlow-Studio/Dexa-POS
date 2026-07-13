@@ -93,8 +93,12 @@ export function startInteraction(
       span!.end();
     } catch {}
     // Wave-0 tap: mirror every ended span into the local telemetry ring,
-    // independent of Sentry's tracesSampleRate.
-    telemetryRecordSpan(name, nowMs() - startedAt);
+    // independent of Sentry's tracesSampleRate. Cancelled spans (abandoned
+    // flows, TTL-expired marks) are excluded — a user idling on the PIN
+    // screen must not pollute boot_to_order stats with a 169s "duration".
+    if (attrs?.cancelled !== true) {
+      telemetryRecordSpan(name, nowMs() - startedAt);
+    }
     if (__DEV__) {
       console.log(`[perf] ${name}: ${Math.round(nowMs() - startedAt)}ms`);
     }

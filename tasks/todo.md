@@ -266,3 +266,13 @@ Branches: `chore/wave0-skip-probe` (Step 0 temp logs, revert after capture) · `
 - **stringify cost: 0–1ms per fire at 3.7–16KB payloads.** Payload grew ~3.7KB → ~16KB as one order accumulated items (~0.5–0.7KB/item incl. modifiers). Fire cadence during active editing ≈ 1/s (12 fires in 14s burst) — matches the Audit B model.
 - **Interpretation:** at THIS payload size W1-1 is a ~1ms lever — nothing. Cost scales ~linearly with bytes, so the decisive number is real payload size at Charcoal hour-5 (25 open orders in the persisted set). Extrapolation: 150–300KB payload ⇒ ~10–20ms/fire ⇒ at ~1 fire/s bursts, a 1–6% JS-thread tax — meaningful but not obviously THE lag. Do NOT green-light or kill W1-1 yet; the harness's `persist.bytes.order-store-storage` max/avg during the Charcoal Load Profile capture decides it (Audit A #1).
 - TEMP probe commit reverted on both counts: harness branch revert commit after capture; `chore/wave0-skip-probe` branch retained for the ticket record (console.warn variant — babel strips console.log in preview builds).
+
+### First RELEASE-BUILD captures (2026-07-13, C20ProSE preview build, logcat-mirror retrieval)
+
+Two sessions (~3.3 min + ~11 min), exports at /tmp/dexa-telemetry/. Logcat chunk retrieval verified byte-exact; prevSession rollover recovered the earlier locked-in run.
+
+- **Long-task attribution (the arbiter): render/JS weight wins on release too.** 96 + 111 long tasks, ~12%/~4% of wall-time blocked, max 1.39–1.45s; only ~3–6% overlapped a persist stringify. Clusters: /order-processing and /tables(+detail). The 1.2–1.45s freezes on /tables are user-visible on a release build → W1-1 (persist) is NOT the primary lag lever; re-scope Wave 1 toward tables/order-processing render weight, keep persist as secondary.
+- **Persist (release):** order-store avg 57.5KB max 83.6KB, stringify avg 3.7ms max 13.4ms; arm:fire coalescing 5.4:1; skip = 0 (again). **floor-plan-db-storage is the biggest persist payload: ~192KB avg / 207KB max, ~10ms avg / 39.5ms max, ~7 fires/min** — audits missed it; likely `floorPlanCache` in partialize (memory-state audit noted the churn). Candidate new Wave-1 item.
+- **Own-echo slip (B#2): 67–79%** (18/27, 52/66) — noMeaningfulChange barely filters own echoes.
+- Broadcasts 1.5KB (v2 confirmed); rt handler avg 1.9–3.3ms; fanout cheap; get_order_details 7/13 per session; add_to_cart avg 213–233ms / max ~600ms release-mode.
+- Data-quality fix shipped: perf.ts tap now skips cancelled spans (TTL-expired boot_to_order mark had recorded 169.5s).
