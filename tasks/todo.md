@@ -246,3 +246,16 @@ After Phase 4:
 - Side-by-side perf comparison on Landi C20Pro: with built-in CFD attached vs detached. Goal: no measurable POS perf difference.
 - Compare with Landi-without-CFD baseline. Goal: parity.
 - External WebSocket CFD path: same flow exercised; no regression.
+
+---
+
+## Wave-0 rush-lag telemetry harness (2026-07-13) — code complete
+
+Branches: `chore/wave0-skip-probe` (Step 0 temp logs, revert after capture) · `feat/wave0-telemetry-harness` (the harness, commit 625b68da).
+
+- [x] Step 0 skip-probe branch (2 temp logs in lazyDebouncedWrite, order-store-storage only) — prediction on record: skip-hits = 0
+- [x] lib/telemetry/{registry,keys,longTaskWatcher,init,export}.ts — interned counters, 8192-slot packed ring in dedicated `dexa-pos-telemetry` MMKV, 50ms drift watcher w/ route+stringify attribution, 30s flush + prev-session rollover, expo-sharing export
+- [x] Instrumented: persist arm/skip/stringify/bytes (A#1-3,B#1), flushAllPendingWrites (C#5), rt msgs/handler/payload-sample (B#4), fan-out spans, get_order_details (B#3), own-echo slip (B#2), pos.payment.completion (C#1), perf.ts tap, resume_settle (C#7)
+- [x] Settings→General toggle (default ON) + hidden long-press hooks-mute (overhead A/B, release-reachable — moved off dev-flags because that screen redirects in release); hidden export = long-press version value in Devices & Connections
+- [x] 22 new tests pass; tsc error delta 0 (141 pre-existing); full-jest delta 0 (27 failures pre-existing on base)
+- [ ] ON-DEVICE (needs Landi + native rebuild for expo-sharing): Step 0 probe capture → attach numbers; 30-min hooks-on vs hooks-muted overhead A/B; Charcoal Load Profile 2h capture on staging (NOT the 1,000-table rig); export screen-recording → Ali Dika verifies
