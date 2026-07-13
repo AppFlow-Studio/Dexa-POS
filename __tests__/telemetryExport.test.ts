@@ -5,7 +5,11 @@
  */
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import { buildTelemetryDump, exportTelemetry } from "@/lib/telemetry/export";
+import {
+  buildTelemetryDump,
+  dumpTelemetryToLogcat,
+  exportTelemetry,
+} from "@/lib/telemetry/export";
 import {
   internKey,
   noteStringifyEnd,
@@ -69,7 +73,34 @@ describe("buildTelemetryDump", () => {
   });
 });
 
+describe("dumpTelemetryToLogcat", () => {
+  it("chunks reassemble to the original JSON", () => {
+    const warns: string[] = [];
+    const spy = jest
+      .spyOn(console, "warn")
+      .mockImplementation((msg: string) => void warns.push(msg));
+    const json = JSON.stringify({ blob: "x".repeat(10_000) });
+    dumpTelemetryToLogcat(json, "file:///cache/telemetry-test.json");
+    spy.mockRestore();
+
+    expect(warns[0]).toMatch(/^\[telemetry-export\] BEGIN /);
+    expect(warns[warns.length - 1]).toMatch(/^\[telemetry-export\] END /);
+    const reassembled = warns
+      .slice(1, -1)
+      .map((l) => l.replace(/^\[telemetry-export\] \d+\/\d+ /, ""))
+      .join("");
+    expect(reassembled).toBe(json);
+    expect(JSON.parse(reassembled).blob).toHaveLength(10_000);
+  });
+});
+
 describe("exportTelemetry", () => {
+  let warnSpy: jest.SpyInstance;
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => warnSpy.mockRestore());
+
   it("writes the JSON file and opens the share sheet", async () => {
     recordSample(internKey("test.export2"), 7);
     const uri = await exportTelemetry();
@@ -88,11 +119,17 @@ describe("exportTelemetry", () => {
     });
   });
 
-  it("still writes the file when no share target is available (offline/kiosk)", async () => {
+  it("still writes the file and logcat dump when no share target is available", async () => {
     (Sharing.isAvailableAsync as jest.Mock).mockResolvedValueOnce(false);
     const uri = await exportTelemetry();
     expect(FileSystem.writeAsStringAsync).toHaveBeenCalledTimes(1);
     expect(Sharing.shareAsync).not.toHaveBeenCalled();
     expect(uri).toContain("telemetry-");
+    // logcat mirror always fires (release-build retrieval path)
+    expect(
+      warnSpy.mock.calls.some((c) =>
+        String(c[0]).startsWith("[telemetry-export] BEGIN"),
+      ),
+    ).toBe(true);
   });
 });

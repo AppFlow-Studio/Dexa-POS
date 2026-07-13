@@ -60,6 +60,33 @@ export function buildTelemetryDump(): TelemetryExportDump {
 }
 
 /**
+ * Fallback retrieval for release builds: the app's private cache is not
+ * adb-readable on a non-debuggable build (`run-as: package not debuggable`),
+ * and a bare Landi may have no share targets. logcat is ALWAYS capturable
+ * over USB, so chunk the JSON through console.warn (console.log is stripped
+ * by babel in preview/production builds; warn survives).
+ *
+ * Retrieve with:
+ *   adb logcat -d | grep '\[telemetry-export\]' | sed 's/.*\[telemetry-export\] //' \
+ *     | grep -v -e '^BEGIN' -e '^END' | cut -d' ' -f2- | tr -d '\n' > telemetry.json
+ */
+const LOGCAT_CHUNK_CHARS = 3500; // logcat truncates ~4KB per line
+
+export function dumpTelemetryToLogcat(json: string, fileUri: string): void {
+  const total = Math.ceil(json.length / LOGCAT_CHUNK_CHARS);
+  console.warn(`[telemetry-export] BEGIN ${fileUri} ${total} chunks ${json.length}B`);
+  for (let i = 0; i < total; i++) {
+    console.warn(
+      `[telemetry-export] ${i + 1}/${total} ${json.slice(
+        i * LOGCAT_CHUNK_CHARS,
+        (i + 1) * LOGCAT_CHUNK_CHARS,
+      )}`,
+    );
+  }
+  console.warn(`[telemetry-export] END ${fileUri}`);
+}
+
+/**
  * Export the telemetry dump. Returns the file URI (also useful for tests /
  * adb retrieval when no share target exists on the device).
  */
@@ -68,6 +95,11 @@ export async function exportTelemetry(): Promise<string> {
   const json = JSON.stringify(buildTelemetryDump());
   const fileUri = `${FileSystem.cacheDirectory}telemetry-${Date.now()}.json`;
   await FileSystem.writeAsStringAsync(fileUri, json);
+
+  // Always mirror to logcat: the Android share sheet reports "available"
+  // even when the device has no target that can reach the analyst's laptop,
+  // and USB+adb is the pilot's actual retrieval path.
+  dumpTelemetryToLogcat(json, fileUri);
 
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(fileUri, {
