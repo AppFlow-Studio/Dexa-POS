@@ -12,7 +12,7 @@ import {
   KEY_RT_OWN_ECHO,
   KEY_RT_OWN_ECHO_SLIP,
 } from "@/lib/telemetry/keys";
-import { recordCount } from "@/lib/telemetry/registry";
+import { internKey, recordCount } from "@/lib/telemetry/registry";
 import {
     createLazyPersistStorage,
     getSyncJSON,
@@ -5229,7 +5229,40 @@ export const useOrderStore = create<OrderState>()(
                       return;
                     }
 
-                    if (isOwnStationOrder) recordCount(KEY_RT_OWN_ECHO_SLIP);
+                    if (isOwnStationOrder) {
+                      recordCount(KEY_RT_OWN_ECHO_SLIP);
+                      // Slip-reason attribution: WHICH predicate let this own
+                      // echo through? 67-79% slip in the Wave-0 captures —
+                      // the per-reason counters make the eventual echo fix
+                      // targeted instead of guessed. Cold path (slips only),
+                      // first-differing-field wins.
+                      const slipReason = !noMeaningfulChange
+                        ? isKitchenSyncAdvance
+                          ? "kitchen_sync_advance"
+                          : localOrder.amount_paid !== backendOrder.amount_paid
+                            ? "amount_paid"
+                            : localOrder.paid_status !==
+                                mapPaymentStatus(backendOrder.payment_status)
+                              ? "paid_status"
+                              : localOrder.order_status !== backendOrder.status
+                                ? "order_status"
+                                : localOrder.total_amount !==
+                                    backendOrder.card_total
+                                  ? "total_amount"
+                                  : (localOrder.total_discount ?? 0) !==
+                                      (backendOrder.discount_amount ?? 0)
+                                    ? "discount"
+                                    : localOrder.check_status !==
+                                        backendOrder.check_status
+                                      ? "check_status"
+                                      : localOrder.items.length !==
+                                          (broadcastItemCount ??
+                                            localOrder.items.length)
+                                        ? "item_count"
+                                        : "item_level"
+                        : "pending_changes";
+                      recordCount(internKey(`rt.own_echo_slip.${slipReason}`));
+                    }
 
                     // ═══════════════════════════════════════════════════════════
                     // Phase 6: Conflict Detection

@@ -276,3 +276,10 @@ Two sessions (~3.3 min + ~11 min), exports at /tmp/dexa-telemetry/. Logcat chunk
 - **Own-echo slip (B#2): 67–79%** (18/27, 52/66) — noMeaningfulChange barely filters own echoes.
 - Broadcasts 1.5KB (v2 confirmed); rt handler avg 1.9–3.3ms; fanout cheap; get_order_details 7/13 per session; add_to_cart avg 213–233ms / max ~600ms release-mode.
 - Data-quality fix shipped: perf.ts tap now skips cancelled spans (TTL-expired boot_to_order mark had recorded 169.5s).
+
+## Wave-1 first fixes (2026-07-13, same session — user authorized executing fixes)
+
+- [x] **W1-A floor-plan persist trim (REAL FIX)**: `floorPlanCache` dropped from `useFloorPlanStore` partialize — was the app's biggest persist payload (192KB avg/207KB max, 39.5ms max stringify, ~7 fires/min; every table/session touch rewrote every cached plan). Rehydrate already tolerated absence (`?? {}` + persisted-tables fallback). Trade-off accepted: offline+restart switching to a NON-active plan needs a re-fetch; active plan still restores.
+- [x] **W1-B own-echo slip-reason attribution**: `rt.own_echo_slip.<reason>` counters (kitchen_sync_advance/amount_paid/paid_status/order_status/total_amount/discount/check_status/item_count/item_level/pending_changes) — first-differing-field, cold path only. Next capture names the echo fix; blanket skip rejected (station_id = order OWNER, not mutation origin — KDS bumps arrive on this path).
+- [x] **W1-C floor-switch attribution**: `floor.switch_paint_ms` (cached instant-paint JS block), `floor.load_rpc_ms` (network wait), `floor.load_apply_ms` (diff+commit+session patch) — pins /tables 1.2–1.4s long tasks to paint vs apply vs React render.
+- Verified: tsc delta 0 (141 pre-existing), telemetry + floor-plan-adjacent suites pass (1 pre-existing source-text assertion failure in broadcastMergeStationId, on base too).

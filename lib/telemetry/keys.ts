@@ -29,6 +29,13 @@ export const KEY_RPC_GET_ORDER_DETAILS = internKey("rpc.get_order_details");
 // Storage / persistence (lib/storage.ts)
 export const KEY_FLUSH_ALL_MS = internKey("flush_all_ms");
 
+// Floor-switch attribution (stores/useFloorPlanStore.ts) — splits the 2s
+// pos.floor_switch interaction into its JS-block components so /tables
+// long tasks can be pinned to paint vs apply vs React render.
+export const KEY_FLOOR_SWITCH_PAINT_MS = internKey("floor.switch_paint_ms");
+export const KEY_FLOOR_LOAD_RPC_MS = internKey("floor.load_rpc_ms");
+export const KEY_FLOOR_LOAD_APPLY_MS = internKey("floor.load_apply_ms");
+
 // App lifecycle (lib/telemetry/init.ts)
 export const KEY_RESUME_SETTLE_MS = internKey("resume_settle_ms");
 

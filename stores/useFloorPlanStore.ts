@@ -2,6 +2,12 @@ import { findReservationTableConflictForWindow } from "@/lib/reservationConflict
 import { createLazyPersistStorage } from "@/lib/storage";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
 import { isLocalOnlyStatus } from "@/lib/tableStateMachine";
+import {
+  KEY_FLOOR_LOAD_APPLY_MS,
+  KEY_FLOOR_LOAD_RPC_MS,
+  KEY_FLOOR_SWITCH_PAINT_MS,
+} from "@/lib/telemetry/keys";
+import { recordSpan } from "@/lib/telemetry/registry";
 import { FloorPlanService } from "@/services/floorPlanService";
 import { getIsOnline } from "@/services/offlineSyncService";
 import {
@@ -691,6 +697,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             Date.now() - cachedSyncMs < FRESH_MS;
 
           if (cached) {
+            const paintStart = performance.now();
             set({
               activeFloorPlanId: floorPlanId,
               tables: cached.tables,
@@ -723,6 +730,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             getTableSessionStore()
               .getState()
               ._patchSessionsFromTables(cached.tables);
+            // Wave-1 attribution: synchronous JS block of the cached instant
+            // paint (buildTablesById + zustand commit + session patch).
+            recordSpan(KEY_FLOOR_SWITCH_PAINT_MS, performance.now() - paintStart);
           } else {
             set({
               activeFloorPlanId: floorPlanId,
@@ -1061,10 +1071,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const mySeq = ++_loadFloorPlanSeq;
           const loadPromise = (async () => {
             try {
+              const rpcStart = performance.now();
               const snapshot = await fetchFloorPlanSnapshot(
                 floorPlanId,
                 get().tablesById,
               );
+              // Wave-1 attribution: network+parse wait (not a JS block) vs the
+              // synchronous apply below — separates "slow RPC" from "slow diff/
+              // commit" when a /tables long task lands during a reconcile.
+              recordSpan(KEY_FLOOR_LOAD_RPC_MS, performance.now() - rpcStart);
 
               if (!snapshot.data) {
                 set({ error: snapshot.error?.message || "Unknown error" });
@@ -1084,6 +1099,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 return;
               }
 
+              const applyStart = performance.now();
               const prev = get();
               const prevTables = prev.tables;
               const prevById = prev.tablesById;
@@ -1153,6 +1169,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 ._patchSessionsFromTables(snapshot.data.tables, {
                   clearMissing: true,
                 });
+              // Wave-1 attribution: synchronous diff + commit + session patch.
+              recordSpan(KEY_FLOOR_LOAD_APPLY_MS, performance.now() - applyStart);
 
               // Order prefetch is now handled by services/tableOrderPrefetch.ts subscriber
             } finally {
@@ -2265,13 +2283,19 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         storage: createLazyPersistStorage(),
         version: 2,
         migrate: (persistedState) => persistedState as any,
+        // floorPlanCache is deliberately NOT persisted (Wave-1, telemetry
+        // evidence): it made floor-plan-db-storage the app's biggest persist
+        // payload (~192KB avg / 207KB max, 39.5ms max stringify, ~7 fires/min
+        // — every table/session touch rewrote every cached plan). It is a
+        // re-warmable cache: the active plan still restores from the
+        // persisted tables/sections below (see onRehydrateStorage fallback);
+        // non-active plans re-fetch on first switch after a cold start.
         partialize: (state) => ({
           floorPlans: state.floorPlans,
           activeFloorPlanId: state.activeFloorPlanId,
           tables: state.tables,
           sections: state.sections,
           sectionsById: state.sectionsById,
-          floorPlanCache: state.floorPlanCache,
           locationId: state.locationId,
           lastSyncAt: state.lastSyncAt,
         }),
