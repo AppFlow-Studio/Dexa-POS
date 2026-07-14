@@ -13,7 +13,6 @@ import {
   getMenuItemPlaceholderIcon,
   type MenuItemPlaceholderIconKey
 } from '@/lib/menuItemPlaceholderIcon'
-import { MENU_IMAGE_MAP } from '@/lib/mockData'
 import { colors } from '@/lib/theme'
 import { Menu, MenuItemType } from '@/lib/types'
 import { MenuService } from '@/services/menuService'
@@ -34,8 +33,10 @@ import {
   Power,
   Trash2
 } from 'lucide-react-native'
-import React, { useCallback, useMemo, useRef, useState } from 'react'
-import { FlatList, Image, Text, TouchableOpacity, View } from 'react-native'
+import { Image as ExpoImage } from 'expo-image'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FlatList, Text, TouchableOpacity, View } from 'react-native'
+import MenuManagementImage from '@/components/menu/MenuManagementImage'
 import DraggableFlatList, {
   RenderItemParams,
   ScaleDecorator
@@ -870,6 +871,18 @@ const MenuPage: React.FC = () => {
   const { activeTab, searchQuery } = useMenuLayout()
   const triggerPosSync = useTriggerPosSync()
 
+  // Release decoded base64 item-image bitmaps when leaving the menu management
+  // screen. These images render as data: URIs (no disk cache), so their native
+  // bitmaps sit pinned in the memory cache until explicitly cleared — this is
+  // what made native memory climb on entry and not drop on exit. Clearing only
+  // the MEMORY cache is safe: anything still needed re-decodes on next view.
+  useEffect(() => {
+    return () => {
+      if (__DEV__) console.log('[memory] menu screen unmount → clearMemoryCache()')
+      void ExpoImage.clearMemoryCache().catch(() => {})
+    }
+  }, [])
+
   const [isRefreshing, setIsRefreshing] = useState(false)
   const menuListScrollRef = useRef<any>(null)
   const menuListScrollYRef = useRef(0)
@@ -1700,15 +1713,10 @@ const MenuPage: React.FC = () => {
                           >
                             <View style={{ height: 104, width: '100%' }}>
                               {item.image ? (
-                                <Image
-                                  source={{
-                                    uri:
-                                      item.image.length > 200
-                                        ? `data:image/jpeg;base64,${item.image}`
-                                        : item.image
-                                  }}
+                                <MenuManagementImage
+                                  image={item.image}
+                                  recyclingKey={item.id}
                                   style={{ width: '100%', height: '100%' }}
-                                  resizeMode='cover'
                                 />
                               ) : (
                                 <View
@@ -1896,15 +1904,10 @@ const MenuPage: React.FC = () => {
                           {/* Image */}
                           <View style={{ height: 104, width: '100%' }}>
                             {item.image ? (
-                              <Image
-                                source={{
-                                  uri:
-                                    item.image.length > 200
-                                      ? `data:image/jpeg;base64,${item.image}`
-                                      : item.image
-                                }}
+                              <MenuManagementImage
+                                image={item.image}
+                                recyclingKey={item.id}
                                 style={{ width: '100%', height: '100%' }}
-                                resizeMode='cover'
                               />
                             ) : (
                               <View
@@ -2340,10 +2343,11 @@ const MenuPage: React.FC = () => {
                                 }}
                               >
                                 {imageSource ? (
-                                  <Image
-                                    source={imageSource}
+                                  <MenuManagementImage
+                                    image={item.image}
+                                    recyclingKey={item.id}
+                                    decodeSize={48}
                                     style={{ width: '100%', height: '100%' }}
-                                    resizeMode='cover'
                                   />
                                 ) : (
                                   <View
@@ -2836,13 +2840,10 @@ const MenuItemCard = React.memo(
         <View className='flex-row items-start gap-3'>
           <View className='h-full aspect-square rounded-lg border border-gray-600'>
             {getImageSource(item.image) ? (
-              <Image
-                source={
-                  typeof getImageSource(item.image) === 'string'
-                    ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
-                    : getImageSource(item.image)
-                }
-                className='w-full h-full rounded-lg object-cover'
+              <MenuManagementImage
+                image={item.image}
+                recyclingKey={item.id}
+                className='w-full h-full rounded-lg'
               />
             ) : (
               <View className='w-full h-full rounded-lg bg-gray-100 items-center justify-center'>

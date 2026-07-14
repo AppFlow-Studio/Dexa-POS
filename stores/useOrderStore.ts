@@ -949,7 +949,16 @@ const DRAFT_CLEANUP_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const DRAFT_CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const ORDER_PRUNE_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 const COMPLETED_ORDER_MAX_AGE_MS = 15 * 60 * 1000; // 15 minutes
+// Voided / cancelled orders carry no live money or kitchen work — their local
+// unsynced items/payments are dead. Free them almost immediately on the next
+// prune instead of pinning them for the full completed-order window. Small grace
+// so a just-voided order isn't ripped out from under an in-flight UI transition.
+const VOIDED_ORDER_MAX_AGE_MS = 30 * 1000; // 30 seconds
 const MAX_COMPLETED_ORDERS = 10;
+// Statuses whose orders hold no live obligation and must not be pinned by the
+// unsynced-item / pending-payment keep-guards (those guards exist to protect
+// money/kitchen work still in flight, which a voided/cancelled order has none of).
+const TERMINAL_DEAD_STATUSES = new Set(["void", "voided", "cancelled"]);
 let draftCleanupInterval: ReturnType<typeof setInterval> | null = null;
 let orderPruneInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -12515,44 +12524,66 @@ export const useOrderStore = create<OrderState>()(
               const order = state.ordersById[id];
               if (!order) continue;
 
-              // Keep if has pending items
-              if (
-                order.items.some(
-                  (item) => !item.db_order_item_id && !item.isDraft,
-                )
-              ) {
-                keepSet.add(id);
-                continue;
+              const status = order.order_status ?? "";
+              // Voided/cancelled orders hold no live money or kitchen work, so
+              // their local unsynced items/payments are dead weight — they must
+              // NOT be pinned by the guards below (that was the core leak: a
+              // voided order whose items never got a db_order_item_id stuck in
+              // ordersById for the whole shift). Fast-path them straight to the
+              // short-age eviction.
+              const isDeadTerminal = TERMINAL_DEAD_STATUSES.has(status);
+
+              if (!isDeadTerminal) {
+                // Keep if has pending items
+                if (
+                  order.items.some(
+                    (item) => !item.db_order_item_id && !item.isDraft,
+                  )
+                ) {
+                  keepSet.add(id);
+                  continue;
+                }
+
+                // Keep if has pending (unsynced) payments
+                if (
+                  order.payments?.some(
+                    (p) =>
+                      p.sync_status === "pending" ||
+                      (!p.db_payment_id && !p.isVoided),
+                  )
+                ) {
+                  keepSet.add(id);
+                  continue;
+                }
+
+                // Keep if non-completed own-station order
+                if (
+                  order.station_id === state.currentStationId &&
+                  !inactiveStatuses.has(status)
+                ) {
+                  keepSet.add(id);
+                  continue;
+                }
               }
 
-              // Keep if has pending (unsynced) payments
-              if (
-                order.payments?.some(
-                  (p) =>
-                    p.sync_status === "pending" ||
-                    (!p.db_payment_id && !p.isVoided),
-                )
-              ) {
-                keepSet.add(id);
-                continue;
-              }
-
-              // Keep if non-completed own-station order
-              if (
-                order.station_id === state.currentStationId &&
-                !inactiveStatuses.has(order.order_status ?? "")
-              ) {
-                keepSet.add(id);
-                continue;
-              }
-
-              // Evict completed orders older than max age
-              if (inactiveStatuses.has(order.order_status ?? "")) {
+              // Evict inactive orders older than their max age. Voided/cancelled
+              // get a much shorter grace window than completed orders.
+              if (inactiveStatuses.has(status)) {
+                const maxAge = isDeadTerminal
+                  ? VOIDED_ORDER_MAX_AGE_MS
+                  : COMPLETED_ORDER_MAX_AGE_MS;
                 const orderTime = new Date(order.opened_at || 0).getTime();
-                if (now - orderTime > COMPLETED_ORDER_MAX_AGE_MS) {
+                if (now - orderTime > maxAge) {
                   continue; // Don't add to keepSet — will be removed
                 }
-                completedOrders.push({ id, time: orderTime });
+                // Voided/cancelled orders inside the grace window are not subject
+                // to the completed-order LRU cap; they'll drop out on the next
+                // prune once past the short window.
+                if (!isDeadTerminal) {
+                  completedOrders.push({ id, time: orderTime });
+                } else {
+                  keepSet.add(id);
+                }
               } else {
                 keepSet.add(id);
               }

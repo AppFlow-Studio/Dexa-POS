@@ -50,6 +50,16 @@ interface TableDrawState {
   data: Record<string, TableDrawData>;
   setData: (id: string, d: TableDrawData) => void;
   clearData: (id: string) => void;
+  /**
+   * Drop every entry whose id is NOT in `keepIds`. Publishers intentionally
+   * don't clearData on unmount (avoids a pan/viewport-window flicker), so this
+   * is the authoritative GC: callers pass the full set of table ids that still
+   * exist on the current floor, and everything else (tables from other floors,
+   * deleted tables) is released. Without it, `data` grew one entry per distinct
+   * table ever windowed for the app's lifetime and the single store subscriber
+   * (SkiaTableLayer) shallow-compared an ever-growing map on every update.
+   */
+  pruneData: (keepIds: Set<string>) => void;
 }
 
 const shallowEqualData = (a: TableDrawData, b: TableDrawData): boolean => {
@@ -107,6 +117,20 @@ export const useTableDrawStore = create<TableDrawState>((set) => ({
       if (!(id in state.data)) return state;
       const next = { ...state.data };
       delete next[id];
+      return { data: next };
+    }),
+  pruneData: (keepIds) =>
+    set((state) => {
+      let removed = false;
+      const next: Record<string, TableDrawData> = {};
+      for (const id in state.data) {
+        if (keepIds.has(id)) {
+          next[id] = state.data[id];
+        } else {
+          removed = true;
+        }
+      }
+      if (!removed) return state; // no-op → no notify
       return { data: next };
     }),
 }));

@@ -67,8 +67,18 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
     setTableTypefaces({ regular: regularTypeface, bold: boldTypeface });
   }, [regularTypeface, boldTypeface]);
 
-  const vcx = viewportWidth / 2;
-  const vcy = viewportHeight / 2;
+  // Latch the last valid viewport so a transient 0-dim relayout frame never
+  // collapses the camera center to (0,0). Kept in a ref (read during render is
+  // fine — refs don't trigger renders) so the retained frame stays positioned.
+  const lastValidViewport = useRef({ w: viewportWidth, h: viewportHeight });
+  if (viewportWidth > 0 && viewportHeight > 0) {
+    lastValidViewport.current = { w: viewportWidth, h: viewportHeight };
+  }
+  const effViewportWidth = lastValidViewport.current.w;
+  const effViewportHeight = lastValidViewport.current.h;
+
+  const vcx = effViewportWidth / 2;
+  const vcy = effViewportHeight / 2;
 
   // Reproduce the RN camera model exactly.
   // RN applies transforms left-to-right with transformOrigin "center":
@@ -85,15 +95,27 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
     [vcx, vcy],
   );
 
-  // Degenerate center before layout → don't mount (content would collapse to a point).
-  if (viewportWidth <= 0 || viewportHeight <= 0) return null;
-
-  // Wait for fonts on initial mount so tables don't first paint without labels.
-  // After fonts have resolved once, never tear down the Canvas — that would cause
-  // all tables to disappear on a subsequent re-render.
-  const fontsResolved = !!regularTypeface && !!boldTypeface;
+  // ── HOOKS MUST NOT SIT BELOW A CONDITIONAL `return null` ──
+  // Previously the viewport `return null` (below) ran BEFORE the `useRef` that
+  // latched font resolution. On any re-render where the viewport width briefly
+  // measured 0 (a sidebar collapse/expand relayout emits an intermediate 0-width
+  // onLayout frame, and a timed refetch re-renders through it), that early return
+  // changed the hook count for the frame → React tore down and remounted the
+  // component, blanking the ENTIRE Canvas (every table vanished, then repainted).
+  // Both latches are declared up here, unconditionally, before any early return.
   const fontsEverResolved = useRef(false);
+  const viewportEverValid = useRef(false);
+
+  const fontsResolved = !!regularTypeface && !!boldTypeface;
   if (fontsResolved) fontsEverResolved.current = true;
+
+  const viewportValid = viewportWidth > 0 && viewportHeight > 0;
+  if (viewportValid) viewportEverValid.current = true;
+
+  // Only bail before the FIRST successful mount. Once the Canvas has painted once
+  // with a valid viewport + fonts, a transient 0-dim / not-yet-resolved font on a
+  // later re-render keeps the last good frame instead of unmounting everything.
+  if (!viewportEverValid.current && !viewportValid) return null;
   if (!fontsEverResolved.current && !fontsResolved) return null;
 
   return (

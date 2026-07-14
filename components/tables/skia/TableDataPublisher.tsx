@@ -27,7 +27,6 @@ const TableDataPublisher: React.FC<{ table: FloorPlanObject }> = ({
   const data = useTableCardData(table, true, false, undefined, shapeDef);
 
   const setData = useTableDrawStore((s) => s.setData);
-  const clearData = useTableDrawStore((s) => s.clearData);
 
   const {
     isDarkColorScheme,

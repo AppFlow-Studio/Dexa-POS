@@ -45,6 +45,7 @@ import { useShallow } from "zustand/react/shallow";
 import DraggableTable from "./DraggableTable";
 import SkiaTableLayer from "./skia/SkiaTableLayer";
 import TableDataPublisher from "./skia/TableDataPublisher";
+import { useTableDrawStore } from "./skia/tableDrawStore";
 import TableLayoutSkeleton from "./TableLayoutSkeleton";
 
 // Feature flag (MMKV): render view-mode table SHAPES on one shared Skia surface
@@ -1110,6 +1111,22 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     () => (skiaViewMode ? windowedTables.filter((t) => !isTableObject(t)) : []),
     [skiaViewMode, windowedTables, isTableObject],
   );
+
+  // Authoritative GC for tableDrawStore. TableDataPublisher deliberately does
+  // NOT clearData on unmount (a windowed table panning out of view would flicker
+  // when it pans back), so nothing releases entries for tables that are truly
+  // gone — a different floor plan, or a deleted table. Left unpruned, `data`
+  // grew one entry per distinct table ever windowed for the app's lifetime, and
+  // SkiaTableLayer's single `useShallow(s => s.data)` subscriber shallow-compared
+  // an ever-growing map on every table update. Prune to the CURRENT floor's full
+  // id set (not the windowed subset) so panning is still flicker-free while
+  // cross-floor / deleted tables are released. Only runs in skia mode.
+  useEffect(() => {
+    if (!skiaViewMode) return;
+    const keep = new Set<string>();
+    for (const t of tables) keep.add(t.id);
+    useTableDrawStore.getState().pruneData(keep);
+  }, [skiaViewMode, tables]);
 
   // Canvas-level tap/long-press for Skia mode. Hit-tests the tap point (converted
   // to world coords via the inverse camera transform) against the on-screen tables.
