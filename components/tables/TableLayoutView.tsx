@@ -586,6 +586,12 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
 
   const lastCenterKey = useRef("");
   const cameraStateRef = useRef<PersistedCameraState | null>(null);
+  // Tracks whether the initial camera has been positioned for the current layout.
+  // Once positioned, a later re-run of the effect caused purely by a container
+  // resize (e.g. sidebar collapse/expand) must NOT re-restore the persisted camera
+  // — that snaps the view (e.g. back onto a table the user just focused from the
+  // sidebar). Instead we keep the live camera and only re-clamp it to new bounds.
+  const positionedLayoutRef = useRef<string | null>(null);
 
   // 2. Calculate and set initial scale and position once we have dimensions
   useEffect(() => {
@@ -595,6 +601,30 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         // Camera already positioned (re-render guard). Still mark ready so
         // the viewport effect can fire — the shared values were set on the
         // previous run and are still valid.
+        setCameraReady(true);
+        return;
+      }
+
+      // Already positioned this layout and only the container size changed
+      // (sidebar collapse/expand). Don't restore the persisted camera — that would
+      // snap the view (e.g. back onto a sidebar-focused table). Keep the current
+      // live camera, just re-clamp it to the new viewport bounds.
+      if (positionedLayoutRef.current === layoutId) {
+        const clamped = clampCanvasTranslation(
+          translateX.value,
+          translateY.value,
+          scale.value,
+          containerDims.width,
+          containerDims.height,
+          worldDims.width,
+          worldDims.height,
+        );
+        scale.value = clamp(scale.value, 0.5, 3);
+        translateX.value = clamped.x;
+        savedTranslateX.value = clamped.x;
+        translateY.value = clamped.y;
+        savedTranslateY.value = clamped.y;
+        lastCenterKey.current = centerKey;
         setCameraReady(true);
         return;
       }
@@ -631,6 +661,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
           translateY: restoredTranslate.y,
         };
         lastCenterKey.current = centerKey;
+        positionedLayoutRef.current = layoutId;
         setIsLoading(false);
         setCameraReady(true);
         return;
@@ -685,6 +716,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         translateY: initialTranslate.y,
       };
       lastCenterKey.current = centerKey;
+      positionedLayoutRef.current = layoutId;
 
       setIsLoading(false);
       setCameraReady(true);
