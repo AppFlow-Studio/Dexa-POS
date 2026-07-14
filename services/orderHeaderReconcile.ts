@@ -21,25 +21,25 @@
  * Dark-shipped behind EXPO_PUBLIC_ORDER_HEADER_RECONCILE=1.
  */
 
-import { runWithDeadline } from '@/lib/network/runWithDeadline'
-import { DEADLINES } from '@/lib/network/deadlines'
+import { DEADLINES } from "@/lib/network/deadlines";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 
 export type HeaderReconcileOutcome =
-  | 'skipped_disabled'           // Feature flag off
-  | 'skipped_no_dbid'            // Order has no db_order_id (draft, never synced)
-  | 'skipped_terminal'           // Order is in a terminal state we don't bother refreshing
-  | 'skipped_cooldown'           // Within 30s cooldown window
-  | 'skipped_pending_updates'    // pendingBackendUpdates is fresh; let it flush first
-  | 'skipped_fresh_bulk'         // Order was just hydrated by useOrdersQuery's bulk fetch
-  | 'skipped_no_drift'           // Bulk summary RPC reported no drift vs local state
-  | 'skipped_summary_failed'     // Bulk summary RPC errored — defer to next trigger
-  | 'reconciled'                 // syncOrderFromBackendComplete was called and resolved
-  | 'sync_failed'                // The inner sync threw
+  | "skipped_disabled" // Feature flag off
+  | "skipped_no_dbid" // Order has no db_order_id (draft, never synced)
+  | "skipped_terminal" // Order is in a terminal state we don't bother refreshing
+  | "skipped_cooldown" // Within 30s cooldown window
+  | "skipped_pending_updates" // pendingBackendUpdates is fresh; let it flush first
+  | "skipped_fresh_bulk" // Order was just hydrated by useOrdersQuery's bulk fetch
+  | "skipped_no_drift" // Bulk summary RPC reported no drift vs local state
+  | "skipped_summary_failed" // Bulk summary RPC errored — defer to next trigger
+  | "reconciled" // syncOrderFromBackendComplete was called and resolved
+  | "sync_failed"; // The inner sync threw
 
 export interface HeaderReconcileResult {
-  orderId: string
-  outcome: HeaderReconcileOutcome
-  error?: string
+  orderId: string;
+  outcome: HeaderReconcileOutcome;
+  error?: string;
 }
 
 /**
@@ -47,7 +47,7 @@ export interface HeaderReconcileResult {
  * than) syncOrderFromBackendComplete's own 5s cooldown, so we don't double-
  * fire on the same trigger event.
  */
-const RECONCILE_COOLDOWN_MS = 30_000
+const RECONCILE_COOLDOWN_MS = 30_000;
 
 /**
  * Throttle between RPCs in the batch loop. For 30 orders, this caps the
@@ -55,7 +55,7 @@ const RECONCILE_COOLDOWN_MS = 30_000
  * does 8 correlated subqueries per call) from saturating the Postgres pool
  * on a busy tablet foregrounding.
  */
-const INTER_ORDER_DELAY_MS = 200
+const INTER_ORDER_DELAY_MS = 200;
 
 /**
  * If pendingBackendUpdates[orderId] is fresher than this, defer reconcile
@@ -63,7 +63,7 @@ const INTER_ORDER_DELAY_MS = 200
  * anyway — the queued update has probably dead-lettered and would otherwise
  * starve reconcile indefinitely.
  */
-const PENDING_UPDATES_AGE_ESCAPE_MS = 60_000
+const PENDING_UPDATES_AGE_ESCAPE_MS = 60_000;
 
 /**
  * Orders hydrated by useOrdersQuery's bulk fetch within this window are
@@ -75,76 +75,101 @@ const PENDING_UPDATES_AGE_ESCAPE_MS = 60_000
  * pendingBackendUpdates enqueue) clear this stamp so this gate doesn't
  * suppress legitimate drift.
  */
-const BULK_FETCH_FRESHNESS_MS = 90_000
+const BULK_FETCH_FRESHNESS_MS = 90_000;
 
-const lastReconcileAt: Map<string, number> = new Map()
+/**
+ * Memory safety: Map is pruned on each write to remove entries older than
+ * 2× cooldown, and hard-capped at 200 entries to prevent unbounded growth
+ * over a long-running POS session.
+ */
+const MAX_RECONCILE_TIMESTAMPS = 200;
+const HEADER_PRUNE_AGE_MS = RECONCILE_COOLDOWN_MS * 2;
+const lastReconcileAt: Map<string, number> = new Map();
+
+function pruneReconcileTimestamps(): void {
+  if (lastReconcileAt.size <= MAX_RECONCILE_TIMESTAMPS) return;
+  const now = Date.now();
+  for (const [key, ts] of lastReconcileAt) {
+    if (now - ts > HEADER_PRUNE_AGE_MS) {
+      lastReconcileAt.delete(key);
+    }
+  }
+  if (lastReconcileAt.size > MAX_RECONCILE_TIMESTAMPS) {
+    const entries = [...lastReconcileAt.entries()].sort((a, b) => a[1] - b[1]);
+    const toDelete = entries.slice(
+      0,
+      lastReconcileAt.size - MAX_RECONCILE_TIMESTAMPS,
+    );
+    for (const [key] of toDelete) lastReconcileAt.delete(key);
+  }
+}
 
 /**
  * Test seam — clears the per-order cooldown map so unit tests don't see
  * stale timestamps from earlier cases.
  */
-export function _resetOrderHeaderReconcileForTests (): void {
-  lastReconcileAt.clear()
+export function _resetOrderHeaderReconcileForTests(): void {
+  lastReconcileAt.clear();
 }
 
-function isFlagEnabled (): boolean {
+function isFlagEnabled(): boolean {
   return (
-    process.env.EXPO_PUBLIC_ORDER_HEADER_RECONCILE === '1' ||
-    process.env.EXPO_PUBLIC_ORDER_HEADER_RECONCILE === 'true'
-  )
+    process.env.EXPO_PUBLIC_ORDER_HEADER_RECONCILE === "1" ||
+    process.env.EXPO_PUBLIC_ORDER_HEADER_RECONCILE === "true"
+  );
 }
 
-function isReconcilable (order: any): boolean {
-  if (!order) return false
-  if (!order.db_order_id) return false
+function isReconcilable(order: any): boolean {
+  if (!order) return false;
+  if (!order.db_order_id) return false;
   // Voided / cancelled orders have nothing useful left to reconcile.
-  if (order.order_status === 'voided' || order.order_status === 'cancelled') {
-    return false
+  if (order.order_status === "voided" || order.order_status === "cancelled") {
+    return false;
   }
   // Closed + fully Paid orders are terminal; broadcasts don't fire for them.
-  if (order.order_status === 'closed' && order.paid_status === 'Paid') {
-    return false
+  if (order.order_status === "closed" && order.paid_status === "Paid") {
+    return false;
   }
-  return true
+  return true;
 }
 
 /**
  * Pull server-authoritative slices for one order. Returns immediately with
  * a skipped-* outcome when gates fire; otherwise awaits the inner sync.
  */
-export async function reconcileOrderHeader (
+export async function reconcileOrderHeader(
   orderId: string,
-  options: { force?: boolean } = {}
+  options: { force?: boolean } = {},
 ): Promise<HeaderReconcileResult> {
-  const { force = false } = options
+  const { force = false } = options;
 
   if (!isFlagEnabled()) {
-    return { orderId, outcome: 'skipped_disabled' }
+    return { orderId, outcome: "skipped_disabled" };
   }
 
   // Lazy-import to avoid circular deps with the order store.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { useOrderStore } = require('@/stores/useOrderStore')
-  const state = useOrderStore.getState()
-  const order = state.ordersById?.[orderId]
+  const { useOrderStore } = require("@/stores/useOrderStore");
+  const state = useOrderStore.getState();
+  const order = state.ordersById?.[orderId];
 
   if (!order) {
-    return { orderId, outcome: 'skipped_no_dbid' }
+    return { orderId, outcome: "skipped_no_dbid" };
   }
   if (!order.db_order_id) {
-    return { orderId, outcome: 'skipped_no_dbid' }
+    return { orderId, outcome: "skipped_no_dbid" };
   }
   if (!isReconcilable(order)) {
-    return { orderId, outcome: 'skipped_terminal' }
+    return { orderId, outcome: "skipped_terminal" };
   }
 
   // Defer when there's a fresh queued local update — the queued update will
   // flush via its own path and broadcast back. Reconcile would race it.
-  const queued = state.pendingBackendUpdates?.[orderId]
+  const queued = state.pendingBackendUpdates?.[orderId];
   if (queued && !force) {
-    const age = Date.now() - (queued.timestamp ?? 0)
+    const age = Date.now() - (queued.timestamp ?? 0);
     if (age < PENDING_UPDATES_AGE_ESCAPE_MS) {
-      return { orderId, outcome: 'skipped_pending_updates' }
+      return { orderId, outcome: "skipped_pending_updates" };
     }
     // else: the queued update has been stuck for too long — probably dead-
     // lettered. Don't let it starve reconcile; proceed.
@@ -154,45 +179,46 @@ export async function reconcileOrderHeader (
   // Realtime ingestion and pendingBackendUpdates enqueue clear the stamp,
   // so this only fires for orders that haven't drifted since the bulk fetch.
   if (!force) {
-    const lastBulk = order._lastBulkFetchAt ?? 0
+    const lastBulk = order._lastBulkFetchAt ?? 0;
     if (lastBulk > 0 && Date.now() - lastBulk < BULK_FETCH_FRESHNESS_MS) {
-      return { orderId, outcome: 'skipped_fresh_bulk' }
+      return { orderId, outcome: "skipped_fresh_bulk" };
     }
   }
 
   if (!force) {
-    const last = lastReconcileAt.get(orderId) ?? 0
+    const last = lastReconcileAt.get(orderId) ?? 0;
     if (Date.now() - last < RECONCILE_COOLDOWN_MS) {
-      return { orderId, outcome: 'skipped_cooldown' }
+      return { orderId, outcome: "skipped_cooldown" };
     }
   }
-  lastReconcileAt.set(orderId, Date.now())
+  lastReconcileAt.set(orderId, Date.now());
+  pruneReconcileTimestamps();
 
   try {
-    await state.syncOrderFromBackendComplete(orderId)
-    return { orderId, outcome: 'reconciled' }
+    await state.syncOrderFromBackendComplete(orderId);
+    return { orderId, outcome: "reconciled" };
   } catch (err: any) {
     if (__DEV__) {
-      console.warn('[orderHeaderReconcile] sync failed', {
+      console.warn("[orderHeaderReconcile] sync failed", {
         orderId,
-        err: err?.message ?? err
-      })
+        err: err?.message ?? err,
+      });
     }
     return {
       orderId,
-      outcome: 'sync_failed',
-      error: err?.message ?? String(err)
-    }
+      outcome: "sync_failed",
+      error: err?.message ?? String(err),
+    };
   }
 }
 
 interface OrderSummaryRow {
-  id: string
-  updated_at: string | null
-  sync_version: number | null
-  status: string | null
-  payment_status: string | null
-  check_status: string | null
+  id: string;
+  updated_at: string | null;
+  sync_version: number | null;
+  status: string | null;
+  payment_status: string | null;
+  check_status: string | null;
 }
 
 /**
@@ -201,20 +227,17 @@ interface OrderSummaryRow {
  * case-insensitive compare to side-step the divergence without committing
  * to a brittle full mapping table — only used for drift detection.
  */
-function statusFieldsMatch (
-  server: OrderSummaryRow,
-  local: any
-): boolean {
+function statusFieldsMatch(server: OrderSummaryRow, local: any): boolean {
   const eq = (a: any, b: any): boolean => {
-    if (a == null && b == null) return true
-    if (a == null || b == null) return false
-    return String(a).toLowerCase() === String(b).toLowerCase()
-  }
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    return String(a).toLowerCase() === String(b).toLowerCase();
+  };
   return (
     eq(server.status, local.order_status) &&
     eq(server.payment_status, local.paid_status) &&
     eq(server.check_status, local.check_status)
-  )
+  );
 }
 
 /**
@@ -229,27 +252,27 @@ function statusFieldsMatch (
  * sync_version can miss (e.g. denormalized payment status from a refund
  * trigger that didn't bump sync_version).
  */
-function hasDrift (server: OrderSummaryRow, local: any): boolean {
-  const localVersion = local.sync_version ?? null
-  const serverVersion = server.sync_version ?? null
+function hasDrift(server: OrderSummaryRow, local: any): boolean {
+  const localVersion = local.sync_version ?? null;
+  const serverVersion = server.sync_version ?? null;
   if (localVersion != null && serverVersion != null) {
-    if (serverVersion !== localVersion) return true
+    if (serverVersion !== localVersion) return true;
   } else {
     // Fall back to updated_at when either side lacks sync_version. Treat
     // updated_at-newer-than-local as drift; equal-or-older means no drift.
-    const lt = local.updated_at ? Date.parse(local.updated_at) : 0
-    const st = server.updated_at ? Date.parse(server.updated_at) : 0
+    const lt = local.updated_at ? Date.parse(local.updated_at) : 0;
+    const st = server.updated_at ? Date.parse(server.updated_at) : 0;
     if (Number.isFinite(lt) && Number.isFinite(st) && st > lt + 500) {
-      return true
+      return true;
     }
   }
-  return !statusFieldsMatch(server, local)
+  return !statusFieldsMatch(server, local);
 }
 
 interface CandidateGate {
-  orderId: string
-  outcome: HeaderReconcileOutcome | null
-  order: any
+  orderId: string;
+  outcome: HeaderReconcileOutcome | null;
+  order: any;
 }
 
 /**
@@ -257,34 +280,31 @@ interface CandidateGate {
  * firing the inner sync. Used by the bulk path to filter to a candidate set
  * before issuing the summary RPC.
  */
-function gateCandidate (
-  orderId: string,
-  state: any
-): CandidateGate {
-  const order = state.ordersById?.[orderId]
-  if (!order) return { orderId, outcome: 'skipped_no_dbid', order: null }
+function gateCandidate(orderId: string, state: any): CandidateGate {
+  const order = state.ordersById?.[orderId];
+  if (!order) return { orderId, outcome: "skipped_no_dbid", order: null };
   if (!order.db_order_id) {
-    return { orderId, outcome: 'skipped_no_dbid', order }
+    return { orderId, outcome: "skipped_no_dbid", order };
   }
   if (!isReconcilable(order)) {
-    return { orderId, outcome: 'skipped_terminal', order }
+    return { orderId, outcome: "skipped_terminal", order };
   }
-  const queued = state.pendingBackendUpdates?.[orderId]
+  const queued = state.pendingBackendUpdates?.[orderId];
   if (queued) {
-    const age = Date.now() - (queued.timestamp ?? 0)
+    const age = Date.now() - (queued.timestamp ?? 0);
     if (age < PENDING_UPDATES_AGE_ESCAPE_MS) {
-      return { orderId, outcome: 'skipped_pending_updates', order }
+      return { orderId, outcome: "skipped_pending_updates", order };
     }
   }
-  const lastBulk = order._lastBulkFetchAt ?? 0
+  const lastBulk = order._lastBulkFetchAt ?? 0;
   if (lastBulk > 0 && Date.now() - lastBulk < BULK_FETCH_FRESHNESS_MS) {
-    return { orderId, outcome: 'skipped_fresh_bulk', order }
+    return { orderId, outcome: "skipped_fresh_bulk", order };
   }
-  const last = lastReconcileAt.get(orderId) ?? 0
+  const last = lastReconcileAt.get(orderId) ?? 0;
   if (Date.now() - last < RECONCILE_COOLDOWN_MS) {
-    return { orderId, outcome: 'skipped_cooldown', order }
+    return { orderId, outcome: "skipped_cooldown", order };
   }
-  return { orderId, outcome: null, order }
+  return { orderId, outcome: null, order };
 }
 
 /**
@@ -309,127 +329,129 @@ function gateCandidate (
  * Falls back to per-order behavior on RPC errors: candidates get
  * `skipped_summary_failed`, and the next trigger event will retry.
  */
-export async function reconcileAllActiveOrdersHeader (): Promise<
+export async function reconcileAllActiveOrdersHeader(): Promise<
   HeaderReconcileResult[]
 > {
-  if (!isFlagEnabled()) return []
+  if (!isFlagEnabled()) return [];
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { useOrderStore, getOrderStoreSupabaseClient } = require(
-    '@/stores/useOrderStore'
-  )
-  const state = useOrderStore.getState()
-  const orderIds = Object.keys(state.ordersById ?? {})
-  const results: HeaderReconcileResult[] = []
+  const {
+    useOrderStore,
+    getOrderStoreSupabaseClient,
+  } = require("@/stores/useOrderStore");
+  const state = useOrderStore.getState();
+  const orderIds = Object.keys(state.ordersById ?? {});
+  const results: HeaderReconcileResult[] = [];
 
   // Step 1 — local gating. Fast, in-memory.
-  const candidates: { orderId: string; order: any }[] = []
+  const candidates: { orderId: string; order: any }[] = [];
   for (const orderId of orderIds) {
-    const gated = gateCandidate(orderId, state)
+    const gated = gateCandidate(orderId, state);
     if (gated.outcome != null) {
-      results.push({ orderId: gated.orderId, outcome: gated.outcome })
+      results.push({ orderId: gated.orderId, outcome: gated.outcome });
     } else {
-      candidates.push({ orderId: gated.orderId, order: gated.order })
+      candidates.push({ orderId: gated.orderId, order: gated.order });
     }
   }
 
-  if (candidates.length === 0) return results
+  if (candidates.length === 0) return results;
 
   // Step 2 — single bulk RPC for all candidates.
-  const supabase = getOrderStoreSupabaseClient()
+  const supabase = getOrderStoreSupabaseClient();
   if (!supabase) {
     for (const { orderId } of candidates) {
-      results.push({ orderId, outcome: 'skipped_summary_failed' })
+      results.push({ orderId, outcome: "skipped_summary_failed" });
     }
-    return results
+    return results;
   }
 
-  const dbOrderIds = candidates.map(c => c.order.db_order_id)
+  const dbOrderIds = candidates.map((c) => c.order.db_order_id);
 
-  let summaryRows: OrderSummaryRow[] = []
+  let summaryRows: OrderSummaryRow[] = [];
   try {
     const { data, error } = await runWithDeadline<OrderSummaryRow[]>(
-      'reconcile_orders_summary',
+      "reconcile_orders_summary",
       DEADLINES.read,
       async (signal: AbortSignal) =>
         await supabase
-          .rpc('reconcile_orders_summary', { p_order_ids: dbOrderIds })
-          .abortSignal(signal)
-    )
-    if (error) throw error
-    summaryRows = data ?? []
+          .rpc("reconcile_orders_summary", { p_order_ids: dbOrderIds })
+          .abortSignal(signal),
+    );
+    if (error) throw error;
+    summaryRows = data ?? [];
   } catch (err: any) {
     if (__DEV__) {
-      console.warn('[orderHeaderReconcile] summary RPC failed', {
+      console.warn("[orderHeaderReconcile] summary RPC failed", {
         candidateCount: candidates.length,
-        err: err?.message ?? err
-      })
+        err: err?.message ?? err,
+      });
     }
     for (const { orderId } of candidates) {
-      results.push({ orderId, outcome: 'skipped_summary_failed' })
+      results.push({ orderId, outcome: "skipped_summary_failed" });
     }
-    return results
+    return results;
   }
 
-  const summaryByDbId = new Map<string, OrderSummaryRow>()
+  const summaryByDbId = new Map<string, OrderSummaryRow>();
   for (const row of summaryRows) {
-    if (row?.id) summaryByDbId.set(row.id, row)
+    if (row?.id) summaryByDbId.set(row.id, row);
   }
 
   // Step 3 — drift check + selective full sync. Mark cooldown for ALL
   // candidates so we don't re-issue the summary RPC on the next debounced
   // trigger; only orders that actually drifted incur a full RPC.
-  const drifted: { orderId: string; order: any }[] = []
-  const now = Date.now()
+  const drifted: { orderId: string; order: any }[] = [];
+  const now = Date.now();
   for (const { orderId, order } of candidates) {
-    lastReconcileAt.set(orderId, now)
-    const serverRow = summaryByDbId.get(order.db_order_id)
+    lastReconcileAt.set(orderId, now);
+    const serverRow = summaryByDbId.get(order.db_order_id);
     if (!serverRow) {
       // Order isn't in the server response (deleted? RLS-filtered?). Treat
       // as no-drift here — actual deletion is handled by separate broadcast
       // listeners; we don't want to fire get_order_details on a missing row.
-      results.push({ orderId, outcome: 'skipped_no_drift' })
-      continue
+      results.push({ orderId, outcome: "skipped_no_drift" });
+      continue;
     }
     if (hasDrift(serverRow, order)) {
-      drifted.push({ orderId, order })
+      drifted.push({ orderId, order });
     } else {
-      results.push({ orderId, outcome: 'skipped_no_drift' })
+      results.push({ orderId, outcome: "skipped_no_drift" });
     }
   }
+  pruneReconcileTimestamps();
 
   // Step 4 — full per-order sync for drifted orders only, with the same
   // 200ms throttle the legacy loop used.
   for (let i = 0; i < drifted.length; i++) {
-    const { orderId } = drifted[i]
+    const { orderId } = drifted[i];
     try {
-      await state.syncOrderFromBackendComplete(orderId)
-      results.push({ orderId, outcome: 'reconciled' })
+      await state.syncOrderFromBackendComplete(orderId);
+      results.push({ orderId, outcome: "reconciled" });
     } catch (err: any) {
       if (__DEV__) {
-        console.warn('[orderHeaderReconcile] sync failed', {
+        console.warn("[orderHeaderReconcile] sync failed", {
           orderId,
-          err: err?.message ?? err
-        })
+          err: err?.message ?? err,
+        });
       }
       results.push({
         orderId,
-        outcome: 'sync_failed',
-        error: err?.message ?? String(err)
-      })
+        outcome: "sync_failed",
+        error: err?.message ?? String(err),
+      });
     }
     if (i < drifted.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, INTER_ORDER_DELAY_MS))
+      await new Promise((resolve) => setTimeout(resolve, INTER_ORDER_DELAY_MS));
     }
   }
 
   if (__DEV__) {
-    console.log('[orderHeaderReconcile] bulk reconcile complete', {
+    console.log("[orderHeaderReconcile] bulk reconcile complete", {
       total: orderIds.length,
       candidates: candidates.length,
       drifted: drifted.length,
-      summarySize: summaryRows.length
-    })
+      summarySize: summaryRows.length,
+    });
   }
 
-  return results
+  return results;
 }

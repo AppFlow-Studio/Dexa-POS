@@ -25,10 +25,17 @@ import { buildStructureSvg } from "./structureSvg";
 
 // Parsed-SVG cache. Keyed by the full input signature so re-parsing only happens when
 // something actually changes (theme toggle, wall-edge change, label edit, resize).
+// Hard-capped: a floor plan has ~20 distinct structure types × 2 themes = ~40 cached
+// entries max, so 100 is a safe ceiling with headroom for dimension variants.
+const SVG_CACHE_MAX = 100;
 const svgCache = new Map<string, SkSVG | null>();
 
 const getSvg = (key: string, build: () => string | null): SkSVG | null => {
   if (svgCache.has(key)) return svgCache.get(key)!;
+  if (svgCache.size >= SVG_CACHE_MAX) {
+    const firstKey = svgCache.keys().next().value;
+    if (firstKey !== undefined) svgCache.delete(firstKey);
+  }
   const str = build();
   const parsed = str ? Skia.SVG.MakeFromString(str) : null;
   svgCache.set(key, parsed);

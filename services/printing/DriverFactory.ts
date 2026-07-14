@@ -1,22 +1,38 @@
 import { PrinterConfig } from "@/types/printer";
-import { PrinterDriver } from "./drivers/PrinterDriver";
+import { DejavooDriver } from "./drivers/DejavooDriver";
 import { LandiDriver } from "./drivers/LandiDriver";
 import { NetworkDriver } from "./drivers/NetworkDriver";
-import { DejavooDriver } from "./drivers/DejavooDriver";
+import { PrinterDriver } from "./drivers/PrinterDriver";
 import { StarMicronicsDriver } from "./drivers/StarMicronicsDriver";
 
+/** Max drivers to cache before evicting the oldest non-Star entry. */
+const MAX_DRIVER_CACHE = 10;
 const driverCache = new Map<string, PrinterDriver>();
 
 export function getDriver(config: PrinterConfig): PrinterDriver {
   const existing = driverCache.get(config.id);
   if (existing) {
     // Evict stale Star driver if printer config changed (IP, capabilities)
-    if (existing instanceof StarMicronicsDriver && existing.hasConfigChanged(config)) {
+    if (
+      existing instanceof StarMicronicsDriver &&
+      existing.hasConfigChanged(config)
+    ) {
       existing.disconnect().catch(() => {});
       driverCache.delete(config.id);
       // Fall through to create new driver
     } else {
       return existing;
+    }
+  }
+
+  // Evict oldest entry when at capacity (skip Stars — they're expensive to reconnect)
+  if (driverCache.size >= MAX_DRIVER_CACHE) {
+    for (const [key, driver] of driverCache) {
+      if (!(driver instanceof StarMicronicsDriver)) {
+        driver.disconnect().catch(() => {});
+        driverCache.delete(key);
+        break;
+      }
     }
   }
 

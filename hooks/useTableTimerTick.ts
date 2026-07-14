@@ -34,9 +34,9 @@ const listeners = new Set<() => void>();
 
 function dispatchBatch() {
   rafId = null;
-  if (paused) {
-    // If paused mid-batch, clear the pending queue so we don't fire stale
-    // updates when resumed — components will re-render from the next tick.
+  if (paused || backgrounded) {
+    // If paused/backgrounded mid-batch, clear the pending queue so we don't fire
+    // stale updates when resumed — components will re-render from the next tick.
     pendingListeners = [];
     return;
   }

@@ -98,9 +98,9 @@ import {
     scheduleCalculationCacheInvalidation,
 } from "@/lib/order-calculator";
 import { snapshotTableName } from "@/lib/orderDisplay";
-import { aggregateTaxByCategory } from "@/utils/money";
 import { resolveInboundToGo } from "@/lib/pendingToGo";
 import { getReliableTodaySequenceFloor } from "@/lib/reusableEmptyDraft";
+import { aggregateTaxByCategory } from "@/utils/money";
 
 import { normalizePlatform } from "@/lib/platformAliases";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
@@ -556,8 +556,11 @@ function hasItemLevelChanges(
     // client's per-item value by a cent without indicating real drift. Subtotal
     // and quantity remain exact.
     const taxCentDrift =
-      Math.abs((localItem.taxAmount ?? 0) - (backendItem.tax_amount ?? 0)) > 0.01 ||
-      Math.abs((localItem.cashTaxAmount ?? 0) - (backendItem.cash_tax_amount ?? 0)) > 0.01;
+      Math.abs((localItem.taxAmount ?? 0) - (backendItem.tax_amount ?? 0)) >
+        0.01 ||
+      Math.abs(
+        (localItem.cashTaxAmount ?? 0) - (backendItem.cash_tax_amount ?? 0),
+      ) > 0.01;
     if (
       localItem.quantity !== backendItem.quantity ||
       localItem.subtotal !== backendItem.subtotal ||
@@ -948,13 +951,13 @@ const quantitySyncGenerations = new Map<string, number>();
 const DRAFT_CLEANUP_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const DRAFT_CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const ORDER_PRUNE_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
-const COMPLETED_ORDER_MAX_AGE_MS = 15 * 60 * 1000; // 15 minutes
+const COMPLETED_ORDER_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes (was 15)
 // Voided / cancelled orders carry no live money or kitchen work — their local
 // unsynced items/payments are dead. Free them almost immediately on the next
 // prune instead of pinning them for the full completed-order window. Small grace
 // so a just-voided order isn't ripped out from under an in-flight UI transition.
 const VOIDED_ORDER_MAX_AGE_MS = 30 * 1000; // 30 seconds
-const MAX_COMPLETED_ORDERS = 10;
+const MAX_COMPLETED_ORDERS = 5; // was 10 — completed orders are in previousOrdersStore already
 // Statuses whose orders hold no live obligation and must not be pinned by the
 // unsynced-item / pending-payment keep-guards (those guards exist to protect
 // money/kitchen work still in flight, which a voided/cancelled order has none of).
@@ -7118,8 +7121,7 @@ export const useOrderStore = create<OrderState>()(
               order_type: mapOrderType(serverOrder.order_type),
               order_status: serverOrder.status as OrderProfile["order_status"],
               check_status: (serverOrder.check_status || "Opened") as
-                | "Opened"
-                | "Closed",
+                "Opened" | "Closed",
               paid_status: mapPaymentStatus(serverOrder.payment_status),
               service_location_id: serverOrder.table_number ?? null,
               service_location_name:
@@ -9816,8 +9818,7 @@ export const useOrderStore = create<OrderState>()(
             const quantityUpdatePromise: Promise<boolean> = existingPromise
               .then(
                 ():
-                  | Promise<QuantitySyncStepResult>
-                  | QuantitySyncStepResult => {
+                  Promise<QuantitySyncStepResult> | QuantitySyncStepResult => {
                   if (
                     quantitySyncGenerations.get(itemId) !== quantityGeneration
                   ) {
@@ -11876,8 +11877,7 @@ export const useOrderStore = create<OrderState>()(
             // ================================================================
             const passedJournalHandle = (transactionDetails as any)
               ?.paymentJournalHandle as
-              | { id: string; idempotencyKey: string }
-              | undefined;
+              { id: string; idempotencyKey: string } | undefined;
 
             let paymentJournalId: string;
             let paymentJournalKey: string;
@@ -15140,12 +15140,10 @@ export const useOrderStore = create<OrderState>()(
 
                       const isPreAuth = p.status === "authorized";
                       const terminalResponse = (p as any).terminal_response as
-                        | Record<string, any>
-                        | undefined;
+                        Record<string, any> | undefined;
                       const castlesTxn =
                         terminalResponse?.castles_transaction as
-                          | Record<string, any>
-                          | undefined;
+                          Record<string, any> | undefined;
 
                       // Refund evidence: take max across DB + local. Apply
                       // refund didn't always advance `status`, so we have to
@@ -15233,9 +15231,7 @@ export const useOrderStore = create<OrderState>()(
                                 (terminalResponse?.terminal_vendor === "castles"
                                   ? "castles"
                                   : "dejavoo") as
-                                  | "dejavoo"
-                                  | "castles"
-                                  | undefined,
+                                  "dejavoo" | "castles" | undefined,
                             }
                           : {}),
                       };
@@ -15301,9 +15297,8 @@ export const useOrderStore = create<OrderState>()(
                         !dbOrder.check_status)
                         ? "Opened"
                         : ((dbOrder.check_status as
-                            | "Opened"
-                            | "Closed"
-                            | undefined) ?? (isPaid ? "Closed" : "Opened")),
+                            "Opened" | "Closed" | undefined) ??
+                          (isPaid ? "Closed" : "Opened")),
                     // Session tracking - sync from database
                     session_id: dbOrder.session_id,
                     order_source: dbOrder.order_source ?? null,
@@ -15471,11 +15466,9 @@ export const useOrderStore = create<OrderState>()(
 
                   const isPreAuth = p.status === "authorized";
                   const terminalResponse = (p as any).terminal_response as
-                    | Record<string, any>
-                    | undefined;
+                    Record<string, any> | undefined;
                   const castlesTxn = terminalResponse?.castles_transaction as
-                    | Record<string, any>
-                    | undefined;
+                    Record<string, any> | undefined;
 
                   return {
                     id: `payment_${p.id}`,
@@ -16560,14 +16553,11 @@ export const useOrderStore = create<OrderState>()(
                   paymentsData.map((payment: any) => {
                     // Extract terminal response data for fallback card details + pre-auth fields
                     const terminalResp = payment.terminal_response as
-                      | Record<string, any>
-                      | undefined;
+                      Record<string, any> | undefined;
                     const castlesTxn = terminalResp?.castles_transaction as
-                      | Record<string, any>
-                      | undefined;
+                      Record<string, any> | undefined;
                     const dejavooTxn = terminalResp?.dejavoo_transaction as
-                      | Record<string, any>
-                      | undefined;
+                      Record<string, any> | undefined;
 
                     return {
                       // Core identifiers
