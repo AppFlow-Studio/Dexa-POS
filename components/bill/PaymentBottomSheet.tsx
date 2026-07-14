@@ -1,7 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useActiveOrder } from '@/stores/selectors/orderSelectors'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import { AlertTriangle } from 'lucide-react-native'
+import { LogOut } from 'lucide-react-native'
 import React, { useState } from 'react'
 import {
   Modal,
@@ -33,9 +33,6 @@ const PaymentBottomSheet: React.FC = () => {
   const view = usePaymentStore(s => s.view)
   const isOpen = usePaymentStore(s => s.isOpen)
   const close = usePaymentStore(s => s.close)
-  const cancelInProgressPayment = usePaymentStore(
-    s => s.cancelInProgressPayment
-  )
   const isDirty = usePaymentStore(s => s.isDirty)
   const setIsDirty = usePaymentStore(s => s.setIsDirty)
   const handleSuccessClose = usePaymentStore(s => s.handleSuccessClose)
@@ -45,9 +42,8 @@ const PaymentBottomSheet: React.FC = () => {
 
   // A split is "in progress" once a portion has been captured — even though the
   // sheet is no longer `isDirty` (advancing to the next portion clears the dirty
-  // flag, see usePaymentStore.startSplitPaymentFlow). Closing here must still
-  // prompt Keep/Discard so an abandoned split gets voided rather than silently
-  // left on the order (which double-charged on the next re-split).
+  // flag, see usePaymentStore.startSplitPaymentFlow). Closing here still prompts
+  // so the cashier doesn't drop the sheet mid-split by accident.
   const activeOrder = useActiveOrder()
   const hasInProgressSplit =
     !!activeOrder?.split_payment_path ||
@@ -55,25 +51,16 @@ const PaymentBottomSheet: React.FC = () => {
 
   const [showConfirmation, setShowConfirmation] = useState(false)
 
-  // "Discard": abandon the whole split. Roll back any captured-but-unconfirmed
-  // portions and defer to the backend's authoritative balance before tearing
-  // down the sheet. close() here was the leak that left a phantom payment / a
-  // manufactured residual on the next attempt.
-  const handleDiscard = () => {
-    setIsDirty(false)
-    setShowConfirmation(false)
-    cancelInProgressPayment()
-  }
-
-  // "Keep Changes": retain the captured (backend-confirmed) portions and exit.
-  // A plain close() — no rollback — so finished split portions stay paid.
-  const handleKeepChanges = () => {
+  // "Close Sheet": just tear down the sheet. Any payments already captured stay
+  // on the order — closing NEVER voids or refunds real money. The cashier can
+  // reopen the sheet anytime to collect the rest.
+  const handleCloseSheet = () => {
     setIsDirty(false)
     setShowConfirmation(false)
     close()
   }
 
-  // Dismiss the prompt and stay in the sheet (backdrop tap).
+  // "Keep Open": dismiss the prompt and stay in the sheet (also backdrop tap).
   const handleDismissConfirmation = () => {
     setShowConfirmation(false)
   }
@@ -242,15 +229,15 @@ const PaymentBottomSheet: React.FC = () => {
                     width: s(60),
                     height: s(60),
                     borderRadius: s(14),
-                    backgroundColor: colors.danger + '20',
+                    backgroundColor: colors.teal + '20',
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginBottom: s(16)
                   }}
                 >
-                  <AlertTriangle
+                  <LogOut
                     size={s(28)}
-                    color={colors.danger}
+                    color={colors.teal}
                     strokeWidth={2.5}
                   />
                 </View>
@@ -263,7 +250,7 @@ const PaymentBottomSheet: React.FC = () => {
                     textAlign: 'center'
                   }}
                 >
-                  Exit Payment Sheet?
+                  Close Payment Sheet?
                 </Text>
                 <Text
                   style={{
@@ -273,14 +260,14 @@ const PaymentBottomSheet: React.FC = () => {
                     lineHeight: s(20)
                   }}
                 >
-                  Keep the portions you've already captured, or discard the
-                  whole split. Discard cannot be undone.
+                  Any payments you've already taken stay on the order — nothing
+                  is voided. You can reopen the sheet anytime to collect the rest.
                 </Text>
               </View>
 
               <View style={{ flexDirection: 'row', gap: s(10), marginTop: s(8) }}>
                 <TouchableOpacity
-                  onPress={handleKeepChanges}
+                  onPress={handleDismissConfirmation}
                   style={{
                     flex: 1,
                     backgroundColor: colors.teal + '15',
@@ -298,18 +285,18 @@ const PaymentBottomSheet: React.FC = () => {
                       fontWeight: '700'
                     }}
                   >
-                    Keep Changes
+                    Keep Open
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={handleDiscard}
+                  onPress={handleCloseSheet}
                   style={{
                     flex: 1,
-                    backgroundColor: colors.danger + '15',
+                    backgroundColor: colors.muted + '20',
                     borderRadius: s(12),
                     borderWidth: 1.5,
-                    borderColor: colors.danger + '50',
+                    borderColor: colors.border,
                     paddingVertical: s(13),
                     alignItems: 'center'
                   }}
@@ -317,11 +304,11 @@ const PaymentBottomSheet: React.FC = () => {
                   <Text
                     style={{
                       fontSize: s(14),
-                      color: colors.danger,
+                      color: colors.label,
                       fontWeight: '700'
                     }}
                   >
-                    Discard
+                    Close Sheet
                   </Text>
                 </TouchableOpacity>
               </View>
