@@ -119,20 +119,7 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
   if (!fontsEverResolved.current && !fontsResolved) return null;
 
   return (
-    // Remount the Canvas when the settled viewport size changes. Verified on-device:
-    // a sidebar collapse/expand resizes this container (e.g. width 1009↔1217) and
-    // react-native-skia reallocates/clears the native surface WITHOUT repainting the
-    // unchanged scene graph — the canvas goes blank while the RN hit-test layer still
-    // resolves taps on the now-invisible tables. redraw() into that surface does not
-    // recover it (tested at 0–400ms); only a fresh Canvas rebuilds the surface. This
-    // key does that. effViewportWidth/Height come from the lastValidViewport latch, so
-    // the key only changes on a genuine new size — never on a transient 0-width frame.
-    // Trade-off: a ~1-frame blank as the new surface paints. Accepted for now.
-    <Canvas
-      key={`${Math.round(effViewportWidth)}x${Math.round(effViewportHeight)}`}
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-    >
+    <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
       <Group transform={cameraTransform}>
         {/* Structures first (walls/zones behind tables). */}
         {structures.map((s) => (
