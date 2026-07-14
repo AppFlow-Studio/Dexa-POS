@@ -12,8 +12,10 @@ import { Switch } from '@/components/ui/switch'
 import {
   isIdempotentEnabled,
   isPaymentRecoveryUIEnabled,
+  isPersistMemoEnabled,
   setIdempotentEnabled,
   setPaymentRecoveryUIEnabled,
+  setPersistMemoEnabled,
   subscribeFlags,
   type IdempotentRpc,
 } from '@/lib/network/featureFlags'
@@ -166,6 +168,30 @@ export default function DevFlagsScreen () {
           <Switch
             checked={isPaymentRecoveryUIEnabled()}
             onCheckedChange={setPaymentRecoveryUIEnabled}
+          />
+        </View>
+      </SettingsCard>
+
+      {/* W1-1 persist memo gate */}
+      <SettingsCard title='Persist'>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: s(8),
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.label, fontSize: s(14), fontWeight: '600' }}>
+              persist.memo_gate_v1
+            </Text>
+            <Text style={{ color: colors.muted, fontSize: s(12), marginTop: s(2) }}>
+              W1-1. Order-store partialize memo: unchanged persisted slice returns the cached ref so the 150-300 KB stringify is skipped. OFF = pre-W1-1 always-write behavior (rollback lever; memo keeps counting would-skips in shadow mode).
+            </Text>
+          </View>
+          <Switch
+            checked={isPersistMemoEnabled()}
+            onCheckedChange={setPersistMemoEnabled}
           />
         </View>
       </SettingsCard>

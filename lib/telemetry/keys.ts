@@ -29,6 +29,15 @@ export const KEY_RPC_GET_ORDER_DETAILS = internKey("rpc.get_order_details");
 // Storage / persistence (lib/storage.ts)
 export const KEY_FLUSH_ALL_MS = internKey("flush_all_ms");
 
+// Partialize memo (stores/orderPersistMemo.ts) — W1-1 write-amplification fix.
+// hit = cached slice ref returned (storage skip will fire, no stringify);
+// miss = slice content changed, fresh object armed;
+// would_skip = shadow counter while the gate is OFF (proves win magnitude
+// without changing behavior).
+export const KEY_PERSIST_MEMO_HIT = internKey("persist.memo.hit");
+export const KEY_PERSIST_MEMO_MISS = internKey("persist.memo.miss");
+export const KEY_PERSIST_MEMO_WOULD_SKIP = internKey("persist.memo.would_skip");
+
 // Floor-switch attribution (stores/useFloorPlanStore.ts) — splits the 2s
 // pos.floor_switch interaction into its JS-block components so /tables
 // long tasks can be pinned to paint vs apply vs React render.

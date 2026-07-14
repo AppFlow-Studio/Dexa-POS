@@ -311,10 +311,19 @@ export function flushPendingWrite(name: string): void {
 const lazyWriters: Record<string, ReturnType<typeof debounce>> = {};
 
 /**
- * Last persisted reference per key. If the next setItem call is the *same*
- * object reference (Immer structural sharing means an unchanged slice keeps
- * its identity), we can skip JSON.stringify entirely — the previous write
- * already covered this value.
+ * Last persisted slice reference per key. If the next setItem carries the
+ * *same* partialized-slice reference (Immer structural sharing means an
+ * unchanged slice keeps its identity), we can skip JSON.stringify entirely —
+ * the previous write already covered this value.
+ *
+ * INVARIANT: this skip is only sound for immutably-updated slices (Immer /
+ * spread-on-change). A partialize that returns a stable reference to a slice
+ * mutated in place would skip while dirty — never do that.
+ *
+ * Any path that deletes or clears a persisted key outside the PersistStorage
+ * adapter MUST call invalidatePersistCache(name), or a later identical-ref
+ * setItem skips the rewrite and the key stays empty on disk (data loss on
+ * next boot).
  */
 const lastPersistedValue: Record<string, unknown> = {};
 
@@ -326,11 +335,16 @@ function lazyDebouncedWrite(name: string, value: unknown): void {
   // same object as the last write, the stringified payload is identical too.
   // Skip the stringify (50–150ms saved on hot mutations that don't touch
   // persistable orders, e.g. payment-only flows).
-  if (lastPersistedValue[name] === value) {
+  //
+  // zustand's persist middleware wraps every write in a FRESH `{state,
+  // version}` object, so the comparison must target the inner partialized
+  // slice — comparing the wrapper itself never matches (W1-1).
+  const slice = (value as { state?: unknown } | null)?.state ?? value;
+  if (lastPersistedValue[name] === slice) {
     recordCount(persistKeyIds(name).skip);
     return;
   }
-  lastPersistedValue[name] = value;
+  lastPersistedValue[name] = slice;
   recordCount(persistKeyIds(name).arm);
 
   const delay = 300;
@@ -362,6 +376,22 @@ function lazyDebouncedWrite(name: string, value: unknown): void {
 }
 
 /**
+ * Drop all in-memory persist state for a key: the identity-skip cache and any
+ * pending debounced writers. Must be called by every path that removes or
+ * clears a persisted key outside the adapter (see lastPersistedValue
+ * invariant above). Pending writes are cancelled, not flushed — a delete
+ * means the caller wants the data gone, and a timer firing after the delete
+ * would resurrect stale state.
+ */
+export function invalidatePersistCache(name: string): void {
+  delete lastPersistedValue[name];
+  lazyWriters[name]?.cancel();
+  delete lazyWriters[name];
+  debouncedWriters[name]?.cancel();
+  delete debouncedWriters[name];
+}
+
+/**
  * Create a lazy PersistStorage that defers JSON.stringify into the debounce.
  *
  * Unlike createJSONStorage(() => mmkvStorage) which stringifies on EVERY
@@ -384,8 +414,7 @@ export function createLazyPersistStorage<S>(): PersistStorage<S> {
       lazyDebouncedWrite(name, value);
     },
     removeItem: (name: string): void => {
-      lazyWriters[name]?.flush();
-      delete lazyWriters[name];
+      invalidatePersistCache(name);
       storage.remove(name);
     },
   };
@@ -490,6 +519,7 @@ export function setJSON<T>(key: string, value: T): void {
  * remove a key from general storage.
  */
 export function removeKey(key: string): void {
+  invalidatePersistCache(key);
   storage.remove(key);
 }
 
@@ -511,6 +541,16 @@ export function getAllKeys(): string[] {
  * Clear all data from general storage.
  */
 export function clearStorage(): void {
+  // Drop identity caches + pending writers for every tracked key first, so a
+  // later identical-ref setItem can't skip the rewrite (empty-disk-on-boot)
+  // and a pending debounce timer can't resurrect cleared data.
+  for (const key of [
+    ...Object.keys(lastPersistedValue),
+    ...Object.keys(lazyWriters),
+    ...Object.keys(debouncedWriters),
+  ]) {
+    invalidatePersistCache(key);
+  }
   storage.clearAll();
 }
 
@@ -665,6 +705,10 @@ export function clearCacheData(): { clearedKeys: string[]; errors: string[] } {
   // Clear general storage clearable keys
   for (const key of CLEARABLE_STORAGE_KEYS) {
     try {
+      // This path bypasses the PersistStorage adapter, so the identity-skip
+      // cache and pending writers must be invalidated explicitly (see
+      // lastPersistedValue invariant).
+      invalidatePersistCache(key);
       if (storage.contains(key)) {
         storage.remove(key);
         clearedKeys.push(key);

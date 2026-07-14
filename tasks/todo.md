@@ -290,3 +290,27 @@ Two sessions (~3.3 min + ~11 min), exports at /tmp/dexa-telemetry/. Logcat chunk
 - **Fix #2 ANSWERED**: slips = total_amount 12 (46%), kitchen_sync_advance 10 (38%, legit KDS merges), item_count 2, order_status 2. → Echo fix = reconcile local total_amount vs server card_total (cent-drift/optimistic-totals mismatch); kitchen_sync_advance should NOT be suppressed.
 - **Fix #3 VERDICT — floor switch is NETWORK, store work is trivial**: switch_paint 3.4ms avg/7.9 max; load_apply 2.6ms avg/4.9 max; **load_rpc avg 5.85s, MAX 16.65s** (fetchFloorPlanSnapshot). pos.floor_switch 5.3s avg/17.2s max ≈ all RPC wait. Check Option C deadline coverage for fetchFloorPlanSnapshot + server-side cost. Also queue_flush max 12s (connectivity blips).
 - **Still unattributed: 1.0–1.26s JS blocks on /tables** (23 on /tables + 28 on table details, 54/56 no overlap) — NOT paint/apply/stringify. Prime suspect: full screen remount per navigation (enableFreeze(false) trade-off) mounting ~40 DraggableTables. Next: mount-span on TablesScreen or React Profiler session.
+
+## W1-1: Persist write-amplification fix (shallow-equal partialize memo) — code complete 2026-07-14
+
+Plan: ~/.claude/plans/evidence-pack-pos-cuddly-torvalds.md (approved; epoch design replaced by shallow-equal memo per architecture sign-off)
+
+- [x] `lib/telemetry/keys.ts` — persist.memo.hit / miss / would_skip keys
+- [x] `stores/orderPersistMemo.ts` — new leaf module (shallowSliceEqual + memoizePersistedSlice)
+- [x] `lib/storage.ts` — compare `value.state`; centralized `invalidatePersistCache` (removeItem/clearStorage/clearCacheData/removeKey); invariant comment
+- [x] `lib/network/featureFlags.ts` — persist.memo_gate_v1 (default ON, env EXPO_PUBLIC_PERSIST_MEMO_GATE)
+- [x] `stores/useOrderStore.ts` — wrap partialize return; register dev subset-check
+- [x] `services/offlineSyncService.ts` — registerPersistSubsetCheck + dev assertion in queueOperation
+- [x] `app/(main)/settings/dev-flags.tsx` — Persist memo gate switch row
+- [x] `stores/useCFDClientStore.ts` — fix stale skip comment
+- [x] Jest: orderPersistMemo, persistMemoStack, lazyStorageStateIdentity, subset assertion
+- [x] `npx tsc --noEmit`, lint, jest
+
+### Review (2026-07-14)
+- All 8 source changes landed exactly per plan; no scope creep. Epoch design replaced by shallow-equal memo (architecture sign-off in session; two adversarial reviews).
+- New tests: 4 suites / 25 tests, all green (orderPersistMemo, persistMemoStack — real subscribeWithSelector(persist(immer)) stack, lazyStorageStateIdentity — incl. the empty-disk-on-boot regression tests, persistSubsetAssertion).
+- `npx tsc --noEmit`: zero errors in touched files (remaining = pre-existing Deno/types/discounts classes).
+- eslint on touched files: zero new issues (2 pre-existing rules-of-hooks errors in dev-flags.tsx from the `!__DEV__` early return, untouched).
+- Full jest: identical failure set to HEAD (11 suites / 27 tests, all pre-existing) + 25 new passing.
+- jest-setup MMKV mock gained getBoolean/getNumber/remove (additive; needed by featureFlags gate reads under real-store tests).
+- Remaining (on-device, per ticket): kill-test matrix #1-#9 with telemetry export, dev-assertion scratch-build demo, Ali Dika verification, Temur sign-off recorded on ticket.

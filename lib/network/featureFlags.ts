@@ -49,6 +49,7 @@ const FLAG_PREFIX = "idempotent.";
 const RECOVERY_UI_KEY = "flag.paymentRecoveryUI";
 const REFUND_RECOVERY_UI_KEY = "flag.refundRecoveryUI";
 const BLOCKED_ADD_ITEM_KEY = "bad_wifi.blocked_add_item_v1";
+const PERSIST_MEMO_KEY = "persist.memo_gate_v1";
 
 // Env-var override: read once at module load. EXPO_PUBLIC_* values are
 // inlined at build time, so this evaluates to a constant in production.
@@ -208,6 +209,37 @@ export function isBlockedAddItemEnabled(): boolean {
 
 export function setBlockedAddItemEnabled(enabled: boolean): void {
   writeBool(BLOCKED_ADD_ITEM_KEY, enabled);
+}
+
+// W1-1: gates the order-store partialize memo (stores/orderPersistMemo.ts).
+// When ON (default), an unchanged persisted slice returns the cached object
+// reference so lib/storage.ts skips the full-slice JSON.stringify. When OFF,
+// partialize returns a fresh object on every set (pre-W1-1 behavior) while
+// the memo keeps counting would-skips in shadow mode.
+// Env kill switch for EAS builds where dev-flags is unreachable:
+//   EXPO_PUBLIC_PERSIST_MEMO_GATE=0|false → forces OFF
+//   EXPO_PUBLIC_PERSIST_MEMO_GATE=1|true  → forces ON
+const ENV_PERSIST_MEMO = process.env.EXPO_PUBLIC_PERSIST_MEMO_GATE;
+const ENV_PERSIST_MEMO_FORCE_OFF =
+  ENV_PERSIST_MEMO === "0" || ENV_PERSIST_MEMO === "false";
+const ENV_PERSIST_MEMO_FORCE_ON = isTruthyEnv(ENV_PERSIST_MEMO);
+
+export function isPersistMemoEnabled(): boolean {
+  if (ENV_PERSIST_MEMO_FORCE_OFF) return false;
+  if (ENV_PERSIST_MEMO_FORCE_ON) return true;
+  if (cache.has(PERSIST_MEMO_KEY)) {
+    return cache.get(PERSIST_MEMO_KEY) as boolean;
+  }
+  const v = storage.getBoolean(PERSIST_MEMO_KEY);
+  // Default true — like isBlockedAddItemEnabled, this ships ON; the flag is
+  // the rollback lever, not a rollout gate.
+  const value = v ?? true;
+  cache.set(PERSIST_MEMO_KEY, value);
+  return value;
+}
+
+export function setPersistMemoEnabled(enabled: boolean): void {
+  writeBool(PERSIST_MEMO_KEY, enabled);
 }
 
 export function subscribeFlags(listener: () => void): () => void {

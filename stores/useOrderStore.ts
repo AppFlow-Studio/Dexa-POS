@@ -62,6 +62,7 @@ import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 import { persist, subscribeWithSelector } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
+import { memoizePersistedSlice } from "./orderPersistMemo";
 import { useCoursingStore } from "./useCoursingStore";
 import { useEmployeeStore } from "./useEmployeeStore";
 import { useInventoryStore } from "./useInventoryStore";
@@ -122,6 +123,7 @@ import {
     getPendingOperations,
     processQueueNow,
     queueOperation,
+    registerPersistSubsetCheck,
     removeOperation,
     retryDeadLetterOperation,
     retrySyncForItem as retrySyncForItemQueue,
@@ -17573,14 +17575,19 @@ export const useOrderStore = create<OrderState>()(
             }
           }
 
-          return {
+          // W1-1: return the previous slice object when content is unchanged
+          // (shallow ref compare — Immer guarantees ref-change ⇔ content-
+          // change) so lib/storage.ts skips the full-slice stringify. Remote
+          // merges of orders outside the persisted subset stop arming
+          // 150-300 KB writes.
+          return memoizePersistedSlice({
             ordersById: filteredOrdersById,
             orderIds: filteredOrderIds,
             activeOrderId: state.activeOrderId,
             workingSetOrderIds: state.workingSetOrderIds,
             unsyncedOrderIds: state.unsyncedOrderIds,
             currentLocationId: state.currentLocationId,
-          };
+          });
         },
         merge: (persistedState: any, currentState: OrderState): OrderState => {
           const merged = {
@@ -17686,6 +17693,53 @@ export const useOrderStore = create<OrderState>()(
     ),
   ),
 );
+
+// ============================================================================
+// W1-1 DEV DURABILITY ASSERTION
+// ============================================================================
+// Registered into offlineSyncService.queueOperation (direct import there
+// would be circular). Warns when an order-scoped op is enqueued for an order
+// that carries not-yet-synced local state but is NOT in the persisted subset
+// — the exact silent-under-persistence case where a force-kill loses the
+// optimistic state backing the queued op. Orders whose full state the server
+// already knows are excluded: they re-hydrate from the backend on boot, so
+// skipping their persistence is the point of W1-1, not a bug.
+if (__DEV__) {
+  const warnedSubsetOpTypes = new Set<string>();
+  registerPersistSubsetCheck((localOrderId, opType) => {
+    const s = useOrderStore.getState();
+    // Ops may carry a db_order_id after rekey — resolve to the local key.
+    const localKey = s.dbOrderIdIndex[localOrderId] ?? localOrderId;
+    const inSubset =
+      !!s.persistableOrderIds[localKey] ||
+      !!s._workingSetLookup[localKey] ||
+      s.activeOrderId === localKey ||
+      s.unsyncedOrderIds.includes(localKey);
+    if (inSubset) return;
+
+    const order = s.ordersById[localKey];
+    // Mirror merge()'s persistableOrderIds rebuild predicate: state the
+    // server doesn't know yet is the only state that MUST persist locally.
+    const hasUnsyncedLocalState =
+      !order ||
+      !order.db_order_id ||
+      order.items?.some((it) => !it.db_order_item_id && !it.isDraft) ||
+      order.payments?.some(
+        (p: any) =>
+          p.sync_status === "pending" ||
+          (!p.db_payment_id && p.status !== "voided"),
+      );
+    if (!hasUnsyncedLocalState) return;
+
+    if (warnedSubsetOpTypes.has(opType)) return;
+    warnedSubsetOpTypes.add(opType);
+    console.warn(
+      `[persistMemo] queueOperation(${opType}) enqueued for order ${localOrderId} which has unsynced local state but is NOT in the persisted subset ` +
+        `(persistableOrderIds / working set / active / unsynced). A force-kill would lose the optimistic state backing this op. ` +
+        `The mutating action likely forgot to mark persistableOrderIds. (warn-once per op type)`,
+    );
+  });
+}
 
 // ============================================================================
 // PHASE 1 FOUNDATION: Auto-sync station context from useStoreSettingsStore

@@ -393,6 +393,45 @@ let onOperationFailed: ((op: OfflineOperation) => void) | null = null;
 let executeOperation: ((op: OfflineOperation) => Promise<boolean>) | null =
   null;
 
+// W1-1 dev-only durability assertion. useOrderStore registers a checker at
+// module init (a direct import here would be circular: useOrderStore already
+// imports queueOperation). For order-scoped ops, the checker warns loudly
+// when the order carries not-yet-synced local state but is NOT in the
+// persisted subset — i.e. a force-kill would silently lose the optimistic
+// state backing the queued op. Makes silent under-persistence loud in dev.
+let persistSubsetCheck:
+  | ((localOrderId: string, opType: OperationType) => void)
+  | null = null;
+
+export function registerPersistSubsetCheck(
+  fn: (localOrderId: string, opType: OperationType) => void,
+): void {
+  persistSubsetCheck = fn;
+}
+
+// Ops whose optimistic state lives in useOrderStore's persisted slice.
+// Session/coursing/seating/drawer ops are keyed to other stores and excluded.
+const ORDER_SCOPED_OPS: Partial<Record<OperationType, true>> = {
+  create_order: true,
+  add_item: true,
+  update_item_quantity: true,
+  update_item: true,
+  replace_modifiers: true,
+  remove_item: true,
+  void_item: true,
+  update_order_status: true,
+  update_order_details: true,
+  apply_discount: true,
+  void_discount: true,
+  send_to_kitchen: true,
+  update_item_status: true,
+  process_payment: true,
+  process_cash_payment: true,
+  process_card_payment: true,
+  close_check: true,
+  reopen_check: true,
+};
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -847,6 +886,11 @@ export async function queueOperation(
   // Phase 5: All visible orders can have operations queued
   // Local orders (order_xxx) need CREATE_ORDER first
   // Backend orders (UUIDs) already exist and can accept item operations directly
+
+  // W1-1 dev durability assertion — synchronous, before any await.
+  if (__DEV__ && persistSubsetCheck && op.localOrderId && ORDER_SCOPED_OPS[op.type]) {
+    persistSubsetCheck(op.localOrderId, op.type);
+  }
 
   const priority = OPERATION_PRIORITY[op.type] ?? 99;
   const entityKey = generateEntityKey(op);
