@@ -18,6 +18,14 @@ export const KEY_RT_PAYLOAD_BYTES_SAMPLED = internKey("rt.payload_bytes_sampled"
 export const KEY_RT_OWN_ECHO = internKey("rt.own_echo");
 export const KEY_RT_OWN_ECHO_SLIP = internKey("rt.own_echo_slip");
 
+// W1-3 demand-driven detail fetch (stores/orderDetailStaleness.ts) — each
+// count is one get_order_details cycle NOT fired for an out-of-working-scope
+// order (marked detailStale instead). Compare against rpc.get_order_details
+// for the before/after evidence.
+export const KEY_RT_DETAIL_REFRESH_SUPPRESSED = internKey(
+  "rt.detail_refresh_suppressed",
+);
+
 // Broadcast fan-out (app/(main)/_layout.tsx)
 export const KEY_FANOUT_ORDER_STORE_MS = internKey("fanout.orderStore_ms");
 export const KEY_FANOUT_PREV_ORDERS_MS = internKey("fanout.prevOrders_ms");

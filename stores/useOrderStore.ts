@@ -62,6 +62,12 @@ import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 import { persist, subscribeWithSelector } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
+import {
+  clearOrderDetailStale,
+  isInLocalWorkingScope,
+  isOrderDetailStale,
+  markOrderDetailStale,
+} from "./orderDetailStaleness";
 import { memoizePersistedSlice } from "./orderPersistMemo";
 import { useCoursingStore } from "./useCoursingStore";
 import { useEmployeeStore } from "./useEmployeeStore";
@@ -3769,6 +3775,7 @@ interface OrderState {
   removeFromWorkingSet: (dbOrderId: string) => void;
   clearWorkingSet: () => void;
   isInWorkingSet: (dbOrderId: string) => boolean;
+  hydrateStaleOrderDetail: (dbOrderId: string) => void;
 
   // --- WORKSPACE GC ---
   clearInactiveOrders: () => void;
@@ -4173,6 +4180,8 @@ function _cleanupOrderModuleState(...ids: (string | null | undefined)[]): void {
     delete orderRefreshTimeouts[id];
     delete pendingItemsBlockStart[id];
     delete lastLocalMutationAt[id];
+    // W1-3: drop the staleness marker when the order leaves ordersById.
+    clearOrderDetailStale(id);
   }
 }
 
@@ -4994,12 +5003,31 @@ export const useOrderStore = create<OrderState>()(
 
           // --- WORKING SET ACTIONS (Phase 5) ---
           addToWorkingSet: (dbOrderId: string) => {
+            // W1-3: entering the working scope is the demand signal — hydrate
+            // stale detail even when already a member (re-open of an order
+            // whose items drifted while it sat in the background).
+            get().hydrateStaleOrderDetail(dbOrderId);
             if (get()._workingSetLookup[dbOrderId]) return; // O(1) duplicate check
             set((state) => {
               state.workingSetOrderIds.push(dbOrderId);
               state._workingSetLookup[dbOrderId] = true;
             });
             if (__DEV__) console.log(`[WorkingSet] Added order ${dbOrderId}`);
+          },
+
+          // W1-3 staleness contract: a broadcast change-signal for an order
+          // outside the working scope marks it detailStale instead of eager-
+          // fetching. This is the demand-side hydrator — called when an order
+          // enters the working scope (open, claim). force:true because the
+          // stale flag IS the evidence of need; the 5s cooldown must not eat
+          // it. The flag clears only on sync SUCCESS (inside
+          // syncOrderFromBackendComplete), so an offline or failed open keeps
+          // cached items visible and retries on the next entry.
+          hydrateStaleOrderDetail: (dbOrderId: string) => {
+            if (!isOrderDetailStale(dbOrderId)) return;
+            void get().syncOrderFromBackendComplete(dbOrderId, {
+              force: true,
+            });
           },
 
           removeFromWorkingSet: (dbOrderId: string) => {
@@ -6089,6 +6117,29 @@ export const useOrderStore = create<OrderState>()(
                       _mutationTs != null &&
                       Date.now() - _mutationTs < OWN_STATION_MUTATION_WINDOW_MS;
 
+                    // W1-3: fetch on evidence of NEED, not evidence of change.
+                    // The three change-signals below (status advance, item_count
+                    // mismatch, kitchen sync_version advance) eager-fetch full
+                    // detail only for orders in this station's working scope
+                    // (working set / active / pending local changes / visibly
+                    // open). Everything else marks detailStale — header fields
+                    // stay live via the broadcast merge; the open path hydrates
+                    // item detail on demand. The FIFO-bleed heal and pending-
+                    // block-timeout refreshes elsewhere stay ungated — they're
+                    // rare correctness recovery, not change-signal fan-out.
+                    const eagerDetailAllowed = isInLocalWorkingScope(
+                      get(),
+                      dbOrderId,
+                      localOrderKey,
+                    );
+                    const refreshOrMarkStale = () => {
+                      if (eagerDetailAllowed) {
+                        get()._debouncedOrderRefresh(dbOrderId);
+                      } else {
+                        markOrderDetailStale(dbOrderId);
+                      }
+                    };
+
                     // Full sync if status changed and backend is AHEAD of local.
                     // Skip if local is already ahead (e.g. local=sent_to_kitchen, backend=draft
                     // during retroactive kitchen send) — the full fetch would overwrite
@@ -6109,7 +6160,7 @@ export const useOrderStore = create<OrderState>()(
                       const backendRank =
                         ORDER_STATUS_RANK[backendOrder.status ?? ""] ?? 0;
                       if (backendRank >= localRank && !isInMutationWindow) {
-                        get()._debouncedOrderRefresh(dbOrderId);
+                        refreshOrMarkStale();
                       }
                     }
 
@@ -6121,12 +6172,12 @@ export const useOrderStore = create<OrderState>()(
                       backendOrder.item_count !==
                         localOrder.items.filter((i) => !i.is_voided).length
                     ) {
-                      get()._debouncedOrderRefresh(dbOrderId);
+                      refreshOrMarkStale();
                     }
 
                     // v2: sync_version ahead + kitchen-active → fetch fresh items for kitchen_status
                     if (isKitchenSyncAdvance && !isInMutationWindow) {
-                      get()._debouncedOrderRefresh(dbOrderId);
+                      refreshOrMarkStale();
                     }
                   }
                   break;
@@ -7727,6 +7778,9 @@ export const useOrderStore = create<OrderState>()(
                 station_id: currentStationId,
                 station_name: ourStationName,
               });
+              // W1-3: claiming pulls the order into this station's working
+              // scope — hydrate stale detail now, not on first open.
+              get().hydrateStaleOrderDetail(dbOrderId);
             };
 
             if (!data?.success) {
@@ -17422,6 +17476,10 @@ export const useOrderStore = create<OrderState>()(
             try {
               await detailSyncPromise;
               lastOrderDetailSyncAt.set(detailSyncKey, Date.now());
+              // W1-3: full detail landed — the staleness contract is
+              // satisfied for this order (clears only on SUCCESS; failures
+              // above throw past this line and keep the flag).
+              clearOrderDetailStale(detailSyncKey);
 
               // Reconcile SC after the full detail merge. The deep sync
               // overwrites service_charge from the server snapshot; the

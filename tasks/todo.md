@@ -314,3 +314,38 @@ Plan: ~/.claude/plans/evidence-pack-pos-cuddly-torvalds.md (approved; epoch desi
 - Full jest: identical failure set to HEAD (11 suites / 27 tests, all pre-existing) + 25 new passing.
 - jest-setup MMKV mock gained getBoolean/getNumber/remove (additive; needed by featureFlags gate reads under real-store tests).
 - Remaining (on-device, per ticket): kill-test matrix #1-#9 with telemetry export, dev-assertion scratch-build demo, Ali Dika verification, Temur sign-off recorded on ticket.
+
+## W1-3: Demand-driven order-detail fetch (staleness contract) — code complete 2026-07-14
+
+Scope decision (user-approved): gate ALL THREE broadcast change-signal triggers
+(status-rank advance, item_count mismatch, kitchen sync_version advance) — not
+just the ticket's item_count one — since kitchen sync_version fires for every
+sent_to_kitchen/preparing order on each KDS bump and would have kept the
+detail-RPC rate far above working-set-only. FIFO-bleed heal + pending-block
+timeout refreshes deliberately left ungated (rare correctness recovery).
+
+- [x] `stores/orderDetailStaleness.ts` — leaf module: detailStaleOrders +
+      visibleDetailOrders module dicts, isInLocalWorkingScope (working set ∪
+      active ∪ persistable ∪ visible, both key spaces), mark/clear/isStale,
+      registerVisibleOrderDetail (refcounted, idempotent unregister)
+- [x] `lib/telemetry/keys.ts` — rt.detail_refresh_suppressed counter
+- [x] `stores/useOrderStore.ts` — refreshOrMarkStale gate on the three
+      triggers; hydrateStaleOrderDetail action (force:true, clears only on
+      sync success inside syncOrderFromBackendComplete); hooks at
+      addToWorkingSet (before duplicate return) + claim applyLocalSuccess;
+      marker dropped in _cleanupOrderModuleState
+- [x] `app/(main)/online-orders/[orderId].tsx` — visible-detail registration
+      (screen shows item detail without setActiveOrder)
+- [x] Tests: orderDetailStaleness.test.ts (behavioral, 10) +
+      demandDrivenDetailFetch.test.ts (structural pin incl. call-site count
+      guard, 9) — all green
+- [x] tsc: zero errors in touched files · eslint: zero new errors ·
+      full jest: identical pre-existing failure baseline, +19 passing
+
+### Remaining (on-device)
+- Two-device self-verify: A mutates 5 non-working-set orders, B's
+  rpc.get_order_details counter must not move; B opens one → exactly one
+  fetch, items correct. rt.detail_refresh_suppressed climbs on B.
+- All entry paths open-check (table tap, order list, search, previous-orders
+  reopen), offline stale open → cached items + reconcile on reconnect,
+  split/refund/void on closed-then-reopened order, Ali Dika verification.
