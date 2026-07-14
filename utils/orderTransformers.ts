@@ -782,6 +782,10 @@ export function transformBroadcastToOrder (
       backendOrder.delivery_platform ??
       normalizePlatform((backendOrder as any).metadata?.delivery_company) ??
       undefined,
+    platform_order_number:
+      (backendOrder as any).platform_order_number ??
+      (backendOrder as any).metadata?.provider_order_id ??
+      undefined,
     split_payment_path:
       (backendOrder.split_payment_path as import('@/lib/types').SplitPaymentPath) ??
       null,
@@ -1310,6 +1314,10 @@ export function normalizeFetchedOrder (
     delivery_platform:
       fetchedOrder.delivery_platform ??
       normalizePlatform(fetchedOrder.metadata?.delivery_company) ??
+      null,
+    platform_order_number:
+      (fetchedOrder as any).platform_order_number ??
+      fetchedOrder.metadata?.provider_order_id ??
       null,
     split_payment_path: fetchedOrder.split_payment_path ?? null,
 

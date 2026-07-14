@@ -37,6 +37,7 @@ import {
   getEnvReconcileResult,
   secureStorage,
 } from "@/lib/storage";
+import { initTelemetry } from "@/lib/telemetry/init";
 import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { DEADLINES } from "@/lib/network/deadlines";
@@ -859,6 +860,12 @@ export default Sentry.wrap(function RootLayout() {
       }
     });
     return () => sub.remove();
+  }, []);
+
+  // Wave-0 perf telemetry (long-task watcher, persist/broadcast counters,
+  // ring buffer). Owns its own AppState listener + 30s flush; idempotent.
+  React.useEffect(() => {
+    initTelemetry();
   }, []);
 
   // Cleanup intervals on unmount

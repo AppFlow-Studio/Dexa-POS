@@ -34,6 +34,12 @@ function addEntry(level: LogEntry["level"], args: unknown[]) {
 /**
  * Initialize log collector by patching console methods.
  * Idempotent - safe to call multiple times.
+ *
+ * Production log level: release builds strip console.log/info/debug at
+ * compile time (babel transform-remove-console, exclude: error/warn), so
+ * this tap — and the remote `send_logs` upload it feeds — only sees
+ * warn + error in production. That is deliberate: warn/error are the
+ * production diagnostics channel; log is dev-only.
  */
 export function initLogCollector() {
   if (initialized) return;

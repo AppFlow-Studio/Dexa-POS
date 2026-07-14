@@ -70,7 +70,6 @@ export function useFloorRealtime({
   onSessionChange,
   onTableAssignment,
   onSessionEvent,
-  onOrderUpdate,
 }: UseFloorRealtimeOptions) {
   const supabase = useSupabaseClient();
 
@@ -85,7 +84,6 @@ export function useFloorRealtime({
       'TABLE_ASSIGNMENT_UPDATE',
       'TABLE_ASSIGNMENT_DELETE',
       'SESSION_EVENT',
-      'SESSION_ORDER_UPDATE',
     ],
     []
   );
@@ -180,12 +178,9 @@ export function useFloorRealtime({
         case 'SESSION_EVENT':
           onSessionEvent?.(payload as never);
           break;
-        case 'SESSION_ORDER_UPDATE':
-          onOrderUpdate?.(payload as never);
-          break;
       }
     },
-    [scheduleReconcile, onSessionChange, onTableAssignment, onSessionEvent, onOrderUpdate]
+    [scheduleReconcile, onSessionChange, onTableAssignment, onSessionEvent]
   );
 
   const { status, reconnect, disconnect } = useRealtimeChannel<unknown>({

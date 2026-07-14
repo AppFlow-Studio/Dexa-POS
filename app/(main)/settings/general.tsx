@@ -17,6 +17,10 @@ import { toastService } from "@/lib/toastService";
 import type { MerchantRole } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { useUiScale } from "@/lib/uiScale";
+import {
+  isTelemetryHooksMuted,
+  setTelemetryHooksMuted,
+} from "@/lib/telemetry/registry";
 import { clearStationData, resetClientSession } from "@/services/cacheService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
@@ -310,6 +314,26 @@ const GeneralSettingsScreen = () => {
   const setAutoSelectFirstRequiredOption = useSettingsStore(
     (s) => s.setAutoSelectFirstRequiredOption,
   );
+  const telemetryEnabled = useSettingsStore((s) => s.telemetryEnabled);
+  const setTelemetryEnabled = useSettingsStore((s) => s.setTelemetryEnabled);
+  // Hidden overhead-A/B control (not persisted): long-press the row title to
+  // mute the instrumented call sites while the long-task watcher keeps
+  // recording — the hooks-on vs hooks-muted comparison proves <1% overhead.
+  const [telemetryHooksMuted, setTelemetryHooksMutedState] = useState(
+    isTelemetryHooksMuted(),
+  );
+  const toggleTelemetryHooksMuted = useCallback(() => {
+    const next = !isTelemetryHooksMuted();
+    setTelemetryHooksMuted(next);
+    setTelemetryHooksMutedState(next);
+    toastService.show({
+      type: "success",
+      title: next ? "Telemetry hooks muted" : "Telemetry hooks unmuted",
+      message: next
+        ? "Instrumented call sites are silenced; the long-task watcher keeps recording (overhead A/B mode)."
+        : "All telemetry recording restored.",
+    });
+  }, []);
   const { colorScheme, setColorScheme } = useColorScheme();
 
   // ── Derived display values ──────────────────────────────────────────────
@@ -998,6 +1022,47 @@ const GeneralSettingsScreen = () => {
                 <Switch
                   checked={autoSelectFirstRequiredOption}
                   onCheckedChange={setAutoSelectFirstRequiredOption}
+                />
+              </View>
+
+              {/* Performance diagnostics (Wave-0 telemetry) */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: s(10),
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <TouchableOpacity
+                  style={{ flex: 1, marginRight: s(16) }}
+                  activeOpacity={1}
+                  onLongPress={toggleTelemetryHooksMuted}
+                  delayLongPress={800}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(13),
+                      color: colors.heading,
+                      fontWeight: "500",
+                    }}
+                  >
+                    Performance diagnostics
+                    {telemetryHooksMuted ? " (hooks muted)" : ""}
+                  </Text>
+                  <Text
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
+                  >
+                    Record local performance metrics for troubleshooting
+                    slowness. Stays on this device; export by long-pressing the
+                    app version in Devices &amp; Connections.
+                  </Text>
+                </TouchableOpacity>
+                <Switch
+                  checked={telemetryEnabled}
+                  onCheckedChange={setTelemetryEnabled}
                 />
               </View>
 
