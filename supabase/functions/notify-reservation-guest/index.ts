@@ -15,6 +15,11 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  resolveReservationMessage,
+  type MerchantTemplateConfig,
+  type ReservationTemplateContext
+} from '../_shared/notifyTemplates.ts'
 
 const ALLOWED_ORIGIN_PATTERNS: RegExp[] = [
   /^https:\/\/([a-z0-9-]+\.)*dexapos\.com$/,
@@ -41,14 +46,13 @@ function corsHeadersFor(origin: string | null): Record<string, string> {
   }
 }
 
-type TemplateContext = {
-  partyName: string
-  storeName: string
-  storeAddress: string
-  partySize: number | null
-  reservationDate: string
-  reservationTime: string
-  confirmationNumber: string | null
+/** Merchant-editable templates live in `locations.pos_config.waitlist`. */
+function readReservationTemplateConfig(
+  posConfig: any
+): MerchantTemplateConfig | null {
+  const waitlist = posConfig?.waitlist
+  if (!waitlist || typeof waitlist !== 'object') return null
+  return { messageTemplates: waitlist.messageTemplates ?? null }
 }
 
 function formatStoreAddress(loc: any): string {
@@ -91,46 +95,6 @@ function formatTimeForSms(timeStr: string | null | undefined): string {
   const period = hours >= 12 ? 'PM' : 'AM'
   const displayHours = hours % 12 === 0 ? 12 : hours % 12
   return `${displayHours}:${String(minutes).padStart(2, '0')} ${period}`
-}
-
-function renderTemplate(
-  key: string,
-  ctx: TemplateContext,
-  customMessage?: string | null
-): string | null {
-  const {
-    partyName,
-    storeName,
-    storeAddress,
-    partySize,
-    reservationDate,
-    reservationTime,
-    confirmationNumber
-  } = ctx
-  const addressClause = storeAddress ? ` (${storeAddress})` : ''
-  const partyClause = partySize ? ` for ${partySize}` : ''
-  const confClause = confirmationNumber
-    ? ` Confirmation #${confirmationNumber}.`
-    : ''
-
-  switch (key) {
-    case 'reservation.created':
-      return `Hi ${partyName}, your reservation at ${storeName}${addressClause}${partyClause} is confirmed for ${reservationDate} at ${reservationTime}.${confClause} Reply to this message if you need to make changes.`
-    case 'reservation.moved':
-      return `Hi ${partyName}, your reservation at ${storeName} has been moved to ${reservationDate} at ${reservationTime}. Reply to this message to confirm.`
-    case 'reservation.timeChanged':
-      return `Hi ${partyName}, your reservation time at ${storeName} on ${reservationDate} has changed to ${reservationTime}. Reply to this message to confirm.`
-    case 'reservation.confirmation':
-      return `Hi ${partyName}, this is ${storeName} confirming your reservation on ${reservationDate} at ${reservationTime}. See you soon!`
-    case 'reservation.cancelled':
-      return `Hi ${partyName}, your reservation at ${storeName} on ${reservationDate} at ${reservationTime} has been cancelled. Reply or call us if you'd like to rebook.`
-    case 'custom':
-      return customMessage && customMessage.trim().length > 0
-        ? customMessage.trim().slice(0, 500)
-        : null
-    default:
-      return null
-  }
 }
 
 function normalizeToE164(rawPhone: string | null | undefined): string | null {
@@ -235,7 +199,9 @@ serve(async (req: Request) => {
 
     const { data: location } = await adminClient
       .from('locations')
-      .select('name, address_line1, address_line2, city, state, postal_code')
+      .select(
+        'name, address_line1, address_line2, city, state, postal_code, pos_config'
+      )
       .eq('id', reservation.location_id)
       .maybeSingle()
 
@@ -248,7 +214,7 @@ serve(async (req: Request) => {
       )
     }
 
-    const ctx: TemplateContext = {
+    const ctx: ReservationTemplateContext = {
       partyName: (reservation.party_name ?? '').trim() || 'Guest',
       storeName: location?.name ?? 'our restaurant',
       storeAddress: formatStoreAddress(location),
@@ -257,7 +223,13 @@ serve(async (req: Request) => {
       reservationTime: formatTimeForSms(reservation.reservation_time),
       confirmationNumber: reservation.confirmation_number ?? null
     }
-    const message = renderTemplate(templateKey, ctx, customMessage)
+    const templateConfig = readReservationTemplateConfig(location?.pos_config)
+    const message = resolveReservationMessage(
+      templateKey,
+      ctx,
+      templateConfig,
+      customMessage
+    )
     if (!message) {
       return new Response(
         JSON.stringify({
