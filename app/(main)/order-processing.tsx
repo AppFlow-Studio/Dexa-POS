@@ -17,14 +17,14 @@ import { useActiveOrderOwnershipRecheck } from "@/hooks/orders/useActiveOrderOwn
 import { deriveEffectivePaidStatus } from "@/lib/deriveEffectivePaidStatus";
 import { getHeaderHeight } from "@/lib/headerHeight";
 import {
-    forceSetLocalSequence,
-    parseSequenceFromDisplayNumber,
+  forceSetLocalSequence,
+  parseSequenceFromDisplayNumber,
 } from "@/lib/localOrderSequence";
 import { markEnd } from "@/lib/perf";
 import {
-    findLatestReusableEmptyDraftId,
-    getRefreshedReusableDraftNumbers,
-    isReusableEmptyDraftOrder,
+  findLatestReusableEmptyDraftId,
+  getRefreshedReusableDraftNumbers,
+  isReusableEmptyDraftOrder,
 } from "@/lib/reusableEmptyDraft";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
@@ -42,51 +42,52 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import {
-    formatOrderStatus,
-    formatPaymentStatus,
+  formatOrderStatus,
+  formatPaymentStatus,
 } from "@/utils/orderStatusHelpers";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import {
-    CheckCircle2,
-    ChevronLeft,
-    ChevronRight,
-    Eye,
-    Logs,
-    Plus,
-    Printer,
-    Search,
-    ShoppingBag,
-    Sofa,
-    UtensilsCrossed,
-    X,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Logs,
+  Plus,
+  Printer,
+  Search,
+  ShoppingBag,
+  Sofa,
+  UtensilsCrossed,
+  X,
 } from "lucide-react-native";
 import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    Dimensions,
-    InteractionManager,
-    Keyboard,
-    Modal,
-    PanResponder,
-    Pressable,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  Dimensions,
+  InteractionManager,
+  Keyboard,
+  Modal,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from "react-native";
 import Animated, {
-    LinearTransition,
-    SlideInLeft,
-    useAnimatedStyle,
-    useSharedValue,
+  LinearTransition,
+  SlideInLeft,
+  useAnimatedStyle,
+  useSharedValue,
 } from "react-native-reanimated";
 
 const EMPTY_ORDERS: OrderProfile[] = [];
@@ -266,6 +267,21 @@ const OrderProcessing = () => {
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
+    };
+  }, []);
+
+  // Release decoded image bitmaps when leaving the order-processing screen.
+  // MenuSection renders MenuItem → OptimizedListImage → expo-image for every
+  // item in the active menu grid. Those bitmaps sit pinned in expo-image's
+  // memory cache after decode, and unlike the menu-management screen
+  // (menu/index.tsx) order-processing had no clearMemoryCache on unmount —
+  // so native memory climbed with every re-entry. Clearing only the MEMORY
+  // cache is safe: anything still needed re-decodes on next view.
+  useEffect(() => {
+    return () => {
+      if (__DEV__)
+        console.log("[memory] order-processing unmount → clearMemoryCache()");
+      void ExpoImage.clearMemoryCache().catch(() => {});
     };
   }, []);
 
