@@ -1,7 +1,12 @@
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import {
+  setReservationSupabaseClient,
+  useReservationStore
+} from '@/stores/useReservationStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
 import {
   CalendarDays,
@@ -9,10 +14,11 @@ import {
   ChevronRight,
   Clock,
   MessageSquare,
+  Plus,
   Users,
   X
 } from 'lucide-react-native'
-import React from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import {
   ScrollView,
   Text,
@@ -99,9 +105,52 @@ const RESERVATION_EVENTS: { key: string; label: string; placeholder: string }[] 
     }
   ]
 
-const WAITLIST_TOKENS_HINT = 'Variables: {name}, {store}, {store_address}, {wait}, {party_size}'
-const RESERVATION_TOKENS_HINT =
-  'Variables: {name}, {store}, {store_address}, {party_size}, {date}, {time}, {confirmation}'
+// Tappable variable chips — the merchant inserts tokens instead of typing the
+// { } braces by hand. `token` is the literal the edge functions interpolate.
+type TokenChip = { token: string; label: string }
+const WAITLIST_TOKEN_CHIPS: TokenChip[] = [
+  { token: '{name}', label: 'Name' },
+  { token: '{store}', label: 'Store' },
+  { token: '{store_address}', label: 'Address' },
+  { token: '{wait}', label: 'Wait' },
+  { token: '{party_size}', label: 'Party size' }
+]
+const RESERVATION_TOKEN_CHIPS: TokenChip[] = [
+  { token: '{name}', label: 'Name' },
+  { token: '{store}', label: 'Store' },
+  { token: '{store_address}', label: 'Address' },
+  { token: '{party_size}', label: 'Party size' },
+  { token: '{date}', label: 'Date' },
+  { token: '{time}', label: 'Time' },
+  { token: '{confirmation}', label: 'Confirmation' }
+]
+
+// Themed numeric field. Replaces the old `Input` with the dead
+// `text-white` className that rendered invisible values on the light theme.
+const NumField = ({
+  value,
+  onChangeText
+}: {
+  value: string
+  onChangeText: (v: string) => void
+}) => (
+  <TextInput
+    value={value}
+    onChangeText={onChangeText}
+    keyboardType="numeric"
+    placeholderTextColor={colors.muted}
+    style={{
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      height: 40,
+      color: colors.heading,
+      fontSize: 13
+    }}
+  />
+)
 
 const toInt = (value: string, fallback: number) => {
   const n = parseInt(value, 10)
@@ -171,19 +220,35 @@ const WaitlistScreen = () => {
         )
       : 0
 
-  const renderTemplateField = (event: {
-    key: string
-    label: string
-    placeholder: string
-  }) => (
-    <View key={event.key}>
-      <Text style={{ fontSize: 12, color: colors.label, marginBottom: 6 }}>
-        {event.label}
-      </Text>
+  // Last known cursor position per field, so a chip tap inserts the token where
+  // the merchant left off (falls back to end-of-text). A ref avoids re-rendering
+  // on every selection change.
+  const selectionRef = useRef<Record<string, { start: number; end: number }>>({})
+
+  const insertToken = (key: string, token: string) => {
+    const current = messageTemplates[key] ?? ''
+    const sel = selectionRef.current[key]
+    const start = sel ? sel.start : current.length
+    const end = sel ? sel.end : current.length
+    const next = current.slice(0, start) + token + current.slice(end)
+    const caret = start + token.length
+    selectionRef.current[key] = { start: caret, end: caret }
+    setTemplate(key, next)
+  }
+
+  const renderTemplateField = (
+    event: { key: string; label: string; placeholder: string },
+    chips: TokenChip[]
+  ) => (
+    <View key={event.key} style={{ gap: 6 }}>
+      <Text style={{ fontSize: 12, color: colors.label }}>{event.label}</Text>
       <TextInput
         multiline
         value={messageTemplates[event.key] ?? ''}
         onChangeText={value => setTemplate(event.key, value)}
+        onSelectionChange={e => {
+          selectionRef.current[event.key] = e.nativeEvent.selection
+        }}
         placeholder={event.placeholder}
         placeholderTextColor={colors.muted}
         textAlignVertical="top"
@@ -199,16 +264,68 @@ const WaitlistScreen = () => {
           textAlignVertical: 'top'
         }}
       />
+      {/* Tap a chip to insert the variable at the cursor — no typing braces. */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {chips.map(chip => (
+          <TouchableOpacity
+            key={chip.token}
+            onPress={() => insertToken(event.key, chip.token)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 3,
+              paddingHorizontal: 9,
+              paddingVertical: 5,
+              borderRadius: 999,
+              backgroundColor: colors.teal + '12',
+              borderWidth: 1,
+              borderColor: colors.teal + '30'
+            }}
+          >
+            <Plus size={11} color={colors.teal} />
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}>
+              {chip.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
     </View>
   )
 
-  // Mock Reservation Data for Timeline
-  const mockReservations = [
-    { time: '6:00 PM', name: 'Johnson', party: 4 },
-    { time: '6:30 PM', name: 'Williams', party: 2 },
-    { time: '7:00 PM', name: 'Davis', party: 6 },
-    { time: '7:15 PM', name: 'Miller', party: 3 }
-  ]
+  // ── Today's real reservations (replaces the old hardcoded timeline) ──
+  const supabaseClient = useSupabaseClient()
+  const locationId = useStoreSettingsStore(s => s.selectedStore?.id || '')
+  const reservations = useReservationStore(s => s.reservations)
+  const fetchReservations = useReservationStore(s => s.fetchReservations)
+
+  useEffect(() => {
+    if (!supabaseClient || !locationId) return
+    setReservationSupabaseClient(supabaseClient)
+    // Default date = today (store falls back to selectedDate → new Date()).
+    fetchReservations(locationId, undefined, { silent: true })
+  }, [supabaseClient, locationId, fetchReservations])
+
+  const parseReservationTime = (r: {
+    reservation_time: string
+    reservation_date?: string
+  }): Date | null => {
+    const direct = new Date(r.reservation_time)
+    if (Number.isFinite(direct.getTime())) return direct
+    if (r.reservation_date) {
+      const combined = new Date(`${r.reservation_date}T${r.reservation_time}`)
+      if (Number.isFinite(combined.getTime())) return combined
+    }
+    return null
+  }
+
+  const upcomingReservations = useMemo(() => {
+    const inactive = new Set(['cancelled', 'completed', 'no_show'])
+    return reservations
+      .filter(r => !inactive.has(r.status))
+      .map(r => ({ reservation: r, at: parseReservationTime(r) }))
+      .sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0))
+      .slice(0, 5)
+  }, [reservations])
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
@@ -491,21 +608,22 @@ const WaitlistScreen = () => {
                         Message Templates
                       </Text>
                       <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
-                        Leave a field blank to use the default message. {WAITLIST_TOKENS_HINT}
+                        Leave a field blank to use the default message. Tap a
+                        variable below to insert it.
                       </Text>
                     </View>
-                    {WAITLIST_EVENTS.map(renderTemplateField)}
+                    {WAITLIST_EVENTS.map(e =>
+                      renderTemplateField(e, WAITLIST_TOKEN_CHIPS)
+                    )}
                   </View>
 
                   <View>
                     <Text style={{ fontSize: 12, color: colors.label, marginBottom: 6 }}>
                       No-show grace period after notification (minutes)
                     </Text>
-                    <Input
-                      className="bg-screen border-gray-600 text-white h-10"
+                    <NumField
                       value={String(waitlistNotificationGracePeriodMinutes ?? 10)}
                       onChangeText={setGracePeriod}
-                      keyboardType="numeric"
                     />
                     <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
                       Default is 10 minutes.
@@ -594,30 +712,15 @@ const WaitlistScreen = () => {
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     <View style={{ flex: 1, gap: 5 }}>
                       <Text style={{ fontSize: 11, color: colors.label }}>Days Ahead</Text>
-                      <Input
-                        className="bg-screen border-gray-600 text-white h-10"
-                        value={daysAhead}
-                        onChangeText={setDaysAhead}
-                        keyboardType="numeric"
-                      />
+                      <NumField value={daysAhead} onChangeText={setDaysAhead} />
                     </View>
                     <View style={{ flex: 1, gap: 5 }}>
                       <Text style={{ fontSize: 11, color: colors.label }}>Max Guests</Text>
-                      <Input
-                        className="bg-screen border-gray-600 text-white h-10"
-                        value={maxGuestsPerSlot}
-                        onChangeText={setMaxGuestsPerSlot}
-                        keyboardType="numeric"
-                      />
+                      <NumField value={maxGuestsPerSlot} onChangeText={setMaxGuestsPerSlot} />
                     </View>
                     <View style={{ flex: 1, gap: 5 }}>
                       <Text style={{ fontSize: 11, color: colors.label }}>Slot (min)</Text>
-                      <Input
-                        className="bg-screen border-gray-600 text-white h-10"
-                        value={slotDuration}
-                        onChangeText={setSlotDuration}
-                        keyboardType="numeric"
-                      />
+                      <NumField value={slotDuration} onChangeText={setSlotDuration} />
                     </View>
                   </View>
                 </View>
@@ -637,10 +740,13 @@ const WaitlistScreen = () => {
                       Reservation Messages
                     </Text>
                     <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
-                      Leave a field blank to use the default message. {RESERVATION_TOKENS_HINT}
+                      Leave a field blank to use the default message. Tap a
+                      variable below to insert it.
                     </Text>
                   </View>
-                  {RESERVATION_EVENTS.map(renderTemplateField)}
+                  {RESERVATION_EVENTS.map(e =>
+                    renderTemplateField(e, RESERVATION_TOKEN_CHIPS)
+                  )}
                 </View>
 
                 {/* Deposits */}
@@ -663,11 +769,9 @@ const WaitlistScreen = () => {
                         <Text style={{ fontSize: 12, color: colors.label, marginBottom: 6 }}>
                           Amount per Person ($)
                         </Text>
-                        <Input
-                          className="bg-screen border-gray-600 text-white h-10"
+                        <NumField
                           value={depositAmount}
                           onChangeText={setDepositAmount}
-                          keyboardType="numeric"
                         />
                       </View>
                       <View>
@@ -732,50 +836,72 @@ const WaitlistScreen = () => {
                     Today's Upcoming
                   </Text>
                   <View style={{ gap: 6 }}>
-                    {mockReservations.map((res, index) => (
+                    {upcomingReservations.length === 0 ? (
                       <View
-                        key={index}
                         style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
                           backgroundColor: colors.card,
                           borderRadius: 8,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          paddingHorizontal: 12,
-                          paddingVertical: 9,
-                          gap: 10
+                          padding: 20,
+                          alignItems: 'center'
                         }}
                       >
-                        <Clock size={14} color={colors.label} />
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            fontWeight: '700',
-                            color: colors.teal,
-                            width: 72
-                          }}
-                        >
-                          {res.time}
+                        <Text style={{ fontSize: 12, color: colors.muted }}>
+                          No upcoming reservations today
                         </Text>
-                        <Text
-                          style={{
-                            fontSize: 13,
-                            fontWeight: '600',
-                            color: colors.heading,
-                            flex: 1
-                          }}
-                        >
-                          {res.name}
-                        </Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <Users size={12} color={colors.label} />
-                          <Text style={{ fontSize: 12, color: colors.label }}>
-                            {res.party}
-                          </Text>
-                        </View>
                       </View>
-                    ))}
+                    ) : (
+                      upcomingReservations.map(({ reservation, at }) => (
+                        <View
+                          key={reservation.id}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: colors.card,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            paddingHorizontal: 12,
+                            paddingVertical: 9,
+                            gap: 10
+                          }}
+                        >
+                          <Clock size={14} color={colors.label} />
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: '700',
+                              color: colors.teal,
+                              width: 72
+                            }}
+                          >
+                            {at
+                              ? at.toLocaleTimeString([], {
+                                  hour: 'numeric',
+                                  minute: '2-digit'
+                                })
+                              : '—'}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: '600',
+                              color: colors.heading,
+                              flex: 1
+                            }}
+                          >
+                            {reservation.party_name}
+                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Users size={12} color={colors.label} />
+                            <Text style={{ fontSize: 12, color: colors.label }}>
+                              {reservation.party_size}
+                            </Text>
+                          </View>
+                        </View>
+                      ))
+                    )}
                   </View>
                 </View>
               </>
