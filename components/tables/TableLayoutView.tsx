@@ -506,10 +506,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const viewLockedKey = `floor_plan.view_locked.${layoutId}`;
   const [, setViewLockedTick] = useState(0);
   const viewLocked = storage.getBoolean(viewLockedKey) ?? true;
-  const [showTooltip, setShowTooltip] = useState(false);
-  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
 
   // Stored initial center values for recentering
   const initialScaleRef = useRef(1);
@@ -1222,47 +1218,19 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   // Root gesture: in Skia mode the canvas-level tap/long-press replaces per-table
   // GestureDetectors. Composed Exclusive with pan/pinch so a drag doesn't also fire
   // a tap. In the classic path only pan/pinch run (each table owns its own tap).
-  const rootGesture = useMemo(
-    () =>
-      skiaViewMode
-        ? Gesture.Exclusive(
-            Gesture.Simultaneous(pinchGesture, panGesture),
-            canvasLongPressGesture,
-            canvasTapGesture,
-          )
-        : Gesture.Simultaneous(pinchGesture, panGesture),
-    // pinch/pan gestures are rebuilt each render (not memoized); combinedGesture
-    // above captures the same instances for the classic path.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [skiaViewMode, canvasLongPressGesture, canvasTapGesture],
-  );
+  // NOT memoized: pan/pinch are rebuilt every render (their `.enabled(!viewLocked)`
+  // must track the lock state), so a memoized composition would hand the
+  // GestureDetector stale instances and the lock toggle would only take effect
+  // whenever the memo happened to recompute.
+  const rootGesture = skiaViewMode
+    ? Gesture.Exclusive(
+        Gesture.Simultaneous(pinchGesture, panGesture),
+        canvasLongPressGesture,
+        canvasTapGesture,
+      )
+    : Gesture.Simultaneous(pinchGesture, panGesture);
 
   // ── Lock toggle ──
-  const recenterCanvas = () => {
-    const s = withSpring(initialScaleRef.current, {
-      damping: 12,
-      mass: 1,
-      stiffness: 100,
-    });
-    const tx = withSpring(initialTranslateXRef.current, {
-      damping: 12,
-      mass: 1,
-      stiffness: 100,
-    });
-    const ty = withSpring(initialTranslateYRef.current, {
-      damping: 12,
-      mass: 1,
-      stiffness: 100,
-    });
-
-    scale.value = s;
-    translateX.value = tx;
-    translateY.value = ty;
-    savedScale.value = initialScaleRef.current;
-    savedTranslateX.value = initialTranslateXRef.current;
-    savedTranslateY.value = initialTranslateYRef.current;
-  };
-
   const handleLockToggle = () => {
     if (viewLocked) {
       // Unlock: enable gestures, don't recenter
@@ -1283,26 +1251,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       setViewLockedTick((tick) => tick + 1);
     }
   };
-
-  const handleLockLongPress = () => {
-    // Long-press gives the explicit reset action the tooltip describes
-    recenterCanvas();
-    persistCameraState({
-      scale: initialScaleRef.current,
-      translateX: initialTranslateXRef.current,
-      translateY: initialTranslateYRef.current,
-    });
-    setShowTooltip(true);
-    if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
-    tooltipTimer.current = setTimeout(() => setShowTooltip(false), 2000);
-  };
-
-  // Cleanup tooltip timer on unmount
-  useEffect(() => {
-    return () => {
-      if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
-    };
-  }, []);
 
   // Persist final camera state on unmount, then cancel animations.
   useEffect(() => {
@@ -1670,8 +1618,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       >
         <TouchableOpacity
           onPress={handleLockToggle}
-          onLongPress={handleLockLongPress}
-          delayLongPress={500}
           style={{
             width: s(32),
             height: s(32),
@@ -1691,35 +1637,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             )}
           </View>
         </TouchableOpacity>
-
-        {/* Tooltip for long-press */}
-        {showTooltip && (
-          <View
-            style={{
-              marginTop: s(8),
-              minWidth: s(120),
-              paddingHorizontal: s(10),
-              paddingVertical: s(6),
-              borderRadius: s(8),
-              backgroundColor: colors.card + "F0",
-              borderWidth: 1,
-              borderColor: colors.border,
-              alignItems: "center",
-            }}
-            pointerEvents="none"
-          >
-            <Text
-              style={{
-                fontSize: s(11),
-                fontWeight: "500",
-                color: colors.label,
-                textAlign: "center",
-              }}
-            >
-              Reset to center
-            </Text>
-          </View>
-        )}
       </View>
 
       {/* Focus Tables button — zooms to fit all canvas objects.
