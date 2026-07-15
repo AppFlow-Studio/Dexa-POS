@@ -170,7 +170,14 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
   const itemCount = itemsLoaded
     ? order.items!.reduce((n, i) => n + (i.quantity || 0), 0)
     : (order._broadcastItemCount ?? 0);
-  const label = order.display_number || order.order_number || order.id;
+  // Delivery-platform orders show the marketplace's own order number — that's
+  // what the driver/customer reference. Dexa numbers only for first-party orders.
+  const dexaNumber = order.display_number || order.order_number || order.id;
+  const label = order.platform_order_number
+    ? order.platform_order_number
+    : dexaNumber.startsWith("#")
+      ? dexaNumber
+      : `#${dexaNumber}`;
   const total = order.total_amount ?? 0;
   const canCancel = variant !== "done"; // New + In Kitchen + Ready
   // Mark-ready only for delivery-platform (OrderOut) orders in the kitchen lane —
@@ -254,8 +261,10 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
               fontWeight: "700",
               color: colors.heading,
             }}
+            numberOfLines={1}
+            ellipsizeMode="middle"
           >
-            #{label}
+            {label}
           </Text>
           <Text
             style={{ fontSize: s(14), color: colors.label }}

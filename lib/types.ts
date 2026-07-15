@@ -504,6 +504,7 @@ export interface PreviousOrder {
   db_order_id?: string; // For RPC calls
   order_source?: string | null;
   delivery_platform?: string | null;
+  platform_order_number?: string | null;
   reversals?: ReversalRecord[];
   order_refund_items?: OrderRefundItemRecord[];
   // Staff attribution (for fraud detection — who created this order)
@@ -1031,8 +1032,9 @@ export interface OrderProfile {
   created_by_staff_profile_id?: string | null; // staff_profiles.id of the employee who created this order
 
   // === ORDER SOURCE ===
-  order_source?: string | null; // "pos" | "online" | null
+  order_source?: string | null; // "pos" | "orderout" | "online_store" | legacy "online" | null
   delivery_platform?: string | null; // "uber_eats" | "grubhub" | "doordash" | "food_panda" | null
+  platform_order_number?: string | null; // The marketplace's own order number (provider_order_id)
 
   // === SYNC VERSION (for optimistic concurrency) ===
   sync_version?: number; // Backend sync version for conflict detection

@@ -240,6 +240,14 @@ interface PaymentState {
     dejavooTransaction?: DejavooSaleTransactionResponse;
     amountOverride?: number;
   }) => Promise<void>;
+  /** Internal: real completion body, wrapped by handlePaymentCompletion's perf span. */
+  _handlePaymentCompletionImpl: (args: {
+    method: string;
+    tipAmount?: number;
+    transactionDetails?: OrderPaymentTransactionDetails;
+    dejavooTransaction?: DejavooSaleTransactionResponse;
+    amountOverride?: number;
+  }) => Promise<void>;
   moveToNextSplit: () => void;
   processManualCardPayment(details: {
     cardBrand: string;
@@ -974,7 +982,27 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
   },
 
-  handlePaymentCompletion: async ({
+  handlePaymentCompletion: async (args: {
+    method: string;
+    tipAmount?: number;
+    transactionDetails?: OrderPaymentTransactionDetails;
+    amountOverride?: number;
+    dejavooTransaction?: DejavooSaleTransactionResponse;
+  }) => {
+    // Wave-0 telemetry (Audit C #1): the awaited completion window between
+    // the confirm tap and the success-view swap (3x totals + Immer + journal
+    // for cash). Lands in Sentry AND the local ring via the perf.ts tap.
+    const perfHandle = startInteraction("pos.payment.completion", {
+      method: args.method,
+    });
+    try {
+      return await get()._handlePaymentCompletionImpl(args);
+    } finally {
+      perfHandle.endAfterPaint();
+    }
+  },
+
+  _handlePaymentCompletionImpl: async ({
     method,
     tipAmount,
     transactionDetails,

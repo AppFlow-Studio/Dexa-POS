@@ -149,6 +149,10 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   // Order Line
   orderLineSettings: OrderLineSettings;
 
+  // Performance diagnostics (Wave-0 rush-lag telemetry harness)
+  telemetryEnabled: boolean;
+  setTelemetryEnabled: (enabled: boolean) => void;
+
   // Menu Display
   showMenuItemPrices: boolean;
   setShowMenuItemPrices: (show: boolean) => void;
@@ -480,6 +484,10 @@ export const useSettingsStore = create<SettingsState>()(
         minimalModeRows: 3,
       },
 
+      // Performance diagnostics — default ON for the Wave-0 pilot
+      telemetryEnabled: true,
+      setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
+
       // Menu Display
       showMenuItemPrices: true,
       setShowMenuItemPrices: (show) => set({ showMenuItemPrices: show }),
@@ -583,6 +591,8 @@ export const useSettingsStore = create<SettingsState>()(
         defaultSittingTimeMinutes: state.defaultSittingTimeMinutes,
         // KDS
         kdsEnabled: state.kdsEnabled,
+        // Performance diagnostics
+        telemetryEnabled: state.telemetryEnabled,
         // Menu Display
         showMenuItemPrices: state.showMenuItemPrices,
         showMenuImages: state.showMenuImages,

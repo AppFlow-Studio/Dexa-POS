@@ -37,7 +37,9 @@ interface Split {
 const SplitPaymentView = () => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
-  const { activeOrderOutstandingTotal } = useOrderStore();
+  const activeOrderOutstandingTotal = useOrderStore(
+    (state) => state.activeOrderOutstandingTotal
+  );
   const close = usePaymentStore((s) => s.close);
   const setView = usePaymentStore((s) => s.setView);
   const { show } = useToast();
@@ -69,9 +71,6 @@ const SplitPaymentView = () => {
       )
     );
   };
-
-  const { activeOrderSubtotal, activeOrderTax, activeOrderDiscount } =
-    useOrderStore();
 
   useEffect(() => {
     // Initialize unassigned quantities when the component loads or items change

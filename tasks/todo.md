@@ -246,3 +246,106 @@ After Phase 4:
 - Side-by-side perf comparison on Landi C20Pro: with built-in CFD attached vs detached. Goal: no measurable POS perf difference.
 - Compare with Landi-without-CFD baseline. Goal: parity.
 - External WebSocket CFD path: same flow exercised; no regression.
+
+---
+
+## Wave-0 rush-lag telemetry harness (2026-07-13) — code complete
+
+Branches: `chore/wave0-skip-probe` (Step 0 temp logs, revert after capture) · `feat/wave0-telemetry-harness` (the harness, commit 625b68da).
+
+- [x] Step 0 skip-probe branch (2 temp logs in lazyDebouncedWrite, order-store-storage only) — prediction on record: skip-hits = 0
+- [x] lib/telemetry/{registry,keys,longTaskWatcher,init,export}.ts — interned counters, 8192-slot packed ring in dedicated `dexa-pos-telemetry` MMKV, 50ms drift watcher w/ route+stringify attribution, 30s flush + prev-session rollover, expo-sharing export
+- [x] Instrumented: persist arm/skip/stringify/bytes (A#1-3,B#1), flushAllPendingWrites (C#5), rt msgs/handler/payload-sample (B#4), fan-out spans, get_order_details (B#3), own-echo slip (B#2), pos.payment.completion (C#1), perf.ts tap, resume_settle (C#7)
+- [x] Settings→General toggle (default ON) + hidden long-press hooks-mute (overhead A/B, release-reachable — moved off dev-flags because that screen redirects in release); hidden export = long-press version value in Devices & Connections
+- [x] 22 new tests pass; tsc error delta 0 (141 pre-existing); full-jest delta 0 (27 failures pre-existing on base)
+- [ ] ON-DEVICE (needs Landi + native rebuild for expo-sharing): Step 0 probe capture → attach numbers; 30-min hooks-on vs hooks-muted overhead A/B; Charcoal Load Profile 2h capture on staging (NOT the 1,000-table rig); export screen-recording → Ali Dika verifies
+
+### Step 0 skip-probe RESULTS (2026-07-13, Landi via USB, ~4 min order building)
+
+- **skip-hits: 0** — prediction CONFIRMED. The ref-equality skip (`lib/storage.ts` `lastPersistedValue[name] === value`) never fires for `order-store-storage`; zustand persist hands a fresh StorageValue wrapper per setItem, so the branch is structurally dead.
+- **stringify cost: 0–1ms per fire at 3.7–16KB payloads.** Payload grew ~3.7KB → ~16KB as one order accumulated items (~0.5–0.7KB/item incl. modifiers). Fire cadence during active editing ≈ 1/s (12 fires in 14s burst) — matches the Audit B model.
+- **Interpretation:** at THIS payload size W1-1 is a ~1ms lever — nothing. Cost scales ~linearly with bytes, so the decisive number is real payload size at Charcoal hour-5 (25 open orders in the persisted set). Extrapolation: 150–300KB payload ⇒ ~10–20ms/fire ⇒ at ~1 fire/s bursts, a 1–6% JS-thread tax — meaningful but not obviously THE lag. Do NOT green-light or kill W1-1 yet; the harness's `persist.bytes.order-store-storage` max/avg during the Charcoal Load Profile capture decides it (Audit A #1).
+- TEMP probe commit reverted on both counts: harness branch revert commit after capture; `chore/wave0-skip-probe` branch retained for the ticket record (console.warn variant — babel strips console.log in preview builds).
+
+### First RELEASE-BUILD captures (2026-07-13, C20ProSE preview build, logcat-mirror retrieval)
+
+Two sessions (~3.3 min + ~11 min), exports at /tmp/dexa-telemetry/. Logcat chunk retrieval verified byte-exact; prevSession rollover recovered the earlier locked-in run.
+
+- **Long-task attribution (the arbiter): render/JS weight wins on release too.** 96 + 111 long tasks, ~12%/~4% of wall-time blocked, max 1.39–1.45s; only ~3–6% overlapped a persist stringify. Clusters: /order-processing and /tables(+detail). The 1.2–1.45s freezes on /tables are user-visible on a release build → W1-1 (persist) is NOT the primary lag lever; re-scope Wave 1 toward tables/order-processing render weight, keep persist as secondary.
+- **Persist (release):** order-store avg 57.5KB max 83.6KB, stringify avg 3.7ms max 13.4ms; arm:fire coalescing 5.4:1; skip = 0 (again). **floor-plan-db-storage is the biggest persist payload: ~192KB avg / 207KB max, ~10ms avg / 39.5ms max, ~7 fires/min** — audits missed it; likely `floorPlanCache` in partialize (memory-state audit noted the churn). Candidate new Wave-1 item.
+- **Own-echo slip (B#2): 67–79%** (18/27, 52/66) — noMeaningfulChange barely filters own echoes.
+- Broadcasts 1.5KB (v2 confirmed); rt handler avg 1.9–3.3ms; fanout cheap; get_order_details 7/13 per session; add_to_cart avg 213–233ms / max ~600ms release-mode.
+- Data-quality fix shipped: perf.ts tap now skips cancelled spans (TTL-expired boot_to_order mark had recorded 169.5s).
+
+## Wave-1 first fixes (2026-07-13, same session — user authorized executing fixes)
+
+- [x] **W1-A floor-plan persist trim (REAL FIX)**: `floorPlanCache` dropped from `useFloorPlanStore` partialize — was the app's biggest persist payload (192KB avg/207KB max, 39.5ms max stringify, ~7 fires/min; every table/session touch rewrote every cached plan). Rehydrate already tolerated absence (`?? {}` + persisted-tables fallback). Trade-off accepted: offline+restart switching to a NON-active plan needs a re-fetch; active plan still restores.
+- [x] **W1-B own-echo slip-reason attribution**: `rt.own_echo_slip.<reason>` counters (kitchen_sync_advance/amount_paid/paid_status/order_status/total_amount/discount/check_status/item_count/item_level/pending_changes) — first-differing-field, cold path only. Next capture names the echo fix; blanket skip rejected (station_id = order OWNER, not mutation origin — KDS bumps arrive on this path).
+- [x] **W1-C floor-switch attribution**: `floor.switch_paint_ms` (cached instant-paint JS block), `floor.load_rpc_ms` (network wait), `floor.load_apply_ms` (diff+commit+session patch) — pins /tables 1.2–1.4s long tasks to paint vs apply vs React render.
+- Verified: tsc delta 0 (141 pre-existing), telemetry + floor-plan-adjacent suites pass (1 pre-existing source-text assertion failure in broadcastMergeStationId, on base too).
+
+### Wave-1 verification capture (2026-07-13 14:23 export, 5.3min)
+
+- **Fix #1 CONFIRMED (partial)**: floor-plan persist 192→94KB avg, 207→121KB max, stringify 10.4→4.6ms avg, 39.5→20.2ms max (~55% per-min cut). Remaining bulk = active plan's `tables` (session objects included) + `sectionsById` duplication → further trim available.
+- **Fix #2 ANSWERED**: slips = total_amount 12 (46%), kitchen_sync_advance 10 (38%, legit KDS merges), item_count 2, order_status 2. → Echo fix = reconcile local total_amount vs server card_total (cent-drift/optimistic-totals mismatch); kitchen_sync_advance should NOT be suppressed.
+- **Fix #3 VERDICT — floor switch is NETWORK, store work is trivial**: switch_paint 3.4ms avg/7.9 max; load_apply 2.6ms avg/4.9 max; **load_rpc avg 5.85s, MAX 16.65s** (fetchFloorPlanSnapshot). pos.floor_switch 5.3s avg/17.2s max ≈ all RPC wait. Check Option C deadline coverage for fetchFloorPlanSnapshot + server-side cost. Also queue_flush max 12s (connectivity blips).
+- **Still unattributed: 1.0–1.26s JS blocks on /tables** (23 on /tables + 28 on table details, 54/56 no overlap) — NOT paint/apply/stringify. Prime suspect: full screen remount per navigation (enableFreeze(false) trade-off) mounting ~40 DraggableTables. Next: mount-span on TablesScreen or React Profiler session.
+
+## W1-1: Persist write-amplification fix (shallow-equal partialize memo) — code complete 2026-07-14
+
+Plan: ~/.claude/plans/evidence-pack-pos-cuddly-torvalds.md (approved; epoch design replaced by shallow-equal memo per architecture sign-off)
+
+- [x] `lib/telemetry/keys.ts` — persist.memo.hit / miss / would_skip keys
+- [x] `stores/orderPersistMemo.ts` — new leaf module (shallowSliceEqual + memoizePersistedSlice)
+- [x] `lib/storage.ts` — compare `value.state`; centralized `invalidatePersistCache` (removeItem/clearStorage/clearCacheData/removeKey); invariant comment
+- [x] `lib/network/featureFlags.ts` — persist.memo_gate_v1 (default ON, env EXPO_PUBLIC_PERSIST_MEMO_GATE)
+- [x] `stores/useOrderStore.ts` — wrap partialize return; register dev subset-check
+- [x] `services/offlineSyncService.ts` — registerPersistSubsetCheck + dev assertion in queueOperation
+- [x] `app/(main)/settings/dev-flags.tsx` — Persist memo gate switch row
+- [x] `stores/useCFDClientStore.ts` — fix stale skip comment
+- [x] Jest: orderPersistMemo, persistMemoStack, lazyStorageStateIdentity, subset assertion
+- [x] `npx tsc --noEmit`, lint, jest
+
+### Review (2026-07-14)
+- All 8 source changes landed exactly per plan; no scope creep. Epoch design replaced by shallow-equal memo (architecture sign-off in session; two adversarial reviews).
+- New tests: 4 suites / 25 tests, all green (orderPersistMemo, persistMemoStack — real subscribeWithSelector(persist(immer)) stack, lazyStorageStateIdentity — incl. the empty-disk-on-boot regression tests, persistSubsetAssertion).
+- `npx tsc --noEmit`: zero errors in touched files (remaining = pre-existing Deno/types/discounts classes).
+- eslint on touched files: zero new issues (2 pre-existing rules-of-hooks errors in dev-flags.tsx from the `!__DEV__` early return, untouched).
+- Full jest: identical failure set to HEAD (11 suites / 27 tests, all pre-existing) + 25 new passing.
+- jest-setup MMKV mock gained getBoolean/getNumber/remove (additive; needed by featureFlags gate reads under real-store tests).
+- Remaining (on-device, per ticket): kill-test matrix #1-#9 with telemetry export, dev-assertion scratch-build demo, Ali Dika verification, Temur sign-off recorded on ticket.
+
+## W1-3: Demand-driven order-detail fetch (staleness contract) — code complete 2026-07-14
+
+Scope decision (user-approved): gate ALL THREE broadcast change-signal triggers
+(status-rank advance, item_count mismatch, kitchen sync_version advance) — not
+just the ticket's item_count one — since kitchen sync_version fires for every
+sent_to_kitchen/preparing order on each KDS bump and would have kept the
+detail-RPC rate far above working-set-only. FIFO-bleed heal + pending-block
+timeout refreshes deliberately left ungated (rare correctness recovery).
+
+- [x] `stores/orderDetailStaleness.ts` — leaf module: detailStaleOrders +
+      visibleDetailOrders module dicts, isInLocalWorkingScope (working set ∪
+      active ∪ persistable ∪ visible, both key spaces), mark/clear/isStale,
+      registerVisibleOrderDetail (refcounted, idempotent unregister)
+- [x] `lib/telemetry/keys.ts` — rt.detail_refresh_suppressed counter
+- [x] `stores/useOrderStore.ts` — refreshOrMarkStale gate on the three
+      triggers; hydrateStaleOrderDetail action (force:true, clears only on
+      sync success inside syncOrderFromBackendComplete); hooks at
+      addToWorkingSet (before duplicate return) + claim applyLocalSuccess;
+      marker dropped in _cleanupOrderModuleState
+- [x] `app/(main)/online-orders/[orderId].tsx` — visible-detail registration
+      (screen shows item detail without setActiveOrder)
+- [x] Tests: orderDetailStaleness.test.ts (behavioral, 10) +
+      demandDrivenDetailFetch.test.ts (structural pin incl. call-site count
+      guard, 9) — all green
+- [x] tsc: zero errors in touched files · eslint: zero new errors ·
+      full jest: identical pre-existing failure baseline, +19 passing
+
+### Remaining (on-device)
+- Two-device self-verify: A mutates 5 non-working-set orders, B's
+  rpc.get_order_details counter must not move; B opens one → exactly one
+  fetch, items correct. rt.detail_refresh_suppressed climbs on B.
+- All entry paths open-check (table tap, order list, search, previous-orders
+  reopen), offline stale open → cached items + reconcile on reconnect,
+  split/refund/void on closed-then-reopened order, Ali Dika verification.

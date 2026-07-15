@@ -1,5 +1,6 @@
 import { useOrderPayments } from '@/hooks/orders/useOrderPayments'
 import { formatTaxRate } from '@/utils/money'
+import { isOnlineOrderSource } from '@/lib/orderSource'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
@@ -30,7 +31,7 @@ const TotalsComponent: React.FC = () => {
       reversals: order.reversals
     }
   }))
-  const isOnlineOrder = activeOrder?.order_source?.toLowerCase() === 'online'
+  const isOnlineOrder = isOnlineOrderSource(activeOrder?.order_source)
   const {
     payments: hydratedPayments,
     isPending: isPaymentsPending,

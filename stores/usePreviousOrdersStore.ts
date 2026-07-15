@@ -5,6 +5,7 @@ import {
     type BusinessDayConfig,
 } from "@/lib/businessDay";
 import { DEADLINES } from "@/lib/network/deadlines";
+import { isOnlineOrderSource } from "@/lib/orderSource";
 import { withDeadline } from "@/lib/network/withDeadline";
 import {
     derivePaidStatus,
@@ -610,7 +611,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         // Broadcast orders don't carry the online_orders join, so fall back to
         // order_source. Server-fetched orders (in _transformFetchedOrder) use
         // the authoritative online_orders join instead.
-        _isOnlineOrder: order.order_source?.toLowerCase() === "online",
+        _isOnlineOrder: isOnlineOrderSource(order.order_source),
         // Flag as offline/unsynced when archived without a backend row while the
         // device is offline. Drives the row's "Offline" badge; cleared when the
         // order later syncs and a server fetch replaces this entry.
