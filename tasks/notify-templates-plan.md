@@ -42,7 +42,11 @@ Per-event templates (all 11 keys). Gate `autoSmsEnabled`.
   `updateConfig('waitlist', { messageTemplates: { [key]: value } })`; defaults as placeholders + token
   legend. Until it ships, the existing single field already drives `waitlist.tableReady` via the legacy
   fallback, but the automated events have no editor surface yet.
-- **Wave 5 (optional)** — composer preview parity in `lib/notifyTemplates.ts` / `NotifyCustomerModal`.
+- **Wave 5 ✅** — composer preview parity. `lib/notifyTemplates.ts` `renderTemplate(key, ctx, merchantTemplate?)`
+  previews the merchant's saved template (client-fillable tokens `{name}/{store}/{date}/{time}` filled;
+  others left literal — server fills them at send). `NotifyCustomerModal` reads
+  `pos_config.waitlist.messageTemplates` (+ legacy `smsTemplate`→tableReady) and passes the override into
+  the preview. Send behavior unchanged (preset sends still re-render server-side).
 
 ## Out of scope
 Composer "edit-textarea-on-preset silently dropped" bug; `notification_prefs` online-order templates;
