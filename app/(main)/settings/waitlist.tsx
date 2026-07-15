@@ -22,17 +22,108 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+// Per-event SMS templates. `key` matches the notify `template_key` read by the
+// edge functions; `placeholder` mirrors the built-in default (shown when the
+// merchant leaves the field blank). Kept in sync with the server defaults in
+// supabase/functions/_shared/notifyTemplates.ts.
+const WAITLIST_EVENTS: { key: string; label: string; placeholder: string }[] = [
+  {
+    key: 'waitlist.added',
+    label: 'Added to waitlist',
+    placeholder:
+      "Hi {name}, you're on the waitlist at {store}. Your seat should be ready {wait}. We'll text you when it's ready."
+  },
+  {
+    key: 'waitlist.tableReady',
+    label: 'Table ready',
+    placeholder:
+      'Hi {name}! Your table at {store} is ready. Please check in with the host within 10 minutes.'
+  },
+  {
+    key: 'waitlist.almostReady',
+    label: 'Almost ready',
+    placeholder:
+      'Hi {name}! Your table at {store} will be ready in about 5 minutes.'
+  },
+  {
+    key: 'waitlist.runningLate',
+    label: 'Running late',
+    placeholder:
+      "Hi {name}, we're running a few more minutes behind at {store}. Thanks for your patience."
+  },
+  {
+    key: 'waitlist.updateConfirmed',
+    label: 'Wait update',
+    placeholder:
+      'Hi {name}, just a quick update on your wait at {store}. We\'ll have your table ready as soon as possible.'
+  },
+  {
+    key: 'waitlist.cancelled',
+    label: 'Removed from waitlist',
+    placeholder:
+      "Hi {name}, you've been removed from the waitlist at {store}. Please contact us if this was a mistake."
+  }
+]
+
+const RESERVATION_EVENTS: { key: string; label: string; placeholder: string }[] =
+  [
+    {
+      key: 'reservation.created',
+      label: 'Reservation confirmed',
+      placeholder:
+        'Hi {name}, your reservation at {store} for {party_size} is confirmed for {date} at {time}.'
+    },
+    {
+      key: 'reservation.moved',
+      label: 'Reservation moved',
+      placeholder:
+        'Hi {name}, your reservation at {store} has been moved to {date} at {time}.'
+    },
+    {
+      key: 'reservation.timeChanged',
+      label: 'Time changed',
+      placeholder:
+        'Hi {name}, your reservation time at {store} on {date} has changed to {time}.'
+    },
+    {
+      key: 'reservation.confirmation',
+      label: 'Confirmation reminder',
+      placeholder:
+        'Hi {name}, this is {store} confirming your reservation on {date} at {time}.'
+    },
+    {
+      key: 'reservation.cancelled',
+      label: 'Reservation cancelled',
+      placeholder:
+        'Hi {name}, your reservation at {store} on {date} at {time} has been cancelled.'
+    }
+  ]
+
+const WAITLIST_TOKENS_HINT = 'Variables: {name}, {store}, {store_address}, {wait}, {party_size}'
+const RESERVATION_TOKENS_HINT =
+  'Variables: {name}, {store}, {store_address}, {party_size}, {date}, {time}, {confirmation}'
+
+const toInt = (value: string, fallback: number) => {
+  const n = parseInt(value, 10)
+  return Number.isFinite(n) && n >= 0 ? n : fallback
+}
+const toNum = (value: string, fallback: number) => {
+  const n = parseFloat(value)
+  return Number.isFinite(n) && n >= 0 ? n : fallback
+}
+
 const WaitlistScreen = () => {
   const insets = useSafeAreaInsets()
   const { waitlist, removeWaitlistEntry } = useWaitlistStore()
   const waitlistConfig = useLocationConfigStore(s => s.config.waitlist)
   const updateConfig = useLocationConfigStore(s => s.updateConfig)
 
-  // All waitlist/reservation settings now from pos_config
+  // All waitlist/reservation settings live in pos_config (namespace: waitlist).
   const enableWaitlist = waitlistConfig.enabled
   const autoSmsEnabled = waitlistConfig.autoSmsEnabled
-  const smsTemplate = waitlistConfig.smsTemplate
-  const waitlistNotificationGracePeriodMinutes = waitlistConfig.notificationGracePeriodMinutes
+  const messageTemplates = waitlistConfig.messageTemplates ?? {}
+  const waitlistNotificationGracePeriodMinutes =
+    waitlistConfig.notificationGracePeriodMinutes
 
   const enableReservations = waitlistConfig.reservationsEnabled
   const daysAhead = String(waitlistConfig.reservationDaysAhead)
@@ -42,6 +133,75 @@ const WaitlistScreen = () => {
   const depositAmount = String(waitlistConfig.depositAmount)
   const cancellationPolicy = waitlistConfig.cancellationPolicy
 
+  // ── config setters (thin wrappers over the pos_config `waitlist` namespace) ──
+  const setEnableWaitlist = (v: boolean) => updateConfig('waitlist', { enabled: v })
+  const setAutoSmsEnabled = (v: boolean) =>
+    updateConfig('waitlist', { autoSmsEnabled: v })
+  const setEnableReservations = (v: boolean) =>
+    updateConfig('waitlist', { reservationsEnabled: v })
+  const setRequireDeposit = (v: boolean) =>
+    updateConfig('waitlist', { requireDeposit: v })
+  const setDaysAhead = (v: string) =>
+    updateConfig('waitlist', { reservationDaysAhead: toInt(v, 30) })
+  const setMaxGuestsPerSlot = (v: string) =>
+    updateConfig('waitlist', { maxGuestsPerSlot: toInt(v, 6) })
+  const setSlotDuration = (v: string) =>
+    updateConfig('waitlist', { slotDurationMinutes: toInt(v, 90) })
+  const setDepositAmount = (v: string) =>
+    updateConfig('waitlist', { depositAmount: toNum(v, 20) })
+  const setCancellationPolicy = (v: string) =>
+    updateConfig('waitlist', { cancellationPolicy: v })
+  const setGracePeriod = (v: string) =>
+    updateConfig('waitlist', {
+      notificationGracePeriodMinutes: toInt(v, 10) || 10
+    })
+
+  // Merge the edited key back into the full map — the backend jsonb merge is
+  // shallow at the namespace level, so we must send the complete object.
+  const setTemplate = (key: string, value: string) =>
+    updateConfig('waitlist', {
+      messageTemplates: { ...messageTemplates, [key]: value }
+    })
+
+  const avgWaitTime =
+    waitlist.length > 0
+      ? Math.round(
+          waitlist.reduce((acc, curr) => acc + curr.quoted_wait_minutes, 0) /
+            waitlist.length
+        )
+      : 0
+
+  const renderTemplateField = (event: {
+    key: string
+    label: string
+    placeholder: string
+  }) => (
+    <View key={event.key}>
+      <Text style={{ fontSize: 12, color: colors.label, marginBottom: 6 }}>
+        {event.label}
+      </Text>
+      <TextInput
+        multiline
+        value={messageTemplates[event.key] ?? ''}
+        onChangeText={value => setTemplate(event.key, value)}
+        placeholder={event.placeholder}
+        placeholderTextColor={colors.muted}
+        textAlignVertical="top"
+        style={{
+          backgroundColor: colors.card,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 8,
+          padding: 10,
+          color: colors.heading,
+          fontSize: 12,
+          minHeight: 68,
+          textAlignVertical: 'top'
+        }}
+      />
+    </View>
+  )
+
   // Mock Reservation Data for Timeline
   const mockReservations = [
     { time: '6:00 PM', name: 'Johnson', party: 4 },
@@ -49,14 +209,6 @@ const WaitlistScreen = () => {
     { time: '7:00 PM', name: 'Davis', party: 6 },
     { time: '7:15 PM', name: 'Miller', party: 3 }
   ]
-
-  const avgWaitTime =
-    waitlist.length > 0
-      ? Math.round(
-          waitlist.reduce((acc, curr) => acc + curr.quotedTime, 0) /
-            waitlist.length
-        )
-      : 0
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
@@ -85,7 +237,7 @@ const WaitlistScreen = () => {
             borderRadius: 12,
             borderWidth: 1,
             borderColor: colors.border,
-            overflow: 'hidden',
+            overflow: 'hidden'
           }}
         >
           {/* Section Header */}
@@ -96,7 +248,7 @@ const WaitlistScreen = () => {
               paddingHorizontal: 14,
               paddingVertical: 12,
               borderBottomWidth: 1,
-              borderBottomColor: colors.border,
+              borderBottomColor: colors.border
             }}
           >
             <View
@@ -107,7 +259,7 @@ const WaitlistScreen = () => {
                 backgroundColor: colors.teal + '15',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 10,
+                marginRight: 10
               }}
             >
               <Users size={16} color={colors.teal} />
@@ -123,16 +275,13 @@ const WaitlistScreen = () => {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'space-between',
+                justifyContent: 'space-between'
               }}
             >
               <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
                 Enable Digital Waitlist
               </Text>
-              <Switch
-                checked={enableWaitlist}
-                onCheckedChange={setEnableWaitlist}
-              />
+              <Switch checked={enableWaitlist} onCheckedChange={setEnableWaitlist} />
             </View>
 
             {enableWaitlist && (
@@ -147,7 +296,7 @@ const WaitlistScreen = () => {
                       fontWeight: '700',
                       color: colors.muted,
                       textTransform: 'uppercase',
-                      letterSpacing: 0.8,
+                      letterSpacing: 0.8
                     }}
                   >
                     Live Dashboard
@@ -160,12 +309,17 @@ const WaitlistScreen = () => {
                         borderRadius: 10,
                         borderWidth: 1,
                         borderColor: colors.border,
-                        padding: 12,
+                        padding: 12
                       }}
                     >
                       <Text style={{ fontSize: 11, color: colors.label }}>Waiting</Text>
                       <Text
-                        style={{ fontSize: 22, fontWeight: '700', color: colors.heading, marginTop: 2 }}
+                        style={{
+                          fontSize: 22,
+                          fontWeight: '700',
+                          color: colors.heading,
+                          marginTop: 2
+                        }}
                       >
                         {waitlist.length}
                       </Text>
@@ -177,12 +331,17 @@ const WaitlistScreen = () => {
                         borderRadius: 10,
                         borderWidth: 1,
                         borderColor: colors.border,
-                        padding: 12,
+                        padding: 12
                       }}
                     >
                       <Text style={{ fontSize: 11, color: colors.label }}>Avg Wait</Text>
                       <Text
-                        style={{ fontSize: 22, fontWeight: '700', color: colors.teal, marginTop: 2 }}
+                        style={{
+                          fontSize: 22,
+                          fontWeight: '700',
+                          color: colors.teal,
+                          marginTop: 2
+                        }}
                       >
                         {avgWaitTime}m
                       </Text>
@@ -196,7 +355,7 @@ const WaitlistScreen = () => {
                       borderRadius: 10,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      overflow: 'hidden',
+                      overflow: 'hidden'
                     }}
                   >
                     <View
@@ -205,7 +364,7 @@ const WaitlistScreen = () => {
                         paddingVertical: 8,
                         borderBottomWidth: 1,
                         borderBottomColor: colors.border,
-                        backgroundColor: colors.panel,
+                        backgroundColor: colors.panel
                       }}
                     >
                       <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
@@ -228,15 +387,15 @@ const WaitlistScreen = () => {
                             borderBottomColor: colors.border,
                             flexDirection: 'row',
                             alignItems: 'center',
-                            justifyContent: 'space-between',
+                            justifyContent: 'space-between'
                           }}
                         >
                           <View>
                             <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
-                              {entry.name}
+                              {entry.party_name}
                             </Text>
                             <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
-                              Party of {entry.partySize} · {entry.quotedTime}m quote
+                              Party of {entry.party_size} · {entry.quoted_wait_minutes}m quote
                             </Text>
                           </View>
                           <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -246,7 +405,7 @@ const WaitlistScreen = () => {
                                 backgroundColor: colors.info + '20',
                                 borderRadius: 7,
                                 borderWidth: 1,
-                                borderColor: colors.info + '50',
+                                borderColor: colors.info + '50'
                               }}
                             >
                               <MessageSquare size={14} color={colors.info} />
@@ -257,7 +416,7 @@ const WaitlistScreen = () => {
                                 backgroundColor: colors.success + '20',
                                 borderRadius: 7,
                                 borderWidth: 1,
-                                borderColor: colors.success + '50',
+                                borderColor: colors.success + '50'
                               }}
                             >
                               <Check size={14} color={colors.success} />
@@ -269,7 +428,7 @@ const WaitlistScreen = () => {
                                 backgroundColor: colors.danger + '15',
                                 borderRadius: 7,
                                 borderWidth: 1,
-                                borderColor: colors.danger + '30',
+                                borderColor: colors.danger + '30'
                               }}
                             >
                               <X size={14} color={colors.danger} />
@@ -284,7 +443,7 @@ const WaitlistScreen = () => {
                           padding: 8,
                           alignItems: 'center',
                           borderTopWidth: 1,
-                          borderTopColor: colors.border,
+                          borderTopColor: colors.border
                         }}
                       >
                         <Text style={{ fontSize: 11, color: colors.muted }}>
@@ -303,46 +462,40 @@ const WaitlistScreen = () => {
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
+                      justifyContent: 'space-between'
                     }}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
-                      Auto-SMS When Ready
-                    </Text>
-                    <Switch
-                      checked={autoSmsEnabled}
-                      onCheckedChange={setAutoSmsEnabled}
-                    />
-                  </View>
-                  {autoSmsEnabled && (
-                    <View>
-                      <Text style={{ fontSize: 12, color: colors.label, marginBottom: 6 }}>
-                        SMS Template
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+                        Automatic SMS
                       </Text>
-                      <TextInput
-                        multiline
-                        numberOfLines={3}
-                        style={{
-                          backgroundColor: colors.card,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          borderRadius: 8,
-                          padding: 10,
-                          color: colors.heading,
-                          fontSize: 12,
-                          height: 80,
-                          textAlignVertical: 'top',
-                        }}
-                        value={smsTemplate}
-                        onChangeText={setSmsTemplate}
-                        textAlignVertical="top"
-                        placeholderTextColor={colors.muted}
-                      />
-                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
-                        Available variables: {'{name}'}, {'{party_size}'}
+                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                        Auto-text guests when added to or removed from the waitlist.
                       </Text>
                     </View>
-                  )}
+                    <Switch checked={autoSmsEnabled} onCheckedChange={setAutoSmsEnabled} />
+                  </View>
+
+                  {/* Per-event message templates */}
+                  <View style={{ gap: 12 }}>
+                    <View>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '700',
+                          color: colors.muted,
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.8
+                        }}
+                      >
+                        Message Templates
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+                        Leave a field blank to use the default message. {WAITLIST_TOKENS_HINT}
+                      </Text>
+                    </View>
+                    {WAITLIST_EVENTS.map(renderTemplateField)}
+                  </View>
 
                   <View>
                     <Text style={{ fontSize: 12, color: colors.label, marginBottom: 6 }}>
@@ -351,13 +504,7 @@ const WaitlistScreen = () => {
                     <Input
                       className="bg-screen border-gray-600 text-white h-10"
                       value={String(waitlistNotificationGracePeriodMinutes ?? 10)}
-                      onChangeText={value => {
-                        const parsed = parseInt(value || '10', 10)
-                        updateStoreSetting(
-                          'waitlistNotificationGracePeriodMinutes',
-                          Number.isFinite(parsed) && parsed > 0 ? parsed : 10
-                        )
-                      }}
+                      onChangeText={setGracePeriod}
                       keyboardType="numeric"
                     />
                     <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
@@ -377,7 +524,7 @@ const WaitlistScreen = () => {
             borderRadius: 12,
             borderWidth: 1,
             borderColor: colors.border,
-            overflow: 'hidden',
+            overflow: 'hidden'
           }}
         >
           {/* Section Header */}
@@ -388,7 +535,7 @@ const WaitlistScreen = () => {
               paddingHorizontal: 14,
               paddingVertical: 12,
               borderBottomWidth: 1,
-              borderBottomColor: colors.border,
+              borderBottomColor: colors.border
             }}
           >
             <View
@@ -399,7 +546,7 @@ const WaitlistScreen = () => {
                 backgroundColor: colors.warning + '15',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginRight: 10,
+                marginRight: 10
               }}
             >
               <CalendarDays size={16} color={colors.warning} />
@@ -415,7 +562,7 @@ const WaitlistScreen = () => {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'space-between',
+                justifyContent: 'space-between'
               }}
             >
               <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
@@ -439,7 +586,7 @@ const WaitlistScreen = () => {
                       fontWeight: '700',
                       color: colors.muted,
                       textTransform: 'uppercase',
-                      letterSpacing: 0.8,
+                      letterSpacing: 0.8
                     }}
                   >
                     Booking Rules
@@ -475,22 +622,40 @@ const WaitlistScreen = () => {
                   </View>
                 </View>
 
+                {/* Reservation message templates */}
+                <View style={{ gap: 12 }}>
+                  <View>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        color: colors.muted,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.8
+                      }}
+                    >
+                      Reservation Messages
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+                      Leave a field blank to use the default message. {RESERVATION_TOKENS_HINT}
+                    </Text>
+                  </View>
+                  {RESERVATION_EVENTS.map(renderTemplateField)}
+                </View>
+
                 {/* Deposits */}
                 <View style={{ gap: 10 }}>
                   <View
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
+                      justifyContent: 'space-between'
                     }}
                   >
                     <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
                       Require Deposit
                     </Text>
-                    <Switch
-                      checked={requireDeposit}
-                      onCheckedChange={setRequireDeposit}
-                    />
+                    <Switch checked={requireDeposit} onCheckedChange={setRequireDeposit} />
                   </View>
                   {requireDeposit && (
                     <View style={{ gap: 10 }}>
@@ -520,7 +685,7 @@ const WaitlistScreen = () => {
                             color: colors.heading,
                             fontSize: 12,
                             height: 72,
-                            textAlignVertical: 'top',
+                            textAlignVertical: 'top'
                           }}
                           value={cancellationPolicy}
                           onChangeText={setCancellationPolicy}
@@ -545,7 +710,7 @@ const WaitlistScreen = () => {
                     borderColor: colors.teal + '50',
                     paddingVertical: 12,
                     borderRadius: 10,
-                    gap: 6,
+                    gap: 6
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>
@@ -561,7 +726,7 @@ const WaitlistScreen = () => {
                       fontSize: 12,
                       fontWeight: '700',
                       color: colors.heading,
-                      marginBottom: 8,
+                      marginBottom: 8
                     }}
                   >
                     Today's Upcoming
@@ -579,7 +744,7 @@ const WaitlistScreen = () => {
                           borderColor: colors.border,
                           paddingHorizontal: 12,
                           paddingVertical: 9,
-                          gap: 10,
+                          gap: 10
                         }}
                       >
                         <Clock size={14} color={colors.label} />
@@ -588,7 +753,7 @@ const WaitlistScreen = () => {
                             fontSize: 12,
                             fontWeight: '700',
                             color: colors.teal,
-                            width: 72,
+                            width: 72
                           }}
                         >
                           {res.time}
@@ -598,7 +763,7 @@ const WaitlistScreen = () => {
                             fontSize: 13,
                             fontWeight: '600',
                             color: colors.heading,
-                            flex: 1,
+                            flex: 1
                           }}
                         >
                           {res.name}
