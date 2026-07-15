@@ -3857,7 +3857,7 @@ const KitchenDisplayScreen = () => {
         </View>
       )}
 
-      {/* ─── Single Active FlatList ─── */}
+      {/* ─── Active tab ticket grid (ScrollView, one tab rendered at a time) ─── */}
       {!isReady || (isInitialLoading && !hasHydrated) ? (
         renderSkeletons()
       ) : activeTabTickets.length === 0 ? (

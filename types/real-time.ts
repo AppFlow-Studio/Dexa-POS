@@ -9,7 +9,6 @@ export type RealtimeChannelTopic =
   | `location:${string}:tables`
   | `location:${string}:waitlist`
   | `location:${string}:orders`
-  | `location:${string}:kitchen`
   | `location:${string}:settings`
   | `session:${string}:events`;
 
@@ -25,7 +24,6 @@ export type RealtimeEventType =
   | 'TABLE_ASSIGNMENT_UPDATE'
   | 'TABLE_ASSIGNMENT_DELETE'
   | 'SESSION_EVENT'
-  | 'SESSION_ORDER_UPDATE'
   // Waitlist Events (location:*:waitlist channel)
   | 'WAITLIST_INSERT'
   | 'WAITLIST_UPDATE'
@@ -327,7 +325,6 @@ export interface UseFloorRealtimeOptions {
   onSessionChange?: (payload: TableSessionPayload) => void;
   onTableAssignment?: (payload: TableAssignmentPayload) => void;
   onSessionEvent?: (payload: SessionEventPayload) => void;
-  onOrderUpdate?: (payload: OrderPayload) => void;
 }
 
 export interface UseWaitlistRealtimeOptions {
@@ -373,8 +370,6 @@ export const buildChannelTopic = {
     `location:${locationId}:waitlist`,
   orders: (locationId: string): RealtimeChannelTopic =>
     `location:${locationId}:orders`,
-  kitchen: (locationId: string): RealtimeChannelTopic =>
-    `location:${locationId}:kitchen`,
   settings: (locationId: string): RealtimeChannelTopic =>
     `location:${locationId}:settings`,
   sessionEvents: (sessionId: string): RealtimeChannelTopic =>

@@ -1,5 +1,6 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { DEADLINES } from "@/lib/network/deadlines";
+import { ONLINE_ORDER_SOURCES } from "@/lib/orderSource";
 import { withDeadline } from "@/lib/network/withDeadline";
 import { useOrderStore } from "@/stores/useOrderStore";
 import {
@@ -53,7 +54,7 @@ export function useKdsOnlineOrdersBootstrap({
               .from("orders")
               .select(`*, order_items(*, order_item_modifiers(*))`)
               .eq("location_id", locationId)
-              .eq("order_source", "online")
+              .in("order_source", [...ONLINE_ORDER_SOURCES])
               .eq("order_items.is_voided", false)
               .in("status", ACTIVE_ONLINE_STATUSES)
               .order("created_at", { ascending: false })

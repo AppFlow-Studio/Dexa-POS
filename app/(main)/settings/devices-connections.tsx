@@ -5,6 +5,7 @@ import { PrinterRoutingModal } from '@/components/settings/PrinterRoutingModal'
 import { usePaymentTerminal } from '@/hooks/usePaymentTerminal'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { useTerminalStatus } from '@/hooks/useTerminalStatus'
+import { exportTelemetry } from '@/lib/telemetry/export'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { toastService } from '@/lib/toastService'
@@ -330,6 +331,27 @@ const DevicesConnectionsScreen = ({
       setIsCheckingUpdate(false)
     }
   }
+  // Wave-0 telemetry: hidden export — long-press the version value to dump
+  // the local perf ring buffer as JSON and open the share sheet. Local-only,
+  // works offline; even if no share target exists the file lands in the
+  // cache directory (retrievable via adb).
+  const handleExportTelemetry = async () => {
+    try {
+      const fileUri = await exportTelemetry()
+      toastService.show({
+        title: 'Telemetry Exported',
+        message: `Saved to ${fileUri}`,
+        type: 'success'
+      })
+    } catch (e) {
+      toastService.show({
+        title: 'Telemetry Export Failed',
+        message: e instanceof Error ? e.message : 'Unknown error',
+        type: 'error'
+      })
+    }
+  }
+
   const toggleSection = (s: keyof typeof expandedSections) =>
     setExpandedSections(prev => ({ ...prev, [s]: !prev[s] }))
 
@@ -3448,16 +3470,22 @@ const DevicesConnectionsScreen = ({
                   <Text style={{ fontSize: s(12), color: colors.label }}>
                     Current Version
                   </Text>
-                  <Text
-                    style={{
-                      fontSize: s(12),
-                      fontWeight: '600',
-                      color: colors.heading,
-                      fontFamily: 'monospace'
-                    }}
+                  <TouchableOpacity
+                    activeOpacity={1}
+                    onLongPress={handleExportTelemetry}
+                    delayLongPress={600}
                   >
-                    {currentVersion}
-                  </Text>
+                    <Text
+                      style={{
+                        fontSize: s(12),
+                        fontWeight: '600',
+                        color: colors.heading,
+                        fontFamily: 'monospace'
+                      }}
+                    >
+                      {currentVersion}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
                 {/* Last checked row */}

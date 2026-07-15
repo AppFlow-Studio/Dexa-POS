@@ -3059,10 +3059,14 @@ export const useKDSStore = create<KDSState>()(
         const anySent = actionableUpdatedItems.some(
           (i) => i.kitchen_status === "sent",
         );
+        // 2-step mode hides the Pending bucket — remap like buildTicketsFromBroadcast,
+        // or a ticket with remaining 'sent' items (online orders) vanishes on tap.
         const newTicketStatus: KDSTicket["status"] = allReady
           ? "ready"
           : anySent
-            ? "pending"
+            ? getKitchenSentStatus() === "preparing"
+              ? "cooking"
+              : "pending"
             : "cooking";
         const resetEpoch = allReady && wasRecalled;
 

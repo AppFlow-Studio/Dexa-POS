@@ -105,7 +105,6 @@ export function LocationRealtimeProvider({
     onSessionChange: callbacks?.onSessionChange,
     onTableAssignment: callbacks?.onTableAssignment,
     onSessionEvent: callbacks?.onSessionEvent,
-    onOrderUpdate: callbacks?.onOrderChange,
   });
 
   // Waitlist realtime subscription

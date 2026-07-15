@@ -1,5 +1,11 @@
 module.exports = function (api) {
-  api.cache(true);
+  // Cache must key on the env inputs below — a static cache would reuse a
+  // production config (console stripping on) after a local
+  // `NODE_ENV=production` run, or vice versa.
+  api.cache.using(
+    () =>
+      `${process.env.NODE_ENV}|${process.env.BABEL_ENV}|${process.env.EAS_BUILD_PROFILE}`
+  );
 
   const easProfile = process.env.EAS_BUILD_PROFILE;
   const stripConsole =
