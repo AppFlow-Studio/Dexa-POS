@@ -15255,8 +15255,16 @@ export const useOrderStore = create<OrderState>()(
                       localPaymentsByDbId.set(lp.db_payment_id, lp);
                   }
 
+                  // Only adopt the direct-select payments when it actually
+                  // returned rows. A successful-but-EMPTY read ([]) must fall
+                  // back to local — the direct order_payments select returns 0
+                  // rows in this environment (RLS/permissions; the RPC path
+                  // get_order_details sees them fine), and `[].map()` is a truthy
+                  // empty array, so the old `|| localOrder?.payments` fallback
+                  // never fired and a just-committed payment got wiped.
                   const syncedPayments: OrderProfilePayment[] =
-                    dbPayments?.map((p) => {
+                    dbPayments && dbPayments.length > 0
+                      ? dbPayments.map((p) => {
                       // Proper status mapping — preserve authorized for pre-auth
                       const status: OrderProfilePayment["status"] =
                         p.status === "voided"
@@ -15366,9 +15374,8 @@ export const useOrderStore = create<OrderState>()(
                             }
                           : {}),
                       };
-                    }) ||
-                    localOrder?.payments ||
-                    [];
+                        })
+                      : (localOrder?.payments ?? []);
 
                   // ================================================================
                   // CALCULATE paid_status FROM LOCAL PAYMENTS ONLY
@@ -15408,14 +15415,34 @@ export const useOrderStore = create<OrderState>()(
                     ? state.orderIds
                     : [...state.orderIds, localOrderId];
 
+                  // When the direct order_payments read came back empty and we
+                  // kept local payments (RLS returns 0 rows in this env), the raw
+                  // orders-row financials are stale/unpopulated — amount_paid/
+                  // amount_due are computed from order_payments by the RPCs, not
+                  // stored authoritatively on the orders row. Preserve the local,
+                  // RPC-reconciled financials so Amount Paid / Balance Due stay
+                  // consistent with the payments we just kept (otherwise the footer
+                  // loses "Paid" and Total Due snaps back to the full total).
+                  const keptLocalPayments =
+                    !(dbPayments && dbPayments.length > 0) &&
+                    (localOrder?.payments?.length ?? 0) > 0;
+
                   const updatedOrderProfile: OrderProfile = {
                     ...baseOrderProfile,
                     items: allItems,
                     payments: syncedPayments,
-                    // Use database as source of truth for financial data
-                    amount_paid: dbOrder.amount_paid || 0,
-                    amount_due: dbOrder.amount_due || 0,
-                    cash_amount_due: dbOrder.cash_amount_due, // Direct from DB - authoritative
+                    // Use database as source of truth for financial data — except
+                    // when we kept local payments over an empty DB read (above),
+                    // in which case the orders-row financials are stale/unpopulated.
+                    amount_paid: keptLocalPayments
+                      ? (localOrder?.amount_paid ?? dbOrder.amount_paid ?? 0)
+                      : (dbOrder.amount_paid || 0),
+                    amount_due: keptLocalPayments
+                      ? (localOrder?.amount_due ?? dbOrder.amount_due ?? 0)
+                      : (dbOrder.amount_due || 0),
+                    cash_amount_due: keptLocalPayments
+                      ? (localOrder?.cash_amount_due ?? dbOrder.cash_amount_due)
+                      : dbOrder.cash_amount_due,
                     total_amount: dbOrder.card_total || dbOrder.total_amount,
                     total_tax: dbOrder.card_tax_amount || dbOrder.tax_amount,
                     paid_status: syncedPaidStatus,
