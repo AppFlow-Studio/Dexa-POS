@@ -760,6 +760,8 @@ export interface OrderPaymentTransactionDetails {
   dejavooTransaction?: DejavooSaleTransactionResponse;
   // Full Castles response JSONB (from buildCastlesTerminalResponse)
   castlesTransaction?: Record<string, unknown>;
+  // Full Valor response JSONB (from buildValorTerminalResponse)
+  valorTransaction?: Record<string, unknown>;
   [key: string]: unknown;
 }
 

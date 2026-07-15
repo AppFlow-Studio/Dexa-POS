@@ -39,6 +39,10 @@ import {
     stopCastlesUsbAutoConnect,
 } from "@/services/terminals/castlesUsbAutoConnect";
 import {
+    startValorUsbAutoConnect,
+    stopValorUsbAutoConnect,
+} from "@/services/terminals/valorUsbAutoConnect";
+import {
     startTimeclockSyncProcessor,
     stopTimeclockSyncProcessor,
 } from "@/services/timeclockSyncProcessor";
@@ -272,11 +276,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     const isUsbCastles =
       terminal?.terminal_type === "castles" &&
       terminal?.connection_type === "usb";
+    const isUsbValor =
+      terminal?.terminal_type === "valor" &&
+      terminal?.connection_type === "usb";
     if (!isKDS && isUsbCastles) {
       startCastlesUsbAutoConnect();
     }
+    if (!isKDS && isUsbValor) {
+      startValorUsbAutoConnect();
+    }
     return () => {
       stopCastlesUsbAutoConnect();
+      stopValorUsbAutoConnect();
     };
   }, [
     isKDS,

@@ -27,6 +27,9 @@ import {
 } from "@/services/terminals/castles-response-mapper";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
+import { getSharedValorService } from "@/services/terminals/valor-service";
+import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
+import { VALOR_DEFAULT_PORT } from "@/types/valor";
 import {
   useActiveOrder,
   useActiveOrderTotals,
@@ -114,7 +117,9 @@ const CardPaymentView = () => {
     last4?: string;
     amount: number;
     tipAmount: number;
-    terminalType: "castles" | "dejavoo";
+    terminalType: "castles" | "dejavoo" | "valor";
+    /** Valor reversal reference (charge-slip "Trans" number) for tip-adjust. */
+    tranNo?: string;
   } | null>(null);
   const tipAdjustTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -495,6 +500,197 @@ const CardPaymentView = () => {
               // Clear any captured payment from the store so the runner
               // doesn't fire on a stale tip if the customer eventually
               // taps. Mirrors what the lastCompletedAt observer would do.
+              useTipAdjustStore.getState().clear();
+              showApproved();
+              schedulePostTipAdjustIdle(3000);
+              setStatus("success");
+              tipAdjustTimeoutRef.current = null;
+            }, tipAdjustTimeoutMs);
+            return;
+          }
+
+          // ============ VALOR BRANCH ============
+          if (terminal.terminal_type === "valor") {
+            const isUsb = terminal.connection_type === "usb";
+            const host = isUsb ? undefined : terminal.ip_address;
+            if (!isUsb && !host)
+              throw new Error("Valor terminal has no IP address configured");
+            const port = isUsb
+              ? undefined
+              : (terminal.port ?? VALOR_DEFAULT_PORT);
+
+            const service = getSharedValorService();
+            await service.connect({
+              connectionType: isUsb ? "usb" : "local_socket",
+              host,
+              port,
+              cancelPort: terminal.cancel_port,
+              epi: terminal.epi,
+              timeout: 120_000,
+              terminalId: terminal.id,
+            });
+
+            const counter = getOrCreateValorCounter({
+              terminalId: terminal.id,
+              supabaseClient: supabase,
+            });
+            if (!counter.isInitialized) await counter.initialize();
+            const referenceId = counter.next();
+            currentRefIdRef.current = referenceId;
+
+            // Pre-swipe journal (idempotency handle) — written BEFORE the send.
+            const activeOrderForJournal =
+              useOrderStore.getState().activeOrderId;
+            const orderForJournal = activeOrderForJournal
+              ? useOrderStore.getState().ordersById[activeOrderForJournal]
+              : undefined;
+            const paymentJournalKey = uuidv4();
+            const paymentJournalId = writePaymentJournal({
+              orderId: activeOrderForJournal ?? "unknown",
+              dbOrderId: orderForJournal?.db_order_id,
+              amount: totalToPay,
+              tipAmount,
+              paymentMethod: "Card",
+              idempotencyKey: paymentJournalKey,
+            });
+
+            // Valor amounts are integer cents.
+            const amountCents = Math.round((totalToPay + Number.EPSILON) * 100);
+            const tipCents = Math.round((tipAmount + Number.EPSILON) * 100);
+
+            const result = await service.processSale({
+              amount: amountCents,
+              tipAmount: tipCents,
+              referenceId,
+              // Capture STAN at S2 (before card) into the journal so an
+              // immediate crash can still recover via TRAN_MODE 90.
+              onStan: (stan) => {
+                updatePaymentJournal(paymentJournalId, {
+                  status: "terminal_approved",
+                  terminalTxnId: stan,
+                  ...(orderForJournal?.db_order_id && {
+                    dbOrderId: orderForJournal.db_order_id,
+                  }),
+                });
+              },
+            });
+
+            const valorTx = result.terminalResponse?.valor_transaction as
+              | Record<string, string>
+              | undefined;
+
+            // INDETERMINATE — the terminal may have charged. Do NOT complete
+            // the payment or fail the journal; leave it for reconciliation.
+            if (result.indeterminate) {
+              updatePaymentJournal(paymentJournalId, {
+                status: "terminal_approved",
+                terminalTxnId: result.stan ?? referenceId,
+              });
+              showIdle();
+              setErrorModal({
+                visible: true,
+                title: "Verifying Payment",
+                message:
+                  "The payment result could not be confirmed. Check the terminal before charging again — do not re-charge if the terminal shows approved.",
+              });
+              return;
+            }
+
+            // Clean decline — no charge happened.
+            if (!result.success) {
+              failPaymentJournal(
+                paymentJournalId,
+                `terminal_declined: ${result.error ?? "Declined"}`,
+              );
+              showDeclined();
+              setErrorModal({
+                visible: true,
+                title: "Payment Declined",
+                message: result.error || "Transaction failed",
+              });
+              return;
+            }
+
+            // PARTIAL approval — record the approved portion, keep the order
+            // outstanding for the remainder. Never auto-complete or re-run full.
+            if (result.partial) {
+              const approvedDollars = (result.approvedAmount ?? 0) / 100;
+              await handlePaymentCompletion({
+                method: "Card",
+                tipAmount: 0,
+                transactionDetails: {
+                  terminalType: "valor",
+                  isCashPriced: false,
+                  authorizationCode: valorTx?.approvalCode,
+                  cardType: valorTx?.cardType,
+                  last4: valorTx?.cardLast4,
+                  transactionId: referenceId,
+                  rrn: valorTx?.rrn,
+                  valorTransaction: result.terminalResponse,
+                  paymentJournalHandle: {
+                    id: paymentJournalId,
+                    idempotencyKey: paymentJournalKey,
+                  },
+                },
+                amountOverride: approvedDollars,
+              });
+              showIdle();
+              setErrorModal({
+                visible: true,
+                title: "Partial Approval",
+                message: `Approved $${approvedDollars.toFixed(2)}. Collect the remaining $${Math.max(0, totalToPay - approvedDollars).toFixed(2)} with another payment.`,
+              });
+              setStatus("ready");
+              return;
+            }
+
+            // Full success — complete + transition to CFD tip adjust.
+            const completionResult = await handlePaymentCompletion({
+              method: "Card",
+              tipAmount,
+              transactionDetails: {
+                terminalType: "valor",
+                isCashPriced: false,
+                authorizationCode: valorTx?.approvalCode,
+                cardType: valorTx?.cardType,
+                last4: valorTx?.cardLast4,
+                transactionId: referenceId,
+                rrn: valorTx?.rrn,
+                valorTransaction: result.terminalResponse,
+                paymentJournalHandle: {
+                  id: paymentJournalId,
+                  idempotencyKey: paymentJournalKey,
+                },
+              },
+              amountOverride: totalToPay,
+            });
+
+            const captured = {
+              referenceId,
+              rrn: result.rrn,
+              stan: result.stan,
+              tranNo: result.tranNo ?? valorTx?.tranNo,
+              dbPaymentId: (completionResult as any)?.dbPaymentId,
+              last4: valorTx?.cardLast4,
+              amount: totalToPay,
+              tipAmount,
+              terminalType: "valor" as const,
+            };
+            capturedPaymentRef.current = captured;
+            useTipAdjustStore.getState().setCaptured({
+              ...captured,
+              localOrderId: activeOrderId ?? undefined,
+              dbOrderId:
+                (activeOrderId
+                  ? useOrderStore.getState().ordersById[activeOrderId]
+                      ?.db_order_id
+                  : undefined) ?? undefined,
+              capturedAt: Date.now(),
+            });
+
+            showTipSelection(totalToPay, TIP_PRESETS, "card");
+            setStatus("tip_adjusting");
+            tipAdjustTimeoutRef.current = setTimeout(() => {
               useTipAdjustStore.getState().clear();
               showApproved();
               schedulePostTipAdjustIdle(3000);
@@ -1310,6 +1506,15 @@ const CardPaymentView = () => {
                   try {
                     if (terminal?.terminal_type === "castles") {
                       await getSharedCastlesService().gracefulDisconnect();
+                    } else if (terminal?.terminal_type === "valor") {
+                      // Cancel-before-card on the 5001 socket. Fire-and-don't-
+                      // trust: if the card already landed this is a no-op and the
+                      // main sale reconciles via TRAN_MODE 90.
+                      if (currentRefIdRef.current) {
+                        await getSharedValorService().cancelInFlight(
+                          currentRefIdRef.current,
+                        );
+                      }
                     } else if (terminal) {
                       const DejavooAPI = new DejavooSpinAPI(supabase);
                       await DejavooAPI.loadTerminal(

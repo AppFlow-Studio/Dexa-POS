@@ -15,6 +15,9 @@ import {
     isTerminalTransportDead,
 } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
+import { getSharedValorService } from "@/services/terminals/valor-service";
+import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
+import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from "@/types/valor";
 import {
     CASTLES_DEFAULT_PORT,
     CASTLES_SOCKET_TIMEOUT_MS,
@@ -222,11 +225,17 @@ export class RefundService {
           castlesTxn?.stan ||
           p.processor_response?.raw_castles_response?.txnStan ||
           "";
+        // Valor reversal reference is TRAN_NO (charge-slip "Trans" number), NOT rrn/stan.
+        const valorTxn = p.processor_response?.valor_transaction;
+        const tranNo = valorTxn?.tranNo || "";
+        const cardLast4 = valorTxn?.cardLast4 || castlesTxn?.cardLast4 || "";
         return {
           paymentId: p.id,
           referenceId: p.reference_number || p.transaction_id || "",
           rrn: p.rrn || "",
           stan,
+          tranNo,
+          cardLast4,
           authCode: p.auth_code || "",
           amount,
           tipAmount: Number(p.tip_amount || 0),
@@ -1327,6 +1336,15 @@ export class RefundService {
       );
     }
 
+    if (terminalType === "valor") {
+      return this.processValorTerminalRefund(
+        payment,
+        amount,
+        useVoid,
+        terminal!,
+      );
+    }
+
     // Dejavoo flow
     const api = new DejavooSpinAPI(this.supabase);
     const loaded = await api.loadTerminal(terminalId, terminal);
@@ -1439,6 +1457,78 @@ export class RefundService {
       Sentry.captureException(err instanceof Error ? err : new Error(message), {
         tags: {
           source: "castles_refund",
+          terminal_ip: terminal.ip_address ?? "unknown",
+        },
+      });
+      return { success: false, error: message };
+    }
+  }
+
+  private async processValorTerminalRefund(
+    payment: PaymentRefundContext,
+    amount: number,
+    useVoid: boolean,
+    terminal: StationPaymentTerminal,
+  ): Promise<{
+    success: boolean;
+    terminalResponse?: Record<string, unknown>;
+    error?: string;
+  }> {
+    const isUsb = terminal.connection_type === "usb";
+    if (!isUsb && !terminal.ip_address) {
+      return { success: false, error: "Valor terminal missing IP address." };
+    }
+
+    const valor = getSharedValorService();
+    try {
+      await valor.connect({
+        connectionType: isUsb ? "usb" : "local_socket",
+        host: isUsb ? undefined : terminal.ip_address,
+        port: isUsb ? undefined : (terminal.port ?? VALOR_DEFAULT_PORT),
+        cancelPort: terminal.cancel_port,
+        epi: terminal.epi,
+        timeout: VALOR_SALE_TIMEOUT_MS,
+        terminalId: terminal.id,
+      });
+
+      const counter = getOrCreateValorCounter({
+        terminalId: terminal.id,
+        supabaseClient: this.supabase,
+      });
+      if (!counter.isInitialized) await counter.initialize();
+      const referenceId = counter.next();
+
+      if (useVoid) {
+        // Valor void references the original by TRAN_NO (or CARD_NO last-4) —
+        // NOT rrn/stan.
+        const tranNo = payment.tranNo || undefined;
+        const cardNo = payment.cardLast4 || undefined;
+        if (!tranNo && !cardNo) {
+          return {
+            success: false,
+            error: "Cannot void: no TRAN_NO or card last-4 from original transaction.",
+          };
+        }
+        const result = await valor.processVoid({ tranNo, cardNo, referenceId });
+        return {
+          success: result.success,
+          terminalResponse: result.terminalResponse,
+          error: result.error,
+        };
+      }
+
+      const result = await valor.processRefund({ amount, referenceId });
+      return {
+        success: result.success,
+        terminalResponse: result.terminalResponse,
+        error: result.error,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[RefundService] Valor terminal refund error:", message);
+      Sentry.captureException(err instanceof Error ? err : new Error(message), {
+        tags: {
+          source: "valor_refund",
           terminal_ip: terminal.ip_address ?? "unknown",
         },
       });

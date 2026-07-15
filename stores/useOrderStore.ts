@@ -2809,6 +2809,11 @@ const syncPaymentToBackend = async (
       return details.castlesTransaction as Record<string, unknown>;
     }
 
+    // Valor: pre-built JSONB from buildValorTerminalResponse() — pass through directly
+    if (details.valorTransaction) {
+      return details.valorTransaction as Record<string, unknown>;
+    }
+
     const tx = details.dejavooTransaction;
     const entryType = tx?.entryType ?? tx?.entryMode;
     const amounts = tx?.amounts || {

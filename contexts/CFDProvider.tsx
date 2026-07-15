@@ -32,6 +32,8 @@ import { queueFailedOperation } from '@/services/offlineSyncInit'
 import { queueOperation } from '@/services/offlineSyncService'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { getOrCreateCounter } from '@/services/terminals/castles-txn-counter'
+import { getSharedValorService } from '@/services/terminals/valor-service'
+import { getOrCreateValorCounter } from '@/services/terminals/valor-txn-counter'
 import { adjustTips, type TipAdjustment } from '@/services/tipAdjustService'
 import {
   getOrderTypeDisplay,
@@ -49,6 +51,7 @@ import { useSeatingStore } from '@/stores/useSeatingStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTipAdjustStore } from '@/stores/useTipAdjustStore'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
+import { VALOR_DEFAULT_PORT } from '@/types/valor'
 import type {
   CFDCartItem,
   CFDPairingData,
@@ -2423,6 +2426,65 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
             } else {
               terminalTipAdjustSucceeded = true
               console.log('[CFD tip-adjust] Castles tip adjust ok')
+            }
+          }
+        } else if (captured.terminalType === 'valor') {
+          const service = getSharedValorService()
+          const isUsb = terminal.connection_type === 'usb'
+          const host = isUsb ? undefined : terminal.ip_address
+          if (!isUsb && !host) throw new Error('Valor terminal has no IP')
+          const port = isUsb ? undefined : (terminal.port ?? VALOR_DEFAULT_PORT)
+          await service.connect({
+            connectionType: isUsb ? 'usb' : 'local_socket',
+            host,
+            port,
+            cancelPort: terminal.cancel_port,
+            epi: terminal.epi,
+            timeout: 120_000,
+            terminalId: terminal.id
+          })
+
+          const counter = getOrCreateValorCounter({
+            terminalId: terminal.id,
+            supabaseClient: supabase
+          })
+          if (!counter.isInitialized) await counter.initialize()
+          const adjustRefId = counter.next()
+
+          // Valor tip-adjust references the original by TRAN_NO (or CARD_NO
+          // last-4) — NOT rrn/stan. Amount is integer cents.
+          const tranNo = captured.tranNo
+          const cardNo = captured.last4
+          if (!tranNo && !cardNo) {
+            console.warn(
+              '[CFD tip-adjust] cannot tip adjust — missing TRAN_NO/card from original sale'
+            )
+            toastService.show({
+              type: 'warning',
+              title: 'Tip Adjust Skipped',
+              message:
+                'Missing transaction reference — tip adjust requires manual entry on terminal.'
+            })
+          } else {
+            const result = await service.tipAdjust({
+              tipAmount: Math.round((customerTip + Number.EPSILON) * 100),
+              tranNo,
+              cardNo,
+              referenceId: adjustRefId
+            })
+            if (!result.success) {
+              console.error(
+                '[CFD tip-adjust] Valor tip adjust failed:',
+                result.error
+              )
+              toastService.show({
+                type: 'error',
+                title: 'Tip Adjust Failed',
+                message: result.error || 'Terminal rejected tip adjustment.'
+              })
+            } else {
+              terminalTipAdjustSucceeded = true
+              console.log('[CFD tip-adjust] Valor tip adjust ok')
             }
           }
         } else {

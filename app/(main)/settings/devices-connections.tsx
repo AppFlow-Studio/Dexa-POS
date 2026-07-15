@@ -371,7 +371,7 @@ const DevicesConnectionsScreen = ({
   const [showTerminalPicker, setShowTerminalPicker] = useState(false)
   const [showRegisterForm, setShowRegisterForm] = useState(false)
   const [registerFormType, setRegisterFormType] = useState<
-    'dejavoo' | 'castles'
+    'dejavoo' | 'castles' | 'valor'
   >('castles')
   const [registerForm, setRegisterForm] = useState({
     name: '',
@@ -385,7 +385,10 @@ const DevicesConnectionsScreen = ({
     /** Pre-discovered serial number from the USB wizard's getData handshake.
      *  Threaded into the INSERT so the terminal card shows S/N immediately
      *  instead of "— not yet discovered —" until the next testConnection. */
-    serialNumber: '' as string
+    serialNumber: '' as string,
+    /** Valor cancel port (5001) + EPI (merchant/device id). */
+    cancelPort: '5001',
+    epi: ''
   })
   const [isEditingTerminal, setIsEditingTerminal] = useState(false)
   const [editForm, setEditForm] = useState({
@@ -395,7 +398,9 @@ const DevicesConnectionsScreen = ({
     authKey: '',
     ipAddress: '',
     port: '8080',
-    connectionType: 'local_socket' as 'local_socket' | 'usb'
+    connectionType: 'local_socket' as 'local_socket' | 'usb',
+    cancelPort: '5001',
+    epi: ''
   })
   const [isAssigning, setIsAssigning] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
@@ -697,6 +702,90 @@ const DevicesConnectionsScreen = ({
             }
           })
         }
+      } else if (registerFormType === 'valor') {
+        const connectionType =
+          registerForm.connectionType === 'usb' ? 'usb' : 'local'
+        const localIp =
+          registerForm.connectionType === 'local_socket'
+            ? registerForm.ipAddress
+            : null
+        const localPort =
+          registerForm.connectionType === 'local_socket'
+            ? parseInt(registerForm.port, 10) || 5000
+            : null
+        const cancelPort = parseInt(registerForm.cancelPort, 10) || 5001
+
+        // Pre-test over TCP to discover the serial number before the INSERT.
+        let discoveredSN: string | undefined
+        if (
+          registerForm.connectionType === 'local_socket' &&
+          registerForm.ipAddress
+        ) {
+          const preTest = await testConnectionWithConfig({
+            terminalId: `provisional-${selectedStation.id}`,
+            terminalType: 'valor',
+            ipAddress: registerForm.ipAddress,
+            port: localPort ?? 5000,
+            cancelPort,
+            epi: registerForm.epi
+          })
+          discoveredSN = preTest.serialNumber
+        }
+
+        // Store the IP in BOTH local_ip_address (surfaced as ip_address by the
+        // station RPC, so the sale path works without a server change) AND the
+        // valor_* columns (canonical config).
+        const { data: terminalRow, error: termErr } = await supabase
+          .from('payment_terminals')
+          .insert({
+            location_id: selectedStore.id,
+            merchant_id: selectedStore.merchant_id,
+            station_id: selectedStation.id,
+            terminal_name: registerForm.name,
+            terminal_type: 'valor',
+            terminal_model: registerForm.model || null,
+            register_id: 'VALOR',
+            auth_key: 'VALOR',
+            local_ip_address: localIp,
+            local_port: localPort,
+            valor_ip_address: localIp,
+            valor_port: localPort ?? 5000,
+            valor_cancel_port: cancelPort,
+            valor_epi: registerForm.epi || null,
+            connection_type: connectionType,
+            is_active: true,
+            is_connected: false,
+            api_environment: 'production',
+            serial_number: discoveredSN ?? null
+          } as any)
+          .select('id')
+          .single()
+        if (termErr) throw termErr
+        newTerminalId = terminalRow.id
+        if (newTerminalId) {
+          setActiveTerminal(newTerminalId)
+          setSelectedStation({
+            ...selectedStation,
+            payment_terminal: {
+              id: newTerminalId,
+              terminal_name: registerForm.name,
+              register_id: null,
+              auth_key: null,
+              terminal_type: 'valor',
+              terminal_model: registerForm.model || null,
+              is_connected: false,
+              ip_address: localIp ?? undefined,
+              port: localPort ?? 5000,
+              cancel_port: cancelPort,
+              epi: registerForm.epi || undefined,
+              connection_type:
+                connectionType === 'usb' ? 'usb' : 'local_socket',
+              serial_number: discoveredSN ?? null,
+              last_connection_status: null,
+              last_connection_test_at: null
+            }
+          })
+        }
       } else {
         const connectionType =
           registerForm.connectionType === 'usb' ? 'usb' : 'local'
@@ -867,7 +956,9 @@ const DevicesConnectionsScreen = ({
         ipAddress: '',
         port: '8080',
         connectionType: 'local_socket',
-        serialNumber: ''
+        serialNumber: '',
+        cancelPort: '5001',
+        epi: ''
       })
     } catch (err) {
       toastService.show({
@@ -889,10 +980,15 @@ const DevicesConnectionsScreen = ({
       tpn: currentTerminal.register_id || '',
       authKey: '',
       ipAddress: currentTerminal.ip_address || '',
-      port: String(currentTerminal.port || 8080),
+      port: String(
+        currentTerminal.port ||
+          (currentTerminal.terminal_type === 'valor' ? 5000 : 8080)
+      ),
       connectionType: (currentTerminal.connection_type === 'usb'
         ? 'usb'
-        : 'local_socket') as 'local_socket' | 'usb'
+        : 'local_socket') as 'local_socket' | 'usb',
+      cancelPort: String(currentTerminal.cancel_port || 5001),
+      epi: currentTerminal.epi || ''
     })
     setIsEditingTerminal(true)
   }
@@ -903,9 +999,16 @@ const DevicesConnectionsScreen = ({
     try {
       const testResult = await testConnectionWithConfig({
         terminalId: currentTerminal.id,
-        terminalType: currentTerminal.terminal_type as 'castles' | 'dejavoo',
+        terminalType: currentTerminal.terminal_type as
+          | 'castles'
+          | 'dejavoo'
+          | 'valor',
         ipAddress: editForm.ipAddress || undefined,
         port: editForm.port ? parseInt(editForm.port, 10) : undefined,
+        cancelPort: editForm.cancelPort
+          ? parseInt(editForm.cancelPort, 10)
+          : undefined,
+        epi: editForm.epi || undefined,
         tpn: editForm.tpn || undefined,
         authKey: editForm.authKey || undefined
       })
@@ -925,6 +1028,25 @@ const DevicesConnectionsScreen = ({
           editForm.connectionType === 'local_socket'
             ? parseInt(editForm.port, 10) || 8080
             : null
+        if (testResult.serialNumber)
+          updatePayload.serial_number = testResult.serialNumber
+      } else if (currentTerminal.terminal_type === 'valor') {
+        updatePayload.connection_type =
+          editForm.connectionType === 'usb' ? 'usb' : 'local'
+        const ip =
+          editForm.connectionType === 'local_socket'
+            ? editForm.ipAddress.trim()
+            : null
+        const port =
+          editForm.connectionType === 'local_socket'
+            ? parseInt(editForm.port, 10) || 5000
+            : null
+        updatePayload.local_ip_address = ip
+        updatePayload.local_port = port
+        updatePayload.valor_ip_address = ip
+        updatePayload.valor_port = port ?? 5000
+        updatePayload.valor_cancel_port = parseInt(editForm.cancelPort, 10) || 5001
+        updatePayload.valor_epi = editForm.epi.trim() || null
         if (testResult.serialNumber)
           updatePayload.serial_number = testResult.serialNumber
       } else {
@@ -961,7 +1083,24 @@ const DevicesConnectionsScreen = ({
                     ? ('usb' as const)
                     : ('local_socket' as const)
               }
-            : { register_id: editForm.tpn.trim() }),
+            : currentTerminal.terminal_type === 'valor'
+              ? {
+                  ip_address:
+                    editForm.connectionType === 'local_socket'
+                      ? editForm.ipAddress.trim()
+                      : undefined,
+                  port:
+                    editForm.connectionType === 'local_socket'
+                      ? parseInt(editForm.port, 10) || 5000
+                      : undefined,
+                  cancel_port: parseInt(editForm.cancelPort, 10) || 5001,
+                  epi: editForm.epi.trim() || undefined,
+                  connection_type:
+                    editForm.connectionType === 'usb'
+                      ? ('usb' as const)
+                      : ('local_socket' as const)
+                }
+              : { register_id: editForm.tpn.trim() }),
           is_connected: testResult.success,
           last_connection_status: testResult.success ? 'Online' : 'Offline',
           last_connection_test_at: new Date().toISOString()
@@ -995,11 +1134,18 @@ const DevicesConnectionsScreen = ({
           registerForm.tpn.trim() &&
           registerForm.authKey.trim()
         )
-      : !!(
-          registerForm.name.trim() &&
-          (registerForm.connectionType === 'usb' ||
-            registerForm.ipAddress.trim())
-        )
+      : registerFormType === 'valor'
+        ? !!(
+            registerForm.name.trim() &&
+            (registerForm.connectionType === 'usb' ||
+              registerForm.ipAddress.trim()) &&
+            registerForm.epi.trim()
+          )
+        : !!(
+            registerForm.name.trim() &&
+            (registerForm.connectionType === 'usb' ||
+              registerForm.ipAddress.trim())
+          )
 
   const isEditFormValid =
     currentTerminal?.terminal_type === 'castles'
@@ -1007,7 +1153,13 @@ const DevicesConnectionsScreen = ({
           editForm.name.trim() &&
           (editForm.connectionType === 'usb' || editForm.ipAddress.trim())
         )
-      : !!(editForm.name.trim() && editForm.tpn.trim())
+      : currentTerminal?.terminal_type === 'valor'
+        ? !!(
+            editForm.name.trim() &&
+            (editForm.connectionType === 'usb' || editForm.ipAddress.trim()) &&
+            editForm.epi.trim()
+          )
+        : !!(editForm.name.trim() && editForm.tpn.trim())
 
   // ---------------------------------------------------------------------------
   // PRINTER HANDLERS
@@ -1722,7 +1874,61 @@ const DevicesConnectionsScreen = ({
                     </TouchableOpacity>
                   </View>
 
-                  {/* Castles-only header */}
+                  {/* Terminal type toggle (Castles / Valor) */}
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      gap: s(8),
+                      marginBottom: s(12)
+                    }}
+                  >
+                    {(
+                      [
+                        { id: 'castles' as const, label: 'Castles' },
+                        { id: 'valor' as const, label: 'Valor' }
+                      ]
+                    ).map(opt => {
+                      const active = registerFormType === opt.id
+                      return (
+                        <TouchableOpacity
+                          key={opt.id}
+                          onPress={() => {
+                            setRegisterFormType(opt.id)
+                            setQuickTestStatus('idle')
+                            setRegisterForm(f => ({
+                              ...f,
+                              port: opt.id === 'valor' ? '5000' : '8080'
+                            }))
+                          }}
+                          style={{
+                            flex: 1,
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            paddingVertical: s(10),
+                            alignItems: 'center',
+                            backgroundColor: active
+                              ? colors.teal + '20'
+                              : 'transparent',
+                            borderColor: active
+                              ? colors.teal + '50'
+                              : colors.border
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontWeight: '700',
+                              fontSize: s(12),
+                              color: active ? colors.teal : colors.muted
+                            }}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+
+                  {/* Type header */}
                   <View
                     style={{
                       flexDirection: 'row',
@@ -1737,15 +1943,17 @@ const DevicesConnectionsScreen = ({
                       backgroundColor: colors.teal + '15'
                     }}
                   >
-                    <Image
-                      source={require('@/assets/images/castles.jpg')}
-                      style={{
-                        width: s(36),
-                        height: s(36),
-                        borderRadius: s(6)
-                      }}
-                      resizeMode='cover'
-                    />
+                    {registerFormType === 'castles' && (
+                      <Image
+                        source={require('@/assets/images/castles.jpg')}
+                        style={{
+                          width: s(36),
+                          height: s(36),
+                          borderRadius: s(6)
+                        }}
+                        resizeMode='cover'
+                      />
+                    )}
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
@@ -1754,7 +1962,9 @@ const DevicesConnectionsScreen = ({
                           color: colors.teal
                         }}
                       >
-                        Castles Terminal
+                        {registerFormType === 'valor'
+                          ? 'Valor Terminal'
+                          : 'Castles Terminal'}
                       </Text>
                       <Text
                         style={{
@@ -1763,12 +1973,14 @@ const DevicesConnectionsScreen = ({
                           marginTop: s(2)
                         }}
                       >
-                        Network (TCP) payment terminal
+                        {registerFormType === 'valor'
+                          ? 'Semi-integrated (TCP) payment terminal'
+                          : 'Network (TCP) payment terminal'}
                       </Text>
                     </View>
                   </View>
 
-                  {registerFormType === 'castles' ? (
+                  {registerFormType === 'castles' || registerFormType === 'valor' ? (
                     <>
                       {/* Connection type selector — visibly tells the user
                           this terminal is wired (USB) or networked (TCP).
@@ -1922,6 +2134,79 @@ const DevicesConnectionsScreen = ({
                           <Text style={{ flex: 1, fontSize: s(11), color: colors.label, lineHeight: s(16) }}>
                             USB — no IP needed. The terminal is identified by USB device serial after the wizard handshake.
                           </Text>
+                        </View>
+                      )}
+                      {/* Valor-only: cancel port (5001) + EPI */}
+                      {registerFormType === 'valor' && (
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            gap: s(8),
+                            marginBottom: s(8)
+                          }}
+                        >
+                          {registerForm.connectionType === 'local_socket' && (
+                            <View style={{ flex: 1.2 }}>
+                              <Text
+                                style={{
+                                  color: colors.muted,
+                                  fontSize: s(11),
+                                  marginBottom: s(4)
+                                }}
+                              >
+                                Cancel Port
+                              </Text>
+                              <TextInput
+                                value={registerForm.cancelPort}
+                                onChangeText={v =>
+                                  setRegisterForm(f => ({ ...f, cancelPort: v }))
+                                }
+                                placeholder='5001'
+                                placeholderTextColor={colors.muted}
+                                keyboardType='number-pad'
+                                style={{
+                                  backgroundColor: colors.screen,
+                                  borderWidth: 1,
+                                  borderColor: colors.border,
+                                  borderRadius: s(8),
+                                  paddingHorizontal: s(12),
+                                  paddingVertical: s(10),
+                                  color: colors.heading,
+                                  fontSize: s(13)
+                                }}
+                              />
+                            </View>
+                          )}
+                          <View style={{ flex: 3 }}>
+                            <Text
+                              style={{
+                                color: colors.muted,
+                                fontSize: s(11),
+                                marginBottom: s(4)
+                              }}
+                            >
+                              EPI *
+                            </Text>
+                            <TextInput
+                              value={registerForm.epi}
+                              onChangeText={v =>
+                                setRegisterForm(f => ({ ...f, epi: v }))
+                              }
+                              placeholder='e.g. 2319900000'
+                              placeholderTextColor={colors.muted}
+                              keyboardType='number-pad'
+                              style={{
+                                backgroundColor: colors.screen,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                borderRadius: s(8),
+                                paddingHorizontal: s(12),
+                                paddingVertical: s(10),
+                                color: colors.heading,
+                                fontSize: s(13)
+                              }}
+                            />
+                          </View>
                         </View>
                       )}
                       <View style={{ marginBottom: s(12) }}>
@@ -2104,9 +2389,9 @@ const DevicesConnectionsScreen = ({
                             marginLeft: s(6)
                           }}
                         >
-                          {registerFormType === 'castles'
-                            ? 'Save & Connect'
-                            : 'Register Terminal'}
+                          {registerFormType === 'dejavoo'
+                            ? 'Register Terminal'
+                            : 'Save & Connect'}
                         </Text>
                       </>
                     )}
@@ -2234,7 +2519,9 @@ const DevicesConnectionsScreen = ({
                                   >
                                     {t.terminalType === 'castles'
                                       ? 'Castles'
-                                      : 'Dejavoo'}
+                                      : t.terminalType === 'valor'
+                                        ? 'Valor'
+                                        : 'Dejavoo'}
                                   </Text>
                                 </View>
                                 {/* Connection-type pill — USB vs TCP/WiFi. Helps staff

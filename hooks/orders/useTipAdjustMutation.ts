@@ -7,7 +7,10 @@ import { useToast } from "@/contexts/ToastContext";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
+import { getSharedValorService } from "@/services/terminals/valor-service";
+import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
+import { VALOR_DEFAULT_PORT } from "@/types/valor";
 import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -27,6 +30,8 @@ export interface TipAdjustPaymentInput {
   newTip: number;
   referenceId?: string;
   rrn?: string;
+  /** Valor reversal reference (charge-slip "Trans" number). Falls back to last4. */
+  tranNo?: string;
   last4?: string;
 }
 
@@ -115,6 +120,56 @@ export function useTipAdjustMutation() {
 
           if (!result.success) {
             throw new Error(result.error || "Castles tip adjust failed.");
+          }
+
+          if (payment.dbPaymentId) processedDbIds.add(payment.dbPaymentId);
+        }
+      } else if (terminal.terminal_type === "valor") {
+        // ──── VALOR BRANCH ────
+        const isUsb = terminal.connection_type === 'usb';
+        const host = isUsb ? undefined : terminal.ip_address;
+        if (!isUsb && !host) throw new Error("Valor terminal has no IP address configured");
+        const port = isUsb ? undefined : (terminal.port ?? VALOR_DEFAULT_PORT);
+
+        const service = getSharedValorService();
+        await service.connect({
+          connectionType: isUsb ? 'usb' : 'local_socket',
+          host,
+          port,
+          cancelPort: terminal.cancel_port,
+          epi: terminal.epi,
+          timeout: 120_000,
+          terminalId: terminal.id,
+        });
+
+        const counter = getOrCreateValorCounter({ terminalId: terminal.id, supabaseClient: supabase });
+        if (!counter.isInitialized) await counter.initialize();
+
+        for (const payment of input.payments) {
+          if (Math.abs(payment.newTip - payment.currentTip) < 0.001) continue;
+
+          // Valor tip-adjust references by TRAN_NO or CARD_NO (last-4) — NOT rrn.
+          const tranNo = payment.tranNo;
+          const cardNo = payment.last4;
+          if (!tranNo && !cardNo) {
+            show({
+              title: "Warning",
+              message: `Cannot adjust tip — missing transaction reference (••••${payment.last4 || "????"}).`,
+              type: "warning",
+            });
+            continue;
+          }
+
+          const referenceId = counter.next();
+          const result = await service.tipAdjust({
+            tipAmount: Math.round((payment.newTip + Number.EPSILON) * 100),
+            tranNo,
+            cardNo,
+            referenceId,
+          });
+
+          if (!result.success) {
+            throw new Error(result.error || "Valor tip adjust failed.");
           }
 
           if (payment.dbPaymentId) processedDbIds.add(payment.dbPaymentId);

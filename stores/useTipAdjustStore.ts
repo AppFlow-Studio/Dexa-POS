@@ -31,12 +31,14 @@ export interface CapturedPayment {
   referenceId: string;
   rrn?: string;
   stan?: string;
+  /** Valor reversal reference (charge-slip "Trans" number) — used for tip-adjust/void. */
+  tranNo?: string;
   dbPaymentId?: string;
   last4?: string;
   amount: number;
   /** Tip charged with the original sale (usually 0 for post-capture flow). */
   tipAmount: number;
-  terminalType: "castles" | "dejavoo";
+  terminalType: "castles" | "dejavoo" | "valor";
   /** Local order id (`useOrderStore.activeOrderId`) at capture time. */
   localOrderId?: string;
   /** db_order_id snapshotted at capture (server-authoritative when present). */

@@ -14,6 +14,7 @@ import {
   releaseTab
 } from '@/services/preAuthService'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
+import { getSharedValorService } from '@/services/terminals/valor-service'
 import {
   useActiveOrder,
   useActiveOrderTotals,
@@ -129,6 +130,18 @@ const PreAuthPaymentView: React.FC = () => {
       return
     }
 
+    if (terminal.terminal_type === 'valor') {
+      const refId = inFlightRef.current?.refId
+      if (refId) {
+        try {
+          await getSharedValorService().cancelInFlight(refId)
+        } catch (e) {
+          console.warn('[PreAuthPaymentView] Valor cancel failed', e)
+        }
+      }
+      return
+    }
+
     const refId = inFlightRef.current?.refId
     if (!refId) return
     try {
@@ -168,6 +181,14 @@ const PreAuthPaymentView: React.FC = () => {
     const terminal = selectedStation?.payment_terminal
     if (!terminal) {
       throw new Error('No payment terminal selected')
+    }
+
+    // Valor pre-auth / tabs are deferred (v1 = core money path only). Fail
+    // loudly rather than mis-routing a Valor terminal to the Dejavoo branch.
+    if (terminal.terminal_type === 'valor') {
+      throw new Error(
+        'Pre-authorization (open tab) is not yet supported on Valor terminals.',
+      )
     }
 
     if (terminal.terminal_type === 'castles') {
