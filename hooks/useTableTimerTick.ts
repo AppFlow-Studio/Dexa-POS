@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AppState, type NativeEventSubscription } from "react-native";
 
 /**
  * Shared timer tick — one setInterval for the entire floor plan.
@@ -24,6 +25,8 @@ let subscriberCount = 0;
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let currentTick = 0;
 let paused = false;
+let backgrounded = AppState.currentState !== "active";
+let appStateSub: NativeEventSubscription | null = null;
 let rafId: number | null = null;
 let pendingListeners: (() => void)[] = [];
 
@@ -31,9 +34,9 @@ const listeners = new Set<() => void>();
 
 function dispatchBatch() {
   rafId = null;
-  if (paused) {
-    // If paused mid-batch, clear the pending queue so we don't fire stale
-    // updates when resumed — components will re-render from the next tick.
+  if (paused || backgrounded) {
+    // If paused/backgrounded mid-batch, clear the pending queue so we don't fire
+    // stale updates when resumed — components will re-render from the next tick.
     pendingListeners = [];
     return;
   }
@@ -51,7 +54,7 @@ function dispatchBatch() {
 }
 
 function fireAll() {
-  if (paused) return;
+  if (paused || backgrounded) return;
   currentTick++;
   // Copy listeners to a new array for safety during iteration
   pendingListeners = Array.from(listeners);
@@ -65,6 +68,18 @@ function subscribe(listener: () => void) {
   subscriberCount++;
   if (subscriberCount === 1 && intervalId === null) {
     intervalId = setInterval(fireAll, FIRE_DELAY_MS);
+    // AppState-aware: while backgrounded/idle the interval still ticks (RN
+    // timers keep running), but firing it re-renders 400+ tables and allocates
+    // a fresh listener array every 60s for nothing the user can see — idle
+    // churn that piles up until a touch forces a render/GC. Suspend firing when
+    // not active; on return to foreground fire once immediately so every table's
+    // duration jumps to the correct elapsed time instead of waiting up to 60s.
+    backgrounded = AppState.currentState !== "active";
+    appStateSub = AppState.addEventListener("change", (next) => {
+      const wasBackgrounded = backgrounded;
+      backgrounded = next !== "active";
+      if (wasBackgrounded && !backgrounded) fireAll();
+    });
   }
   return () => {
     listeners.delete(listener);
@@ -72,6 +87,10 @@ function subscribe(listener: () => void) {
     if (subscriberCount === 0 && intervalId !== null) {
       clearInterval(intervalId);
       intervalId = null;
+      if (appStateSub !== null) {
+        appStateSub.remove();
+        appStateSub = null;
+      }
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
         rafId = null;

@@ -123,22 +123,34 @@ const getBlockingOverlayStyle = (overlayColor: string): ViewStyle => ({
   zIndex: 100,
 });
 
-// OPTIMIZED: WeakMap cache for image sources to prevent object recreation
-const imageSourceCache = new WeakMap<
-  MenuItemType,
+// OPTIMIZED: Map cache for image sources to prevent object recreation.
+// Keyed by item.id + image hash so cache hits survive store re-renders.
+// Hard-capped to prevent unbounded growth from stale menu items.
+const IMAGE_SOURCE_CACHE_MAX = 500;
+const imageSourceCache = new Map<
+  string,
   ReturnType<typeof getImageSourceInternal> | undefined
 >();
 
 const getImageSourceInternal = (item: MenuItemType) =>
   resolveMenuItemImageSource(item.image);
 
+const getImageSourceCacheKey = (item: MenuItemType) =>
+  `${item.id}:${item.image ?? ""}`;
+
 // Get image source with caching
 const getImageSource = (item: MenuItemType) => {
-  if (imageSourceCache.has(item)) {
-    return imageSourceCache.get(item);
+  const key = getImageSourceCacheKey(item);
+  if (imageSourceCache.has(key)) {
+    return imageSourceCache.get(key);
+  }
+  // Evict oldest entries when at capacity before adding new
+  if (imageSourceCache.size >= IMAGE_SOURCE_CACHE_MAX) {
+    const firstKey = imageSourceCache.keys().next().value;
+    if (firstKey !== undefined) imageSourceCache.delete(firstKey);
   }
   const source = getImageSourceInternal(item);
-  imageSourceCache.set(item, source);
+  imageSourceCache.set(key, source);
   return source;
 };
 
