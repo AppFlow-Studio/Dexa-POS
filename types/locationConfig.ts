@@ -124,7 +124,15 @@ export interface WaitlistConfig {
   notificationGracePeriodMinutes: number;
   enabled: boolean;
   autoSmsEnabled: boolean;
+  /** @deprecated Legacy single field — kept as the `waitlist.tableReady` override. Use `messageTemplates`. */
   smsTemplate: string;
+  /**
+   * Per-event SMS templates keyed by notify template_key
+   * (e.g. `waitlist.added`, `reservation.created`). A non-blank value overrides
+   * the built-in default; blank/absent falls back to the server default.
+   * Supports `{token}` placeholders — see WAITLIST_TOKENS / RESERVATION_TOKENS.
+   */
+  messageTemplates?: Record<string, string>;
   reservationsEnabled: boolean;
   reservationDaysAhead: number;
   maxGuestsPerSlot: number;
@@ -319,6 +327,7 @@ export const DEFAULT_WAITLIST_CONFIG: WaitlistConfig = {
   autoSmsEnabled: true,
   smsTemplate:
     "Hi {name}, your table for {party_size} is ready! Please check in with the host within 5 minutes.",
+  messageTemplates: {},
   reservationsEnabled: true,
   reservationDaysAhead: 30,
   maxGuestsPerSlot: 6,

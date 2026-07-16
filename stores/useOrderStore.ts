@@ -15255,8 +15255,16 @@ export const useOrderStore = create<OrderState>()(
                       localPaymentsByDbId.set(lp.db_payment_id, lp);
                   }
 
+                  // Only adopt the direct-select payments when it actually
+                  // returned rows. A successful-but-EMPTY read ([]) must fall
+                  // back to local — the direct order_payments select returns 0
+                  // rows in this environment (RLS/permissions; the RPC path
+                  // get_order_details sees them fine), and `[].map()` is a truthy
+                  // empty array, so the old `|| localOrder?.payments` fallback
+                  // never fired and a just-committed payment got wiped.
                   const syncedPayments: OrderProfilePayment[] =
-                    dbPayments?.map((p) => {
+                    dbPayments && dbPayments.length > 0
+                      ? dbPayments.map((p) => {
                       // Proper status mapping — preserve authorized for pre-auth
                       const status: OrderProfilePayment["status"] =
                         p.status === "voided"
@@ -15366,9 +15374,8 @@ export const useOrderStore = create<OrderState>()(
                             }
                           : {}),
                       };
-                    }) ||
-                    localOrder?.payments ||
-                    [];
+                        })
+                      : (localOrder?.payments ?? []);
 
                   // ================================================================
                   // CALCULATE paid_status FROM LOCAL PAYMENTS ONLY
@@ -15408,14 +15415,34 @@ export const useOrderStore = create<OrderState>()(
                     ? state.orderIds
                     : [...state.orderIds, localOrderId];
 
+                  // When the direct order_payments read came back empty and we
+                  // kept local payments (RLS returns 0 rows in this env), the raw
+                  // orders-row financials are stale/unpopulated — amount_paid/
+                  // amount_due are computed from order_payments by the RPCs, not
+                  // stored authoritatively on the orders row. Preserve the local,
+                  // RPC-reconciled financials so Amount Paid / Balance Due stay
+                  // consistent with the payments we just kept (otherwise the footer
+                  // loses "Paid" and Total Due snaps back to the full total).
+                  const keptLocalPayments =
+                    !(dbPayments && dbPayments.length > 0) &&
+                    (localOrder?.payments?.length ?? 0) > 0;
+
                   const updatedOrderProfile: OrderProfile = {
                     ...baseOrderProfile,
                     items: allItems,
                     payments: syncedPayments,
-                    // Use database as source of truth for financial data
-                    amount_paid: dbOrder.amount_paid || 0,
-                    amount_due: dbOrder.amount_due || 0,
-                    cash_amount_due: dbOrder.cash_amount_due, // Direct from DB - authoritative
+                    // Use database as source of truth for financial data — except
+                    // when we kept local payments over an empty DB read (above),
+                    // in which case the orders-row financials are stale/unpopulated.
+                    amount_paid: keptLocalPayments
+                      ? (localOrder?.amount_paid ?? dbOrder.amount_paid ?? 0)
+                      : (dbOrder.amount_paid || 0),
+                    amount_due: keptLocalPayments
+                      ? (localOrder?.amount_due ?? dbOrder.amount_due ?? 0)
+                      : (dbOrder.amount_due || 0),
+                    cash_amount_due: keptLocalPayments
+                      ? (localOrder?.cash_amount_due ?? dbOrder.cash_amount_due)
+                      : dbOrder.cash_amount_due,
                     total_amount: dbOrder.card_total || dbOrder.total_amount,
                     total_tax: dbOrder.card_tax_amount || dbOrder.tax_amount,
                     paid_status: syncedPaidStatus,
@@ -17153,12 +17180,99 @@ export const useOrderStore = create<OrderState>()(
                     }
                   }
 
-                  // Preserve local payments that haven't synced to backend yet
-                  // (e.g. pre-auth payments added optimistically before syncPreAuthToBackend completes)
+                  // Preserve local payments the authoritative fetch doesn't (yet)
+                  // include. Two cases:
+                  //  1. Optimistic payments not synced yet (!db_payment_id && pending)
+                  //     — e.g. a pre-auth added before syncPreAuthToBackend completes.
+                  //  2. A just-captured payment that ALREADY has a db_payment_id (so
+                  //     it definitely committed) but whose row this get_order_details
+                  //     read raced and didn't return. Without this, a fresh payment
+                  //     flashes on from the optimistic write, then the 1s post-payment
+                  //     sync drops it — it matches neither transformedPayments nor the
+                  //     !db_payment_id filter — until the 2-min list refetch restores it.
+                  //     Keyed on db_payment_id (a reliable "committed" signal, only set
+                  //     from the RPC response) so this never resurrects a cancelled/lost
+                  //     optimistic split. Mirrors the broadcast merge guard in
+                  //     mergePayments().
+                  // NOTE: get_order_details returns voided/refunded payment rows too
+                  // (its payments subquery has no is_voided filter), so a payment
+                  // voided elsewhere is always in this set and can never be resurrected
+                  // by the isLocalCapture branch below. Load-bearing dependency.
+                  const backendPaymentDbIds = new Set(
+                    transformedPayments
+                      .map((p) => p.db_payment_id)
+                      .filter(Boolean),
+                  );
+                  // An optimistic payment whose syncPaymentToBackend hasn't stamped a
+                  // db_payment_id yet can already be present in this read as a committed
+                  // row (RPC won the race, id-stamp lagged). Drop the local twin by
+                  // amount+method+timestamp so the same payment isn't emitted twice —
+                  // a dup doubles amount_paid and can false-heal Partial → Paid. Mirrors
+                  // the mergePayments() broadcast heuristic.
+                  const matchesBackendPayment = (p: OrderProfilePayment) =>
+                    transformedPayments.some(
+                      (bp) =>
+                        bp.amount === p.amount &&
+                        bp.method === p.method &&
+                        !!p.timestamp &&
+                        !!bp.timestamp &&
+                        Math.abs(
+                          new Date(bp.timestamp).getTime() -
+                            new Date(p.timestamp).getTime(),
+                        ) < 60000,
+                    );
                   const localPendingPayments =
-                    currentOrder.payments?.filter(
-                      (p) => !p.db_payment_id && p.sync_status === "pending",
-                    ) ?? [];
+                    currentOrder.payments?.filter((p) => {
+                      // Already represented by a backend row → mergedPayments owns it.
+                      if (p.db_payment_id && backendPaymentDbIds.has(p.db_payment_id))
+                        return false;
+                      // Unsynced optimistic payment (pre-auth mid-sync, etc.) — unless
+                      // its committed twin already landed in this read (dup guard).
+                      if (!p.db_payment_id && p.sync_status === "pending")
+                        return !matchesBackendPayment(p);
+                      // Committed but missing from this read (read-after-write race).
+                      const isActivePreAuth =
+                        p.isPreAuth && p.status === "authorized" && !p.isVoided;
+                      const isLocalCapture =
+                        !!p.db_payment_id && p.status === "captured" && !p.isVoided;
+                      return isActivePreAuth || isLocalCapture;
+                    }) ?? [];
+
+                  // Same read-after-write race, per item: get_order_details can return a
+                  // stale paidQuantity (0) for a unit we just paid for. The item merge
+                  // above preserves kitchen_status/id/quantity/is_voided but NOT
+                  // paidQuantity, so without this an already-paid item looks payable again
+                  // (double-pay risk in split-by-item) until the read catches up. For
+                  // items covered by a payment we're preserving in localPendingPayments,
+                  // keep the higher local paidQuantity. Bounded to that coverage set so a
+                  // genuine void/refund — whose payment IS in the read, hence not
+                  // preserved — still lowers paidQuantity normally.
+                  const preservedCoverageItemIds = new Set<string>();
+                  for (const p of localPendingPayments) {
+                    for (const cov of p.itemsCovered ?? []) {
+                      if (cov.itemId) preservedCoverageItemIds.add(cov.itemId);
+                    }
+                  }
+                  if (preservedCoverageItemIds.size > 0) {
+                    for (let i = 0; i < transformedItems.length; i++) {
+                      const ti = transformedItems[i];
+                      const localItem = ti.db_order_item_id
+                        ? localItemsByDbId.get(ti.db_order_item_id)
+                        : undefined;
+                      if (!localItem) continue;
+                      const isCovered =
+                        (!!ti.db_order_item_id &&
+                          preservedCoverageItemIds.has(ti.db_order_item_id)) ||
+                        preservedCoverageItemIds.has(localItem.id) ||
+                        preservedCoverageItemIds.has(ti.id);
+                      if (!isCovered) continue;
+                      const localPaid = localItem.paidQuantity ?? 0;
+                      const backendPaid = ti.paidQuantity ?? 0;
+                      if (localPaid > backendPaid) {
+                        transformedItems[i] = { ...ti, paidQuantity: localPaid };
+                      }
+                    }
+                  }
 
                   // Preserve locally-advanced payments (e.g. local="captured" vs server="authorized")
                   // This prevents realtime sync from regressing payment status when capture_preauth_v1
@@ -17170,6 +17284,10 @@ export const useOrderStore = create<OrderState>()(
                     partially_refunded: 3,
                     refunded: 4,
                     voided: 4,
+                    // DB writes status='void' (void_payment.sql); without this a payment
+                    // voided on another station outranks local 'captured' and the stale
+                    // non-voided local copy would win. Parity with mergePayments().
+                    void: 4,
                   };
                   const localPaymentsByDbId = new Map<
                     string,
@@ -17259,8 +17377,18 @@ export const useOrderStore = create<OrderState>()(
                       p.sync_status === "pending" &&
                       p.isPreAuth,
                   );
+                  // A committed payment (has db_payment_id) that this read raced and
+                  // omitted must also pin the financials local — otherwise the
+                  // preserved payment object shows but amount_paid/amount_due snap
+                  // back to the stale backend values (the "Paid" line reads $0).
+                  const hasCommittedPaymentMissingFromRead =
+                    localPendingPayments.some(
+                      (p) => !!p.db_payment_id && !p.isVoided,
+                    );
                   const keepLocalFinancials =
-                    hasLocalAdvancedPayments || hasUnsettledPreAuth;
+                    hasLocalAdvancedPayments ||
+                    hasUnsettledPreAuth ||
+                    hasCommittedPaymentMissingFromRead;
 
                   // Rank-based upgrade: always accept server's paid_status if it's higher
                   // Refund transitions bypass rank check — both Paid→Refunded and

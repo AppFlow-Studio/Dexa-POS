@@ -17,6 +17,11 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  resolveWaitlistMessage,
+  type MerchantTemplateConfig,
+  type WaitlistTemplateContext
+} from '../_shared/notifyTemplates.ts'
 
 const ALLOWED_ORIGIN_PATTERNS: RegExp[] = [
   /^https:\/\/([a-z0-9-]+\.)*dexapos\.com$/,
@@ -39,13 +44,6 @@ function corsHeadersFor(origin: string | null): Record<string, string> {
 
 const SMS_RATE_LIMIT_PER_HOUR = 10
 
-type TemplateContext = {
-  partyName: string
-  storeName: string
-  storeAddress: string
-  quotedWaitMinutes: number | null
-}
-
 function formatStoreAddress(loc: any): string {
   if (!loc) return ''
   const street = [loc.address_line1, loc.address_line2].filter(Boolean).join(', ')
@@ -55,37 +53,15 @@ function formatStoreAddress(loc: any): string {
   return [street, cityStateZip].filter(Boolean).join(', ')
 }
 
-function renderTemplate(
-  key: string,
-  ctx: TemplateContext,
-  customMessage?: string | null
-): string | null {
-  const { partyName, storeName, storeAddress, quotedWaitMinutes } = ctx
-  const addressClause = storeAddress ? ` (${storeAddress})` : ''
-  const waitClause =
-    quotedWaitMinutes != null && quotedWaitMinutes > 0
-      ? `in ${quotedWaitMinutes} min`
-      : 'soon'
-
-  switch (key) {
-    case 'waitlist.added':
-      return `Hi ${partyName}, you're on the waitlist at ${storeName}${addressClause}. Your seat should be ready ${waitClause}. We'll text you when it's ready.`
-    case 'waitlist.tableReady':
-      return `Hi ${partyName}! Your table at ${storeName} is ready. Please check in with the host within 10 minutes.`
-    case 'waitlist.almostReady':
-      return `Hi ${partyName}! Your table at ${storeName} will be ready in about 5 minutes. Please head back to the host stand.`
-    case 'waitlist.runningLate':
-      return `Hi ${partyName}, we're running a few more minutes behind at ${storeName}. Thanks for your patience — we'll have your table ready soon.`
-    case 'waitlist.updateConfirmed':
-      return `Hi ${partyName}, just a quick update on your wait at ${storeName}. We'll have your table ready as soon as possible.`
-    case 'waitlist.cancelled':
-      return `Hi ${partyName}, you've been removed from the waitlist at ${storeName}. Please contact us if this was a mistake.`
-    case 'custom':
-      return customMessage && customMessage.trim().length > 0
-        ? customMessage.trim().slice(0, 500)
-        : null
-    default:
-      return null
+/** Merchant-editable templates live in `locations.pos_config.waitlist`. */
+function readWaitlistTemplateConfig(
+  posConfig: any
+): MerchantTemplateConfig | null {
+  const waitlist = posConfig?.waitlist
+  if (!waitlist || typeof waitlist !== 'object') return null
+  return {
+    messageTemplates: waitlist.messageTemplates ?? null,
+    smsTemplate: waitlist.smsTemplate ?? null
   }
 }
 
@@ -169,7 +145,7 @@ serve(async (req: Request) => {
     const { data: waitlist, error: waitlistErr } = await userClient
       .from('waitlist')
       .select(
-        'id, merchant_id, location_id, party_name, phone, status, quoted_wait_minutes'
+        'id, merchant_id, location_id, party_name, party_size, phone, status, quoted_wait_minutes'
       )
       .eq('id', waitlistId)
       .maybeSingle()
@@ -193,7 +169,9 @@ serve(async (req: Request) => {
     // RLS check above proved the caller has access to the merchant/location.
     const { data: location } = await adminClient
       .from('locations')
-      .select('name, address_line1, address_line2, city, state, postal_code')
+      .select(
+        'name, address_line1, address_line2, city, state, postal_code, pos_config'
+      )
       .eq('id', waitlist.location_id)
       .maybeSingle()
 
@@ -206,15 +184,23 @@ serve(async (req: Request) => {
       )
     }
 
-    // Render template server-side. Caller picks the key; for 'custom' we accept
-    // a caller-supplied message (slice-capped at 500 chars).
-    const ctx: TemplateContext = {
+    // Render server-side. Caller picks the key; the body is assembled here from
+    // the merchant's saved template (falling back to the built-in default) or,
+    // for 'custom', the caller-supplied message.
+    const ctx: WaitlistTemplateContext = {
       partyName: (waitlist.party_name ?? '').trim() || 'Guest',
       storeName: location?.name ?? 'our restaurant',
       storeAddress: formatStoreAddress(location),
-      quotedWaitMinutes: waitlist.quoted_wait_minutes ?? null
+      quotedWaitMinutes: waitlist.quoted_wait_minutes ?? null,
+      partySize: waitlist.party_size ?? null
     }
-    const message = renderTemplate(templateKey, ctx, customMessage)
+    const templateConfig = readWaitlistTemplateConfig(location?.pos_config)
+    const message = resolveWaitlistMessage(
+      templateKey,
+      ctx,
+      templateConfig,
+      customMessage
+    )
     if (!message) {
       return new Response(
         JSON.stringify({

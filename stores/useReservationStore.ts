@@ -9,11 +9,17 @@ import {
 } from '@/types/db-floor-plan-types'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
+import { useLocationConfigStore } from './useLocationConfigStore'
 
 // Lazy accessor avoids import cycle between reservation and floor-plan stores.
 const getFloorPlanStore = () =>
   (require('./useFloorPlanStore') as typeof import('./useFloorPlanStore'))
     .useFloorPlanStore
+
+// Automated guest SMS (create/cancel confirmations) only fire when the merchant
+// has left the "auto SMS" toggle on. Manual "Notify" composer sends are unaffected.
+const isAutoSmsEnabled = () =>
+  useLocationConfigStore.getState().config.waitlist.autoSmsEnabled !== false
 
 let _supabaseClient: SupabaseClient | null = null
 
@@ -341,7 +347,7 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       // Fire-and-forget reservation-confirmation SMS. The edge function renders
       // the message server-side from `template_key` + reservation row.
       const phoneDigits = (params.p_phone ?? '').replace(/\D/g, '')
-      if (data?.reservation_id && phoneDigits.length > 0) {
+      if (data?.reservation_id && phoneDigits.length > 0 && isAutoSmsEnabled()) {
         FloorPlanService.sendReservationSms(getClient(), {
           reservation_id: data.reservation_id,
           template_key: 'reservation.created'
@@ -610,7 +616,7 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
 
       // Fire-and-forget cancellation SMS. Edge function pulls date/time from
       // the row, which is unchanged on cancel (only the status flips).
-      if (phoneDigits.length > 0) {
+      if (phoneDigits.length > 0 && isAutoSmsEnabled()) {
         FloorPlanService.sendReservationSms(getClient(), {
           reservation_id: reservationId,
           template_key: 'reservation.cancelled'
