@@ -2,8 +2,9 @@ import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskOrderType } from "@/stores/useKioskCartStore";
 import type { KioskConfig } from "@/types/kiosk";
+import { Image } from "expo-image";
 import { ShoppingBag, UtensilsCrossed, X } from "lucide-react-native";
-import { Image, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 /**
  * Shared kiosk header.
@@ -61,7 +62,8 @@ export function KioskHeader({
           <Image
             source={{ uri: config.logoUrl }}
             style={{ height: kioskPx(48, s), width: kioskPx(140, s) }}
-            resizeMode="contain"
+            contentFit="contain"
+            cachePolicy="memory-disk"
           />
         ) : (
           <Text

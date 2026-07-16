@@ -1,5 +1,6 @@
 import type { KioskConfig } from "@/types/kiosk";
-import { Image, Pressable, Text, View } from "react-native";
+import { Image } from "expo-image";
+import { Pressable, Text, View } from "react-native";
 
 /**
  * Idle / attract screen. Shown whenever no customer is mid-order. Tapping it
@@ -41,8 +42,9 @@ export function KioskAttractScreen({
         {config.logoUrl ? (
           <Image
             source={{ uri: config.logoUrl }}
-            className="w-40 h-40 mb-8"
-            resizeMode="contain"
+            style={{ width: 160, height: 160, marginBottom: 32 }}
+            contentFit="contain"
+            cachePolicy="memory-disk"
           />
         ) : null}
 

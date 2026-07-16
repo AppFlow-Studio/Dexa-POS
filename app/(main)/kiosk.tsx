@@ -9,11 +9,12 @@ import {
     kioskProfileQueryKeys,
     useKioskProfile,
 } from "@/hooks/kiosk/useKioskProfile";
+import { prefetchKioskImages } from "@/lib/kioskMediaPrefetch";
 import { useKioskCartStore } from "@/stores/useKioskCartStore";
 import { useKioskProfileStore } from "@/stores/useKioskProfileStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 
 /**
@@ -41,6 +42,15 @@ export default function KioskScreen() {
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+
+  // Warm the image cache once per profile (not on every render — configsEqual
+  // in the store keeps `config` referentially stable across identical polls,
+  // so this only re-fires when the profile actually changes). Covers both
+  // orientations' idle/banner images, not just the active one, so flipping
+  // orientation later doesn't cold-load images for the first time.
+  useEffect(() => {
+    if (config) prefetchKioskImages(config);
+  }, [config]);
 
   const handleRefreshKioskConfig = useCallback(() => {
     const stationId =
