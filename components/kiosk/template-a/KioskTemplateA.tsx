@@ -114,7 +114,12 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
       )}
 
       {/* Body */}
-      {screen === "menu" && (
+      {/* Menu stays mounted across itemDetail navigation so the category rail
+          and item grid keep their scroll position when an item is added and
+          the customer is returned to the menu (see onAdded below). */}
+      <View
+        style={{ display: screen === "menu" ? "flex" : "none", flex: 1 }}
+      >
         <KioskScreenTransition key="menu">
           <KioskMenuView
             config={config}
@@ -130,7 +135,7 @@ export function KioskTemplateA({ config, onExit }: KioskTemplateProps) {
             onPress={() => setScreen("cart")}
           />
         </KioskScreenTransition>
-      )}
+      </View>
 
       {screen === "itemDetail" && selectedItem && (
         <KioskScreenTransition key="itemDetail">

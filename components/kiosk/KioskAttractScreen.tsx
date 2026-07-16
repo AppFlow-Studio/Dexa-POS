@@ -8,7 +8,9 @@ import { Image, Pressable, Text, View } from "react-native";
  * so the customer-facing theme never changes during an order.
  *
  * Holding the logo opens the manager-PIN-gated diagnostics/settings screen
- * via `onLogoLongPress`, without starting a customer session.
+ * via `onLogoLongPress`, without starting a customer session. The long-press
+ * target wraps the whole header block (not just the logo image) so
+ * diagnostics stays reachable even when no logo is configured.
  */
 export function KioskAttractScreen({
   config,
@@ -33,19 +35,18 @@ export function KioskAttractScreen({
         />
       ) : null}
 
-      <View className="items-center px-8">
+      <Pressable
+        onPress={onStart}
+        onLongPress={onLogoLongPress}
+        delayLongPress={2000}
+        className="items-center justify-center px-8"
+      >
         {config.logoUrl ? (
-          <Pressable
-            onLongPress={onLogoLongPress}
-            delayLongPress={2000}
-            className="mb-8"
-          >
-            <Image
-              source={{ uri: config.logoUrl }}
-              className="w-40 h-40"
-              resizeMode="contain"
-            />
-          </Pressable>
+          <Image
+            source={{ uri: config.logoUrl }}
+            className="w-40 h-40 mb-8"
+            resizeMode="contain"
+          />
         ) : null}
 
         <Text
@@ -63,7 +64,7 @@ export function KioskAttractScreen({
             Tap anywhere to start
           </Text>
         </View>
-      </View>
+      </Pressable>
     </Pressable>
   );
 }

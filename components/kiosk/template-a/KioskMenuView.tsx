@@ -13,8 +13,8 @@ import { FlatList, Pressable, SectionList, Text, View } from "react-native";
  *   right pane = item grid for the selected category
  *
  * Split ratio follows orientation (config.orientation):
- *   horizontal → 1/4 left · 3/4 right, grid 3 columns
- *   vertical   → 1/3 left · 2/3 right, grid 2 columns
+ *   horizontal → 1/4 left · 3/4 right, grid 4 columns
+ *   vertical   → 1/3 left · 2/3 right, grid 3 columns
  *
  * Reads the menu tree from useMenuStore (menus → categories → items), filtered
  * to what's available now. Tapping an item hands it up via onSelectItem.
@@ -38,7 +38,7 @@ export function KioskMenuView({
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
   const isVertical = config.orientation === "vertical";
-  const numColumns = isVertical ? 2 : 4;
+  const numColumns = isVertical ? 3 : 4;
 
   // Build one section per available menu, listing its available categories.
   const sections = useMemo<CategorySection[]>(() => {
