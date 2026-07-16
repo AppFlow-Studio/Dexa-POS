@@ -1,34 +1,156 @@
 import type { KioskTemplateProps } from "@/components/kiosk/KioskTemplateRouter";
-import { Pressable, Text, View } from "react-native";
+import { KioskCartButton } from "@/components/kiosk/shared/KioskCartButton";
+import { KioskHeader } from "@/components/kiosk/shared/KioskHeader";
+import { KioskIdleModal } from "@/components/kiosk/shared/KioskIdleModal";
+import { KioskOrderTypeScreen } from "@/components/kiosk/shared/KioskOrderTypeScreen";
+import { KioskCartView } from "@/components/kiosk/shared/KioskCartView";
+import { KioskScreenTransition } from "@/components/kiosk/shared/KioskScreenTransition";
+import { useKioskIdleTimer } from "@/components/kiosk/shared/useKioskIdleTimer";
+import { KioskCheckoutView } from "@/components/kiosk/template-a/KioskCheckoutView";
+import { KioskItemDetail } from "@/components/kiosk/template-a/KioskItemDetail";
+import { KioskMenuViewB } from "@/components/kiosk/template-b/KioskMenuViewB";
+import type { MenuItemType } from "@/lib/types";
+import { useKioskCartStore } from "@/stores/useKioskCartStore";
+import { useCallback, useState } from "react";
+import { View } from "react-native";
 
 /**
- * Template B — its own ordering flow and layout (to be built).
+ * Template B — its own ordering flow and layout.
  *
- * Independent screen sequence and layout from Template A; shares logic-only
- * pieces from components/kiosk/shared. Scaffold for now.
+ * Screen sequence: orderType → menu → itemDetail → cart → checkout → confirmation,
+ * same shape as Template A. The differentiation is media: the idle/attract
+ * screen (see KioskAttractCarouselB, wired in app/(main)/kiosk.tsx) is an
+ * image+video carousel, and the menu screen (KioskMenuViewB) adds a hero
+ * image banner above the category rail. Checkout/item-detail/cart are shared
+ * with Template A — no template-specific behavior needed there yet.
  */
+export type TemplateBScreen =
+  | "orderType"
+  | "menu"
+  | "itemDetail"
+  | "cart"
+  | "checkout"
+  | "confirmation";
+
 export function KioskTemplateB({ config, onExit }: KioskTemplateProps) {
+  const [screen, setScreen] = useState<TemplateBScreen>("orderType");
+  const [selectedItem, setSelectedItem] = useState<MenuItemType | null>(null);
+  const [paid, setPaid] = useState(false);
+  const itemCount = useKioskCartStore((s) => s.itemCount());
+  const subtotal = useKioskCartStore((s) => s.subtotal());
+  const orderType = useKioskCartStore((s) => s.orderType);
+  const setOrderType = useKioskCartStore((s) => s.setOrderType);
+  const clearCart = useKioskCartStore((s) => s.clear);
+
+  const hasActiveCart = !paid && (itemCount > 0 || screen === "checkout");
+
+  const resetToIdle = useCallback(() => {
+    clearCart();
+    setPaid(false);
+    setScreen("orderType");
+    setSelectedItem(null);
+    onExit();
+  }, [clearCart, onExit]);
+
+  const handleIdleReset = resetToIdle;
+
+  const { registerActivity, showWarning, secondsLeft } = useKioskIdleTimer({
+    idleTimeoutSeconds: config.idleTimeoutSeconds,
+    cartResetTimeoutSeconds: config.cartResetTimeoutSeconds,
+    hasActiveCart,
+    onReset: handleIdleReset,
+  });
+
+  if (screen === "orderType") {
+    return (
+      <View className="flex-1" onTouchStart={registerActivity}>
+        <KioskScreenTransition>
+          <KioskOrderTypeScreen
+            config={config}
+            onSelect={(type) => {
+              setOrderType(type);
+              setScreen("menu");
+            }}
+          />
+        </KioskScreenTransition>
+      </View>
+    );
+  }
+
   return (
     <View
-      className="flex-1 items-center justify-center px-8"
+      className="flex-1"
       style={{ backgroundColor: config.backgroundColor }}
+      onTouchStart={registerActivity}
     >
-      <Text
-        className="text-4xl font-bold"
-        style={{ color: config.headerTextColor }}
+      {screen !== "checkout" && (
+        <KioskHeader
+          config={config}
+          orderType={orderType}
+          onChangeOrderType={setOrderType}
+          onExit={onExit}
+        />
+      )}
+
+      {showWarning && (
+        <KioskIdleModal
+          config={config}
+          secondsLeft={secondsLeft}
+          onContinue={registerActivity}
+        />
+      )}
+
+      <View
+        style={{ display: screen === "menu" ? "flex" : "none", flex: 1 }}
       >
-        Template B
-      </Text>
-      <Text className="mt-2 text-center" style={{ color: config.textColor }}>
-        {config.profileName} · {config.templateId} — flow not built yet.
-      </Text>
-      <Pressable
-        onPress={onExit}
-        className="mt-10 px-6 py-3 rounded-full"
-        style={{ backgroundColor: config.primaryColor }}
-      >
-        <Text className="text-white font-semibold">Cancel / Done</Text>
-      </Pressable>
+        <KioskScreenTransition key="menu">
+          <KioskMenuViewB
+            config={config}
+            onSelectItem={(item) => {
+              setSelectedItem(item);
+              setScreen("itemDetail");
+            }}
+          />
+          <KioskCartButton
+            config={config}
+            itemCount={itemCount}
+            subtotal={subtotal}
+            onPress={() => setScreen("cart")}
+          />
+        </KioskScreenTransition>
+      </View>
+
+      {screen === "itemDetail" && selectedItem && (
+        <KioskScreenTransition key="itemDetail">
+          <KioskItemDetail
+            config={config}
+            item={selectedItem}
+            onBack={() => setScreen("menu")}
+            onAdded={() => setScreen("menu")}
+          />
+        </KioskScreenTransition>
+      )}
+
+      {screen === "cart" && (
+        <KioskScreenTransition key="cart">
+          <KioskCartView
+            config={config}
+            onBack={() => setScreen("menu")}
+            onCheckout={() => setScreen("checkout")}
+          />
+        </KioskScreenTransition>
+      )}
+
+      {screen === "checkout" && (
+        <KioskScreenTransition key="checkout">
+          <KioskCheckoutView
+            config={config}
+            onBack={() => setScreen("cart")}
+            onPaid={() => setPaid(true)}
+            onDone={resetToIdle}
+          />
+        </KioskScreenTransition>
+      )}
     </View>
   );
 }

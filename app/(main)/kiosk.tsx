@@ -1,5 +1,6 @@
 import { KioskAttractScreen } from "@/components/kiosk/KioskAttractScreen";
 import { KioskTemplateRouter } from "@/components/kiosk/KioskTemplateRouter";
+import { KioskAttractCarouselB } from "@/components/kiosk/template-b/KioskAttractCarouselB";
 import { KioskAdminPinModal } from "@/components/kiosk/shared/KioskAdminPinModal";
 import { KioskDiagnosticsScreen } from "@/components/kiosk/shared/KioskDiagnosticsScreen";
 import { KioskScaleProvider } from "@/components/kiosk/shared/KioskScaleProvider";
@@ -92,9 +93,13 @@ export default function KioskScreen() {
   }
 
   if (isIdle) {
+    const AttractComponent =
+      config.templateId === "template_b" || config.templateId === "template_c"
+        ? KioskAttractCarouselB
+        : KioskAttractScreen;
     return (
       <KioskScaleProvider>
-        <KioskAttractScreen
+        <AttractComponent
           config={config}
           onStart={() => setIdle(false)}
           onLogoLongPress={() => setShowPinModal(true)}

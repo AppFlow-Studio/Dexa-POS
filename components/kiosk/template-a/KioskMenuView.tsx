@@ -1,11 +1,12 @@
+import { KioskCategoryRail, type CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
 import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
-import type { Category, MenuItemType } from "@/lib/types";
+import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
 import type { KioskConfig } from "@/types/kiosk";
 import { useMemo, useState } from "react";
-import { FlatList, Pressable, SectionList, Text, View } from "react-native";
+import { FlatList, Text, View } from "react-native";
 
 /**
  * Template A menu view — two-pane split:
@@ -19,12 +20,6 @@ import { FlatList, Pressable, SectionList, Text, View } from "react-native";
  * Reads the menu tree from useMenuStore (menus → categories → items), filtered
  * to what's available now. Tapping an item hands it up via onSelectItem.
  */
-interface CategorySection {
-  menuId: string;
-  title: string; // menu name
-  data: Category[];
-}
-
 export function KioskMenuView({
   config,
   onSelectItem,
@@ -80,106 +75,12 @@ export function KioskMenuView({
   return (
     <View className="flex-1 flex-row">
       {/* Left rail — categories grouped by menu */}
-      <View
-        style={{
-          width: isVertical ? "33.3333%" : "25%",
-          backgroundColor: `${config.primaryColor}06`,
-          borderRightWidth: 1,
-          borderRightColor: `${config.textColor}0F`,
-        }}
-      >
-        <SectionList
+      <View style={{ width: isVertical ? "33.3333%" : "25%" }}>
+        <KioskCategoryRail
+          config={config}
           sections={sections}
-          keyExtractor={(cat, index) => `${cat.id}-${index}`}
-          stickySectionHeadersEnabled={false}
-          contentContainerStyle={{
-            paddingVertical: kioskPx(16, s),
-            paddingHorizontal: kioskPx(12, s),
-          }}
-          showsVerticalScrollIndicator={false}
-          renderSectionHeader={({ section }) => (
-            <View
-              style={{
-                paddingHorizontal: kioskPx(12, s),
-                paddingTop:
-                  section.menuId === sections[0]?.menuId
-                    ? kioskPx(4, s)
-                    : kioskPx(22, s),
-                paddingBottom: kioskPx(10, s),
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: kioskPx(11, s),
-                  fontWeight: "800",
-                  letterSpacing: 1.5,
-                  textTransform: "uppercase",
-                  color: config.accentColor,
-                  marginBottom: kioskPx(10, s),
-                }}
-              >
-                {section.title}
-              </Text>
-              <View
-                style={{
-                  height: 1,
-                  backgroundColor: `${config.textColor}12`,
-                }}
-              />
-            </View>
-          )}
-          renderItem={({ item: cat, section }) => {
-            const key = `${section.menuId}:${cat.id}`;
-            const selected = key === resolvedKey;
-            return (
-              <Pressable
-                onPress={() => setActiveKey(key)}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: kioskPx(12, s),
-                  paddingHorizontal: kioskPx(16, s),
-                  paddingVertical: kioskPx(15, s),
-                  marginBottom: kioskPx(6, s),
-                  borderRadius: kioskPx(14, s),
-                  backgroundColor: selected
-                    ? config.primaryColor
-                    : "transparent",
-                  ...(selected
-                    ? {
-                        shadowColor: config.primaryColor,
-                        shadowOpacity: 0.3,
-                        shadowRadius: 10,
-                        shadowOffset: { width: 0, height: 4 },
-                        elevation: 4,
-                      }
-                    : {}),
-                }}
-              >
-                <Text
-                  style={{
-                    flex: 1,
-                    fontSize: kioskPx(16, s),
-                    fontWeight: selected ? "700" : "500",
-                    color: selected ? "#FFFFFF" : config.textColor,
-                  }}
-                  numberOfLines={2}
-                >
-                  {cat.name}
-                </Text>
-              </Pressable>
-            );
-          }}
-          ListEmptyComponent={
-            <Text
-              style={{
-                padding: kioskPx(20, s),
-                color: `${config.textColor}99`,
-              }}
-            >
-              No categories available.
-            </Text>
-          }
+          resolvedKey={resolvedKey}
+          onSelect={setActiveKey}
         />
       </View>
 
