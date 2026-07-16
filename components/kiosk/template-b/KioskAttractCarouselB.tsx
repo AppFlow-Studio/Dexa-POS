@@ -38,6 +38,7 @@ export function KioskAttractCarouselB({
           imageUrls={idleImages}
           videoUrl={idleVideo}
           style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+          pointerEvents="none"
         />
       ) : null}
 
@@ -79,9 +80,19 @@ export function KioskAttractCarouselB({
           since the logo (its usual home) isn't rendered here. */}
       {hasCarousel && onLogoLongPress ? (
         <Pressable
+          onPress={onStart}
           onLongPress={onLogoLongPress}
           delayLongPress={2000}
-          className="absolute top-0 left-0 w-24 h-24"
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            width: 400,
+            height: 400,
+            marginTop: -200,
+            marginLeft: -200,
+            zIndex: 10,
+          }}
         />
       ) : null}
     </Pressable>

@@ -76,10 +76,12 @@ export function KioskMediaCarousel({
   imageUrls,
   videoUrl,
   style,
+  pointerEvents,
 }: {
   imageUrls: string[];
   videoUrl: string | null;
   style?: StyleProp<ViewStyle>;
+  pointerEvents?: "none" | "auto";
 }) {
   const slides = useMemo<Slide[]>(() => {
     const imageSlides: Slide[] = imageUrls.map((uri) => ({
@@ -139,7 +141,7 @@ export function KioskMediaCarousel({
   if (!slide) return null;
 
   return (
-    <View style={[{ overflow: "hidden" }, style]}>
+    <View style={[{ overflow: "hidden" }, style]} pointerEvents={pointerEvents}>
       {slides.map((s, i) =>
         s.kind === "image" ? <ImageLayer key={s.uri} uri={s.uri} active={i === index} /> : null,
       )}
