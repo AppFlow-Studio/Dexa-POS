@@ -4,6 +4,7 @@ import { useOnlineOrderActions } from "@/hooks/orders/useOnlineOrderActions";
 import { colors } from "@/lib/theme";
 import type { CartItem } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
+import { registerVisibleOrderDetail } from "@/stores/orderDetailStaleness";
 import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -148,6 +149,15 @@ const OnlineOrderDetailsScreen = () => {
       cancelled = true;
     };
   }, [orderId]);
+
+  // W1-3: this screen shows full item detail without setActiveOrder, so it
+  // registers as a visible-detail consumer — broadcasts for this order keep
+  // eager-refreshing (instead of being marked detailStale) while it's open.
+  const visibleDbOrderId = order?.db_order_id ?? orderId;
+  React.useEffect(() => {
+    if (!visibleDbOrderId) return;
+    return registerVisibleOrderDetail(visibleDbOrderId);
+  }, [visibleDbOrderId]);
 
   if (!order) {
     return (

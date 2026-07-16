@@ -37,6 +37,19 @@ import {
     useOrderStore,
 } from "./useOrderStore";
 type PaymentMethod = "Card" | "Cash" | "Split";
+
+// Payment ids that have already triggered an auto-printed per-payment receipt.
+// Guards both auto-print call sites (split portion + standard settlement) against
+// a double-entry of handlePaymentCompletion enqueuing a duplicate receipt
+// (double-tap / retry race — the print queue itself does not dedupe).
+const autoPrintedPaymentIds = new Set<string>();
+/** Returns true the first time a payment id is seen; false on repeats. */
+const claimAutoPrint = (paymentId: string): boolean => {
+  if (autoPrintedPaymentIds.has(paymentId)) return false;
+  autoPrintedPaymentIds.add(paymentId);
+  return true;
+};
+
 export type PaymentView =
   | "review"
   | "cash"
@@ -234,6 +247,14 @@ interface PaymentState {
     dejavooTransaction,
     amountOverride,
   }: {
+    method: string;
+    tipAmount?: number;
+    transactionDetails?: OrderPaymentTransactionDetails;
+    dejavooTransaction?: DejavooSaleTransactionResponse;
+    amountOverride?: number;
+  }) => Promise<void>;
+  /** Internal: real completion body, wrapped by handlePaymentCompletion's perf span. */
+  _handlePaymentCompletionImpl: (args: {
     method: string;
     tipAmount?: number;
     transactionDetails?: OrderPaymentTransactionDetails;
@@ -974,7 +995,27 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
   },
 
-  handlePaymentCompletion: async ({
+  handlePaymentCompletion: async (args: {
+    method: string;
+    tipAmount?: number;
+    transactionDetails?: OrderPaymentTransactionDetails;
+    amountOverride?: number;
+    dejavooTransaction?: DejavooSaleTransactionResponse;
+  }) => {
+    // Wave-0 telemetry (Audit C #1): the awaited completion window between
+    // the confirm tap and the success-view swap (3x totals + Immer + journal
+    // for cash). Lands in Sentry AND the local ring via the perf.ts tap.
+    const perfHandle = startInteraction("pos.payment.completion", {
+      method: args.method,
+    });
+    try {
+      return await get()._handlePaymentCompletionImpl(args);
+    } finally {
+      perfHandle.endAfterPaint();
+    }
+  },
+
+  _handlePaymentCompletionImpl: async ({
     method,
     tipAmount,
     transactionDetails,
@@ -1211,7 +1252,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           const justPaid = (afterOrder?.payments ?? []).find(
             (p) => !prePaymentPaymentIds.has(p.id),
           );
-          if (selectedStore && afterOrder && justPaid) {
+          if (
+            selectedStore &&
+            afterOrder &&
+            justPaid &&
+            claimAutoPrint(justPaid.id)
+          ) {
             const { PrinterService } =
               require("@/services/printing/PrinterService") as typeof import("@/services/printing/PrinterService");
             PrinterService.printSplitPaymentReceipt(
@@ -1341,6 +1387,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         })
         .filter((a): a is { itemId: string; quantity: number } => a !== null);
 
+      // Snapshot existing payment ids so we can identify the one this call appends,
+      // enabling the per-payment settlement receipt (mirrors the split branch).
+      const prePaymentPaymentIds = new Set(
+        (
+          useOrderStore.getState().ordersById[activeOrderId]?.payments ?? []
+        ).map((p) => p.id),
+      );
+
       // Now add the payment — this synchronously marks items kitchen_status "sent"
       const paymentSuccess = await addPaymentToOrder({
         orderId: activeOrderId,
@@ -1416,6 +1470,46 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       };
 
       eventBus.emit("order:paid", eventPayload);
+
+      // Settlement receipt (non-split "partial → pay the rest"): when this payment
+      // settles the balance of a split-flow order through the STANDARD branch, the
+      // combined receipt is suppressed in PaymentSuccessView (split_payment_path +
+      // autoPrintSplitReceipts). Print a per-payment receipt for THIS payment so the
+      // guest gets one — the same call the split route uses. Gated on the SAME
+      // condition as the combined-receipt suppression, so the two are complementary
+      // (no double, no gap). Keyed off the recorded payment, not "order fully paid".
+      // Persisted totals only (printSplitPaymentReceipt does not recompute).
+      try {
+        const { autoPrintSplitReceipts } =
+          useLocationConfigStore.getState().config.printing;
+        const afterOrder = useOrderStore.getState().ordersById[activeOrderId];
+        if (autoPrintSplitReceipts && afterOrder?.split_payment_path) {
+          const selectedStore =
+            useStoreSettingsStore.getState().selectedStore;
+          const justPaid = (afterOrder.payments ?? []).find(
+            (p) => !prePaymentPaymentIds.has(p.id),
+          );
+          if (selectedStore && justPaid && claimAutoPrint(justPaid.id)) {
+            const { PrinterService } =
+              require("@/services/printing/PrinterService") as typeof import("@/services/printing/PrinterService");
+            PrinterService.printSplitPaymentReceipt(
+              afterOrder,
+              justPaid,
+              selectedStore,
+            ).catch((e: unknown) =>
+              console.warn(
+                "[PaymentStore] settlement receipt auto-print failed:",
+                e,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "[PaymentStore] settlement receipt auto-print error:",
+          e,
+        );
+      }
 
       set({
         completedPaymentInfo: {

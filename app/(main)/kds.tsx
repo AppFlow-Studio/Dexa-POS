@@ -3,10 +3,10 @@ import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import {
-  getBucketedElapsed,
-  getUrgencyLevel,
-  useKDSTimer,
-  type UrgencyThresholds,
+    getBucketedElapsed,
+    getUrgencyLevel,
+    useKDSTimer,
+    type UrgencyThresholds,
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
@@ -16,7 +16,7 @@ import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { clearStationData } from "@/services/cacheService";
 import KDSSoundService, {
-  DEFAULT_SOUND_CONFIG,
+    DEFAULT_SOUND_CONFIG,
 } from "@/services/kds/kdsSoundService";
 import { refreshLocationConfig } from "@/services/locationConfigSync";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -26,33 +26,33 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import { useRouter } from "expo-router";
 import {
-  ArrowUpToLine,
-  CheckSquare,
-  Flame,
-  RotateCcw,
-  Settings,
-  ShoppingBag,
-  Square,
-  Star,
-  Truck,
-  UtensilsCrossed,
+    ArrowUpToLine,
+    CheckSquare,
+    Flame,
+    RotateCcw,
+    Settings,
+    ShoppingBag,
+    Square,
+    Star,
+    Truck,
+    UtensilsCrossed,
 } from "lucide-react-native";
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  Dimensions,
-  GestureResponderEvent,
-  Pressable,
-  Animated as RNAnimated,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    GestureResponderEvent,
+    Pressable,
+    Animated as RNAnimated,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // ─── Status Tab Config ────────────────────────────────────────────
@@ -80,6 +80,15 @@ function countUndoneItems(ticket: KDSTicket): number {
   return ticket.items.filter(
     (i) => i.kitchen_status !== "ready" && !i.is_voided && !i.is_refunded,
   ).length;
+}
+
+function isTicketElevated(ticket: KDSTicket): boolean {
+  const items = Array.isArray(ticket.items) ? ticket.items : [];
+  return (
+    Boolean(ticket.prioritized) ||
+    Boolean(ticket.any_rush) ||
+    items.some((item) => Boolean(item.rush) || Boolean(item.is_prioritized))
+  );
 }
 
 // ─── Confirm Bump Modal ─────────────────────────────────────────
@@ -741,6 +750,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     );
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
+    const serverName = ticket.server_name?.trim();
     const hasRush = ticketItems.some((item) => item.rush);
     const hasRefire = ticketItems.some((item) => item.recalled);
     const orderNote = ticket.order_notes?.trim() ?? "";
@@ -1166,6 +1176,19 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       solidBackground={hasUrgencyColor}
                     />
                   </View>
+
+                  {serverName ? (
+                    <Text
+                      style={{
+                        color: headerSecondaryTextColor,
+                        fontSize: s(11),
+                        fontWeight: "600",
+                      }}
+                      numberOfLines={1}
+                    >
+                      Server: {serverName}
+                    </Text>
+                  ) : null}
 
                   {/* Order Type */}
                   <View
@@ -1689,13 +1712,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       <Text
                         style={{
                           color: displaySettings.highlightNotes
-                            ? colors.heading
-                            : colors.muted,
-                          fontSize: s(10),
+                            ? "#92400E"
+                            : "#374151",
+                          fontSize: s(11),
                           fontStyle: "italic",
                           fontWeight: displaySettings.highlightNotes
                             ? "700"
-                            : "400",
+                            : "600",
                           marginLeft: s(30),
                           marginTop: s(3),
                           opacity: shouldStrike ? 0.4 : 1,
@@ -1838,6 +1861,10 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       pt.customer_name !== nt.customer_name ||
       pt.order_notes !== nt.order_notes ||
       pt.order_type !== nt.order_type ||
+      pt.order_source !== nt.order_source ||
+      pt.delivery_platform !== nt.delivery_platform ||
+      pt.server_id !== nt.server_id ||
+      pt.server_name !== nt.server_name ||
       pt.start_time_epoch !== nt.start_time_epoch ||
       // Re-render when the frozen "Served" time lands/changes (optimistic
       // Date.now() → server completed_at) so the timer snaps to the shared value.
@@ -1893,6 +1920,7 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
       ticket.course_number > 1 ||
       displayServerName,
     );
+    const serverName = ticket.server_name?.trim();
 
     const handlePress = () => {
       // Single tap selects the ticket so a Recall button appears in the header
@@ -2021,6 +2049,19 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
                       uiScale={uiScale}
                     />
                   </View>
+
+                  {serverName ? (
+                    <Text
+                      style={{
+                        color: "#6B7280",
+                        fontSize: s(11),
+                        fontWeight: "600",
+                      }}
+                      numberOfLines={1}
+                    >
+                      Server: {serverName}
+                    </Text>
+                  ) : null}
 
                   {/* Order Type */}
                   <View
@@ -2404,7 +2445,13 @@ const KitchenDisplayScreen = () => {
       if (selectedStation?.id)
         promises.push(fetchKDSDisplay(selectedStation.id));
       if (supabase && selectedStore?.id)
-        promises.push(refreshLocationConfig(supabase, selectedStore.id));
+        promises.push(
+          refreshLocationConfig(
+            supabase,
+            selectedStore.id,
+            selectedStation?.id ?? null,
+          ),
+        );
       await Promise.all(promises);
     } finally {
       setRefreshing(false);
@@ -3147,7 +3194,12 @@ const KitchenDisplayScreen = () => {
   const ticketsForLayout = useMemo(
     () =>
       [...dedupeTicketsForRender(activeTabTickets)].sort((a, b) => {
-        // For non-active tabs, use ticket_id tiebreaker only (don't re-sort)
+        if (activeStatus !== "done") {
+          const priorityDiff =
+            Number(isTicketElevated(b)) - Number(isTicketElevated(a));
+          if (priorityDiff !== 0) return priorityDiff;
+        }
+
         const aTs =
           activeStatus === "done"
             ? (a.done_time_epoch ?? a.start_time_epoch ?? 0)
@@ -3805,7 +3857,7 @@ const KitchenDisplayScreen = () => {
         </View>
       )}
 
-      {/* ─── Single Active FlatList ─── */}
+      {/* ─── Active tab ticket grid (ScrollView, one tab rendered at a time) ─── */}
       {!isReady || (isInitialLoading && !hasHydrated) ? (
         renderSkeletons()
       ) : activeTabTickets.length === 0 ? (

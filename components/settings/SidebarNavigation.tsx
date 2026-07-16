@@ -14,6 +14,7 @@ import {
   BadgeDollarSign,
   Banknote,
   Bell,
+  CalendarClock,
   ChefHat,
   ChevronDown,
   ChevronLeft,
@@ -199,6 +200,12 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         label: 'Delivery Management',
         icon: Truck,
         route: '/settings/delivery'
+      },
+      {
+        id: 'waitlist',
+        label: 'Waitlist & Reservations',
+        icon: CalendarClock,
+        route: '/settings/waitlist'
       }
     ]
   },

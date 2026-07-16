@@ -1,71 +1,28 @@
-/**
- * DeliveryPlatformBadge
- *
- * Renders a small logo badge for delivery platform orders.
- * Uses bundled static assets — no remote fetches.
- *
- * Accepts the backend `delivery_platform` string (e.g. "uber_eats", "doordash")
- * or falls back to `order_source` for generic "Online" display.
- *
- * Returns null for POS orders or when no platform info is present.
- */
-
+import type { OnlineOrderProvider } from "@/lib/orderPlatformResolver";
+import { resolveOrderPlatformLogo } from "@/lib/orderPlatformResolver";
 import { colors } from "@/lib/theme";
-import { Globe } from "lucide-react-native";
+import { Globe, ShoppingBag } from "lucide-react-native";
 import { Image, ImageSourcePropType, Text, View } from "react-native";
 
-// ── Logo asset map (backend platform name → bundled asset) ──────────────────
+const PLATFORM_LOGOS: Partial<Record<OnlineOrderProvider, ImageSourcePropType>> =
+  {
+    doordash: require("@/assets/images/doordash.png"),
+    grubhub: require("@/assets/images/grubhub.png"),
+    ubereats: require("@/assets/images/uber-eats.png"),
+  };
 
-const PLATFORM_LOGOS: Record<string, ImageSourcePropType> = {
-  // DoorDash
-  doordash: require("@/assets/images/doordash.png"),
-  door_dash: require("@/assets/images/doordash.png"),
-  // Grubhub
-  grubhub: require("@/assets/images/grubhub.png"),
-  // Uber Eats
-  uber_eats: require("@/assets/images/uber-eats.png"),
-  ubereats: require("@/assets/images/uber-eats.png"),
-  "uber-eats": require("@/assets/images/uber-eats.png"),
-  // Food Panda / Postmates (reuse food-panda asset as placeholder)
-  food_panda: require("@/assets/images/food-panda.png"),
-  foodpanda: require("@/assets/images/food-panda.png"),
-  postmates: require("@/assets/images/food-panda.png"),
-};
-
-// Brand accent colors (background tint for the logo container)
-const PLATFORM_COLORS: Record<string, string> = {
+const PLATFORM_COLORS: Partial<Record<OnlineOrderProvider, string>> = {
   doordash: "#FF3008",
-  door_dash: "#FF3008",
   grubhub: "#F63440",
-  uber_eats: "#06C167",
   ubereats: "#06C167",
-  "uber-eats": "#06C167",
-  food_panda: "#D70F64",
-  foodpanda: "#D70F64",
-  postmates: "#6E48AA",
 };
-
-// Human-readable display names for KDS badges
-const PLATFORM_DISPLAY_NAMES: Record<string, string> = {
-  doordash: "DoorDash",
-  door_dash: "DoorDash",
-  grubhub: "Grubhub",
-  uber_eats: "Uber Eats",
-  ubereats: "Uber Eats",
-  "uber-eats": "Uber Eats",
-  food_panda: "Food Panda",
-  foodpanda: "Food Panda",
-  postmates: "Postmates",
-};
-
-// ── Props ────────────────────────────────────────────────────────────────────
 
 interface DeliveryPlatformBadgeProps {
-  /** Backend delivery_platform field value (e.g. "uber_eats") */
   deliveryPlatform?: string | null;
-  /** Backend order_source field (fallback for generic online badge) */
+  metadataDeliveryCompany?: string | null;
+  onlineOrderDeliveryCompany?: string | null;
+  onlineOrderProvider?: string | null;
   orderSource?: string | null;
-  /** Badge size variant — 'sm' fits inside order chips row, 'md' for detail views, 'kds' for KDS ticket headers */
   size?: "sm" | "md" | "kds";
   /**
    * UI scale factor (passed from useUiScale()).
@@ -73,55 +30,45 @@ interface DeliveryPlatformBadgeProps {
    * Applies to all size variants.
    */
   uiScale?: number;
-  /**
-   * When true, use opaque solid backgrounds instead of semi-transparent tints.
-   * Set this when the badge sits on a colored header (e.g. urgency background)
-   * to prevent color blending.
-   */
   solidBackground?: boolean;
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
-
 export default function DeliveryPlatformBadge({
   deliveryPlatform,
+  metadataDeliveryCompany,
+  onlineOrderDeliveryCompany,
+  onlineOrderProvider,
   orderSource,
   size = "sm",
   uiScale,
   solidBackground = false,
 }: DeliveryPlatformBadgeProps) {
-  const normalizedSource = orderSource?.toLowerCase().trim() ?? "";
-  const isPosLikeSource =
-    normalizedSource === "" ||
-    normalizedSource === "pos" ||
-    normalizedSource === "in_store" ||
-    normalizedSource === "in-store";
+  const resolved = resolveOrderPlatformLogo({
+    deliveryPlatform,
+    metadataDeliveryCompany,
+    onlineOrderDeliveryCompany,
+    onlineOrderProvider,
+    orderSource,
+  });
 
-  // Scale helper — applied to all size variants when uiScale is provided
+  if (resolved.kind === "none") return null;
+
+  // Scale helper - applied to all size variants when uiScale is provided.
   const s =
     uiScale != null ? (n: number) => Math.round(n * uiScale) : (n: number) => n;
-
-  // POS orders → show nothing
-  if (!deliveryPlatform && isPosLikeSource) {
-    return null;
-  }
-
-  // Some flows provide platform info only in order_source. Use it as a platform fallback.
-  const key = (deliveryPlatform?.toLowerCase() ?? normalizedSource).trim();
-  const logo = PLATFORM_LOGOS[key];
-  const accent = PLATFORM_COLORS[key] ?? colors.teal;
-
+  const logo = resolved.provider ? PLATFORM_LOGOS[resolved.provider] : undefined;
+  const accent =
+    (resolved.provider ? PLATFORM_COLORS[resolved.provider] : undefined) ??
+    colors.teal;
   const logoSize = size === "md" ? s(20) : s(14);
   const containerSize = size === "md" ? s(28) : s(20);
   const fontSize = size === "kds" ? s(11) : size === "md" ? s(11) : s(10);
 
-  // Known platform with logo
-  if (logo) {
-    // KDS: pill badge with icon + platform name
+  if (resolved.kind === "marketplace" && logo) {
     if (size === "kds") {
-      const displayName = PLATFORM_DISPLAY_NAMES[key] ?? key;
       const badgeBg = solidBackground ? "#FFFFFF" : accent + "15";
       const badgeBorder = solidBackground ? accent : accent + "40";
+
       return (
         <View
           style={{
@@ -142,13 +89,12 @@ export default function DeliveryPlatformBadge({
             resizeMode="contain"
           />
           <Text style={{ fontSize: s(11), fontWeight: "700", color: accent }}>
-            {displayName}
+            {resolved.label}
           </Text>
         </View>
       );
     }
 
-    // sm / md: circular icon only
     return (
       <View
         style={{
@@ -172,9 +118,10 @@ export default function DeliveryPlatformBadge({
     );
   }
 
-  // Unknown external platform — generic globe badge
+  const FallbackIcon = resolved.kind === "first_party" ? ShoppingBag : Globe;
   const badgeBg = solidBackground ? "#FFFFFF" : colors.teal + "20";
   const badgeBorder = solidBackground ? colors.teal : colors.teal + "50";
+
   return (
     <View
       style={{
@@ -189,12 +136,12 @@ export default function DeliveryPlatformBadge({
         paddingVertical: s(size === "kds" ? 3 : size === "md" ? 3 : 2),
       }}
     >
-      <Globe
+      <FallbackIcon
         size={s(size === "kds" ? 12 : size === "md" ? 12 : 9)}
         color={colors.teal}
       />
       <Text style={{ fontSize, fontWeight: "700", color: colors.teal }}>
-        Online
+        {resolved.label}
       </Text>
     </View>
   );

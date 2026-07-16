@@ -38,6 +38,7 @@ import {
     getEnvReconcileResult,
     secureStorage,
 } from "@/lib/storage";
+import { initTelemetry } from "@/lib/telemetry/init";
 import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
 import { computeUiScale } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -671,6 +672,15 @@ export default Sentry.wrap(function RootLayout() {
         // PTO history is calculated from real shift data, not mock data.
         // Start draft order cleanup
         useOrderStore.getState().startDraftCleanup();
+        // Start periodic session pruning (cleans stale terminal sessions from memory)
+        try {
+          const {
+            startSessionPrune,
+          } = require("@/stores/useTableSessionStore");
+          startSessionPrune();
+        } catch {
+          /* store may not be loaded yet */
+        }
         // One-time cleanup: Remove duplicate draft orders (safe to run on every startup)
         useOrderStore.getState().cleanupDraftDuplicates();
         // Start print queue processing
@@ -888,6 +898,12 @@ export default Sentry.wrap(function RootLayout() {
     return () => sub.remove();
   }, []);
 
+  // Wave-0 perf telemetry (long-task watcher, persist/broadcast counters,
+  // ring buffer). Owns its own AppState listener + 30s flush; idempotent.
+  React.useEffect(() => {
+    initTelemetry();
+  }, []);
+
   // Cleanup intervals on unmount
   React.useEffect(() => {
     return () => {
@@ -905,12 +921,28 @@ export default Sentry.wrap(function RootLayout() {
         if (!isKDS && !isCFDMode) {
           useOrderStore.getState().stopDraftCleanup();
           PrinterService.stopProcessing();
+          try {
+            const {
+              stopSessionPrune,
+            } = require("@/stores/useTableSessionStore");
+            stopSessionPrune();
+          } catch {
+            /* store may not be loaded */
+          }
         }
       } else if (state === "active") {
         // Restart when app comes back to foreground
         if (!isKDS && !isCFDMode) {
           useOrderStore.getState().startDraftCleanup();
           PrinterService.startProcessing();
+          try {
+            const {
+              startSessionPrune,
+            } = require("@/stores/useTableSessionStore");
+            startSessionPrune();
+          } catch {
+            /* store may not be loaded */
+          }
         }
       }
     });

@@ -14,7 +14,7 @@ import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import { useTableSessionInit } from "@/hooks/useTableSessionInit";
 import { setHeaderHeight } from "@/lib/headerHeight";
-import { hintNativeGc } from "@/lib/nativeMemory";
+import { isOnlineOrderSource } from "@/lib/orderSource";
 import { colors, spinnerColor } from "@/lib/theme";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { hydrateDrawerSession } from "@/services/cashDrawerService";
@@ -23,6 +23,10 @@ import { useKDSStore } from "@/stores/useKDSStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
+import {
+  selectIsOpen as selectModifierOpen,
+  useModifierSidebarStore,
+} from "@/stores/useModifierSidebarStore";
 import {
   getOrderStoreSupabaseClient,
   useOrderStore,
@@ -47,6 +51,17 @@ import {
   unstable_batchedUpdates,
   View,
 } from "react-native";
+import { hintNativeGc } from "@/lib/nativeMemory";
+import {
+  KEY_FANOUT_KDS_MS,
+  KEY_FANOUT_ORDER_STORE_MS,
+  KEY_FANOUT_PREV_ORDERS_MS,
+} from "@/lib/telemetry/keys";
+import {
+  noteBroadcastFanoutEnd,
+  recordSpan,
+  setCurrentRoute,
+} from "@/lib/telemetry/registry";
 import { SafeAreaView } from "react-native-safe-area-context";
 /** Side-effect component: keeps POS orders in sync when realtime drops */
 function OrderSyncRecoveryBridge({ locationId }: { locationId: string }) {
@@ -62,6 +77,12 @@ export default function MainLayout() {
   const closeProfile = useProfileOverlayStore((state) => state.closeProfile);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  // The modifier customization screen renders inside MenuSection with a big
+  // internal zIndex, but the online-order edge tab + drawer live at the root
+  // stacking context (zIndex 150) and would otherwise sit on top of it —
+  // blocking the modifier UI and its qty +/- buttons. Hide them while the
+  // modifier screen is up.
+  const isModifierScreenOpen = useModifierSidebarStore(selectModifierOpen);
   const isKDS = selectedStation?.station_type === "kds";
   const isKiosk = selectedStation?.station_type === "self_service";
   const isKioskRoute = pathname === "/kiosk" || pathname.endsWith("/kiosk");
@@ -95,6 +116,11 @@ export default function MainLayout() {
     });
     return () => task.cancel();
   }, [pathname]);
+
+  // Wave-0 telemetry: tag long-task samples with the screen they blocked.
+  useEffect(() => {
+    setCurrentRoute(pathname)
+  }, [pathname])
 
   useEffect(() => {
     if (!isKDS) {
@@ -195,7 +221,7 @@ export default function MainLayout() {
     if (order) {
       const orderStore = useOrderStore.getState();
       if (
-        order.order_source === "online" ||
+        isOnlineOrderSource(order.order_source) ||
         orderStore.dbOrderIdIndex[order.id] ||
         orderStore.ordersById[order.id]
       ) {
@@ -216,14 +242,21 @@ export default function MainLayout() {
       });
     }
     unstable_batchedUpdates(() => {
+      const t0 = performance.now();
       useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
+      const t1 = performance.now();
+      recordSpan(KEY_FANOUT_ORDER_STORE_MS, t1 - t0);
       usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
+      const t2 = performance.now();
+      recordSpan(KEY_FANOUT_PREV_ORDERS_MS, t2 - t1);
       // Keep the KDS store warm on POS stations too — the /kds screen relies
       // on broadcasts while realtime is connected (its polling is disabled
       // then, see kds.tsx schedulePoll), and its own pre-gate skips
       // non-kitchen-relevant broadcasts cheaply.
       useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
+      recordSpan(KEY_FANOUT_KDS_MS, performance.now() - t2);
     });
+    noteBroadcastFanoutEnd();
     if (broadcastPayload.operation === "INSERT") {
       const src = broadcastPayload.data?.order?.order_source;
       if (src && src !== "pos" && src !== "in_store") {
@@ -396,21 +429,24 @@ export default function MainLayout() {
           </View>
           {/* Global online-orders edge tab + drawer. zIndex 150: above
               PaymentDetail (100) so incoming orders stay reachable
-              mid-payment, below MenuSearchSheet (200). */}
-          <View
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 150,
-            }}
-            pointerEvents="box-none"
-          >
-            <OnlineOrderEdgeTab />
-            <OnlineOrderDrawer />
-          </View>
+              mid-payment, below MenuSearchSheet (200). Hidden while the
+              modifier screen is up so it can't overlay the modifier UI. */}
+          {!isModifierScreenOpen && (
+            <View
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 150,
+              }}
+              pointerEvents="box-none"
+            >
+              <OnlineOrderEdgeTab />
+              <OnlineOrderDrawer />
+            </View>
+          )}
           <View
             style={{
               position: "absolute",

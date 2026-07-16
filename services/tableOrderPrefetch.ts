@@ -173,7 +173,20 @@ function getSessionOrderIds(): string[] {
   return ids;
 }
 
+// Drop expired _recentlyHydrated entries. isRecentlyHydrated only deletes an
+// entry when that exact id is re-checked after expiry; an id that's hydrated
+// once and never re-queried (its session cleared / table freed) would linger
+// until teardownTableOrderPrefetch (which only fires when ALL table mounts
+// unmount). Sweeping here keeps the map bounded to genuinely-recent hydrations.
+function sweepExpiredHydrations(): void {
+  const now = Date.now();
+  for (const [id, stamped] of _recentlyHydrated) {
+    if (now - stamped > HYDRATE_SUPPRESS_MS) _recentlyHydrated.delete(id);
+  }
+}
+
 async function prefetchUncachedOrders(orderIds: string[]) {
+  sweepExpiredHydrations();
   if (orderIds.length === 0) return;
 
   const uncachedOrderIds = orderIds.filter((id) => {

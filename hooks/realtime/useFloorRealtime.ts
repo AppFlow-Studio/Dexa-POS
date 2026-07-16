@@ -26,14 +26,14 @@
 //   - Fallback poll while the channel is NOT connected → covers offline /
 //     reconnect gaps, and stops the instant broadcasts resume.
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useFloorPlanStore } from '@/stores/useFloorPlanStore';
-import { useRealtimeChannel } from './useRealtimechannel';
-import { useSupabaseClient } from '@/hooks/useSupabaseClient';
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import type {
-  RealtimeEventType,
-  UseFloorRealtimeOptions,
-} from '@/types/real-time';
+    RealtimeEventType,
+    UseFloorRealtimeOptions,
+} from "@/types/real-time";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useRealtimeChannel } from "./useRealtimechannel";
 
 // Coalesce bursts of broadcasts into a single authoritative reload.
 const RECONCILE_DEBOUNCE_MS = 300;
@@ -53,8 +53,11 @@ const RECONCILE_MIN_INTERVAL_MS = 1_500;
 // the fallback poll are deliberately NOT suppressed.
 const JUST_LOADED_SUPPRESS_MS = 1_200;
 // Heartbeat: converge even if every broadcast is dropped.
-const HEARTBEAT_MS = 45_000;
-const HEARTBEAT_STALE_MS = 30_000;
+// 120s interval with 60s staleness — during idle this halves the periodic
+// activity compared to the old 45s/30s cadence, reducing GC churn from
+// Array.from(listeners) + Immer proxy creation on the tables screen.
+const HEARTBEAT_MS = 120_000;
+const HEARTBEAT_STALE_MS = 60_000;
 // Fallback poll cadence while the channel is disconnected.
 const FALLBACK_POLL_MS = 5_000;
 
@@ -70,7 +73,6 @@ export function useFloorRealtime({
   onSessionChange,
   onTableAssignment,
   onSessionEvent,
-  onOrderUpdate,
 }: UseFloorRealtimeOptions) {
   const supabase = useSupabaseClient();
 
@@ -78,16 +80,15 @@ export function useFloorRealtime({
   // any one of them means "the floor changed, go re-read the truth".
   const events: RealtimeEventType[] = useMemo(
     () => [
-      'INSERT',
-      'UPDATE',
-      'DELETE',
-      'TABLE_ASSIGNMENT_INSERT',
-      'TABLE_ASSIGNMENT_UPDATE',
-      'TABLE_ASSIGNMENT_DELETE',
-      'SESSION_EVENT',
-      'SESSION_ORDER_UPDATE',
+      "INSERT",
+      "UPDATE",
+      "DELETE",
+      "TABLE_ASSIGNMENT_INSERT",
+      "TABLE_ASSIGNMENT_UPDATE",
+      "TABLE_ASSIGNMENT_DELETE",
+      "SESSION_EVENT",
     ],
-    []
+    [],
   );
 
   // ------------------------------------------------------------------
@@ -128,7 +129,7 @@ export function useFloorRealtime({
     // min interval even under a steady broadcast stream.
     const delay = Math.max(
       RECONCILE_DEBOUNCE_MS,
-      RECONCILE_MIN_INTERVAL_MS - sinceLast
+      RECONCILE_MIN_INTERVAL_MS - sinceLast,
     );
     reconcileTimer.current = setTimeout(() => {
       reconcileTimer.current = null;
@@ -139,7 +140,7 @@ export function useFloorRealtime({
       if (snapshotAgeMs < JUST_LOADED_SUPPRESS_MS) {
         if (__DEV__)
           console.log(
-            `[FloorRealtime] reconcile suppressed — snapshot ${Math.round(snapshotAgeMs)}ms old`
+            `[FloorRealtime] reconcile suppressed — snapshot ${Math.round(snapshotAgeMs)}ms old`,
           );
         return;
       }
@@ -151,7 +152,7 @@ export function useFloorRealtime({
     () => () => {
       if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
     },
-    []
+    [],
   );
 
   // ------------------------------------------------------------------
@@ -167,25 +168,22 @@ export function useFloorRealtime({
       // Pass-through callbacks (consumers that want the raw payload, e.g. for
       // toasts/analytics). State changes still come only from the reconcile.
       switch (event) {
-        case 'INSERT':
-        case 'UPDATE':
-        case 'DELETE':
+        case "INSERT":
+        case "UPDATE":
+        case "DELETE":
           onSessionChange?.(payload as never);
           break;
-        case 'TABLE_ASSIGNMENT_INSERT':
-        case 'TABLE_ASSIGNMENT_UPDATE':
-        case 'TABLE_ASSIGNMENT_DELETE':
+        case "TABLE_ASSIGNMENT_INSERT":
+        case "TABLE_ASSIGNMENT_UPDATE":
+        case "TABLE_ASSIGNMENT_DELETE":
           onTableAssignment?.(payload as never);
           break;
-        case 'SESSION_EVENT':
+        case "SESSION_EVENT":
           onSessionEvent?.(payload as never);
-          break;
-        case 'SESSION_ORDER_UPDATE':
-          onOrderUpdate?.(payload as never);
           break;
       }
     },
-    [scheduleReconcile, onSessionChange, onTableAssignment, onSessionEvent, onOrderUpdate]
+    [scheduleReconcile, onSessionChange, onTableAssignment, onSessionEvent],
   );
 
   const { status, reconnect, disconnect } = useRealtimeChannel<unknown>({
@@ -197,7 +195,7 @@ export function useFloorRealtime({
     ...(maxReconnectAttempts != null && { maxReconnectAttempts }),
   });
 
-  const isConnected = status.state === 'SUBSCRIBED';
+  const isConnected = status.state === "SUBSCRIBED";
 
   // ------------------------------------------------------------------
   // Catch-up on (re)subscribe — recover anything dropped while down.
@@ -206,7 +204,10 @@ export function useFloorRealtime({
   const wasConnectedRef = useRef(false);
   useEffect(() => {
     if (isConnected && !wasConnectedRef.current) {
-      if (__DEV__) console.log('[FloorRealtime] (re)SUBSCRIBED — catch-up reconcile (staleness-gated)');
+      if (__DEV__)
+        console.log(
+          "[FloorRealtime] (re)SUBSCRIBED — catch-up reconcile (staleness-gated)",
+        );
       // Staleness-gated catch-up instead of an unconditional full snapshot.
       // A Clerk JWT refresh during a send tears down + re-subscribes BOTH
       // channels (clean CLOSED, no heartbeat error), and the old unconditional
@@ -216,7 +217,9 @@ export function useFloorRealtime({
       // so this either no-ops (fresh) or runs the lightweight session refresh.
       // A genuinely long disconnect leaves data stale → still reconciles. The
       // heartbeat below remains the backstop for structural/geometry drift.
-      void useFloorPlanStore.getState().loadFloorPlanStatusIfStale(HEARTBEAT_STALE_MS);
+      void useFloorPlanStore
+        .getState()
+        .loadFloorPlanStatusIfStale(HEARTBEAT_STALE_MS);
     }
     wasConnectedRef.current = isConnected;
   }, [isConnected]);
@@ -227,7 +230,9 @@ export function useFloorRealtime({
   useEffect(() => {
     if (!enabled || !isConnected) return;
     const id = setInterval(() => {
-      void useFloorPlanStore.getState().loadFloorPlanStatusIfStale(HEARTBEAT_STALE_MS);
+      void useFloorPlanStore
+        .getState()
+        .loadFloorPlanStatusIfStale(HEARTBEAT_STALE_MS);
     }, HEARTBEAT_MS);
     return () => clearInterval(id);
   }, [enabled, isConnected]);
@@ -248,7 +253,8 @@ export function useFloorRealtime({
     reconnect,
     disconnect,
     isConnected,
-    isReconnecting: status.reconnectAttempts > 0 && status.state !== 'SUBSCRIBED',
+    isReconnecting:
+      status.reconnectAttempts > 0 && status.state !== "SUBSCRIBED",
   };
 }
 
@@ -266,13 +272,13 @@ export function useSessionEventsRealtime({
   onEvent?: (payload: unknown) => void;
 }) {
   const supabase = useSupabaseClient();
-  const events: RealtimeEventType[] = useMemo(() => ['SESSION_EVENT'], []);
+  const events: RealtimeEventType[] = useMemo(() => ["SESSION_EVENT"], []);
 
   const handleMessage = useCallback(
     (_event: RealtimeEventType, payload: unknown) => {
       onEvent?.(payload);
     },
-    [onEvent]
+    [onEvent],
   );
 
   const { status, reconnect } = useRealtimeChannel<unknown>({
@@ -286,6 +292,6 @@ export function useSessionEventsRealtime({
   return {
     connectionStatus: status,
     reconnect,
-    isConnected: status.state === 'SUBSCRIBED',
+    isConnected: status.state === "SUBSCRIBED",
   };
 }

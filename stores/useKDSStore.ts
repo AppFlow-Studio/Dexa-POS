@@ -634,7 +634,7 @@ function reconcilePriorityFlags(
   return changed ? result : tickets;
 }
 
-function compareKdsTickets(a: KDSTicket, b: KDSTicket): number {
+function compareKdsTicketsByStartTime(a: KDSTicket, b: KDSTicket): number {
   const timeDiff = a.start_time_epoch - b.start_time_epoch;
   if (timeDiff !== 0) return timeDiff;
 
@@ -644,8 +644,29 @@ function compareKdsTickets(a: KDSTicket, b: KDSTicket): number {
   return a.ticket_id.localeCompare(b.ticket_id);
 }
 
+function compareKdsTickets(a: KDSTicket, b: KDSTicket): number {
+  const priorityDiff =
+    Number(isKdsTicketElevated(b)) - Number(isKdsTicketElevated(a));
+  if (priorityDiff !== 0) return priorityDiff;
+
+  return compareKdsTicketsByStartTime(a, b);
+}
+
 function sortKdsTicketsStable(tickets: KDSTicket[]): KDSTicket[] {
   return [...tickets].sort(compareKdsTickets);
+}
+
+function isKdsTicketElevated(
+  ticket: KDSTicket,
+  prioritizedIds?: Set<string>,
+): boolean {
+  const items = Array.isArray(ticket.items) ? ticket.items : [];
+  return (
+    Boolean(ticket.prioritized) ||
+    Boolean(ticket.any_rush) ||
+    Boolean(prioritizedIds?.has(ticket.ticket_id)) ||
+    items.some((item) => Boolean(item.rush) || Boolean(item.is_prioritized))
+  );
 }
 
 function normalizeKdsTicket(ticket: KDSTicket): KDSTicket {
@@ -670,6 +691,15 @@ function normalizeKdsTicket(ticket: KDSTicket): KDSTicket {
   return {
     ...ticket,
     items,
+    any_rush:
+      typeof ticket.any_rush === "boolean"
+        ? ticket.any_rush
+        : items.some((item) => Boolean(item.rush)),
+    server_id: ticket.server_id ?? null,
+    server_name:
+      typeof ticket.server_name === "string" && ticket.server_name.trim()
+        ? ticket.server_name.trim()
+        : null,
     table_name: resolveKdsTableName(ticket.table_name),
     delivery_platform:
       normalizePlatform(ticket.delivery_platform) ??
@@ -972,6 +1002,7 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
         return sum + Math.max(0, i.quantity - (i.refunded_quantity ?? 0));
       }, 0),
       items: ticketItems,
+      any_rush: roundItems.some((i) => i.rush),
       prioritized: roundItems.some((i) => i.is_prioritized),
       session_id: order.session_id ?? null,
     });
@@ -991,7 +1022,12 @@ function arraysShallowEqual(a: KDSTicket[], b: KDSTicket[]): boolean {
 
 /** Deep-compare two tickets by value, reusing unchanged references */
 function ticketDeepEqual(a: KDSTicket, b: KDSTicket): boolean {
-  if (a.status !== b.status || a.prioritized !== b.prioritized) return false;
+  if (
+    a.status !== b.status ||
+    a.prioritized !== b.prioritized ||
+    a.any_rush !== b.any_rush
+  )
+    return false;
   // Track the freeze epochs: when a ticket flips to "ready" the only field that
   // changes can be ready_time_epoch (server completed_at). Without this the merge
   // treats the ticket as unchanged, keeps the old (un-frozen / per-device) ref,
@@ -1001,6 +1037,13 @@ function ticketDeepEqual(a: KDSTicket, b: KDSTicket): boolean {
   if (a.item_count !== b.item_count || a.order_number !== b.order_number)
     return false;
   if (a.display_number !== b.display_number || a.table_name !== b.table_name)
+    return false;
+  if (a.server_id !== b.server_id || a.server_name !== b.server_name)
+    return false;
+  if (
+    a.order_source !== b.order_source ||
+    a.delivery_platform !== b.delivery_platform
+  )
     return false;
   if (a.order_notes !== b.order_notes) return false;
   if (a.customer_name !== b.customer_name || a.start_time !== b.start_time)
@@ -1130,18 +1173,34 @@ function mergeTickets(
     const prevRaw = existingById[ticket.ticket_id];
     const prev = prevRaw ? normalizeKdsTicket(prevRaw) : undefined;
     // Preserve customer_name/table_name from existing ticket when broadcast omits them
+    const incomingHasServerId = Object.prototype.hasOwnProperty.call(
+      ticket,
+      "server_id",
+    );
+    const incomingHasServerName = Object.prototype.hasOwnProperty.call(
+      ticket,
+      "server_name",
+    );
     const normalizedIncoming = normalizeKdsTicket(ticket);
     const enriched =
       prev &&
       (ticket.customer_name === null ||
         ticket.table_name === null ||
-        ticket.order_notes == null)
+        ticket.order_notes == null ||
+        !incomingHasServerId ||
+        !incomingHasServerName)
         ? {
             ...normalizedIncoming,
             customer_name:
               normalizedIncoming.customer_name ?? prev.customer_name,
             table_name: normalizedIncoming.table_name ?? prev.table_name,
             order_notes: normalizedIncoming.order_notes ?? prev.order_notes,
+            server_id: incomingHasServerId
+              ? normalizedIncoming.server_id
+              : prev.server_id,
+            server_name: incomingHasServerName
+              ? normalizedIncoming.server_name
+              : prev.server_name,
           }
         : normalizedIncoming;
     const stabilized = prev ? preserveCompletedItems(prev, enriched) : enriched;
@@ -1158,9 +1217,8 @@ function mergeTickets(
   return { merged, mergedById, changed };
 }
 
-/** Positionally-stable bucket sort: existing tickets keep their position from
- *  prevBucket. New tickets are inserted at the front (newestFirst) or back.
- *  Prioritized tickets float to the front of the result. */
+/** Positionally-stable bucket sort with an elevated top band.
+ *  Rushed and prioritized tickets float above normal tickets, oldest fire time first. */
 function prioritySortBucket(
   bucket: KDSTicket[],
   prioritizedIds: Set<string>,
@@ -1192,14 +1250,14 @@ function prioritySortBucket(
     ordered.push(...newTickets);
   }
 
-  // Float prioritized tickets to front (preserving their relative order)
-  if (prioritizedIds.size > 0) {
-    const prioritized = ordered.filter((t) => prioritizedIds.has(t.ticket_id));
-    const normal = ordered.filter((t) => !prioritizedIds.has(t.ticket_id));
-    return [...prioritized, ...normal];
-  }
+  const elevated = ordered
+    .filter((t) => isKdsTicketElevated(t, prioritizedIds))
+    .sort(compareKdsTicketsByStartTime);
 
-  return ordered;
+  if (elevated.length === 0) return ordered;
+
+  const normal = ordered.filter((t) => !isKdsTicketElevated(t, prioritizedIds));
+  return [...elevated, ...normal];
 }
 
 /** Bucket tickets into status groups, reusing unchanged array references */
@@ -3001,10 +3059,14 @@ export const useKDSStore = create<KDSState>()(
         const anySent = actionableUpdatedItems.some(
           (i) => i.kitchen_status === "sent",
         );
+        // 2-step mode hides the Pending bucket — remap like buildTicketsFromBroadcast,
+        // or a ticket with remaining 'sent' items (online orders) vanishes on tap.
         const newTicketStatus: KDSTicket["status"] = allReady
           ? "ready"
           : anySent
-            ? "pending"
+            ? getKitchenSentStatus() === "preparing"
+              ? "cooking"
+              : "pending"
             : "cooking";
         const resetEpoch = allReady && wasRecalled;
 

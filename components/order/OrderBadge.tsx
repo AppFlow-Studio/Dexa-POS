@@ -1074,16 +1074,24 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   );
 };
 
-// WeakMap cache for O(1) refunded lookups — unchanged order refs (Immer structural sharing) get cache hits
-const refundedCache = new WeakMap<OrderProfile, number>();
+// Map cache for O(1) refunded lookups — keyed by order.id since Immer structural
+// sharing means order refs change on every update. Hard-capped to prevent
+// unbounded growth from stale orders over a long-running POS session.
+const REFUNDED_CACHE_MAX = 200;
+const refundedCache = new Map<string, number>();
 function getCachedRefunded(order: OrderProfile): number {
-  let v = refundedCache.get(order);
+  const key = order.id;
+  let v = refundedCache.get(key);
   if (v === undefined) {
     v = (order.payments || []).reduce(
       (sum, p) => sum + (p.refundedAmount ?? 0),
       0,
     );
-    refundedCache.set(order, v);
+    if (refundedCache.size >= REFUNDED_CACHE_MAX) {
+      const firstKey = refundedCache.keys().next().value;
+      if (firstKey !== undefined) refundedCache.delete(firstKey);
+    }
+    refundedCache.set(key, v);
   }
   return v;
 }

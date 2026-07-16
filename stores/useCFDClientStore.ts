@@ -217,10 +217,13 @@ export const useCFDClientStore = create<CFDClientStore>()(
     }),
     {
       name: "cfd-client-store",
-      // Lazy persist: defer JSON.stringify into the 300ms debounce window (and
-      // skip it entirely when the partialized slice ref is unchanged) instead of
-      // stringifying on every payment-flow mutation. flushPendingWrite covers
-      // the lazy writer for durability before navigations/app kill.
+      // Lazy persist: defer JSON.stringify into the 300ms debounce window
+      // instead of stringifying on every payment-flow mutation. Note: the
+      // identity skip in lazyDebouncedWrite does NOT fire for this store —
+      // this partialize builds a fresh object literal per call, so the slice
+      // ref always changes (only useOrderStore memoizes its slice; see
+      // stores/orderPersistMemo.ts). flushPendingWrite covers the lazy
+      // writer for durability before navigations/app kill.
       storage: createLazyPersistStorage(),
       version: 1,
       migrate: (persistedState) => persistedState as any,

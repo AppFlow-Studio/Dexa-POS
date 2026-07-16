@@ -2,6 +2,7 @@ import {
   getOrderPaymentsQueryOptions,
   orderPaymentsQueryKey
 } from '@/hooks/orders/useOrderPayments'
+import { isOnlineOrderSource } from '@/lib/orderSource'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { OrderService } from '@/services/orderService'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
@@ -20,7 +21,7 @@ export default function OnlineOrderPaymentAutoCloseBridge () {
       .filter(
         order =>
           !!order.db_order_id &&
-          order.order_source?.toLowerCase() === 'online' &&
+          isOnlineOrderSource(order.order_source) &&
           order.check_status !== 'Closed'
       )
       .map(order => ({

@@ -1,13 +1,16 @@
 // /components/tables/TableLayoutView.tsx
 
+import { hitTestTables } from "@/lib/floorPlanHitTest";
 import { storage } from "@/lib/storage";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
+import { useColorScheme } from "@/lib/useColorScheme";
 import { getWallEdgeFlags, WallEdgeFlags } from "@/lib/wallCornerSnap";
+import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
-import { Lock, LockOpen, Minus, Plus } from "lucide-react-native";
+import { Crosshair, Lock, LockOpen, Minus, Plus } from "lucide-react-native";
 import React, {
   useCallback,
   useEffect,
@@ -16,6 +19,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Alert,
   LayoutChangeEvent,
   StyleSheet,
   Text,
@@ -39,24 +43,31 @@ import Svg, {
 } from "react-native-svg";
 import { useShallow } from "zustand/react/shallow";
 import DraggableTable from "./DraggableTable";
+import SkiaTableLayer from "./skia/SkiaTableLayer";
+import TableDataPublisher from "./skia/TableDataPublisher";
+import { useTableDrawStore } from "./skia/tableDrawStore";
 import TableLayoutSkeleton from "./TableLayoutSkeleton";
+
+// Feature flag (MMKV): render view-mode table SHAPES on one shared Skia surface
+// instead of one react-native-svg surface per table. Off by default; ships dark
+// until validated on-device. Edit mode / palette are never affected.
+const SKIA_VIEW_MODE_KEY = "floor_plan.skia_view_mode";
 
 // Precomputed grid paths — built once at module load, not on every render
 const GRID_MINOR = 20;
 const GRID_MAJOR = 100;
-const DEFAULT_CANVAS_WORLD_WIDTH = 2400;
-const DEFAULT_CANVAS_WORLD_HEIGHT = 1600;
+
 const INITIAL_ZOOM_MULTIPLIER = 2.0;
-const ENTRY_ANIMATION_OBJECT_LIMIT = 40;
-const PROGRESSIVE_RENDER_THRESHOLD = 80;
-const INITIAL_RENDER_BATCH = 80;
-const PROGRESSIVE_RENDER_BATCH = 20;
-const PROGRESSIVE_RENDER_DELAY_MS = 8;
+
+const PROGRESSIVE_RENDER_THRESHOLD = 150;
+const INITIAL_RENDER_BATCH = 100;
+const PROGRESSIVE_RENDER_BATCH = 150;
+const PROGRESSIVE_RENDER_DELAY_MS = 10;
 
 // Viewport windowing: keep all tables mounted but hide off-screen ones via
 // opacity/pointerEvents to avoid React mount/unmount churn on scroll.
-const VIEWPORT_WINDOW_THRESHOLD = 20;
-const VIEWPORT_OVERSCAN_PX = 800;
+const VIEWPORT_WINDOW_THRESHOLD = 100;
+const VIEWPORT_OVERSCAN_PX = 1000;
 
 const getMedian = (values: number[]) => {
   if (values.length === 0) return 0;
@@ -107,6 +118,8 @@ interface TableLayoutViewProps {
   onTableLongPress?: (table: FloorPlanObject) => void;
   disableLongPress?: boolean;
   interactionMode?: "normal" | "selection" | "merge";
+  /** When set to a table ID, the camera animates to zoom in on that table. Reset to null after handling. */
+  zoomToTableId?: string | null;
 }
 
 type PersistedCameraState = {
@@ -129,9 +142,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   onTableLongPress,
   disableLongPress = false,
   interactionMode = "normal",
+  zoomToTableId,
 }) => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
+  const { isDarkColorScheme } = useColorScheme();
 
   const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
   // useShallow: both selectors return arrays. Without shallow equality, every
@@ -264,21 +279,12 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   );
 
   const worldDims = useMemo(() => {
-    const cw = activeLayout?.canvas_width;
-    const ch = activeLayout?.canvas_height;
-    if (__DEV__) {
-      console.log("[TableLayoutView] worldDims canvas dims:", {
-        cw,
-        ch,
-        activeLayoutId: activeLayout?.id,
-        layoutId,
-      });
-    }
-    const contentWidth = cw ?? DEFAULT_CANVAS_WORLD_WIDTH;
-    const contentHeight = ch ?? DEFAULT_CANVAS_WORLD_HEIGHT;
+    // Always use 4000×4000 regardless of backend canvas size
+    const contentWidth = 4000;
+    const contentHeight = 4000;
 
     return { width: contentWidth, height: contentHeight };
-  }, [activeLayout]);
+  }, []);
 
   const objectMedian = useMemo(() => {
     const medianSourceTables = tables.filter((table) => {
@@ -314,6 +320,82 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       y: getMedian(centerYs),
     };
   }, [tables, worldDims.height, worldDims.width]);
+
+  /** Mean center of all tables (excluding walls/structures). */
+  const tableMeanCenter = useMemo(() => {
+    const tableObjects = tables.filter((table) => {
+      const shapeDef =
+        TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
+      if (shapeDef?.type) return shapeDef.type === "table";
+      return table.category === "table" || table.category === "booth";
+    });
+
+    if (tableObjects.length === 0) {
+      return { x: worldDims.width / 2, y: worldDims.height / 2, count: 0 };
+    }
+
+    let sumX = 0;
+    let sumY = 0;
+
+    for (const table of tableObjects) {
+      const shapeDef =
+        TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
+      const w = table.width ?? shapeDef?.width ?? 100;
+      const h = table.height ?? shapeDef?.height ?? 100;
+      sumX += table.x + w / 2;
+      sumY += table.y + h / 2;
+    }
+
+    return {
+      x: sumX / tableObjects.length,
+      y: sumY / tableObjects.length,
+      count: tableObjects.length,
+    };
+  }, [tables, worldDims.height, worldDims.width]);
+
+  /** Bounding box of all tables (excluding walls/structures) — zooms to fit them. */
+  const tableBoundingBox = useMemo(() => {
+    const tableObjects = tables.filter((table) => {
+      const shapeDef =
+        TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
+      if (shapeDef?.type) return shapeDef.type === "table";
+      return table.category === "table" || table.category === "booth";
+    });
+
+    if (tableObjects.length === 0) {
+      return {
+        width: 0,
+        height: 0,
+        hasContent: false as const,
+        centerX: 0,
+        centerY: 0,
+      };
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const table of tableObjects) {
+      const shapeDef =
+        TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
+      const w = table.width ?? shapeDef?.width ?? 100;
+      const h = table.height ?? shapeDef?.height ?? 100;
+      if (table.x < minX) minX = table.x;
+      if (table.y < minY) minY = table.y;
+      if (table.x + w > maxX) maxX = table.x + w;
+      if (table.y + h > maxY) maxY = table.y + h;
+    }
+
+    return {
+      hasContent: true as const,
+      width: maxX - minX,
+      height: maxY - minY,
+      centerX: (minX + maxX) / 2,
+      centerY: (minY + maxY) / 2,
+    };
+  }, [tables]);
 
   const gridPaths = useMemo(() => {
     let minor = "";
@@ -424,56 +506,88 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const viewLockedKey = `floor_plan.view_locked.${layoutId}`;
   const [, setViewLockedTick] = useState(0);
   const viewLocked = storage.getBoolean(viewLockedKey) ?? true;
-  const [showTooltip, setShowTooltip] = useState(false);
-  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
 
   // Stored initial center values for recentering
   const initialScaleRef = useRef(1);
   const initialTranslateXRef = useRef(0);
   const initialTranslateYRef = useRef(0);
 
-  const scale = useSharedValue(1);
-  const savedScale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const savedTranslateX = useSharedValue(0);
-  const savedTranslateY = useSharedValue(0);
-
-  const initialLoadDone = useRef(false);
-  const lastCenterKey = useRef("");
-  const cameraStateRef = useRef<PersistedCameraState | null>(null);
-
-  const readPersistedCameraState = (
-    key: string,
-  ): PersistedCameraState | null => {
-    const raw = storage.getString(key);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw) as PersistedCameraState;
-      if (
-        Number.isFinite(parsed.scale) &&
-        Number.isFinite(parsed.translateX) &&
-        Number.isFinite(parsed.translateY)
-      ) {
-        return parsed;
+  const readPersistedCameraState = useCallback(
+    (key: string): PersistedCameraState | null => {
+      const raw = storage.getString(key);
+      if (!raw) return null;
+      try {
+        const parsed = JSON.parse(raw) as PersistedCameraState;
+        if (
+          Number.isFinite(parsed.scale) &&
+          Number.isFinite(parsed.translateX) &&
+          Number.isFinite(parsed.translateY)
+        ) {
+          return parsed;
+        }
+      } catch {
+        return null;
       }
-    } catch {
       return null;
+    },
+    [],
+  );
+
+  // Initialize shared values from persisted camera state immediately,
+  // so objects render in the correct position from frame 1 (no jump).
+  const initialCameraState = useMemo(() => {
+    const cachedDims = (() => {
+      const raw = storage.getString(dimsKey);
+      if (raw) {
+        try {
+          const p = JSON.parse(raw);
+          if (p.width > 0 && p.height > 0) return p;
+        } catch {}
+      }
+      return null;
+    })();
+
+    const cameraKey = `floor_plan.view_state.${layoutId}`;
+    const parsed = readPersistedCameraState(cameraKey);
+    if (parsed && cachedDims) {
+      const restoredScale = clamp(parsed.scale, 0.5, 3);
+      const restoredTranslate = clampCanvasTranslation(
+        parsed.translateX,
+        parsed.translateY,
+        restoredScale,
+        cachedDims.width,
+        cachedDims.height,
+        4000,
+        4000,
+      );
+      initialScaleRef.current = restoredScale;
+      initialTranslateXRef.current = restoredTranslate.x;
+      initialTranslateYRef.current = restoredTranslate.y;
+      return {
+        scale: restoredScale,
+        translateX: restoredTranslate.x,
+        translateY: restoredTranslate.y,
+      };
     }
     return null;
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutId]);
 
-  useEffect(() => {
-    if (!initialLoadDone.current) {
-      setIsLoading(true);
-      initialLoadDone.current = true;
-    }
-    if (containerDims.width > 0) {
-      setIsLoading(false);
-    }
-  }, [containerDims.width, worldDims.height, worldDims.width]);
+  const scale = useSharedValue(initialCameraState?.scale ?? 1);
+  const savedScale = useSharedValue(initialCameraState?.scale ?? 1);
+  const translateX = useSharedValue(initialCameraState?.translateX ?? 0);
+  const translateY = useSharedValue(initialCameraState?.translateY ?? 0);
+  const savedTranslateX = useSharedValue(initialCameraState?.translateX ?? 0);
+  const savedTranslateY = useSharedValue(initialCameraState?.translateY ?? 0);
+
+  const lastCenterKey = useRef("");
+  const cameraStateRef = useRef<PersistedCameraState | null>(null);
+  // Tracks whether the initial camera has been positioned for the current layout.
+  // Once positioned, a later re-run of the effect caused purely by a container
+  // resize (e.g. sidebar collapse/expand) must NOT re-restore the persisted camera
+  // — that snaps the view (e.g. back onto a table the user just focused from the
+  // sidebar). Instead we keep the live camera and only re-clamp it to new bounds.
+  const positionedLayoutRef = useRef<string | null>(null);
 
   // 2. Calculate and set initial scale and position once we have dimensions
   useEffect(() => {
@@ -487,16 +601,39 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         return;
       }
 
+      // Already positioned this layout and only the container size changed
+      // (sidebar collapse/expand). Don't restore the persisted camera — that would
+      // snap the view (e.g. back onto a sidebar-focused table). Keep the current
+      // live camera, just re-clamp it to the new viewport bounds.
+      if (positionedLayoutRef.current === layoutId) {
+        const clamped = clampCanvasTranslation(
+          translateX.value,
+          translateY.value,
+          scale.value,
+          containerDims.width,
+          containerDims.height,
+          worldDims.width,
+          worldDims.height,
+        );
+        scale.value = clamp(scale.value, 0.5, 3);
+        translateX.value = clamped.x;
+        savedTranslateX.value = clamped.x;
+        translateY.value = clamped.y;
+        savedTranslateY.value = clamped.y;
+        lastCenterKey.current = centerKey;
+        setCameraReady(true);
+        return;
+      }
+
       const persistedKey = `floor_plan.view_state.${layoutId}`;
       const parsedCamera = readPersistedCameraState(persistedKey);
-      const shouldRestoreLockedCamera =
-        viewLocked &&
+      const shouldRestoreCamera =
         parsedCamera &&
         Number.isFinite(parsedCamera.scale) &&
         Number.isFinite(parsedCamera.translateX) &&
         Number.isFinite(parsedCamera.translateY);
 
-      if (shouldRestoreLockedCamera) {
+      if (shouldRestoreCamera) {
         const restoredScale = clamp(parsedCamera.scale, 0.5, 3);
         const restoredTranslate = clampCanvasTranslation(
           parsedCamera.translateX,
@@ -520,6 +657,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
           translateY: restoredTranslate.y,
         };
         lastCenterKey.current = centerKey;
+        positionedLayoutRef.current = layoutId;
         setIsLoading(false);
         setCameraReady(true);
         return;
@@ -574,6 +712,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         translateY: initialTranslate.y,
       };
       lastCenterKey.current = centerKey;
+      positionedLayoutRef.current = layoutId;
 
       setIsLoading(false);
       setCameraReady(true);
@@ -601,59 +740,182 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     setLayoutMeasured(true);
   };
 
+  // Shared value mirror of containerDims — worklet-safe reads for gestures and
+  // useAnimatedReaction. Synced in a useEffect (not during render) to avoid the
+  // Reanimated "Reading from `value` during render" warning.
+  const containerDimsSV = useSharedValue(containerDims);
+  useEffect(() => {
+    containerDimsSV.value = containerDims;
+  }, [containerDims, containerDimsSV]);
+
+  // ── Single-basis camera gesture ─────────────────────────────────────────
+  // Pan and pinch run Simultaneous, but they must NOT each write translate from
+  // their own base or they fight (pinch moves the centroid → pan activates and
+  // drags the canvas = "scrolling away"). Instead we capture ONE basis when the
+  // combined gesture starts and rebuild the transform every frame from the
+  // cumulative gesture inputs (pan translation + pinch scale) around a fixed
+  // focal. Order-independent: both handlers call the same applyCamera worklet.
+  //
+  // VERIFIED transform model — RN scales around the view CENTER, translate is
+  // applied in the parent (unscaled) space:
+  //   screen = (world - viewportCenter) * scale + viewportCenter + translate
+  // Focal-fixed zoom around start-focal f0, plus pan displacement P:
+  //   translate = t0 + P - (f0 - viewportCenter - t0) * (scale/s0 - 1)
+  const gActive = useSharedValue(0); // active-handler count (pan + pinch)
+  const gStartScale = useSharedValue(1);
+  const gStartTx = useSharedValue(0);
+  const gStartTy = useSharedValue(0);
+  const gFocalX = useSharedValue(0); // pinch focal (screen px); center for pan-only
+  const gFocalY = useSharedValue(0);
+  const gPanX = useSharedValue(0); // cumulative pan translation (screen px)
+  const gPanY = useSharedValue(0);
+  const gPinchScale = useSharedValue(1); // cumulative pinch factor (1 = none)
+
+  const applyCamera = useCallback(() => {
+    "worklet";
+    const s = clamp(gStartScale.value * gPinchScale.value, 0.5, 3);
+    const factor = gStartScale.value > 0 ? s / gStartScale.value : 1;
+    const dims = containerDimsSV.value;
+    const vcx = dims.width / 2;
+    const vcy = dims.height / 2;
+    scale.value = s;
+    // NOTE: no clamp here — overscroll is allowed during the gesture so the
+    // pinched point can reach the fingers even near the canvas edge. We clamp
+    // (with a settle spring) once, when the combined gesture fully ends.
+    translateX.value =
+      gStartTx.value +
+      gPanX.value -
+      (gFocalX.value - vcx - gStartTx.value) * (factor - 1);
+    translateY.value =
+      gStartTy.value +
+      gPanY.value -
+      (gFocalY.value - vcy - gStartTy.value) * (factor - 1);
+  }, [
+    containerDimsSV,
+    gStartScale,
+    gPinchScale,
+    gStartTx,
+    gStartTy,
+    gFocalX,
+    gFocalY,
+    gPanX,
+    gPanY,
+    scale,
+    translateX,
+    translateY,
+  ]);
+
+  const beginCameraGesture = useCallback(() => {
+    "worklet";
+    if (gActive.value === 0) {
+      // First handler to activate captures the shared basis for this gesture.
+      gStartScale.value = scale.value;
+      gStartTx.value = translateX.value;
+      gStartTy.value = translateY.value;
+      gPanX.value = 0;
+      gPanY.value = 0;
+      gPinchScale.value = 1;
+      // Default focal = viewport center (used when only pan is active). Pinch
+      // overrides this with its real focal in onStart.
+      const dims = containerDimsSV.value;
+      gFocalX.value = dims.width / 2;
+      gFocalY.value = dims.height / 2;
+    }
+    gActive.value += 1;
+  }, [
+    containerDimsSV,
+    gActive,
+    gStartScale,
+    gStartTx,
+    gStartTy,
+    gPanX,
+    gPanY,
+    gPinchScale,
+    gFocalX,
+    gFocalY,
+    scale,
+    translateX,
+    translateY,
+  ]);
+
+  const endCameraGesture = useCallback(() => {
+    "worklet";
+    gActive.value -= 1;
+    if (gActive.value > 0) return;
+    gActive.value = 0;
+    // Combined gesture fully released: commit and settle back into bounds.
+    savedScale.value = scale.value;
+    const dims = containerDimsSV.value;
+    const settled = clampCanvasTranslation(
+      translateX.value,
+      translateY.value,
+      scale.value,
+      dims.width,
+      dims.height,
+      worldDims.width,
+      worldDims.height,
+    );
+    translateX.value = withSpring(settled.x, {
+      damping: 20,
+      mass: 1,
+      stiffness: 200,
+    });
+    translateY.value = withSpring(settled.y, {
+      damping: 20,
+      mass: 1,
+      stiffness: 200,
+    });
+    savedTranslateX.value = settled.x;
+    savedTranslateY.value = settled.y;
+  }, [
+    containerDimsSV,
+    gActive,
+    savedScale,
+    savedTranslateX,
+    savedTranslateY,
+    scale,
+    translateX,
+    translateY,
+    worldDims.height,
+    worldDims.width,
+  ]);
+
   const panGesture = Gesture.Pan()
     .enabled(!viewLocked)
     .minDistance(10) // Require 10px movement to start pan
     .activeOffsetX([-10, 10])
     .activeOffsetY([-10, 10])
+    .averageTouches(true)
+    .onStart(() => {
+      beginCameraGesture();
+    })
     .onUpdate((event) => {
-      const next = clampCanvasTranslation(
-        savedTranslateX.value + event.translationX,
-        savedTranslateY.value + event.translationY,
-        scale.value,
-        containerDims.width,
-        containerDims.height,
-        worldDims.width,
-        worldDims.height,
-      );
-      translateX.value = next.x;
-      translateY.value = next.y;
+      gPanX.value = event.translationX;
+      gPanY.value = event.translationY;
+      applyCamera();
     })
     .onEnd(() => {
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
+      endCameraGesture();
     });
 
   const pinchGesture = Gesture.Pinch()
     .enabled(!viewLocked)
+    .onStart((event) => {
+      beginCameraGesture();
+      gFocalX.value = event.focalX;
+      gFocalY.value = event.focalY;
+    })
     .onUpdate((event) => {
-      // Clamp scale between 0.5x and 3x
-      const newScale = Math.max(
-        0.5,
-        Math.min(3, savedScale.value * event.scale),
-      );
-      const next = clampCanvasTranslation(
-        translateX.value,
-        translateY.value,
-        newScale,
-        containerDims.width,
-        containerDims.height,
-        worldDims.width,
-        worldDims.height,
-      );
-      scale.value = newScale;
-      translateX.value = next.x;
-      translateY.value = next.y;
+      gPinchScale.value = event.scale;
+      applyCamera();
     })
     .onEnd(() => {
-      savedScale.value = scale.value;
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
+      endCameraGesture();
     });
 
-  // Use Simultaneous with minDistance to allow both gestures
-  // Pan requires 10px movement, so pinch can work independently
-  const combinedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+  // Pan + pinch compose Simultaneously, both feeding one shared basis (see above)
+  // so they don't fight. In Skia mode `rootGesture` (below) wraps these with the
+  // canvas-level tap/long-press; in the classic path it uses them directly.
 
   const canvasAnimatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -686,13 +948,13 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   // Camera-ready flag: set true at the end of the camera-positioning effect.
   const [cameraReady, setCameraReady] = useState(false);
 
-  // Shared value to sync containerDims for useAnimatedReaction (worklet-safe).
-  const containerDimsSV = useSharedValue(containerDims);
-  // Sync in useEffect (not during render) to avoid Reanimated warning:
-  // "Reading from `value` during component render"
+  // Keep skeleton visible until camera is positioned (shared values applied).
+  // This prevents a flash where objects render at (1,0,0) then jump.
   useEffect(() => {
-    containerDimsSV.value = containerDims;
-  }, [containerDims, containerDimsSV]);
+    if (cameraReady) {
+      setIsLoading(false);
+    }
+  }, [cameraReady]);
 
   // Debounced viewport setter: defers the expensive windowedTables recomputation
   // to a requestAnimationFrame callback, so the gesture-end frame completes
@@ -756,6 +1018,19 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     viewportInitialized.value = true;
   }, [sortedTables.length, scale, translateX, debouncedSetViewport]);
 
+  // Defined before useAnimatedReaction below: the reaction worklet captures
+  // this via runOnJS at build time. If it were declared after the reaction, it
+  // would be in the temporal dead zone (undefined) when the worklet closure is
+  // built on first render — which in release/Hermes throws
+  // "Cannot read property '__remoteFunction' of undefined".
+  const persistCameraState = useCallback(
+    (state: PersistedCameraState) => {
+      cameraStateRef.current = state;
+      storage.set(`floor_plan.view_state.${layoutId}`, JSON.stringify(state));
+    },
+    [layoutId],
+  );
+
   // useAnimatedReaction watches savedScale/savedTranslate — these only change
   // on gesture end (set in .onEnd). The reaction fires on the UI thread where
   // shared values are always current, then pushes the result to JS via runOnJS.
@@ -781,6 +1056,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         top: wt - VIEWPORT_OVERSCAN_PX,
         right: wr + VIEWPORT_OVERSCAN_PX,
         bottom: wb + VIEWPORT_OVERSCAN_PX,
+      });
+      runOnJS(persistCameraState)({
+        scale: current.s,
+        translateX: current.tx,
+        translateY: current.ty,
       });
     },
   );
@@ -823,37 +1103,134 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     [windowedTables],
   );
 
+  // ── Skia single-surface view mode ───────────────────────────────────────
+  // When enabled (and NOT in edit mode), real table/booth shapes are drawn on one
+  // shared Skia surface (SkiaTableLayer) with a lightweight RN text overlay, and a
+  // canvas-level hit-test replaces per-table GestureDetectors. Structures
+  // (walls/doors/etc.) still render through DraggableTable → ReadonlyStructure.
+  // Toggled on-device by long-pressing the "Focus Tables" (crosshair) button.
+  const [, setSkiaFlagTick] = useState(0);
+  const skiaViewMode =
+    !isEditMode && (storage.getBoolean(SKIA_VIEW_MODE_KEY) ?? false);
+
+  const toggleSkiaViewMode = useCallback(() => {
+    const next = !(storage.getBoolean(SKIA_VIEW_MODE_KEY) ?? false);
+    storage.set(SKIA_VIEW_MODE_KEY, next);
+    setSkiaFlagTick((t) => t + 1);
+    Alert.alert(
+      "Skia floor plan",
+      next
+        ? "Enabled — tables now render on a single Skia surface."
+        : "Disabled — back to the classic per-table renderer.",
+    );
+  }, []);
+
+  const isTableObject = useCallback((t: FloorPlanObject) => {
+    const shapeDef = TABLE_SHAPES[t.shape_id as keyof typeof TABLE_SHAPES];
+    if (shapeDef?.type) return shapeDef.type === "table";
+    return t.category === "table" || t.category === "booth";
+  }, []);
+
+  const windowedTableObjects = useMemo(
+    () => (skiaViewMode ? windowedTables.filter(isTableObject) : []),
+    [skiaViewMode, windowedTables, isTableObject],
+  );
+  const windowedStructureObjects = useMemo(
+    () => (skiaViewMode ? windowedTables.filter((t) => !isTableObject(t)) : []),
+    [skiaViewMode, windowedTables, isTableObject],
+  );
+
+  // Authoritative GC for tableDrawStore. TableDataPublisher deliberately does
+  // NOT clearData on unmount (a windowed table panning out of view would flicker
+  // when it pans back), so nothing releases entries for tables that are truly
+  // gone — a different floor plan, or a deleted table. Left unpruned, `data`
+  // grew one entry per distinct table ever windowed for the app's lifetime, and
+  // SkiaTableLayer's single `useShallow(s => s.data)` subscriber shallow-compared
+  // an ever-growing map on every table update. Prune to the CURRENT floor's full
+  // id set (not the windowed subset) so panning is still flicker-free while
+  // cross-floor / deleted tables are released. Only runs in skia mode.
+  useEffect(() => {
+    if (!skiaViewMode) return;
+    const keep = new Set<string>();
+    for (const t of tables) keep.add(t.id);
+    useTableDrawStore.getState().pruneData(keep);
+  }, [skiaViewMode, tables]);
+
+  // Canvas-level tap/long-press for Skia mode. Hit-tests the tap point (converted
+  // to world coords via the inverse camera transform) against the on-screen tables.
+  const resolveCanvasHit = useCallback(
+    (screenX: number, screenY: number): FloorPlanObject | null => {
+      const s = scale.value;
+      if (s <= 0) return null;
+      const dims = containerDimsSV.value;
+      const vcx = dims.width / 2;
+      const vcy = dims.height / 2;
+      // Invert: screen = (world - vc) * s + vc + t  ⇒  world = (screen - vc - t)/s + vc
+      const worldX = (screenX - vcx - translateX.value) / s + vcx;
+      const worldY = (screenY - vcy - translateY.value) / s + vcy;
+      return hitTestTables(worldX, worldY, windowedTableObjects);
+    },
+    [scale, translateX, translateY, containerDimsSV, windowedTableObjects],
+  );
+
+  const handleCanvasTap = useCallback(
+    (screenX: number, screenY: number) => {
+      const hit = resolveCanvasHit(screenX, screenY);
+      if (!hit) return;
+      const orderId = hit.session?.order_id;
+      if (orderId) ensureOrderPrefetched(orderId).catch(() => {});
+      handleTableSelect(hit);
+    },
+    [resolveCanvasHit, handleTableSelect],
+  );
+
+  const handleCanvasLongPress = useCallback(
+    (screenX: number, screenY: number) => {
+      if (disableLongPress || !onTableLongPress) return;
+      const hit = resolveCanvasHit(screenX, screenY);
+      if (hit) handleTableLongPress(hit);
+    },
+    [
+      resolveCanvasHit,
+      handleTableLongPress,
+      disableLongPress,
+      onTableLongPress,
+    ],
+  );
+
+  const canvasTapGesture = useMemo(
+    () =>
+      Gesture.Tap().onEnd((e) => {
+        runOnJS(handleCanvasTap)(e.x, e.y);
+      }),
+    [handleCanvasTap],
+  );
+  const canvasLongPressGesture = useMemo(
+    () =>
+      Gesture.LongPress()
+        .minDuration(300)
+        .onStart((e) => {
+          runOnJS(handleCanvasLongPress)(e.x, e.y);
+        }),
+    [handleCanvasLongPress],
+  );
+
+  // Root gesture: in Skia mode the canvas-level tap/long-press replaces per-table
+  // GestureDetectors. Composed Exclusive with pan/pinch so a drag doesn't also fire
+  // a tap. In the classic path only pan/pinch run (each table owns its own tap).
+  // NOT memoized: pan/pinch are rebuilt every render (their `.enabled(!viewLocked)`
+  // must track the lock state), so a memoized composition would hand the
+  // GestureDetector stale instances and the lock toggle would only take effect
+  // whenever the memo happened to recompute.
+  const rootGesture = skiaViewMode
+    ? Gesture.Exclusive(
+        Gesture.Simultaneous(pinchGesture, panGesture),
+        canvasLongPressGesture,
+        canvasTapGesture,
+      )
+    : Gesture.Simultaneous(pinchGesture, panGesture);
+
   // ── Lock toggle ──
-  const recenterCanvas = () => {
-    const s = withSpring(initialScaleRef.current, {
-      damping: 12,
-      mass: 1,
-      stiffness: 100,
-    });
-    const tx = withSpring(initialTranslateXRef.current, {
-      damping: 12,
-      mass: 1,
-      stiffness: 100,
-    });
-    const ty = withSpring(initialTranslateYRef.current, {
-      damping: 12,
-      mass: 1,
-      stiffness: 100,
-    });
-
-    scale.value = s;
-    translateX.value = tx;
-    translateY.value = ty;
-    savedScale.value = initialScaleRef.current;
-    savedTranslateX.value = initialTranslateXRef.current;
-    savedTranslateY.value = initialTranslateYRef.current;
-  };
-
-  const persistCameraState = (state: PersistedCameraState) => {
-    cameraStateRef.current = state;
-    storage.set(`floor_plan.view_state.${layoutId}`, JSON.stringify(state));
-  };
-
   const handleLockToggle = () => {
     if (viewLocked) {
       // Unlock: enable gestures, don't recenter
@@ -875,31 +1252,14 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     }
   };
 
-  const handleLockLongPress = () => {
-    // Long-press gives the explicit reset action the tooltip describes
-    recenterCanvas();
-    persistCameraState({
-      scale: initialScaleRef.current,
-      translateX: initialTranslateXRef.current,
-      translateY: initialTranslateYRef.current,
-    });
-    setShowTooltip(true);
-    if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
-    tooltipTimer.current = setTimeout(() => setShowTooltip(false), 2000);
-  };
-
-  // Cleanup tooltip timer on unmount
+  // Persist final camera state on unmount, then cancel animations.
   useEffect(() => {
     return () => {
-      if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
-    };
-  }, []);
-
-  // Cancel all in-flight canvas animations on unmount.
-  // Keep the gesture shared values (scale/translate/saved*) cancellation
-  // because they may have in-flight withSpring momentum.
-  useEffect(() => {
-    return () => {
+      persistCameraState({
+        scale: scale.value,
+        translateX: translateX.value,
+        translateY: translateY.value,
+      });
       cancelAnimation(scale);
       cancelAnimation(savedScale);
       cancelAnimation(translateX);
@@ -911,7 +1271,96 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         viewportRafId.current = null;
       }
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutId, persistCameraState]);
+
+  // ── Zoom to table (sidebar tap) ──────────────────────────────────────────
+  // When zoomToTableId changes to a non-null value, compute the target camera
+  // position for that specific table and animate with spring physics.
+  // Uses a ref to track the last-processed ID so that layout changes (e.g.
+  // sidebar collapse/expand) don't re-trigger the zoom for a stale ID.
+  const lastZoomTarget = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!zoomToTableId) return;
+    if (zoomToTableId === lastZoomTarget.current) return;
+    lastZoomTarget.current = zoomToTableId;
+
+    const targetTable = tablesById[zoomToTableId];
+    if (!targetTable || containerDims.width <= 0 || containerDims.height <= 0)
+      return;
+
+    const shapeDef =
+      TABLE_SHAPES[targetTable.shape_id as keyof typeof TABLE_SHAPES];
+    const w = targetTable.width ?? shapeDef?.width ?? 100;
+    const h = targetTable.height ?? shapeDef?.height ?? 100;
+
+    // Center of the table in world coords
+    const tableCenterX = targetTable.x + w / 2;
+    const tableCenterY = targetTable.y + h / 2;
+
+    // Target scale: zoom in so the table + padding fills ~50% of viewport
+    const tableDiag = Math.sqrt(w * w + h * h);
+    const viewportDiag = Math.sqrt(
+      containerDims.width * containerDims.width +
+        containerDims.height * containerDims.height,
+    );
+    const idealScale = clamp(viewportDiag / (tableDiag + 400), 0.5, 3);
+
+    // Translate so table center maps to viewport center
+    const vcx = containerDims.width / 2;
+    const vcy = containerDims.height / 2;
+    const tx = (vcx - tableCenterX) * idealScale;
+    const ty = (vcy - tableCenterY) * idealScale;
+
+    const clamped = clampCanvasTranslation(
+      tx,
+      ty,
+      idealScale,
+      containerDims.width,
+      containerDims.height,
+      worldDims.width,
+      worldDims.height,
+    );
+
+    scale.value = withSpring(idealScale, {
+      damping: 14,
+      mass: 1,
+      stiffness: 120,
+    });
+    translateX.value = withSpring(clamped.x, {
+      damping: 14,
+      mass: 1,
+      stiffness: 120,
+    });
+    translateY.value = withSpring(clamped.y, {
+      damping: 14,
+      mass: 1,
+      stiffness: 120,
+    });
+    savedScale.value = idealScale;
+    savedTranslateX.value = clamped.x;
+    savedTranslateY.value = clamped.y;
+    persistCameraState({
+      scale: idealScale,
+      translateX: clamped.x,
+      translateY: clamped.y,
+    });
+  }, [
+    zoomToTableId,
+    tablesById,
+    containerDims.width,
+    containerDims.height,
+    scale,
+    translateX,
+    translateY,
+    savedScale,
+    savedTranslateX,
+    savedTranslateY,
+    persistCameraState,
+    worldDims.width,
+    worldDims.height,
+  ]);
 
   const [skeletonVisible, setSkeletonVisible] = useState(true);
   useEffect(() => {
@@ -945,8 +1394,35 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         </View>
       )}
 
+      {/* Skia single-surface table layer — untransformed sibling under the camera
+          Animated.View. It applies the camera internally via a Group transform.
+          Drawn beneath the RN overlays / structures (which sit inside the
+          transformed Animated.View above it in paint order). */}
+      {skiaViewMode && (
+        <SkiaTableLayer
+          tables={windowedTableObjects}
+          structures={windowedStructureObjects}
+          scale={scale}
+          translateX={translateX}
+          translateY={translateY}
+          viewportWidth={containerDims.width}
+          viewportHeight={containerDims.height}
+          selectedTableIds={selectedTableIdsSet}
+          darkMode={isDarkColorScheme}
+          wallEdgeFlagsById={wallEdgeFlagsById}
+        />
+      )}
+
+      {/* Data publishers: run useTableCardData in the RN tree (hooks/stores DON'T
+          work inside the Skia Canvas) and publish plain draw-data to tableDrawStore,
+          which SkiaTableLayer reads. Render nothing. */}
+      {skiaViewMode &&
+        windowedTableObjects.map((table) => (
+          <TableDataPublisher key={table.id} table={table} />
+        ))}
+
       {/* Gesture Detector wraps entire canvas - must be at top level to catch touches */}
-      <GestureDetector gesture={combinedGesture}>
+      <GestureDetector gesture={rootGesture}>
         {/* Main Content */}
         <Animated.View style={{ flex: 1 }}>
           <Animated.View
@@ -1096,7 +1572,10 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 })}
               </Svg>
             )}
-            {windowedTables.map((table, index) => (
+            {/* Classic path: every object as a DraggableTable.
+                Skia path: BOTH tables and structures are drawn on the shared Skia
+                surface above, so nothing renders through DraggableTable here. */}
+            {(skiaViewMode ? [] : windowedTables).map((table, index) => (
               <DraggableTable
                 key={table.id}
                 table={table}
@@ -1139,8 +1618,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       >
         <TouchableOpacity
           onPress={handleLockToggle}
-          onLongPress={handleLockLongPress}
-          delayLongPress={500}
           style={{
             width: s(32),
             height: s(32),
@@ -1160,36 +1637,80 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             )}
           </View>
         </TouchableOpacity>
-
-        {/* Tooltip for long-press */}
-        {showTooltip && (
-          <View
-            style={{
-              marginTop: s(8),
-              minWidth: s(120),
-              paddingHorizontal: s(10),
-              paddingVertical: s(6),
-              borderRadius: s(8),
-              backgroundColor: colors.card + "F0",
-              borderWidth: 1,
-              borderColor: colors.border,
-              alignItems: "center",
-            }}
-            pointerEvents="none"
-          >
-            <Text
-              style={{
-                fontSize: s(11),
-                fontWeight: "500",
-                color: colors.label,
-                textAlign: "center",
-              }}
-            >
-              Reset to center
-            </Text>
-          </View>
-        )}
       </View>
+
+      {/* Focus Tables button — zooms to fit all canvas objects.
+          Long-press toggles the experimental Skia single-surface renderer. */}
+      <TouchableOpacity
+        onLongPress={isEditMode ? undefined : toggleSkiaViewMode}
+        delayLongPress={600}
+        onPress={() => {
+          const bb = tableBoundingBox;
+          const idealScale =
+            bb.hasContent && containerDims.width > 0 && containerDims.height > 0
+              ? clamp(
+                  Math.min(
+                    (containerDims.width * 0.85) / (bb.width + 200),
+                    (containerDims.height * 0.85) / (bb.height + 200),
+                  ),
+                  0.5,
+                  3,
+                )
+              : 1;
+          const vcx = containerDims.width / 2;
+          const vcy = containerDims.height / 2;
+          const tx = (vcx - bb.centerX) * idealScale;
+          const ty = (vcy - bb.centerY) * idealScale;
+          const clamped = clampCanvasTranslation(
+            tx,
+            ty,
+            idealScale,
+            containerDims.width,
+            containerDims.height,
+            worldDims.width,
+            worldDims.height,
+          );
+          scale.value = withSpring(idealScale, {
+            damping: 14,
+            mass: 1,
+            stiffness: 120,
+          });
+          translateX.value = withSpring(clamped.x, {
+            damping: 14,
+            mass: 1,
+            stiffness: 120,
+          });
+          translateY.value = withSpring(clamped.y, {
+            damping: 14,
+            mass: 1,
+            stiffness: 120,
+          });
+          savedScale.value = idealScale;
+          savedTranslateX.value = clamped.x;
+          savedTranslateY.value = clamped.y;
+          persistCameraState({
+            scale: idealScale,
+            translateX: clamped.x,
+            translateY: clamped.y,
+          });
+        }}
+        style={{
+          position: "absolute",
+          bottom: s(12),
+          right: s(52),
+          zIndex: 20,
+          width: s(36),
+          height: s(36),
+          borderRadius: s(8),
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+        }}
+      >
+        <Crosshair size={s(14)} color={colors.label} />
+      </TouchableOpacity>
 
       {/* Zoom Buttons - fixed at bottom-right of canvas */}
       <View
@@ -1232,13 +1753,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             savedScale.value = newScale;
             savedTranslateX.value = next.x;
             savedTranslateY.value = next.y;
-            if (viewLocked) {
-              persistCameraState({
-                scale: newScale,
-                translateX: next.x,
-                translateY: next.y,
-              });
-            }
+            persistCameraState({
+              scale: newScale,
+              translateX: next.x,
+              translateY: next.y,
+            });
           }}
           style={{
             pointerEvents: "auto",
@@ -1284,13 +1803,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             savedScale.value = newScale;
             savedTranslateX.value = next.x;
             savedTranslateY.value = next.y;
-            if (viewLocked) {
-              persistCameraState({
-                scale: newScale,
-                translateX: next.x,
-                translateY: next.y,
-              });
-            }
+            persistCameraState({
+              scale: newScale,
+              translateX: next.x,
+              translateY: next.y,
+            });
           }}
           style={{
             pointerEvents: "auto",
@@ -1322,6 +1839,7 @@ export default React.memo(TableLayoutView, (prev, next) => {
   if (prev.sectionsById !== next.sectionsById) return false;
   if (prev.onTableSelect !== next.onTableSelect) return false;
   if (prev.onTableLongPress !== next.onTableLongPress) return false;
+  if (prev.zoomToTableId !== next.zoomToTableId) return false;
   // Only check geometry (x, y, width, height, rotation, shape_id) — not session fields
   for (let i = 0; i < prev.tables.length; i++) {
     const p = prev.tables[i];
