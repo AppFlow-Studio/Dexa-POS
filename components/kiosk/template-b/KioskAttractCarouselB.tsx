@@ -1,12 +1,16 @@
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
-import type { KioskConfig } from "@/types/kiosk";
+import {
+  kioskIdleImages,
+  kioskIdleVideo,
+  type KioskConfig,
+} from "@/types/kiosk";
 import { Image, Pressable, Text, View } from "react-native";
 
 /**
- * Template B idle/attract screen — a full-bleed, looping carousel over
- * config.attractImageUrls and config.attractVideoUrl (see KioskMediaCarousel).
- * Falls back to the hero image, then a plain welcome card, when no attract
- * media is configured — only in that fallback case do the logo/message/tap
+ * Template B idle/attract screen — a full-bleed, looping carousel over the
+ * idle images/video for the current orientation (see KioskMediaCarousel).
+ * Falls back to a plain welcome card when no idle media is configured for
+ * this orientation — only in that fallback case do the logo/message/tap
  * button render; a live carousel is media-only so nothing overlays it.
  */
 export function KioskAttractCarouselB({
@@ -18,8 +22,9 @@ export function KioskAttractCarouselB({
   onStart: () => void;
   onLogoLongPress?: () => void;
 }) {
-  const hasCarousel =
-    config.attractImageUrls.length > 0 || !!config.attractVideoUrl;
+  const idleImages = kioskIdleImages(config);
+  const idleVideo = kioskIdleVideo(config);
+  const hasCarousel = idleImages.length > 0 || !!idleVideo;
 
   return (
     <Pressable
@@ -29,15 +34,9 @@ export function KioskAttractCarouselB({
     >
       {hasCarousel ? (
         <KioskMediaCarousel
-          imageUrls={config.attractImageUrls}
-          videoUrl={config.attractVideoUrl}
+          imageUrls={idleImages}
+          videoUrl={idleVideo}
           style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-        />
-      ) : config.heroImageUrl ? (
-        <Image
-          source={{ uri: config.heroImageUrl }}
-          className="absolute inset-0 w-full h-full"
-          resizeMode="cover"
         />
       ) : null}
 

@@ -7,6 +7,11 @@ import { Image, Pressable, Text, View } from "react-native";
  * allowed to take effect (the entry screen flushes pending → config on idle),
  * so the customer-facing theme never changes during an order.
  *
+ * Template A's idle screen is logo/welcome-message/button only, on a plain
+ * background — no idle image or carousel here (that's Template B/C's
+ * KioskAttractCarouselB). Idle images configured for this profile are
+ * unused by Template A.
+ *
  * Holding the logo opens the manager-PIN-gated diagnostics/settings screen
  * via `onLogoLongPress`, without starting a customer session. The long-press
  * target wraps the whole header block (not just the logo image) so
@@ -27,14 +32,6 @@ export function KioskAttractScreen({
       className="flex-1 items-center justify-center"
       style={{ backgroundColor: config.backgroundColor }}
     >
-      {config.heroImageUrl ? (
-        <Image
-          source={{ uri: config.heroImageUrl }}
-          className="absolute inset-0 w-full h-full"
-          resizeMode="cover"
-        />
-      ) : null}
-
       <Pressable
         onPress={onStart}
         onLongPress={onLogoLongPress}

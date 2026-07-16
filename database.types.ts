@@ -4511,22 +4511,25 @@ export type Database = {
         Row: {
           accent_color: string | null
           admin_pin_hash: string | null
-          attract_image_urls: Json
-          attract_video_url: string | null
           auto_print_receipt: boolean
           background_color: string
           cart_reset_timeout_seconds: number
           created_at: string
           font_family: string | null
           header_text_color: string | null
-          hero_image_url: string | null
           id: string
+          idle_images_horizontal: Json
+          idle_images_vertical: Json
           idle_timeout_seconds: number
+          idle_video_horizontal: string | null
+          idle_video_vertical: string | null
           is_active: boolean
           location_id: string
           logo_url: string | null
           loyalty_enrollment_enabled: boolean
           merchant_id: string
+          order_banner_images_horizontal: Json
+          order_banner_images_vertical: Json
           orientation: string
           payment_terminal_id: string | null
           pickup_number_prefix: string | null
@@ -4548,22 +4551,25 @@ export type Database = {
         Insert: {
           accent_color?: string | null
           admin_pin_hash?: string | null
-          attract_image_urls?: Json
-          attract_video_url?: string | null
           auto_print_receipt?: boolean
           background_color?: string
           cart_reset_timeout_seconds?: number
           created_at?: string
           font_family?: string | null
           header_text_color?: string | null
-          hero_image_url?: string | null
           id?: string
+          idle_images_horizontal?: Json
+          idle_images_vertical?: Json
           idle_timeout_seconds?: number
+          idle_video_horizontal?: string | null
+          idle_video_vertical?: string | null
           is_active?: boolean
           location_id: string
           logo_url?: string | null
           loyalty_enrollment_enabled?: boolean
           merchant_id: string
+          order_banner_images_horizontal?: Json
+          order_banner_images_vertical?: Json
           orientation?: string
           payment_terminal_id?: string | null
           pickup_number_prefix?: string | null
@@ -4585,22 +4591,25 @@ export type Database = {
         Update: {
           accent_color?: string | null
           admin_pin_hash?: string | null
-          attract_image_urls?: Json
-          attract_video_url?: string | null
           auto_print_receipt?: boolean
           background_color?: string
           cart_reset_timeout_seconds?: number
           created_at?: string
           font_family?: string | null
           header_text_color?: string | null
-          hero_image_url?: string | null
           id?: string
+          idle_images_horizontal?: Json
+          idle_images_vertical?: Json
           idle_timeout_seconds?: number
+          idle_video_horizontal?: string | null
+          idle_video_vertical?: string | null
           is_active?: boolean
           location_id?: string
           logo_url?: string | null
           loyalty_enrollment_enabled?: boolean
           merchant_id?: string
+          order_banner_images_horizontal?: Json
+          order_banner_images_vertical?: Json
           orientation?: string
           payment_terminal_id?: string | null
           pickup_number_prefix?: string | null
@@ -12935,22 +12944,25 @@ export type Database = {
         Row: {
           accent_color: string | null
           admin_pin_hash: string | null
-          attract_image_urls: Json
-          attract_video_url: string | null
           auto_print_receipt: boolean
           background_color: string
           cart_reset_timeout_seconds: number
           created_at: string
           font_family: string | null
           header_text_color: string | null
-          hero_image_url: string | null
           id: string
+          idle_images_horizontal: Json
+          idle_images_vertical: Json
           idle_timeout_seconds: number
+          idle_video_horizontal: string | null
+          idle_video_vertical: string | null
           is_active: boolean
           location_id: string
           logo_url: string | null
           loyalty_enrollment_enabled: boolean
           merchant_id: string
+          order_banner_images_horizontal: Json
+          order_banner_images_vertical: Json
           orientation: string
           payment_terminal_id: string | null
           pickup_number_prefix: string | null
@@ -12972,22 +12984,25 @@ export type Database = {
         Insert: {
           accent_color?: string | null
           admin_pin_hash?: string | null
-          attract_image_urls?: Json
-          attract_video_url?: string | null
           auto_print_receipt?: boolean
           background_color?: string
           cart_reset_timeout_seconds?: number
           created_at?: string
           font_family?: string | null
           header_text_color?: string | null
-          hero_image_url?: string | null
           id?: string
+          idle_images_horizontal?: Json
+          idle_images_vertical?: Json
           idle_timeout_seconds?: number
+          idle_video_horizontal?: string | null
+          idle_video_vertical?: string | null
           is_active?: boolean
           location_id: string
           logo_url?: string | null
           loyalty_enrollment_enabled?: boolean
           merchant_id: string
+          order_banner_images_horizontal?: Json
+          order_banner_images_vertical?: Json
           orientation?: string
           payment_terminal_id?: string | null
           pickup_number_prefix?: string | null
@@ -13009,22 +13024,25 @@ export type Database = {
         Update: {
           accent_color?: string | null
           admin_pin_hash?: string | null
-          attract_image_urls?: Json
-          attract_video_url?: string | null
           auto_print_receipt?: boolean
           background_color?: string
           cart_reset_timeout_seconds?: number
           created_at?: string
           font_family?: string | null
           header_text_color?: string | null
-          hero_image_url?: string | null
           id?: string
+          idle_images_horizontal?: Json
+          idle_images_vertical?: Json
           idle_timeout_seconds?: number
+          idle_video_horizontal?: string | null
+          idle_video_vertical?: string | null
           is_active?: boolean
           location_id?: string
           logo_url?: string | null
           loyalty_enrollment_enabled?: boolean
           merchant_id?: string
+          order_banner_images_horizontal?: Json
+          order_banner_images_vertical?: Json
           orientation?: string
           payment_terminal_id?: string | null
           pickup_number_prefix?: string | null

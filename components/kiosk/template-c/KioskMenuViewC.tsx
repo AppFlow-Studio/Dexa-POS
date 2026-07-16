@@ -6,9 +6,9 @@ import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCaro
 import type { Category, MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
-import type { KioskConfig } from "@/types/kiosk";
+import { kioskOrderBannerImages, type KioskConfig } from "@/types/kiosk";
 import { useMemo, useState } from "react";
-import { FlatList, Image, Text, View } from "react-native";
+import { FlatList, Text, View } from "react-native";
 
 /**
  * Template C menu view — media banner (same carousel as Template B), then a
@@ -72,27 +72,15 @@ export function KioskMenuViewC({
   const isVertical = config.orientation === "vertical";
   // Vertical: banner on top, grid spans full width, so 4 columns fits.
   // Horizontal: banner becomes a left sidebar (~28% width), leaving less
-  // room for the grid — matches Templates A/B's 4-column horizontal count.
-  const numColumns = 4;
-  const hasCarousel =
-    config.attractImageUrls.length > 0 || !!config.attractVideoUrl;
-  const hasMedia = hasCarousel || !!config.heroImageUrl;
+  // room for the grid, but the remaining strip is still wide enough for 5.
+  const numColumns = isVertical ? 4 : 5;
+  const bannerImages = kioskOrderBannerImages(config);
+  const hasMedia = bannerImages.length > 0;
   const bannerHeight = kioskPx(420, s);
 
-  const renderMedia = (style: object) =>
-    hasCarousel ? (
-      <KioskMediaCarousel
-        imageUrls={config.attractImageUrls}
-        videoUrl={config.attractVideoUrl}
-        style={style}
-      />
-    ) : (
-      <Image
-        source={{ uri: config.heroImageUrl! }}
-        style={style}
-        resizeMode="cover"
-      />
-    );
+  const renderMedia = (style: object) => (
+    <KioskMediaCarousel imageUrls={bannerImages} videoUrl={null} style={style} />
+  );
 
   const menuContent = (
     <>

@@ -29,11 +29,19 @@ export interface KioskConfig {
   headerTextColor: string;
   fontFamily: string;
 
-  // Media
+  // Media — logo is a single slot; everything else is placement- and
+  // orientation-scoped (idle/attract screen vs. in-order menu banner), since
+  // the two placements need very different aspect ratios and video only
+  // ever plays on the idle screen. Consumers should read the array/value
+  // matching `orientation` — see `kioskIdleImages` / `kioskOrderBannerImages`
+  // / `kioskIdleVideo` helpers below.
   logoUrl: string | null;
-  heroImageUrl: string | null;
-  attractVideoUrl: string | null;
-  attractImageUrls: string[];
+  idleImagesVertical: string[];
+  idleImagesHorizontal: string[];
+  idleVideoVertical: string | null;
+  idleVideoHorizontal: string | null;
+  orderBannerImagesVertical: string[];
+  orderBannerImagesHorizontal: string[];
 
   // Behavior
   orientation: KioskOrientation;
@@ -76,9 +84,12 @@ export const DEFAULT_KIOSK_CONFIG: Omit<
   headerTextColor: "#0A0A0A",
   fontFamily: "Inter",
   logoUrl: null,
-  heroImageUrl: null,
-  attractVideoUrl: null,
-  attractImageUrls: [],
+  idleImagesVertical: [],
+  idleImagesHorizontal: [],
+  idleVideoVertical: null,
+  idleVideoHorizontal: null,
+  orderBannerImagesVertical: [],
+  orderBannerImagesHorizontal: [],
   orientation: "vertical",
   idleTimeoutSeconds: 60,
   cartResetTimeoutSeconds: 30,
@@ -137,9 +148,14 @@ export function normalizeKioskProfile(row: KioskProfileRow): KioskConfig {
     fontFamily: row.font_family ?? "Inter",
 
     logoUrl: row.logo_url,
-    heroImageUrl: row.hero_image_url,
-    attractVideoUrl: row.attract_video_url,
-    attractImageUrls: asStringArray(row.attract_image_urls),
+    idleImagesVertical: asStringArray(row.idle_images_vertical),
+    idleImagesHorizontal: asStringArray(row.idle_images_horizontal),
+    idleVideoVertical: row.idle_video_vertical,
+    idleVideoHorizontal: row.idle_video_horizontal,
+    orderBannerImagesVertical: asStringArray(row.order_banner_images_vertical),
+    orderBannerImagesHorizontal: asStringArray(
+      row.order_banner_images_horizontal,
+    ),
 
     orientation: asOrientation(row.orientation),
     idleTimeoutSeconds: row.idle_timeout_seconds,
@@ -161,4 +177,25 @@ export function normalizeKioskProfile(row: KioskProfileRow): KioskConfig {
     isActive: row.is_active,
     publishedAt: row.published_at,
   };
+}
+
+/** Idle/attract-screen images for `config.orientation`. */
+export function kioskIdleImages(config: KioskConfig): string[] {
+  return config.orientation === "vertical"
+    ? config.idleImagesVertical
+    : config.idleImagesHorizontal;
+}
+
+/** Idle/attract-screen video for `config.orientation`, if any. */
+export function kioskIdleVideo(config: KioskConfig): string | null {
+  return config.orientation === "vertical"
+    ? config.idleVideoVertical
+    : config.idleVideoHorizontal;
+}
+
+/** In-order menu banner images for `config.orientation`. */
+export function kioskOrderBannerImages(config: KioskConfig): string[] {
+  return config.orientation === "vertical"
+    ? config.orderBannerImagesVertical
+    : config.orderBannerImagesHorizontal;
 }

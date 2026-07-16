@@ -5,16 +5,16 @@ import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCaro
 import type { MenuItemType } from "@/lib/types";
 import { useKioskUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
-import type { KioskConfig } from "@/types/kiosk";
+import { kioskOrderBannerImages, type KioskConfig } from "@/types/kiosk";
 import { useMemo, useState } from "react";
-import { FlatList, Image, Text, View } from "react-native";
+import { FlatList, Text, View } from "react-native";
 
 /**
  * Template B menu view — same two-pane category/item split as Template A,
- * plus a media banner right under the header: the same image/video carousel
- * as the idle screen (config.attractImageUrls / attractVideoUrl), falling
- * back to a static hero image, then nothing. Split ratio and column count
- * follow orientation, same as Template A.
+ * plus a media banner right under the header: an image carousel drawing on
+ * the order-banner images configured for this orientation (a separate slot
+ * from the idle-screen media — no video here, video is idle-only). Split
+ * ratio and column count follow orientation, same as Template A.
  *
  * The banner only shows in vertical orientation — landscape screens are too
  * short to spare the vertical space for both a banner and a comfortable
@@ -70,9 +70,8 @@ export function KioskMenuViewB({
     [activeCategory],
   );
 
-  const hasCarousel =
-    config.attractImageUrls.length > 0 || !!config.attractVideoUrl;
-  const hasMedia = (hasCarousel || !!config.heroImageUrl) && isVertical;
+  const bannerImages = kioskOrderBannerImages(config);
+  const hasMedia = bannerImages.length > 0 && isVertical;
   const bannerHeight = kioskPx(420, s);
 
   return (
@@ -93,19 +92,11 @@ export function KioskMenuViewB({
             elevation: 6,
           }}
         >
-          {hasCarousel ? (
-            <KioskMediaCarousel
-              imageUrls={config.attractImageUrls}
-              videoUrl={config.attractVideoUrl}
-              style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-            />
-          ) : (
-            <Image
-              source={{ uri: config.heroImageUrl! }}
-              className="absolute inset-0 w-full h-full"
-              resizeMode="cover"
-            />
-          )}
+          <KioskMediaCarousel
+            imageUrls={bannerImages}
+            videoUrl={null}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+          />
         </View>
       ) : null}
 
