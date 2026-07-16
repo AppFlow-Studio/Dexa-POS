@@ -1,5 +1,4 @@
-import { KioskCategoryPillBar } from "@/components/kiosk/shared/KioskCategoryPillBar";
-import { type CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
+import { KioskCategoryPillBar, type CategoryPill } from "@/components/kiosk/shared/KioskCategoryPillBar";
 import KioskMenuItem from "@/components/kiosk/shared/KioskMenuItem";
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
 import { KioskMediaCarousel } from "@/components/kiosk/template-b/KioskMediaCarousel";
@@ -35,34 +34,41 @@ export function KioskMenuViewC({
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
 
-  const sections = useMemo<CategorySection[]>(() => {
-    return menus
-      .filter((m) => isMenuAvailableNow(m.id))
-      .map((m) => ({
-        menuId: m.id,
-        title: m.name,
-        data: m.categories.filter(
-          (c: Category) =>
-            c.isActive &&
-            isCategoryAvailableNow(c.name) &&
-            (c.items?.length ?? 0) > 0,
-        ),
-      }))
-      .filter((sec) => sec.data.length > 0);
+  // Categories across every available menu, deduped by name — the pill bar
+  // has no per-menu grouping to disambiguate repeats the way
+  // KioskCategoryRail's menu-name headers do, so two menus sharing a
+  // category name (e.g. both have "Drinks") would otherwise show as two
+  // identical, unexplained pills. First occurrence wins; items still come
+  // from that one category only (no merging across menus).
+  const categoryEntries = useMemo(() => {
+    const seen = new Set<string>();
+    const entries: { key: string; name: string; category: Category }[] = [];
+    for (const m of menus) {
+      if (!isMenuAvailableNow(m.id)) continue;
+      for (const c of m.categories as Category[]) {
+        if (!c.isActive || !isCategoryAvailableNow(c.name) || !c.items?.length) continue;
+        if (seen.has(c.name)) continue;
+        seen.add(c.name);
+        entries.push({ key: `${m.id}:${c.id}`, name: c.name, category: c });
+      }
+    }
+    return entries;
   }, [menus, isMenuAvailableNow, isCategoryAvailableNow]);
+
+  const pills = useMemo<CategoryPill[]>(
+    () => categoryEntries.map((e) => ({ key: e.key, name: e.name })),
+    [categoryEntries],
+  );
 
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
   const { activeCategory, resolvedKey } = useMemo(() => {
-    const all = sections.flatMap((sec) =>
-      sec.data.map((c) => ({ key: `${sec.menuId}:${c.id}`, category: c })),
-    );
-    const found = all.find((e) => e.key === activeKey) ?? all[0];
+    const found = categoryEntries.find((e) => e.key === activeKey) ?? categoryEntries[0];
     return {
       activeCategory: found?.category,
       resolvedKey: found?.key ?? null,
     };
-  }, [sections, activeKey]);
+  }, [categoryEntries, activeKey]);
 
   const items = useMemo(
     () => (activeCategory?.items ?? []).filter((i) => i.availability !== false),
@@ -70,10 +76,7 @@ export function KioskMenuViewC({
   );
 
   const isVertical = config.orientation === "vertical";
-  // Vertical: banner on top, grid spans full width, so 4 columns fits.
-  // Horizontal: banner becomes a left sidebar (~28% width), leaving less
-  // room for the grid, but the remaining strip is still wide enough for 5.
-  const numColumns = isVertical ? 4 : 5;
+  const numColumns = 4;
   const bannerImages = kioskOrderBannerImages(config);
   const hasMedia = bannerImages.length > 0;
   const bannerHeight = kioskPx(420, s);
@@ -86,7 +89,7 @@ export function KioskMenuViewC({
     <>
       <KioskCategoryPillBar
         config={config}
-        sections={sections}
+        pills={pills}
         resolvedKey={resolvedKey}
         onSelect={setActiveKey}
       />

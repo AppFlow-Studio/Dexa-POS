@@ -1,33 +1,35 @@
 import { kioskPx } from "@/components/kiosk/shared/KioskScaleProvider";
-import type { CategorySection } from "@/components/kiosk/shared/KioskCategoryRail";
 import { useKioskUiScale } from "@/lib/uiScale";
 import type { KioskConfig } from "@/types/kiosk";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
+export interface CategoryPill {
+  key: string;
+  name: string;
+}
+
 /**
- * Horizontal scrollable category selector — a pill per category, flattened
- * across all menus (no per-menu grouping, unlike KioskCategoryRail). Used by
- * templates that lay their menu out as a single scrollable list rather than
- * a sidebar + grid split.
+ * Horizontal scrollable category selector — one pill per unique category
+ * name. Unlike KioskCategoryRail (which groups by menu, so same-named
+ * categories in different menus each get their own visible section), this
+ * bar has no per-menu grouping — callers are expected to have already
+ * deduped/merged same-named categories before building `pills`, otherwise a
+ * category shared by two menus would render as two identical, unexplained
+ * pills. Used by templates that lay their menu out as a single scrollable
+ * list rather than a sidebar + grid split.
  */
 export function KioskCategoryPillBar({
   config,
-  sections,
+  pills,
   resolvedKey,
   onSelect,
 }: {
   config: KioskConfig;
-  sections: CategorySection[];
+  pills: CategoryPill[];
   resolvedKey: string | null;
   onSelect: (key: string) => void;
 }) {
   const s = useKioskUiScale();
-  const pills = sections.flatMap((section) =>
-    section.data.map((cat) => ({
-      key: `${section.menuId}:${cat.id}`,
-      name: cat.name,
-    })),
-  );
 
   return (
     <ScrollView
