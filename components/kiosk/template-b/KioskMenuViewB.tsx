@@ -15,6 +15,11 @@ import { FlatList, Image, Text, View } from "react-native";
  * as the idle screen (config.attractImageUrls / attractVideoUrl), falling
  * back to a static hero image, then nothing. Split ratio and column count
  * follow orientation, same as Template A.
+ *
+ * The banner only shows in vertical orientation — landscape screens are too
+ * short to spare the vertical space for both a banner and a comfortable
+ * rail + grid, so horizontal drops the banner entirely (rail + grid only,
+ * like Template A).
  */
 export function KioskMenuViewB({
   config,
@@ -67,11 +72,12 @@ export function KioskMenuViewB({
 
   const hasCarousel =
     config.attractImageUrls.length > 0 || !!config.attractVideoUrl;
+  const hasMedia = (hasCarousel || !!config.heroImageUrl) && isVertical;
   const bannerHeight = kioskPx(420, s);
 
   return (
     <View className="flex-1">
-      {hasCarousel || config.heroImageUrl ? (
+      {hasMedia ? (
         <View
           style={{
             height: bannerHeight,

@@ -11,13 +11,17 @@ import { useMemo, useState } from "react";
 import { FlatList, Image, Text, View } from "react-native";
 
 /**
- * Template C menu view — media banner (same carousel as Template B) right
- * under the header, then a horizontal scrollable pill bar of categories
- * (acting as tabs, not a jump-scroll nav), then a single-category item grid
- * below — same performance model as Templates A/B (only the active
- * category's items are ever mounted), just without the sidebar: the pill bar
- * takes over category switching and items take the full width in a 4-column
- * grid.
+ * Template C menu view — media banner (same carousel as Template B), then a
+ * horizontal scrollable pill bar of categories (acting as tabs, not a
+ * jump-scroll nav), then a single-category item grid — same performance
+ * model as Templates A/B (only the active category's items are ever
+ * mounted), just without a category sidebar: the pill bar takes over
+ * category switching.
+ *
+ * In vertical orientation the banner sits on top, full width, same as
+ * Template B. In horizontal orientation the screen is too short for a tall
+ * top banner, so the carousel instead becomes a left-hand sidebar (media
+ * fills the vertical strip) with the pill bar + grid stacked to its right.
  */
 export function KioskMenuViewC({
   config,
@@ -65,48 +69,33 @@ export function KioskMenuViewC({
     [activeCategory],
   );
 
-  // Template C's grid spans the full width (no sidebar), so it fits 4 columns
-  // in both orientations, unlike A/B's split-pane 3/4 split.
+  const isVertical = config.orientation === "vertical";
+  // Vertical: banner on top, grid spans full width, so 4 columns fits.
+  // Horizontal: banner becomes a left sidebar (~28% width), leaving less
+  // room for the grid — matches Templates A/B's 4-column horizontal count.
   const numColumns = 4;
-
   const hasCarousel =
     config.attractImageUrls.length > 0 || !!config.attractVideoUrl;
+  const hasMedia = hasCarousel || !!config.heroImageUrl;
   const bannerHeight = kioskPx(420, s);
 
-  return (
-    <View className="flex-1">
-      {hasCarousel || config.heroImageUrl ? (
-        <View
-          style={{
-            height: bannerHeight,
-            marginHorizontal: kioskPx(16, s),
-            marginTop: kioskPx(16, s),
-            marginBottom: kioskPx(8, s),
-            borderRadius: kioskPx(24, s),
-            overflow: "hidden",
-            shadowColor: "#000000",
-            shadowOpacity: 0.15,
-            shadowRadius: 16,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 6,
-          }}
-        >
-          {hasCarousel ? (
-            <KioskMediaCarousel
-              imageUrls={config.attractImageUrls}
-              videoUrl={config.attractVideoUrl}
-              style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-            />
-          ) : (
-            <Image
-              source={{ uri: config.heroImageUrl! }}
-              className="absolute inset-0 w-full h-full"
-              resizeMode="cover"
-            />
-          )}
-        </View>
-      ) : null}
+  const renderMedia = (style: object) =>
+    hasCarousel ? (
+      <KioskMediaCarousel
+        imageUrls={config.attractImageUrls}
+        videoUrl={config.attractVideoUrl}
+        style={style}
+      />
+    ) : (
+      <Image
+        source={{ uri: config.heroImageUrl! }}
+        style={style}
+        resizeMode="cover"
+      />
+    );
 
+  const menuContent = (
+    <>
       <KioskCategoryPillBar
         config={config}
         sections={sections}
@@ -146,6 +135,73 @@ export function KioskMenuViewC({
           </View>
         }
       />
+    </>
+  );
+
+  if (!isVertical) {
+    return (
+      <View className="flex-1 flex-row">
+        {hasMedia ? (
+          <View
+            style={{
+              width: "28%",
+              margin: kioskPx(16, s),
+              marginRight: kioskPx(8, s),
+              borderRadius: kioskPx(24, s),
+              overflow: "hidden",
+              shadowColor: "#000000",
+              shadowOpacity: 0.15,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 6,
+            }}
+          >
+            {renderMedia({
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: "100%",
+              height: "100%",
+            })}
+          </View>
+        ) : null}
+
+        <View className="flex-1">{menuContent}</View>
+      </View>
+    );
+  }
+
+  return (
+    <View className="flex-1">
+      {hasMedia ? (
+        <View
+          style={{
+            height: bannerHeight,
+            marginHorizontal: kioskPx(16, s),
+            marginTop: kioskPx(16, s),
+            marginBottom: kioskPx(8, s),
+            borderRadius: kioskPx(24, s),
+            overflow: "hidden",
+            shadowColor: "#000000",
+            shadowOpacity: 0.15,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 6,
+          }}
+        >
+          {renderMedia({
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+          })}
+        </View>
+      ) : null}
+
+      {menuContent}
     </View>
   );
 }
