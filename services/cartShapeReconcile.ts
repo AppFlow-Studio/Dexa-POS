@@ -20,87 +20,110 @@
  * Dark-shipped behind EXPO_PUBLIC_CART_SHAPE_RECONCILE=1.
  */
 
-import { isOrderReadOnly } from '@/lib/orderAccessControl'
-import { OrderService } from '@/services/orderService'
-import { queueOperation } from '@/services/offlineSyncService'
-import type { CartItem } from '@/lib/types'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { isOrderReadOnly } from "@/lib/orderAccessControl";
+import type { CartItem } from "@/lib/types";
+import { queueOperation } from "@/services/offlineSyncService";
+import { OrderService } from "@/services/orderService";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface ReconcileResult {
-  orderId: string
+  orderId: string;
   outcome:
-    | 'skipped_unowned'   // Owned by another station — read-refresh only
-    | 'skipped_no_dbid'   // Order not yet created on server
-    | 'skipped_no_diff'   // Local matches server, nothing to do
-    | 'skipped_disabled'  // Feature flag off / no client / no station id
-    | 'fetch_failed'      // Server fetch errored — bail safely
-    | 'reconciled'        // One or more divergences queued
-  divergences: number
-  queuedOpIds: string[]
+    | "skipped_unowned" // Owned by another station — read-refresh only
+    | "skipped_no_dbid" // Order not yet created on server
+    | "skipped_no_diff" // Local matches server, nothing to do
+    | "skipped_disabled" // Feature flag off / no client / no station id
+    | "fetch_failed" // Server fetch errored — bail safely
+    | "reconciled"; // One or more divergences queued
+  divergences: number;
+  queuedOpIds: string[];
 }
 
 /**
  * Per-order rate limit. Reconciles fire on slow→fast and foreground events
  * which can both trigger within a short window — debounce so we don't double-
  * fetch.
+ *
+ * Memory safety: Map is pruned on each write to remove entries older than
+ * 2× cooldown, and hard-capped at 200 entries to prevent unbounded growth
+ * over a long-running POS session.
  */
-const RECONCILE_COOLDOWN_MS = 30_000
-const lastReconcileAt: Map<string, number> = new Map()
+const RECONCILE_COOLDOWN_MS = 30_000;
+const MAX_RECONCILE_TIMESTAMPS = 200;
+const RECONCILE_PRUNE_AGE_MS = RECONCILE_COOLDOWN_MS * 2;
+const lastReconcileAt: Map<string, number> = new Map();
+
+function pruneReconcileTimestamps(): void {
+  if (lastReconcileAt.size <= MAX_RECONCILE_TIMESTAMPS) return;
+  const now = Date.now();
+  for (const [key, ts] of lastReconcileAt) {
+    if (now - ts > RECONCILE_PRUNE_AGE_MS) {
+      lastReconcileAt.delete(key);
+    }
+  }
+  // If still over cap after TTL prune, evict oldest entries
+  if (lastReconcileAt.size > MAX_RECONCILE_TIMESTAMPS) {
+    const entries = [...lastReconcileAt.entries()].sort((a, b) => a[1] - b[1]);
+    const toDelete = entries.slice(
+      0,
+      lastReconcileAt.size - MAX_RECONCILE_TIMESTAMPS,
+    );
+    for (const [key] of toDelete) lastReconcileAt.delete(key);
+  }
+}
 
 /**
  * Module-scoped Supabase client setter. Keeps the reconcile pure (no React
  * imports) and matches the pattern used by useSeatingStore et al.
  */
-let _supabaseClient: SupabaseClient | null = null
-export function setCartShapeReconcileSupabaseClient (
-  client: SupabaseClient | null
+let _supabaseClient: SupabaseClient | null = null;
+export function setCartShapeReconcileSupabaseClient(
+  client: SupabaseClient | null,
 ): void {
-  _supabaseClient = client
+  _supabaseClient = client;
 }
 
 /**
  * Test seam — clears the per-order cooldown map so unit tests don't see
  * stale timestamps from earlier cases.
  */
-export function _resetCartShapeReconcileForTests (): void {
-  lastReconcileAt.clear()
-  _supabaseClient = null
+export function _resetCartShapeReconcileForTests(): void {
+  lastReconcileAt.clear();
+  _supabaseClient = null;
 }
 
 interface ServerItemSnapshot {
-  id: string
-  quantity: number
-  is_voided: boolean
-  modifierFingerprint: string
+  id: string;
+  quantity: number;
+  is_voided: boolean;
+  modifierFingerprint: string;
 }
 
 interface ReconcileContext {
-  orderId: string
-  currentStationId: string | null
+  orderId: string;
+  currentStationId: string | null;
   /** Lazy access to avoid circular deps. */
-  getOrder: () => any
+  getOrder: () => any;
 }
 
-function isFlagEnabled (): boolean {
+function isFlagEnabled(): boolean {
   return (
-    process.env.EXPO_PUBLIC_CART_SHAPE_RECONCILE === '1' ||
-    process.env.EXPO_PUBLIC_CART_SHAPE_RECONCILE === 'true'
-  )
+    process.env.EXPO_PUBLIC_CART_SHAPE_RECONCILE === "1" ||
+    process.env.EXPO_PUBLIC_CART_SHAPE_RECONCILE === "true"
+  );
 }
 
 // Custom (per-item, ad-hoc) modifiers carry sentinel categoryId / opt.id values
 // that aren't real DB UUIDs — the modifier RPCs hard-cast group_id and item_id
 // to uuid, so we must null those columns out before pushing. Kept in sync with
 // `isCustomModifierGroup` in stores/useOrderStore.ts (same sentinels).
-const CUSTOM_MODIFIER_CATEGORY_ID = 'custom-modifiers'
-const CUSTOM_OPEN_ITEM_MODIFIER_CATEGORY_ID = 'custom-open-item-modifiers'
-function isCustomModifierGroup (
-  categoryId: string | undefined | null
-): boolean {
+const CUSTOM_MODIFIER_CATEGORY_ID = "custom-modifiers";
+const CUSTOM_OPEN_ITEM_MODIFIER_CATEGORY_ID = "custom-open-item-modifiers";
+function isCustomModifierGroup(categoryId: string | undefined | null): boolean {
   return (
     categoryId === CUSTOM_MODIFIER_CATEGORY_ID ||
     categoryId === CUSTOM_OPEN_ITEM_MODIFIER_CATEGORY_ID
-  )
+  );
 }
 
 /**
@@ -112,56 +135,58 @@ function isCustomModifierGroup (
  * name-based fallback and we'd queue a no-op replace_modifiers on every
  * reconcile.
  */
-function fingerprintModifiers (mods: any): string {
-  if (!mods) return ''
-  const flat: Array<{ k: string; v: number }> = []
+function fingerprintModifiers(mods: any): string {
+  if (!mods) return "";
+  const flat: Array<{ k: string; v: number }> = [];
   if (Array.isArray(mods)) {
     // Server-side shape: array of { modifier_item_id, modifier_group_name, ... }
     for (const m of mods) {
       const id =
         m?.modifier_item_id ??
         m?.id ??
-        `${m?.modifier_group_name ?? ''}:${m?.modifier_name ?? ''}`
-      flat.push({ k: String(id), v: Number(m?.quantity ?? 1) })
+        `${m?.modifier_group_name ?? ""}:${m?.modifier_name ?? ""}`;
+      flat.push({ k: String(id), v: Number(m?.quantity ?? 1) });
     }
-  } else if (typeof mods === 'object') {
+  } else if (typeof mods === "object") {
     // Local CartItem.customizations shape: { modifiers: [...], addOns: [...] }
     for (const group of mods.modifiers ?? []) {
-      const isCustom = isCustomModifierGroup(group?.categoryId)
+      const isCustom = isCustomModifierGroup(group?.categoryId);
       for (const opt of group.options ?? []) {
         const k = isCustom
-          ? `${group.categoryName ?? ''}:${opt.name ?? ''}`
-          : `${group.categoryId}:${opt.id}`
-        flat.push({ k, v: opt.isNo ? 0 : 1 })
+          ? `${group.categoryName ?? ""}:${opt.name ?? ""}`
+          : `${group.categoryId}:${opt.id}`;
+        flat.push({ k, v: opt.isNo ? 0 : 1 });
       }
     }
     for (const a of mods.addOns ?? []) {
-      flat.push({ k: `addon:${a.id}`, v: 1 })
+      flat.push({ k: `addon:${a.id}`, v: 1 });
     }
   }
-  flat.sort((a, b) => a.k.localeCompare(b.k))
-  return flat.map(f => `${f.k}=${f.v}`).join('|')
+  flat.sort((a, b) => a.k.localeCompare(b.k));
+  return flat.map((f) => `${f.k}=${f.v}`).join("|");
 }
 
-function snapshotServerItems (rows: any[] | null | undefined): Map<string, ServerItemSnapshot> {
-  const out = new Map<string, ServerItemSnapshot>()
-  if (!rows) return out
+function snapshotServerItems(
+  rows: any[] | null | undefined,
+): Map<string, ServerItemSnapshot> {
+  const out = new Map<string, ServerItemSnapshot>();
+  if (!rows) return out;
   for (const row of rows) {
-    if (!row?.id) continue
+    if (!row?.id) continue;
     out.set(row.id, {
       id: row.id,
       quantity: Number(row.quantity ?? 0),
       is_voided: Boolean(row.is_voided),
       modifierFingerprint: fingerprintModifiers(
-        row.order_item_modifiers ?? row.modifiers
-      )
-    })
+        row.order_item_modifiers ?? row.modifiers,
+      ),
+    });
   }
-  return out
+  return out;
 }
 
-function localItemFingerprint (item: CartItem): string {
-  return fingerprintModifiers(item.customizations)
+function localItemFingerprint(item: CartItem): string {
+  return fingerprintModifiers(item.customizations);
 }
 
 /**
@@ -169,10 +194,10 @@ function localItemFingerprint (item: CartItem): string {
  * op that brings server in line with local. Returns the queued op id, or
  * null if no divergence.
  */
-async function reconcileOneItem (
+async function reconcileOneItem(
   ctx: ReconcileContext,
   local: CartItem,
-  server: ServerItemSnapshot | undefined
+  server: ServerItemSnapshot | undefined,
 ): Promise<string | null> {
   // Item exists locally but not on server. Most likely an add_item that never
   // landed. Queue add_item via the existing op shape.
@@ -180,44 +205,44 @@ async function reconcileOneItem (
     if (!local.db_order_item_id) {
       // Not yet synced — queue add_item with full item data.
       return queueOperation({
-        type: 'add_item',
+        type: "add_item",
         params: {
           itemData: local,
-          localOrderId: ctx.orderId
+          localOrderId: ctx.orderId,
         },
         localOrderId: ctx.orderId,
-        localItemId: local.id
-      })
+        localItemId: local.id,
+      });
     }
     // Has db_order_item_id but server doesn't show the row — possibly voided
     // by another station, or a sync race. Don't push; let broadcast / explicit
     // refresh sort it out.
-    return null
+    return null;
   }
 
   // Quantity drift — the original symptom.
   if (Number(local.quantity ?? 0) !== server.quantity) {
-    const { toUpdateQuantityKey } = require('@/lib/network/idempotencyKey')
+    const { toUpdateQuantityKey } = require("@/lib/network/idempotencyKey");
     return queueOperation({
-      type: 'update_item_quantity',
+      type: "update_item_quantity",
       params: {
         orderItemId: server.id,
         quantity: local.quantity,
-        keyOverride: toUpdateQuantityKey(server.id, local.quantity)
+        keyOverride: toUpdateQuantityKey(server.id, local.quantity),
       },
       localOrderId: ctx.orderId,
-      localItemId: local.id
-    })
+      localItemId: local.id,
+    });
   }
 
   // Voided locally but not on server.
   if (local.is_voided && !server.is_voided) {
     return queueOperation({
-      type: 'void_item',
+      type: "void_item",
       params: { orderItemId: server.id },
       localOrderId: ctx.orderId,
-      localItemId: local.id
-    })
+      localItemId: local.id,
+    });
   }
 
   // Modifier set drift.
@@ -226,9 +251,9 @@ async function reconcileOneItem (
     // Custom (ad-hoc) modifier groups must null out group/item ids — their
     // sentinel categoryId ("custom-modifiers") and synthetic option ids
     // ("custom_mod_…") aren't UUIDs, and the RPC hard-casts to uuid.
-    const allModifiers: any[] = []
+    const allModifiers: any[] = [];
     for (const group of local.customizations?.modifiers ?? []) {
-      const isCustom = isCustomModifierGroup((group as any).categoryId)
+      const isCustom = isCustomModifierGroup((group as any).categoryId);
       for (const opt of (group as any).options ?? []) {
         allModifiers.push({
           modifier_group_id: isCustom ? null : (group as any).categoryId,
@@ -237,28 +262,28 @@ async function reconcileOneItem (
           modifier_name: opt.name,
           price_modifier: opt.isNo ? 0 : opt.price,
           quantity: 1,
-          is_no: opt.isNo ?? false
-        })
+          is_no: opt.isNo ?? false,
+        });
       }
     }
     for (const a of local.customizations?.addOns ?? []) {
       allModifiers.push({
         modifier_item_id: (a as any).id,
-        modifier_group_name: 'Add-ons',
+        modifier_group_name: "Add-ons",
         modifier_name: (a as any).name,
         price_modifier: (a as any).price,
-        quantity: 1
-      })
+        quantity: 1,
+      });
     }
     return queueOperation({
-      type: 'replace_modifiers',
+      type: "replace_modifiers",
       params: { orderItemId: server.id, modifiers: allModifiers },
       localOrderId: ctx.orderId,
-      localItemId: local.id
-    })
+      localItemId: local.id,
+    });
   }
 
-  return null
+  return null;
 }
 
 /**
@@ -266,39 +291,65 @@ async function reconcileOneItem (
  * For non-owned orders (claimed by another station), this is a no-op — the
  * caller should refresh-read via syncOrderFromBackendComplete instead.
  */
-export async function reconcileOrderCartShape (
+export async function reconcileOrderCartShape(
   orderId: string,
-  options: { force?: boolean } = {}
+  options: { force?: boolean } = {},
 ): Promise<ReconcileResult> {
-  const { force = false } = options
+  const { force = false } = options;
 
   if (!isFlagEnabled()) {
-    return { orderId, outcome: 'skipped_disabled', divergences: 0, queuedOpIds: [] }
+    return {
+      orderId,
+      outcome: "skipped_disabled",
+      divergences: 0,
+      queuedOpIds: [],
+    };
   }
   if (!_supabaseClient) {
-    return { orderId, outcome: 'skipped_disabled', divergences: 0, queuedOpIds: [] }
+    return {
+      orderId,
+      outcome: "skipped_disabled",
+      divergences: 0,
+      queuedOpIds: [],
+    };
   }
 
   if (!force) {
-    const last = lastReconcileAt.get(orderId) ?? 0
+    const last = lastReconcileAt.get(orderId) ?? 0;
     if (Date.now() - last < RECONCILE_COOLDOWN_MS) {
-      return { orderId, outcome: 'skipped_no_diff', divergences: 0, queuedOpIds: [] }
+      return {
+        orderId,
+        outcome: "skipped_no_diff",
+        divergences: 0,
+        queuedOpIds: [],
+      };
     }
   }
-  lastReconcileAt.set(orderId, Date.now())
+  lastReconcileAt.set(orderId, Date.now());
+  pruneReconcileTimestamps();
 
   // Lazy-import to avoid circular deps with the order store.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { useOrderStore } = require('@/stores/useOrderStore')
-  const state = useOrderStore.getState()
-  const order = state.ordersById[orderId]
-  const currentStationId: string | null = state.currentStationId ?? null
+  const { useOrderStore } = require("@/stores/useOrderStore");
+  const state = useOrderStore.getState();
+  const order = state.ordersById[orderId];
+  const currentStationId: string | null = state.currentStationId ?? null;
 
   if (!order) {
-    return { orderId, outcome: 'skipped_no_dbid', divergences: 0, queuedOpIds: [] }
+    return {
+      orderId,
+      outcome: "skipped_no_dbid",
+      divergences: 0,
+      queuedOpIds: [],
+    };
   }
   if (!order.db_order_id) {
-    return { orderId, outcome: 'skipped_no_dbid', divergences: 0, queuedOpIds: [] }
+    return {
+      orderId,
+      outcome: "skipped_no_dbid",
+      divergences: 0,
+      queuedOpIds: [],
+    };
   }
 
   // Ownership gate — strict. Mirrors lib/orderAccessControl.isOrderReadOnly.
@@ -307,77 +358,87 @@ export async function reconcileOrderCartShape (
   if (isOrderReadOnly(order, currentStationId)) {
     return {
       orderId,
-      outcome: 'skipped_unowned',
+      outcome: "skipped_unowned",
       divergences: 0,
-      queuedOpIds: []
-    }
+      queuedOpIds: [],
+    };
   }
 
   // Fetch server-side state.
   const { data: serverOrder, error } = await OrderService.fetchOrderById(
     _supabaseClient,
-    order.db_order_id
-  )
+    order.db_order_id,
+  );
   if (error || !serverOrder) {
     if (__DEV__) {
-      console.warn('[cartShapeReconcile] fetch failed', {
+      console.warn("[cartShapeReconcile] fetch failed", {
         orderId,
-        err: (error as any)?.message ?? error
-      })
+        err: (error as any)?.message ?? error,
+      });
     }
-    return { orderId, outcome: 'fetch_failed', divergences: 0, queuedOpIds: [] }
+    return {
+      orderId,
+      outcome: "fetch_failed",
+      divergences: 0,
+      queuedOpIds: [],
+    };
   }
 
-  const serverByDbId = snapshotServerItems((serverOrder as any).order_items)
-  const localItems: CartItem[] = order.items ?? []
+  const serverByDbId = snapshotServerItems((serverOrder as any).order_items);
+  const localItems: CartItem[] = order.items ?? [];
 
-  const queuedOpIds: string[] = []
-  let divergences = 0
+  const queuedOpIds: string[] = [];
+  let divergences = 0;
   for (const local of localItems) {
-    if (local.isDraft) continue // never push drafts
+    if (local.isDraft) continue; // never push drafts
     const server = local.db_order_item_id
       ? serverByDbId.get(local.db_order_item_id)
-      : undefined
+      : undefined;
     const ctx: ReconcileContext = {
       orderId,
       currentStationId,
-      getOrder: () => useOrderStore.getState().ordersById[orderId]
-    }
-    const opId = await reconcileOneItem(ctx, local, server)
+      getOrder: () => useOrderStore.getState().ordersById[orderId],
+    };
+    const opId = await reconcileOneItem(ctx, local, server);
     if (opId) {
-      divergences++
-      queuedOpIds.push(opId)
+      divergences++;
+      queuedOpIds.push(opId);
     }
   }
 
   if (divergences === 0) {
-    return { orderId, outcome: 'skipped_no_diff', divergences: 0, queuedOpIds: [] }
+    return {
+      orderId,
+      outcome: "skipped_no_diff",
+      divergences: 0,
+      queuedOpIds: [],
+    };
   }
 
   if (__DEV__) {
-    console.log('[cartShapeReconcile] queued ops to push local→server', {
+    console.log("[cartShapeReconcile] queued ops to push local→server", {
       orderId,
       divergences,
-      queuedOpIds
-    })
+      queuedOpIds,
+    });
   }
-  return { orderId, outcome: 'reconciled', divergences, queuedOpIds }
+  return { orderId, outcome: "reconciled", divergences, queuedOpIds };
 }
 
 /**
  * Reconcile every persistable owned order on this station. Called by the
  * connectivity-recovery + app-foreground hook.
  */
-export async function reconcileAllOwnedOrders (): Promise<ReconcileResult[]> {
-  if (!isFlagEnabled() || !_supabaseClient) return []
+export async function reconcileAllOwnedOrders(): Promise<ReconcileResult[]> {
+  if (!isFlagEnabled() || !_supabaseClient) return [];
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { useOrderStore } = require('@/stores/useOrderStore')
-  const state = useOrderStore.getState()
-  const orderIds = Object.keys(state.persistableOrderIds ?? {})
-  const results: ReconcileResult[] = []
+  const { useOrderStore } = require("@/stores/useOrderStore");
+  const state = useOrderStore.getState();
+  const orderIds = Object.keys(state.persistableOrderIds ?? {});
+  const results: ReconcileResult[] = [];
   for (const id of orderIds) {
-    const r = await reconcileOrderCartShape(id)
-    results.push(r)
+    const r = await reconcileOrderCartShape(id);
+    results.push(r);
   }
-  return results
+  return results;
 }

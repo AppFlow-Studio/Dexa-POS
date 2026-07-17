@@ -40,10 +40,14 @@ BEGIN
       SET session_id = NULL
       WHERE session_id = ANY(v_session_ids);
 
-      -- Close the sessions: mark inactive, clear order link, stamp closed_at
+      -- Close the sessions: mark inactive, clear order link, stamp closed_at.
+      -- NOTE: table_sessions.status uses the `table_status` enum, which has no
+      -- 'closed' value — a freed table is represented as 'available' (see
+      -- order-removal-void-rpc.sql). is_active=false + closed_at mark the
+      -- session as ended; status just reflects the now-empty table.
       UPDATE table_sessions
       SET is_active  = false,
-          status     = 'closed',
+          status     = 'available',
           order_id   = NULL,
           closed_at  = now()
       WHERE id = ANY(v_session_ids)

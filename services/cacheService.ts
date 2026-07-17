@@ -8,11 +8,11 @@
 
 import { queryClient } from "@/contexts/TanstackProvider";
 import {
-  clearCacheData,
-  flushAllPendingWrites,
-  secureStorage,
-  storage,
-  syncStorage,
+    clearCacheData,
+    flushAllPendingWrites,
+    secureStorage,
+    storage,
+    syncStorage,
 } from "@/lib/storage";
 import { previousOrdersOfflineCache } from "@/stores/previousOrdersOfflineCache";
 import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
@@ -141,7 +141,28 @@ export function clearCache(): CacheClearResult {
     errors.push(`Failed to clear MMKV storage: ${error}`);
   }
 
-  // 2. Reset Zustand stores (in-memory state)
+  // 2. Clear module-scoped in-memory caches so stale data from the old session
+  //    cannot leak into the new one.
+  try {
+    // Lazy-import to avoid pulling the full PrinterDriver tree into every module
+    // that imports cacheService.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { clearDriverCache } = require("@/services/printing/DriverFactory");
+    clearDriverCache();
+    clearedKeys.push("driverCache (memory)");
+  } catch (err) {
+    errors.push(`Failed to clear driver cache: ${err}`);
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { invalidateCalculationCache } = require("@/lib/order-calculator");
+    invalidateCalculationCache();
+    clearedKeys.push("calculationCache (memory)");
+  } catch (err) {
+    errors.push(`Failed to clear calculation cache: ${err}`);
+  }
+
+  // 3. Reset Zustand stores (in-memory state)
   try {
     // Reset order store to initial state
     useOrderStore.setState({

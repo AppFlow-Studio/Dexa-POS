@@ -7,6 +7,7 @@ import {
   getTemplatesForContext,
   renderTemplate,
 } from "@/lib/notifyTemplates";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { Bell, MessageSquare, Phone, Send, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -67,6 +68,26 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
 
   const defaultKey = templates[0]?.key ?? "custom";
 
+  // Merchant-saved templates (pos_config.waitlist). Preview these so the host
+  // sees what the guest will actually receive, matching the server send path.
+  const messageTemplates = useLocationConfigStore(
+    (s) => s.config.waitlist.messageTemplates,
+  );
+  const legacySmsTemplate = useLocationConfigStore(
+    (s) => s.config.waitlist.smsTemplate,
+  );
+  const merchantTemplateFor = useCallback(
+    (key: TemplateKey): string | undefined => {
+      if (key === "custom") return undefined;
+      const fromMap = messageTemplates?.[key];
+      if (fromMap && fromMap.trim().length > 0) return fromMap;
+      // Legacy single field is the table-ready override (mirrors the server).
+      if (key === "waitlist.tableReady") return legacySmsTemplate;
+      return undefined;
+    },
+    [messageTemplates, legacySmsTemplate],
+  );
+
   const [selectedKey, setSelectedKey] = useState<TemplateKey>(defaultKey);
   const [message, setMessage] = useState<string>("");
   const [isSending, setIsSending] = useState(false);
@@ -75,10 +96,10 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
   useEffect(() => {
     if (!visible) return;
     setSelectedKey(defaultKey);
-    setMessage(renderTemplate(defaultKey, context));
+    setMessage(renderTemplate(defaultKey, context, merchantTemplateFor(defaultKey)));
     setError(null);
     setIsSending(false);
-  }, [visible, defaultKey, context]);
+  }, [visible, defaultKey, context, merchantTemplateFor]);
 
   const handleSelectTemplate = useCallback(
     (key: TemplateKey) => {
@@ -86,10 +107,10 @@ export const NotifyCustomerModal: React.FC<NotifyCustomerModalProps> = ({
       if (key === "custom") {
         setMessage("");
       } else {
-        setMessage(renderTemplate(key, context));
+        setMessage(renderTemplate(key, context, merchantTemplateFor(key)));
       }
     },
-    [context],
+    [context, merchantTemplateFor],
   );
 
   const trimmedMessage = message.trim();

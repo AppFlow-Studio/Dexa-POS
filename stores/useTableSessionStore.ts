@@ -98,6 +98,62 @@ export type SessionSideEffect = (
 
 const sideEffectHandlers: SessionSideEffect[] = [];
 
+// Periodically prune sessions that have been in terminal states long enough
+// to not be needed for UI transitions. Keeps sessions{} + sessionTableIndex{}
+// from accumulating Immer proxy trees for tables cleaned hours ago.
+const SESSION_PRUNE_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
+const SESSION_PRUNE_AGE_MS = 10 * 60 * 1000; // sessions idle >10 min get pruned
+let _sessionPruneTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startSessionPrune(): void {
+  if (_sessionPruneTimer) return;
+  _sessionPruneTimer = setInterval(() => {
+    const state = useTableSessionStore.getState();
+    const now = Date.now();
+    let pruned = 0;
+    // Use get() + set() to avoid Immer wrapping every session just to read status
+    const toDelete: string[] = [];
+    for (const [tableId, session] of Object.entries(state.sessions)) {
+      if (!session) continue;
+      // Only prune sessions that are in terminal/clean states
+      const terminal =
+        session.status === "available" || session.status === "cleaning";
+      if (!terminal) continue;
+      const updatedAt = session.updated_at
+        ? new Date(session.updated_at).getTime()
+        : 0;
+      if (now - updatedAt < SESSION_PRUNE_AGE_MS) continue;
+      toDelete.push(tableId);
+    }
+    if (toDelete.length === 0) return;
+    useTableSessionStore.setState((draft) => {
+      for (const tid of toDelete) {
+        const sess = draft.sessions[tid];
+        if (sess) {
+          const arr = draft.sessionTableIndex[sess.id];
+          if (arr) {
+            const idx = arr.indexOf(tid);
+            if (idx >= 0) arr.splice(idx, 1);
+            if (arr.length === 0) delete draft.sessionTableIndex[sess.id];
+          }
+        }
+        delete draft.sessions[tid];
+        pruned++;
+      }
+    });
+    if (__DEV__ && pruned > 0) {
+      console.log(`[TableSession] Pruned ${pruned} stale terminal sessions`);
+    }
+  }, SESSION_PRUNE_INTERVAL_MS);
+}
+
+export function stopSessionPrune(): void {
+  if (_sessionPruneTimer !== null) {
+    clearInterval(_sessionPruneTimer);
+    _sessionPruneTimer = null;
+  }
+}
+
 export function registerSessionSideEffect(
   handler: SessionSideEffect,
 ): () => void {
