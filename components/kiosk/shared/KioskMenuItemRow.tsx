@@ -71,19 +71,6 @@ const useStyles = (s: number) =>
       fontSize: kioskPx(16, s),
       fontWeight: "700",
     },
-    cashPill: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: kioskPx(3, s),
-      borderWidth: 1,
-      borderRadius: kioskPx(8, s),
-      paddingHorizontal: kioskPx(6, s),
-      paddingVertical: kioskPx(2, s),
-    },
-    cashAmount: {
-      fontSize: kioskPx(13, s),
-      fontWeight: "700",
-    },
     modifierDot: {
       position: "absolute",
       top: kioskPx(8, s),
@@ -115,7 +102,6 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
   );
 
   const accent = config.accentColor;
-  const cashColor = "#16A34A";
 
   return (
     <TouchableOpacity
@@ -174,22 +160,6 @@ const KioskMenuItemRow: React.FC<KioskMenuItemRowProps> = ({
           <Text style={[styles.cardPrice, { color: config.textColor }]}>
             ${item.price?.toFixed(2)}
           </Text>
-
-          {item.cashPrice != null && (
-            <View
-              style={[
-                styles.cashPill,
-                {
-                  backgroundColor: `${cashColor}18`,
-                  borderColor: `${cashColor}40`,
-                },
-              ]}
-            >
-              <Text style={[styles.cashAmount, { color: cashColor }]}>
-                ${item.cashPrice.toFixed(2)}
-              </Text>
-            </View>
-          )}
         </View>
       </View>
 
@@ -204,7 +174,6 @@ export default React.memo(KioskMenuItemRow, (prev, next) => {
   return (
     prev.item.id === next.item.id &&
     prev.item.price === next.item.price &&
-    prev.item.cashPrice === next.item.cashPrice &&
     prev.item.availability === next.item.availability &&
     prev.item.name === next.item.name &&
     prev.item.description === next.item.description &&

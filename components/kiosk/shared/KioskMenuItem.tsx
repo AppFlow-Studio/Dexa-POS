@@ -10,7 +10,7 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 /**
  * Kiosk clone of components/menu/MenuItem.tsx — same card layout (image on top,
- * divider, name, card price + cash pill, modifier corner) but kiosk-native:
+ * divider, name, price, modifier corner) but kiosk-native:
  *
  *  - Themed entirely from `config` (per-profile colors), not the POS `colors`.
  *  - No clock-in wall, no useOrderStore / useModifierSidebarStore coupling.
@@ -86,19 +86,6 @@ const useStyles = (s: number) =>
       fontSize: kioskPx(15, s),
       fontWeight: "700",
     },
-    cashPill: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: kioskPx(3, s),
-      borderWidth: 1,
-      borderRadius: kioskPx(8, s),
-      paddingHorizontal: kioskPx(6, s),
-      paddingVertical: kioskPx(2, s),
-    },
-    cashAmount: {
-      fontSize: kioskPx(13, s),
-      fontWeight: "700",
-    },
   });
 
 const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
@@ -123,7 +110,6 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
 
   // Tint placeholder/divider/accents off the kiosk theme.
   const accent = config.accentColor;
-  const cashColor = "#16A34A"; // success green for the cash pill, theme-neutral
 
   return (
     <TouchableOpacity
@@ -179,22 +165,6 @@ const KioskMenuItem: React.FC<KioskMenuItemProps> = ({
           <Text style={[styles.cardPrice, { color: config.textColor }]}>
             ${item.price?.toFixed(2)}
           </Text>
-
-          {item.cashPrice != null && (
-            <View
-              style={[
-                styles.cashPill,
-                {
-                  backgroundColor: `${cashColor}18`,
-                  borderColor: `${cashColor}40`,
-                },
-              ]}
-            >
-              <Text style={[styles.cashAmount, { color: cashColor }]}>
-                ${item.cashPrice.toFixed(2)}
-              </Text>
-            </View>
-          )}
         </View>
       </View>
     </TouchableOpacity>
@@ -205,7 +175,6 @@ export default React.memo(KioskMenuItem, (prev, next) => {
   return (
     prev.item.id === next.item.id &&
     prev.item.price === next.item.price &&
-    prev.item.cashPrice === next.item.cashPrice &&
     prev.item.availability === next.item.availability &&
     prev.item.name === next.item.name &&
     prev.item.image === next.item.image &&
