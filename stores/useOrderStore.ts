@@ -14986,6 +14986,15 @@ export const useOrderStore = create<OrderState>()(
                 }));
                 const dbPayments = (data.payments ?? []) as any[];
                 const paymentItems = (data.payment_items ?? []) as any[];
+                // Discount / reversal / refund-item collections the RPC returns.
+                // syncOrderFromBackendComplete wires these; this path historically
+                // dropped them, so the Refunds tab, discount badge, and reversals
+                // timeline went blank whenever an order was hydrated here (prefetch,
+                // focus refresh, cold load) until a full-detail sync happened to run.
+                const reversalsData = (data.reversals ?? []) as any[];
+                const orderRefundItemsData = (data.order_refund_items ??
+                  []) as any[];
+                const orderDiscountsData = (data.order_discounts ?? []) as any[];
 
                 // Per-payment item coverage lives in the order_payment_items
                 // junction (C2) — the old mapper read a non-existent `item_ids`
@@ -15488,6 +15497,24 @@ export const useOrderStore = create<OrderState>()(
                         (dbOrder as any).metadata?.delivery_company,
                       ) ??
                       null,
+                    // M1: discount / reversal / refund-item metadata from the RPC.
+                    // Empty-guard: an empty (or RLS-raced) read must not wipe a
+                    // locally-applied-but-unsynced discount/refund. When the backend
+                    // returns nothing, keep whatever the local order already had
+                    // (baseOrderProfile is spread above, so local is the fallback).
+                    // syncOrderFromBackendComplete stays the authoritative overwrite;
+                    // this lighter path only fills the gap it used to leave blank.
+                    reversals:
+                      reversalsData.length > 0
+                        ? reversalsData
+                        : (localOrder?.reversals ?? []),
+                    order_refund_items:
+                      orderRefundItemsData.length > 0
+                        ? orderRefundItemsData
+                        : (localOrder?.order_refund_items ?? []),
+                    ...(orderDiscountsData.length > 0
+                      ? restoreDiscountsFromBackend(orderDiscountsData)
+                      : {}),
                     sync_status: "synced",
                     reopen_count:
                       (dbOrder as any).reopen_count ??
