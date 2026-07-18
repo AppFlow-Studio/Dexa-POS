@@ -14941,66 +14941,61 @@ export const useOrderStore = create<OrderState>()(
               );
 
               try {
-                // Fetch order, items, payments, and item payments in parallel.
-                // Deadline-wrapped: previously, missing indexes caused Postgres
-                // statement timeouts (~30s) that froze the UI. Fail fast at
-                // DEADLINES.read so the store can recover.
-                const [orderResult, itemsResult, paymentsResult] =
-                  await withDeadline(
-                    (signal) =>
-                      Promise.all([
-                        supabase
-                          .from("orders")
-                          .select("*")
-                          .eq("id", dbOrderId)
-                          .abortSignal(signal)
-                          .single(),
-                        supabase
-                          .from("order_items")
-                          .select("*, order_item_modifiers (*)")
-                          .eq("order_id", dbOrderId)
-                          .eq("is_voided", false)
-                          .abortSignal(signal),
-                        supabase
-                          .from("order_payments")
-                          .select("*")
-                          .eq("order_id", dbOrderId)
-                          .abortSignal(signal),
-                      ]),
-                    DEADLINES.read,
-                    "syncOrderFromDatabase",
-                  );
+                // Fetch the full order via the get_order_details RPC in ONE
+                // round-trip. This RPC is SECURITY DEFINER (so it bypasses RLS
+                // and actually returns payments — the raw order_payments select
+                // returned 0 rows for the app role) and replaces the 3 raw
+                // selects whose fan-out saturated the pool on boot/reconnect and
+                // tripped statement timeouts (57014). Same RPC the
+                // syncOrderFromBackendComplete path already uses.
+                const { data, error: rpcError } = await withDeadline<{
+                  data: any;
+                  error: any;
+                }>(
+                  async (signal) =>
+                    await supabase
+                      .rpc("get_order_details", { p_order_id: dbOrderId })
+                      .abortSignal(signal),
+                  DEADLINES.read,
+                  "syncOrderFromDatabase",
+                );
 
-                if (orderResult.error) {
+                if (rpcError) {
+                  // Includes the RPC's RAISE 'Order not found or access denied'.
+                  // Throw so the outer catch returns null (the soft-fail contract
+                  // every caller depends on) and the in-flight dedupe entry is
+                  // cleared — same net behavior as the old .single() error path.
                   console.error(
-                    "[syncOrderFromDatabase] Order fetch error:",
-                    orderResult.error,
+                    "[syncOrderFromDatabase] get_order_details error:",
+                    rpcError,
                   );
-                  throw new Error(orderResult.error.message);
+                  throw new Error(rpcError.message);
                 }
 
-                const dbOrder = orderResult.data;
+                const dbOrder = data?.order;
                 if (!dbOrder) {
                   throw new Error("Order not found in database");
                 }
 
-                if (itemsResult.error) {
-                  console.error(
-                    "[syncOrderFromDatabase] Items fetch error:",
-                    itemsResult.error,
-                  );
-                  throw new Error(itemsResult.error.message);
-                }
+                // Unwrap items to the exact flat + embedded shape the old
+                // `order_items.select('*, order_item_modifiers (*)')` returned so
+                // the downstream update-merge and item build work unchanged.
+                const dbItems = ((data.items ?? []) as any[]).map((w) => ({
+                  ...w.item,
+                  order_item_modifiers: w.modifiers ?? [],
+                }));
+                const dbPayments = (data.payments ?? []) as any[];
+                const paymentItems = (data.payment_items ?? []) as any[];
 
-                const dbItems = itemsResult.data;
-                const dbPayments = paymentsResult.data;
-
-                if (paymentsResult.error) {
-                  console.error(
-                    "[syncOrderFromDatabase] Payments fetch error:",
-                    paymentsResult.error,
-                  );
-                  // Non-fatal - continue without payments
+                // Per-payment item coverage lives in the order_payment_items
+                // junction (C2) — the old mapper read a non-existent `item_ids`
+                // column, so coverage was always empty.
+                const paymentItemsByPaymentId = new Map<string, any[]>();
+                for (const pi of paymentItems) {
+                  const key = pi.order_payment_id;
+                  if (!paymentItemsByPaymentId.has(key))
+                    paymentItemsByPaymentId.set(key, []);
+                  paymentItemsByPaymentId.get(key)!.push(pi);
                 }
 
                 if (__DEV__) {
@@ -15265,8 +15260,14 @@ export const useOrderStore = create<OrderState>()(
                   const syncedPayments: OrderProfilePayment[] =
                     dbPayments && dbPayments.length > 0
                       ? dbPayments.map((p) => {
-                      // Proper status mapping — preserve authorized for pre-auth
+                      // Proper status mapping — preserve authorized for pre-auth.
+                      // C1: the DB writes status='void' (not 'voided') and the
+                      // RPC's payments subquery has no is_voided filter, so voided
+                      // rows now arrive here — key off is_voided / both spellings
+                      // or a voided payment resurrects as a live "pending" one.
                       const status: OrderProfilePayment["status"] =
+                        p.is_voided === true ||
+                        p.status === "void" ||
                         p.status === "voided"
                           ? "voided"
                           : p.status === "refunded"
@@ -15308,18 +15309,27 @@ export const useOrderStore = create<OrderState>()(
                         last4: p.card_last_four,
                         tip_amount: p.tip_amount || 0,
                         total_collected: p.amount + (p.tip_amount || 0),
-                        itemsCovered: (p.item_ids || []).map(
-                          (itemId: string) => ({
-                            itemId,
-                            itemName: "Item",
-                            quantity: 1,
-                            unitPrice: 0,
-                            subtotal: 0,
-                          }),
-                        ),
+                        // C2: per-payment coverage from the order_payment_items
+                        // junction (the old `p.item_ids` column does not exist, so
+                        // coverage was always empty and the per-item PAID badge dead).
+                        itemsCovered: (
+                          paymentItemsByPaymentId.get(p.id) ?? []
+                        ).map((pi: any) => ({
+                          itemId: pi.order_item_id,
+                          itemName:
+                            dbItems.find(
+                              (it: any) => it.id === pi.order_item_id,
+                            )?.item_name ?? "Item",
+                          quantity: pi.quantity_paid,
+                          unitPrice: pi.unit_price_paid,
+                          subtotal: pi.subtotal_paid,
+                        })),
                         timestamp: p.created_at,
                         status,
-                        isVoided: p.status === "voided",
+                        isVoided:
+                          p.is_voided === true ||
+                          p.status === "void" ||
+                          p.status === "voided",
                         sync_status: "synced" as const,
                         sync_attempt_count: 0,
                         // Cash pricing fields — falls back to order-level ratio when original_amount is missing
@@ -15415,32 +15425,44 @@ export const useOrderStore = create<OrderState>()(
                     ? state.orderIds
                     : [...state.orderIds, localOrderId];
 
-                  // When the direct order_payments read came back empty and we
-                  // kept local payments (RLS returns 0 rows in this env), the raw
-                  // orders-row financials are stale/unpopulated — amount_paid/
-                  // amount_due are computed from order_payments by the RPCs, not
-                  // stored authoritatively on the orders row. Preserve the local,
-                  // RPC-reconciled financials so Amount Paid / Balance Due stay
-                  // consistent with the payments we just kept (otherwise the footer
-                  // loses "Paid" and Total Due snaps back to the full total).
-                  const keptLocalPayments =
-                    !(dbPayments && dbPayments.length > 0) &&
-                    (localOrder?.payments?.length ?? 0) > 0;
+                  // The orders-row financials (amount_paid/amount_due/
+                  // cash_amount_due) are real columns process_payment writes
+                  // atomically — trust them. EXCEPT the read-after-write race:
+                  // keep local financials only when a committed local payment
+                  // (db_payment_id, captured, not voided) is missing from THIS RPC
+                  // read, or an unsettled pre-auth is in flight. Mirrors
+                  // syncOrderFromBackendComplete's keepLocalFinancials — replaces
+                  // the old empty-read heuristic, which is dead now the RPC
+                  // (SECURITY DEFINER) returns real payment rows.
+                  const dbPaymentIds = new Set(
+                    (dbPayments ?? []).map((p: any) => p?.id).filter(Boolean),
+                  );
+                  const keepLocalFinancials = (localOrder?.payments ?? []).some(
+                    (p) =>
+                      (!!p.db_payment_id &&
+                        p.status === "captured" &&
+                        !p.isVoided &&
+                        !dbPaymentIds.has(p.db_payment_id)) ||
+                      (p.isPreAuth &&
+                        p.status === "authorized" &&
+                        !p.isVoided &&
+                        !p.db_payment_id &&
+                        p.sync_status === "pending"),
+                  );
 
                   const updatedOrderProfile: OrderProfile = {
                     ...baseOrderProfile,
                     items: allItems,
                     payments: syncedPayments,
-                    // Use database as source of truth for financial data — except
-                    // when we kept local payments over an empty DB read (above),
-                    // in which case the orders-row financials are stale/unpopulated.
-                    amount_paid: keptLocalPayments
+                    // DB is the source of truth for financials; only keep local
+                    // when a just-committed payment raced this read (above).
+                    amount_paid: keepLocalFinancials
                       ? (localOrder?.amount_paid ?? dbOrder.amount_paid ?? 0)
                       : (dbOrder.amount_paid || 0),
-                    amount_due: keptLocalPayments
+                    amount_due: keepLocalFinancials
                       ? (localOrder?.amount_due ?? dbOrder.amount_due ?? 0)
                       : (dbOrder.amount_due || 0),
-                    cash_amount_due: keptLocalPayments
+                    cash_amount_due: keepLocalFinancials
                       ? (localOrder?.cash_amount_due ?? dbOrder.cash_amount_due)
                       : dbOrder.cash_amount_due,
                     total_amount: dbOrder.card_total || dbOrder.total_amount,
