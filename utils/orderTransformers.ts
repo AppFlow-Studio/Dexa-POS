@@ -455,6 +455,11 @@ function transformBroadcastPaymentToProfile (
   const terminalVendor = terminalResponse?.terminal_vendor as string | undefined
 
   return {
+    // `id` is a display/React-reconciliation key (prefixed to avoid colliding
+    // with order-item ids in shared lists). All backend lookups — refunds,
+    // reversals (original_payment_id), payment_items — key on `db_payment_id`,
+    // never this. The two sync mappers now emit the same prefixed id the
+    // broadcast/eager path always has (H2).
     id: `payment_${payment.id}`,
     db_payment_id: payment.id,
     amount: payment.amount,
@@ -476,8 +481,14 @@ function transformBroadcastPaymentToProfile (
     splitInfo,
     itemsCovered,
     status,
+    // Prefer the completion time (capture, then auth); fall back to initiated_at
+    // (the old sync-path source) before created_at so a pending fetched payment
+    // still shows its initiation time rather than the row-insert time.
     timestamp:
-      payment.captured_at ?? payment.authorized_at ?? payment.created_at,
+      payment.captured_at ??
+      payment.authorized_at ??
+      payment.initiated_at ??
+      payment.created_at,
     // Pre-auth fields
     isPreAuth,
     ...(isPreAuth
@@ -517,6 +528,10 @@ function transformBroadcastPaymentToProfile (
     // Settlement tracking
     is_settled: payment.is_settled ?? undefined,
     settled_at: payment.settled_at ?? undefined,
+    // Tip adjustment tracking (consumed by TimelineTab / PaymentDetailBottomSheet)
+    original_tip_amount: payment.original_tip_amount ?? undefined,
+    tip_adjusted_at: payment.tip_adjusted_at ?? undefined,
+    tip_adjusted_by: payment.tip_adjusted_by ?? undefined,
     transactionDetails: {
       terminalType: payment.terminal_type ?? undefined,
       authorizationCode:
@@ -1017,6 +1032,11 @@ export interface FetchedOrderPayment {
   created_at: string
   updated_at: string
 
+  // Tip adjustment tracking (adjust_tips_v*)
+  original_tip_amount?: number | null
+  tip_adjusted_at?: string | null
+  tip_adjusted_by?: string | null
+
   // Metadata
   metadata: Record<string, unknown> | null
 }
@@ -1109,7 +1129,7 @@ function normalizeFetchedItems (
  * @param payment - Payment data from Supabase fetch
  * @returns BroadcastOrderPaymentData for transformer
  */
-function normalizeFetchedPayment (
+export function normalizeFetchedPayment (
   payment: FetchedOrderPayment
 ): BroadcastOrderPaymentData {
   // Simplify payment_method to 'cash' | 'card'
@@ -1165,6 +1185,7 @@ function normalizeFetchedPayment (
     void_reason: payment.void_reason,
     refunded_amount: payment.refunded_amount ?? 0,
     refunded_at: payment.refunded_at,
+    initiated_at: (payment as any).initiated_at ?? null,
     authorized_at: (payment as any).authorized_at ?? null,
     captured_at: payment.captured_at,
     created_at: payment.created_at,
@@ -1200,7 +1221,12 @@ function normalizeFetchedPayment (
     return_auth_code: payment.return_auth_code,
     return_reference_id: payment.return_reference_id,
     return_number: payment.return_number,
-    return_reason: payment.return_reason
+    return_reason: payment.return_reason,
+    // Tip adjustment tracking (adjust_tips_v*) — fetch-only enrichment; real
+    // broadcasts don't carry these, so absent ≡ null here (no regression).
+    original_tip_amount: payment.original_tip_amount ?? null,
+    tip_adjusted_at: payment.tip_adjusted_at ?? null,
+    tip_adjusted_by: payment.tip_adjusted_by ?? null
   }
 }
 
@@ -1210,11 +1236,42 @@ function normalizeFetchedPayment (
  * @param payments - Array of payments from Supabase fetch
  * @returns Array of BroadcastOrderPaymentData for transformer
  */
-function normalizeFetchedPayments (
+export function normalizeFetchedPayments (
   payments: FetchedOrderPayment[] | undefined
 ): BroadcastOrderPaymentData[] {
   if (!payments || payments.length === 0) return []
   return payments.map(normalizeFetchedPayment)
+}
+
+/**
+ * Canonical raw-DB-row → OrderProfilePayment[] converter (H2).
+ *
+ * One entry point for turning `order_payments` rows (as returned by the
+ * `get_order_details` RPC's `row_to_json(op.*)`, or any direct fetch) into the
+ * display shape. Composes `normalizeFetchedPayments` (row → broadcast shape,
+ * incl. status='void'→'voided', settlement, returns, cash, entry_mode) with
+ * `transformBroadcastPaymentsToProfile` (broadcast shape → OrderProfilePayment,
+ * incl. per-payment junction coverage, pre-auth block, full transactionDetails).
+ *
+ * NOTE: this is a PURE mapper — it does NOT merge against local state. The
+ * refund-monotonicity merge (Math.max of local vs server refunded evidence) is
+ * a call-site concern; apply `mergeLocalRefundEvidence` after this where a local
+ * order exists (see useOrderStore.ts).
+ */
+export function mapFetchedPaymentsToProfile (
+  rows: FetchedOrderPayment[] | undefined,
+  orderItems?: BroadcastOrderItemData[],
+  paymentItems?: BroadcastOrderData['payment_items'],
+  orderCardTotal?: number | null,
+  orderCashTotal?: number | null
+): OrderProfilePayment[] {
+  return transformBroadcastPaymentsToProfile(
+    normalizeFetchedPayments(rows),
+    orderItems,
+    paymentItems,
+    orderCardTotal,
+    orderCashTotal
+  )
 }
 
 /**

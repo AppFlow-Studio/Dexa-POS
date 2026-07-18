@@ -141,6 +141,7 @@ import {
     deriveCashSavings,
     isHeaderOnlyBroadcast,
     mapBackendItemToCartItem,
+    mapFetchedPaymentsToProfile,
     mapOrderType,
     mapPaymentStatus,
     normalizeFetchedOrder,
@@ -4353,17 +4354,12 @@ function mergePayments(
     }
     // Broadcast is same or more advanced — but preserve terminal details from local
     if (lp) {
-      // Refunds don't always advance `status` (apply_refund_to_payment can
-      // leave status='captured' while bumping refunded_amount + is_returned).
-      // A stale broadcast snapshot taken before the refund commit therefore
-      // races our post-refund force-sync and would otherwise reset the
-      // refunded chip back to zero. Refund amounts are monotonic, so take
-      // the max and carry forward refund metadata from whichever side has it.
-      const lpRefunded = lp.refundedAmount ?? 0;
-      const bpRefunded = bp.refundedAmount ?? 0;
-      const localHasMoreRefund = lpRefunded > bpRefunded;
+      // Preserve local terminal details over the broadcast snapshot, plus local
+      // refund evidence via the shared monotonic merge (parity with the sync
+      // paths): apply_refund_to_payment doesn't always advance `status`, so a
+      // pre-refund broadcast snapshot could otherwise reset the chip back to zero.
       return {
-        ...bp,
+        ...mergeLocalRefundEvidence(bp, lp),
         last4: bp.last4 ?? lp.last4,
         cardBrand: bp.cardBrand ?? lp.cardBrand,
         amountTendered: bp.amountTendered ?? lp.amountTendered,
@@ -4372,20 +4368,6 @@ function mergePayments(
           lp.transactionDetails,
           bp.transactionDetails,
         ),
-        refundedAmount: Math.max(lpRefunded, bpRefunded),
-        refundedAt: localHasMoreRefund
-          ? (lp.refundedAt ?? bp.refundedAt)
-          : (bp.refundedAt ?? lp.refundedAt),
-        isReturned: localHasMoreRefund
-          ? (lp.isReturned ?? bp.isReturned)
-          : (bp.isReturned ?? lp.isReturned),
-        returnedAt: localHasMoreRefund
-          ? (lp.returnedAt ?? bp.returnedAt)
-          : (bp.returnedAt ?? lp.returnedAt),
-        returnedBy: localHasMoreRefund
-          ? (lp.returnedBy ?? bp.returnedBy)
-          : (bp.returnedBy ?? lp.returnedBy),
-        returnAmount: Math.max(lp.returnAmount ?? 0, bp.returnAmount ?? 0),
       };
     }
     return bp;
@@ -4421,6 +4403,47 @@ function mergePayments(
   });
 
   return [...mergedFromBroadcast, ...pendingLocal];
+}
+
+/**
+ * Re-apply local refund-monotonicity onto a freshly-mapped server payment (H2).
+ *
+ * The canonical payment mapper (mapFetchedPaymentsToProfile) is pure — it has no
+ * access to local state. But apply_refund_to_payment doesn't always advance
+ * `status`, so a fetch that races a just-committed refund can return
+ * refunded_amount=0 while the local copy already has it set. Refund evidence is
+ * monotonic, so take the max and carry the richer side's return metadata. Kept
+ * in one place so syncOrderFromDatabase (post-map) and mergePayments-style
+ * reconciliation can't drift.
+ */
+function mergeLocalRefundEvidence(
+  serverPmt: OrderProfilePayment,
+  localPmt: OrderProfilePayment | undefined,
+): OrderProfilePayment {
+  if (!localPmt) return serverPmt;
+  const dbRefunded = serverPmt.refundedAmount ?? 0;
+  const localRefunded = localPmt.refundedAmount ?? 0;
+  const localHasMoreRefund = localRefunded > dbRefunded;
+  return {
+    ...serverPmt,
+    refundedAmount: Math.max(dbRefunded, localRefunded),
+    refundedAt: localHasMoreRefund
+      ? (localPmt.refundedAt ?? serverPmt.refundedAt)
+      : (serverPmt.refundedAt ?? localPmt.refundedAt),
+    isReturned: localHasMoreRefund
+      ? (localPmt.isReturned ?? serverPmt.isReturned)
+      : (serverPmt.isReturned ?? localPmt.isReturned),
+    returnedAt: localHasMoreRefund
+      ? (localPmt.returnedAt ?? serverPmt.returnedAt)
+      : (serverPmt.returnedAt ?? localPmt.returnedAt),
+    returnedBy: localHasMoreRefund
+      ? (localPmt.returnedBy ?? serverPmt.returnedBy)
+      : (serverPmt.returnedBy ?? localPmt.returnedBy),
+    returnAmount: Math.max(
+      serverPmt.returnAmount ?? 0,
+      localPmt.returnAmount ?? 0,
+    ),
+  };
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -14996,16 +15019,8 @@ export const useOrderStore = create<OrderState>()(
                   []) as any[];
                 const orderDiscountsData = (data.order_discounts ?? []) as any[];
 
-                // Per-payment item coverage lives in the order_payment_items
-                // junction (C2) — the old mapper read a non-existent `item_ids`
-                // column, so coverage was always empty.
-                const paymentItemsByPaymentId = new Map<string, any[]>();
-                for (const pi of paymentItems) {
-                  const key = pi.order_payment_id;
-                  if (!paymentItemsByPaymentId.has(key))
-                    paymentItemsByPaymentId.set(key, []);
-                  paymentItemsByPaymentId.get(key)!.push(pi);
-                }
+                // Per-payment item coverage (order_payment_items junction) is
+                // consumed directly by the shared payment mapper below (H2).
 
                 if (__DEV__) {
                   console.log("[syncOrderFromDatabase] Fetched data:", {
@@ -15266,134 +15281,30 @@ export const useOrderStore = create<OrderState>()(
                   // get_order_details sees them fine), and `[].map()` is a truthy
                   // empty array, so the old `|| localOrder?.payments` fallback
                   // never fired and a just-committed payment got wiped.
+                  // Transform payments via the shared canonical mapper (H2),
+                  // then re-apply local refund-monotonicity per payment (the pure
+                  // mapper has no local state). Empty-guard preserved: a
+                  // successful-but-EMPTY read must fall back to local payments —
+                  // this path is deadline-wrapped and the RPC (SECURITY DEFINER)
+                  // returns real rows, but a just-committed payment can still race
+                  // the read, so keep the fallback that used to matter for the raw
+                  // order_payments select (0 rows under RLS).
                   const syncedPayments: OrderProfilePayment[] =
                     dbPayments && dbPayments.length > 0
-                      ? dbPayments.map((p) => {
-                      // Proper status mapping — preserve authorized for pre-auth.
-                      // C1: the DB writes status='void' (not 'voided') and the
-                      // RPC's payments subquery has no is_voided filter, so voided
-                      // rows now arrive here — key off is_voided / both spellings
-                      // or a voided payment resurrects as a live "pending" one.
-                      const status: OrderProfilePayment["status"] =
-                        p.is_voided === true ||
-                        p.status === "void" ||
-                        p.status === "voided"
-                          ? "voided"
-                          : p.status === "refunded"
-                            ? "refunded"
-                            : p.status === "authorized"
-                              ? "authorized"
-                              : p.status === "captured"
-                                ? "captured"
-                                : "pending";
-
-                      const isPreAuth = p.status === "authorized";
-                      const terminalResponse = (p as any).terminal_response as
-                        Record<string, any> | undefined;
-                      const castlesTxn =
-                        terminalResponse?.castles_transaction as
-                          Record<string, any> | undefined;
-
-                      // Refund evidence: take max across DB + local. Apply
-                      // refund didn't always advance `status`, so we have to
-                      // carry refunded_amount + is_returned explicitly.
-                      const localPmt = localPaymentsByDbId.get(p.id);
-                      const dbRefunded =
-                        Number((p as any).refunded_amount) || 0;
-                      const localRefunded = localPmt?.refundedAmount ?? 0;
-                      const localHasMoreRefund = localRefunded > dbRefunded;
-                      const mergedRefundedAmount = Math.max(
-                        dbRefunded,
-                        localRefunded,
-                      );
-
-                      return {
-                        id: p.id,
-                        db_payment_id: p.id,
-                        amount: p.amount,
-                        method: (p.payment_method === "card"
-                          ? "Card"
-                          : "Cash") as PaymentType,
-                        cardBrand: p.card_type,
-                        last4: p.card_last_four,
-                        tip_amount: p.tip_amount || 0,
-                        total_collected: p.amount + (p.tip_amount || 0),
-                        // C2: per-payment coverage from the order_payment_items
-                        // junction (the old `p.item_ids` column does not exist, so
-                        // coverage was always empty and the per-item PAID badge dead).
-                        itemsCovered: (
-                          paymentItemsByPaymentId.get(p.id) ?? []
-                        ).map((pi: any) => ({
-                          itemId: pi.order_item_id,
-                          itemName:
-                            dbItems.find(
-                              (it: any) => it.id === pi.order_item_id,
-                            )?.item_name ?? "Item",
-                          quantity: pi.quantity_paid,
-                          unitPrice: pi.unit_price_paid,
-                          subtotal: pi.subtotal_paid,
-                        })),
-                        timestamp: p.created_at,
-                        status,
-                        isVoided:
-                          p.is_voided === true ||
-                          p.status === "void" ||
-                          p.status === "voided",
-                        sync_status: "synced" as const,
-                        sync_attempt_count: 0,
-                        // Cash pricing fields — falls back to order-level ratio when original_amount is missing
-                        isCashPriced: (p as any).is_cash_priced ?? undefined,
-                        cashSavings: deriveCashSavings(
-                          {
-                            is_cash_priced: (p as any).is_cash_priced,
-                            original_amount: (p as any).original_amount,
-                            amount: p.amount,
-                          },
+                      ? mapFetchedPaymentsToProfile(
+                          dbPayments,
+                          dbItems,
+                          paymentItems,
                           dbOrder.card_total ?? dbOrder.total_amount,
                           dbOrder.cash_total,
-                        ),
-                        // Refund / return tracking — preserve via monotonic merge
-                        // so a stale fetch right after apply_refund_to_payment
-                        // can't clobber the chip back to "Paid".
-                        refundedAmount: mergedRefundedAmount,
-                        refundedAt: localHasMoreRefund
-                          ? (localPmt?.refundedAt ?? (p as any).refunded_at)
-                          : ((p as any).refunded_at ?? localPmt?.refundedAt),
-                        isReturned: localHasMoreRefund
-                          ? (localPmt?.isReturned ?? (p as any).is_returned)
-                          : ((p as any).is_returned ?? localPmt?.isReturned),
-                        returnedAt: localHasMoreRefund
-                          ? (localPmt?.returnedAt ?? (p as any).returned_at)
-                          : ((p as any).returned_at ?? localPmt?.returnedAt),
-                        returnedBy: localHasMoreRefund
-                          ? (localPmt?.returnedBy ?? (p as any).returned_by)
-                          : ((p as any).returned_by ?? localPmt?.returnedBy),
-                        returnAmount: Math.max(
-                          Number((p as any).return_amount) || 0,
-                          localPmt?.returnAmount ?? 0,
-                        ),
-                        // Pre-auth fields
-                        isPreAuth,
-                        ...(isPreAuth
-                          ? {
-                              preAuthAmount: p.amount,
-                              preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
-                              preAuthStan: castlesTxn?.stan,
-                              preAuthAuthCode:
-                                (p as any).authorization_code ||
-                                castlesTxn?.approvalCode,
-                              preAuthReferenceId:
-                                (p as any).reference_number ||
-                                castlesTxn?.referenceId,
-                              preAuthTerminalType:
-                                (terminalResponse?.terminal_vendor === "castles"
-                                  ? "castles"
-                                  : "dejavoo") as
-                                  "dejavoo" | "castles" | undefined,
-                            }
-                          : {}),
-                      };
-                        })
+                        ).map((sp) =>
+                          mergeLocalRefundEvidence(
+                            sp,
+                            sp.db_payment_id
+                              ? localPaymentsByDbId.get(sp.db_payment_id)
+                              : undefined,
+                          ),
+                        )
                       : (localOrder?.payments ?? []);
 
                   // ================================================================
@@ -16737,15 +16648,9 @@ export const useOrderStore = create<OrderState>()(
                 const orderDiscountsData = data.order_discounts || [];
                 const stationName = data.station_name;
 
-                // Build per-payment item coverage lookup from order_payment_items junction table
+                // Per-payment item coverage (order_payment_items junction) —
+                // consumed directly by the shared payment mapper below (H2).
                 const paymentItemsData: any[] = data.payment_items || [];
-                const paymentItemsByPaymentId = new Map<string, any[]>();
-                for (const pi of paymentItemsData) {
-                  const key = pi.order_payment_id;
-                  if (!paymentItemsByPaymentId.has(key))
-                    paymentItemsByPaymentId.set(key, []);
-                  paymentItemsByPaymentId.get(key)!.push(pi);
-                }
 
                 if (!orderData) {
                   console.error(
@@ -16800,204 +16705,21 @@ export const useOrderStore = create<OrderState>()(
                   },
                 );
 
-                // Transform payments to OrderProfile format with comprehensive fields
+                // Transform payments via the shared canonical mapper (H2).
+                // paymentsData are raw order_payments rows (row_to_json(op.*)); the
+                // pipeline handles status='void'→voided, per-payment junction
+                // coverage, pre-auth, cash savings, settlement, tip-adjustment, and
+                // the full transactionDetails object. Local refund-monotonicity is
+                // reconciled downstream in mergedPayments (keyed on db_payment_id),
+                // so this pure mapper needs no local state.
                 const transformedPayments: OrderProfilePayment[] =
-                  paymentsData.map((payment: any) => {
-                    // Extract terminal response data for fallback card details + pre-auth fields
-                    const terminalResp = payment.terminal_response as
-                      Record<string, any> | undefined;
-                    const castlesTxn = terminalResp?.castles_transaction as
-                      Record<string, any> | undefined;
-                    const dejavooTxn = terminalResp?.dejavoo_transaction as
-                      Record<string, any> | undefined;
-
-                    return {
-                      // Core identifiers
-                      id: payment.id,
-                      db_payment_id: payment.id,
-
-                      // Payment basics
-                      amount: payment.amount || 0,
-                      method: (payment.payment_method === "cash"
-                        ? "Cash"
-                        : "Card") as PaymentType,
-                      tip_amount: payment.tip_amount || 0,
-                      total_collected:
-                        (payment.amount || 0) + (payment.tip_amount || 0),
-
-                      // Card details (with terminal response fallback)
-                      cardBrand:
-                        payment.card_type ??
-                        castlesTxn?.cardType ??
-                        dejavooTxn?.CardType,
-                      last4:
-                        payment.card_last_four ??
-                        castlesTxn?.cardLast4 ??
-                        dejavooTxn?.Last4,
-
-                      // Cash details
-                      amountTendered: payment.amount_tendered,
-                      changeGiven: payment.change_given || 0,
-                      isCashPriced: payment.is_cash_priced || false,
-                      cashSavings: deriveCashSavings(
-                        {
-                          is_cash_priced: payment.is_cash_priced,
-                          original_amount: payment.original_amount,
-                          amount: payment.amount || 0,
-                        },
-                        orderData.card_total ?? orderData.total_amount,
-                        orderData.cash_total,
-                      ),
-
-                      // Portions
-                      subtotal_portion: payment.subtotal_portion,
-                      tax_portion: payment.tax_portion,
-                      discount_portion: payment.discount_portion,
-
-                      // Split payment info
-                      splitInfo:
-                        payment.split_count && payment.split_count > 1
-                          ? {
-                              portionIndex: payment.split_portion_index || 0,
-                              totalPortions: payment.split_count,
-                              isLastPortion:
-                                (payment.split_portion_index || 0) ===
-                                payment.split_count - 1,
-                            }
-                          : undefined,
-
-                      // Item coverage — prefer per-payment items from junction table (accurate per-payment quantities)
-                      // Fall back to covers_items + paid_quantity for legacy orders without payment_items
-                      itemsCovered: (() => {
-                        const perPaymentItems = paymentItemsByPaymentId.get(
-                          payment.id,
-                        );
-                        if (perPaymentItems && perPaymentItems.length > 0) {
-                          return perPaymentItems.map((pi: any) => ({
-                            itemId: pi.order_item_id,
-                            itemName:
-                              transformedItems.find(
-                                (i) =>
-                                  i.db_order_item_id === pi.order_item_id ||
-                                  i.id === pi.order_item_id,
-                              )?.name || "Unknown Item",
-                            quantity: pi.quantity_paid,
-                            unitPrice: pi.unit_price_paid,
-                            subtotal: pi.subtotal_paid,
-                          }));
-                        }
-                        // Legacy fallback for orders without payment_items
-                        return (payment.covers_items || []).map(
-                          (itemId: string) => {
-                            const item = transformedItems.find(
-                              (i) =>
-                                i.db_order_item_id === itemId ||
-                                i.id === itemId,
-                            );
-                            const coveredQty =
-                              item?.paidQuantity || item?.quantity || 1;
-                            const unitPrice = payment.is_cash_priced
-                              ? (item?.cashPrice ?? item?.price) || 0
-                              : item?.price || 0;
-                            return {
-                              itemId,
-                              itemName: item?.name || "Unknown Item",
-                              quantity: coveredQty,
-                              unitPrice,
-                              subtotal: unitPrice * coveredQty,
-                            };
-                          },
-                        );
-                      })(),
-
-                      // Status and timestamps
-                      status: payment.status || "captured",
-                      timestamp: payment.initiated_at || payment.created_at,
-
-                      // Void tracking
-                      isVoided: payment.is_voided || false,
-                      voidReason: payment.void_reason,
-                      voidedAt: payment.voided_at,
-
-                      // Refund tracking
-                      refundedAmount: payment.refunded_amount || 0,
-                      refundedAt: payment.refunded_at,
-                      reference_id: payment.reference_number,
-
-                      // Tip adjustment tracking
-                      original_tip_amount:
-                        payment.original_tip_amount || undefined,
-                      tip_adjusted_at: payment.tip_adjusted_at || undefined,
-                      tip_adjusted_by: payment.tip_adjusted_by || undefined,
-
-                      // Return tracking fields
-                      isReturned: payment.is_returned || false,
-                      returnedAt: payment.returned_at,
-                      returnedBy: payment.returned_by,
-                      returnAmount: payment.return_amount || 0,
-                      returnRrn: payment.return_rrn,
-                      returnAuthCode: payment.return_auth_code,
-                      returnReferenceId: payment.return_reference_id,
-                      returnNumber: payment.return_number,
-                      returnReason: payment.return_reason,
-
-                      // Transaction details
-                      transactionDetails: {
-                        terminalType: payment.terminal_type,
-                        authorizationCode:
-                          payment.authorization_code || payment.auth_code,
-                        cardType:
-                          payment.card_type ??
-                          castlesTxn?.cardType ??
-                          dejavooTxn?.CardType,
-                        last4:
-                          payment.card_last_four ??
-                          castlesTxn?.cardLast4 ??
-                          dejavooTxn?.Last4,
-                        transactionId: payment.transaction_id,
-                        amountTendered: payment.amount_tendered,
-                        changeGiven: payment.change_given,
-                        isCashPriced: payment.is_cash_priced,
-                        isCash: payment.payment_method === "cash",
-                        // Include dejavoo response from processor_response if available
-                        dejavooTransaction:
-                          payment.processor_response?.dejavoo_transaction,
-                        // Additional terminal fields
-                        rrn: payment.rrn,
-                        batchNumber:
-                          payment.batch_number || payment.dejavoo_batch_number,
-                        invoiceNumber: payment.dejavoo_invoice_number,
-                        entryMode:
-                          payment.processor_response?.dejavoo_transaction
-                            ?.entryMode ?? castlesTxn?.entryMode,
-                        referenceId: payment.reference_number,
-                        castlesTransaction: castlesTxn,
-                      },
-
-                      // Pre-auth fields (hydrate from backend so pre-auth state survives refresh)
-                      isPreAuth: payment.status === "authorized",
-                      ...(payment.status === "authorized"
-                        ? {
-                            preAuthAmount: payment.amount,
-                            preAuthRrn: payment.rrn || castlesTxn?.rrn,
-                            preAuthStan: castlesTxn?.stan,
-                            preAuthAuthCode:
-                              payment.authorization_code ||
-                              castlesTxn?.approvalCode,
-                            preAuthReferenceId:
-                              payment.reference_number ||
-                              castlesTxn?.referenceId,
-                            preAuthTerminalType: (payment.terminal_type ===
-                            "castles"
-                              ? "castles"
-                              : "dejavoo") as "castles" | "dejavoo",
-                          }
-                        : {}),
-
-                      // Sync status
-                      sync_status: "synced" as const,
-                    };
-                  });
+                  mapFetchedPaymentsToProfile(
+                    paymentsData,
+                    itemsData.map((w: any) => w.item),
+                    paymentItemsData,
+                    orderData.card_total ?? orderData.total_amount,
+                    orderData.cash_total,
+                  );
 
                 // Calculate paid status from backend payment_status
                 const paidStatus =
@@ -17363,36 +17085,12 @@ export const useOrderStore = create<OrderState>()(
                         return localPmt;
                       }
                       // Refunds are monotonic and don't always advance
-                      // payment.status. If the get_order_details RPC raced
-                      // a just-committed refund and returned refunded_amount=0
-                      // while local has it set, preserve the local refund
-                      // evidence so the chip doesn't flash off.
-                      if (localPmt) {
-                        const lpRefunded = localPmt.refundedAmount ?? 0;
-                        const spRefunded = serverPmt.refundedAmount ?? 0;
-                        const localHasMoreRefund = lpRefunded > spRefunded;
-                        return {
-                          ...serverPmt,
-                          refundedAmount: Math.max(lpRefunded, spRefunded),
-                          refundedAt: localHasMoreRefund
-                            ? (localPmt.refundedAt ?? serverPmt.refundedAt)
-                            : (serverPmt.refundedAt ?? localPmt.refundedAt),
-                          isReturned: localHasMoreRefund
-                            ? (localPmt.isReturned ?? serverPmt.isReturned)
-                            : (serverPmt.isReturned ?? localPmt.isReturned),
-                          returnedAt: localHasMoreRefund
-                            ? (localPmt.returnedAt ?? serverPmt.returnedAt)
-                            : (serverPmt.returnedAt ?? localPmt.returnedAt),
-                          returnedBy: localHasMoreRefund
-                            ? (localPmt.returnedBy ?? serverPmt.returnedBy)
-                            : (serverPmt.returnedBy ?? localPmt.returnedBy),
-                          returnAmount: Math.max(
-                            localPmt.returnAmount ?? 0,
-                            serverPmt.returnAmount ?? 0,
-                          ),
-                        };
-                      }
-                      return serverPmt;
+                      // payment.status. If the get_order_details RPC raced a
+                      // just-committed refund (refunded_amount=0 while local has
+                      // it set), preserve the local refund evidence so the chip
+                      // doesn't flash off. Shared helper — one source of truth,
+                      // parity with syncOrderFromDatabase's post-map merge.
+                      return mergeLocalRefundEvidence(serverPmt, localPmt);
                     },
                   );
 
