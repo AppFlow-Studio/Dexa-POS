@@ -438,6 +438,14 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         }
 
         const taxRates = (data || []) as TaxRate[];
+        if (taxRates.length === 0) {
+          // No error but zero rows — usually RLS silently filtering (stale JWT /
+          // location not in user's set). setTaxRates preserves existing rates
+          // rather than wiping the map and taxing everything at 0%.
+          console.warn(
+            "Tax rates sync returned 0 rows (no error) — preserving existing rates if any",
+          );
+        }
         useStoreSettingsStore.getState().setTaxRates(taxRates);
         // console.log("Tax rates synced:", taxRates.length);
       } catch (err: any) {
