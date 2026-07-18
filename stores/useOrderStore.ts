@@ -4354,17 +4354,12 @@ function mergePayments(
     }
     // Broadcast is same or more advanced — but preserve terminal details from local
     if (lp) {
-      // Refunds don't always advance `status` (apply_refund_to_payment can
-      // leave status='captured' while bumping refunded_amount + is_returned).
-      // A stale broadcast snapshot taken before the refund commit therefore
-      // races our post-refund force-sync and would otherwise reset the
-      // refunded chip back to zero. Refund amounts are monotonic, so take
-      // the max and carry forward refund metadata from whichever side has it.
-      const lpRefunded = lp.refundedAmount ?? 0;
-      const bpRefunded = bp.refundedAmount ?? 0;
-      const localHasMoreRefund = lpRefunded > bpRefunded;
+      // Preserve local terminal details over the broadcast snapshot, plus local
+      // refund evidence via the shared monotonic merge (parity with the sync
+      // paths): apply_refund_to_payment doesn't always advance `status`, so a
+      // pre-refund broadcast snapshot could otherwise reset the chip back to zero.
       return {
-        ...bp,
+        ...mergeLocalRefundEvidence(bp, lp),
         last4: bp.last4 ?? lp.last4,
         cardBrand: bp.cardBrand ?? lp.cardBrand,
         amountTendered: bp.amountTendered ?? lp.amountTendered,
@@ -4373,20 +4368,6 @@ function mergePayments(
           lp.transactionDetails,
           bp.transactionDetails,
         ),
-        refundedAmount: Math.max(lpRefunded, bpRefunded),
-        refundedAt: localHasMoreRefund
-          ? (lp.refundedAt ?? bp.refundedAt)
-          : (bp.refundedAt ?? lp.refundedAt),
-        isReturned: localHasMoreRefund
-          ? (lp.isReturned ?? bp.isReturned)
-          : (bp.isReturned ?? lp.isReturned),
-        returnedAt: localHasMoreRefund
-          ? (lp.returnedAt ?? bp.returnedAt)
-          : (bp.returnedAt ?? lp.returnedAt),
-        returnedBy: localHasMoreRefund
-          ? (lp.returnedBy ?? bp.returnedBy)
-          : (bp.returnedBy ?? lp.returnedBy),
-        returnAmount: Math.max(lp.returnAmount ?? 0, bp.returnAmount ?? 0),
       };
     }
     return bp;
@@ -17104,36 +17085,12 @@ export const useOrderStore = create<OrderState>()(
                         return localPmt;
                       }
                       // Refunds are monotonic and don't always advance
-                      // payment.status. If the get_order_details RPC raced
-                      // a just-committed refund and returned refunded_amount=0
-                      // while local has it set, preserve the local refund
-                      // evidence so the chip doesn't flash off.
-                      if (localPmt) {
-                        const lpRefunded = localPmt.refundedAmount ?? 0;
-                        const spRefunded = serverPmt.refundedAmount ?? 0;
-                        const localHasMoreRefund = lpRefunded > spRefunded;
-                        return {
-                          ...serverPmt,
-                          refundedAmount: Math.max(lpRefunded, spRefunded),
-                          refundedAt: localHasMoreRefund
-                            ? (localPmt.refundedAt ?? serverPmt.refundedAt)
-                            : (serverPmt.refundedAt ?? localPmt.refundedAt),
-                          isReturned: localHasMoreRefund
-                            ? (localPmt.isReturned ?? serverPmt.isReturned)
-                            : (serverPmt.isReturned ?? localPmt.isReturned),
-                          returnedAt: localHasMoreRefund
-                            ? (localPmt.returnedAt ?? serverPmt.returnedAt)
-                            : (serverPmt.returnedAt ?? localPmt.returnedAt),
-                          returnedBy: localHasMoreRefund
-                            ? (localPmt.returnedBy ?? serverPmt.returnedBy)
-                            : (serverPmt.returnedBy ?? localPmt.returnedBy),
-                          returnAmount: Math.max(
-                            localPmt.returnAmount ?? 0,
-                            serverPmt.returnAmount ?? 0,
-                          ),
-                        };
-                      }
-                      return serverPmt;
+                      // payment.status. If the get_order_details RPC raced a
+                      // just-committed refund (refunded_amount=0 while local has
+                      // it set), preserve the local refund evidence so the chip
+                      // doesn't flash off. Shared helper — one source of truth,
+                      // parity with syncOrderFromDatabase's post-map merge.
+                      return mergeLocalRefundEvidence(serverPmt, localPmt);
                     },
                   );
 

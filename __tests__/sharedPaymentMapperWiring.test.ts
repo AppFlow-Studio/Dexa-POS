@@ -63,4 +63,17 @@ describe("H2 — refund-monotonicity lives in one shared helper", () => {
   it("syncOrderFromDatabase re-applies the merge post-map (mapper is pure)", () => {
     expect(sfdb).toMatch(/mergeLocalRefundEvidence\(/);
   });
+
+  it("all three refund-merge sites call the shared helper (SFDB + SFBC mergedPayments + mergePayments)", () => {
+    // 1 definition + 3 call sites = 4 occurrences.
+    const occurrences =
+      storeSrc.match(/mergeLocalRefundEvidence\(/g) || [];
+    expect(occurrences.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("no inline refund-merge copies remain (one localHasMoreRefund declaration — the helper)", () => {
+    // Was 3 (SFDB inline + SFBC mergedPayments + mergePayments); now only the helper declares it.
+    const decls = storeSrc.match(/const localHasMoreRefund =/g) || [];
+    expect(decls.length).toBe(1);
+  });
 });
