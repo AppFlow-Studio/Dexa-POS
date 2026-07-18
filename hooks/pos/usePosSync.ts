@@ -106,7 +106,16 @@ export const usePosSync = (locationId: string | null) => {
       if (taxRatesResult.error) {
         console.warn("tax_rates fetch warning:", taxRatesResult.error);
       } else {
-        console.log("DEBUG: Synced Tax Rates:", taxRatesResult.data);
+        if ((taxRatesResult.data?.length ?? 0) === 0) {
+          // No error but zero rows — usually RLS silently filtering (stale JWT /
+          // location not in user's set), not a real "location has no tax" state.
+          // setTaxRates preserves any existing rates instead of zeroing tax.
+          console.warn(
+            "tax_rates fetch returned 0 rows (no error) — preserving existing rates if any",
+          );
+        } else {
+          console.log("DEBUG: Synced Tax Rates:", taxRatesResult.data);
+        }
         useStoreSettingsStore
           .getState()
           .setTaxRates((taxRatesResult.data || []) as TaxRate[]);
