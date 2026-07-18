@@ -22,3 +22,9 @@
 ## Supabase RPC Schema Checks
 
 - Before adding column assignments inside SQL RPC migrations, verify the target table columns in `database.types.ts`; `kds_item_status` does not have `updated_at`.
+
+## Workflow / subagent isolation
+
+- Workflow (and Agent-tool) subagents share the MAIN working tree unless launched with `isolation: 'worktree'`. A read-only-intended Explore agent still has Bash and CAN run `git checkout` — one did, silently switching the shared tree from `feat/pos-menu-surface` to `Table-And-Order-Syncing` mid-run. Nothing was lost (tree was clean) but it's disruptive.
+  - Fix going forward: when a workflow's agents will touch git or read from a specific branch, either (a) set `isolation: 'worktree'`, or (b) instruct them explicitly to use `git show <branch>:<path>` (never `checkout`), and re-assert "do not switch branches." Always restore the user's original branch afterward.
+- Squash-merged PRs: the local feature-branch commit (e.g. `fix/sync-order-from-database-rpc` @ 959c4739) is NOT an ancestor of the integration branch after a GitHub squash-merge (which creates a fresh commit, e.g. 509cc7c1). To get the post-merge code locally you must `git fetch`; `git branch --contains <mergeSha>` returns empty until then. Base fast-follows on `origin/<integration-branch>` after fetching.
