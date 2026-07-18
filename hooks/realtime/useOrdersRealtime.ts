@@ -164,6 +164,11 @@ export interface BroadcastOrderPaymentData {
   is_settled?: boolean
   settled_at?: string | null
 
+  // Tip adjustment tracking (fetch-only; broadcasts don't carry these)
+  original_tip_amount?: number | null
+  tip_adjusted_at?: string | null
+  tip_adjusted_by?: string | null
+
   // Terminal response JSONB (for pre-auth field extraction)
   terminal_response?: Record<string, unknown> | null
 }

@@ -141,6 +141,7 @@ import {
     deriveCashSavings,
     isHeaderOnlyBroadcast,
     mapBackendItemToCartItem,
+    mapFetchedPaymentsToProfile,
     mapOrderType,
     mapPaymentStatus,
     normalizeFetchedOrder,
@@ -16737,15 +16738,9 @@ export const useOrderStore = create<OrderState>()(
                 const orderDiscountsData = data.order_discounts || [];
                 const stationName = data.station_name;
 
-                // Build per-payment item coverage lookup from order_payment_items junction table
+                // Per-payment item coverage (order_payment_items junction) —
+                // consumed directly by the shared payment mapper below (H2).
                 const paymentItemsData: any[] = data.payment_items || [];
-                const paymentItemsByPaymentId = new Map<string, any[]>();
-                for (const pi of paymentItemsData) {
-                  const key = pi.order_payment_id;
-                  if (!paymentItemsByPaymentId.has(key))
-                    paymentItemsByPaymentId.set(key, []);
-                  paymentItemsByPaymentId.get(key)!.push(pi);
-                }
 
                 if (!orderData) {
                   console.error(
@@ -16800,204 +16795,21 @@ export const useOrderStore = create<OrderState>()(
                   },
                 );
 
-                // Transform payments to OrderProfile format with comprehensive fields
+                // Transform payments via the shared canonical mapper (H2).
+                // paymentsData are raw order_payments rows (row_to_json(op.*)); the
+                // pipeline handles status='void'→voided, per-payment junction
+                // coverage, pre-auth, cash savings, settlement, tip-adjustment, and
+                // the full transactionDetails object. Local refund-monotonicity is
+                // reconciled downstream in mergedPayments (keyed on db_payment_id),
+                // so this pure mapper needs no local state.
                 const transformedPayments: OrderProfilePayment[] =
-                  paymentsData.map((payment: any) => {
-                    // Extract terminal response data for fallback card details + pre-auth fields
-                    const terminalResp = payment.terminal_response as
-                      Record<string, any> | undefined;
-                    const castlesTxn = terminalResp?.castles_transaction as
-                      Record<string, any> | undefined;
-                    const dejavooTxn = terminalResp?.dejavoo_transaction as
-                      Record<string, any> | undefined;
-
-                    return {
-                      // Core identifiers
-                      id: payment.id,
-                      db_payment_id: payment.id,
-
-                      // Payment basics
-                      amount: payment.amount || 0,
-                      method: (payment.payment_method === "cash"
-                        ? "Cash"
-                        : "Card") as PaymentType,
-                      tip_amount: payment.tip_amount || 0,
-                      total_collected:
-                        (payment.amount || 0) + (payment.tip_amount || 0),
-
-                      // Card details (with terminal response fallback)
-                      cardBrand:
-                        payment.card_type ??
-                        castlesTxn?.cardType ??
-                        dejavooTxn?.CardType,
-                      last4:
-                        payment.card_last_four ??
-                        castlesTxn?.cardLast4 ??
-                        dejavooTxn?.Last4,
-
-                      // Cash details
-                      amountTendered: payment.amount_tendered,
-                      changeGiven: payment.change_given || 0,
-                      isCashPriced: payment.is_cash_priced || false,
-                      cashSavings: deriveCashSavings(
-                        {
-                          is_cash_priced: payment.is_cash_priced,
-                          original_amount: payment.original_amount,
-                          amount: payment.amount || 0,
-                        },
-                        orderData.card_total ?? orderData.total_amount,
-                        orderData.cash_total,
-                      ),
-
-                      // Portions
-                      subtotal_portion: payment.subtotal_portion,
-                      tax_portion: payment.tax_portion,
-                      discount_portion: payment.discount_portion,
-
-                      // Split payment info
-                      splitInfo:
-                        payment.split_count && payment.split_count > 1
-                          ? {
-                              portionIndex: payment.split_portion_index || 0,
-                              totalPortions: payment.split_count,
-                              isLastPortion:
-                                (payment.split_portion_index || 0) ===
-                                payment.split_count - 1,
-                            }
-                          : undefined,
-
-                      // Item coverage — prefer per-payment items from junction table (accurate per-payment quantities)
-                      // Fall back to covers_items + paid_quantity for legacy orders without payment_items
-                      itemsCovered: (() => {
-                        const perPaymentItems = paymentItemsByPaymentId.get(
-                          payment.id,
-                        );
-                        if (perPaymentItems && perPaymentItems.length > 0) {
-                          return perPaymentItems.map((pi: any) => ({
-                            itemId: pi.order_item_id,
-                            itemName:
-                              transformedItems.find(
-                                (i) =>
-                                  i.db_order_item_id === pi.order_item_id ||
-                                  i.id === pi.order_item_id,
-                              )?.name || "Unknown Item",
-                            quantity: pi.quantity_paid,
-                            unitPrice: pi.unit_price_paid,
-                            subtotal: pi.subtotal_paid,
-                          }));
-                        }
-                        // Legacy fallback for orders without payment_items
-                        return (payment.covers_items || []).map(
-                          (itemId: string) => {
-                            const item = transformedItems.find(
-                              (i) =>
-                                i.db_order_item_id === itemId ||
-                                i.id === itemId,
-                            );
-                            const coveredQty =
-                              item?.paidQuantity || item?.quantity || 1;
-                            const unitPrice = payment.is_cash_priced
-                              ? (item?.cashPrice ?? item?.price) || 0
-                              : item?.price || 0;
-                            return {
-                              itemId,
-                              itemName: item?.name || "Unknown Item",
-                              quantity: coveredQty,
-                              unitPrice,
-                              subtotal: unitPrice * coveredQty,
-                            };
-                          },
-                        );
-                      })(),
-
-                      // Status and timestamps
-                      status: payment.status || "captured",
-                      timestamp: payment.initiated_at || payment.created_at,
-
-                      // Void tracking
-                      isVoided: payment.is_voided || false,
-                      voidReason: payment.void_reason,
-                      voidedAt: payment.voided_at,
-
-                      // Refund tracking
-                      refundedAmount: payment.refunded_amount || 0,
-                      refundedAt: payment.refunded_at,
-                      reference_id: payment.reference_number,
-
-                      // Tip adjustment tracking
-                      original_tip_amount:
-                        payment.original_tip_amount || undefined,
-                      tip_adjusted_at: payment.tip_adjusted_at || undefined,
-                      tip_adjusted_by: payment.tip_adjusted_by || undefined,
-
-                      // Return tracking fields
-                      isReturned: payment.is_returned || false,
-                      returnedAt: payment.returned_at,
-                      returnedBy: payment.returned_by,
-                      returnAmount: payment.return_amount || 0,
-                      returnRrn: payment.return_rrn,
-                      returnAuthCode: payment.return_auth_code,
-                      returnReferenceId: payment.return_reference_id,
-                      returnNumber: payment.return_number,
-                      returnReason: payment.return_reason,
-
-                      // Transaction details
-                      transactionDetails: {
-                        terminalType: payment.terminal_type,
-                        authorizationCode:
-                          payment.authorization_code || payment.auth_code,
-                        cardType:
-                          payment.card_type ??
-                          castlesTxn?.cardType ??
-                          dejavooTxn?.CardType,
-                        last4:
-                          payment.card_last_four ??
-                          castlesTxn?.cardLast4 ??
-                          dejavooTxn?.Last4,
-                        transactionId: payment.transaction_id,
-                        amountTendered: payment.amount_tendered,
-                        changeGiven: payment.change_given,
-                        isCashPriced: payment.is_cash_priced,
-                        isCash: payment.payment_method === "cash",
-                        // Include dejavoo response from processor_response if available
-                        dejavooTransaction:
-                          payment.processor_response?.dejavoo_transaction,
-                        // Additional terminal fields
-                        rrn: payment.rrn,
-                        batchNumber:
-                          payment.batch_number || payment.dejavoo_batch_number,
-                        invoiceNumber: payment.dejavoo_invoice_number,
-                        entryMode:
-                          payment.processor_response?.dejavoo_transaction
-                            ?.entryMode ?? castlesTxn?.entryMode,
-                        referenceId: payment.reference_number,
-                        castlesTransaction: castlesTxn,
-                      },
-
-                      // Pre-auth fields (hydrate from backend so pre-auth state survives refresh)
-                      isPreAuth: payment.status === "authorized",
-                      ...(payment.status === "authorized"
-                        ? {
-                            preAuthAmount: payment.amount,
-                            preAuthRrn: payment.rrn || castlesTxn?.rrn,
-                            preAuthStan: castlesTxn?.stan,
-                            preAuthAuthCode:
-                              payment.authorization_code ||
-                              castlesTxn?.approvalCode,
-                            preAuthReferenceId:
-                              payment.reference_number ||
-                              castlesTxn?.referenceId,
-                            preAuthTerminalType: (payment.terminal_type ===
-                            "castles"
-                              ? "castles"
-                              : "dejavoo") as "castles" | "dejavoo",
-                          }
-                        : {}),
-
-                      // Sync status
-                      sync_status: "synced" as const,
-                    };
-                  });
+                  mapFetchedPaymentsToProfile(
+                    paymentsData,
+                    itemsData.map((w: any) => w.item),
+                    paymentItemsData,
+                    orderData.card_total ?? orderData.total_amount,
+                    orderData.cash_total,
+                  );
 
                 // Calculate paid status from backend payment_status
                 const paidStatus =

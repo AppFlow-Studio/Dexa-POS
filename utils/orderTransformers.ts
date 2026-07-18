@@ -517,6 +517,10 @@ function transformBroadcastPaymentToProfile (
     // Settlement tracking
     is_settled: payment.is_settled ?? undefined,
     settled_at: payment.settled_at ?? undefined,
+    // Tip adjustment tracking (consumed by TimelineTab / PaymentDetailBottomSheet)
+    original_tip_amount: payment.original_tip_amount ?? undefined,
+    tip_adjusted_at: payment.tip_adjusted_at ?? undefined,
+    tip_adjusted_by: payment.tip_adjusted_by ?? undefined,
     transactionDetails: {
       terminalType: payment.terminal_type ?? undefined,
       authorizationCode:
@@ -1017,6 +1021,11 @@ export interface FetchedOrderPayment {
   created_at: string
   updated_at: string
 
+  // Tip adjustment tracking (adjust_tips_v*)
+  original_tip_amount?: number | null
+  tip_adjusted_at?: string | null
+  tip_adjusted_by?: string | null
+
   // Metadata
   metadata: Record<string, unknown> | null
 }
@@ -1200,7 +1209,12 @@ export function normalizeFetchedPayment (
     return_auth_code: payment.return_auth_code,
     return_reference_id: payment.return_reference_id,
     return_number: payment.return_number,
-    return_reason: payment.return_reason
+    return_reason: payment.return_reason,
+    // Tip adjustment tracking (adjust_tips_v*) — fetch-only enrichment; real
+    // broadcasts don't carry these, so absent ≡ null here (no regression).
+    original_tip_amount: payment.original_tip_amount ?? null,
+    tip_adjusted_at: payment.tip_adjusted_at ?? null,
+    tip_adjusted_by: payment.tip_adjusted_by ?? null
   }
 }
 

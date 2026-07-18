@@ -245,6 +245,22 @@ describe("H2 mapFetchedPaymentsToProfile — junction item coverage", () => {
   });
 });
 
+describe("H2 mapFetchedPaymentsToProfile — tip adjustment", () => {
+  it("carries original_tip_amount / tip_adjusted_at / tip_adjusted_by (consumed by TimelineTab + PaymentDetailBottomSheet)", () => {
+    const [p] = map([
+      makeRow({
+        tip_amount: 5,
+        original_tip_amount: 2,
+        tip_adjusted_at: "2026-07-18T02:00:00Z",
+        tip_adjusted_by: "mgr-1",
+      } as any),
+    ]);
+    expect(p.original_tip_amount).toBe(2);
+    expect(p.tip_adjusted_at).toBe("2026-07-18T02:00:00Z");
+    expect(p.tip_adjusted_by).toBe("mgr-1");
+  });
+});
+
 describe("H2 mapFetchedPaymentsToProfile — settlement", () => {
   it("carries settlement tracking fields", () => {
     const [p] = map([
