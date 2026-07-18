@@ -6,9 +6,13 @@ import {
   type MenuItemPlaceholderIconKey
 } from '@/lib/menuItemPlaceholderIcon'
 import { colors } from '@/lib/theme'
+import {
+  formatSnoozeCountdown,
+  isActivelySnoozed
+} from '@/lib/snoozeDurations'
 import { MenuItemType } from '@/lib/types'
 import * as Haptics from 'expo-haptics'
-import { GripVertical } from 'lucide-react-native'
+import { Ban, GripVertical } from 'lucide-react-native'
 import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -34,6 +38,7 @@ interface DraggableMenuItemProps {
     categoryId: string,
     menuId: string
   ) => void
+  onItemSnooze: (item: MenuItemType) => void
   isEditable: boolean
   itemCount: number
   columnCount: number
@@ -95,6 +100,31 @@ const baseStyles = StyleSheet.create({
     zIndex: 10,
     borderRadius: 6,
     padding: 4
+  },
+  snoozeBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 6
+  },
+  snoozeBadgeText: {
+    fontSize: 9,
+    fontWeight: '700'
+  },
+  snoozeButton: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    zIndex: 10,
+    padding: 5,
+    borderRadius: 6,
+    borderWidth: 1
   }
 })
 
@@ -106,6 +136,7 @@ const DraggableMenuItem = React.memo(
     menuId,
     onReorder,
     onItemPriceEdit,
+    onItemSnooze,
     isEditable,
     itemCount,
     columnCount,
@@ -224,6 +255,8 @@ const DraggableMenuItem = React.memo(
     })
 
     const imageSource = resolveMenuItemImageSource(item.image)
+    const snoozeLabel = formatSnoozeCountdown(item.snoozedUntil)
+    const isSnoozed = isActivelySnoozed(item.snoozedUntil)
     const PlaceholderIcon = React.useMemo(() => {
       const iconKey =
         item.placeholderIcon ??
@@ -243,7 +276,7 @@ const DraggableMenuItem = React.memo(
         }
       >
         <TouchableOpacity
-          onPress={() => {}}
+          onPress={() => onItemPriceEdit(item, categoryId, menuId)}
           style={[
             baseStyles.card,
             {
@@ -309,6 +342,37 @@ const DraggableMenuItem = React.memo(
               ${item.price.toFixed(2)}
             </Text>
           </View>
+        </TouchableOpacity>
+
+        {/* 86 status badge (top-left) */}
+        {snoozeLabel && (
+          <View
+            style={[baseStyles.snoozeBadge, { backgroundColor: colors.danger }]}
+            pointerEvents='none'
+          >
+            <Ban size={9} color={colors.onSolid} />
+            <Text style={[baseStyles.snoozeBadgeText, { color: colors.onSolid }]}>
+              {snoozeLabel === '86' ? '86' : `86 · ${snoozeLabel}`}
+            </Text>
+          </View>
+        )}
+
+        {/* Quick 86 / out-of-stock action (bottom-right). Own touchable so it
+            doesn't trigger the card's edit press. */}
+        <TouchableOpacity
+          onPress={() => onItemSnooze(item)}
+          hitSlop={6}
+          style={[
+            baseStyles.snoozeButton,
+            {
+              backgroundColor: isSnoozed
+                ? colors.danger
+                : colors.danger + '18',
+              borderColor: colors.danger + '35'
+            }
+          ]}
+        >
+          <Ban size={13} color={isSnoozed ? colors.onSolid : colors.danger} />
         </TouchableOpacity>
       </Animated.View>
     )
