@@ -6,15 +6,16 @@ import {
   MenuService,
 } from "@/services/menuService";
 import { bottomSheetTheme, colors } from "@/lib/theme";
+import { isActivelySnoozed } from "@/lib/snoozeDurations";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
   BottomSheetBackdrop,
+  BottomSheetScrollView,
   BottomSheetTextInput,
-  BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { RotateCcw, Trash2, X } from "lucide-react-native";
+import { Ban, Check, RotateCcw, Trash2, X } from "lucide-react-native";
 import React, {
   forwardRef,
   useCallback,
@@ -37,6 +38,7 @@ export interface PriceEditItem {
   currentPrice: number;
   currentCashPrice?: number;
   currentAvailability?: boolean;
+  snoozedUntil?: string | null;
 }
 
 export interface PriceEditContext {
@@ -53,6 +55,17 @@ interface PriceEditBottomSheetProps {
   onSave: (itemId: string, newPrice: number) => void;
   onReset?: (itemId: string) => void;
   onDelete?: (itemId: string, itemName: string) => void;
+  /**
+   * Hand off to the 86 / out-of-stock flow. Used for the item itself and for
+   * its individual modifier options/groups (all get the timed snooze flow).
+   */
+  onSnooze?: (item: {
+    id: string;
+    name: string;
+    snoozedUntil?: string | null;
+    kind?: "item" | "modifier-option" | "modifier-group";
+    optionIds?: string[];
+  }) => void;
 }
 
 const filterPriceInput = (text: string): string => {
@@ -67,9 +80,8 @@ const filterPriceInput = (text: string): string => {
 const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
   PriceEditBottomSheetRef,
   PriceEditBottomSheetProps
-> = ({ onSave, onReset, onDelete }, ref) => {
+> = ({ onSave, onReset, onDelete, onSnooze }, ref) => {
   const bottomSheetRef = useRef<BottomSheetMethods>(null);
-  const snapPoints = useMemo(() => ["65%"], []);
 
   const [item, setItem] = useState<PriceEditItem | null>(null);
   const [context, setContext] = useState<PriceEditContext>({
@@ -94,6 +106,26 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
     pricingStrategy === "dual" &&
     typeof dualPricingPercentage === "number" &&
     dualPricingPercentage > 0;
+
+  // The modifier groups attached to this item — surfaced so the item's
+  // modifier options can be 86'd per-location right from the slide-up (mirrors
+  // the website's edit-item form). Read reactively so toggles update live.
+  const modifierGroups = useMenuStore((s) => s.modifierGroups);
+  const menuItemsById = useMenuStore((s) => s.menuItemsById);
+  const itemGroups = useMemo(() => {
+    if (!item) return [];
+    const ids = menuItemsById[item.id]?.modifierGroupIds ?? [];
+    if (!ids.length) return [];
+    const idSet = new Set(ids);
+    return modifierGroups.filter((g) => idSet.has(g.id));
+  }, [item, menuItemsById, modifierGroups]);
+
+  const snapPoints = useMemo(
+    () => (itemGroups.length > 0 ? ["88%"] : ["65%"]),
+    [itemGroups.length],
+  );
+
+  const itemSnoozed = isActivelySnoozed(item?.snoozedUntil);
 
   useImperativeHandle(ref, () => ({
     open: (newItem: PriceEditItem, newContext: PriceEditContext) => {
@@ -257,6 +289,28 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
     onDelete?.(item.id, item.name);
   };
 
+  const handle86 = () => {
+    if (!item) return;
+    handleClose();
+    onSnooze?.({
+      id: item.id,
+      name: item.name,
+      snoozedUntil: item.snoozedUntil,
+    });
+  };
+
+  // 86 a modifier option / group with the same timed snooze flow as items.
+  const handleModifierSnooze = (target: {
+    id: string;
+    name: string;
+    snoozedUntil?: string | null;
+    kind: "modifier-option" | "modifier-group";
+    optionIds?: string[];
+  }) => {
+    handleClose();
+    onSnooze?.(target);
+  };
+
   const renderBackdrop = useMemo(
     () => (props: any) => (
       <BottomSheetBackdrop
@@ -278,7 +332,10 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
       {...bottomSheetTheme}
       backdropComponent={renderBackdrop}
     >
-      <BottomSheetView style={{ flex: 1, padding: 16 }}>
+      <BottomSheetScrollView
+        contentContainerStyle={{ padding: 16 }}
+        keyboardShouldPersistTaps="handled"
+      >
 
         {/* Header */}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -461,6 +518,232 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
           />
         </View>
 
+        {/* 86 / Out of stock — filled red when the item IS out of stock (status),
+            outlined when in stock (action). Taps into the timed snooze flow. */}
+        {onSnooze && (
+          <TouchableOpacity
+            onPress={handle86}
+            disabled={isLoading}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              backgroundColor: itemSnoozed ? colors.danger : colors.danger + "12",
+              borderWidth: 1,
+              borderColor: itemSnoozed ? colors.danger : colors.danger + "35",
+              borderRadius: 8,
+              paddingVertical: 10,
+              marginBottom: 14,
+            }}
+          >
+            <Ban size={14} color={itemSnoozed ? colors.onSolid : colors.danger} />
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: "700",
+                color: itemSnoozed ? colors.onSolid : colors.danger,
+              }}
+            >
+              {itemSnoozed
+                ? "Out of Stock · Tap to Manage"
+                : "Mark Out of Stock (86)"}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Modifiers — 86 the item's modifier options per location, right from
+            the slide-up (mirrors the website's edit-item form). */}
+        {itemGroups.length > 0 && (
+          <View style={{ marginBottom: 14 }}>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "600",
+                color: colors.muted,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+                marginBottom: 8,
+              }}
+            >
+              Modifiers
+            </Text>
+            <View style={{ gap: 8 }}>
+              {itemGroups.map((group) => {
+                const options = Array.isArray(group.options)
+                  ? group.options
+                  : [];
+                const optionIds = options.map((o) => o.id);
+                const snoozedCount = options.filter((o) =>
+                  isActivelySnoozed(o.snoozedUntil),
+                ).length;
+                const total = options.length;
+                const groupOutOfStock = total > 0 && snoozedCount === total;
+                const anySnoozed = snoozedCount > 0;
+                const groupStatusLabel = groupOutOfStock
+                  ? "All out of stock"
+                  : anySnoozed
+                    ? `${snoozedCount}/${total} out of stock`
+                    : "In stock";
+                return (
+                  <View
+                    key={group.id}
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      padding: 10,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: options.length > 0 ? 8 : 0,
+                        gap: 8,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "700",
+                          color: colors.heading,
+                          flex: 1,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {group.name}
+                      </Text>
+                      {optionIds.length > 0 && (
+                        <TouchableOpacity
+                          onPress={() =>
+                            handleModifierSnooze({
+                              id: group.id,
+                              name: group.name,
+                              kind: "modifier-group",
+                              optionIds,
+                              snoozedUntil: groupOutOfStock ? "infinity" : null,
+                            })
+                          }
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 5,
+                            paddingHorizontal: 8,
+                            paddingVertical: 5,
+                            borderRadius: 6,
+                            backgroundColor: anySnoozed
+                              ? colors.danger + "18"
+                              : colors.success + "12",
+                            borderWidth: 1,
+                            borderColor: anySnoozed
+                              ? colors.danger + "40"
+                              : colors.success + "30",
+                          }}
+                        >
+                          {anySnoozed ? (
+                            <Ban size={12} color={colors.danger} />
+                          ) : (
+                            <Check size={12} color={colors.success} />
+                          )}
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: "700",
+                              color: anySnoozed
+                                ? colors.danger
+                                : colors.success,
+                            }}
+                          >
+                            {groupStatusLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    {options.map((o) => {
+                      const snoozed = isActivelySnoozed(o.snoozedUntil);
+                      return (
+                        <View
+                          key={o.id}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            paddingVertical: 4,
+                            gap: 8,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: colors.heading,
+                              opacity: snoozed ? 0.6 : 1,
+                              flex: 1,
+                            }}
+                            numberOfLines={1}
+                          >
+                            {o.name}
+                            {o.price > 0 && (
+                              <Text style={{ color: colors.teal }}>
+                                {"  +"}${o.price.toFixed(2)}
+                              </Text>
+                            )}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() =>
+                              handleModifierSnooze({
+                                id: o.id,
+                                name: o.name,
+                                kind: "modifier-option",
+                                snoozedUntil: o.snoozedUntil,
+                              })
+                            }
+                            hitSlop={6}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 5,
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
+                              borderRadius: 6,
+                              backgroundColor: snoozed
+                                ? colors.danger + "18"
+                                : colors.success + "12",
+                              borderWidth: 1,
+                              borderColor: snoozed
+                                ? colors.danger + "40"
+                                : colors.success + "30",
+                            }}
+                          >
+                            {snoozed ? (
+                              <Ban size={11} color={colors.danger} />
+                            ) : (
+                              <Check size={11} color={colors.success} />
+                            )}
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                fontWeight: "700",
+                                color: snoozed
+                                  ? colors.danger
+                                  : colors.success,
+                              }}
+                            >
+                              {snoozed ? "Out of stock" : "In stock"}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Error */}
         {error && (
           <View
@@ -537,7 +820,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
           </TouchableOpacity>
         </View>
 
-      </BottomSheetView>
+      </BottomSheetScrollView>
     </BottomSheet>
   );
 };

@@ -18,6 +18,8 @@ interface MenuHeaderProps {
   disabled?: boolean;
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  /** Optional node rendered at the left of the action cluster (e.g. a "86'd (N)" chip). */
+  rightSlot?: React.ReactNode;
 }
 
 const MenuHeader: React.FC<MenuHeaderProps> = ({
@@ -27,6 +29,7 @@ const MenuHeader: React.FC<MenuHeaderProps> = ({
   disabled = false,
   onRefresh,
   isRefreshing = false,
+  rightSlot,
 }) => {
   const { openSearch } = useMenuManagementSearchStore();
 
@@ -71,6 +74,7 @@ const MenuHeader: React.FC<MenuHeaderProps> = ({
       </Text>
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        {rightSlot}
         {onRefresh && (
           <TouchableOpacity
             onPress={onRefresh}
