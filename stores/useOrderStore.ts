@@ -4424,6 +4424,47 @@ function mergePayments(
   return [...mergedFromBroadcast, ...pendingLocal];
 }
 
+/**
+ * Re-apply local refund-monotonicity onto a freshly-mapped server payment (H2).
+ *
+ * The canonical payment mapper (mapFetchedPaymentsToProfile) is pure — it has no
+ * access to local state. But apply_refund_to_payment doesn't always advance
+ * `status`, so a fetch that races a just-committed refund can return
+ * refunded_amount=0 while the local copy already has it set. Refund evidence is
+ * monotonic, so take the max and carry the richer side's return metadata. Kept
+ * in one place so syncOrderFromDatabase (post-map) and mergePayments-style
+ * reconciliation can't drift.
+ */
+function mergeLocalRefundEvidence(
+  serverPmt: OrderProfilePayment,
+  localPmt: OrderProfilePayment | undefined,
+): OrderProfilePayment {
+  if (!localPmt) return serverPmt;
+  const dbRefunded = serverPmt.refundedAmount ?? 0;
+  const localRefunded = localPmt.refundedAmount ?? 0;
+  const localHasMoreRefund = localRefunded > dbRefunded;
+  return {
+    ...serverPmt,
+    refundedAmount: Math.max(dbRefunded, localRefunded),
+    refundedAt: localHasMoreRefund
+      ? (localPmt.refundedAt ?? serverPmt.refundedAt)
+      : (serverPmt.refundedAt ?? localPmt.refundedAt),
+    isReturned: localHasMoreRefund
+      ? (localPmt.isReturned ?? serverPmt.isReturned)
+      : (serverPmt.isReturned ?? localPmt.isReturned),
+    returnedAt: localHasMoreRefund
+      ? (localPmt.returnedAt ?? serverPmt.returnedAt)
+      : (serverPmt.returnedAt ?? localPmt.returnedAt),
+    returnedBy: localHasMoreRefund
+      ? (localPmt.returnedBy ?? serverPmt.returnedBy)
+      : (serverPmt.returnedBy ?? localPmt.returnedBy),
+    returnAmount: Math.max(
+      serverPmt.returnAmount ?? 0,
+      localPmt.returnAmount ?? 0,
+    ),
+  };
+}
+
 export const useOrderStore = create<OrderState>()(
   subscribeWithSelector(
     persist(
@@ -14997,16 +15038,8 @@ export const useOrderStore = create<OrderState>()(
                   []) as any[];
                 const orderDiscountsData = (data.order_discounts ?? []) as any[];
 
-                // Per-payment item coverage lives in the order_payment_items
-                // junction (C2) — the old mapper read a non-existent `item_ids`
-                // column, so coverage was always empty.
-                const paymentItemsByPaymentId = new Map<string, any[]>();
-                for (const pi of paymentItems) {
-                  const key = pi.order_payment_id;
-                  if (!paymentItemsByPaymentId.has(key))
-                    paymentItemsByPaymentId.set(key, []);
-                  paymentItemsByPaymentId.get(key)!.push(pi);
-                }
+                // Per-payment item coverage (order_payment_items junction) is
+                // consumed directly by the shared payment mapper below (H2).
 
                 if (__DEV__) {
                   console.log("[syncOrderFromDatabase] Fetched data:", {
@@ -15267,134 +15300,30 @@ export const useOrderStore = create<OrderState>()(
                   // get_order_details sees them fine), and `[].map()` is a truthy
                   // empty array, so the old `|| localOrder?.payments` fallback
                   // never fired and a just-committed payment got wiped.
+                  // Transform payments via the shared canonical mapper (H2),
+                  // then re-apply local refund-monotonicity per payment (the pure
+                  // mapper has no local state). Empty-guard preserved: a
+                  // successful-but-EMPTY read must fall back to local payments —
+                  // this path is deadline-wrapped and the RPC (SECURITY DEFINER)
+                  // returns real rows, but a just-committed payment can still race
+                  // the read, so keep the fallback that used to matter for the raw
+                  // order_payments select (0 rows under RLS).
                   const syncedPayments: OrderProfilePayment[] =
                     dbPayments && dbPayments.length > 0
-                      ? dbPayments.map((p) => {
-                      // Proper status mapping — preserve authorized for pre-auth.
-                      // C1: the DB writes status='void' (not 'voided') and the
-                      // RPC's payments subquery has no is_voided filter, so voided
-                      // rows now arrive here — key off is_voided / both spellings
-                      // or a voided payment resurrects as a live "pending" one.
-                      const status: OrderProfilePayment["status"] =
-                        p.is_voided === true ||
-                        p.status === "void" ||
-                        p.status === "voided"
-                          ? "voided"
-                          : p.status === "refunded"
-                            ? "refunded"
-                            : p.status === "authorized"
-                              ? "authorized"
-                              : p.status === "captured"
-                                ? "captured"
-                                : "pending";
-
-                      const isPreAuth = p.status === "authorized";
-                      const terminalResponse = (p as any).terminal_response as
-                        Record<string, any> | undefined;
-                      const castlesTxn =
-                        terminalResponse?.castles_transaction as
-                          Record<string, any> | undefined;
-
-                      // Refund evidence: take max across DB + local. Apply
-                      // refund didn't always advance `status`, so we have to
-                      // carry refunded_amount + is_returned explicitly.
-                      const localPmt = localPaymentsByDbId.get(p.id);
-                      const dbRefunded =
-                        Number((p as any).refunded_amount) || 0;
-                      const localRefunded = localPmt?.refundedAmount ?? 0;
-                      const localHasMoreRefund = localRefunded > dbRefunded;
-                      const mergedRefundedAmount = Math.max(
-                        dbRefunded,
-                        localRefunded,
-                      );
-
-                      return {
-                        id: p.id,
-                        db_payment_id: p.id,
-                        amount: p.amount,
-                        method: (p.payment_method === "card"
-                          ? "Card"
-                          : "Cash") as PaymentType,
-                        cardBrand: p.card_type,
-                        last4: p.card_last_four,
-                        tip_amount: p.tip_amount || 0,
-                        total_collected: p.amount + (p.tip_amount || 0),
-                        // C2: per-payment coverage from the order_payment_items
-                        // junction (the old `p.item_ids` column does not exist, so
-                        // coverage was always empty and the per-item PAID badge dead).
-                        itemsCovered: (
-                          paymentItemsByPaymentId.get(p.id) ?? []
-                        ).map((pi: any) => ({
-                          itemId: pi.order_item_id,
-                          itemName:
-                            dbItems.find(
-                              (it: any) => it.id === pi.order_item_id,
-                            )?.item_name ?? "Item",
-                          quantity: pi.quantity_paid,
-                          unitPrice: pi.unit_price_paid,
-                          subtotal: pi.subtotal_paid,
-                        })),
-                        timestamp: p.created_at,
-                        status,
-                        isVoided:
-                          p.is_voided === true ||
-                          p.status === "void" ||
-                          p.status === "voided",
-                        sync_status: "synced" as const,
-                        sync_attempt_count: 0,
-                        // Cash pricing fields — falls back to order-level ratio when original_amount is missing
-                        isCashPriced: (p as any).is_cash_priced ?? undefined,
-                        cashSavings: deriveCashSavings(
-                          {
-                            is_cash_priced: (p as any).is_cash_priced,
-                            original_amount: (p as any).original_amount,
-                            amount: p.amount,
-                          },
+                      ? mapFetchedPaymentsToProfile(
+                          dbPayments,
+                          dbItems,
+                          paymentItems,
                           dbOrder.card_total ?? dbOrder.total_amount,
                           dbOrder.cash_total,
-                        ),
-                        // Refund / return tracking — preserve via monotonic merge
-                        // so a stale fetch right after apply_refund_to_payment
-                        // can't clobber the chip back to "Paid".
-                        refundedAmount: mergedRefundedAmount,
-                        refundedAt: localHasMoreRefund
-                          ? (localPmt?.refundedAt ?? (p as any).refunded_at)
-                          : ((p as any).refunded_at ?? localPmt?.refundedAt),
-                        isReturned: localHasMoreRefund
-                          ? (localPmt?.isReturned ?? (p as any).is_returned)
-                          : ((p as any).is_returned ?? localPmt?.isReturned),
-                        returnedAt: localHasMoreRefund
-                          ? (localPmt?.returnedAt ?? (p as any).returned_at)
-                          : ((p as any).returned_at ?? localPmt?.returnedAt),
-                        returnedBy: localHasMoreRefund
-                          ? (localPmt?.returnedBy ?? (p as any).returned_by)
-                          : ((p as any).returned_by ?? localPmt?.returnedBy),
-                        returnAmount: Math.max(
-                          Number((p as any).return_amount) || 0,
-                          localPmt?.returnAmount ?? 0,
-                        ),
-                        // Pre-auth fields
-                        isPreAuth,
-                        ...(isPreAuth
-                          ? {
-                              preAuthAmount: p.amount,
-                              preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
-                              preAuthStan: castlesTxn?.stan,
-                              preAuthAuthCode:
-                                (p as any).authorization_code ||
-                                castlesTxn?.approvalCode,
-                              preAuthReferenceId:
-                                (p as any).reference_number ||
-                                castlesTxn?.referenceId,
-                              preAuthTerminalType:
-                                (terminalResponse?.terminal_vendor === "castles"
-                                  ? "castles"
-                                  : "dejavoo") as
-                                  "dejavoo" | "castles" | undefined,
-                            }
-                          : {}),
-                      };
-                        })
+                        ).map((sp) =>
+                          mergeLocalRefundEvidence(
+                            sp,
+                            sp.db_payment_id
+                              ? localPaymentsByDbId.get(sp.db_payment_id)
+                              : undefined,
+                          ),
+                        )
                       : (localOrder?.payments ?? []);
 
                   // ================================================================
