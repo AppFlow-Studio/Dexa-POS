@@ -156,6 +156,7 @@ export interface BroadcastOrderPaymentData {
   return_reason?: string | null
 
   // Timestamps
+  initiated_at?: string | null
   authorized_at?: string | null
   captured_at?: string | null
   created_at: string

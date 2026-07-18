@@ -245,6 +245,26 @@ describe("H2 mapFetchedPaymentsToProfile — junction item coverage", () => {
   });
 });
 
+describe("H2 mapFetchedPaymentsToProfile — timestamp precedence", () => {
+  it("prefers captured_at, then authorized_at, then initiated_at, then created_at", () => {
+    // captured payment → capture time
+    expect(
+      map([makeRow({ captured_at: "c", initiated_at: "i", created_at: "x" } as any)])[0]
+        .timestamp,
+    ).toBe("c");
+    // pre-auth (no capture) → auth time
+    expect(
+      map([makeRow({ status: "authorized", authorized_at: "a", initiated_at: "i", created_at: "x" } as any)])[0]
+        .timestamp,
+    ).toBe("a");
+    // pending fetched payment (no capture/auth) → initiation time, NOT row-insert time
+    expect(
+      map([makeRow({ status: "pending", initiated_at: "i", created_at: "x" } as any)])[0]
+        .timestamp,
+    ).toBe("i");
+  });
+});
+
 describe("H2 mapFetchedPaymentsToProfile — tip adjustment", () => {
   it("carries original_tip_amount / tip_adjusted_at / tip_adjusted_by (consumed by TimelineTab + PaymentDetailBottomSheet)", () => {
     const [p] = map([

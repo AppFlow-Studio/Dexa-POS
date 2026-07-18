@@ -455,6 +455,11 @@ function transformBroadcastPaymentToProfile (
   const terminalVendor = terminalResponse?.terminal_vendor as string | undefined
 
   return {
+    // `id` is a display/React-reconciliation key (prefixed to avoid colliding
+    // with order-item ids in shared lists). All backend lookups — refunds,
+    // reversals (original_payment_id), payment_items — key on `db_payment_id`,
+    // never this. The two sync mappers now emit the same prefixed id the
+    // broadcast/eager path always has (H2).
     id: `payment_${payment.id}`,
     db_payment_id: payment.id,
     amount: payment.amount,
@@ -476,8 +481,14 @@ function transformBroadcastPaymentToProfile (
     splitInfo,
     itemsCovered,
     status,
+    // Prefer the completion time (capture, then auth); fall back to initiated_at
+    // (the old sync-path source) before created_at so a pending fetched payment
+    // still shows its initiation time rather than the row-insert time.
     timestamp:
-      payment.captured_at ?? payment.authorized_at ?? payment.created_at,
+      payment.captured_at ??
+      payment.authorized_at ??
+      payment.initiated_at ??
+      payment.created_at,
     // Pre-auth fields
     isPreAuth,
     ...(isPreAuth
@@ -1174,6 +1185,7 @@ export function normalizeFetchedPayment (
     void_reason: payment.void_reason,
     refunded_amount: payment.refunded_amount ?? 0,
     refunded_at: payment.refunded_at,
+    initiated_at: (payment as any).initiated_at ?? null,
     authorized_at: (payment as any).authorized_at ?? null,
     captured_at: payment.captured_at,
     created_at: payment.created_at,
