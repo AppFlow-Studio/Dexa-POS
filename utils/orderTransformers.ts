@@ -1109,7 +1109,7 @@ function normalizeFetchedItems (
  * @param payment - Payment data from Supabase fetch
  * @returns BroadcastOrderPaymentData for transformer
  */
-function normalizeFetchedPayment (
+export function normalizeFetchedPayment (
   payment: FetchedOrderPayment
 ): BroadcastOrderPaymentData {
   // Simplify payment_method to 'cash' | 'card'
@@ -1210,11 +1210,42 @@ function normalizeFetchedPayment (
  * @param payments - Array of payments from Supabase fetch
  * @returns Array of BroadcastOrderPaymentData for transformer
  */
-function normalizeFetchedPayments (
+export function normalizeFetchedPayments (
   payments: FetchedOrderPayment[] | undefined
 ): BroadcastOrderPaymentData[] {
   if (!payments || payments.length === 0) return []
   return payments.map(normalizeFetchedPayment)
+}
+
+/**
+ * Canonical raw-DB-row → OrderProfilePayment[] converter (H2).
+ *
+ * One entry point for turning `order_payments` rows (as returned by the
+ * `get_order_details` RPC's `row_to_json(op.*)`, or any direct fetch) into the
+ * display shape. Composes `normalizeFetchedPayments` (row → broadcast shape,
+ * incl. status='void'→'voided', settlement, returns, cash, entry_mode) with
+ * `transformBroadcastPaymentsToProfile` (broadcast shape → OrderProfilePayment,
+ * incl. per-payment junction coverage, pre-auth block, full transactionDetails).
+ *
+ * NOTE: this is a PURE mapper — it does NOT merge against local state. The
+ * refund-monotonicity merge (Math.max of local vs server refunded evidence) is
+ * a call-site concern; apply `mergeLocalRefundEvidence` after this where a local
+ * order exists (see useOrderStore.ts).
+ */
+export function mapFetchedPaymentsToProfile (
+  rows: FetchedOrderPayment[] | undefined,
+  orderItems?: BroadcastOrderItemData[],
+  paymentItems?: BroadcastOrderData['payment_items'],
+  orderCardTotal?: number | null,
+  orderCashTotal?: number | null
+): OrderProfilePayment[] {
+  return transformBroadcastPaymentsToProfile(
+    normalizeFetchedPayments(rows),
+    orderItems,
+    paymentItems,
+    orderCardTotal,
+    orderCashTotal
+  )
 }
 
 /**
