@@ -181,6 +181,11 @@ export interface ModifierOption {
   isAvailable?: boolean; // For items that are "86'd" (unavailable)
   isDefault?: boolean; // For default selected options
   recipe?: RecipeItem[];
+  // Per-location 86/snooze state (out of stock). null/undefined = live,
+  // ISO timestamp = timed 86, "infinity" = until manual. Modifiers use binary
+  // "infinity" toggles today, but the field carries any snoozed_until value.
+  snoozedUntil?: string | null;
+  snoozeReason?: string | null;
 }
 
 export interface ModifierCategory {
@@ -257,6 +262,10 @@ export interface MenuItemType {
   // Location ownership - null = global (merchant-wide), UUID = local to that location
   location_id?: string | null;
   displayOrder?: number;
+  // Per-location 86/snooze state (out of stock). Contract mirrors the backend:
+  // null/undefined = live, ISO timestamp = timed 86, "infinity" = until manual.
+  snoozedUntil?: string | null;
+  snoozeReason?: string | null;
 }
 
 export interface CustomPricing {

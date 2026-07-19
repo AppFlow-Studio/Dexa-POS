@@ -1,10 +1,13 @@
 import RecipeManager from "@/components/inventory/RecipeManager";
 import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
+import { ModifierStockToggle } from "@/components/menu/ModifierStockToggle";
 import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useToast } from "@/contexts/ToastContext";
+import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import { isActivelySnoozed } from "@/lib/snoozeDurations";
 import { ModifierOption, RecipeItem } from "@/lib/types";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -56,6 +59,7 @@ const EditModifierScreen: React.FC = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
+  const { isSingleLocation } = useIsSingleLocation();
 
   const existing = useMemo(() => modifierGroups.find((m) => m.id === id), [id, modifierGroups]);
 
@@ -347,7 +351,12 @@ const EditModifierScreen: React.FC = () => {
     );
   }
 
-  if (isGlobalModifier || !isLocalModifier) {
+  // Single-location merchants edit the global modifier directly. Multi-location
+  // keeps the read-only wall but can make a local copy.
+  if (
+    (isGlobalModifier && !isSingleLocation) ||
+    (!isGlobalModifier && !isLocalModifier)
+  ) {
     return (
       <GlobalItemScreen
         type="Modifier"
@@ -535,6 +544,10 @@ const EditModifierScreen: React.FC = () => {
               onDragEnd={({ data }) => handleOptionDragEnd(data)}
               renderItem={({ item: option, drag, isActive, getIndex }: RenderItemParams<ModifierOption>) => {
                 const index = getIndex() ?? 0;
+                // Snooze state comes from the synced store option (existing),
+                // not the local draft. Only saved options can be 86'd.
+                const storeOption = existing?.options.find(o => o.id === option.id);
+                const optionOutOfStock = isActivelySnoozed(storeOption?.snoozedUntil);
                 return (
                   <ScaleDecorator>
                     <View
@@ -560,12 +573,21 @@ const EditModifierScreen: React.FC = () => {
                             Option {index + 1}
                           </Text>
                         </View>
-                        <TouchableOpacity
-                          onPress={() => removeOption(index)}
-                          style={{ padding: 4, backgroundColor: colors.danger + "15", borderRadius: 6 }}
-                        >
-                          <Trash2 size={13} color={colors.danger} />
-                        </TouchableOpacity>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          {storeOption && (
+                            <ModifierStockToggle
+                              target={{ kind: "option", optionId: option.id }}
+                              isOutOfStock={optionOutOfStock}
+                              showLabel
+                            />
+                          )}
+                          <TouchableOpacity
+                            onPress={() => removeOption(index)}
+                            style={{ padding: 4, backgroundColor: colors.danger + "15", borderRadius: 6 }}
+                          >
+                            <Trash2 size={13} color={colors.danger} />
+                          </TouchableOpacity>
+                        </View>
                       </View>
 
                       <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>

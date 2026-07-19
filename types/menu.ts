@@ -59,6 +59,10 @@ export interface ModifierItem {
   is_default: boolean | null;
   stock_tracking_mode: StockTrackingMode;
   current_stock: number | null;
+  // 86 / out-of-stock snooze (per-location). Optional: only populated when the
+  // sync path folds snooze in; the POS otherwise hydrates via get_active_snoozes.
+  snoozed_until?: string | null;
+  snooze_reason?: string | null;
 }
 
 export interface ModifierGroup {
@@ -222,12 +226,30 @@ export interface ModifierIngredientSync {
   quantity: number;
 }
 
+export interface ActiveSnoozeSync {
+  menu_item_id: string;
+  snoozed_until: string | null;
+  snooze_reason: string | null;
+}
+
+export interface ActiveModifierSnoozeSync {
+  modifier_group_item_id: string;
+  modifier_group_id: string | null;
+  snoozed_until: string | null;
+  snooze_reason: string | null;
+}
+
 export interface PosSyncData {
   synced_at: string;
   location_id: string;
   menus: MenuWithCategories[];
   menu_item_ingredients: MenuItemIngredientSync[];
   modifier_group_item_ingredients: ModifierIngredientSync[];
+  // Active per-location 86/snooze rows, hydrated by a side query in usePosSync
+  // (get_pos_full_sync does not yet carry snoozed_until). Used for badge state.
+  snoozes?: ActiveSnoozeSync[];
+  // Active per-location modifier-option 86/snooze rows (from get_active_snoozes).
+  modifierSnoozes?: ActiveModifierSnoozeSync[];
 }
 
 // ============================================================================

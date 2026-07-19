@@ -74,11 +74,21 @@ export function GlobalItemScreen({ type, onMakeLocalCopy, isMakingLocalCopy }: G
           maxWidth: 320,
           marginBottom: 24
         }}>
-          {[
-            'Name and details are locked',
-            'Pricing cannot be modified',
-            'Availability is globally managed'
-          ].map((line, i) => (
+          {(type === 'Item'
+            ? [
+                'Name, description & details are locked',
+                'Price & availability are set per location from the menu list'
+              ]
+            : type === 'Modifier'
+              ? [
+                  'Name & options are locked',
+                  'Option availability is set per location from the menu list'
+                ]
+              : [
+                  'Name & details are locked',
+                  'Managed globally across all locations'
+                ]
+          ).map((line, i) => (
             <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.muted }} />
               <Text style={{ fontSize: 12, color: colors.muted, flex: 1 }}>{line}</Text>
