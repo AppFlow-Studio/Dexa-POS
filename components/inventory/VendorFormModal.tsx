@@ -47,6 +47,8 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
     fontSize: s(14),
     height: s(40),
     paddingHorizontal: s(12),
+    textAlignVertical: "center" as const,
+    paddingVertical: 0,
   };
 
   const fieldLabel = {

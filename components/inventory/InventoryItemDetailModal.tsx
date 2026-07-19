@@ -21,6 +21,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 
 const InventoryItemDetailModal: React.FC<{
@@ -35,6 +36,7 @@ const InventoryItemDetailModal: React.FC<{
 }> = ({ isOpen, itemId, onClose, onUpdate }) => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
+  const { height: windowHeight } = useWindowDimensions();
 
   const inputStyle = (editable: boolean) =>
     ({
@@ -256,7 +258,11 @@ const InventoryItemDetailModal: React.FC<{
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={{ width: "100%", maxWidth: s(420) }}
+          style={{
+            width: "100%",
+            maxWidth: s(420),
+            maxHeight: windowHeight * 0.85,
+          }}
         >
           <View
             style={{
@@ -266,6 +272,7 @@ const InventoryItemDetailModal: React.FC<{
               borderWidth: 1,
               borderColor: colors.border,
               overflow: "hidden",
+              maxHeight: windowHeight * 0.85,
             }}
           >
             {/* Header */}
