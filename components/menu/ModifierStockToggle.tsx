@@ -1,11 +1,12 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { colors } from "@/lib/theme";
 import { SNOOZE_INFINITY } from "@/lib/snoozeDurations";
+import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { Ban, Check } from "lucide-react-native";
-import React, { useState } from "react";
+import { useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity } from "react-native";
 
 /**
@@ -36,6 +37,8 @@ export function ModifierStockToggle({
   showLabel = false,
   size = 15,
 }: ModifierStockToggleProps) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const supabase = useSupabaseClient();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const snoozeModifierOption = useMenuStore((s) => s.snoozeModifierOption);
@@ -121,10 +124,10 @@ export function ModifierStockToggle({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: 5,
-        paddingHorizontal: showLabel ? 8 : 6,
-        paddingVertical: 5,
-        borderRadius: 6,
+        gap: s(5),
+        paddingHorizontal: showLabel ? s(8) : s(6),
+        paddingVertical: s(5),
+        borderRadius: s(6),
         backgroundColor: accent + "18",
         borderWidth: 1,
         borderColor: accent + "35",
@@ -137,7 +140,7 @@ export function ModifierStockToggle({
         <Icon size={size} color={accent} />
       )}
       {showLabel && (
-        <Text style={{ fontSize: 11, fontWeight: "600", color: accent }}>
+        <Text style={{ fontSize: s(11), fontWeight: "600", color: accent }}>
           {isOutOfStock ? "Out of stock" : "In stock"}
         </Text>
       )}

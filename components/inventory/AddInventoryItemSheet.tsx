@@ -1,22 +1,23 @@
 import { useToast } from "@/contexts/ToastContext";
 import { bottomSheetTheme, colors } from "@/lib/theme";
 import { InventoryUnit } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
-    BottomSheetBackdrop,
-    BottomSheetTextInput,
-    BottomSheetView,
+  BottomSheetBackdrop,
+  BottomSheetTextInput,
+  BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { forwardRef, useMemo, useState } from "react";
 import {
-    FlatList,
-    KeyboardAvoidingView,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View,
+  FlatList,
+  KeyboardAvoidingView,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { UNIT_OPTIONS } from "./InventoryItemFormModal";
 
@@ -42,24 +43,26 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
     const { selectedStore } = useStoreSettingsStore();
     const { colorScheme } = useColorScheme();
     const keyboardAppearance = colorScheme === "dark" ? "dark" : "light";
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
     const inputStyle = {
       backgroundColor: colors.screen,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 10,
+      borderRadius: s(10),
       color: colors.heading,
-      fontSize: 13,
-      height: 38,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      fontSize: s(13),
+      height: s(38),
+      paddingHorizontal: s(12),
+      paddingVertical: s(8),
     };
     const fieldLabel = {
-      fontSize: 10,
+      fontSize: s(10),
       fontWeight: "700" as const,
       color: colors.muted,
       textTransform: "uppercase" as const,
       letterSpacing: 0.4,
-      marginBottom: 6,
+      marginBottom: s(6),
     };
 
     const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -100,9 +103,11 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
             category: category.trim() || "Uncategorized",
             stockQuantity: isNaN(stockQty) ? 0 : Number(stockQty.toFixed(2)),
             unit,
+            unitType: "unit",
             reorderThreshold: isNaN(thresholdNum) ? 0 : thresholdNum,
             cost: isNaN(costNum) ? 0 : Number(costNum.toFixed(2)),
             vendorId: vendorId || null,
+            locationId: selectedStore.id,
             stockTrackingMode,
           },
           selectedStore.id,

@@ -1,38 +1,39 @@
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { bottomSheetTheme, colors } from "@/lib/theme";
-import {
-  computeSnoozeUntil,
-  formatSnoozeCountdown,
-  isActivelySnoozed,
-  SnoozeOption,
-} from "@/lib/snoozeDurations";
-import { MenuService } from "@/services/menuService";
 import { useToast } from "@/contexts/ToastContext";
 import { useOnlineMenu } from "@/hooks/pos/useOnlineMenu";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import {
+    computeSnoozeUntil,
+    formatSnoozeCountdown,
+    isActivelySnoozed,
+    SnoozeOption,
+} from "@/lib/snoozeDurations";
+import { bottomSheetTheme, colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
+import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetTextInput,
-  BottomSheetView,
+    BottomSheetBackdrop,
+    BottomSheetTextInput,
+    BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ban, Check, Clock, X } from "lucide-react-native";
 import React, {
-  forwardRef,
-  useCallback,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
+    forwardRef,
+    useCallback,
+    useImperativeHandle,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  ActivityIndicator,
-  Platform,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Platform,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 export type SnoozeKind = "item" | "modifier-option" | "modifier-group";
@@ -77,6 +78,8 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
   SnoozeBottomSheetRef,
   object
 > = (_props, ref) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const bottomSheetRef = useRef<BottomSheetMethods>(null);
   const snapPoints = useMemo(() => ["70%"], []);
 
@@ -96,7 +99,9 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
   const { onlineMenuId } = useOnlineMenu(selectedStore?.id);
   const snoozeItemInStore = useMenuStore((s) => s.snoozeItem);
   const unsnoozeItemInStore = useMenuStore((s) => s.unsnoozeItem);
-  const snoozeModifierOptionInStore = useMenuStore((s) => s.snoozeModifierOption);
+  const snoozeModifierOptionInStore = useMenuStore(
+    (s) => s.snoozeModifierOption,
+  );
   const unsnoozeModifierOptionInStore = useMenuStore(
     (s) => s.unsnoozeModifierOption,
   );
@@ -341,26 +346,38 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
       {...bottomSheetTheme}
       backdropComponent={SnoozeBackdrop}
     >
-      <BottomSheetView style={{ flex: 1, padding: 16 }}>
+      <BottomSheetView style={{ flex: 1, padding: s(16) }}>
         {/* Header */}
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: 14,
+            marginBottom: s(14),
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Ban size={16} color={colors.danger} />
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}
+          >
+            <Ban size={s(16)} color={colors.danger} />
             <View>
               <Text
-                style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}
+                style={{
+                  fontSize: s(15),
+                  fontWeight: "700",
+                  color: colors.heading,
+                }}
               >
                 Out of Stock (86)
               </Text>
               {item && (
-                <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+                <Text
+                  style={{
+                    fontSize: s(12),
+                    color: colors.label,
+                    marginTop: s(2),
+                  }}
+                >
                   {item.name}
                 </Text>
               )}
@@ -369,14 +386,14 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
           <TouchableOpacity
             onPress={handleClose}
             style={{
-              padding: 7,
+              padding: s(7),
               backgroundColor: colors.teal + "10",
-              borderRadius: 8,
+              borderRadius: s(8),
               borderWidth: 1,
               borderColor: colors.teal + "30",
             }}
           >
-            <X size={15} color={colors.teal} />
+            <X size={s(15)} color={colors.teal} />
           </TouchableOpacity>
         </View>
 
@@ -390,15 +407,23 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
               backgroundColor: colors.danger + "15",
               borderWidth: 1,
               borderColor: colors.danger + "30",
-              borderRadius: 8,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              marginBottom: 14,
+              borderRadius: s(8),
+              paddingHorizontal: s(12),
+              paddingVertical: s(10),
+              marginBottom: s(14),
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Clock size={14} color={colors.danger} />
-              <Text style={{ fontSize: 13, color: colors.danger, fontWeight: "600" }}>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}
+            >
+              <Clock size={s(14)} color={colors.danger} />
+              <Text
+                style={{
+                  fontSize: s(13),
+                  color: colors.danger,
+                  fontWeight: "600",
+                }}
+              >
                 {formatSnoozeCountdown(item?.snoozedUntil) === "86"
                   ? "Currently 86 (until restored)"
                   : `Currently 86 · back in ${formatSnoozeCountdown(
@@ -412,15 +437,21 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 6,
+                gap: s(6),
                 backgroundColor: colors.success,
-                borderRadius: 8,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
+                borderRadius: s(8),
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
               }}
             >
-              <Check size={13} color={colors.onSolid} />
-              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.onSolid }}>
+              <Check size={s(13)} color={colors.onSolid} />
+              <Text
+                style={{
+                  fontSize: s(12),
+                  fontWeight: "700",
+                  color: colors.onSolid,
+                }}
+              >
                 Make Available
               </Text>
             </TouchableOpacity>
@@ -430,12 +461,12 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
         {/* Reason (optional) */}
         <Text
           style={{
-            fontSize: 11,
+            fontSize: s(11),
             fontWeight: "600",
             color: colors.muted,
             textTransform: "uppercase",
             letterSpacing: 0.5,
-            marginBottom: 6,
+            marginBottom: s(6),
           }}
         >
           Reason (optional)
@@ -447,31 +478,31 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
           placeholderTextColor={colors.muted}
           style={{
             backgroundColor: colors.screen,
-            borderRadius: 8,
+            borderRadius: s(8),
             borderWidth: 1,
             borderColor: colors.border,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            fontSize: 13,
+            paddingHorizontal: s(12),
+            paddingVertical: s(10),
+            fontSize: s(13),
             color: colors.heading,
-            marginBottom: 14,
+            marginBottom: s(14),
           }}
         />
 
         {/* Duration choices */}
         <Text
           style={{
-            fontSize: 11,
+            fontSize: s(11),
             fontWeight: "600",
             color: colors.muted,
             textTransform: "uppercase",
             letterSpacing: 0.5,
-            marginBottom: 8,
+            marginBottom: s(8),
           }}
         >
           {currentlySnoozed ? "Change duration" : "Mark out of stock"}
         </Text>
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: s(8) }}>
           {DURATION_CHOICES.map((choice) => (
             <TouchableOpacity
               key={choice.label}
@@ -482,17 +513,23 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
                 alignItems: "center",
                 justifyContent: "space-between",
                 backgroundColor: colors.screen,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
+                paddingHorizontal: s(14),
+                paddingVertical: s(12),
               }}
             >
-              <Text style={{ fontSize: 14, color: colors.heading, fontWeight: "600" }}>
+              <Text
+                style={{
+                  fontSize: s(14),
+                  color: colors.heading,
+                  fontWeight: "600",
+                }}
+              >
                 {choice.label}
               </Text>
-              <Ban size={15} color={colors.danger} />
+              <Ban size={s(15)} color={colors.danger} />
             </TouchableOpacity>
           ))}
 
@@ -508,22 +545,28 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
               alignItems: "center",
               justifyContent: "space-between",
               backgroundColor: colors.screen,
-              borderRadius: 8,
+              borderRadius: s(8),
               borderWidth: 1,
               borderColor: colors.border,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
+              paddingHorizontal: s(14),
+              paddingVertical: s(12),
             }}
           >
-            <Text style={{ fontSize: 14, color: colors.heading, fontWeight: "600" }}>
+            <Text
+              style={{
+                fontSize: s(14),
+                color: colors.heading,
+                fontWeight: "600",
+              }}
+            >
               Custom time…
             </Text>
-            <Clock size={15} color={colors.teal} />
+            <Clock size={s(15)} color={colors.teal} />
           </TouchableOpacity>
         </View>
 
         {showCustomPicker && customDate && (
-          <View style={{ marginTop: 12 }}>
+          <View style={{ marginTop: s(12) }}>
             <DateTimePicker
               value={customDate}
               mode="datetime"
@@ -541,13 +584,19 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
               disabled={isLoading}
               style={{
                 backgroundColor: colors.teal,
-                borderRadius: 8,
-                paddingVertical: 11,
+                borderRadius: s(8),
+                paddingVertical: s(11),
                 alignItems: "center",
-                marginTop: 8,
+                marginTop: s(8),
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}>
+              <Text
+                style={{
+                  fontSize: s(13),
+                  fontWeight: "700",
+                  color: colors.onSolid,
+                }}
+              >
                 Set 86 until selected time
               </Text>
             </TouchableOpacity>
@@ -560,18 +609,20 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
               backgroundColor: colors.danger + "15",
               borderWidth: 1,
               borderColor: colors.danger + "30",
-              borderRadius: 8,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              marginTop: 12,
+              borderRadius: s(8),
+              paddingHorizontal: s(12),
+              paddingVertical: s(8),
+              marginTop: s(12),
             }}
           >
-            <Text style={{ fontSize: 12, color: colors.danger }}>{error}</Text>
+            <Text style={{ fontSize: s(12), color: colors.danger }}>
+              {error}
+            </Text>
           </View>
         )}
 
         {isLoading && (
-          <View style={{ marginTop: 12, alignItems: "center" }}>
+          <View style={{ marginTop: s(12), alignItems: "center" }}>
             <ActivityIndicator color={colors.teal} size="small" />
           </View>
         )}

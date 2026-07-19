@@ -8,6 +8,7 @@ import {
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useUiScale } from "@/lib/uiScale";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
@@ -43,6 +44,8 @@ const OutOfStockSheetComponent: React.ForwardRefRenderFunction<
 > = (_props, ref) => {
   const bottomSheetRef = useRef<BottomSheetMethods>(null);
   const snapPoints = useMemo(() => ["80%"], []);
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   const supabase = useSupabaseClient();
   const triggerPosSync = useTriggerPosSync();
@@ -181,37 +184,37 @@ const OutOfStockSheetComponent: React.ForwardRefRenderFunction<
       {...bottomSheetTheme}
       backdropComponent={OutOfStockBackdrop}
     >
-      <BottomSheetScrollView contentContainerStyle={{ padding: 16 }}>
+      <BottomSheetScrollView contentContainerStyle={{ padding: s(16) }}>
         {/* Header */}
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: 14,
+            marginBottom: s(14),
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Ban size={16} color={colors.danger} />
-            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
+            <Ban size={s(16)} color={colors.danger} />
+            <Text style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}>
               Out of Stock ({total})
             </Text>
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
             {total > 0 && (
               <TouchableOpacity
                 onPress={restoreAll}
                 disabled={busy}
                 style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 7,
-                  borderRadius: 8,
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(7),
+                  borderRadius: s(8),
                   backgroundColor: colors.success + "18",
                   borderWidth: 1,
                   borderColor: colors.success + "35",
                 }}
               >
-                <Text style={{ fontSize: 12, fontWeight: "700", color: colors.success }}>
+                <Text style={{ fontSize: s(12), fontWeight: "700", color: colors.success }}>
                   Restore all
                 </Text>
               </TouchableOpacity>
@@ -219,22 +222,22 @@ const OutOfStockSheetComponent: React.ForwardRefRenderFunction<
             <TouchableOpacity
               onPress={() => bottomSheetRef.current?.close()}
               style={{
-                padding: 7,
+                padding: s(7),
                 backgroundColor: colors.teal + "10",
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.teal + "30",
               }}
             >
-              <X size={15} color={colors.teal} />
+              <X size={s(15)} color={colors.teal} />
             </TouchableOpacity>
           </View>
         </View>
 
         {total === 0 && (
-          <View style={{ alignItems: "center", paddingVertical: 40 }}>
-            <Check size={28} color={colors.success} />
-            <Text style={{ fontSize: 13, color: colors.muted, marginTop: 10 }}>
+          <View style={{ alignItems: "center", paddingVertical: s(40) }}>
+            <Check size={s(28)} color={colors.success} />
+            <Text style={{ fontSize: s(13), color: colors.muted, marginTop: s(10) }}>
               {"Nothing is 86'd right now."}
             </Text>
           </View>
@@ -242,8 +245,8 @@ const OutOfStockSheetComponent: React.ForwardRefRenderFunction<
 
         {/* Items */}
         {snoozedItems.length > 0 && (
-          <View style={{ marginBottom: 18 }}>
-            <Text style={sectionLabel}>Items ({snoozedItems.length})</Text>
+          <View style={{ marginBottom: s(18) }}>
+            <Text style={getSectionLabel(s)}>Items ({snoozedItems.length})</Text>
             {snoozedItems.map((item) => (
               <RestoreRow
                 key={item.id}
@@ -251,6 +254,7 @@ const OutOfStockSheetComponent: React.ForwardRefRenderFunction<
                 countdown={formatSnoozeCountdown(item.snoozedUntil)}
                 disabled={busy}
                 onRestore={() => restoreItem(item.id)}
+                s={s}
               />
             ))}
           </View>
@@ -259,16 +263,16 @@ const OutOfStockSheetComponent: React.ForwardRefRenderFunction<
         {/* Modifiers grouped */}
         {snoozedGroups.length > 0 && (
           <View>
-            <Text style={sectionLabel}>Modifiers</Text>
+            <Text style={getSectionLabel(s)}>Modifiers</Text>
             {snoozedGroups.map(({ group, options }) => (
               <View
                 key={group.id}
                 style={{
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 10,
-                  padding: 10,
-                  marginBottom: 10,
+                  borderRadius: s(10),
+                  padding: s(10),
+                  marginBottom: s(10),
                 }}
               >
                 <View
@@ -276,23 +280,23 @@ const OutOfStockSheetComponent: React.ForwardRefRenderFunction<
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    marginBottom: 8,
+                    marginBottom: s(8),
                   }}
                 >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Layers size={13} color={colors.teal} />
-                    <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
+                    <Layers size={s(13)} color={colors.teal} />
+                    <Text style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}>
                       {group.name}
                     </Text>
                     <View
                       style={{
-                        paddingHorizontal: 6,
-                        paddingVertical: 1,
-                        borderRadius: 12,
+                        paddingHorizontal: s(6),
+                        paddingVertical: s(1),
+                        borderRadius: s(12),
                         backgroundColor: colors.danger + "18",
                       }}
                     >
-                      <Text style={{ fontSize: 10, fontWeight: "700", color: colors.danger }}>
+                      <Text style={{ fontSize: s(10), fontWeight: "700", color: colors.danger }}>
                         {`${options.length} 86'd`}
                       </Text>
                     </View>
@@ -306,15 +310,15 @@ const OutOfStockSheetComponent: React.ForwardRefRenderFunction<
                     }
                     disabled={busy}
                     style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      borderRadius: 8,
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(6),
+                      borderRadius: s(8),
                       backgroundColor: colors.success + "18",
                       borderWidth: 1,
                       borderColor: colors.success + "35",
                     }}
                   >
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.success }}>
+                    <Text style={{ fontSize: s(11), fontWeight: "700", color: colors.success }}>
                       Restore group
                     </Text>
                   </TouchableOpacity>
@@ -327,6 +331,7 @@ const OutOfStockSheetComponent: React.ForwardRefRenderFunction<
                     disabled={busy}
                     compact
                     onRestore={() => restoreOption(o.id)}
+                    s={s}
                   />
                 ))}
               </View>
@@ -338,14 +343,14 @@ const OutOfStockSheetComponent: React.ForwardRefRenderFunction<
   );
 };
 
-const sectionLabel = {
-  fontSize: 11,
+const getSectionLabel = (s: (n: number) => number) => ({
+  fontSize: s(11),
   fontWeight: "600" as const,
   color: colors.muted,
   textTransform: "uppercase" as const,
   letterSpacing: 0.5,
-  marginBottom: 8,
-};
+  marginBottom: s(8),
+});
 
 function RestoreRow({
   title,
@@ -353,12 +358,14 @@ function RestoreRow({
   disabled,
   compact,
   onRestore,
+  s,
 }: {
   title: string;
   countdown: string | null;
   disabled: boolean;
   compact?: boolean;
   onRestore: () => void;
+  s: (n: number) => number;
 }) {
   return (
     <View
@@ -366,21 +373,21 @@ function RestoreRow({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingVertical: compact ? 6 : 9,
-        paddingHorizontal: compact ? 4 : 10,
-        borderRadius: 8,
+        paddingVertical: compact ? s(6) : s(9),
+        paddingHorizontal: compact ? s(4) : s(10),
+        borderRadius: s(8),
         backgroundColor: compact ? "transparent" : colors.screen,
         borderWidth: compact ? 0 : 1,
         borderColor: colors.border,
-        marginBottom: compact ? 2 : 6,
+        marginBottom: compact ? s(2) : s(6),
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
-        <Ban size={12} color={colors.danger} />
-        <Text style={{ fontSize: 12, color: colors.heading }} numberOfLines={1}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: s(6), flex: 1 }}>
+        <Ban size={s(12)} color={colors.danger} />
+        <Text style={{ fontSize: s(12), color: colors.heading }} numberOfLines={1}>
           {title}
         </Text>
-        <Text style={{ fontSize: 11, color: colors.muted }}>
+        <Text style={{ fontSize: s(11), color: colors.muted }}>
           {countdown === "86" ? "· until restored" : `· back in ${countdown}`}
         </Text>
       </View>
@@ -388,15 +395,15 @@ function RestoreRow({
         onPress={onRestore}
         disabled={disabled}
         style={{
-          paddingHorizontal: 10,
-          paddingVertical: 5,
-          borderRadius: 6,
+          paddingHorizontal: s(10),
+          paddingVertical: s(5),
+          borderRadius: s(6),
           backgroundColor: colors.success + "18",
           borderWidth: 1,
           borderColor: colors.success + "35",
         }}
       >
-        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.success }}>
+        <Text style={{ fontSize: s(11), fontWeight: "700", color: colors.success }}>
           Restore
         </Text>
       </TouchableOpacity>

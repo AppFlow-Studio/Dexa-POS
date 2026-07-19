@@ -1,35 +1,36 @@
 import { useTriggerPosSync } from "@/hooks/pos/usePosSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import {
-  EditingLevel,
-  LEVEL_CONFIGS,
-  MenuService,
-} from "@/services/menuService";
-import { bottomSheetTheme, colors } from "@/lib/theme";
 import { isActivelySnoozed } from "@/lib/snoozeDurations";
+import { bottomSheetTheme, colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
+import {
+    EditingLevel,
+    LEVEL_CONFIGS,
+    MenuService,
+} from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetScrollView,
-  BottomSheetTextInput,
+    BottomSheetBackdrop,
+    BottomSheetScrollView,
+    BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Ban, Check, RotateCcw, Trash2, X } from "lucide-react-native";
 import React, {
-  forwardRef,
-  useCallback,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
+    forwardRef,
+    useCallback,
+    useImperativeHandle,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  ActivityIndicator,
-  Switch,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Switch,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 export interface PriceEditItem {
@@ -81,6 +82,8 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
   PriceEditBottomSheetRef,
   PriceEditBottomSheetProps
 > = ({ onSave, onReset, onDelete, onSnooze }, ref) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const bottomSheetRef = useRef<BottomSheetMethods>(null);
 
   const [item, setItem] = useState<PriceEditItem | null>(null);
@@ -91,7 +94,9 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
   const [priceValue, setPriceValue] = useState("");
   const [cashPriceValue, setCashPriceValue] = useState("");
   const [isAvailable, setIsAvailable] = useState(true);
-  const [lastEditedField, setLastEditedField] = useState<"card" | "cash" | null>(null);
+  const [lastEditedField, setLastEditedField] = useState<
+    "card" | "cash" | null
+  >(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -135,7 +140,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
       setCashPriceValue(
         newItem.currentCashPrice != null
           ? newItem.currentCashPrice.toFixed(2)
-          : ""
+          : "",
       );
       setIsAvailable(newItem.currentAvailability !== false);
       setLastEditedField(null);
@@ -168,7 +173,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
         }
       }
     },
-    [isDualPricing, dualPricingPercentage]
+    [isDualPricing, dualPricingPercentage],
   );
 
   const handleCashPriceChange = useCallback(
@@ -184,7 +189,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
         }
       }
     },
-    [isDualPricing, dualPricingPercentage]
+    [isDualPricing, dualPricingPercentage],
   );
 
   const handleClose = useCallback(() => {
@@ -226,7 +231,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
           price,
           cashPrice,
           availability: isAvailable,
-        }
+        },
       );
 
       if (updateError) {
@@ -320,7 +325,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
         opacity={0.7}
       />
     ),
-    []
+    [],
   );
 
   return (
@@ -333,49 +338,69 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
       backdropComponent={renderBackdrop}
     >
       <BottomSheetScrollView
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: s(16) }}
         keyboardShouldPersistTaps="handled"
       >
-
         {/* Header */}
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: s(14),
+          }}
+        >
           <View>
-            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+            <Text
+              style={{
+                fontSize: s(15),
+                fontWeight: "700",
+                color: colors.heading,
+              }}
+            >
               Edit Item
             </Text>
             {item && (
-              <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+              <Text
+                style={{
+                  fontSize: s(12),
+                  color: colors.label,
+                  marginTop: s(2),
+                }}
+              >
                 {item.name}
               </Text>
             )}
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}
+          >
             {onDelete && (
               <TouchableOpacity
                 onPress={handleDelete}
                 disabled={isLoading}
                 style={{
-                  padding: 7,
+                  padding: s(7),
                   backgroundColor: colors.danger + "15",
-                  borderRadius: 8,
+                  borderRadius: s(8),
                   borderWidth: 1,
                   borderColor: colors.danger + "30",
                 }}
               >
-                <Trash2 size={15} color={colors.danger} />
+                <Trash2 size={s(15)} color={colors.danger} />
               </TouchableOpacity>
             )}
             <TouchableOpacity
               onPress={handleClose}
               style={{
-                padding: 7,
+                padding: s(7),
                 backgroundColor: colors.teal + "10",
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.teal + "30",
               }}
             >
-              <X size={15} color={colors.teal} />
+              <X size={s(15)} color={colors.teal} />
             </TouchableOpacity>
           </View>
         </View>
@@ -385,22 +410,28 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: 8,
-            paddingHorizontal: 10,
-            paddingVertical: 7,
-            borderRadius: 8,
+            gap: s(8),
+            paddingHorizontal: s(10),
+            paddingVertical: s(7),
+            borderRadius: s(8),
             backgroundColor: levelConfig.color + "15",
             borderWidth: 1,
             borderColor: levelConfig.color + "30",
-            marginBottom: 14,
+            marginBottom: s(14),
             alignSelf: "flex-start",
           }}
         >
-          <Text style={{ fontSize: 13 }}>{levelConfig.icon}</Text>
-          <Text style={{ fontSize: 12, fontWeight: "600", color: levelConfig.color }}>
+          <Text style={{ fontSize: s(13) }}>{levelConfig.icon}</Text>
+          <Text
+            style={{
+              fontSize: s(12),
+              fontWeight: "600",
+              color: levelConfig.color,
+            }}
+          >
             {levelConfig.label}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>
+          <Text style={{ fontSize: s(11), color: colors.muted }}>
             — {levelConfig.description}
           </Text>
         </View>
@@ -411,26 +442,37 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
             style={{
               flexDirection: "row",
               alignItems: "center",
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 8,
+              paddingHorizontal: s(10),
+              paddingVertical: s(6),
+              borderRadius: s(8),
               backgroundColor: colors.info + "15",
               borderWidth: 1,
               borderColor: colors.info + "30",
-              marginBottom: 14,
+              marginBottom: s(14),
             }}
           >
-            <Text style={{ fontSize: 12, color: colors.info, fontWeight: "600" }}>
+            <Text
+              style={{ fontSize: s(12), color: colors.info, fontWeight: "600" }}
+            >
               Dual Pricing Active — {dualPricingPercentage}% cash discount
             </Text>
           </View>
         )}
 
         {/* Price Row */}
-        <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+        <View style={{ flexDirection: "row", gap: s(10), marginBottom: s(10) }}>
           {/* Card Price */}
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+            <Text
+              style={{
+                fontSize: s(11),
+                fontWeight: "600",
+                color: colors.muted,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+                marginBottom: s(6),
+              }}
+            >
               Card Price
             </Text>
             <View
@@ -438,15 +480,24 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
                 flexDirection: "row",
                 alignItems: "center",
                 backgroundColor: colors.screen,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
-                paddingHorizontal: 10,
-                paddingVertical: 8,
+                paddingHorizontal: s(10),
+                paddingVertical: s(8),
                 opacity: isDualPricing ? 0.5 : 1,
               }}
             >
-              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.teal, marginRight: 4 }}>$</Text>
+              <Text
+                style={{
+                  fontSize: s(14),
+                  fontWeight: "700",
+                  color: colors.teal,
+                  marginRight: s(4),
+                }}
+              >
+                $
+              </Text>
               <BottomSheetTextInput
                 value={priceValue}
                 onChangeText={handleCardPriceChange}
@@ -454,36 +505,65 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
                 keyboardType="decimal-pad"
                 placeholder="0.00"
                 placeholderTextColor={colors.muted}
-                style={{ flex: 1, fontSize: 14, fontWeight: "600", color: colors.heading }}
+                style={{
+                  flex: 1,
+                  fontSize: s(14),
+                  fontWeight: "600",
+                  color: colors.heading,
+                }}
               />
             </View>
           </View>
 
           {/* Cash Price */}
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
-              Cash Price{isDualPricing && lastEditedField === "card" ? "  (auto)" : ""}
+            <Text
+              style={{
+                fontSize: s(11),
+                fontWeight: "600",
+                color: colors.muted,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+                marginBottom: s(6),
+              }}
+            >
+              Cash Price
+              {isDualPricing && lastEditedField === "card" ? "  (auto)" : ""}
             </Text>
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
                 backgroundColor: colors.screen,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
-                paddingHorizontal: 10,
-                paddingVertical: 8,
+                paddingHorizontal: s(10),
+                paddingVertical: s(8),
               }}
             >
-              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.label, marginRight: 4 }}>$</Text>
+              <Text
+                style={{
+                  fontSize: s(14),
+                  fontWeight: "700",
+                  color: colors.label,
+                  marginRight: s(4),
+                }}
+              >
+                $
+              </Text>
               <BottomSheetTextInput
                 value={cashPriceValue}
                 onChangeText={handleCashPriceChange}
                 keyboardType="decimal-pad"
                 placeholder="0.00"
                 placeholderTextColor={colors.muted}
-                style={{ flex: 1, fontSize: 14, fontWeight: "600", color: colors.heading }}
+                style={{
+                  flex: 1,
+                  fontSize: s(14),
+                  fontWeight: "600",
+                  color: colors.heading,
+                }}
               />
             </View>
           </View>
@@ -496,17 +576,25 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
             alignItems: "center",
             justifyContent: "space-between",
             backgroundColor: colors.screen,
-            borderRadius: 8,
+            borderRadius: s(8),
             borderWidth: 1,
             borderColor: colors.border,
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            marginBottom: 14,
+            paddingHorizontal: s(12),
+            paddingVertical: s(8),
+            marginBottom: s(14),
           }}
         >
           <View>
-            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>Available</Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>
+            <Text
+              style={{
+                fontSize: s(13),
+                fontWeight: "600",
+                color: colors.heading,
+              }}
+            >
+              Available
+            </Text>
+            <Text style={{ fontSize: s(11), color: colors.muted }}>
               {isAvailable ? "Visible on menu" : "Hidden from menu"}
             </Text>
           </View>
@@ -528,19 +616,24 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
-              gap: 6,
-              backgroundColor: itemSnoozed ? colors.danger : colors.danger + "12",
+              gap: s(6),
+              backgroundColor: itemSnoozed
+                ? colors.danger
+                : colors.danger + "12",
               borderWidth: 1,
               borderColor: itemSnoozed ? colors.danger : colors.danger + "35",
-              borderRadius: 8,
-              paddingVertical: 10,
-              marginBottom: 14,
+              borderRadius: s(8),
+              paddingVertical: s(10),
+              marginBottom: s(14),
             }}
           >
-            <Ban size={14} color={itemSnoozed ? colors.onSolid : colors.danger} />
+            <Ban
+              size={s(14)}
+              color={itemSnoozed ? colors.onSolid : colors.danger}
+            />
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: "700",
                 color: itemSnoozed ? colors.onSolid : colors.danger,
               }}
@@ -555,20 +648,20 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
         {/* Modifiers — 86 the item's modifier options per location, right from
             the slide-up (mirrors the website's edit-item form). */}
         {itemGroups.length > 0 && (
-          <View style={{ marginBottom: 14 }}>
+          <View style={{ marginBottom: s(14) }}>
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "600",
                 color: colors.muted,
                 textTransform: "uppercase",
                 letterSpacing: 0.5,
-                marginBottom: 8,
+                marginBottom: s(8),
               }}
             >
               Modifiers
             </Text>
-            <View style={{ gap: 8 }}>
+            <View style={{ gap: s(8) }}>
               {itemGroups.map((group) => {
                 const options = Array.isArray(group.options)
                   ? group.options
@@ -590,10 +683,10 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
                     key={group.id}
                     style={{
                       backgroundColor: colors.screen,
-                      borderRadius: 8,
+                      borderRadius: s(8),
                       borderWidth: 1,
                       borderColor: colors.border,
-                      padding: 10,
+                      padding: s(10),
                     }}
                   >
                     <View
@@ -601,13 +694,13 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
                         flexDirection: "row",
                         alignItems: "center",
                         justifyContent: "space-between",
-                        marginBottom: options.length > 0 ? 8 : 0,
-                        gap: 8,
+                        marginBottom: options.length > 0 ? s(8) : 0,
+                        gap: s(8),
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: "700",
                           color: colors.heading,
                           flex: 1,
@@ -630,10 +723,10 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
                           style={{
                             flexDirection: "row",
                             alignItems: "center",
-                            gap: 5,
-                            paddingHorizontal: 8,
-                            paddingVertical: 5,
-                            borderRadius: 6,
+                            gap: s(5),
+                            paddingHorizontal: s(8),
+                            paddingVertical: s(5),
+                            borderRadius: s(6),
                             backgroundColor: anySnoozed
                               ? colors.danger + "18"
                               : colors.success + "12",
@@ -644,13 +737,13 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
                           }}
                         >
                           {anySnoozed ? (
-                            <Ban size={12} color={colors.danger} />
+                            <Ban size={s(12)} color={colors.danger} />
                           ) : (
-                            <Check size={12} color={colors.success} />
+                            <Check size={s(12)} color={colors.success} />
                           )}
                           <Text
                             style={{
-                              fontSize: 11,
+                              fontSize: s(11),
                               fontWeight: "700",
                               color: anySnoozed
                                 ? colors.danger
@@ -671,13 +764,13 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
                             flexDirection: "row",
                             alignItems: "center",
                             justifyContent: "space-between",
-                            paddingVertical: 4,
-                            gap: 8,
+                            paddingVertical: s(4),
+                            gap: s(8),
                           }}
                         >
                           <Text
                             style={{
-                              fontSize: 12,
+                              fontSize: s(12),
                               color: colors.heading,
                               opacity: snoozed ? 0.6 : 1,
                               flex: 1,
@@ -700,14 +793,14 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
                                 snoozedUntil: o.snoozedUntil,
                               })
                             }
-                            hitSlop={6}
+                            hitSlop={s(6)}
                             style={{
                               flexDirection: "row",
                               alignItems: "center",
-                              gap: 5,
-                              paddingHorizontal: 8,
-                              paddingVertical: 4,
-                              borderRadius: 6,
+                              gap: s(5),
+                              paddingHorizontal: s(8),
+                              paddingVertical: s(4),
+                              borderRadius: s(6),
                               backgroundColor: snoozed
                                 ? colors.danger + "18"
                                 : colors.success + "12",
@@ -718,17 +811,15 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
                             }}
                           >
                             {snoozed ? (
-                              <Ban size={11} color={colors.danger} />
+                              <Ban size={s(11)} color={colors.danger} />
                             ) : (
-                              <Check size={11} color={colors.success} />
+                              <Check size={s(11)} color={colors.success} />
                             )}
                             <Text
                               style={{
-                                fontSize: 11,
+                                fontSize: s(11),
                                 fontWeight: "700",
-                                color: snoozed
-                                  ? colors.danger
-                                  : colors.success,
+                                color: snoozed ? colors.danger : colors.success,
                               }}
                             >
                               {snoozed ? "Out of stock" : "In stock"}
@@ -751,13 +842,15 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
               backgroundColor: colors.danger + "15",
               borderWidth: 1,
               borderColor: colors.danger + "30",
-              borderRadius: 8,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              marginBottom: 12,
+              borderRadius: s(8),
+              paddingHorizontal: s(12),
+              paddingVertical: s(8),
+              marginBottom: s(12),
             }}
           >
-            <Text style={{ fontSize: 12, color: colors.danger }}>{error}</Text>
+            <Text style={{ fontSize: s(12), color: colors.danger }}>
+              {error}
+            </Text>
           </View>
         )}
 
@@ -770,22 +863,24 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
-              gap: 6,
+              gap: s(6),
               backgroundColor: "transparent",
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 8,
-              paddingVertical: 8,
-              marginBottom: 10,
+              borderRadius: s(8),
+              paddingVertical: s(8),
+              marginBottom: s(10),
             }}
           >
-            <RotateCcw size={13} color={colors.label} />
-            <Text style={{ fontSize: 12, color: colors.label }}>{resetDescription}</Text>
+            <RotateCcw size={s(13)} color={colors.label} />
+            <Text style={{ fontSize: s(12), color: colors.label }}>
+              {resetDescription}
+            </Text>
           </TouchableOpacity>
         )}
 
         {/* Action Buttons */}
-        <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: s(8) }}>
           <TouchableOpacity
             onPress={handleClose}
             disabled={isLoading}
@@ -794,12 +889,20 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
               backgroundColor: "transparent",
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 8,
-              paddingVertical: 10,
+              borderRadius: s(8),
+              paddingVertical: s(10),
               alignItems: "center",
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>Cancel</Text>
+            <Text
+              style={{
+                fontSize: s(13),
+                fontWeight: "600",
+                color: colors.label,
+              }}
+            >
+              Cancel
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
@@ -807,19 +910,26 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
             style={{
               flex: 2,
               backgroundColor: colors.teal,
-              borderRadius: 8,
-              paddingVertical: 10,
+              borderRadius: s(8),
+              paddingVertical: s(10),
               alignItems: "center",
             }}
           >
             {isLoading ? (
               <ActivityIndicator color={colors.onSolid} size="small" />
             ) : (
-              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}>Save Changes</Text>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: colors.onSolid,
+                }}
+              >
+                Save Changes
+              </Text>
             )}
           </TouchableOpacity>
         </View>
-
       </BottomSheetScrollView>
     </BottomSheet>
   );

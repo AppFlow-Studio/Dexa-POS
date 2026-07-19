@@ -1,5 +1,6 @@
 import { colors } from "@/lib/theme";
 import { Schedule } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { CalendarClock, Clock, Plus, Trash2 } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -44,6 +45,8 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   onAdd,
   onEdit,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const schedules = value ?? [];
 
   const removeRule = (idx: number) => {
@@ -51,21 +54,21 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   };
 
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: s(6) }}>
       {schedules.length === 0 && (
         <View
           style={{
             backgroundColor: colors.screen,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 8,
-            padding: 12,
+            borderRadius: s(8),
+            padding: s(12),
             alignItems: "center",
-            gap: 4,
+            gap: s(4),
           }}
         >
-          <CalendarClock size={16} color={colors.muted} />
-          <Text style={{ fontSize: 12, color: colors.muted }}>
+          <CalendarClock size={s(16)} color={colors.muted} />
+          <Text style={{ fontSize: s(12), color: colors.muted }}>
             No schedule rules — always available
           </Text>
         </View>
@@ -79,33 +82,53 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
             backgroundColor: colors.screen,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 8,
-            paddingHorizontal: 12,
-            paddingVertical: 9,
+            borderRadius: s(8),
+            paddingHorizontal: s(12),
+            paddingVertical: s(9),
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: s(8),
+              flex: 1,
+            }}
+          >
             <View
               style={{
-                width: 28,
-                height: 28,
-                borderRadius: 8,
+                width: s(28),
+                height: s(28),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + "15",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Clock size={13} color={colors.teal} />
+              <Clock size={s(13)} color={colors.teal} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
+              <Text
+                style={{
+                  fontSize: s(12),
+                  fontWeight: "600",
+                  color: colors.heading,
+                }}
+              >
                 {rule.name || `Rule ${idx + 1}`}
               </Text>
-              <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
-                {(rule.days || []).join(", ")} · {formatTime(rule.startTime)} – {formatTime(rule.endTime)}
+              <Text
+                style={{
+                  fontSize: s(11),
+                  color: colors.label,
+                  marginTop: s(1),
+                }}
+              >
+                {(rule.days || []).join(", ")} · {formatTime(rule.startTime)} –{" "}
+                {formatTime(rule.endTime)}
               </Text>
             </View>
           </View>
@@ -115,14 +138,14 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
               removeRule(idx);
             }}
             style={{
-              padding: 6,
+              padding: s(6),
               backgroundColor: colors.danger + "15",
               borderWidth: 1,
               borderColor: colors.danger + "30",
-              borderRadius: 7,
+              borderRadius: s(7),
             }}
           >
-            <Trash2 size={13} color={colors.danger} />
+            <Trash2 size={s(13)} color={colors.danger} />
           </TouchableOpacity>
         </TouchableOpacity>
       ))}
@@ -132,18 +155,20 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: 6,
+          gap: s(6),
           alignSelf: "flex-start",
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 8,
+          paddingHorizontal: s(12),
+          paddingVertical: s(6),
+          borderRadius: s(8),
           backgroundColor: colors.teal + "20",
           borderWidth: 1,
           borderColor: colors.teal + "50",
         }}
       >
-        <Plus size={13} color={colors.teal} />
-        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
+        <Plus size={s(13)} color={colors.teal} />
+        <Text
+          style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}
+        >
           Add Schedule Rule
         </Text>
       </TouchableOpacity>
