@@ -45,10 +45,13 @@ const SkiaShape: React.FC<SkiaShapeProps> = ({
   attention,
 }) => {
   const geometry = getTableShapeGeometry(shapeId);
-  // xMidYMid meet: uniform scale to fit, content centered in the box.
-  const s = geometry
-    ? Math.min(width / geometry.viewBox[0], height / geometry.viewBox[1])
-    : 1;
+  // xMidYMid meet: uniform scale to fit, content centered in the box. Guard the
+  // divide: a 0/non-finite viewBox dim would make `s` Infinity/NaN, which then
+  // propagates into stroke widths / radii and can fault the native surface.
+  const vbW = geometry && geometry.viewBox[0] > 0 ? geometry.viewBox[0] : 1;
+  const vbH = geometry && geometry.viewBox[1] > 0 ? geometry.viewBox[1] : 1;
+  const rawS = geometry ? Math.min(width / vbW, height / vbH) : 1;
+  const s = Number.isFinite(rawS) && rawS > 0 ? rawS : 1;
   const ox = geometry ? (width - geometry.viewBox[0] * s) / 2 : 0;
   const oy = geometry ? (height - geometry.viewBox[1] * s) / 2 : 0;
 
