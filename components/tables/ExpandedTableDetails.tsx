@@ -9,9 +9,9 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useReservationStore } from "@/stores/useReservationStore";
+import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject as TableType } from "@/types/db-floor-plan-types";
-import { useRouter } from "expo-router";
 import { CheckCircle, Clock } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -200,7 +200,6 @@ interface ExpandedTableDetailsProps {
 const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
   table,
 }) => {
-  const router = useRouter();
   const tableData = useTableData(table);
 
   if (!tableData) {
@@ -282,7 +281,7 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
     foreignOwnedOrder?.station_name?.trim() || "Another Station";
 
   const handleNavigate = () => {
-    router.push(`/tables/${tableData.primaryTableId}`);
+    usePendingTableOverlay.getState().openTable(tableData.primaryTableId);
   };
 
   const closeConfirmCopy = useMemo(() => {

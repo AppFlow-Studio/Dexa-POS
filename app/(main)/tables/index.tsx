@@ -7,6 +7,7 @@ import Sidebar from "@/components/tables/Sidebar";
 import TableContextSheet from "@/components/tables/TableContextSheet";
 import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
 import TableLayoutView from "@/components/tables/TableLayoutView";
+import TableOrderOverlay from "@/components/tables/TableOrderOverlay";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
@@ -114,7 +115,7 @@ const TablesScreen = () => {
   const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
   const getOrderByDbId = useOrderStore((s) => s.getOrderByDbId);
   const getOrder = useOrderStore((s) => s.getOrder);
-  // openTable removed — using router.push(`/tables/${id}`) instead
+  const openTableOverlay = usePendingTableOverlay((s) => s.openTable);
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
@@ -144,7 +145,6 @@ const TablesScreen = () => {
     tableId: string;
     sessionId: string;
   } | null>(null);
-  // overlayTableId removed in favor of router.push
 
   // Camera zoom-to-table: set by sidebar tap, consumed by TableLayoutView effect
   const [zoomToTableId, setZoomToTableId] = useState<string | null>(null);
@@ -204,15 +204,14 @@ const TablesScreen = () => {
     };
   }, [supabaseClient, location_id]);
 
-  // Consume pending table overlay from waitlist seating flow
-  // Waitlist seating handoff: consume pending table ID and navigate directly.
+  // Consume pending table overlay from waitlist seating flow / cross-screen handoff.
   useFocusEffect(
     useCallback(() => {
       const pendingId = usePendingTableOverlay.getState().consume();
       if (pendingId) {
-        router.push(`/tables/${pendingId}` as Href);
+        openTableOverlay(pendingId);
       }
-    }, [router]),
+    }, [openTableOverlay]),
   );
 
   // Pause background timer ticks when screen loses focus
@@ -377,7 +376,7 @@ const TablesScreen = () => {
           setActiveOrder(existingOrder.id);
         }
         const prefetch = ensureOrderPrefetched(orderId);
-        router.push(`/tables/${tableId}` as Href);
+        openTableOverlay(tableId);
         // Background sync for fresh data if order wasn't cached
         if (!existingOrder) {
           prefetch
@@ -387,10 +386,10 @@ const TablesScreen = () => {
             .catch(() => {});
         }
       } else {
-        router.push(`/tables/${tableId}` as Href);
+        openTableOverlay(tableId);
       }
     },
-    [tables, getOrder, router, setActiveOrder],
+    [tables, getOrder, setActiveOrder, openTableOverlay],
   );
 
   const handleTransferServer = useCallback(
@@ -475,7 +474,7 @@ const TablesScreen = () => {
 
           // Show overlay immediately — no routing latency
           const prefetch = ensureOrderPrefetched(orderId);
-          router.push(`/tables/${table.id}` as Href);
+          openTableOverlay(table.id);
 
           // Background sync for fresh data (no-op if order already current)
           prefetch
@@ -484,7 +483,7 @@ const TablesScreen = () => {
             })
             .catch(() => {});
         } else {
-          router.push(`/tables/${table.id}` as Href);
+          openTableOverlay(table.id);
         }
         return;
       }
@@ -502,8 +501,8 @@ const TablesScreen = () => {
       isClockedIn,
       showClockInWall,
       selectMultipleTables,
-      router,
       setActiveOrder,
+      openTableOverlay,
     ],
   );
 
@@ -730,11 +729,11 @@ const TablesScreen = () => {
     });
     registerPendingOrderCreation(newOrder.id, creationPromise);
 
-    // 3. Navigate immediately — order is already in local store
+    // 3. Open overlay immediately — order is already in local store
     setGuestModalOpen(false);
     clearSelection();
     setMergeMode(false);
-    router.push(`/tables/${primaryTableId}` as Href);
+    openTableOverlay(primaryTableId);
 
     // 4. Seat guests in background
     try {
@@ -1244,8 +1243,7 @@ const TablesScreen = () => {
         currentServer={currentTransferServerName}
       />
 
-      {/* Table order overlay removed — now uses router.push to /tables/[tableId]
-          so the tables screen fully unmounts and doesn't stack underneath. */}
+      <TableOrderOverlay />
     </View>
   );
 };

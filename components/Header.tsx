@@ -8,6 +8,7 @@ import {
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
+import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import {
   Href,
   useGlobalSearchParams,
@@ -33,6 +34,10 @@ const Header = () => {
   // tablesById map re-rendered it on every table mutation across all screens.
   // The title only ever needs the ONE table referenced by the current route or
   // overlay — resolve that id, then subscribe to just its name string.
+  // The table overlay renders on top of /tables without changing the route,
+  // so its open table id has to be read from the overlay store directly —
+  // pathname alone can no longer tell us a table is open.
+  const overlayTableId = usePendingTableOverlay((s) => s.openTableId);
   const relevantTableId = useMemo(() => {
     const parts = pathname.split("/");
     if (pathname.startsWith("/tables/clean-table/") && parts.length === 4)
@@ -44,8 +49,9 @@ const Header = () => {
       !pathname.startsWith("/tables/floor-plan")
     )
       return parts[2];
+    if (pathname === "/tables" && overlayTableId) return overlayTableId;
     return null;
-  }, [pathname]);
+  }, [pathname, overlayTableId]);
   const relevantTableName = useFloorPlanStore((s) =>
     relevantTableId ? (s.tablesById[relevantTableId]?.name ?? null) : null,
   );
@@ -70,7 +76,7 @@ const Header = () => {
     (pathname.startsWith("/scheduling/") && pathname.split("/").length === 3) ||
     (pathname.startsWith("/scheduling/templates/") &&
       pathname.split("/").length === 4) ||
-    pathname === "/tables" ||
+    (pathname === "/tables" && !overlayTableId) ||
     pathname === "/tables/edit-layout" ||
     pathname === "/inventory" ||
     pathname === "/analytics" ||
@@ -95,7 +101,8 @@ const Header = () => {
       pathname.split("/").length > 2) ||
     (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
     (pathname.startsWith("/tables/clean-table/") &&
-      pathname.split("/").length === 4);
+      pathname.split("/").length === 4) ||
+    (pathname === "/tables" && !!overlayTableId);
   const cancelAndRemoveDraft = useModifierSidebarStore(
     (state) => state.cancelAndRemoveDraft,
   );
@@ -149,8 +156,8 @@ const Header = () => {
     ) {
       return "Edit Layout";
     } else if (
-      pathname.startsWith("/tables/") &&
-      pathname.split("/").length === 3
+      (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
+      (pathname === "/tables" && relevantTableId)
     ) {
       if (relevantTableName) {
         return `Tables / ${relevantTableName}`;
@@ -194,6 +201,14 @@ const Header = () => {
     // Check for explicit returnTo parameter first
     if (globalParams.returnTo && typeof globalParams.returnTo === "string") {
       router.push(globalParams.returnTo as Href);
+      return;
+    }
+
+    // Table order view renders as an overlay on top of /tables rather than
+    // a pushed route, so "back" just closes the overlay and reveals the
+    // already-mounted floor plan underneath.
+    if (pathname === "/tables" && overlayTableId) {
+      usePendingTableOverlay.getState().closeTable();
       return;
     }
 
@@ -282,6 +297,7 @@ const Header = () => {
     closeModifierSidebar,
     pathname,
     router,
+    overlayTableId,
   ]);
 
   return (
