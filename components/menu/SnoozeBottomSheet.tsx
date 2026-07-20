@@ -12,10 +12,11 @@ import { useUiScale } from "@/lib/uiScale";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { ItemModifierStockSection } from "@/components/menu/ItemModifierStockSection";
 import BottomSheet, {
     BottomSheetBackdrop,
+    BottomSheetScrollView,
     BottomSheetTextInput,
-    BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -81,7 +82,6 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   const bottomSheetRef = useRef<BottomSheetMethods>(null);
-  const snapPoints = useMemo(() => ["70%"], []);
 
   const [item, setItem] = useState<SnoozeItem | null>(null);
   const [reason, setReason] = useState("");
@@ -112,6 +112,26 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
 
   const locationId = selectedStore?.id;
   const currentlySnoozed = isActivelySnoozed(item?.snoozedUntil);
+
+  // When 86ing an ITEM, also surface its attached modifier groups so their
+  // options can be marked out of stock right here (mirrors the website's
+  // edit-item form). Only for item targets — a modifier-option/group sheet has
+  // no "attached modifiers" of its own.
+  const menuItemsById = useMenuStore((s) => s.menuItemsById);
+  const modifierGroups = useMenuStore((s) => s.modifierGroups);
+  const isItemTarget = (item?.kind ?? "item") === "item";
+  const itemModifierGroups = useMemo(() => {
+    if (!isItemTarget || !item?.id) return [];
+    const ids = menuItemsById[item.id]?.modifierGroupIds ?? [];
+    if (!ids.length) return [];
+    const idSet = new Set(ids);
+    return modifierGroups.filter((g) => idSet.has(g.id));
+  }, [isItemTarget, item?.id, menuItemsById, modifierGroups]);
+
+  const snapPoints = useMemo(
+    () => (itemModifierGroups.length > 0 ? ["90%"] : ["70%"]),
+    [itemModifierGroups.length],
+  );
 
   useImperativeHandle(ref, () => ({
     open: (newItem: SnoozeItem) => {
@@ -346,7 +366,10 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
       {...bottomSheetTheme}
       backdropComponent={SnoozeBackdrop}
     >
-      <BottomSheetView style={{ flex: 1, padding: s(16) }}>
+      <BottomSheetScrollView
+        contentContainerStyle={{ padding: s(16), paddingBottom: s(32) }}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Header */}
         <View
           style={{
@@ -603,6 +626,9 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
           </View>
         )}
 
+        {/* Attached modifiers — 86 their options right from this sheet. */}
+        <ItemModifierStockSection groups={itemModifierGroups} />
+
         {error && (
           <View
             style={{
@@ -626,7 +652,7 @@ const SnoozeBottomSheetComponent: React.ForwardRefRenderFunction<
             <ActivityIndicator color={colors.teal} size="small" />
           </View>
         )}
-      </BottomSheetView>
+      </BottomSheetScrollView>
     </BottomSheet>
   );
 };
