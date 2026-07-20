@@ -1,9 +1,11 @@
-import { colors } from '@/lib/theme'
-import { Slot, useRouter } from 'expo-router'
-import { View } from 'react-native'
+import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
+import { Slot, useRouter } from "expo-router";
+import { View } from "react-native";
 
-export default function PurchaseOrderLayout () {
-  const router = useRouter()
+export default function PurchaseOrderLayout() {
+  const router = useRouter();
+  const uiScale = useUiScale();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
@@ -21,5 +23,5 @@ export default function PurchaseOrderLayout () {
      */}
       <Slot />
     </View>
-  )
+  );
 }

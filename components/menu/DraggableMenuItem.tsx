@@ -11,9 +11,10 @@ import {
   isActivelySnoozed
 } from '@/lib/snoozeDurations'
 import { MenuItemType } from '@/lib/types'
+import { useUiScale } from '@/lib/uiScale'
 import * as Haptics from 'expo-haptics'
 import { Ban, GripVertical } from 'lucide-react-native'
-import React from 'react'
+import React, { useMemo } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
@@ -47,86 +48,107 @@ interface DraggableMenuItemProps {
   onDragPreviewEnd: () => void
 }
 
-const ITEM_CARD_WIDTH = 130
-const ITEM_CARD_HEIGHT = 160
-const ITEM_GRID_GAP = 6
-const ITEM_GRID_CELL_WIDTH = ITEM_CARD_WIDTH + ITEM_GRID_GAP
-const ITEM_GRID_CELL_HEIGHT = ITEM_CARD_HEIGHT + ITEM_GRID_GAP
+const ITEM_CARD_WIDTH_BASE = 130
+const ITEM_CARD_HEIGHT_BASE = 160
+const ITEM_GRID_GAP_BASE = 6
 
-const baseStyles = StyleSheet.create({
-  card: {
-    width: ITEM_CARD_WIDTH,
-    height: ITEM_CARD_HEIGHT,
-    borderRadius: 10,
-    marginBottom: 4,
-    borderWidth: 1,
-    overflow: 'hidden',
-    flexDirection: 'column'
-  },
-  touchable: {
-    flex: 1,
-    flexDirection: 'column'
-  },
-  imageWrapper: {
-    height: 100,
-    width: '100%'
-  },
-  placeholderContainer: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  contentContainer: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    gap: 2,
-    flex: 1,
-    justifyContent: 'flex-start'
-  },
-  nameText: {
-    fontSize: 11,
-    fontWeight: '600',
-    lineHeight: 14
-  },
-  priceText: {
-    fontSize: 11,
-    fontWeight: '700'
-  },
-  gripHandle: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    zIndex: 10,
-    borderRadius: 6,
-    padding: 4
-  },
-  snoozeBadge: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 6
-  },
-  snoozeBadgeText: {
-    fontSize: 9,
-    fontWeight: '700'
-  },
-  snoozeButton: {
-    position: 'absolute',
-    bottom: 6,
-    right: 6,
-    zIndex: 10,
-    padding: 5,
-    borderRadius: 6,
-    borderWidth: 1
+const createStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale)
+  const cardWidth = s(ITEM_CARD_WIDTH_BASE)
+  const cardHeight = s(ITEM_CARD_HEIGHT_BASE)
+  const gridGap = s(ITEM_GRID_GAP_BASE)
+  return {
+    cardWidth,
+    cardHeight,
+    gridGap,
+    gridCellWidth: cardWidth + gridGap,
+    gridCellHeight: cardHeight + gridGap,
+    styles: StyleSheet.create({
+      card: {
+        width: cardWidth,
+        height: cardHeight,
+        borderRadius: s(10),
+        marginBottom: s(4),
+        borderWidth: 1,
+        overflow: 'hidden',
+        flexDirection: 'column'
+      },
+      touchable: {
+        flex: 1,
+        flexDirection: 'column'
+      },
+      imageWrapper: {
+        height: s(100),
+        width: '100%'
+      },
+      placeholderContainer: {
+        width: '100%',
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center'
+      },
+      contentContainer: {
+        paddingHorizontal: s(8),
+        paddingVertical: s(6),
+        gap: s(2),
+        flex: 1,
+        justifyContent: 'flex-start'
+      },
+      nameText: {
+        fontSize: s(11),
+        fontWeight: '600',
+        lineHeight: s(14)
+      },
+      priceText: {
+        fontSize: s(11),
+        fontWeight: '700'
+      },
+      gripHandle: {
+        position: 'absolute',
+        top: s(8),
+        right: s(8),
+        zIndex: 10,
+        borderRadius: s(6),
+        padding: s(4)
+      },
+      snoozeBadge: {
+        position: 'absolute',
+        top: s(6),
+        left: s(6),
+        zIndex: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: s(3),
+        paddingHorizontal: s(5),
+        paddingVertical: s(2),
+        borderRadius: s(6)
+      },
+      snoozeBadgeText: {
+        fontSize: s(9),
+        fontWeight: '700'
+      },
+      snoozeButton: {
+        position: 'absolute',
+        bottom: s(6),
+        right: s(6),
+        zIndex: 10,
+        padding: s(5),
+        borderRadius: s(6),
+        borderWidth: 1
+      }
+    })
   }
-})
+}
+
+const draggableMenuItemStylesByScale = new Map<number, ReturnType<typeof createStyles>>()
+
+const getStylesForScale = (scale: number) => {
+  const cached = draggableMenuItemStylesByScale.get(scale)
+  if (cached) return cached
+  const next = createStyles(scale)
+  draggableMenuItemStylesByScale.set(scale, next)
+  return next
+}
 
 const DraggableMenuItem = React.memo(
   ({
@@ -144,6 +166,13 @@ const DraggableMenuItem = React.memo(
     onDragPreviewChange,
     onDragPreviewEnd
   }: DraggableMenuItemProps) => {
+    const uiScale = useUiScale()
+    const sc = (n: number) => Math.round(n * uiScale)
+    const { styles: baseStyles, gridCellWidth, gridCellHeight, cardWidth } = useMemo(
+      () => getStylesForScale(uiScale),
+      [uiScale]
+    )
+
     const translateX = useSharedValue(0)
     const translateY = useSharedValue(0)
     const scale = useSharedValue(1)
@@ -179,10 +208,10 @@ const DraggableMenuItem = React.memo(
         const originColumn = dragOriginIndex.value % safeColumns
         const originRow = Math.floor(dragOriginIndex.value / safeColumns)
         const targetColumn = Math.round(
-          originColumn + event.translationX / ITEM_GRID_CELL_WIDTH
+          originColumn + event.translationX / gridCellWidth
         )
         const targetRow = Math.round(
-          originRow + event.translationY / ITEM_GRID_CELL_HEIGHT
+          originRow + event.translationY / gridCellHeight
         )
         const clampedColumn = Math.max(0, Math.min(safeColumns - 1, targetColumn))
         const unclampedIndex = targetRow * safeColumns + clampedColumn
@@ -201,10 +230,10 @@ const DraggableMenuItem = React.memo(
         const originColumn = dragOriginIndex.value % safeColumns
         const originRow = Math.floor(dragOriginIndex.value / safeColumns)
         const targetColumn = Math.round(
-          originColumn + event.translationX / ITEM_GRID_CELL_WIDTH
+          originColumn + event.translationX / gridCellWidth
         )
         const targetRow = Math.round(
-          originRow + event.translationY / ITEM_GRID_CELL_HEIGHT
+          originRow + event.translationY / gridCellHeight
         )
         const clampedColumn = Math.max(0, Math.min(safeColumns - 1, targetColumn))
         const unclampedIndex = targetRow * safeColumns + clampedColumn
@@ -236,10 +265,10 @@ const DraggableMenuItem = React.memo(
       const originColumn = dragOriginIndex.value % safeColumns
       const originRow = Math.floor(dragOriginIndex.value / safeColumns)
       const dragCompensationX = isDragging.value
-        ? (currentColumn - originColumn) * ITEM_GRID_CELL_WIDTH
+        ? (currentColumn - originColumn) * gridCellWidth
         : 0
       const dragCompensationY = isDragging.value
-        ? (currentRow - originRow) * ITEM_GRID_CELL_HEIGHT
+        ? (currentRow - originRow) * gridCellHeight
         : 0
 
       return {
@@ -268,7 +297,7 @@ const DraggableMenuItem = React.memo(
 
     return (
       <Animated.View
-        style={[animatedStyle, { width: ITEM_CARD_WIDTH }]}
+        style={[animatedStyle, { width: cardWidth }]}
         layout={
           isDragActive
             ? undefined
@@ -305,7 +334,7 @@ const DraggableMenuItem = React.memo(
               >
                 <PlaceholderIcon
                   color={`${colors.label}72`}
-                  size={18}
+                  size={sc(18)}
                   strokeWidth={2}
                 />
               </View>
@@ -316,7 +345,7 @@ const DraggableMenuItem = React.memo(
           <View
             style={[
               baseStyles.contentContainer,
-              { backgroundColor: `${colors.card}f0`, paddingTop: 4 }
+              { backgroundColor: `${colors.card}f0`, paddingTop: sc(4) }
             ]}
           >
             <GestureDetector gesture={panGesture}>
@@ -329,7 +358,7 @@ const DraggableMenuItem = React.memo(
                   }
                 ]}
               >
-                <GripVertical size={10} color={colors.muted} />
+                <GripVertical size={sc(10)} color={colors.muted} />
               </View>
             </GestureDetector>
             <Text
@@ -350,7 +379,7 @@ const DraggableMenuItem = React.memo(
             style={[baseStyles.snoozeBadge, { backgroundColor: colors.danger }]}
             pointerEvents='none'
           >
-            <Ban size={9} color={colors.onSolid} />
+            <Ban size={sc(9)} color={colors.onSolid} />
             <Text style={[baseStyles.snoozeBadgeText, { color: colors.onSolid }]}>
               {snoozeLabel === '86' ? '86' : `86 · ${snoozeLabel}`}
             </Text>
@@ -372,7 +401,7 @@ const DraggableMenuItem = React.memo(
             }
           ]}
         >
-          <Ban size={13} color={isSnoozed ? colors.onSolid : colors.danger} />
+          <Ban size={sc(13)} color={isSnoozed ? colors.onSolid : colors.danger} />
         </TouchableOpacity>
       </Animated.View>
     )

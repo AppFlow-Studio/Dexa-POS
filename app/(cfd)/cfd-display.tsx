@@ -4,6 +4,7 @@ import { CFDExternalDisplayProvider } from '@/contexts/CFDDisplayDataContext'
 import { replaceRoute } from '@/lib/rootNavigation'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors, setThemeMode } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { useCFDClientStore } from '@/stores/useCFDClientStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -34,6 +35,8 @@ export default function CFDDisplayScreen () {
   } = useCFDClient()
   const { isPaired, connectionStatus, themeMode } = useCFDClientStore()
   const { setColorScheme } = useColorScheme()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   // Mirror the POS theme on this CFD tablet whenever the source changes
   useEffect(() => {
@@ -138,11 +141,11 @@ export default function CFDDisplayScreen () {
           backgroundColor: colors.screen,
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 12
+          gap: s(12)
         }}
       >
-        <Loader size={32} color={colors.teal} />
-        <Text style={{ fontSize: 13, color: colors.label }}>Redirecting…</Text>
+        <Loader size={s(32)} color={colors.teal} />
+        <Text style={{ fontSize: s(13), color: colors.label }}>Redirecting…</Text>
       </View>
     )
   }
@@ -161,8 +164,8 @@ export default function CFDDisplayScreen () {
             position: 'absolute',
             top: 0,
             right: 0,
-            width: 60,
-            height: 60,
+            width: s(60),
+            height: s(60),
             zIndex: 100
           }}
         />
@@ -174,15 +177,15 @@ export default function CFDDisplayScreen () {
             flex: 1,
             alignItems: 'center',
             justifyContent: 'center',
-            paddingHorizontal: 16,
-            gap: 16
+            paddingHorizontal: s(16),
+            gap: s(16)
           }}
         >
           <View
             style={{
-              width: 64,
-              height: 64,
-              borderRadius: 14,
+              width: s(64),
+              height: s(64),
+              borderRadius: s(14),
               backgroundColor: colors.danger + '15',
               borderWidth: 1,
               borderColor: colors.danger + '30',
@@ -190,38 +193,38 @@ export default function CFDDisplayScreen () {
               justifyContent: 'center'
             }}
           >
-            <AlertCircle size={32} color={colors.danger} />
+            <AlertCircle size={s(32)} color={colors.danger} />
           </View>
 
-          <View style={{ alignItems: 'center', gap: 6 }}>
+          <View style={{ alignItems: 'center', gap: s(6) }}>
             <Text
-              style={{ fontSize: 18, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: s(18), fontWeight: '700', color: colors.heading }}
             >
               Connection Lost
             </Text>
             <Text
-              style={{ fontSize: 13, color: colors.label, textAlign: 'center' }}
+              style={{ fontSize: s(13), color: colors.label, textAlign: 'center' }}
             >
               Unable to connect to the POS system. Check your connection and try
               again.
             </Text>
           </View>
 
-          <View style={{ gap: 8, width: '100%', maxWidth: 280 }}>
+          <View style={{ gap: s(8), width: '100%', maxWidth: s(280) }}>
             <Pressable
               onPress={() => reconnect({ manual: true })}
               style={{
                 backgroundColor: colors.teal + '20',
                 borderWidth: 1,
                 borderColor: colors.teal + '50',
-                paddingVertical: 10,
-                paddingHorizontal: 14,
-                borderRadius: 8,
+                paddingVertical: s(10),
+                paddingHorizontal: s(14),
+                borderRadius: s(8),
                 alignItems: 'center'
               }}
             >
               <Text
-                style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}
+                style={{ fontSize: s(13), fontWeight: '600', color: colors.teal }}
               >
                 Retry Connection
               </Text>
@@ -235,13 +238,13 @@ export default function CFDDisplayScreen () {
               style={{
                 borderWidth: 1,
                 borderColor: colors.border,
-                paddingVertical: 10,
-                paddingHorizontal: 14,
-                borderRadius: 8,
+                paddingVertical: s(10),
+                paddingHorizontal: s(14),
+                borderRadius: s(8),
                 alignItems: 'center'
               }}
             >
-              <Text style={{ fontSize: 13, color: colors.label }}>
+              <Text style={{ fontSize: s(13), color: colors.label }}>
                 Back to Setup
               </Text>
             </Pressable>
@@ -263,8 +266,8 @@ export default function CFDDisplayScreen () {
             position: 'absolute',
             top: 0,
             right: 0,
-            width: 60,
-            height: 60,
+            width: s(60),
+            height: s(60),
             zIndex: 100
           }}
         />
@@ -276,14 +279,14 @@ export default function CFDDisplayScreen () {
             flex: 1,
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 16
+            gap: s(16)
           }}
         >
           <View
             style={{
-              width: 64,
-              height: 64,
-              borderRadius: 14,
+              width: s(64),
+              height: s(64),
+              borderRadius: s(14),
               backgroundColor: colors.warning + '15',
               borderWidth: 1,
               borderColor: colors.warning + '30',
@@ -300,17 +303,17 @@ export default function CFDDisplayScreen () {
                 ]
               }}
             >
-              <Loader size={32} color={colors.warning} />
+              <Loader size={s(32)} color={colors.warning} />
             </Animated.View>
           </View>
 
-          <View style={{ alignItems: 'center', gap: 4 }}>
+          <View style={{ alignItems: 'center', gap: s(4) }}>
             <Text
-              style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}
             >
               Connecting...
             </Text>
-            <Text style={{ fontSize: 12, color: colors.label }}>
+            <Text style={{ fontSize: s(12), color: colors.label }}>
               Please wait
             </Text>
           </View>
@@ -335,8 +338,8 @@ export default function CFDDisplayScreen () {
             position: 'absolute',
             top: 0,
             right: 0,
-            width: 60,
-            height: 60,
+            width: s(60),
+            height: s(60),
             zIndex: 100
           }}
         />
@@ -356,7 +359,7 @@ export default function CFDDisplayScreen () {
             pointerEvents='none'
             style={{
               position: 'absolute',
-              top: 12,
+              top: s(12),
               left: 0,
               right: 0,
               alignItems: 'center',
@@ -368,19 +371,19 @@ export default function CFDDisplayScreen () {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 8,
+                gap: s(8),
                 backgroundColor: colors.warning + '20',
                 borderWidth: 1,
                 borderColor: colors.warning + '50',
-                paddingHorizontal: 12,
-                paddingVertical: 6,
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
                 borderRadius: 999
               }}
             >
-              <Loader size={14} color={colors.warning} />
+              <Loader size={s(14)} color={colors.warning} />
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: '600',
                   color: colors.warning
                 }}

@@ -1,6 +1,7 @@
 // src/components/cfd/CFDStatusBadge.tsx
 import { useCFD } from '@/hooks/useCFD'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { Monitor, MonitorOff } from 'lucide-react-native'
 import { Pressable, Text } from 'react-native'
 
@@ -10,6 +11,8 @@ interface CFDStatusBadgeProps {
 
 export function CFDStatusBadge ({ onPress }: CFDStatusBadgeProps) {
   const { isConnected, clientCount, serverInfo } = useCFD()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   return (
     <Pressable
@@ -17,21 +20,21 @@ export function CFDStatusBadge ({ onPress }: CFDStatusBadgeProps) {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
+        gap: s(6),
         backgroundColor: colors.panel,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 6
+        paddingHorizontal: s(10),
+        paddingVertical: s(6),
+        borderRadius: s(6)
       }}
     >
       {isConnected ? (
-        <Monitor size={16} color={colors.success} />
+        <Monitor size={s(16)} color={colors.success} />
       ) : (
-        <MonitorOff size={16} color={colors.muted} />
+        <MonitorOff size={s(16)} color={colors.muted} />
       )}
       <Text
         style={{
-          fontSize: 12,
+          fontSize: s(12),
           color: isConnected ? colors.success : colors.label
         }}
       >

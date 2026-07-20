@@ -2,6 +2,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import type { OrderPaymentItemCoverage } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import {
@@ -60,6 +61,8 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   variant = "default",
   disabled = false,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const getButtonStyles = () => {
     if (disabled) {
       return {
@@ -113,14 +116,14 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       disabled={disabled}
       style={{
         flex: 1,
-        minWidth: 100,
-        paddingVertical: 16,
-        paddingHorizontal: 12,
-        borderRadius: 12,
+        minWidth: s(100),
+        paddingVertical: s(16),
+        paddingHorizontal: s(12),
+        borderRadius: s(12),
         borderWidth: 1,
         alignItems: "center",
         justifyContent: "center",
-        gap: 8,
+        gap: s(8),
         opacity: disabled ? 0.5 : 1,
         ...styles,
       }}
@@ -128,7 +131,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       {icon}
       <Text
         style={{
-          fontSize: 11,
+          fontSize: s(11),
           fontWeight: "600",
           textAlign: "center",
           color: getTextColor(),
@@ -160,77 +163,81 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   icon,
   isNegative = false,
   accentColor = colors.info,
-}) => (
-  <View
-    style={{
-      flex: 1,
-      backgroundColor: colors.panel,
-      borderRadius: 12,
-      padding: 16,
-      borderWidth: 1,
-      borderLeftWidth: 3,
-      borderColor: colors.border,
-      borderLeftColor: accentColor,
-      minWidth: 160,
-    }}
-  >
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return (
     <View
       style={{
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        marginBottom: 12,
+        flex: 1,
+        backgroundColor: colors.panel,
+        borderRadius: s(12),
+        padding: s(16),
+        borderWidth: 1,
+        borderLeftWidth: 3,
+        borderColor: colors.border,
+        borderLeftColor: accentColor,
+        minWidth: s(160),
       }}
     >
       <View
         style={{
-          width: 40,
-          height: 40,
-          borderRadius: 20,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: `${accentColor}15`,
-        }}
-      >
-        {icon}
-      </View>
-    </View>
-    <Text
-      style={{ fontSize: 24, fontWeight: "bold", color: colors.heading }}
-      numberOfLines={1}
-    >
-      {isNegative && amount > 0 ? "−" : ""}${amount.toFixed(2)}
-    </Text>
-    {cashAmount && (
-      <Text
-        style={{
-          fontSize: 18,
-          fontWeight: "bold",
-          color: colors.heading,
           flexDirection: "row",
           alignItems: "center",
-          justifyContent: "center",
-          marginTop: 4,
+          justifyContent: "space-between",
+          marginBottom: s(12),
         }}
+      >
+        <View
+          style={{
+            width: s(40),
+            height: s(40),
+            borderRadius: s(20),
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: `${accentColor}15`,
+          }}
+        >
+          {icon}
+        </View>
+      </View>
+      <Text
+        style={{ fontSize: s(24), fontWeight: "bold", color: colors.heading }}
         numberOfLines={1}
       >
-        <Banknote color={"green"} size={20} />{" "}
-        {isNegative && cashAmount && cashAmount > 0 ? "-" : ""}$
-        {cashAmount?.toFixed(2)}
+        {isNegative && amount > 0 ? "−" : ""}${amount.toFixed(2)}
       </Text>
-    )}
-    <Text
-      style={{
-        fontSize: 11,
-        color: colors.muted,
-        marginTop: 4,
-        fontWeight: "500",
-      }}
-    >
-      {label}
-    </Text>
-  </View>
-);
+      {cashAmount && (
+        <Text
+          style={{
+            fontSize: s(18),
+            fontWeight: "bold",
+            color: colors.heading,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            marginTop: s(4),
+          }}
+          numberOfLines={1}
+        >
+          <Banknote color={"green"} size={s(20)} />{" "}
+          {isNegative && cashAmount && cashAmount > 0 ? "-" : ""}$
+          {cashAmount?.toFixed(2)}
+        </Text>
+      )}
+      <Text
+        style={{
+          fontSize: s(11),
+          color: colors.muted,
+          marginTop: s(4),
+          fontWeight: "500",
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+};
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -270,6 +277,8 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   onClose,
   orderId,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const { show } = useToast();
   const [expandedPaymentIndex, setExpandedPaymentIndex] = useState<
     number | null
@@ -383,7 +392,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
           padding: 0,
           backgroundColor: colors.panel,
           borderColor: colors.border,
-          width: 650,
+          width: s(650),
           maxWidth: "95%",
         }}
         align="end"
@@ -391,7 +400,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 16,
+            borderRadius: s(16),
             overflow: "hidden",
             width: "100%",
           }}
@@ -414,14 +423,14 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingHorizontal: 24,
-                paddingVertical: 20,
+                paddingHorizontal: s(24),
+                paddingVertical: s(20),
               }}
             >
               <View>
                 <Text
                   style={{
-                    fontSize: 20,
+                    fontSize: s(20),
                     fontWeight: "bold",
                     color: colors.heading,
                     letterSpacing: 0.5,
@@ -430,7 +439,11 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   Payment Summary
                 </Text>
                 <Text
-                  style={{ fontSize: 14, color: colors.label, marginTop: 4 }}
+                  style={{
+                    fontSize: s(14),
+                    color: colors.label,
+                    marginTop: s(4),
+                  }}
                 >
                   Order
                   {order.display_number || order.order_number?.slice(-6) || "—"}
@@ -466,7 +479,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   onPress={onClose}
                   className="w-9 h-9 rounded-full bg-gray-800 items-center justify-center"
                 >
-                  <X size={18} color={colors.label} />
+                  <X size={s(18)} color={colors.label} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -485,20 +498,22 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   amount={paymentSummary.orderTotal}
                   cashAmount={paymentSummary.orderCashTotal}
                   label="Order Total"
-                  icon={<DollarSign size={20} color={colors.info} />}
+                  icon={<DollarSign size={s(20)} color={colors.info} />}
                   accentColor={colors.info}
                 />
                 <SummaryCard
                   amount={paymentSummary.refunds}
                   label="Refunds"
-                  icon={<RefreshCcw size={18} color={colors.danger} />}
+                  icon={<RefreshCcw size={s(18)} color={colors.danger} />}
                   isNegative
                   accentColor={colors.danger}
                 />
                 <SummaryCard
                   amount={paymentSummary.collected}
                   label="Collected"
-                  icon={<CircleDollarSign size={20} color={colors.success} />}
+                  icon={
+                    <CircleDollarSign size={s(20)} color={colors.success} />
+                  }
                   accentColor={colors.success}
                 />
               </View>
@@ -544,7 +559,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
               {paymentSummary.payments.length === 0 ? (
                 <View className="py-12 items-center">
                   <View className="w-16 h-16 rounded-full bg-gray-800/50 items-center justify-center mb-4">
-                    <CreditCard size={28} color="#4B5563" />
+                    <CreditCard size={s(28)} color="#4B5563" />
                   </View>
                   <Text className="text-gray-500 text-sm font-medium">
                     No payments recorded
@@ -584,11 +599,11 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                             }`}
                           >
                             {payment.isVoided ? (
-                              <X size={14} color={colors.danger} />
+                              <X size={s(14)} color={colors.danger} />
                             ) : payment.method === "Card" ? (
-                              <CreditCard size={14} color={colors.label} />
+                              <CreditCard size={s(14)} color={colors.label} />
                             ) : (
-                              <DollarSign size={14} color={colors.success} />
+                              <DollarSign size={s(14)} color={colors.success} />
                             )}
                           </View>
                           <View className="flex-1">
@@ -620,7 +635,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                               </Text>
                               {hasItemsCovered && (
                                 <View className="flex-row items-center ml-2">
-                                  <Package size={10} color={colors.muted} />
+                                  <Package size={s(10)} color={colors.muted} />
                                   <Text className="text-xs text-gray-500 ml-1">
                                     {payment.itemsCovered!.length} item
                                     {payment.itemsCovered!.length !== 1
@@ -629,15 +644,15 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                                   </Text>
                                   {isExpanded ? (
                                     <ChevronUp
-                                      size={12}
+                                      size={s(12)}
                                       color={colors.muted}
-                                      style={{ marginLeft: 4 }}
+                                      style={{ marginLeft: s(4) }}
                                     />
                                   ) : (
                                     <ChevronDown
-                                      size={12}
+                                      size={s(12)}
                                       color={colors.muted}
-                                      style={{ marginLeft: 4 }}
+                                      style={{ marginLeft: s(4) }}
                                     />
                                   )}
                                 </View>
@@ -696,7 +711,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                       {isExpanded && hasItemsCovered && (
                         <View className="bg-panel rounded-lg mx-2 mb-3 p-3 border border-gray-800">
                           <View className="flex-row items-center mb-2 pb-2 border-b border-gray-800">
-                            <Package size={12} color={colors.muted} />
+                            <Package size={s(12)} color={colors.muted} />
                             <Text className="text-xs font-semibold text-gray-400 ml-1.5 uppercase tracking-wide">
                               Items Covered
                             </Text>
@@ -780,7 +795,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
           <View className="px-6 py-5 border-t border-gray-800 bg-panel">
             <View className="flex-row gap-3">
               <ActionButton
-                icon={<RotateCcw size={18} color={colors.label} />}
+                icon={<RotateCcw size={s(18)} color={colors.label} />}
                 label="Re-open"
                 onPress={handleReOpenOrder}
                 variant="default"
@@ -788,7 +803,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
               <ActionButton
                 icon={
                   <DollarSign
-                    size={18}
+                    size={s(18)}
                     color={hasTips ? colors.label : "#4B5563"}
                   />
                 }
@@ -798,13 +813,13 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 disabled={!hasTips}
               />
               <ActionButton
-                icon={<RefreshCcw size={18} color={colors.danger} />}
+                icon={<RefreshCcw size={s(18)} color={colors.danger} />}
                 label="Refund"
                 onPress={handleRefund}
                 variant="danger"
               />
               <ActionButton
-                icon={<Printer size={18} color={colors.success} />}
+                icon={<Printer size={s(18)} color={colors.success} />}
                 label="Receipt"
                 onPress={handleIssueReceipt}
                 variant="success"

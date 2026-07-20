@@ -11,6 +11,7 @@ import { POLineItem, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { Trash2 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
@@ -18,6 +19,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const EditPurchaseOrderScreen = () => {
   const router = useRouter();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const { poId } = useLocalSearchParams();
   const { vendors, inventoryItems, purchaseOrders, updatePurchaseOrder } =
     useInventoryStore();
@@ -155,7 +158,7 @@ const EditPurchaseOrderScreen = () => {
                   <TouchableOpacity
                     onPress={() => handleRemoveLineItem(item.inventoryItemId)}
                   >
-                    <Trash2 color={colors.danger} size={20} />
+                    <Trash2 color={colors.danger} size={s(20)} />
                   </TouchableOpacity>
                 </View>
               );

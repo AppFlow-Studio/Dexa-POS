@@ -13,6 +13,7 @@ import {
     isReusableEmptyDraftOrder,
 } from "@/lib/reusableEmptyDraft";
 import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
+import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { CartItem } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import {
@@ -2093,7 +2094,10 @@ const BillSectionContent = ({
           onViewTable={
             displayedTable
               ? () => {
-                  router.push(`/tables/${displayedTable.id}` as any);
+                  usePendingTableOverlay
+                    .getState()
+                    .setPendingTableId(displayedTable.id);
+                  router.push("/tables" as any);
                 }
               : undefined
           }

@@ -28,6 +28,7 @@ import {
 } from '@/lib/menuItemPlaceholderIcon'
 import { colors } from '@/lib/theme'
 import { Menu, MenuItemType } from '@/lib/types'
+import { useUiScale } from '@/lib/uiScale'
 import { MenuService } from '@/services/menuService'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -251,6 +252,8 @@ const DraggableMenu = React.memo(
     isHidden,
     isOnlineMenu
   }: DraggableMenuProps) => {
+    const uiScale = useUiScale()
+    const s = (n: number) => Math.round(n * uiScale)
     const onToggleHiddenPress = () => {
       onToggleHidden(menu.id)
     }
@@ -372,11 +375,11 @@ const DraggableMenu = React.memo(
           animatedStyle,
           {
             backgroundColor: colors.card,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            padding: 12,
-            marginBottom: 8,
+            padding: s(12),
+            marginBottom: s(8),
             opacity: isHidden ? 0.5 : 1
           }
         ]}
@@ -392,33 +395,33 @@ const DraggableMenu = React.memo(
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: 8
+            marginBottom: s(8)
           }}
         >
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 8,
+              gap: s(8),
               flex: 1
             }}
           >
             <GestureDetector gesture={panGesture}>
-              <View style={{ padding: 4 }}>
-                <GripVertical size={14} color={colors.muted} />
+              <View style={{ padding: s(4) }}>
+                <GripVertical size={s(14)} color={colors.muted} />
               </View>
             </GestureDetector>
             <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
               numberOfLines={1}
             >
               {menu.name}
             </Text>
             <View
               style={{
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                borderRadius: 20,
+                paddingHorizontal: s(8),
+                paddingVertical: s(3),
+                borderRadius: s(20),
                 backgroundColor: statusActive
                   ? colors.teal + '20'
                   : colors.danger + '15',
@@ -430,7 +433,7 @@ const DraggableMenu = React.memo(
             >
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '600',
                   color: statusActive ? colors.teal : colors.danger
                 }}
@@ -447,18 +450,18 @@ const DraggableMenu = React.memo(
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 3,
-                  paddingHorizontal: 8,
-                  paddingVertical: 3,
-                  borderRadius: 20,
+                  gap: s(3),
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(3),
+                  borderRadius: s(20),
                   backgroundColor: colors.info + '18',
                   borderWidth: 1,
                   borderColor: colors.info + '40'
                 }}
               >
-                <Globe size={10} color={colors.info} />
+                <Globe size={s(10)} color={colors.info} />
                 <Text
-                  style={{ fontSize: 10, fontWeight: '700', color: colors.info }}
+                  style={{ fontSize: s(10), fontWeight: '700', color: colors.info }}
                 >
                   Online
                 </Text>
@@ -466,34 +469,34 @@ const DraggableMenu = React.memo(
             )}
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
             <TouchableOpacity
               onPress={onToggleHiddenPress}
               style={{
-                padding: 6,
+                padding: s(6),
                 backgroundColor: colors.panel,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
                 opacity: 1
               }}
             >
-              <EyeOff size={14} color={colors.label} />
+              <EyeOff size={s(14)} color={colors.label} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => onToggleMenuActive(menu.id)}
               disabled={!isEditable}
               style={{
-                padding: 6,
+                padding: s(6),
                 backgroundColor: colors.panel,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
                 opacity: isEditable ? 1 : 0.4
               }}
             >
               <Power
-                size={14}
+                size={s(14)}
                 color={isEditable ? colors.label : colors.muted}
               />
             </TouchableOpacity>
@@ -501,33 +504,33 @@ const DraggableMenu = React.memo(
               onPress={onEdit}
               disabled={!isEditable}
               style={{
-                padding: 6,
+                padding: s(6),
                 backgroundColor: colors.panel,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
                 opacity: isEditable ? 1 : 0.4
               }}
               >
                 <Pencil
-                  size={14}
+                  size={s(14)}
                   color={isEditable ? colors.label : colors.muted}
                 />
               </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setIsCollapsed(prev => !prev)}
               style={{
-                padding: 6,
+                padding: s(6),
                 backgroundColor: colors.panel,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border
               }}
             >
               {isCollapsed ? (
-                <ChevronDown size={14} color={colors.label} />
+                <ChevronDown size={s(14)} color={colors.label} />
               ) : (
-                <ChevronUp size={14} color={colors.label} />
+                <ChevronUp size={s(14)} color={colors.label} />
               )}
             </TouchableOpacity>
           </View>
@@ -535,15 +538,15 @@ const DraggableMenu = React.memo(
 
         {/* Categories */}
         {!isCollapsed && (
-          <View style={{ marginLeft: 22, gap: 4 }}>
+          <View style={{ marginLeft: s(22), gap: s(4) }}>
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               fontWeight: '600',
               color: colors.muted,
               textTransform: 'uppercase',
               letterSpacing: 0.5,
-              marginBottom: 4
+              marginBottom: s(4)
             }}
           >
             Categories ({menuCategories.length})
@@ -626,6 +629,8 @@ const DraggableMenuCategory = React.memo(
     onDragPreviewChange,
     onDragPreviewEnd
   }: DraggableMenuCategoryProps) => {
+    const uiScale = useUiScale()
+    const s = (n: number) => Math.round(n * uiScale)
     const translateY = useSharedValue(0)
     const scale = useSharedValue(1)
     const isDragging = useSharedValue(false)
@@ -741,7 +746,7 @@ const DraggableMenuCategory = React.memo(
           animatedStyle,
           {
             backgroundColor: colors.panel,
-            borderRadius: 8,
+            borderRadius: s(8),
             borderWidth: 1,
             borderColor: colors.border
           }
@@ -757,35 +762,35 @@ const DraggableMenuCategory = React.memo(
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            paddingHorizontal: 10,
-            paddingVertical: 8
+            paddingHorizontal: s(10),
+            paddingVertical: s(8)
           }}
         >
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 6,
+              gap: s(6),
               flex: 1
             }}
           >
             <GestureDetector gesture={panGesture}>
-              <View style={{ padding: 2 }}>
-                <GripVertical size={12} color={colors.muted} />
+              <View style={{ padding: s(2) }}>
+                <GripVertical size={s(12)} color={colors.muted} />
               </View>
             </GestureDetector>
             <TouchableOpacity
               onPress={() => setIsExpanded(!isExpanded)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}
             >
               {isExpanded ? (
-                <ChevronUp size={14} color={colors.label} />
+                <ChevronUp size={s(14)} color={colors.label} />
               ) : (
-                <ChevronDown size={14} color={colors.label} />
+                <ChevronDown size={s(14)} color={colors.label} />
               )}
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   color: colors.heading,
                   fontWeight: '500'
                 }}
@@ -796,22 +801,22 @@ const DraggableMenuCategory = React.memo(
             <View
               style={{
                 backgroundColor: colors.teal + '15',
-                borderRadius: 10,
-                paddingHorizontal: 6,
-                paddingVertical: 2
+                borderRadius: s(10),
+                paddingHorizontal: s(6),
+                paddingVertical: s(2)
               }}
             >
               <Text
-                style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}
+                style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}
               >
                 {items.length}
               </Text>
             </View>
             <View
               style={{
-                paddingHorizontal: 7,
-                paddingVertical: 2,
-                borderRadius: 20,
+                paddingHorizontal: s(7),
+                paddingVertical: s(2),
+                borderRadius: s(20),
                 backgroundColor: category.isActive
                   ? colors.teal + '20'
                   : colors.danger + '15',
@@ -823,7 +828,7 @@ const DraggableMenuCategory = React.memo(
             >
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '600',
                   color: category.isActive ? colors.teal : colors.danger
                 }}
@@ -836,16 +841,16 @@ const DraggableMenuCategory = React.memo(
           <TouchableOpacity
             onPress={() => onToggleActive(menuId, category.id)}
             disabled={!isEditable}
-            style={{ padding: 4, opacity: isEditable ? 1 : 0.4 }}
+            style={{ padding: s(4), opacity: isEditable ? 1 : 0.4 }}
           >
             {category.isActive ? (
               <Eye
-                size={13}
+                size={s(13)}
                 color={isEditable ? colors.success : colors.muted}
               />
             ) : (
               <EyeOff
-                size={13}
+                size={s(13)}
                 color={isEditable ? colors.danger : colors.muted}
               />
             )}
@@ -853,14 +858,14 @@ const DraggableMenuCategory = React.memo(
         </View>
 
         {isExpanded && (
-          <View style={{ paddingHorizontal: 10, paddingBottom: 8 }}>
+          <View style={{ paddingHorizontal: s(10), paddingBottom: s(8) }}>
             {items.length === 0 ? (
-              <Text style={{ fontSize: 12, color: colors.muted }}>
+              <Text style={{ fontSize: s(12), color: colors.muted }}>
                 No items in this category
               </Text>
             ) : (
               <View
-                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}
+                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6) }}
                 onLayout={event => {
                   setItemGridWidth(event.nativeEvent.layout.width)
                 }}
@@ -897,6 +902,8 @@ const DraggableMenuCategory = React.memo(
 )
 
 const MenuPage: React.FC = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const menuItems = useMenuStore(s => s.menuItems)
   const storeCategories = useMenuStore(s => s.categories)
   const storeMenus = useMenuStore(s => s.menus)
@@ -1302,17 +1309,17 @@ const MenuPage: React.FC = () => {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 5,
-          paddingHorizontal: 10,
-          paddingVertical: 6,
-          borderRadius: 8,
+          gap: s(5),
+          paddingHorizontal: s(10),
+          paddingVertical: s(6),
+          borderRadius: s(8),
           backgroundColor: colors.danger + '18',
           borderWidth: 1,
           borderColor: colors.danger + '35'
         }}
       >
-        <Ban size={13} color={colors.danger} />
-        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.danger }}>
+        <Ban size={s(13)} color={colors.danger} />
+        <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.danger }}>
           {`${outOfStockCount} 86'd`}
         </Text>
       </TouchableOpacity>
@@ -1574,7 +1581,7 @@ const MenuPage: React.FC = () => {
   )
 
   const renderMenusContent = () => (
-    <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
+    <View style={{ flex: 1, padding: s(14), backgroundColor: colors.panel }}>
       <MenuHeader
         title={`Menus (${menus.length})`}
         onAddPress={handleAddMenu}
@@ -1642,10 +1649,10 @@ const MenuPage: React.FC = () => {
             />
           ))}
           {hiddenMenus.length > 0 && (
-            <View style={{ gap: 8, marginTop: 8 }}>
+            <View style={{ gap: s(8), marginTop: s(8) }}>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '700',
                   color: colors.muted,
                   textTransform: 'uppercase'
@@ -1703,7 +1710,7 @@ const MenuPage: React.FC = () => {
   )
 
   const renderCategoriesContent = () => (
-    <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
+    <View style={{ flex: 1, padding: s(14), backgroundColor: colors.panel }}>
       <MenuHeader
         title={`Categories (${(Array.isArray(storeCategories) ? storeCategories : []).length})`}
         onAddPress={handleAddCategory}
