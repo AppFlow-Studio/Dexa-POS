@@ -1,6 +1,6 @@
-import { Canvas, Group, useTypeface } from "@shopify/react-native-skia";
-import React, { useEffect, useRef } from "react";
-import { StyleSheet } from "react-native";
+import { Canvas, Group } from "@shopify/react-native-skia";
+import React, { useEffect, useRef, useState } from "react";
+import { AppState, StyleSheet } from "react-native";
 import { SharedValue, useDerivedValue } from "react-native-reanimated";
 import { useShallow } from "zustand/react/shallow";
 
@@ -8,7 +8,7 @@ import { WallEdgeFlags } from "@/lib/wallCornerSnap";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import SkiaStructure from "./SkiaStructure";
 import SkiaTable from "./SkiaTable";
-import { setTableTypefaces } from "./skiaTableFont";
+import { loadTableTypefaces } from "./skiaTableFont";
 import { useTableDrawStore } from "./tableDrawStore";
 
 /**
@@ -56,16 +56,53 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
   // ONE subscription, in the RN tree (not a Canvas child).
   const drawData = useTableDrawStore(useShallow((s) => s.data));
 
-  // Load real font files (the system FontMgr path rendered no glyphs on-device).
-  // useTypeface is a hook — valid here because SkiaTableLayer is the Canvas PARENT
-  // (RN tree), not a Canvas child. Fonts are built from these in skiaTableFont.
-  const boldTypeface = useTypeface(require("@/assets/fonts/Inter-Bold.ttf"));
-  const regularTypeface = useTypeface(
-    require("@/assets/fonts/Inter-Medium.ttf"),
-  );
+  // Load font files from BUNDLED bytes (network-free — see skiaTableFont.ts). The
+  // old useTypeface path fetched the TTF over HTTP from Metro, so offline the fonts
+  // never loaded and table text vanished. loadTableTypefaces reads the on-device
+  // asset via expo-asset/expo-file-system and sets the module-level typefaces used
+  // by getTableFont. Process-wide + idempotent: shared across every SkiaTableLayer
+  // mount, so there's nothing to clear on unmount. `fontsReady` just forces one
+  // re-render when the async load completes so text nodes start drawing.
+  const [fontsReady, setFontsReady] = useState(false);
   useEffect(() => {
-    setTableTypefaces({ regular: regularTypeface, bold: boldTypeface });
-  }, [regularTypeface, boldTypeface]);
+    let alive = true;
+    loadTableTypefaces()
+      .then((tf) => {
+        if (alive && tf.regular && tf.bold) setFontsReady(true);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // ── GPU surface-loss recovery ────────────────────────────────────────────
+  // The canvas going permanently blank while the app sits IDLE (no remount, no
+  // theme change, no floor switch) is Android reclaiming the SurfaceView / EGL
+  // context backing the Canvas: screen dim, display-power-management, or memory
+  // pressure destroys the native surface, but our JS component stays mounted and
+  // never re-renders (idle = no store change → useShallow doesn't fire), so Skia
+  // never re-issues its picture to a fresh surface and the view stays blank.
+  //
+  // Fix: bump a key on the <Canvas> whenever the app returns to `active`. That
+  // tears down the (possibly dead) surface and mounts a fresh one that repaints
+  // from the current React tree. Only the Canvas is re-keyed — typefaces, camera
+  // shared values, and the store subscription all live on SkiaTableLayer and are
+  // untouched, so recovery is cheap and state-preserving.
+  const [surfaceKey, setSurfaceKey] = useState(0);
+  const appStateRef = useRef(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      const prev = appStateRef.current;
+      appStateRef.current = next;
+      // inactive/background → active is exactly the transition after a screen
+      // dim/wake or an OS surface reclaim, when the GL surface may be stale.
+      if (prev !== "active" && next === "active") {
+        setSurfaceKey((k) => k + 1);
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   // Latch the last valid viewport so a transient 0-dim relayout frame never
   // collapses the camera center to (0,0). Kept in a ref (read during render is
@@ -84,42 +121,52 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
   // RN applies transforms left-to-right with transformOrigin "center":
   //   screen = (world - vc) * s + vc + t
   // Skia transform arrays apply right-to-left (matrix multiplication order).
-  const cameraTransform = useDerivedValue(
-    () => [
-      { translateX: translateX.value + vcx },
-      { translateY: translateY.value + vcy },
-      { scale: scale.value },
+  const cameraTransform = useDerivedValue(() => {
+    "worklet";
+    // Sanitize on the UI thread. A non-finite scale/translate (a gesture-math
+    // edge case, a spring overshoot to NaN, a 0-scale) baked into the Group
+    // matrix can fault the native Skia surface and leave the canvas permanently
+    // blank. Clamp scale to a sane positive range and coerce non-finite offsets
+    // to 0 so the transform is always a valid, invertible matrix.
+    const rawScale = scale.value;
+    const s = Number.isFinite(rawScale) ? Math.min(Math.max(rawScale, 0.01), 10) : 1;
+    const tx = Number.isFinite(translateX.value) ? translateX.value : 0;
+    const ty = Number.isFinite(translateY.value) ? translateY.value : 0;
+    return [
+      { translateX: tx + vcx },
+      { translateY: ty + vcy },
+      { scale: s },
       { translateX: -vcx },
       { translateY: -vcy },
-    ],
-    [vcx, vcy],
-  );
+    ];
+  }, [vcx, vcy]);
 
   // ── HOOKS MUST NOT SIT BELOW A CONDITIONAL `return null` ──
   // Previously the viewport `return null` (below) ran BEFORE the `useRef` that
-  // latched font resolution. On any re-render where the viewport width briefly
-  // measured 0 (a sidebar collapse/expand relayout emits an intermediate 0-width
-  // onLayout frame, and a timed refetch re-renders through it), that early return
-  // changed the hook count for the frame → React tore down and remounted the
-  // component, blanking the ENTIRE Canvas (every table vanished, then repainted).
-  // Both latches are declared up here, unconditionally, before any early return.
-  const fontsEverResolved = useRef(false);
+  // latched font resolution, changing the hook count on a transient 0-width frame
+  // → React remounted the component, blanking the Canvas. The latch is declared
+  // here, unconditionally, before any early return.
   const viewportEverValid = useRef(false);
-
-  const fontsResolved = !!regularTypeface && !!boldTypeface;
-  if (fontsResolved) fontsEverResolved.current = true;
-
   const viewportValid = viewportWidth > 0 && viewportHeight > 0;
   if (viewportValid) viewportEverValid.current = true;
 
-  // Only bail before the FIRST successful mount. Once the Canvas has painted once
-  // with a valid viewport + fonts, a transient 0-dim / not-yet-resolved font on a
-  // later re-render keeps the last good frame instead of unmounting everything.
+  // Bail ONLY on viewport, and only before the FIRST successful mount — NEVER on
+  // fonts. The Canvas must not be gated on font resolution: table shapes and
+  // structures are pure geometry and paint immediately; only <Text> needs the
+  // typefaces (getTableFont returns null until they load, and every Text site skips
+  // when font is null). Gating the whole Canvas on fonts is what blanked the entire
+  // Skia floor plan offline while fonts were fetched over the network.
   if (!viewportEverValid.current && !viewportValid) return null;
-  if (!fontsEverResolved.current && !fontsResolved) return null;
+
+  // Referenced so React re-renders once fonts finish loading (text starts drawing).
+  void fontsReady;
 
   return (
-    <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
+    <Canvas
+      key={surfaceKey}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    >
       <Group transform={cameraTransform}>
         {/* Structures first (walls/zones behind tables). */}
         {structures.map((s) => (

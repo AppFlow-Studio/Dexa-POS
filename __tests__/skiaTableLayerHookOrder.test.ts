@@ -22,25 +22,30 @@ const source = fs.readFileSync(
 );
 
 describe("SkiaTableLayer hook-order / blank-canvas regression", () => {
-  it("latches viewport + font resolution in refs before any early return", () => {
+  it("latches viewport validity in a ref before any early return", () => {
     expect(source).toContain("const viewportEverValid = useRef(false)");
-    expect(source).toContain("const fontsEverResolved = useRef(false)");
   });
 
   it("only bails before the first successful mount (transient 0-dim keeps last frame)", () => {
     expect(source).toContain(
       "if (!viewportEverValid.current && !viewportValid) return null;",
     );
-    expect(source).toContain(
-      "if (!fontsEverResolved.current && !fontsResolved) return null;",
-    );
+  });
+
+  it("does NOT gate the Canvas on font resolution (offline-blank regression)", () => {
+    // Table shapes + structures are pure geometry and must paint without fonts;
+    // only <Text> waits for the typefaces. Gating the whole Canvas on fonts blanked
+    // the entire Skia floor plan offline (fonts used to be fetched over the
+    // network). So there must be NO `return null` driven by fonts.
+    expect(source).not.toMatch(/!fontsResolved[^;]*return null/);
+    expect(source).not.toMatch(/!fontsReady[^;]*return null/);
   });
 
   it("has no `return null` above the last hook call (no conditional hooks)", () => {
     const lastHookIdx = Math.max(
       source.lastIndexOf("useRef("),
       source.lastIndexOf("useDerivedValue("),
-      source.lastIndexOf("useTypeface("),
+      source.lastIndexOf("useState("),
       source.lastIndexOf("useEffect("),
       source.lastIndexOf("useTableDrawStore("),
     );
