@@ -1,5 +1,6 @@
 import AddIngredientModal from '@/components/inventory/AddIngredientModal'
 import RecipeIngredientSheet from '@/components/inventory/RecipeIngredientSheet'
+import { ItemModifierStockSection } from '@/components/menu/ItemModifierStockSection'
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog'
 import UnsavedChangesDialog from '@/components/ui/UnsavedChangesDialog'
 import { useToast } from '@/contexts/ToastContext'
@@ -1516,6 +1517,11 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 />
               </View>
             )}
+
+            {/* Per-location 86 for this item's modifier options. Single-location
+                merchants edit via this full form (not the price sheet), so the
+                modifier out-of-stock controls must live here too. */}
+            <ItemModifierStockSection groups={selectedModifierGroups} />
           </View>
 
           {/* Recipe */}
