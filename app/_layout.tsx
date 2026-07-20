@@ -40,7 +40,7 @@ import {
 } from "@/lib/storage";
 import { initTelemetry } from "@/lib/telemetry/init";
 import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
-import { computeUiScale } from "@/lib/uiScale";
+import { UiScaleProvider } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { getRawIsOnline } from "@/services/offlineSyncService";
 import type { PaymentJournalEntry } from "@/services/paymentJournal";
@@ -84,7 +84,6 @@ import * as NavigationBar from "expo-navigation-bar";
 import { Stack, useNavigationContainerRef } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
-import { vars } from "nativewind";
 import * as React from "react";
 import {
     ActivityIndicator,
@@ -93,7 +92,6 @@ import {
     Platform,
     Pressable,
     Text,
-    useWindowDimensions,
     View,
 } from "react-native";
 import { SystemBars } from "react-native-edge-to-edge";
@@ -329,19 +327,6 @@ const DARK_THEME: Theme = {
   ...DarkTheme,
   colors: NAV_THEME.dark,
 };
-
-/**
- * Injects the automatic UI scale as the `--ui-scale` CSS variable for the
- * whole app. Every scale-driven Tailwind utility (spacing/font/radius) reads
- * it via tailwind.config.js. Re-computes if window dimensions change.
- */
-function UiScaleProvider({ children }: { children: React.ReactNode }) {
-  const { width, height } = useWindowDimensions();
-  const scale = computeUiScale(width, height);
-  return (
-    <View style={[{ flex: 1 }, vars({ "--ui-scale": scale })]}>{children}</View>
-  );
-}
 
 export {
     // Catch any errors thrown by the Layout component.
