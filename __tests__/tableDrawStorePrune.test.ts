@@ -5,6 +5,8 @@
  * set. Without it `data` grew one entry per distinct table ever windowed and the
  * single SkiaTableLayer subscriber shallow-compared an ever-growing map.
  */
+import fs from "fs";
+import path from "path";
 import {
   TableDrawData,
   useTableDrawStore,
@@ -62,5 +64,27 @@ describe("tableDrawStore.pruneData", () => {
     store.pruneData(new Set());
 
     expect(Object.keys(useTableDrawStore.getState().data)).toHaveLength(0);
+  });
+});
+
+describe("TableLayoutView prune guard — transiently-empty tables", () => {
+  // Regression: on a WiFi drop the floor-plan store's `tables` array briefly
+  // empties then refills with the SAME (identity-reused) objects. Pruning to an
+  // empty keep-set wiped every draw-data entry, and it never recovered because
+  // the unchanged `draw` memo meant no publisher re-published — the Skia canvas
+  // stayed blank until a floor switch/remount. The prune effect must skip an
+  // empty `tables` frame. (Only Skia mode has tableDrawStore, matching the report
+  // that classic mode was unaffected.)
+  const src = fs.readFileSync(
+    path.join(process.cwd(), "components", "tables", "TableLayoutView.tsx"),
+    "utf8",
+  );
+
+  it("early-returns from the prune effect before pruning when tables is empty", () => {
+    const guardIdx = src.indexOf("if (tables.length === 0) return;");
+    const pruneIdx = src.indexOf("pruneData(keep)");
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(pruneIdx).toBeGreaterThan(-1);
+    expect(guardIdx).toBeLessThan(pruneIdx);
   });
 });
