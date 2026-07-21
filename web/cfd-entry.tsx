@@ -21,6 +21,7 @@ import {
   triggerCFDPhoneSubmit,
 } from "@/lib/cfdLoyaltyTriggers";
 import { setThemeMode } from "@/lib/theme";
+import { UiScaleProvider } from "@/lib/uiScale";
 import type {
   CFDMessage,
   CFDPayload,
@@ -208,17 +209,19 @@ function CFDWebApp() {
   };
 
   return (
-    <View style={rootStyles.root}>
-      <CFDWebDisplayProvider>
-        <CFDScreenRouter
-          nativeLoyaltyPrompt
-          onTipSelected={handleTipSelected}
-          onPhoneSubmitted={handlePhoneSubmitted}
-          onLoyaltySkip={handleLoyaltySkip}
-          onLoyaltyJoin={handleLoyaltyJoin}
-        />
-      </CFDWebDisplayProvider>
-    </View>
+    <UiScaleProvider>
+      <View style={rootStyles.root}>
+        <CFDWebDisplayProvider>
+          <CFDScreenRouter
+            nativeLoyaltyPrompt
+            onTipSelected={handleTipSelected}
+            onPhoneSubmitted={handlePhoneSubmitted}
+            onLoyaltySkip={handleLoyaltySkip}
+            onLoyaltyJoin={handleLoyaltyJoin}
+          />
+        </CFDWebDisplayProvider>
+      </View>
+    </UiScaleProvider>
   );
 }
 

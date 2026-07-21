@@ -16,6 +16,7 @@
 
 import { useCFDDisplayField } from "@/contexts/CFDDisplayDataContext.base";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { Delete, Gift } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -53,6 +54,7 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
   // (the theme might change while the prompt is showing).
   const themeMode = useCFDDisplayField("themeMode");
   const { width, height } = useWindowDimensions();
+  const uiScale = useUiScale();
 
   const [phoneDigits, setPhoneDigits] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -101,17 +103,18 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
   // Uses COMPACT sizing to fit small secondary displays (480×854 etc.).
   const s = useMemo(
     () => {
+      const scale = (n: number) => Math.round(n * uiScale);
       const controlWidth = Math.max(220, Math.min(340, width - 32));
       const isNarrow = controlWidth < 260;
-      const gap = isNarrow ? 8 : 10;
-      const keyHeight = isNarrow ? 42 : 48;
-      const buttonHeight = isNarrow ? 40 : 44;
-      const radius = 10;
-      const titleSize = 12;
-      const phoneSize = 16;
-      const digitSize = 15;
-      const actionSize = 10;
-      const buttonTextSize = 10;
+      const gap = scale(isNarrow ? 8 : 10);
+      const keyHeight = scale(isNarrow ? 42 : 48);
+      const buttonHeight = scale(isNarrow ? 40 : 44);
+      const radius = scale(10);
+      const titleSize = scale(12);
+      const phoneSize = scale(16);
+      const digitSize = scale(15);
+      const actionSize = scale(10);
+      const buttonTextSize = scale(10);
 
       return StyleSheet.create({
         container: {
@@ -123,34 +126,34 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
           alignItems: "center",
           justifyContent: "center",
           gap,
-          paddingHorizontal: 16,
-          paddingVertical: 14,
+          paddingHorizontal: scale(16),
+          paddingVertical: scale(14),
         },
         iconCircle: {
-          width: 84,
-          height: 84,
-          borderRadius: 42,
+          width: scale(84),
+          height: scale(84),
+          borderRadius: scale(42),
           backgroundColor: colors.tealMuted,
           alignItems: "center",
           justifyContent: "center",
-          padding: 12,
+          padding: scale(12),
         },
         headline: {
           width: controlWidth,
           fontSize: titleSize,
-          lineHeight: titleSize + 14,
+          lineHeight: titleSize + scale(14),
           fontFamily: "sans-serif",
           fontWeight: "600",
           color: colors.heading,
           textAlign: "center",
           textAlignVertical: "center",
           includeFontPadding: true,
-          paddingHorizontal: 16,
-          paddingVertical: 8,
+          paddingHorizontal: scale(16),
+          paddingVertical: scale(8),
         },
         headlineSvg: {
           width: controlWidth,
-          height: 36,
+          height: scale(36),
         },
         phoneCard: {
           width: controlWidth,
@@ -158,15 +161,15 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
           borderWidth: 1,
           borderColor: colors.border,
           borderRadius: radius + 1,
-          minHeight: 50,
-          paddingHorizontal: 12,
-          paddingVertical: 6,
+          minHeight: scale(50),
+          paddingHorizontal: scale(12),
+          paddingVertical: scale(6),
           alignItems: "center",
           justifyContent: "center",
         },
         phoneText: {
           width: "100%",
-          minHeight: 34,
+          minHeight: scale(34),
           fontSize: phoneSize,
           fontFamily: "sans-serif",
           fontWeight: "600",
@@ -174,12 +177,12 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
           includeFontPadding: true,
           textAlign: "center",
           textAlignVertical: "center",
-          paddingHorizontal: 12,
-          paddingVertical: 6,
+          paddingHorizontal: scale(12),
+          paddingVertical: scale(6),
         },
         phoneSvg: {
           width: "100%",
-          height: 40,
+          height: scale(40),
         },
         phonePlaceholder: {
           color: colors.label,
@@ -207,15 +210,15 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
         numKeyText: {
           width: "100%",
           fontSize: digitSize,
-          lineHeight: digitSize + 12,
+          lineHeight: digitSize + scale(12),
           fontFamily: "sans-serif",
           fontWeight: "600",
           color: colors.heading,
           includeFontPadding: true,
           textAlign: "center",
           textAlignVertical: "center",
-          paddingHorizontal: 10,
-          paddingVertical: 6,
+          paddingHorizontal: scale(10),
+          paddingVertical: scale(6),
         },
         numKeySvg: {
           width: "100%",
@@ -224,15 +227,15 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
         numKeySmall: {
           width: "100%",
           fontSize: actionSize,
-          lineHeight: actionSize + 12,
+          lineHeight: actionSize + scale(12),
           fontFamily: "sans-serif",
           fontWeight: "600",
           color: colors.label,
           includeFontPadding: true,
           textAlign: "center",
           textAlignVertical: "center",
-          paddingHorizontal: 10,
-          paddingVertical: 6,
+          paddingHorizontal: scale(10),
+          paddingVertical: scale(6),
         },
         numKeySmallSvg: {
           width: "100%",
@@ -256,15 +259,15 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
         skipBtnText: {
           width: "100%",
           fontSize: buttonTextSize,
-          lineHeight: buttonTextSize + 14,
+          lineHeight: buttonTextSize + scale(14),
           fontFamily: "sans-serif",
           fontWeight: "600",
           color: colors.label,
           includeFontPadding: true,
           textAlign: "center",
           textAlignVertical: "center",
-          paddingHorizontal: 12,
-          paddingVertical: 7,
+          paddingHorizontal: scale(12),
+          paddingVertical: scale(7),
         },
         skipBtnSvg: {
           width: "100%",
@@ -284,15 +287,15 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
         continueBtnText: {
           width: "100%",
           fontSize: buttonTextSize,
-          lineHeight: buttonTextSize + 14,
+          lineHeight: buttonTextSize + scale(14),
           fontFamily: "sans-serif",
           fontWeight: "700",
           color: colors.onSolid,
           includeFontPadding: true,
           textAlign: "center",
           textAlignVertical: "center",
-          paddingHorizontal: 12,
-          paddingVertical: 7,
+          paddingHorizontal: scale(12),
+          paddingVertical: scale(7),
         },
         continueBtnSvg: {
           width: "100%",
@@ -303,60 +306,60 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
           backgroundColor: "rgba(0,0,0,0.45)",
           alignItems: "center",
           justifyContent: "center",
-          paddingHorizontal: 24,
+          paddingHorizontal: scale(24),
         },
         submittingCard: {
           width: "100%",
-          maxWidth: 300,
+          maxWidth: scale(300),
           backgroundColor: colors.panel,
           borderColor: colors.border,
           borderWidth: 1,
-          borderRadius: 14,
-          paddingVertical: 20,
-          paddingHorizontal: 20,
+          borderRadius: scale(14),
+          paddingVertical: scale(20),
+          paddingHorizontal: scale(20),
           alignItems: "center",
-          gap: 10,
+          gap: scale(10),
         },
         submittingText: {
           width: "100%",
-          fontSize: 10,
-          lineHeight: 22,
+          fontSize: scale(10),
+          lineHeight: scale(22),
           fontWeight: "700",
           color: colors.heading,
           textAlign: "center",
           includeFontPadding: true,
-          paddingHorizontal: 12,
-          paddingVertical: 6,
+          paddingHorizontal: scale(12),
+          paddingVertical: scale(6),
         },
         submittingTextSvg: {
           width: "100%",
-          height: 34,
+          height: scale(34),
         },
         submittingSubtext: {
           width: "100%",
-          fontSize: 8,
-          lineHeight: 20,
+          fontSize: scale(8),
+          lineHeight: scale(20),
           fontWeight: "500",
           color: colors.label,
           textAlign: "center",
           includeFontPadding: true,
-          paddingHorizontal: 12,
-          paddingVertical: 6,
+          paddingHorizontal: scale(12),
+          paddingVertical: scale(6),
         },
         submittingSubtextSvg: {
           width: "100%",
-          height: 30,
+          height: scale(30),
         },
       });
     },
-    [height, themeMode, width],
+    [height, themeMode, width, uiScale],
   );
 
   return (
     <View style={s.container}>
       <View style={s.body}>
         <View style={s.iconCircle}>
-          <Gift size={42} color={colors.teal} strokeWidth={2.2} />
+          <Gift size={Math.round(42 * uiScale)} color={colors.teal} strokeWidth={2.2} />
         </View>
 
         {/* Headline */}
@@ -468,7 +471,7 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
               onPress={() => handleKeyPress("backspace")}
               style={[s.numKey, s.numKeyAction]}
             >
-              <Delete size={18} color={colors.heading} />
+              <Delete size={Math.round(18 * uiScale)} color={colors.heading} />
             </TouchableOpacity>
           </View>
         </View>

@@ -6,8 +6,8 @@ import { useColorScheme } from "@/lib/useColorScheme";
 import { WallEdgeFlags } from "@/lib/wallCornerSnap";
 import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
 import {
-  useOrderByAnyId,
-  useOrderTotals,
+    useOrderByAnyId,
+    useOrderTotals,
 } from "@/stores/selectors/orderSelectors";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -17,13 +17,14 @@ import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useEffect, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
-  compactTableName,
-  DraggableTableProps,
-  EMPTY_MERGED_TABLE_NAMES,
-  getReservationTimeMs,
-  MISSING_ORDER_SYNC_THROTTLE_MS,
-  missingOrderLastAttemptAt,
-  missingOrderSyncInFlight,
+    compactTableName,
+    DraggableTableProps,
+    EMPTY_MERGED_TABLE_NAMES,
+    getReservationTimeMs,
+    MISSING_ORDER_SYNC_THROTTLE_MS,
+    missingOrderLastAttemptAt,
+    missingOrderSyncInFlight,
+    pruneMissingOrderAttempts,
 } from "./types";
 
 /**
@@ -94,6 +95,8 @@ export const useTableCardData = (
 
     missingOrderLastAttemptAt[id] = now;
     missingOrderSyncInFlight.add(id);
+    // Opportunistic prune: on each write, evict entries older than 5 min
+    pruneMissingOrderAttempts();
 
     ensureOrderPrefetched(id)
       .catch((err: unknown) => {

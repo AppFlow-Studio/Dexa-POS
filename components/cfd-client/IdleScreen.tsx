@@ -1,5 +1,6 @@
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext.base";
-import React, { useEffect, useRef, useState } from "react";
+import { useUiScale } from "@/lib/uiScale";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
@@ -24,6 +25,8 @@ function areStringArraysEqual(a: readonly string[], b: readonly string[]) {
 export function IdleScreen() {
   const { branding, carouselImages, latency, connectionStatus } =
     useCFDDisplayData();
+  const uiScale = useUiScale();
+  const styles = useMemo(() => getStylesForScale(uiScale), [uiScale]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [baseUri, setBaseUri] = useState<string | null>(null);
@@ -176,50 +179,62 @@ export function IdleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000000",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  imageContainer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  backgroundImage: {
-    width: "100%",
-    height: "100%",
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.1)",
-  },
-  textContainer: {
-    alignItems: "center",
-  },
-  welcome: {
-    fontSize: 24,
-    color: "#6b7280",
-    marginBottom: 8,
-  },
-  restaurantName: {
-    fontSize: 48,
-    fontWeight: "700",
-    color: "#ffffff",
-    textAlign: "center",
-  },
-  locationCode: {
-    fontSize: 18,
-    color: "#9ca3af",
-    marginTop: 8,
-  },
-  debug: {
-    position: "absolute",
-    bottom: 20,
-    left: 20,
-  },
-  debugText: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.5)",
-  },
-});
+const createStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale);
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: "#000000",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    imageContainer: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    backgroundImage: {
+      width: "100%",
+      height: "100%",
+    },
+    overlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.1)",
+    },
+    textContainer: {
+      alignItems: "center",
+    },
+    welcome: {
+      fontSize: s(24),
+      color: "#6b7280",
+      marginBottom: s(8),
+    },
+    restaurantName: {
+      fontSize: s(48),
+      fontWeight: "700",
+      color: "#ffffff",
+      textAlign: "center",
+    },
+    locationCode: {
+      fontSize: s(18),
+      color: "#9ca3af",
+      marginTop: s(8),
+    },
+    debug: {
+      position: "absolute",
+      bottom: s(20),
+      left: s(20),
+    },
+    debugText: {
+      fontSize: s(12),
+      color: "rgba(255,255,255,0.5)",
+    },
+  });
+};
+
+const stylesByScale = new Map<number, ReturnType<typeof createStyles>>();
+const getStylesForScale = (scale: number) => {
+  const cached = stylesByScale.get(scale);
+  if (cached) return cached;
+  const next = createStyles(scale);
+  stylesByScale.set(scale, next);
+  return next;
+};

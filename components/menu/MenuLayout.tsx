@@ -1,5 +1,6 @@
 import { MENU_SIDEBAR_DATA, MenuSidebarItem } from "@/lib/menu-sidebar-data";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePathname, useRouter } from "expo-router";
 import { Search } from "lucide-react-native";
@@ -27,6 +28,8 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const searchRef = useRef<any>(null);
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   const getItemCount = (itemId: string): number => {
     switch (itemId) {
@@ -51,7 +54,7 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
 
   const handleNavigation = (item: MenuSidebarItem) => {
     if (item.href) {
-      router.push(item.href);
+      router.push(item.href as any);
     }
   };
 
@@ -80,7 +83,7 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
               }}
             >
               <View className="flex-row items-center bg-panel rounded-lg px-3 py-2">
-                <Search size={16} color={colors.label} />
+                <Search size={s(16)} color={colors.label} />
                 {searchFocused ? (
                   <TextInput
                     ref={searchRef}
@@ -95,7 +98,14 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
                     autoFocus={false}
                   />
                 ) : (
-                  <Text style={{ flex: 1, marginLeft: 8, fontSize: 14, color: colors.muted }}>
+                  <Text
+                    style={{
+                      flex: 1,
+                      marginLeft: s(8),
+                      fontSize: s(14),
+                      color: colors.muted,
+                    }}
+                  >
                     {searchQuery || "Search items..."}
                   </Text>
                 )}
@@ -119,7 +129,7 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
                   <View className="flex-row items-center gap-3">
                     {item.icon && (
                       <item.icon
-                        size={18}
+                        size={s(18)}
                         color={
                           isActive(item.href || "") ? colors.info : colors.label
                         }

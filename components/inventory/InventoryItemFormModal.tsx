@@ -14,6 +14,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { InventoryItem, Vendor } from "@/lib/types";
 import { useColorScheme } from "@/lib/useColorScheme";
 import React, { useEffect, useState } from "react";
@@ -58,22 +59,22 @@ export const UNIT_OPTIONS: { label: string; value: string }[] = [
   { label: "Package (pkg)", value: "pkg" },
 ];
 
-const inputStyle = {
+const getInputStyle = (s: (n: number) => number) => ({
   backgroundColor: colors.screen,
   borderWidth: 1,
   borderColor: colors.border,
-  borderRadius: 8,
+  borderRadius: s(8),
   color: colors.heading,
-  fontSize: 14,
-  height: 40,
-  paddingHorizontal: 12,
-};
+  fontSize: s(14),
+  height: s(40),
+  paddingHorizontal: s(12),
+});
 
-const fieldLabel = {
-  fontSize: 12,
+const getFieldLabel = (s: (n: number) => number) => ({
+  fontSize: s(12),
   color: colors.label,
-  marginBottom: 6,
-};
+  marginBottom: s(6),
+});
 
 const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
   isOpen,
@@ -92,6 +93,10 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
   const [stockUpdateReason, setStockUpdateReason] = useState("");
   const { colorScheme } = useColorScheme();
   const keyboardAppearance = colorScheme === "dark" ? "dark" : "light";
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const inputStyle = getInputStyle(s);
+  const fieldLabel = getFieldLabel(s);
 
   useEffect(() => {
     if (isOpen && initialData) {
@@ -206,11 +211,11 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
           >
             <DialogHeader>
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+                style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}
               >
                 <DialogTitle
                   style={{
-                    fontSize: 15,
+                    fontSize: s(15),
                     fontWeight: "700",
                     color: colors.heading,
                   }}
@@ -222,14 +227,14 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                     backgroundColor: colors.info + "20",
                     borderWidth: 1,
                     borderColor: colors.info + "50",
-                    borderRadius: 20,
-                    paddingHorizontal: 8,
-                    paddingVertical: 2,
+                    borderRadius: s(20),
+                    paddingHorizontal: s(8),
+                    paddingVertical: s(2),
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: "600",
                       color: colors.info,
                     }}
@@ -240,38 +245,38 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
               </View>
               <View
                 style={{
-                  marginTop: 8,
+                  marginTop: s(8),
                   backgroundColor: colors.info + "10",
                   borderWidth: 1,
                   borderColor: colors.info + "30",
-                  borderRadius: 8,
-                  padding: 10,
+                  borderRadius: s(8),
+                  padding: s(10),
                 }}
               >
-                <Text style={{ fontSize: 12, color: colors.info }}>
+                <Text style={{ fontSize: s(12), color: colors.info }}>
                   This is a global item. You can only update stock and apply
                   local overrides for cost and reorder thresholds.
                 </Text>
               </View>
             </DialogHeader>
 
-            <View style={{ paddingVertical: 14, gap: 12 }}>
+            <View style={{ paddingVertical: s(14), gap: s(12) }}>
               {/* Read-Only Info */}
-              <View style={{ flexDirection: "row", gap: 12 }}>
+              <View style={{ flexDirection: "row", gap: s(12) }}>
                 <View style={{ flex: 1 }}>
                   <Text style={fieldLabel}>Item Name</Text>
                   <View
                     style={{
-                      padding: 10,
+                      padding: s(10),
                       backgroundColor: colors.screen,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      borderRadius: 8,
-                      height: 40,
+                      borderRadius: s(8),
+                      height: s(40),
                       justifyContent: "center",
                     }}
                   >
-                    <Text style={{ fontSize: 13, color: colors.heading }}>
+                    <Text style={{ fontSize: s(13), color: colors.heading }}>
                       {initialData.name}
                     </Text>
                   </View>
@@ -280,16 +285,16 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                   <Text style={fieldLabel}>Unit</Text>
                   <View
                     style={{
-                      padding: 10,
+                      padding: s(10),
                       backgroundColor: colors.screen,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      borderRadius: 8,
-                      height: 40,
+                      borderRadius: s(8),
+                      height: s(40),
                       justifyContent: "center",
                     }}
                   >
-                    <Text style={{ fontSize: 13, color: colors.heading }}>
+                    <Text style={{ fontSize: s(13), color: colors.heading }}>
                       {initialData.unit}
                     </Text>
                   </View>
@@ -302,21 +307,21 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                   backgroundColor: colors.screen,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 10,
-                  padding: 12,
-                  gap: 10,
+                  borderRadius: s(10),
+                  padding: s(12),
+                  gap: s(10),
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "600",
                     color: colors.heading,
                   }}
                 >
                   Location Stock
                 </Text>
-                <View style={{ flexDirection: "row", gap: 12 }}>
+                <View style={{ flexDirection: "row", gap: s(12) }}>
                   <View style={{ flex: 1 }}>
                     <Text style={fieldLabel}>Quantity</Text>
                     <TextInput
@@ -345,9 +350,9 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                     />
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: s(11),
                         color: colors.muted,
-                        marginTop: 4,
+                        marginTop: s(4),
                       }}
                     >
                       Override default ({initialData.reorderThreshold})
@@ -379,9 +384,9 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                   backgroundColor: colors.screen,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 10,
-                  padding: 12,
-                  gap: 8,
+                  borderRadius: s(10),
+                  padding: s(12),
+                  gap: s(8),
                 }}
               >
                 <View
@@ -392,14 +397,14 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                 >
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: "600",
                       color: colors.heading,
                     }}
                   >
                     Pricing
                   </Text>
-                  <Text style={{ fontSize: 12, color: colors.label }}>
+                  <Text style={{ fontSize: s(12), color: colors.label }}>
                     Base Cost: ${initialData.cost.toFixed(2)}
                   </Text>
                 </View>
@@ -421,7 +426,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
             </View>
 
             {/* Vendor */}
-            <View style={{ marginBottom: 4 }}>
+            <View style={{ marginBottom: s(4) }}>
               <Text style={fieldLabel}>Vendor</Text>
               <Select value={vendorId} onValueChange={setVendorId}>
                 <SelectTrigger
@@ -430,13 +435,13 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    height: 40,
-                    paddingHorizontal: 12,
+                    borderRadius: s(8),
+                    height: s(40),
+                    paddingHorizontal: s(12),
                   }}
                 >
                   <SelectValue
-                    style={{ fontSize: 14, color: colors.heading }}
+                    style={{ fontSize: s(14), color: colors.heading }}
                     placeholder="Select a vendor..."
                   />
                 </SelectTrigger>
@@ -448,7 +453,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                         label={opt.label}
                         value={opt.value}
                       >
-                        <Text style={{ fontSize: 13 }}>{opt.label}</Text>
+                        <Text style={{ fontSize: s(13) }}>{opt.label}</Text>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -461,17 +466,17 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                 onPress={onClose}
                 style={{
                   flex: 1,
-                  paddingVertical: 9,
+                  paddingVertical: s(9),
                   backgroundColor: "transparent",
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 8,
+                  borderRadius: s(8),
                   alignItems: "center",
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "600",
                     color: colors.label,
                   }}
@@ -483,17 +488,17 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                 onPress={handleSave}
                 style={{
                   flex: 1,
-                  paddingVertical: 9,
+                  paddingVertical: s(9),
                   backgroundColor: colors.teal + "20",
                   borderWidth: 1,
                   borderColor: colors.teal + "50",
-                  borderRadius: 8,
+                  borderRadius: s(8),
                   alignItems: "center",
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: "600",
                     color: colors.teal,
                   }}
@@ -521,13 +526,13 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
         >
           <DialogHeader>
             <DialogTitle
-              style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}
+              style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}
             >
               {initialData ? "Edit" : "Add New"} Inventory Item
             </DialogTitle>
           </DialogHeader>
-          <View style={{ paddingVertical: 12, gap: 10 }}>
-            <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ paddingVertical: s(12), gap: s(10) }}>
+            <View style={{ flexDirection: "row", gap: s(10) }}>
               <View style={{ flex: 1 }}>
                 <Text style={fieldLabel}>Item Name</Text>
                 <TextInput
@@ -553,7 +558,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                 />
               </View>
             </View>
-            <View style={{ flexDirection: "row", gap: 10 }}>
+            <View style={{ flexDirection: "row", gap: s(10) }}>
               <View style={{ flex: 1 }}>
                 <Text style={fieldLabel}>Stock Quantity</Text>
                 <TextInput
@@ -576,13 +581,13 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                       backgroundColor: colors.screen,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      borderRadius: 8,
-                      height: 40,
-                      paddingHorizontal: 12,
+                      borderRadius: s(8),
+                      height: s(40),
+                      paddingHorizontal: s(12),
                     }}
                   >
                     <SelectValue
-                      style={{ fontSize: 14, color: colors.heading }}
+                      style={{ fontSize: s(14), color: colors.heading }}
                       placeholder="Select a unit..."
                     />
                   </SelectTrigger>
@@ -594,7 +599,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                           label={opt.label}
                           value={opt.value}
                         >
-                          <Text style={{ fontSize: 13 }}>{opt.label}</Text>
+                          <Text style={{ fontSize: s(13) }}>{opt.label}</Text>
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -602,7 +607,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                 </Select>
               </View>
             </View>
-            <View style={{ flexDirection: "row", gap: 10 }}>
+            <View style={{ flexDirection: "row", gap: s(10) }}>
               <View style={{ flex: 1 }}>
                 <Text style={fieldLabel}>Reorder Threshold</Text>
                 <TextInput
@@ -639,13 +644,13 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    height: 40,
-                    paddingHorizontal: 12,
+                    borderRadius: s(8),
+                    height: s(40),
+                    paddingHorizontal: s(12),
                   }}
                 >
                   <SelectValue
-                    style={{ fontSize: 14, color: colors.heading }}
+                    style={{ fontSize: s(14), color: colors.heading }}
                     placeholder="Select a vendor..."
                   />
                 </SelectTrigger>
@@ -657,7 +662,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                         label={opt.label}
                         value={opt.value}
                       >
-                        <Text style={{ fontSize: 13 }}>{opt.label}</Text>
+                        <Text style={{ fontSize: s(13) }}>{opt.label}</Text>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -670,16 +675,16 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
               onPress={onClose}
               style={{
                 flex: 1,
-                paddingVertical: 9,
+                paddingVertical: s(9),
                 backgroundColor: "transparent",
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 8,
+                borderRadius: s(8),
                 alignItems: "center",
               }}
             >
               <Text
-                style={{ fontSize: 13, fontWeight: "600", color: colors.label }}
+                style={{ fontSize: s(13), fontWeight: "600", color: colors.label }}
               >
                 Cancel
               </Text>
@@ -688,16 +693,16 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
               onPress={handleSave}
               style={{
                 flex: 1,
-                paddingVertical: 9,
+                paddingVertical: s(9),
                 backgroundColor: colors.teal + "20",
                 borderWidth: 1,
                 borderColor: colors.teal + "50",
-                borderRadius: 8,
+                borderRadius: s(8),
                 alignItems: "center",
               }}
             >
               <Text
-                style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}
+                style={{ fontSize: s(13), fontWeight: "600", color: colors.teal }}
               >
                 Save Item
               </Text>

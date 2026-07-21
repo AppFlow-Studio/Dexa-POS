@@ -1,6 +1,7 @@
 import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { Check, CircleAlert, Gift, UtensilsCrossed } from 'lucide-react-native'
 import { useEffect, useMemo } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
@@ -33,6 +34,7 @@ export function ResultScreen ({ success, onJoinLoyalty, onSkip }: Props) {
     merchantHasLoyalty,
     themeMode
   } = useCFDDisplayData()
+  const uiScale = useUiScale()
 
   console.log('[ResultScreen] render', {
     success,
@@ -70,149 +72,148 @@ export function ResultScreen ({ success, onJoinLoyalty, onSkip }: Props) {
     opacity: iconOpacity.value
   }))
 
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        container: {
-          flex: 1,
-          backgroundColor: colors.screen
-        },
-        header: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: 20,
-          paddingVertical: 14,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-          backgroundColor: colors.panel
-        },
-        headerLeft: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12
-        },
-        iconBox: {
-          width: 40,
-          height: 40,
-          borderRadius: 10,
-          backgroundColor: colors.card,
-          borderWidth: 1,
-          borderColor: colors.border,
-          alignItems: 'center',
-          justifyContent: 'center'
-        },
-        restaurantName: {
-          fontSize: 16,
-          fontWeight: '700',
-          color: colors.heading
-        },
-        statusBadge: {
-          fontSize: 13,
-          fontWeight: '600',
-          paddingHorizontal: 12,
-          paddingVertical: 5,
-          borderRadius: 20,
-          overflow: 'hidden'
-        },
-        successBadge: {
-          color: colors.teal,
-          backgroundColor: `${colors.teal}18`
-        },
-        failBadge: {
-          color: colors.danger,
-          backgroundColor: `${colors.danger}18`
-        },
-        body: {
-          flex: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          paddingHorizontal: 32
-        },
-        iconCircle: {
-          width: 84,
-          height: 84,
-          borderRadius: 42,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: 24
-        },
-        successCircle: {
-          backgroundColor: colors.teal
-        },
-        failCircle: {
-          backgroundColor: `${colors.danger}12`,
-          borderWidth: 1,
-          borderColor: `${colors.danger}26`
-        },
-        title: {
-          fontSize: 40,
-          fontWeight: '700',
-          marginBottom: 8,
-          textAlign: 'center'
-        },
-        successText: {
-          color: colors.teal
-        },
-        failText: {
-          color: colors.danger
-        },
-        amount: {
-          fontSize: 32,
-          fontWeight: '600',
-          color: colors.heading,
-          marginBottom: 6
-        },
-        tipLine: {
-          fontSize: 15,
-          color: colors.label,
-          marginBottom: 16
-        },
-        subtitle: {
-          fontSize: 18,
-          color: colors.label,
-          textAlign: 'center',
-          marginTop: 10,
-          maxWidth: 420
-        },
-        loyaltyCta: {
-          marginTop: 30,
-          backgroundColor: colors.screen,
-          borderRadius: 14,
-          borderWidth: 1.5,
-          borderColor: colors.teal,
-          paddingHorizontal: 24,
-          paddingVertical: 13,
-          flexDirection: 'row',
-          gap: 8,
-          alignItems: 'center',
-          justifyContent: 'center'
-        },
-        loyaltyCtaText: {
-          fontSize: 18,
-          fontWeight: '700',
-          color: colors.teal
-        },
-        skipBtn: {
-          marginTop: 14,
-          paddingHorizontal: 22,
-          paddingVertical: 10,
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: colors.border,
-          backgroundColor: 'transparent',
-          alignItems: 'center',
-          justifyContent: 'center'
-        },
-        skipBtnText: {
-          fontSize: 14,
-          fontWeight: '600',
-          color: colors.label,
-          letterSpacing: 0.2
-        }
-      }),
-    [themeMode]
-  )
+  const styles = useMemo(() => {
+    const s = (n: number) => Math.round(n * uiScale)
+    return StyleSheet.create({
+      container: {
+        flex: 1,
+        backgroundColor: colors.screen
+      },
+      header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: s(20),
+        paddingVertical: s(14),
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        backgroundColor: colors.panel
+      },
+      headerLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: s(12)
+      },
+      iconBox: {
+        width: s(40),
+        height: s(40),
+        borderRadius: s(10),
+        backgroundColor: colors.card,
+        borderWidth: 1,
+        borderColor: colors.border,
+        alignItems: 'center',
+        justifyContent: 'center'
+      },
+      restaurantName: {
+        fontSize: s(16),
+        fontWeight: '700',
+        color: colors.heading
+      },
+      statusBadge: {
+        fontSize: s(13),
+        fontWeight: '600',
+        paddingHorizontal: s(12),
+        paddingVertical: s(5),
+        borderRadius: s(20),
+        overflow: 'hidden'
+      },
+      successBadge: {
+        color: colors.teal,
+        backgroundColor: `${colors.teal}18`
+      },
+      failBadge: {
+        color: colors.danger,
+        backgroundColor: `${colors.danger}18`
+      },
+      body: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: s(32)
+      },
+      iconCircle: {
+        width: s(84),
+        height: s(84),
+        borderRadius: s(42),
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: s(24)
+      },
+      successCircle: {
+        backgroundColor: colors.teal
+      },
+      failCircle: {
+        backgroundColor: `${colors.danger}12`,
+        borderWidth: 1,
+        borderColor: `${colors.danger}26`
+      },
+      title: {
+        fontSize: s(40),
+        fontWeight: '700',
+        marginBottom: s(8),
+        textAlign: 'center'
+      },
+      successText: {
+        color: colors.teal
+      },
+      failText: {
+        color: colors.danger
+      },
+      amount: {
+        fontSize: s(32),
+        fontWeight: '600',
+        color: colors.heading,
+        marginBottom: s(6)
+      },
+      tipLine: {
+        fontSize: s(15),
+        color: colors.label,
+        marginBottom: s(16)
+      },
+      subtitle: {
+        fontSize: s(18),
+        color: colors.label,
+        textAlign: 'center',
+        marginTop: s(10),
+        maxWidth: s(420)
+      },
+      loyaltyCta: {
+        marginTop: s(30),
+        backgroundColor: colors.screen,
+        borderRadius: s(14),
+        borderWidth: 1.5,
+        borderColor: colors.teal,
+        paddingHorizontal: s(24),
+        paddingVertical: s(13),
+        flexDirection: 'row',
+        gap: s(8),
+        alignItems: 'center',
+        justifyContent: 'center'
+      },
+      loyaltyCtaText: {
+        fontSize: s(18),
+        fontWeight: '700',
+        color: colors.teal
+      },
+      skipBtn: {
+        marginTop: s(14),
+        paddingHorizontal: s(22),
+        paddingVertical: s(10),
+        borderRadius: s(12),
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center'
+      },
+      skipBtnText: {
+        fontSize: s(14),
+        fontWeight: '600',
+        color: colors.label,
+        letterSpacing: 0.2
+      }
+    })
+  }, [themeMode, uiScale])
 
   return (
     <View style={styles.container}>
@@ -220,7 +221,7 @@ export function ResultScreen ({ success, onJoinLoyalty, onSkip }: Props) {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.iconBox}>
-            <UtensilsCrossed size={20} color={colors.teal} />
+            <UtensilsCrossed size={Math.round(20 * uiScale)} color={colors.teal} />
           </View>
           <Text style={styles.restaurantName}>
             {branding?.restaurantName ?? 'Restaurant'}
@@ -246,9 +247,9 @@ export function ResultScreen ({ success, onJoinLoyalty, onSkip }: Props) {
           ]}
         >
           {success ? (
-            <Check size={48} color={colors.screen} strokeWidth={3} />
+            <Check size={Math.round(48 * uiScale)} color={colors.screen} strokeWidth={3} />
           ) : (
-            <CircleAlert size={34} color={colors.danger} strokeWidth={2.4} />
+            <CircleAlert size={Math.round(34 * uiScale)} color={colors.danger} strokeWidth={2.4} />
           )}
         </Animated.View>
 
@@ -301,7 +302,7 @@ export function ResultScreen ({ success, onJoinLoyalty, onSkip }: Props) {
               style={styles.loyaltyCta}
               accessibilityLabel={loyaltyCtaLabel}
             >
-              <Gift size={18} color={colors.teal} strokeWidth={2.2} />
+              <Gift size={Math.round(18 * uiScale)} color={colors.teal} strokeWidth={2.2} />
               <Text style={styles.loyaltyCtaText}>{loyaltyCtaLabel}</Text>
             </RawClickButton>
           </Animated.View>

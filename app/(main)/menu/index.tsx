@@ -3,19 +3,32 @@ import MenuHeader from '@/components/menu/MenuHeader'
 import PriceEditBottomSheet, {
   PriceEditBottomSheetRef
 } from '@/components/menu/PriceEditBottomSheet'
+import SnoozeBottomSheet, {
+  SnoozeBottomSheetRef
+} from '@/components/menu/SnoozeBottomSheet'
+import OutOfStockSheet, {
+  OutOfStockSheetRef
+} from '@/components/menu/OutOfStockSheet'
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import { useToast } from '@/contexts/ToastContext'
+import { useIsSingleLocation } from '@/hooks/pos/useIsSingleLocation'
+import { useOnlineMenu } from '@/hooks/pos/useOnlineMenu'
 import { useTriggerPosSync } from '@/hooks/pos/usePosSync'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import {
+  formatSnoozeCountdown,
+  isActivelySnoozed,
+  SNOOZE_INFINITY
+} from '@/lib/snoozeDurations'
 import { resolveMenuItemImageSource } from '@/lib/menuItemImageSource'
 import {
   extractMenuItemPlaceholderIconKey,
   getMenuItemPlaceholderIcon,
   type MenuItemPlaceholderIconKey
 } from '@/lib/menuItemPlaceholderIcon'
-import { MENU_IMAGE_MAP } from '@/lib/mockData'
 import { colors } from '@/lib/theme'
 import { Menu, MenuItemType } from '@/lib/types'
+import { useUiScale } from '@/lib/uiScale'
 import { MenuService } from '@/services/menuService'
 import { useMenuStore } from '@/stores/useMenuStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -23,19 +36,24 @@ import { useMenuVisibilityStore } from '@/stores/useMenuVisibilityStore'
 import { router } from 'expo-router'
 import * as Haptics from 'expo-haptics'
 import {
+  Ban,
   ChevronDown,
   ChevronUp,
   Edit,
   Eye,
   EyeOff,
+  Globe,
   GripVertical,
   MapPin,
   Pencil,
   Power,
   Trash2
 } from 'lucide-react-native'
-import React, { useCallback, useMemo, useRef, useState } from 'react'
-import { FlatList, Image, Text, TouchableOpacity, View } from 'react-native'
+import { Image as ExpoImage } from 'expo-image'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Text, TouchableOpacity, View } from 'react-native'
+import { FlashList } from '@shopify/flash-list'
+import MenuManagementImage from '@/components/menu/MenuManagementImage'
 import DraggableFlatList, {
   RenderItemParams,
   ScaleDecorator
@@ -57,6 +75,11 @@ import Animated, {
   withTiming
 } from 'react-native-reanimated'
 import { useMenuLayout } from './_layout'
+
+// Keep-alive tab panel styles (no theme colors → safe as module constants).
+const TAB_PANEL_ACTIVE = { flex: 1 } as const
+const TAB_PANEL_HIDDEN = { display: 'none' as const }
+
 // Get image source for preview
 const getImageSource = (image: string | undefined) => {
   if (image && image.length > 200) {
@@ -125,6 +148,7 @@ interface DraggableMenuProps {
     categoryId: string,
     menuId: string
   ) => void
+  onItemSnooze: (item: MenuItemType) => void
   onReorderItems: (
     categoryId: string,
     fromIndex: number,
@@ -138,6 +162,7 @@ interface DraggableMenuProps {
   onAutoScroll?: (absoluteY: number) => void
   onToggleHidden: (menuId: string) => void
   isHidden: boolean
+  isOnlineMenu?: boolean
 }
 
 // Helper to check if now is within a schedule
@@ -215,6 +240,7 @@ const DraggableMenu = React.memo(
     onSchedule,
     onEdit,
     onItemPriceEdit,
+    onItemSnooze,
     isEditable,
     onReorderItems,
     menuCount,
@@ -223,8 +249,11 @@ const DraggableMenu = React.memo(
     onDragPreviewEnd,
     onAutoScroll,
     onToggleHidden,
-    isHidden
+    isHidden,
+    isOnlineMenu
   }: DraggableMenuProps) => {
+    const uiScale = useUiScale()
+    const s = (n: number) => Math.round(n * uiScale)
     const onToggleHiddenPress = () => {
       onToggleHidden(menu.id)
     }
@@ -346,11 +375,11 @@ const DraggableMenu = React.memo(
           animatedStyle,
           {
             backgroundColor: colors.card,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            padding: 12,
-            marginBottom: 8,
+            padding: s(12),
+            marginBottom: s(8),
             opacity: isHidden ? 0.5 : 1
           }
         ]}
@@ -366,33 +395,33 @@ const DraggableMenu = React.memo(
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: 8
+            marginBottom: s(8)
           }}
         >
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 8,
+              gap: s(8),
               flex: 1
             }}
           >
             <GestureDetector gesture={panGesture}>
-              <View style={{ padding: 4 }}>
-                <GripVertical size={14} color={colors.muted} />
+              <View style={{ padding: s(4) }}>
+                <GripVertical size={s(14)} color={colors.muted} />
               </View>
             </GestureDetector>
             <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
               numberOfLines={1}
             >
               {menu.name}
             </Text>
             <View
               style={{
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                borderRadius: 20,
+                paddingHorizontal: s(8),
+                paddingVertical: s(3),
+                borderRadius: s(20),
                 backgroundColor: statusActive
                   ? colors.teal + '20'
                   : colors.danger + '15',
@@ -404,7 +433,7 @@ const DraggableMenu = React.memo(
             >
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '600',
                   color: statusActive ? colors.teal : colors.danger
                 }}
@@ -416,36 +445,58 @@ const DraggableMenu = React.memo(
                   : 'Inactive'}
               </Text>
             </View>
+            {isOnlineMenu && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: s(3),
+                  paddingHorizontal: s(8),
+                  paddingVertical: s(3),
+                  borderRadius: s(20),
+                  backgroundColor: colors.info + '18',
+                  borderWidth: 1,
+                  borderColor: colors.info + '40'
+                }}
+              >
+                <Globe size={s(10)} color={colors.info} />
+                <Text
+                  style={{ fontSize: s(10), fontWeight: '700', color: colors.info }}
+                >
+                  Online
+                </Text>
+              </View>
+            )}
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
             <TouchableOpacity
               onPress={onToggleHiddenPress}
               style={{
-                padding: 6,
+                padding: s(6),
                 backgroundColor: colors.panel,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
                 opacity: 1
               }}
             >
-              <EyeOff size={14} color={colors.label} />
+              <EyeOff size={s(14)} color={colors.label} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => onToggleMenuActive(menu.id)}
               disabled={!isEditable}
               style={{
-                padding: 6,
+                padding: s(6),
                 backgroundColor: colors.panel,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
                 opacity: isEditable ? 1 : 0.4
               }}
             >
               <Power
-                size={14}
+                size={s(14)}
                 color={isEditable ? colors.label : colors.muted}
               />
             </TouchableOpacity>
@@ -453,33 +504,33 @@ const DraggableMenu = React.memo(
               onPress={onEdit}
               disabled={!isEditable}
               style={{
-                padding: 6,
+                padding: s(6),
                 backgroundColor: colors.panel,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border,
                 opacity: isEditable ? 1 : 0.4
               }}
               >
                 <Pencil
-                  size={14}
+                  size={s(14)}
                   color={isEditable ? colors.label : colors.muted}
                 />
               </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setIsCollapsed(prev => !prev)}
               style={{
-                padding: 6,
+                padding: s(6),
                 backgroundColor: colors.panel,
-                borderRadius: 8,
+                borderRadius: s(8),
                 borderWidth: 1,
                 borderColor: colors.border
               }}
             >
               {isCollapsed ? (
-                <ChevronDown size={14} color={colors.label} />
+                <ChevronDown size={s(14)} color={colors.label} />
               ) : (
-                <ChevronUp size={14} color={colors.label} />
+                <ChevronUp size={s(14)} color={colors.label} />
               )}
             </TouchableOpacity>
           </View>
@@ -487,15 +538,15 @@ const DraggableMenu = React.memo(
 
         {/* Categories */}
         {!isCollapsed && (
-          <View style={{ marginLeft: 22, gap: 4 }}>
+          <View style={{ marginLeft: s(22), gap: s(4) }}>
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               fontWeight: '600',
               color: colors.muted,
               textTransform: 'uppercase',
               letterSpacing: 0.5,
-              marginBottom: 4
+              marginBottom: s(4)
             }}
           >
             Categories ({menuCategories.length})
@@ -512,6 +563,7 @@ const DraggableMenu = React.memo(
               onToggleActive={onToggleCategoryActive}
               items={category.items || []}
               onItemPriceEdit={onItemPriceEdit}
+              onItemSnooze={onItemSnooze}
               onReorderItems={onReorderItems}
               itemCount={menuCategories.length}
               dragPreview={categoryDragPreview}
@@ -547,6 +599,7 @@ interface DraggableMenuCategoryProps {
     categoryId: string,
     menuId: string
   ) => void
+  onItemSnooze: (item: MenuItemType) => void
   onReorderItems: (
     categoryId: string,
     fromIndex: number,
@@ -568,6 +621,7 @@ const DraggableMenuCategory = React.memo(
     onToggleActive,
     items,
     onItemPriceEdit,
+    onItemSnooze,
     isEditable,
     onReorderItems,
     itemCount,
@@ -575,6 +629,8 @@ const DraggableMenuCategory = React.memo(
     onDragPreviewChange,
     onDragPreviewEnd
   }: DraggableMenuCategoryProps) => {
+    const uiScale = useUiScale()
+    const s = (n: number) => Math.round(n * uiScale)
     const translateY = useSharedValue(0)
     const scale = useSharedValue(1)
     const isDragging = useSharedValue(false)
@@ -690,7 +746,7 @@ const DraggableMenuCategory = React.memo(
           animatedStyle,
           {
             backgroundColor: colors.panel,
-            borderRadius: 8,
+            borderRadius: s(8),
             borderWidth: 1,
             borderColor: colors.border
           }
@@ -706,35 +762,35 @@ const DraggableMenuCategory = React.memo(
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            paddingHorizontal: 10,
-            paddingVertical: 8
+            paddingHorizontal: s(10),
+            paddingVertical: s(8)
           }}
         >
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 6,
+              gap: s(6),
               flex: 1
             }}
           >
             <GestureDetector gesture={panGesture}>
-              <View style={{ padding: 2 }}>
-                <GripVertical size={12} color={colors.muted} />
+              <View style={{ padding: s(2) }}>
+                <GripVertical size={s(12)} color={colors.muted} />
               </View>
             </GestureDetector>
             <TouchableOpacity
               onPress={() => setIsExpanded(!isExpanded)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}
             >
               {isExpanded ? (
-                <ChevronUp size={14} color={colors.label} />
+                <ChevronUp size={s(14)} color={colors.label} />
               ) : (
-                <ChevronDown size={14} color={colors.label} />
+                <ChevronDown size={s(14)} color={colors.label} />
               )}
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   color: colors.heading,
                   fontWeight: '500'
                 }}
@@ -745,22 +801,22 @@ const DraggableMenuCategory = React.memo(
             <View
               style={{
                 backgroundColor: colors.teal + '15',
-                borderRadius: 10,
-                paddingHorizontal: 6,
-                paddingVertical: 2
+                borderRadius: s(10),
+                paddingHorizontal: s(6),
+                paddingVertical: s(2)
               }}
             >
               <Text
-                style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}
+                style={{ fontSize: s(10), fontWeight: '600', color: colors.teal }}
               >
                 {items.length}
               </Text>
             </View>
             <View
               style={{
-                paddingHorizontal: 7,
-                paddingVertical: 2,
-                borderRadius: 20,
+                paddingHorizontal: s(7),
+                paddingVertical: s(2),
+                borderRadius: s(20),
                 backgroundColor: category.isActive
                   ? colors.teal + '20'
                   : colors.danger + '15',
@@ -772,7 +828,7 @@ const DraggableMenuCategory = React.memo(
             >
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: s(10),
                   fontWeight: '600',
                   color: category.isActive ? colors.teal : colors.danger
                 }}
@@ -785,16 +841,16 @@ const DraggableMenuCategory = React.memo(
           <TouchableOpacity
             onPress={() => onToggleActive(menuId, category.id)}
             disabled={!isEditable}
-            style={{ padding: 4, opacity: isEditable ? 1 : 0.4 }}
+            style={{ padding: s(4), opacity: isEditable ? 1 : 0.4 }}
           >
             {category.isActive ? (
               <Eye
-                size={13}
+                size={s(13)}
                 color={isEditable ? colors.success : colors.muted}
               />
             ) : (
               <EyeOff
-                size={13}
+                size={s(13)}
                 color={isEditable ? colors.danger : colors.muted}
               />
             )}
@@ -802,14 +858,14 @@ const DraggableMenuCategory = React.memo(
         </View>
 
         {isExpanded && (
-          <View style={{ paddingHorizontal: 10, paddingBottom: 8 }}>
+          <View style={{ paddingHorizontal: s(10), paddingBottom: s(8) }}>
             {items.length === 0 ? (
-              <Text style={{ fontSize: 12, color: colors.muted }}>
+              <Text style={{ fontSize: s(12), color: colors.muted }}>
                 No items in this category
               </Text>
             ) : (
               <View
-                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}
+                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6) }}
                 onLayout={event => {
                   setItemGridWidth(event.nativeEvent.layout.width)
                 }}
@@ -825,6 +881,7 @@ const DraggableMenuCategory = React.memo(
                       onReorderItems(category.id, from, to)
                     }
                     onItemPriceEdit={onItemPriceEdit}
+                    onItemSnooze={onItemSnooze}
                     isEditable={isEditable}
                     itemCount={items.length}
                     columnCount={itemColumnCount}
@@ -845,6 +902,8 @@ const DraggableMenuCategory = React.memo(
 )
 
 const MenuPage: React.FC = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const menuItems = useMenuStore(s => s.menuItems)
   const storeCategories = useMenuStore(s => s.categories)
   const storeMenus = useMenuStore(s => s.menus)
@@ -869,6 +928,32 @@ const MenuPage: React.FC = () => {
   const supabase = useSupabaseClient()
   const { activeTab, searchQuery } = useMenuLayout()
   const triggerPosSync = useTriggerPosSync()
+
+  // Keep-alive tabs: mount each panel lazily on first visit, then keep it
+  // mounted and just toggle visibility. Switching between already-visited tabs
+  // (menus / items / categories) is then instant — no unmount/remount, no image
+  // re-decode or list re-layout. Panels for never-visited tabs stay unmounted so
+  // memory stays bounded to what the user actually opens.
+  const [mountedTabs, setMountedTabs] = useState<Record<string, boolean>>(() => ({
+    [activeTab]: true
+  }))
+  useEffect(() => {
+    setMountedTabs(prev => (prev[activeTab] ? prev : { ...prev, [activeTab]: true }))
+  }, [activeTab])
+  const { isSingleLocation } = useIsSingleLocation()
+  const { onlineMenuId } = useOnlineMenu(selectedStore?.id)
+
+  // Release decoded base64 item-image bitmaps when leaving the menu management
+  // screen. These images render as data: URIs (no disk cache), so their native
+  // bitmaps sit pinned in the memory cache until explicitly cleared — this is
+  // what made native memory climb on entry and not drop on exit. Clearing only
+  // the MEMORY cache is safe: anything still needed re-decodes on next view.
+  useEffect(() => {
+    return () => {
+      if (__DEV__) console.log('[memory] menu screen unmount → clearMemoryCache()')
+      void ExpoImage.clearMemoryCache().catch(() => {})
+    }
+  }, [])
 
   const [isRefreshing, setIsRefreshing] = useState(false)
   const menuListScrollRef = useRef<any>(null)
@@ -912,6 +997,10 @@ const MenuPage: React.FC = () => {
 
   // Price edit bottom sheet ref
   const priceEditRef = useRef<PriceEditBottomSheetRef>(null)
+  // 86 / out-of-stock bottom sheet ref
+  const snoozeSheetRef = useRef<SnoozeBottomSheetRef>(null)
+  // Out-of-stock management sheet (items + grouped modifiers)
+  const outOfStockRef = useRef<OutOfStockSheetRef>(null)
 
   // Toast for error messages
   const { show: showToast } = useToast()
@@ -1035,6 +1124,21 @@ const MenuPage: React.FC = () => {
     return [...items].sort((a, b) => a.name.localeCompare(b.name))
   }, [menuItems, searchQuery])
 
+  // Group items alphabetically ONCE, as list rows for virtualization. Each row
+  // is a letter-group; a FlashList then only mounts/decodes the visible groups
+  // instead of all 62 image cards at once (the old ScrollView rendered every
+  // card up front, which is what made the Items tab slow to load).
+  const groupedItems = useMemo(() => {
+    const groups: Record<string, MenuItemType[]> = {}
+    for (const item of filteredItems) {
+      const letter = (item.name[0] || '#').toUpperCase()
+      ;(groups[letter] ??= []).push(item)
+    }
+    return Object.entries(groups)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([letter, items]) => ({ letter, items }))
+  }, [filteredItems])
+
   const handleAddMenu = useCallback(() => {
     router.push('/menu/add-menu')
   }, [])
@@ -1117,26 +1221,109 @@ const MenuPage: React.FC = () => {
 
       const newAvailability = item.availability === false ? true : false
 
+      // An item is "owned" by this store when it is location-local to us, OR
+      // when we are a single-location merchant (our menu IS the global core).
+      // For those, flip the item's own availability boolean directly.
+      // For a GLOBAL item on a MULTI-location merchant, we must NOT mutate the
+      // shared core — route the toggle through the per-location 86/snooze
+      // override instead (infinity = hidden, null = available). This avoids
+      // pinning price and keeps availability scoped to this location.
+      const isOwned = item.location_id === selectedStore?.id || isSingleLocation
+
       // Optimistic update
       toggleItemAvailability(id)
 
-      // Sync to backend
-      const { error } = await MenuService.updateMenuItem(supabase, id, {
-        availability: newAvailability
+      if (isOwned) {
+        const { error } = await MenuService.updateMenuItem(supabase, id, {
+          availability: newAvailability
+        })
+        if (error) {
+          toggleItemAvailability(id)
+          showToast({
+            title: 'Error',
+            type: 'error',
+            message: 'Failed to update item availability'
+          })
+        }
+        return
+      }
+
+      if (!selectedStore?.id) {
+        toggleItemAvailability(id)
+        return
+      }
+
+      const { error } = await MenuService.setItemSnooze(supabase, {
+        locationId: selectedStore.id,
+        menuItemId: id,
+        // Hiding -> 86 until manually restored; showing -> clear the 86.
+        snoozedUntil: newAvailability ? null : 'infinity'
       })
 
       if (error) {
-        // Rollback on failure
         toggleItemAvailability(id)
         showToast({
           title: 'Error',
           type: 'error',
           message: 'Failed to update item availability'
         })
+      } else {
+        triggerPosSync(selectedStore.id, selectedStore.merchant_id)
       }
     },
-    [menuItems, toggleItemAvailability, supabase, showToast]
+    [
+      menuItems,
+      toggleItemAvailability,
+      supabase,
+      showToast,
+      selectedStore,
+      isSingleLocation,
+      triggerPosSync
+    ]
   )
+
+  // Open the 86 / out-of-stock sheet for an item.
+  const handleSnooze = useCallback((item: MenuItemType) => {
+    snoozeSheetRef.current?.open({
+      id: item.id,
+      name: item.name,
+      snoozedUntil: item.snoozedUntil
+    })
+  }, [])
+
+  // Count of everything currently 86'd (items + modifier options) for the header chip.
+  const outOfStockCount = useMemo(() => {
+    const items = menuItems.filter(i => isActivelySnoozed(i.snoozedUntil)).length
+    const options = modifierGroups.reduce(
+      (n, g) =>
+        n + g.options.filter(o => isActivelySnoozed(o.snoozedUntil)).length,
+      0
+    )
+    return items + options
+  }, [menuItems, modifierGroups])
+
+  const outOfStockChip =
+    outOfStockCount > 0 ? (
+      <TouchableOpacity
+        onPress={() => outOfStockRef.current?.open()}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: s(5),
+          paddingHorizontal: s(10),
+          paddingVertical: s(6),
+          borderRadius: s(8),
+          backgroundColor: colors.danger + '18',
+          borderWidth: 1,
+          borderColor: colors.danger + '35'
+        }}
+      >
+        <Ban size={s(13)} color={colors.danger} />
+        <Text style={{ fontSize: s(12), fontWeight: '700', color: colors.danger }}>
+          {`${outOfStockCount} 86'd`}
+        </Text>
+      </TouchableOpacity>
+    ) : null
 
   const handleToggleMenuActive = useCallback(
     async (menuId: string) => {
@@ -1337,6 +1524,9 @@ const MenuPage: React.FC = () => {
     ]
   )
 
+  // Full-form editability (name/details): a global entity is only editable by a
+  // single-location merchant (their menu IS the global core). Multi-location
+  // merchants get the read-only wall for global entities.
   const isEntityEditable = useCallback(
     (entityLocationId: string | null | undefined, entityName?: string) => {
       if (!selectedStore?.id) {
@@ -1345,20 +1535,60 @@ const MenuPage: React.FC = () => {
 
       // If entity has a location_id, it must match current store
       if (entityLocationId) return entityLocationId === selectedStore.id
-      // If entity has NO location_id, it is global -> NOT editable
-      return false
+      // Global entity: editable only for single-location merchants.
+      return isSingleLocation
+    },
+    [selectedStore?.id, isSingleLocation]
+  )
+
+  // Price + availability CAN be adjusted on global items even by multi-location
+  // merchants, because those writes go through per-location overrides (never the
+  // global core). Local items must still match the current store.
+  const canEditAvailabilityAndPrice = useCallback(
+    (entityLocationId: string | null | undefined) => {
+      if (!selectedStore?.id) return false
+      if (entityLocationId) return entityLocationId === selectedStore.id
+      // Global item -> always allowed (per-location override).
+      return true
     },
     [selectedStore?.id]
   )
 
+  // Tapping an item inside a menu's category dropdown. Owned items (local to
+  // this store, or global for single-location merchants) open the full editor.
+  // Global / non-owned items can only have their per-location price &
+  // availability adjusted, so they open the lightweight price sheet instead of
+  // hitting the read-only wall.
+  const handleMenuItemEdit = useCallback(
+    (item: MenuItemType, categoryId: string, menuId: string) => {
+      if (isEntityEditable(item.location_id, item.name)) {
+        router.push(`/menu/edit-item?itemId=${item.id}`)
+        return
+      }
+      priceEditRef.current?.open(
+        {
+          id: item.id,
+          name: item.name,
+          currentPrice: item.price,
+          currentCashPrice: item.cashPrice,
+          currentAvailability: item.availability,
+          snoozedUntil: item.snoozedUntil
+        },
+        { categoryId, menuId }
+      )
+    },
+    [isEntityEditable]
+  )
+
   const renderMenusContent = () => (
-    <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
+    <View style={{ flex: 1, padding: s(14), backgroundColor: colors.panel }}>
       <MenuHeader
         title={`Menus (${menus.length})`}
         onAddPress={handleAddMenu}
         addButtonLabel='Add Menu'
         onRefresh={handleRefreshMenu}
         isRefreshing={isRefreshing}
+        rightSlot={outOfStockChip}
       />
 
       <ScrollView
@@ -1394,18 +1624,8 @@ const MenuPage: React.FC = () => {
                 }
               }}
               onEdit={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
-              onItemPriceEdit={(item, categoryId, menuId) => {
-                priceEditRef.current?.open(
-                  {
-                    id: item.id,
-                    name: item.name,
-                    currentPrice: item.price,
-                    currentCashPrice: item.cashPrice,
-                    currentAvailability: item.availability
-                  },
-                  { categoryId, menuId }
-                )
-              }}
+              onItemPriceEdit={handleMenuItemEdit}
+              onItemSnooze={handleSnooze}
               onReorderItems={handleReorderCategoryItems}
               isEditable={isEntityEditable(menu.location_id, menu.name)}
               menuCount={menus.length}
@@ -1425,13 +1645,14 @@ const MenuPage: React.FC = () => {
                 }
               }}
               isHidden={hiddenMenuIds.includes(menu.id)}
+              isOnlineMenu={!!onlineMenuId && menu.id === onlineMenuId}
             />
           ))}
           {hiddenMenus.length > 0 && (
-            <View style={{ gap: 8, marginTop: 8 }}>
+            <View style={{ gap: s(8), marginTop: s(8) }}>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '700',
                   color: colors.muted,
                   textTransform: 'uppercase'
@@ -1457,18 +1678,8 @@ const MenuPage: React.FC = () => {
                     }
                   }}
                   onEdit={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
-                  onItemPriceEdit={(item, categoryId, menuId) => {
-                    priceEditRef.current?.open(
-                      {
-                        id: item.id,
-                        name: item.name,
-                        currentPrice: item.price,
-                        currentCashPrice: item.cashPrice,
-                        currentAvailability: item.availability
-                      },
-                      { categoryId, menuId }
-                    )
-                  }}
+                  onItemPriceEdit={handleMenuItemEdit}
+                  onItemSnooze={handleSnooze}
                   onReorderItems={handleReorderCategoryItems}
                   isEditable={isEntityEditable(menu.location_id, menu.name)}
                   menuCount={menus.length}
@@ -1488,6 +1699,7 @@ const MenuPage: React.FC = () => {
                     }
                   }}
                   isHidden={true}
+                  isOnlineMenu={!!onlineMenuId && menu.id === onlineMenuId}
                 />
               ))}
             </View>
@@ -1498,26 +1710,25 @@ const MenuPage: React.FC = () => {
   )
 
   const renderCategoriesContent = () => (
-    <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
+    <View style={{ flex: 1, padding: s(14), backgroundColor: colors.panel }}>
       <MenuHeader
         title={`Categories (${(Array.isArray(storeCategories) ? storeCategories : []).length})`}
         onAddPress={handleAddCategory}
         addButtonLabel='Add Category'
         onRefresh={handleRefreshMenu}
         isRefreshing={isRefreshing}
+        rightSlot={outOfStockChip}
       />
 
-      <FlatList
+      <FlashList
         key='categories-list'
         data={[...(Array.isArray(storeCategories) ? storeCategories : [])].sort(
           (a, b) => a.name.localeCompare(b.name)
         )}
         keyExtractor={item => item.id}
-        contentContainerStyle={{ gap: 8 }}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={8}
-        windowSize={5}
-        initialNumToRender={8}
+        contentContainerStyle={{ paddingBottom: 8 }}
+        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+        estimatedItemSize={64}
         renderItem={({ item: categoryName }) => {
           const categoryItems = Array.isArray(
             getItemsInCategory(categoryName.name)
@@ -1684,6 +1895,12 @@ const MenuPage: React.FC = () => {
                     >
                       {categoryItems.map(item => {
                         const PlaceholderIcon = getPlaceholderIconForItem(item)
+                        const availEditable = canEditAvailabilityAndPrice(
+                          item.location_id
+                        )
+                        const snoozeLabel = formatSnoozeCountdown(
+                          item.snoozedUntil
+                        )
                         return (
                           <View
                             key={item.id}
@@ -1698,17 +1915,42 @@ const MenuPage: React.FC = () => {
                               position: 'relative'
                             }}
                           >
+                            {snoozeLabel && (
+                              <View
+                                style={{
+                                  position: 'absolute',
+                                  top: 6,
+                                  left: 6,
+                                  zIndex: 20,
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 3,
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 3,
+                                  borderRadius: 6,
+                                  backgroundColor: colors.danger
+                                }}
+                              >
+                                <Ban size={10} color={colors.onSolid} />
+                                <Text
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: '700',
+                                    color: colors.onSolid
+                                  }}
+                                >
+                                  {snoozeLabel === '86'
+                                    ? '86'
+                                    : `86 · ${snoozeLabel}`}
+                                </Text>
+                              </View>
+                            )}
                             <View style={{ height: 104, width: '100%' }}>
                               {item.image ? (
-                                <Image
-                                  source={{
-                                    uri:
-                                      item.image.length > 200
-                                        ? `data:image/jpeg;base64,${item.image}`
-                                        : item.image
-                                  }}
+                                <MenuManagementImage
+                                  image={item.image}
+                                  recyclingKey={item.id}
                                   style={{ width: '100%', height: '100%' }}
-                                  resizeMode='cover'
                                 />
                               ) : (
                                 <View
@@ -1769,17 +2011,31 @@ const MenuPage: React.FC = () => {
                               }}
                             >
                               <TouchableOpacity
+                                onPress={() => handleSnooze(item)}
+                                disabled={!selectedStore?.id}
+                                style={{
+                                  padding: 6,
+                                  backgroundColor: colors.danger + '18',
+                                  borderRadius: 6,
+                                  borderWidth: 1,
+                                  borderColor: colors.danger + '35',
+                                  opacity: selectedStore?.id ? 1 : 0.4
+                                }}
+                              >
+                                <Ban size={16} color={colors.danger} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
                                 onPress={() =>
                                   handleToggleAvailability(item.id)
                                 }
-                                disabled={!editable}
+                                disabled={!availEditable}
                                 style={{
                                   padding: 6,
                                   backgroundColor: colors.teal + '18',
                                   borderRadius: 6,
                                   borderWidth: 1,
                                   borderColor: colors.teal + '35',
-                                  opacity: editable ? 1 : 0.4
+                                  opacity: availEditable ? 1 : 0.4
                                 }}
                               >
                                 {item.availability !== false ? (
@@ -1820,6 +2076,182 @@ const MenuPage: React.FC = () => {
     </View>
   )
 
+  // Single item card — extracted so the virtualized Items list can render one
+  // card per cell (and so image cells recycle via MenuManagementImage).
+  const renderItemCard = (item: MenuItemType) => {
+    const editable = isEntityEditable(item.location_id, item.name)
+    const availEditable = canEditAvailabilityAndPrice(item.location_id)
+    const isAvailable = item.availability !== false
+    const snoozeLabel = formatSnoozeCountdown(item.snoozedUntil)
+    const PlaceholderIcon = getPlaceholderIconForItem(item)
+    return (
+      <View
+        key={item.id}
+        style={{
+          position: 'relative',
+          width: 152,
+          minHeight: 186,
+          borderRadius: 10,
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.teal + '35',
+          overflow: 'hidden'
+        }}
+      >
+        {snoozeLabel && (
+          <View
+            style={{
+              position: 'absolute',
+              top: 6,
+              left: 6,
+              zIndex: 20,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 3,
+              paddingHorizontal: 6,
+              paddingVertical: 3,
+              borderRadius: 6,
+              backgroundColor: colors.danger
+            }}
+          >
+            <Ban size={10} color={colors.onSolid} />
+            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.onSolid }}>
+              {snoozeLabel === '86' ? '86' : `86 · ${snoozeLabel}`}
+            </Text>
+          </View>
+        )}
+        {/* Image */}
+        <View style={{ height: 104, width: '100%' }}>
+          {item.image ? (
+            <MenuManagementImage
+              image={item.image}
+              recyclingKey={item.id}
+              style={{ width: '100%', height: '100%' }}
+            />
+          ) : (
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: `${colors.teal}08`,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <PlaceholderIcon
+                color={`${colors.label}60`}
+                size={18}
+                strokeWidth={2}
+              />
+            </View>
+          )}
+        </View>
+        {/* Content */}
+        <View
+          style={{ paddingHorizontal: 8, paddingTop: 7, paddingBottom: 42, gap: 3 }}
+        >
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: '600',
+              color: colors.heading,
+              lineHeight: 15,
+              flexShrink: 1
+            }}
+            numberOfLines={2}
+          >
+            {item.name}
+          </Text>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.teal }}>
+            ${item.price.toFixed(2)}
+          </Text>
+        </View>
+        {/* Action overlay */}
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 7,
+            right: 7,
+            flexDirection: 'row',
+            gap: 4,
+            zIndex: 20
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => handleSnooze(item)}
+            disabled={!selectedStore?.id}
+            style={{
+              padding: 6,
+              backgroundColor: colors.danger + '18',
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: colors.danger + '35',
+              opacity: selectedStore?.id ? 1 : 0.4
+            }}
+          >
+            <Ban size={16} color={colors.danger} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => handleToggleAvailability(item.id)}
+            disabled={!availEditable}
+            style={{
+              padding: 6,
+              backgroundColor: colors.teal + '18',
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: colors.teal + '35',
+              opacity: availEditable ? 1 : 0.4
+            }}
+          >
+            {isAvailable ? (
+              <Eye size={16} color={colors.success} />
+            ) : (
+              <EyeOff size={16} color={colors.danger} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => handleEditItem(item)}
+            disabled={!editable}
+            style={{
+              padding: 6,
+              backgroundColor: colors.teal + '18',
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: colors.teal + '35',
+              opacity: editable ? 1 : 0.4
+            }}
+          >
+            <Pencil size={16} color={editable ? colors.teal : colors.muted} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    )
+  }
+
+  const renderItemGroup = ({
+    item: group
+  }: {
+    item: { letter: string; items: MenuItemType[] }
+  }) => (
+    <View>
+      <Text
+        style={{
+          fontSize: 12,
+          fontWeight: '700',
+          color: colors.muted,
+          letterSpacing: 1,
+          textTransform: 'uppercase',
+          marginBottom: 8,
+          paddingHorizontal: 4
+        }}
+      >
+        {group.letter}
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {group.items.map(renderItemCard)}
+      </View>
+    </View>
+  )
+
   const renderItemsContent = () => (
     <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
       <MenuHeader
@@ -1828,10 +2260,18 @@ const MenuPage: React.FC = () => {
         addButtonLabel='Add Item'
         onRefresh={handleRefreshMenu}
         isRefreshing={isRefreshing}
+        rightSlot={outOfStockChip}
       />
 
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-        {filteredItems.length === 0 ? (
+      <FlashList
+        data={groupedItems}
+        keyExtractor={g => g.letter}
+        renderItem={renderItemGroup}
+        showsVerticalScrollIndicator={false}
+        estimatedItemSize={300}
+        ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+        contentContainerStyle={{ paddingBottom: 24 }}
+        ListEmptyComponent={
           <View
             style={{
               alignItems: 'center',
@@ -1843,173 +2283,8 @@ const MenuPage: React.FC = () => {
               No menu items found.
             </Text>
           </View>
-        ) : (
-          <View style={{ gap: 16 }}>
-            {Object.entries(
-              filteredItems.reduce((groups, item) => {
-                const letter = item.name[0].toUpperCase()
-                if (!groups[letter]) groups[letter] = []
-                groups[letter].push(item)
-                return groups
-              }, {} as Record<string, typeof filteredItems>)
-            )
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([letter, items]) => (
-                <View key={letter}>
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: '700',
-                      color: colors.muted,
-                      letterSpacing: 1,
-                      textTransform: 'uppercase',
-                      marginBottom: 8,
-                      paddingHorizontal: 4
-                    }}
-                  >
-                    {letter}
-                  </Text>
-                  <View
-                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}
-                  >
-                    {items.map(item => {
-                      const editable = isEntityEditable(
-                        item.location_id,
-                        item.name
-                      )
-                      const isAvailable = item.availability !== false
-                      const PlaceholderIcon = getPlaceholderIconForItem(item)
-                      return (
-                        <View
-                          key={item.id}
-                          style={{
-                            position: 'relative',
-                            width: 152,
-                            minHeight: 186,
-                            borderRadius: 10,
-                            backgroundColor: colors.panel,
-                            borderWidth: 1,
-                            borderColor: colors.teal + '35',
-                            overflow: 'hidden'
-                          }}
-                        >
-                          {/* Image */}
-                          <View style={{ height: 104, width: '100%' }}>
-                            {item.image ? (
-                              <Image
-                                source={{
-                                  uri:
-                                    item.image.length > 200
-                                      ? `data:image/jpeg;base64,${item.image}`
-                                      : item.image
-                                }}
-                                style={{ width: '100%', height: '100%' }}
-                                resizeMode='cover'
-                              />
-                            ) : (
-                              <View
-                                style={{
-                                  flex: 1,
-                                  backgroundColor: `${colors.teal}08`,
-                                  alignItems: 'center',
-                                  justifyContent: 'center'
-                                }}
-                              >
-                                <PlaceholderIcon
-                                  color={`${colors.label}60`}
-                                  size={18}
-                                  strokeWidth={2}
-                                />
-                              </View>
-                            )}
-                          </View>
-                          {/* Content */}
-                          <View
-                            style={{
-                              paddingHorizontal: 8,
-                              paddingTop: 7,
-                              paddingBottom: 42,
-                              gap: 3
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 12,
-                                fontWeight: '600',
-                                color: colors.heading,
-                                lineHeight: 15,
-                                flexShrink: 1
-                              }}
-                              numberOfLines={2}
-                            >
-                              {item.name}
-                            </Text>
-                            <Text
-                              style={{
-                                fontSize: 12,
-                                fontWeight: '700',
-                                color: colors.teal
-                              }}
-                            >
-                              ${item.price.toFixed(2)}
-                            </Text>
-                          </View>
-                          {/* Action overlay */}
-                          <View
-                            style={{
-                              position: 'absolute',
-                              bottom: 7,
-                              right: 7,
-                              flexDirection: 'row',
-                              gap: 4,
-                              zIndex: 20
-                            }}
-                          >
-                            <TouchableOpacity
-                              onPress={() => handleToggleAvailability(item.id)}
-                              disabled={!editable}
-                              style={{
-                                padding: 6,
-                                backgroundColor: colors.teal + '18',
-                                borderRadius: 6,
-                                borderWidth: 1,
-                                borderColor: colors.teal + '35',
-                                opacity: editable ? 1 : 0.4
-                              }}
-                            >
-                              {isAvailable ? (
-                                <Eye size={16} color={colors.success} />
-                              ) : (
-                                <EyeOff size={16} color={colors.danger} />
-                              )}
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => handleEditItem(item)}
-                              disabled={!editable}
-                              style={{
-                                padding: 6,
-                                backgroundColor: colors.teal + '18',
-                                borderRadius: 6,
-                                borderWidth: 1,
-                                borderColor: colors.teal + '35',
-                                opacity: editable ? 1 : 0.4
-                              }}
-                            >
-                              <Pencil
-                                size={16}
-                                color={editable ? colors.teal : colors.muted}
-                              />
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      )
-                    })}
-                  </View>
-                </View>
-              ))}
-          </View>
-        )}
-      </ScrollView>
+        }
+      />
     </View>
   )
 
@@ -2021,6 +2296,7 @@ const MenuPage: React.FC = () => {
         addButtonLabel='Add Modifier'
         onRefresh={handleRefreshMenu}
         isRefreshing={isRefreshing}
+        rightSlot={outOfStockChip}
       />
 
       <DraggableFlatList
@@ -2047,6 +2323,16 @@ const MenuPage: React.FC = () => {
             modifierGroup.location_id,
             modifierGroup.name
           )
+          const groupOptions = Array.isArray(modifierGroup.options)
+            ? modifierGroup.options
+            : []
+          const snoozedOptionIds = groupOptions
+            .filter(o => isActivelySnoozed(o.snoozedUntil))
+            .map(o => o.id)
+          const allOptionIds = groupOptions.map(o => o.id)
+          const groupOutOfStock =
+            allOptionIds.length > 0 &&
+            snoozedOptionIds.length === allOptionIds.length
           return (
             <ScaleDecorator>
               <View
@@ -2197,28 +2483,103 @@ const MenuPage: React.FC = () => {
                   </View>
                 </View>
 
-                  <TouchableOpacity
-                    onPress={
-                      editable
-                        ? () =>
-                            router.push(`/menu/edit-modifier?id=${modifierGroup.id}`)
-                        : undefined
-                    }
-                    disabled={!editable}
-                    style={{
-                      padding: 6,
-                      backgroundColor: colors.panel,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      opacity: editable ? 1 : 0.4
-                    }}
+                  <View
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
                   >
-                    <Pencil
-                      size={14}
-                      color={editable ? colors.label : colors.muted}
-                    />
-                  </TouchableOpacity>
+                    {snoozedOptionIds.length > 0 && (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 3,
+                          paddingHorizontal: 7,
+                          paddingVertical: 2,
+                          borderRadius: 20,
+                          backgroundColor: colors.danger + '18',
+                          borderWidth: 1,
+                          borderColor: colors.danger + '35'
+                        }}
+                      >
+                        <Ban size={10} color={colors.danger} />
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: '700',
+                            color: colors.danger
+                          }}
+                        >
+                          {groupOutOfStock
+                            ? 'Out of stock'
+                            : `${snoozedOptionIds.length} 86'd`}
+                        </Text>
+                      </View>
+                    )}
+                    {allOptionIds.length > 0 && (
+                      <TouchableOpacity
+                        onPress={() =>
+                          snoozeSheetRef.current?.open({
+                            kind: 'modifier-group',
+                            id: modifierGroup.id,
+                            name: modifierGroup.name,
+                            optionIds: allOptionIds,
+                            snoozedUntil: groupOutOfStock
+                              ? SNOOZE_INFINITY
+                              : null
+                          })
+                        }
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 4,
+                          paddingHorizontal: 8,
+                          paddingVertical: 5,
+                          borderRadius: 6,
+                          backgroundColor: groupOutOfStock
+                            ? colors.danger + '18'
+                            : colors.panel,
+                          borderWidth: 1,
+                          borderColor: groupOutOfStock
+                            ? colors.danger + '35'
+                            : colors.border
+                        }}
+                      >
+                        <Ban size={12} color={colors.danger} />
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: '700',
+                            color: colors.danger
+                          }}
+                        >
+                          86
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      onPress={
+                        editable
+                          ? () =>
+                              router.push(
+                                `/menu/edit-modifier?id=${modifierGroup.id}`
+                              )
+                          : undefined
+                      }
+                      disabled={!editable}
+                      style={{
+                        padding: 6,
+                        backgroundColor: colors.panel,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        opacity: editable ? 1 : 0.4
+                      }}
+                    >
+                      <Pencil
+                        size={14}
+                        color={editable ? colors.label : colors.muted}
+                      />
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 {/* Options */}
@@ -2241,53 +2602,77 @@ const MenuPage: React.FC = () => {
                     {(Array.isArray(modifierGroup.options)
                       ? modifierGroup.options
                       : []
-                    )
-                      .slice(0, 5)
-                      .map((option, index) => (
-                      <View
-                        key={index}
-                        style={{
-                          backgroundColor: colors.panel,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                          borderRadius: 6
-                        }}
-                      >
-                        <Text style={{ fontSize: 11, color: colors.heading }}>
-                          {option.name}
-                          {option.price > 0 && (
-                            <Text style={{ color: colors.teal }}>
-                              {' '}
-                              (+${option.price.toFixed(2)})
-                            </Text>
-                          )}
-                        </Text>
-                      </View>
-                    ))}
-                    {(Array.isArray(modifierGroup.options)
-                      ? modifierGroup.options
-                      : []
-                    ).length > 5 && (
-                      <View
-                        style={{
-                          backgroundColor: colors.panel,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                          borderRadius: 6
-                        }}
-                      >
-                        <Text style={{ fontSize: 11, color: colors.muted }}>
-                          +{(Array.isArray(modifierGroup.options)
-                            ? modifierGroup.options
-                            : []
-                          ).length - 5} more
-                        </Text>
-                      </View>
-                    )}
+                    ).map((option, index) => {
+                      const optionSnoozed = isActivelySnoozed(
+                        option.snoozedUntil
+                      )
+                      return (
+                        <View
+                          key={option.id ?? index}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6,
+                            backgroundColor: optionSnoozed
+                              ? colors.danger + '12'
+                              : colors.panel,
+                            borderWidth: 1,
+                            borderColor: optionSnoozed
+                              ? colors.danger + '35'
+                              : colors.border,
+                            paddingLeft: 8,
+                            paddingRight: 4,
+                            paddingVertical: 3,
+                            borderRadius: 6
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              color: colors.heading,
+                              opacity: optionSnoozed ? 0.7 : 1
+                            }}
+                          >
+                            {option.name}
+                            {option.price > 0 && (
+                              <Text style={{ color: colors.teal }}>
+                                {' '}
+                                (+${option.price.toFixed(2)})
+                              </Text>
+                            )}
+                          </Text>
+                          {/* Timed 86 flow (per-location override, works on
+                              global modifiers) — same snooze sheet as items. */}
+                          <TouchableOpacity
+                            onPress={() =>
+                              snoozeSheetRef.current?.open({
+                                kind: 'modifier-option',
+                                id: option.id,
+                                name: option.name,
+                                snoozedUntil: option.snoozedUntil
+                              })
+                            }
+                            hitSlop={6}
+                            style={{
+                              padding: 4,
+                              borderRadius: 6,
+                              backgroundColor: optionSnoozed
+                                ? colors.danger
+                                : colors.danger + '18',
+                              borderWidth: 1,
+                              borderColor: colors.danger + '35'
+                            }}
+                          >
+                            <Ban
+                              size={11}
+                              color={
+                                optionSnoozed ? colors.onSolid : colors.danger
+                              }
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      )
+                    })}
                   </View>
                 </View>
 
@@ -2340,10 +2725,11 @@ const MenuPage: React.FC = () => {
                                 }}
                               >
                                 {imageSource ? (
-                                  <Image
-                                    source={imageSource}
+                                  <MenuManagementImage
+                                    image={item.image}
+                                    recyclingKey={item.id}
+                                    decodeSize={48}
                                     style={{ width: '100%', height: '100%' }}
-                                    resizeMode='cover'
                                   />
                                 ) : (
                                   <View
@@ -2754,8 +3140,8 @@ const MenuPage: React.FC = () => {
     </View>
   )
 
-  const renderContent = () => {
-    switch (activeTab) {
+  const renderPanel = (tab: string) => {
+    switch (tab) {
       case 'menus':
         return renderMenusContent()
       case 'categories':
@@ -2771,9 +3157,27 @@ const MenuPage: React.FC = () => {
     }
   }
 
+  const TAB_KEYS = ['menus', 'categories', 'items', 'modifiers', 'schedules']
+
   return (
     <View className='flex-1 bg-screen'>
-      {renderContent()}
+      {TAB_KEYS.map(tab =>
+        // Render if it's the active tab (immediately, no one-frame gap) or if it
+        // was previously visited (kept alive for instant return).
+        mountedTabs[tab] || activeTab === tab ? (
+          <View
+            key={tab}
+            // display:none keeps the panel mounted but out of layout, so
+            // returning to it is instant. RN supports display:none natively.
+            style={activeTab === tab ? TAB_PANEL_ACTIVE : TAB_PANEL_HIDDEN}
+            // Prevent hidden panels from capturing touches / accessibility.
+            pointerEvents={activeTab === tab ? 'auto' : 'none'}
+            aria-hidden={activeTab !== tab}
+          >
+            {renderPanel(tab)}
+          </View>
+        ) : null
+      )}
       <PriceEditBottomSheet
         ref={priceEditRef}
         onSave={(itemId, newPrice) => {
@@ -2788,7 +3192,14 @@ const MenuPage: React.FC = () => {
           setItemToDelete({ id: itemId, name: itemName })
           setShowDeleteModal(true)
         }}
+        onSnooze={snoozeItem => snoozeSheetRef.current?.open(snoozeItem)}
       />
+
+      {/* 86 / Out-of-stock bottom sheet */}
+      <SnoozeBottomSheet ref={snoozeSheetRef} />
+
+      {/* Out-of-stock management sheet (items + grouped modifiers) */}
+      <OutOfStockSheet ref={outOfStockRef} />
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal
@@ -2836,13 +3247,10 @@ const MenuItemCard = React.memo(
         <View className='flex-row items-start gap-3'>
           <View className='h-full aspect-square rounded-lg border border-gray-600'>
             {getImageSource(item.image) ? (
-              <Image
-                source={
-                  typeof getImageSource(item.image) === 'string'
-                    ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
-                    : getImageSource(item.image)
-                }
-                className='w-full h-full rounded-lg object-cover'
+              <MenuManagementImage
+                image={item.image}
+                recyclingKey={item.id}
+                className='w-full h-full rounded-lg'
               />
             ) : (
               <View className='w-full h-full rounded-lg bg-gray-100 items-center justify-center'>

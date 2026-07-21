@@ -1,26 +1,26 @@
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { prefetchMenuItemRemoteImages } from "@/lib/menuImagePrefetch";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import {
-    beginMenuModifierPreWarm,
-    isMenuModifierPreWarmCurrent,
+  beginMenuModifierPreWarm,
+  isMenuModifierPreWarmCurrent,
 } from "@/lib/menuModifierPreWarmControl";
 import { MenuItemType } from "@/lib/types";
 // import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useMenuVisibilityStore } from "@/stores/useMenuVisibilityStore";
 import {
-    isMenuBlockedSync,
-    selectCancelAndRemoveDraft,
-    selectIsMenuBlocked,
-    useModifierSidebarStore,
+  isMenuBlockedSync,
+  selectCancelAndRemoveDraft,
+  selectIsMenuBlocked,
+  useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
@@ -30,31 +30,31 @@ import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { BlurView } from "expo-blur";
 import { Link } from "expo-router";
 import {
-    CheckCircle2,
-    ChevronDown,
-    Clock,
-    Lock,
-    Logs,
-    PackagePlus,
-    Search,
-    Sofa,
-    Table,
-    UtensilsCrossed,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  Lock,
+  Logs,
+  PackagePlus,
+  Search,
+  Sofa,
+  Table,
+  UtensilsCrossed,
 } from "lucide-react-native";
 import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    ActivityIndicator,
-    InteractionManager,
-    Pressable,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  InteractionManager,
+  Pressable,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
@@ -90,31 +90,47 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { StyleSheet, ViewStyle } from "react-native";
 
-const menuSectionStyles = StyleSheet.create({
-  spacer: {
-    flex: 1,
-  },
-  // Perf F8 (FlashList): each grid cell is width/numColumns; gutters live on
-  // the cell wrapper (3+3 horizontal between columns, 6 vertical between
-  // rows) since FlashList has no columnWrapperStyle.
-  gridCell: {
-    // FlashList lays each row of `numColumns` cells out in a flex row; flex:1
-    // makes every cell take an equal share of the row width. Static (no onLayout
-    // measurement race that left the first category cramped until a switch).
-    flex: 1,
-    paddingHorizontal: 3,
-    paddingBottom: 6,
-  },
-  gridContainer: {
-    flex: 1,
-    marginTop: 8,
-    // NOTE: backgroundColor is applied inline at the render site, NOT here.
-    // `colors` is a theme Proxy that defaults to dark; StyleSheet.create runs
-    // at module load (before setThemeMode('light')), so a themed color frozen
-    // here would lock to the dark value (#1E2340) and show as a dark rectangle
-    // below short lists. Inline styles read the live (light) value.
-  },
-});
+type MenuSectionStyles = ReturnType<typeof createMenuSectionStyles>;
+const menuSectionStylesByScale = new Map<string, MenuSectionStyles>();
+
+const createMenuSectionStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale);
+  return StyleSheet.create({
+    spacer: {
+      flex: 1,
+    },
+    // Perf F8 (FlashList): each grid cell is width/numColumns; gutters live on
+    // the cell wrapper (3+3 horizontal between columns, 6 vertical between
+    // rows) since FlashList has no columnWrapperStyle.
+    gridCell: {
+      // FlashList lays each row of `numColumns` cells out in a flex row; flex:1
+      // makes every cell take an equal share of the row width. Static (no onLayout
+      // measurement race that left the first category cramped until a switch).
+      flex: 1,
+      paddingHorizontal: s(3),
+      paddingBottom: s(6),
+    },
+    gridContainer: {
+      flex: 1,
+      marginTop: s(8),
+      // NOTE: backgroundColor is applied inline at the render site, NOT here.
+      // `colors` is a theme Proxy that defaults to dark; StyleSheet.create runs
+      // at module load (before setThemeMode('light')), so a themed color frozen
+      // here would lock to the dark value (#1E2340) and show as a dark rectangle
+      // below short lists. Inline styles read the live (light) value.
+    },
+  });
+};
+
+const getMenuSectionStyles = (scale: number) => {
+  const key = String(scale);
+  const cached = menuSectionStylesByScale.get(key);
+  if (cached) return cached;
+  const next = createMenuSectionStyles(scale);
+  menuSectionStylesByScale.set(key, next);
+  return next;
+};
+const menuSectionStyles = createMenuSectionStyles(1);
 const EMPTY_HIDDEN_MENU_IDS: string[] = [];
 
 const getBlockingOverlayStyle = (overlayColor: string): ViewStyle => ({
@@ -123,22 +139,34 @@ const getBlockingOverlayStyle = (overlayColor: string): ViewStyle => ({
   zIndex: 100,
 });
 
-// OPTIMIZED: WeakMap cache for image sources to prevent object recreation
-const imageSourceCache = new WeakMap<
-  MenuItemType,
+// OPTIMIZED: Map cache for image sources to prevent object recreation.
+// Keyed by item.id + image hash so cache hits survive store re-renders.
+// Hard-capped to prevent unbounded growth from stale menu items.
+const IMAGE_SOURCE_CACHE_MAX = 500;
+const imageSourceCache = new Map<
+  string,
   ReturnType<typeof getImageSourceInternal> | undefined
 >();
 
 const getImageSourceInternal = (item: MenuItemType) =>
   resolveMenuItemImageSource(item.image);
 
+const getImageSourceCacheKey = (item: MenuItemType) =>
+  `${item.id}:${item.image ?? ""}`;
+
 // Get image source with caching
 const getImageSource = (item: MenuItemType) => {
-  if (imageSourceCache.has(item)) {
-    return imageSourceCache.get(item);
+  const key = getImageSourceCacheKey(item);
+  if (imageSourceCache.has(key)) {
+    return imageSourceCache.get(key);
+  }
+  // Evict oldest entries when at capacity before adding new
+  if (imageSourceCache.size >= IMAGE_SOURCE_CACHE_MAX) {
+    const firstKey = imageSourceCache.keys().next().value;
+    if (firstKey !== undefined) imageSourceCache.delete(firstKey);
   }
   const source = getImageSourceInternal(item);
-  imageSourceCache.set(item, source);
+  imageSourceCache.set(key, source);
   return source;
 };
 

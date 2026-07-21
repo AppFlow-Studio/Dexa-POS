@@ -9,6 +9,7 @@ import { bottomSheetTheme, colors } from "@/lib/theme";
 import { getCachedCustomers } from "@/services/customer";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useWaitlistSheetStore } from "@/stores/useWaitlistSheetStore";
 import { useWaitlistStore } from "@/stores/useWaitlistStore";
@@ -794,7 +795,8 @@ const WaitlistBottomSheet: React.FC = () => {
         setActiveOrder(newOrder.id);
       }
 
-      router.push(`/tables/${table.id}`);
+      usePendingTableOverlay.getState().setPendingTableId(table.id);
+      router.push("/tables" as any);
       setTablePickerOpen(false);
       setSelectedEntry(null);
       handleClose();

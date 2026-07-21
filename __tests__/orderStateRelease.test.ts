@@ -80,3 +80,35 @@ describe("Group A — releaseOrderState is defined + wired (source)", () => {
     expect(source).toContain("delete draft.pendingBackendUpdates[id]");
   });
 });
+
+describe("clearInactiveOrders — voided orders are not pinned (source)", () => {
+  const source = fs.readFileSync(
+    path.join(process.cwd(), "stores", "useOrderStore.ts"),
+    "utf8",
+  );
+
+  it("defines a terminal-dead status set for void/voided/cancelled", () => {
+    expect(source).toContain("TERMINAL_DEAD_STATUSES");
+    expect(source).toMatch(
+      /TERMINAL_DEAD_STATUSES\s*=\s*new Set\(\[\s*"void",\s*"voided",\s*"cancelled",?\s*\]\)/,
+    );
+  });
+
+  it("exempts terminal-dead orders from the unsynced-item / pending-payment keep-guards", () => {
+    // The keep-guards must be gated behind `if (!isDeadTerminal)` so a voided
+    // order whose items never synced can't pin itself in ordersById.
+    expect(source).toContain(
+      "const isDeadTerminal = TERMINAL_DEAD_STATUSES.has(status)",
+    );
+    expect(source).toContain("if (!isDeadTerminal) {");
+  });
+
+  it("gives voided/cancelled orders a shorter max-age than completed orders", () => {
+    expect(source).toContain("VOIDED_ORDER_MAX_AGE_MS");
+    // maxAge picks the voided window for dead-terminal orders, else the
+    // completed window (whitespace-insensitive to survive reformatting).
+    expect(source).toMatch(
+      /const maxAge = isDeadTerminal\s*\?\s*VOIDED_ORDER_MAX_AGE_MS\s*:\s*COMPLETED_ORDER_MAX_AGE_MS;/,
+    );
+  });
+});

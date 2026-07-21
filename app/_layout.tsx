@@ -22,33 +22,33 @@ import { TanstackProvider } from "@/contexts/TanstackProvider";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
 import { initImmer } from "@/lib/initImmer";
-import { computeUiScale } from "@/lib/uiScale";
 import { initLogCollector } from "@/lib/logCollector";
 import { logger } from "@/lib/logger";
+import { DEADLINES } from "@/lib/network/deadlines";
 import { isRefundRecoveryUIEnabled } from "@/lib/network/featureFlags";
+import { runWithDeadline } from "@/lib/network/runWithDeadline";
 import {
     markNavigationEvent,
     setRootNavigationRef,
 } from "@/lib/rootNavigation";
 import { POS_SCREEN_OPTIONS } from "@/lib/screenConfig";
 import {
-  didSecureStorageProbeFail,
-  flushAllPendingWrites,
-  getEnvReconcileResult,
-  secureStorage,
+    didSecureStorageProbeFail,
+    flushAllPendingWrites,
+    getEnvReconcileResult,
+    secureStorage,
 } from "@/lib/storage";
 import { initTelemetry } from "@/lib/telemetry/init";
 import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
+import { UiScaleProvider } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
-import { DEADLINES } from "@/lib/network/deadlines";
-import { runWithDeadline } from "@/lib/network/runWithDeadline";
+import { getRawIsOnline } from "@/services/offlineSyncService";
+import type { PaymentJournalEntry } from "@/services/paymentJournal";
 import {
     failPaymentJournal,
     getIncompleteJournals,
     pruneOldJournals,
 } from "@/services/paymentJournal";
-import type { PaymentJournalEntry } from "@/services/paymentJournal";
-import { getRawIsOnline } from "@/services/offlineSyncService";
 import { PrinterService } from "@/services/printing/PrinterService";
 import {
     getIncompleteRefundJournals,
@@ -68,10 +68,10 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Toasts } from "@backpackapp-io/react-native-toast";
 import {
-  ClerkProvider,
-  isClerkRuntimeError,
-  TokenCache,
-  useAuth,
+    ClerkProvider,
+    isClerkRuntimeError,
+    TokenCache,
+    useAuth,
 } from "@clerk/clerk-expo";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import {
@@ -92,10 +92,8 @@ import {
     Platform,
     Pressable,
     Text,
-    useWindowDimensions,
     View,
 } from "react-native";
-import { vars } from "nativewind";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -329,21 +327,6 @@ const DARK_THEME: Theme = {
   ...DarkTheme,
   colors: NAV_THEME.dark,
 };
-
-/**
- * Injects the automatic UI scale as the `--ui-scale` CSS variable for the
- * whole app. Every scale-driven Tailwind utility (spacing/font/radius) reads
- * it via tailwind.config.js. Re-computes if window dimensions change.
- */
-function UiScaleProvider({ children }: { children: React.ReactNode }) {
-  const { width, height } = useWindowDimensions();
-  const scale = computeUiScale(width, height);
-  return (
-    <View style={[{ flex: 1 }, vars({ "--ui-scale": scale })]}>
-      {children}
-    </View>
-  );
-}
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -645,208 +628,221 @@ export default Sentry.wrap(function RootLayout() {
       // MMKV. Nothing here needs to beat the first paint; the payment
       // recovery sheet opening a beat later is fine.
       const bootTask = InteractionManager.runAfterInteractions(() => {
-      // NOTE: Timeclock hydration now happens in PosSyncProvider after employees sync.
-      // PTO history is calculated from real shift data, not mock data.
-      // Start draft order cleanup
-      useOrderStore.getState().startDraftCleanup();
-      // One-time cleanup: Remove duplicate draft orders (safe to run on every startup)
-      useOrderStore.getState().cleanupDraftDuplicates();
-      // Start print queue processing
-      PrinterService.startProcessing();
+        // NOTE: Timeclock hydration now happens in PosSyncProvider after employees sync.
+        // PTO history is calculated from real shift data, not mock data.
+        // Start draft order cleanup
+        useOrderStore.getState().startDraftCleanup();
+        // Start periodic session pruning (cleans stale terminal sessions from memory)
+        try {
+          const {
+            startSessionPrune,
+          } = require("@/stores/useTableSessionStore");
+          startSessionPrune();
+        } catch {
+          /* store may not be loaded yet */
+        }
+        // One-time cleanup: Remove duplicate draft orders (safe to run on every startup)
+        useOrderStore.getState().cleanupDraftDuplicates();
+        // Start print queue processing
+        PrinterService.startProcessing();
 
-      // Wave Cat-B: surface payments that crashed mid-flow (terminal_approved
-      // entries from a prior app session). Hydrate the recovery store and
-      // auto-open the verifying sheet on the head journal — operator walks
-      // through the queue one entry at a time (next entry promotes after
-      // markComplete/retryWithNewCharge in usePaymentVerification).
-      try {
-        pruneOldJournals();
-        const incomplete = getIncompleteJournals();
-        if (incomplete.length > 0) {
-          console.warn(
-            `[paymentJournal] ${incomplete.length} incomplete payment journal(s) detected on startup`,
-            incomplete.map((j) => ({
-              id: j.id,
-              status: j.status,
-              orderId: j.orderId,
-              amount: j.amount,
-              createdAt: j.createdAt,
-            })),
-          );
-          // Sentry: track relaunch-recovery rate so we know whether crash
-          // recovery is firing in the wild.
-          try {
-            Sentry.addBreadcrumb({
-              category: "payment_recovery",
-              level: "warning",
-              message: `Relaunch: ${incomplete.length} incomplete journal(s) detected`,
-              data: {
-                count: incomplete.length,
-                statuses: incomplete.map((j) => j.status),
-                ages_minutes: incomplete.map((j) =>
-                  Math.round(
-                    (Date.now() - new Date(j.createdAt).getTime()) / 60_000,
-                  ),
-                ),
-              },
-            });
-            Sentry.captureMessage(
-              "payment_recovery.relaunch_detected_incomplete",
-              {
-                level: "warning",
-                tags: { event: "relaunch_recovery" },
-                extra: {
-                  count: incomplete.length,
-                  head_status: incomplete[0]?.status,
-                },
-              },
+        // Wave Cat-B: surface payments that crashed mid-flow (terminal_approved
+        // entries from a prior app session). Hydrate the recovery store and
+        // auto-open the verifying sheet on the head journal — operator walks
+        // through the queue one entry at a time (next entry promotes after
+        // markComplete/retryWithNewCharge in usePaymentVerification).
+        try {
+          pruneOldJournals();
+          const incomplete = getIncompleteJournals();
+          if (incomplete.length > 0) {
+            console.warn(
+              `[paymentJournal] ${incomplete.length} incomplete payment journal(s) detected on startup`,
+              incomplete.map((j) => ({
+                id: j.id,
+                status: j.status,
+                orderId: j.orderId,
+                amount: j.amount,
+                createdAt: j.createdAt,
+              })),
             );
-          } catch {}
-          // Boot pre-check (Wave Cat-B follow-up):
-          //
-          // For 'terminal_approved' journals — the ones that map to reason=
-          // 'crash_recovery' in usePaymentStore.openForVerification — we can
-          // ask the server up-front whether a payment row actually landed
-          // before the app died. If the server confidently says no
-          // (`matched: false`, no error, no timeout), the customer was not
-          // charged: silently fail+drop the journal instead of forcing the
-          // operator through the 8s "Verifying Payment" overlay.
-          //
-          // Important asymmetry: 'initiated' journals map to reason=
-          // 'tcp_inflight_crash' (the RPC was never reached, so the server
-          // CAN'T have a row — check_recent_payment doesn't disambiguate
-          // "card charged but RPC never called" from "card not charged").
-          // Those still need the operator to look at the terminal display
-          // via PaymentTerminalReconciliationModal. Never silently drop them.
-          //
-          // Anything ambiguous (timeout, network error, matched=true, null
-          // result) falls through to the existing overlay — fail-safe.
-          //
-          // Hydrate moved inside the async block so the recovery queue only
-          // carries journals that survived the pre-check; auto-dropped
-          // entries shouldn't appear in the "promote next" rotation either.
-          queueMicrotask(async () => {
-            const supabase = getOrderStoreSupabaseClient();
-            const survivors: PaymentJournalEntry[] = [];
-
-            for (const j of incomplete) {
-              if (j.status !== "terminal_approved" || !supabase || !j.dbOrderId) {
-                survivors.push(j);
-                continue;
-              }
-              try {
-                const ageSeconds = Math.ceil(
-                  (Date.now() - new Date(j.createdAt).getTime()) / 1000,
-                );
-                // Mirror usePaymentVerification.checkOnce: cover the journal
-                // age plus a 5-minute slack so clock skew doesn't move the
-                // server row outside the lookback window.
-                const lookbackSeconds = Math.max(600, ageSeconds + 300);
-                const result = await runWithDeadline<{ matched: boolean }>(
-                  "check_recent_payment",
-                  DEADLINES.paymentAuthCheck,
-                  async (signal) => {
-                    const { data, error } = await supabase
-                      .rpc("check_recent_payment", {
-                        p_order_id: j.dbOrderId,
-                        p_lookback_seconds: lookbackSeconds,
-                        p_amount_cents: Math.round(j.amount * 100),
-                        p_split_portion_index: null,
-                      })
-                      .abortSignal(signal);
-                    return {
-                      data: data as { matched: boolean } | null,
-                      error,
-                    };
+            // Sentry: track relaunch-recovery rate so we know whether crash
+            // recovery is firing in the wild.
+            try {
+              Sentry.addBreadcrumb({
+                category: "payment_recovery",
+                level: "warning",
+                message: `Relaunch: ${incomplete.length} incomplete journal(s) detected`,
+                data: {
+                  count: incomplete.length,
+                  statuses: incomplete.map((j) => j.status),
+                  ages_minutes: incomplete.map((j) =>
+                    Math.round(
+                      (Date.now() - new Date(j.createdAt).getTime()) / 60_000,
+                    ),
+                  ),
+                },
+              });
+              Sentry.captureMessage(
+                "payment_recovery.relaunch_detected_incomplete",
+                {
+                  level: "warning",
+                  tags: { event: "relaunch_recovery" },
+                  extra: {
+                    count: incomplete.length,
+                    head_status: incomplete[0]?.status,
                   },
-                );
+                },
+              );
+            } catch {}
+            // Boot pre-check (Wave Cat-B follow-up):
+            //
+            // For 'terminal_approved' journals — the ones that map to reason=
+            // 'crash_recovery' in usePaymentStore.openForVerification — we can
+            // ask the server up-front whether a payment row actually landed
+            // before the app died. If the server confidently says no
+            // (`matched: false`, no error, no timeout), the customer was not
+            // charged: silently fail+drop the journal instead of forcing the
+            // operator through the 8s "Verifying Payment" overlay.
+            //
+            // Important asymmetry: 'initiated' journals map to reason=
+            // 'tcp_inflight_crash' (the RPC was never reached, so the server
+            // CAN'T have a row — check_recent_payment doesn't disambiguate
+            // "card charged but RPC never called" from "card not charged").
+            // Those still need the operator to look at the terminal display
+            // via PaymentTerminalReconciliationModal. Never silently drop them.
+            //
+            // Anything ambiguous (timeout, network error, matched=true, null
+            // result) falls through to the existing overlay — fail-safe.
+            //
+            // Hydrate moved inside the async block so the recovery queue only
+            // carries journals that survived the pre-check; auto-dropped
+            // entries shouldn't appear in the "promote next" rotation either.
+            queueMicrotask(async () => {
+              const supabase = getOrderStoreSupabaseClient();
+              const survivors: PaymentJournalEntry[] = [];
+
+              for (const j of incomplete) {
                 if (
-                  result?.data &&
-                  result.data.matched === false &&
-                  !result.error
+                  j.status !== "terminal_approved" ||
+                  !supabase ||
+                  !j.dbOrderId
                 ) {
-                  failPaymentJournal(j.id, "boot_precheck_no_server_row");
-                  try {
-                    Sentry.addBreadcrumb({
-                      category: "payment_recovery",
-                      level: "info",
-                      message: "payment_recovery.boot_precheck_dropped",
-                      data: {
-                        journal_id: j.id,
-                        order_db_id: j.dbOrderId,
-                        amount_cents: Math.round(j.amount * 100),
-                        age_seconds: ageSeconds,
-                      },
-                    });
-                  } catch {}
+                  survivors.push(j);
                   continue;
                 }
-              } catch {
-                // Network error / unexpected throw — fall back to overlay.
+                try {
+                  const ageSeconds = Math.ceil(
+                    (Date.now() - new Date(j.createdAt).getTime()) / 1000,
+                  );
+                  // Mirror usePaymentVerification.checkOnce: cover the journal
+                  // age plus a 5-minute slack so clock skew doesn't move the
+                  // server row outside the lookback window.
+                  const lookbackSeconds = Math.max(600, ageSeconds + 300);
+                  const result = await runWithDeadline<{ matched: boolean }>(
+                    "check_recent_payment",
+                    DEADLINES.paymentAuthCheck,
+                    async (signal) => {
+                      const { data, error } = await supabase
+                        .rpc("check_recent_payment", {
+                          p_order_id: j.dbOrderId,
+                          p_lookback_seconds: lookbackSeconds,
+                          p_amount_cents: Math.round(j.amount * 100),
+                          p_split_portion_index: null,
+                        })
+                        .abortSignal(signal);
+                      return {
+                        data: data as { matched: boolean } | null,
+                        error,
+                      };
+                    },
+                  );
+                  if (
+                    result?.data &&
+                    result.data.matched === false &&
+                    !result.error
+                  ) {
+                    failPaymentJournal(j.id, "boot_precheck_no_server_row");
+                    try {
+                      Sentry.addBreadcrumb({
+                        category: "payment_recovery",
+                        level: "info",
+                        message: "payment_recovery.boot_precheck_dropped",
+                        data: {
+                          journal_id: j.id,
+                          order_db_id: j.dbOrderId,
+                          amount_cents: Math.round(j.amount * 100),
+                          age_seconds: ageSeconds,
+                        },
+                      });
+                    } catch {}
+                    continue;
+                  }
+                } catch {
+                  // Network error / unexpected throw — fall back to overlay.
+                }
+                survivors.push(j);
               }
-              survivors.push(j);
-            }
 
-            if (survivors.length === 0) return;
-            usePaymentRecoveryStore.getState().hydrate(survivors);
-            usePaymentStore.getState().openForVerification(survivors[0]);
-          });
-        }
-      } catch (err) {
-        console.error("[paymentJournal] Recovery hydration failed:", err);
-      }
-
-      // Wave R-3: surface refunds that crashed mid-flow (terminal_approved
-      // entries from a prior app session). Hydrate the refund recovery store.
-      // UI is gated by isRefundRecoveryUIEnabled() — disabled by default until
-      // the feature flag is set in production.
-      try {
-        pruneOldRefundJournals();
-        const incompleteRefunds = getIncompleteRefundJournals();
-        if (incompleteRefunds.length > 0 && isRefundRecoveryUIEnabled()) {
-          console.warn(
-            `[refundJournal] ${incompleteRefunds.length} incomplete refund journal(s) detected on startup`,
-            incompleteRefunds.map((j) => ({
-              id: j.id,
-              status: j.status,
-              orderId: j.orderId,
-              amount: j.amount,
-              createdAt: j.createdAt,
-            })),
-          );
-          // Sentry site 2: track relaunch-recovery rate for refunds.
-          try {
-            Sentry.addBreadcrumb({
-              category: "refund_recovery",
-              level: "warning",
-              message: `Relaunch: ${incompleteRefunds.length} incomplete refund journal(s) detected`,
-              data: {
-                count: incompleteRefunds.length,
-                statuses: incompleteRefunds.map((j) => j.status),
-                ages_minutes: incompleteRefunds.map((j) =>
-                  Math.round(
-                    (Date.now() - new Date(j.createdAt).getTime()) / 60_000,
-                  ),
-                ),
-              },
+              if (survivors.length === 0) return;
+              usePaymentRecoveryStore.getState().hydrate(survivors);
+              usePaymentStore.getState().openForVerification(survivors[0]);
             });
-            Sentry.captureMessage(
-              "refund_recovery.relaunch_detected_incomplete",
-              {
-                level: "warning",
-                tags: { event: "relaunch_recovery" },
-                extra: {
-                  count: incompleteRefunds.length,
-                  head_status: incompleteRefunds[0]?.status,
-                },
-              },
-            );
-          } catch {}
-          useRefundRecoveryStore.getState().hydrate(incompleteRefunds);
+          }
+        } catch (err) {
+          console.error("[paymentJournal] Recovery hydration failed:", err);
         }
-      } catch (err) {
-        console.error("[refundJournal] Recovery hydration failed:", err);
-      }
+
+        // Wave R-3: surface refunds that crashed mid-flow (terminal_approved
+        // entries from a prior app session). Hydrate the refund recovery store.
+        // UI is gated by isRefundRecoveryUIEnabled() — disabled by default until
+        // the feature flag is set in production.
+        try {
+          pruneOldRefundJournals();
+          const incompleteRefunds = getIncompleteRefundJournals();
+          if (incompleteRefunds.length > 0 && isRefundRecoveryUIEnabled()) {
+            console.warn(
+              `[refundJournal] ${incompleteRefunds.length} incomplete refund journal(s) detected on startup`,
+              incompleteRefunds.map((j) => ({
+                id: j.id,
+                status: j.status,
+                orderId: j.orderId,
+                amount: j.amount,
+                createdAt: j.createdAt,
+              })),
+            );
+            // Sentry site 2: track relaunch-recovery rate for refunds.
+            try {
+              Sentry.addBreadcrumb({
+                category: "refund_recovery",
+                level: "warning",
+                message: `Relaunch: ${incompleteRefunds.length} incomplete refund journal(s) detected`,
+                data: {
+                  count: incompleteRefunds.length,
+                  statuses: incompleteRefunds.map((j) => j.status),
+                  ages_minutes: incompleteRefunds.map((j) =>
+                    Math.round(
+                      (Date.now() - new Date(j.createdAt).getTime()) / 60_000,
+                    ),
+                  ),
+                },
+              });
+              Sentry.captureMessage(
+                "refund_recovery.relaunch_detected_incomplete",
+                {
+                  level: "warning",
+                  tags: { event: "relaunch_recovery" },
+                  extra: {
+                    count: incompleteRefunds.length,
+                    head_status: incompleteRefunds[0]?.status,
+                  },
+                },
+              );
+            } catch {}
+            useRefundRecoveryStore.getState().hydrate(incompleteRefunds);
+          }
+        } catch (err) {
+          console.error("[refundJournal] Recovery hydration failed:", err);
+        }
       });
       return () => bootTask.cancel();
     }
@@ -885,12 +881,28 @@ export default Sentry.wrap(function RootLayout() {
         if (!isKDS && !isCFDMode) {
           useOrderStore.getState().stopDraftCleanup();
           PrinterService.stopProcessing();
+          try {
+            const {
+              stopSessionPrune,
+            } = require("@/stores/useTableSessionStore");
+            stopSessionPrune();
+          } catch {
+            /* store may not be loaded */
+          }
         }
       } else if (state === "active") {
         // Restart when app comes back to foreground
         if (!isKDS && !isCFDMode) {
           useOrderStore.getState().startDraftCleanup();
           PrinterService.startProcessing();
+          try {
+            const {
+              startSessionPrune,
+            } = require("@/stores/useTableSessionStore");
+            startSessionPrune();
+          } catch {
+            /* store may not be loaded */
+          }
         }
       }
     });
@@ -938,100 +950,100 @@ export default Sentry.wrap(function RootLayout() {
               <PosSyncProvider>
                 <GestureHandlerRootView>
                   <UiScaleProvider>
-                  <SafeAreaProvider>
-                    <ThemeProvider
-                      key={colorScheme}
-                      value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
-                    >
-                      <BottomSheetModalProvider>
-                        <ToastProvider>
-                          <LoadingProvider>
-                            <SessionKickListenerProvider>
-                              <RemoteActionsProvider>
-                                <CFDProvider>
-                                  <StatusBar
-                                    style={"dark"}
-                                    translucent
-                                    hidden={Platform.OS === "android"}
-                                  />
-                                  {Platform.OS === "android" && (
-                                    <SystemBars
-                                      hidden={{
-                                        navigationBar: true,
-                                        statusBar: true,
+                    <SafeAreaProvider>
+                      <ThemeProvider
+                        key={colorScheme}
+                        value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
+                      >
+                        <BottomSheetModalProvider>
+                          <ToastProvider>
+                            <LoadingProvider>
+                              <SessionKickListenerProvider>
+                                <RemoteActionsProvider>
+                                  <CFDProvider>
+                                    <StatusBar
+                                      style={"dark"}
+                                      translucent
+                                      hidden={Platform.OS === "android"}
+                                    />
+                                    {Platform.OS === "android" && (
+                                      <SystemBars
+                                        hidden={{
+                                          navigationBar: true,
+                                          statusBar: true,
+                                        }}
+                                      />
+                                    )}
+                                    <Stack
+                                      screenOptions={{
+                                        ...POS_SCREEN_OPTIONS,
+                                        contentStyle: {
+                                          backgroundColor: colors.screen,
+                                        },
+                                      }}
+                                    >
+                                      <Stack.Screen name="index" />
+                                      <Stack.Screen name="(auth)" />
+                                      <Stack.Screen name="(cfd)" />
+                                      <Stack.Screen name="(main)" />
+                                      <Stack.Screen name="(profiles-and-timeclock)" />
+                                    </Stack>
+                                    <PortalHost />
+                                    {isPOSMode && <SearchBottomSheet />}
+                                    {isPOSMode && isCustomizationOpen && (
+                                      <ItemCustomizationDialog />
+                                    )}
+                                    {isPOSMode && isClockInWallOpen && (
+                                      <ClockInWallModal
+                                        isOpen={isClockInWallOpen}
+                                        onClose={hideClockInWall}
+                                      />
+                                    )}
+                                    {isPOSMode && isPinModalOpen && (
+                                      <ManagerPinModal />
+                                    )}
+                                    {isPOSMode && <CustomerSheet />}
+                                    {isPOSMode && isNoPrinterModalVisible && (
+                                      <NoPrinterModal />
+                                    )}
+                                    {nativeUpdateManifest && (
+                                      <AppUpdateModal
+                                        visible={true}
+                                        manifest={nativeUpdateManifest}
+                                        onSkip={() =>
+                                          setNativeUpdateManifest(null)
+                                        }
+                                        onInstallComplete={() =>
+                                          setNativeUpdateManifest(null)
+                                        }
+                                      />
+                                    )}
+                                    <Toasts
+                                      defaultStyle={{
+                                        view: {
+                                          backgroundColor: colors.card,
+                                          borderWidth: 1,
+                                          borderColor: colors.border,
+                                          flex: 1,
+                                        },
+                                        text: {
+                                          color: colors.heading,
+                                          fontWeight: "bold",
+                                          fontSize: 24,
+                                        },
+                                        indicator: {
+                                          backgroundColor: colors.teal,
+                                        },
                                       }}
                                     />
-                                  )}
-                                  <Stack
-                                    screenOptions={{
-                                      ...POS_SCREEN_OPTIONS,
-                                      contentStyle: {
-                                        backgroundColor: colors.screen,
-                                      },
-                                    }}
-                                  >
-                                    <Stack.Screen name="index" />
-                                    <Stack.Screen name="(auth)" />
-                                    <Stack.Screen name="(cfd)" />
-                                    <Stack.Screen name="(main)" />
-                                    <Stack.Screen name="(profiles-and-timeclock)" />
-                                  </Stack>
-                                  <PortalHost />
-                                  {isPOSMode && <SearchBottomSheet />}
-                                  {isPOSMode && isCustomizationOpen && (
-                                    <ItemCustomizationDialog />
-                                  )}
-                                  {isPOSMode && isClockInWallOpen && (
-                                    <ClockInWallModal
-                                      isOpen={isClockInWallOpen}
-                                      onClose={hideClockInWall}
-                                    />
-                                  )}
-                                  {isPOSMode && isPinModalOpen && (
-                                    <ManagerPinModal />
-                                  )}
-                                  {isPOSMode && <CustomerSheet />}
-                                  {isPOSMode && isNoPrinterModalVisible && (
-                                    <NoPrinterModal />
-                                  )}
-                                  {nativeUpdateManifest && (
-                                    <AppUpdateModal
-                                      visible={true}
-                                      manifest={nativeUpdateManifest}
-                                      onSkip={() =>
-                                        setNativeUpdateManifest(null)
-                                      }
-                                      onInstallComplete={() =>
-                                        setNativeUpdateManifest(null)
-                                      }
-                                    />
-                                  )}
-                                  <Toasts
-                                    defaultStyle={{
-                                      view: {
-                                        backgroundColor: colors.card,
-                                        borderWidth: 1,
-                                        borderColor: colors.border,
-                                        flex: 1,
-                                      },
-                                      text: {
-                                        color: colors.heading,
-                                        fontWeight: "bold",
-                                        fontSize: 24,
-                                      },
-                                      indicator: {
-                                        backgroundColor: colors.teal,
-                                      },
-                                    }}
-                                  />
-                                </CFDProvider>
-                              </RemoteActionsProvider>
-                            </SessionKickListenerProvider>
-                          </LoadingProvider>
-                        </ToastProvider>
-                      </BottomSheetModalProvider>
-                    </ThemeProvider>
-                  </SafeAreaProvider>
+                                  </CFDProvider>
+                                </RemoteActionsProvider>
+                              </SessionKickListenerProvider>
+                            </LoadingProvider>
+                          </ToastProvider>
+                        </BottomSheetModalProvider>
+                      </ThemeProvider>
+                    </SafeAreaProvider>
                   </UiScaleProvider>
                 </GestureHandlerRootView>
               </PosSyncProvider>

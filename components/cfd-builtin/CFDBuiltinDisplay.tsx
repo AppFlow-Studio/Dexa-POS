@@ -28,6 +28,7 @@ import {
   markReady,
   setWebView,
 } from "@/services/cfd/CFDWebViewBridge";
+import { UiScaleProvider } from "@/lib/uiScale";
 import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { AppRegistry, StyleSheet, View } from "react-native";
@@ -313,18 +314,20 @@ function CFDWebViewHost() {
         // hardware-layer compositing conflicts. NativeLoyalty
         // uses plain TouchableOpacity + React state (no
         // setNativeProps — removed in RN 0.76+).
-        <View style={styles.root}>
-          <CFDBuiltinDisplayProvider>
-            {nativeLoyaltyScreen === "loyalty_prompt" ? (
-              <NativeLoyaltyPromptScreen
-                onPhoneSubmitted={triggerCFDPhoneSubmit}
-                onSkip={triggerCFDLoyaltySkip}
-              />
-            ) : (
-              <NativeLoyaltyConfirmationScreen />
-            )}
-          </CFDBuiltinDisplayProvider>
-        </View>
+        <UiScaleProvider>
+          <View style={styles.root}>
+            <CFDBuiltinDisplayProvider>
+              {nativeLoyaltyScreen === "loyalty_prompt" ? (
+                <NativeLoyaltyPromptScreen
+                  onPhoneSubmitted={triggerCFDPhoneSubmit}
+                  onSkip={triggerCFDLoyaltySkip}
+                />
+              ) : (
+                <NativeLoyaltyConfirmationScreen />
+              )}
+            </CFDBuiltinDisplayProvider>
+          </View>
+        </UiScaleProvider>
       ) : (
         // ── WebView for all non-loyalty-prompt screens ──
         // Boots fresh after native overlay dismisses. Bridge's
@@ -373,11 +376,13 @@ function CFDBuiltinDisplay() {
           {USE_WEBVIEW ? (
             <CFDWebViewHost />
           ) : (
-            <CFDBuiltinDisplayProvider>
-              <View style={styles.root}>
-                <CFDScreenRouter />
-              </View>
-            </CFDBuiltinDisplayProvider>
+            <UiScaleProvider>
+              <CFDBuiltinDisplayProvider>
+                <View style={styles.root}>
+                  <CFDScreenRouter />
+                </View>
+              </CFDBuiltinDisplayProvider>
+            </UiScaleProvider>
           )}
         </SafeAreaProvider>
       </CFDBuiltinErrorBoundary>

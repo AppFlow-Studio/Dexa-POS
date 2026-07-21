@@ -58,7 +58,51 @@ export function getTemplatesForContext(ctx: NotifyContext): TemplateOption[] {
   }
 }
 
-export function renderTemplate(key: TemplateKey, ctx: NotifyContext): string {
+// Fill the `{token}` placeholders the composer knows about, leaving any other
+// token (e.g. {party_size}, {store_address}) verbatim — the server fills those
+// from the row at send time. Mirrors the whitelist substitution in
+// supabase/functions/_shared/notifyTemplates.ts.
+function fillTokens(template: string, tokens: Record<string, string>): string {
+  let out = template;
+  for (const [key, value] of Object.entries(tokens)) {
+    out = out.split(`{${key}}`).join(value);
+  }
+  return out;
+}
+
+function tokensFromContext(ctx: NotifyContext): Record<string, string> {
+  const tokens: Record<string, string> = {
+    name: ctx.partyName,
+    store: ctx.storeName,
+  };
+  if (ctx.kind === "reservation_update") {
+    tokens.date = ctx.newDate;
+    tokens.time = ctx.newTime;
+  }
+  return tokens;
+}
+
+/**
+ * Render the composer preview for a template. When the merchant has saved a
+ * custom template for this event (`merchantTemplate`), preview that instead of
+ * the built-in default so the host sees what the guest will actually receive.
+ */
+export function renderTemplate(
+  key: TemplateKey,
+  ctx: NotifyContext,
+  merchantTemplate?: string | null,
+): string {
+  if (
+    key !== "custom" &&
+    typeof merchantTemplate === "string" &&
+    merchantTemplate.trim().length > 0
+  ) {
+    return fillTokens(merchantTemplate.trim(), tokensFromContext(ctx)).slice(
+      0,
+      500,
+    );
+  }
+
   const { partyName, storeName } = ctx;
   switch (key) {
     case "waitlist.tableReady":

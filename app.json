@@ -2,7 +2,7 @@
   "expo": {
     "name": "Dexa-POS",
     "slug": "dexa-pos",
-    "version": "2.1.6",
+    "version": "2.1.9",
     "orientation": "landscape",
     "icon": "./assets/images/dexalogolight.png",
     "scheme": "dexapos",
@@ -12,7 +12,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.temurappflowstudios.dexapos",
-      "runtimeVersion": "2.1.6"
+      "runtimeVersion": "2.1.9"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,7 +28,7 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
-      "runtimeVersion": "2.1.6"
+      "runtimeVersion": "2.1.9"
     },
     "web": {
       "bundler": "metro",

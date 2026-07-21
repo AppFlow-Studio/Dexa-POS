@@ -46,7 +46,6 @@ export interface OrderPaymentRow {
   batch_number: string | null
   dejavoo_batch_number: string | null
   dejavoo_invoice_number: string | null
-  entry_mode: string | null
   is_voided: boolean | null
   void_reason: string | null
   voided_at: string | null
@@ -118,7 +117,6 @@ export const getOrderPaymentsQueryOptions = (
           batch_number,
           dejavoo_batch_number,
           dejavoo_invoice_number,
-          entry_mode,
           is_voided,
           void_reason,
           voided_at,
@@ -134,7 +132,6 @@ export const getOrderPaymentsQueryOptions = (
           return_number,
           return_reason,
           initiated_at,
-          created_at,
           amount_tendered,
           change_given,
           is_cash_priced,
@@ -166,7 +163,7 @@ export const getOrderPaymentsQueryOptions = (
         `
       )
       .eq('order_id', orderId)
-      .order('created_at', { ascending: true })
+      .order('initiated_at', { ascending: true })
 
     if (error) throw error
     return (data as OrderPaymentRow[] | null) ?? []
@@ -314,7 +311,6 @@ export const hydrateOrderPayments = (
         entryMode:
           ((payment.processor_response as any)?.dejavoo_transaction
             ?.entryMode as string | undefined) ??
-          payment.entry_mode ??
           castlesTxn?.entryMode,
         referenceId: payment.reference_number ?? undefined,
         castlesTransaction: castlesTxn,

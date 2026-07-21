@@ -2,7 +2,13 @@ import { FloorPlanService } from '@/services/floorPlanService'
 import { AddToWaitlistParams, WaitlistEntry } from '@/types/db-floor-plan-types'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
+import { useLocationConfigStore } from './useLocationConfigStore'
 import { useTableSessionStore } from './useTableSessionStore'
+
+// Automated guest SMS (add/cancel confirmations) only fire when the merchant has
+// left the "auto SMS" toggle on. Manual "Notify" composer sends are unaffected.
+const isAutoSmsEnabled = () =>
+  useLocationConfigStore.getState().config.waitlist.autoSmsEnabled !== false
 
 // Global client reference (pattern used by other stores)
 let _supabaseClient: SupabaseClient | null = null
@@ -229,7 +235,7 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
       // Fire-and-forget add-confirmation SMS to the guest. The edge function
       // renders the message server-side from `template_key` + waitlist row.
       const phoneDigits = (newEntry.phone ?? '').replace(/\D/g, '')
-      if (phoneDigits.length > 0 && data?.waitlist_id) {
+      if (phoneDigits.length > 0 && data?.waitlist_id && isAutoSmsEnabled()) {
         // No await — we don't want to block the add flow if SMS provider is slow.
         FloorPlanService.sendWaitlistSms(getClient(), {
           waitlist_id: data.waitlist_id,
@@ -280,7 +286,7 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
 
       // Fire-and-forget cancellation SMS. Edge function reads the row
       // server-side and renders the message from template_key.
-      if (phoneDigits.length > 0) {
+      if (phoneDigits.length > 0 && isAutoSmsEnabled()) {
         FloorPlanService.sendWaitlistSms(getClient(), {
           waitlist_id: entryId,
           template_key: 'waitlist.cancelled'

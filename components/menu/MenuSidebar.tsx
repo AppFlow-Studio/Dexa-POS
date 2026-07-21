@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { router, usePathname } from "expo-router";
 import {
@@ -53,6 +54,8 @@ const MenuSidebar = React.memo(
     const storeMenus = useMenuStore((s) => s.menus);
     const modifierGroups = useMenuStore((s) => s.modifierGroups);
     const pathname = usePathname();
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
 
     const [isExpanded, setIsExpanded] = useState(true);
     const widthSV = useSharedValue(EXPANDED_WIDTH);
@@ -191,17 +194,17 @@ const MenuSidebar = React.memo(
         {/* Floating Toggle Button */}
         <TouchableOpacity
           onPress={toggleSidebar}
-          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          hitSlop={{ top: s(20), bottom: s(20), left: s(20), right: s(20) }}
           activeOpacity={0.7}
           style={{
             position: "absolute",
-            right: -14,
+            right: s(-14),
             top: "50%",
-            marginTop: -16,
+            marginTop: s(-16),
             zIndex: 50,
-            width: 32,
-            height: 32,
-            borderRadius: 16,
+            width: s(32),
+            height: s(32),
+            borderRadius: s(16),
             backgroundColor: colors.card,
             borderWidth: 1,
             borderColor: colors.border,
@@ -210,9 +213,9 @@ const MenuSidebar = React.memo(
           }}
         >
           {isExpanded ? (
-            <ChevronLeft size={16} color={colors.label} />
+            <ChevronLeft size={s(16)} color={colors.label} />
           ) : (
-            <ChevronRight size={16} color={colors.label} />
+            <ChevronRight size={s(16)} color={colors.label} />
           )}
         </TouchableOpacity>
 
@@ -221,8 +224,8 @@ const MenuSidebar = React.memo(
           style={[
             textStyle,
             {
-              paddingHorizontal: 14,
-              paddingVertical: 12,
+              paddingHorizontal: s(14),
+              paddingVertical: s(12),
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
               flexDirection: "row",
@@ -233,7 +236,7 @@ const MenuSidebar = React.memo(
         >
           <Text
             style={{
-              fontSize: 15,
+              fontSize: s(15),
               fontWeight: "700",
               color: colors.heading,
             }}
@@ -247,11 +250,11 @@ const MenuSidebar = React.memo(
                 backgroundColor: colors.teal + "20",
                 borderWidth: 1,
                 borderColor: colors.teal + "50",
-                borderRadius: 8,
-                padding: 6,
+                borderRadius: s(8),
+                padding: s(6),
               }}
             >
-              <Plus size={14} color={colors.teal} />
+              <Plus size={s(14)} color={colors.teal} />
             </TouchableOpacity>
           )}
         </Animated.View>
@@ -272,7 +275,7 @@ const MenuSidebar = React.memo(
                   alignItems: "center",
                   justifyContent: isExpanded ? "flex-start" : "center",
                   paddingHorizontal: isExpanded ? 14 : 8,
-                  paddingVertical: 10,
+                  paddingVertical: s(10),
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
                   backgroundColor: isActive
@@ -284,9 +287,9 @@ const MenuSidebar = React.memo(
               >
                 <View
                   style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 9,
+                    width: s(32),
+                    height: s(32),
+                    borderRadius: s(9),
                     backgroundColor: isActive
                       ? colors.teal + "20"
                       : colors.card,
@@ -297,14 +300,14 @@ const MenuSidebar = React.memo(
                   }}
                 >
                   <Icon
-                    size={16}
+                    size={s(16)}
                     color={isActive ? colors.teal : colors.label}
                   />
                 </View>
                 <Animated.View style={[textStyle, { flex: 1 }]}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: isActive ? "600" : "400",
                       color: isActive ? colors.teal : colors.label,
                     }}
@@ -320,10 +323,10 @@ const MenuSidebar = React.memo(
                         backgroundColor: isActive
                           ? colors.teal + "20"
                           : colors.card,
-                        borderRadius: 10,
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        minWidth: 20,
+                        borderRadius: s(10),
+                        paddingHorizontal: s(6),
+                        paddingVertical: s(2),
+                        minWidth: s(20),
                         alignItems: "center",
                         flexShrink: 0,
                       },
@@ -331,7 +334,7 @@ const MenuSidebar = React.memo(
                   >
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: s(10),
                         fontWeight: "600",
                         color: isActive ? colors.teal : colors.muted,
                       }}
