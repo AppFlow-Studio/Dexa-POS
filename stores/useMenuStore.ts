@@ -167,6 +167,18 @@ interface MenuState {
   ) => void
   unsnoozeModifierGroup: (groupId: string) => void
 
+  // Reconcile per-location 86/snooze state from a fresh get_active_snoozes fetch
+  // so the POS picks up website / other-station 86s AND restores without a full
+  // menu rebuild. `restored*Ids` are ids that were active in the PREVIOUS fetch
+  // but are no longer active now — the only ones cleared, which is why an
+  // in-flight local optimistic 86 (never seen in a prior server fetch) is safe.
+  reconcileSnoozes: (
+    activeItems: ActiveSnoozeSync[],
+    activeModifiers: ActiveModifierSnoozeSync[],
+    restoredItemIds: string[],
+    restoredModifierIds: string[]
+  ) => void
+
   // Scheduling
   setMenuSchedules: (id: string, schedules: Schedule[]) => void
   setCategorySchedules: (id: string, schedules: Schedule[]) => void
@@ -1087,6 +1099,110 @@ export const useMenuStore = create<MenuState>((set, get) => {
         applyModifierOptionsPatch(state, (_o, g) => g.id === groupId, patch)
       )
       console.log('[useMenuStore] Un-snoozed modifier group', groupId)
+    },
+
+    reconcileSnoozes: (
+      activeItems,
+      activeModifiers,
+      restoredItemIds,
+      restoredModifierIds
+    ) => {
+      set(state => {
+        let { menus, menuItems, menuItemsById } = state
+
+        // Items: apply/refresh active snoozes (idempotent — skip unchanged).
+        for (const it of activeItems) {
+          if (!it.snoozed_until) continue
+          const cur = menuItemsById[it.menu_item_id]
+          if (
+            cur &&
+            cur.availability === false &&
+            cur.snoozedUntil === it.snoozed_until
+          )
+            continue
+          const patched = applyItemPatchAcrossCollections(
+            { menus, menuItems, menuItemsById } as MenuState,
+            it.menu_item_id,
+            {
+              availability: false,
+              snoozedUntil: it.snoozed_until,
+              snoozeReason: it.snooze_reason ?? null
+            }
+          )
+          menus = patched.menus
+          menuItems = patched.menuItems
+          menuItemsById = patched.menuItemsById
+        }
+
+        // Items: restore ones that dropped out of the server's active set.
+        for (const id of restoredItemIds) {
+          const cur = menuItemsById[id]
+          if (!cur || (cur.snoozedUntil == null && cur.availability !== false))
+            continue
+          const patched = applyItemPatchAcrossCollections(
+            { menus, menuItems, menuItemsById } as MenuState,
+            id,
+            { availability: true, snoozedUntil: null, snoozeReason: null }
+          )
+          menus = patched.menus
+          menuItems = patched.menuItems
+          menuItemsById = patched.menuItemsById
+        }
+
+        // Modifier options: reconcile in a single pass over the groups.
+        const activeModMap = new Map<string, ActiveModifierSnoozeSync>()
+        for (const m of activeModifiers) {
+          if (m.snoozed_until)
+            activeModMap.set(m.modifier_group_item_id, m)
+        }
+        const restoredModSet = new Set(restoredModifierIds)
+        let modsChanged = false
+        const modifierGroups = state.modifierGroups.map(group => {
+          let changed = false
+          const options = group.options.map(option => {
+            const active = activeModMap.get(option.id)
+            if (active) {
+              if (
+                option.isAvailable === false &&
+                option.snoozedUntil === active.snoozed_until
+              )
+                return option
+              changed = true
+              return {
+                ...option,
+                isAvailable: false,
+                snoozedUntil: active.snoozed_until,
+                snoozeReason: active.snooze_reason ?? null
+              }
+            }
+            if (
+              restoredModSet.has(option.id) &&
+              (option.snoozedUntil != null || option.isAvailable === false)
+            ) {
+              changed = true
+              return {
+                ...option,
+                isAvailable: true,
+                snoozedUntil: null,
+                snoozeReason: null
+              }
+            }
+            return option
+          })
+          if (!changed) return group
+          modsChanged = true
+          return { ...group, options }
+        })
+
+        const result: Partial<MenuState> = { menus, menuItems, menuItemsById }
+        if (modsChanged) {
+          result.modifierGroups = modifierGroups
+          const modifierGroupsById: Record<string, ModifierCategory> = {}
+          for (const mg of modifierGroups) modifierGroupsById[mg.id] = mg
+          result.modifierGroupsById = modifierGroupsById
+        }
+        return result
+      })
     },
 
     // Category CRUD Operations

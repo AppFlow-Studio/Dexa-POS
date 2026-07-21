@@ -1,4 +1,4 @@
-import { Canvas, Group } from "@shopify/react-native-skia";
+import { Canvas, Group, useCanvasRef } from "@shopify/react-native-skia";
 import React, { useEffect, useRef, useState } from "react";
 import { AppState, StyleSheet } from "react-native";
 import { SharedValue, useDerivedValue } from "react-native-reanimated";
@@ -89,6 +89,11 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
   // from the current React tree. Only the Canvas is re-keyed — typefaces, camera
   // shared values, and the store subscription all live on SkiaTableLayer and are
   // untouched, so recovery is cheap and state-preserving.
+  // Ref to the live Canvas so the foreground heartbeat below can force a redraw
+  // (re-issue the picture to a possibly-recreated native surface) without a full
+  // remount.
+  const canvasRef = useCanvasRef();
+
   const [surfaceKey, setSurfaceKey] = useState(0);
   const appStateRef = useRef(AppState.currentState);
   useEffect(() => {
@@ -103,6 +108,38 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
     });
     return () => sub.remove();
   }, []);
+
+  // ── Foreground redraw heartbeat ──────────────────────────────────────────
+  // The modern rn-skia <Canvas> (2.x) has no "continuous" mode — it repaints
+  // only when its React tree or a Reanimated value it reads changes. The camera
+  // transform is a Reanimated derived value that only changes DURING gestures,
+  // so an idle floor plan issues no draws. If Android reclaims the EGL/
+  // SurfaceView backing the Canvas while foregrounded and idle (screen dim, DPM,
+  // memory pressure, another Skia surface tearing down the shared GL context) —
+  // a path that fires NO AppState transition — nothing ever re-issues the
+  // picture to the recreated surface and the whole canvas stays permanently
+  // blank until process restart. That is the "blanks mid-session, never
+  // recovers, bg→fg doesn't help" report.
+  //
+  // Fix: a low-frequency heartbeat that calls redraw() while foregrounded. This
+  // re-issues the existing picture to the current native surface (no React
+  // reconciliation, no remount/flicker — far cheaper than bumping surfaceKey),
+  // so once the OS provides a fresh surface it repaints on the next tick. It's
+  // the on-demand equivalent of the old continuous mode and is idempotent/cheap
+  // for a static scene.
+  useEffect(() => {
+    const REDRAW_INTERVAL_MS = 2000;
+    const id = setInterval(() => {
+      if (AppState.currentState !== "active") return;
+      try {
+        canvasRef.current?.redraw();
+      } catch {
+        // A dead/torn-down native view can throw here; ignore — the AppState
+        // surfaceKey remount is the hard-recovery fallback.
+      }
+    }, REDRAW_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [canvasRef]);
 
   // Latch the last valid viewport so a transient 0-dim relayout frame never
   // collapses the camera center to (0,0). Kept in a ref (read during render is
@@ -164,6 +201,7 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
   return (
     <Canvas
       key={surfaceKey}
+      ref={canvasRef}
       style={StyleSheet.absoluteFill}
       pointerEvents="none"
     >

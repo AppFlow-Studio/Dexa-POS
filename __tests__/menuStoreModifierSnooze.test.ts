@@ -97,3 +97,93 @@ describe("useMenuStore modifier snooze", () => {
     expect(c?.snoozedUntil).toBeUndefined();
   });
 });
+
+describe("useMenuStore reconcileSnoozes (website / other-station sync)", () => {
+  beforeEach(seed);
+
+  it("applies an active modifier snooze fetched from the server", () => {
+    // Simulates a 86 made on the website: opt-a is in the active set.
+    useMenuStore
+      .getState()
+      .reconcileSnoozes(
+        [],
+        [
+          {
+            modifier_group_item_id: "opt-a",
+            modifier_group_id: "grp-1",
+            snoozed_until: SNOOZE_INFINITY,
+            snooze_reason: "ran out",
+          },
+        ],
+        [],
+        [],
+      );
+
+    expect(optById("opt-a")?.isAvailable).toBe(false);
+    expect(optById("opt-a")?.snoozedUntil).toBe(SNOOZE_INFINITY);
+    expect(optById("opt-b")?.isAvailable).toBe(true);
+  });
+
+  it("restores a modifier that dropped out of the active set (delta)", () => {
+    // opt-a was snoozed; the website restored it, so it's now in restoredModifierIds.
+    useMenuStore.getState().snoozeModifierOption("opt-a", SNOOZE_INFINITY);
+    useMenuStore.getState().reconcileSnoozes([], [], [], ["opt-a"]);
+
+    expect(optById("opt-a")?.isAvailable).toBe(true);
+    expect(optById("opt-a")?.snoozedUntil).toBeNull();
+  });
+
+  it("never clobbers a local optimistic 86 absent from the server set", () => {
+    // A just-applied local 86 (RPC still in flight) is NOT in the server's active
+    // set yet, and NOT in restoredModifierIds — it must survive the reconcile.
+    useMenuStore.getState().snoozeModifierOption("opt-a", SNOOZE_INFINITY, "local");
+    useMenuStore.getState().reconcileSnoozes([], [], [], []);
+
+    expect(optById("opt-a")?.isAvailable).toBe(false);
+    expect(optById("opt-a")?.snoozedUntil).toBe(SNOOZE_INFINITY);
+  });
+
+  it("applies and restores item snoozes across collections", () => {
+    const item: any = {
+      id: "item-1",
+      name: "Burger",
+      price: 10,
+      availability: true,
+    };
+    useMenuStore.setState({
+      menuItems: [item],
+      menuItemsById: { "item-1": item },
+      menus: [],
+    });
+
+    useMenuStore
+      .getState()
+      .reconcileSnoozes(
+        [
+          {
+            menu_item_id: "item-1",
+            snoozed_until: SNOOZE_INFINITY,
+            snooze_reason: null,
+          },
+        ],
+        [],
+        [],
+        [],
+      );
+    expect(useMenuStore.getState().menuItemsById["item-1"].availability).toBe(
+      false,
+    );
+    expect(useMenuStore.getState().menuItemsById["item-1"].snoozedUntil).toBe(
+      SNOOZE_INFINITY,
+    );
+
+    // Now the server no longer lists it -> restore via delta.
+    useMenuStore.getState().reconcileSnoozes([], [], ["item-1"], []);
+    expect(useMenuStore.getState().menuItemsById["item-1"].availability).toBe(
+      true,
+    );
+    expect(
+      useMenuStore.getState().menuItemsById["item-1"].snoozedUntil,
+    ).toBeNull();
+  });
+});

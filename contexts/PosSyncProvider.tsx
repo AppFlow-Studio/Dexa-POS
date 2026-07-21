@@ -1,6 +1,7 @@
 import { queryClient } from "@/contexts/TanstackProvider";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
+import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
 import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
@@ -140,6 +141,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   useBusinessDayRollover({
     enabled: Boolean(supabase && selectedStore?.id && !isKDS),
   });
+
+  // Keep 86/out-of-stock state live with website + other-station changes.
+  // pos_sync is staleTime:Infinity, so without this a website 86 never reaches a
+  // running POS. Surgical snooze-only reconcile (no full menu rebuild). KDS skips.
+  useMenuSnoozeReconcile(isKDS ? undefined : selectedStore?.id);
 
   // Wave 3.0d-5: combined order reconcile on slow→fast + foreground recovery.
   // Sequenced: cart-shape push (3.0f-3) → 500ms gap → header pull (3.0d-5).
