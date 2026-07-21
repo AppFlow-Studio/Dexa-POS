@@ -103,17 +103,7 @@ const SkiaTableLayer: React.FC<SkiaTableLayerProps> = ({
       // inactive/background → active is exactly the transition after a screen
       // dim/wake or an OS surface reclaim, when the GL surface may be stale.
       if (prev !== "active" && next === "active") {
-        setSurfaceKey((k) => {
-          const nextKey = k + 1;
-          // console.warn survives production console-stripping (babel keeps
-          // warn/error), so this is observable in a release logcat to confirm
-          // the recovery path fires and how often.
-          console.warn("[SkiaTableLayer] surfaceKey bump", {
-            key: nextKey,
-            reason: "appstate-active",
-          });
-          return nextKey;
-        });
+        setSurfaceKey((k) => k + 1);
       }
     });
     return () => sub.remove();
