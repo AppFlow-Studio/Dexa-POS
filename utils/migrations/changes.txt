@@ -1,0 +1,413 @@
+
+PATTERN A:
+orders :
+deleted merchant can select orders
+
+order_payment_items:
+deleted:hq_admin_select_order_payment_items
+
+menu_catgories:
+deleted:
+merchant admins can update
+allow insert for auth merchants
+
+menu items discounts:
+deleted:
+read_access
+merchant admins can manage menu item discounts
+
+merchants:
+deleted:
+Carriers can access their own merchants or if they are part of 
+
+modifier_group_item_recepies:
+added: grant all to auth users
+deleted:
+Enable delete access for authenticated
+Enable insert access for authenticated users
+Enable read access for authenticated users
+Enable update access for authenticated users
+
+
+category_items:
+added: grant all to merchant admins
+deleted:
+Merchant admins can manage items in categories
+allow auth merchants to update
+allow auth merchants to insert
+
+device login history
+deleted:Merchants can view their device login
+
+payment_terminals:
+deleted:merchants can view their terminals
+
+station_devices:
+deleted:
+merchants can view their device
+
+stations:
+deleted :
+merchants can view their stations
+
+station_sessions:
+deleted: users can viewsessions for their merchants
+
+PATTERN B:
+
+**Affected tables:** `inventory_items`, `location_inventory_overrides`, `location_inventory_stock`, `location_vendor_pricing`, `location_vendors`, `purchase_order_items`, `purchase_order_payments`, `purchase_orders`, `stock_update_log`, `vendor_items`, `vendors`.
+
+**Fix:** Drop the `*_all` variant and keep the per-action policies (they are more precise and easier to audit).
+
+
+PATTERN C:
+//////
+CREATE POLICY "device_assignments_select_combined" ON "public"."device_assignments" FOR SELECT TO authenticated USING ((is_dexapos_admin()) OR (EXISTS ( SELECT 1 FROM "public"."device_inventory" di WHERE ((di.id = "device_assignments".device_id) AND (di.merchant_id IS NOT NULL) AND is_merchant_admin(di.merchant_id)))) OR (EXISTS ( SELECT 1 FROM ("public"."device_inventory" di JOIN "public"."merchants" m ON (m.id = di.merchant_id)) WHERE ((di.id = "device_assignments".device_id) AND (m.carrier_id = get_my_carrier_id())))));
+
+DROP POLICY "device_assignments_select_hq" ON "public"."device_assignments";
+DROP POLICY "device_assignments_select_merchant" ON "public"."device_assignments";
+DROP POLICY "device_assignments_select_carrier" ON "public"."device_assignments";
+
+
+///////
+
+begin;
+
+drop policy if exists "device_config_history_select_hq" on public.device_config_history;
+drop policy if exists "device_config_history_select_merchant" on public.device_config_history;
+drop policy if exists "device_config_history_select_carrier" on public.device_config_history;
+
+create policy "device_config_history_select_combined"
+on public.device_config_history
+for select
+to authenticated
+using (
+  is_dexapos_admin()
+  or exists (
+    select 1
+    from device_inventory di
+    where di.id = device_config_history.device_id
+      and di.merchant_id is not null
+      and is_merchant_admin(di.merchant_id)
+  )
+  or exists (
+    select 1
+    from device_inventory di
+    join merchants m on m.id = di.merchant_id
+    where di.id = device_config_history.device_id
+      and m.carrier_id = get_my_carrier_id()
+  )
+);
+
+commit;
+
+
+///////
+
+
+BEGIN;
+
+DROP POLICY IF EXISTS "device_inventory_select_hq" ON public.device_inventory;
+DROP POLICY IF EXISTS "device_inventory_select_merchant" ON public.device_inventory;
+DROP POLICY IF EXISTS "device_inventory_select_carrier" ON public.device_inventory;
+
+CREATE POLICY "device_inventory_select_combined"
+ON public.device_inventory
+FOR SELECT
+TO authenticated
+USING (
+  is_dexapos_admin()
+  OR (
+    merchant_id IS NOT NULL
+    AND is_merchant_admin(merchant_id)
+  )
+  OR (
+    merchant_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM public.merchants m
+      WHERE m.id = device_inventory.merchant_id
+        AND m.carrier_id = get_my_carrier_id()
+    )
+  )
+);
+
+COMMIT;
+
+
+
+//////
+drop policy if exists "device_notes_select_hq" on public.device_notes;
+drop policy if exists "device_notes_select_merchant" on public.device_notes;
+drop policy if exists "device_notes_select_carrier" on public.device_notes;
+
+create policy "device_notes_select_combined"
+on public.device_notes
+as permissive
+for select
+to authenticated
+using (
+  is_dexapos_admin()
+  or exists (
+    select 1
+    from public.device_inventory di
+    where di.id = device_notes.device_id
+      and di.merchant_id is not null
+      and is_merchant_admin(di.merchant_id)
+  )
+  or exists (
+    select 1
+    from public.device_inventory di
+    join public.merchants m on m.id = di.merchant_id
+    where di.id = device_notes.device_id
+      and m.carrier_id = get_my_carrier_id()
+  )
+);
+///////////
+
+
+
+DROP POLICY IF EXISTS "lbp_carrier_admin_read" ON public.location_banking_profiles;
+DROP POLICY IF EXISTS "lbp_hq_admin_all" ON public.location_banking_profiles;
+DROP POLICY IF EXISTS "lbp_merchant_owner_rw" ON public.location_banking_profiles;
+
+CREATE POLICY "lbp_hq_admin_all"
+ON public.location_banking_profiles
+FOR ALL
+TO authenticated
+USING (is_dexapos_admin())
+WITH CHECK (is_dexapos_admin());
+
+CREATE POLICY "lbp_merchant_owner_rw"
+ON public.location_banking_profiles
+FOR ALL
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1
+    FROM public.locations l
+    JOIN public.merchants mer ON mer.id = l.merchant_id
+    JOIN public.members mm ON mm.organization_id = mer.clerk_org_id
+    WHERE l.id = location_banking_profiles.location_id
+      AND mm.user_id = current_user_id()
+      AND mm.role = 'merchant.owner'
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM public.locations l
+    JOIN public.merchants mer ON mer.id = l.merchant_id
+    JOIN public.members mm ON mm.organization_id = mer.clerk_org_id
+    WHERE l.id = location_banking_profiles.location_id
+      AND mm.user_id = current_user_id()
+      AND mm.role = 'merchant.owner'
+  )
+);
+
+CREATE POLICY "lbp_carrier_admin_read"
+ON public.location_banking_profiles
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1
+    FROM public.locations l
+    JOIN public.merchants mer ON mer.id = l.merchant_id
+    JOIN public.carriers c ON c.id = mer.carrier_id
+    JOIN public.members cm ON cm.organization_id = c.clerk_org_id
+    JOIN public.roles cr ON cr.code = cm.role
+    WHERE l.id = location_banking_profiles.location_id
+      AND cm.user_id = current_user_id()
+      AND cr.organization_type = 'carrier'::public.organization_type
+  )
+);
+
+
+
+
+
+//////
+
+
+
+BEGIN;
+
+DROP POLICY IF EXISTS "mbp_carrier_admin_read" ON public.merchant_billing_profiles;
+DROP POLICY IF EXISTS "mbp_hq_admin_all" ON public.merchant_billing_profiles;
+DROP POLICY IF EXISTS "mbp_merchant_owner_rw" ON public.merchant_billing_profiles;
+
+CREATE POLICY "mbp_select_access"
+ON public.merchant_billing_profiles
+FOR SELECT
+TO public
+USING (
+  is_dexapos_admin()
+  OR EXISTS (
+    SELECT 1
+    FROM merchants mer
+    JOIN members mm ON mm.organization_id = mer.clerk_org_id
+    WHERE mer.id = merchant_billing_profiles.merchant_id
+      AND mm.user_id = current_user_id()
+      AND mm.role = 'merchant.owner'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM merchants mer
+    JOIN carriers c ON c.id = mer.carrier_id
+    JOIN members cm ON cm.organization_id = c.clerk_org_id
+    JOIN roles cr ON cr.code = cm.role
+    WHERE mer.id = merchant_billing_profiles.merchant_id
+      AND cm.user_id = current_user_id()
+      AND cr.organization_type = 'carrier'::organization_type
+  )
+);
+
+CREATE POLICY "mbp_hq_admin_insert"
+ON public.merchant_billing_profiles
+FOR INSERT
+TO public
+WITH CHECK (is_dexapos_admin());
+
+CREATE POLICY "mbp_hq_admin_update"
+ON public.merchant_billing_profiles
+FOR UPDATE
+TO public
+USING (is_dexapos_admin())
+WITH CHECK (is_dexapos_admin());
+
+CREATE POLICY "mbp_hq_admin_delete"
+ON public.merchant_billing_profiles
+FOR DELETE
+TO public
+USING (is_dexapos_admin());
+
+CREATE POLICY "mbp_merchant_owner_insert"
+ON public.merchant_billing_profiles
+FOR INSERT
+TO public
+WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM merchants mer
+    JOIN members mm ON mm.organization_id = mer.clerk_org_id
+    WHERE mer.id = merchant_billing_profiles.merchant_id
+      AND mm.user_id = current_user_id()
+      AND mm.role = 'merchant.owner'
+  )
+);
+
+CREATE POLICY "mbp_merchant_owner_update"
+ON public.merchant_billing_profiles
+FOR UPDATE
+TO public
+USING (
+  EXISTS (
+    SELECT 1
+    FROM merchants mer
+    JOIN members mm ON mm.organization_id = mer.clerk_org_id
+    WHERE mer.id = merchant_billing_profiles.merchant_id
+      AND mm.user_id = current_user_id()
+      AND mm.role = 'merchant.owner'
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM merchants mer
+    JOIN members mm ON mm.organization_id = mer.clerk_org_id
+    WHERE mer.id = merchant_billing_profiles.merchant_id
+      AND mm.user_id = current_user_id()
+      AND mm.role = 'merchant.owner'
+  )
+);
+
+CREATE POLICY "mbp_merchant_owner_delete"
+ON public.merchant_billing_profiles
+FOR DELETE
+TO public
+USING (
+  EXISTS (
+    SELECT 1
+    FROM merchants mer
+    JOIN members mm ON mm.organization_id = mer.clerk_org_id
+    WHERE mer.id = merchant_billing_profiles.merchant_id
+      AND mm.user_id = current_user_id()
+      AND mm.role = 'merchant.owner'
+  )
+);
+
+COMMIT;
+
+
+
+
+
+
+////////
+drop policy if exists "admin_see_all_tickets" on public.support_tickets;
+drop policy if exists "merchants_own_tickets" on public.support_tickets;
+
+create policy "support_tickets_admin_or_merchant_all"
+on public.support_tickets
+as permissive
+for all
+to public
+using (
+  (
+    exists (
+      select 1
+      from members mem
+      join organizations o on o.id = mem.organization_id
+      where mem.user_id = (auth.uid())::text
+        and o.id = (
+          select organizations.id
+          from organizations
+          where organizations.id = current_setting('app.dexa_hq_org_id', true)
+          limit 1
+        )
+    )
+  )
+  or
+  (
+    merchant_id in (
+      select m.id
+      from merchants m
+      where m.clerk_org_id = (
+        select organizations.id
+        from organizations
+        where organizations.id = ((auth.jwt() -> 'org') ->> 'id')
+        limit 1
+      )
+    )
+  )
+)
+with check (
+  (
+    exists (
+      select 1
+      from members mem
+      join organizations o on o.id = mem.organization_id
+      where mem.user_id = (auth.uid())::text
+        and o.id = (
+          select organizations.id
+          from organizations
+          where organizations.id = current_setting('app.dexa_hq_org_id', true)
+          limit 1
+        )
+    )
+  )
+  or
+  (
+    merchant_id in (
+      select m.id
+      from merchants m
+      where m.clerk_org_id = (
+        select organizations.id
+        from organizations
+        where organizations.id = ((auth.jwt() -> 'org') ->> 'id')
+        limit 1
+      )
+    )
+  )
+);

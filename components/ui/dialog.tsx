@@ -1,3 +1,5 @@
+import { iosOnly } from "@/lib/safeAnimations";
+import { colors } from "@/lib/theme";
 import * as DialogPrimitive from "@rn-primitives/dialog";
 import * as React from "react";
 import { Platform, StyleSheet, View, type ViewProps } from "react-native";
@@ -25,11 +27,11 @@ function DialogOverlayWeb({
     <DialogPrimitive.Overlay
       className={cn(
         "bg-black/80 flex justify-center absolute top-0 right-0 bottom-0 left-0",
-        align === "end" ? "items-end pb-0" : "items-center p-2",
+        align === "end" ? "items-end justify-start pb-0" : "items-center p-2",
         open
           ? "web:animate-in web:fade-in-0"
           : "web:animate-out web:fade-out-0",
-        className
+        className,
       )}
       {...props}
     />
@@ -51,14 +53,14 @@ function DialogOverlayNative({
       style={StyleSheet.absoluteFill}
       className={cn(
         "flex bg-black/80 justify-center",
-        align === "end" ? "items-end pb-0" : "items-center p-2",
-        className
+        align === "end" ? "items-end justify-start pb-0" : "items-center p-2",
+        className,
       )}
       {...props}
     >
       <Animated.View
-        entering={FadeIn.duration(150)}
-        exiting={FadeOut.duration(150)}
+        entering={iosOnly(FadeIn.duration(150))}
+        exiting={iosOnly(FadeOut.duration(150))}
       >
         {children}
       </Animated.View>
@@ -76,6 +78,7 @@ function DialogContent({
   children,
   portalHost,
   align = "center",
+  style,
   ...props
 }: DialogPrimitive.ContentProps & {
   ref?: React.RefObject<DialogPrimitive.ContentRef>;
@@ -89,13 +92,20 @@ function DialogContent({
       <DialogOverlay align={align}>
         <DialogPrimitive.Content
           className={cn(
-            "max-w-2xl w-full gap-4 web:cursor-default bg-background p-6 shadow-lg web:duration-200",
+            "max-w-2xl w-full gap-4 web:cursor-default p-6 web:duration-200",
             align === "end" ? "rounded-t-lg rounded-b-none" : "rounded-lg",
             open
               ? "web:animate-in web:fade-in-0 web:zoom-in-95"
               : "web:animate-out web:fade-out-0 web:zoom-out-95",
-            className
+            className,
           )}
+          style={[
+            {
+              borderColor: colors.border,
+              borderWidth: 0,
+            },
+            style,
+          ]}
           {...props}
         >
           {children}
@@ -115,7 +125,7 @@ function DialogHeader({ className, ...props }: ViewProps) {
     <View
       className={cn(
         "flex flex-col gap-1.5 text-center sm:text-left",
-        className
+        className,
       )}
       {...props}
     />
@@ -127,7 +137,7 @@ function DialogFooter({ className, ...props }: ViewProps) {
     <View
       className={cn(
         "flex flex-col-reverse sm:flex-row sm:justify-end gap-2",
-        className
+        className,
       )}
       {...props}
     />
@@ -144,7 +154,7 @@ function DialogTitle({
     <DialogPrimitive.Title
       className={cn(
         "text-lg native:text-xl text-foreground font-semibold leading-none tracking-tight",
-        className
+        className,
       )}
       {...props}
     />
@@ -161,7 +171,7 @@ function DialogDescription({
     <DialogPrimitive.Description
       className={cn(
         "text-sm native:text-base text-muted-foreground",
-        className
+        className,
       )}
       {...props}
     />
@@ -169,14 +179,15 @@ function DialogDescription({
 }
 
 export {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogOverlay,
-  DialogPortal,
-  DialogTitle,
-  DialogTrigger,
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogOverlay,
+    DialogPortal,
+    DialogTitle,
+    DialogTrigger
 };
+

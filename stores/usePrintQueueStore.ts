@@ -1,14 +1,14 @@
-import { mmkvStorage } from "@/lib/storage";
+import { createLazyPersistStorage } from "@/lib/storage";
 import {
-  PrintJob,
-  PrintJobPriority,
-  PrintJobStatus,
-  SerializedPrintJob,
-  deserializePrintJob,
-  serializePrintJob,
+    PrintJob,
+    PrintJobPriority,
+    PrintJobStatus,
+    SerializedPrintJob,
+    deserializePrintJob,
+    serializePrintJob,
 } from "@/types/printer";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 
 interface PrintQueueStoreState {
   jobs: SerializedPrintJob[];
@@ -16,6 +16,7 @@ interface PrintQueueStoreState {
   // Actions
   enqueue: (job: PrintJob) => void;
   dequeue: () => PrintJob | null;
+  dequeueForPrinter: (printerId: string) => PrintJob | null;
   updateJobStatus: (
     jobId: string,
     status: PrintJobStatus,
@@ -39,6 +40,7 @@ const PRIORITY_ORDER: Record<PrintJobPriority, number> = {
 };
 
 const MAX_RETRIES = 3;
+const MAX_FAILED_JOBS = 50;
 const RETRY_DELAYS = [1000, 3000, 9000]; // Exponential backoff
 
 export const usePrintQueueStore = create<PrintQueueStoreState>()(
@@ -70,7 +72,8 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
           const j = jobs[i];
           if (j.status !== "queued") continue;
           if (j.attempts > 0) {
-            const delayMs = RETRY_DELAYS[Math.min(j.attempts - 1, RETRY_DELAYS.length - 1)];
+            const delayMs =
+              RETRY_DELAYS[Math.min(j.attempts - 1, RETRY_DELAYS.length - 1)];
             const elapsed = Date.now() - j.createdAt;
             if (elapsed < delayMs * j.attempts) continue; // Not ready, skip to next
           }
@@ -91,9 +94,41 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
         return deserializePrintJob(job);
       },
 
-      updateJobStatus: (jobId, status, error) => {
+      dequeueForPrinter: (printerId: string) => {
+        const { jobs } = get();
+
+        // Same readiness rules as `dequeue` but filtered by printerId so each
+        // printer drains independently.
+        let idx = -1;
+        for (let i = 0; i < jobs.length; i++) {
+          const j = jobs[i];
+          if (j.printerId !== printerId) continue;
+          if (j.status !== "queued") continue;
+          if (j.attempts > 0) {
+            const delayMs =
+              RETRY_DELAYS[Math.min(j.attempts - 1, RETRY_DELAYS.length - 1)];
+            const elapsed = Date.now() - j.createdAt;
+            if (elapsed < delayMs * j.attempts) continue;
+          }
+          idx = i;
+          break;
+        }
+        if (idx === -1) return null;
+
+        const job = jobs[idx];
+
         set((state) => ({
-          jobs: state.jobs.map((j) => {
+          jobs: state.jobs.map((j, i) =>
+            i === idx ? { ...j, status: "processing" as PrintJobStatus } : j,
+          ),
+        }));
+
+        return deserializePrintJob(job);
+      },
+
+      updateJobStatus: (jobId, status, error) => {
+        set((state) => {
+          let jobs = state.jobs.map((j) => {
             if (j.id !== jobId) return j;
             return {
               ...j,
@@ -101,8 +136,22 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
               lastError: error ?? j.lastError,
               attempts: status === "failed" ? j.attempts + 1 : j.attempts,
             };
-          }),
-        }));
+          });
+          // Evict oldest failed jobs when cap exceeded
+          if (status === "failed") {
+            const failedJobs = jobs.filter((j) => j.status === "failed");
+            if (failedJobs.length > MAX_FAILED_JOBS) {
+              const oldest = new Set(
+                failedJobs
+                  .sort((a, b) => a.createdAt - b.createdAt)
+                  .slice(0, failedJobs.length - MAX_FAILED_JOBS)
+                  .map((j) => j.id),
+              );
+              jobs = jobs.filter((j) => !oldest.has(j.id));
+            }
+          }
+          return { jobs };
+        });
       },
 
       retryJob: (jobId) => {
@@ -116,9 +165,7 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
 
         set((state) => ({
           jobs: state.jobs.map((j) =>
-            j.id === jobId
-              ? { ...j, status: "queued" as PrintJobStatus }
-              : j,
+            j.id === jobId ? { ...j, status: "queued" as PrintJobStatus } : j,
           ),
         }));
 
@@ -185,22 +232,31 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
     }),
     {
       name: "print-queue-storage",
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
       partialize: (state) => ({
         // Persist queued, failed, AND processing jobs (processing saved as queued for crash recovery)
         jobs: state.jobs
           .filter(
-            (j) => j.status === "queued" || j.status === "failed" || j.status === "processing",
+            (j) =>
+              j.status === "queued" ||
+              j.status === "failed" ||
+              j.status === "processing",
           )
           .map((j) =>
-            j.status === "processing" ? { ...j, status: "queued" as PrintJobStatus } : j,
+            j.status === "processing"
+              ? { ...j, status: "queued" as PrintJobStatus }
+              : j,
           ),
       }),
       onRehydrateStorage: () => (state) => {
         // On hydration, reset any processing jobs back to queued (crash recovery)
         if (state?.jobs) {
           state.jobs = state.jobs.map((j) =>
-            j.status === "processing" ? { ...j, status: "queued" as PrintJobStatus } : j,
+            j.status === "processing"
+              ? { ...j, status: "queued" as PrintJobStatus }
+              : j,
           );
         }
       },

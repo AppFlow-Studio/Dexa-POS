@@ -5,106 +5,128 @@
  *   import { colors, bottomSheetTheme, spinnerColor } from '@/lib/theme';
  */
 
-import { colors as _colors } from "./theme-colors";
+import { darkColors, getThemeColors } from './theme-colors'
+
+type ThemeMode = 'dark' | 'light'
+type ThemeColors = typeof darkColors
+
+let activeColors: ThemeColors = darkColors
+
+export function setThemeMode (mode: ThemeMode) {
+  activeColors = getThemeColors(mode) as ThemeColors
+}
 
 /** Full typed palette — mirrors lib/theme-colors.js exactly. */
-export const colors = _colors as {
+export const colors = new Proxy({} as ThemeColors, {
+  get (_, prop: keyof ThemeColors) {
+    return activeColors[prop]
+  }
+}) as {
   // Backgrounds
-  screen: string;
-  panel: string;
-  card: string;
-  inset: string;
+  screen: string
+  panel: string
+  card: string
+  inset: string
   // Borders
-  border: string;
+  border: string
   // Text
-  heading: string;
-  label: string;
-  muted: string;
+  heading: string
+  label: string
+  muted: string
   // Accent
-  teal: string;
-  tealMuted: string;
+  teal: string
+  tealMuted: string
   // Semantic
-  success: string;
-  warning: string;
-  danger: string;
-  info: string;
+  success: string
+  warning: string
+  danger: string
+  info: string
   // On-solid
-  onSolid: string;
+  onSolid: string
   // Table status
-  tableAvailable: string;
-  tableInUse: string;
-  tableCleaning: string;
-  tableNotInService: string;
-  tableOvertime: string;
-  tableSeated: string;
-  tableOrdered: string;
-  tableServed: string;
-  tableCheckPresented: string;
-  tablePaid: string;
-  tableSeating: string;
-  tableOrdering: string;
-  tablePaying: string;
-  tableClosing: string;
+  tableAvailable: string
+  tableInUse: string
+  tableCleaning: string
+  tableNotInService: string
+  tableOvertime: string
+  tableSeated: string
+  tableOrdered: string
+  tableServed: string
+  tableCheckPresented: string
+  tablePaid: string
+  tableSeating: string
+  tableOrdering: string
+  tablePaying: string
+  tableClosing: string
   // Order status
-  orderSentToKitchen: string;
-  orderPreparing: string;
-  orderReady: string;
-  orderCompleted: string;
-  orderCancelled: string;
-  orderDefault: string;
+  orderSentToKitchen: string
+  orderPreparing: string
+  orderReady: string
+  orderCompleted: string
+  orderCancelled: string
+  orderDefault: string
   // Payment status
-  paymentPaid: string;
-  paymentPartial: string;
-  paymentPending: string;
-  paymentUnpaid: string;
-  paymentRefunded: string;
-  paymentPartialRefund: string;
+  paymentPaid: string
+  paymentPartial: string
+  paymentPending: string
+  paymentUnpaid: string
+  paymentRefunded: string
+  paymentPartialRefund: string
   // KDS urgency
-  urgencyNormal: string;
-  urgencyWarning: string;
-  urgencyElevated: string;
-  urgencyCritical: string;
+  urgencyNormal: string
+  urgencyWarning: string
+  urgencyElevated: string
+  urgencyCritical: string
   // KDS status tabs
-  kdsPending: string;
-  kdsCooking: string;
-  kdsReady: string;
-  kdsDone: string;
+  kdsPending: string
+  kdsCooking: string
+  kdsReady: string
+  kdsDone: string
   // Order type (KDS)
-  orderTypeDelivery: string;
-  orderTypeDineIn: string;
-  orderTypeToGo: string;
+  orderTypeDelivery: string
+  orderTypeDineIn: string
+  orderTypeToGo: string
   // Skeleton
-  skeleton: string;
-  skeletonHighlight: string;
-  background: string;
-};
+  skeleton: string
+  skeletonHighlight: string
+  background: string
+}
 
 // ── Convenience objects ──────────────────────────────────────────
 
 /** Spread onto <BottomSheetModal> or <BottomSheet> */
 export const bottomSheetTheme = {
-  backgroundStyle: { backgroundColor: colors.panel },
-  handleIndicatorStyle: { backgroundColor: colors.muted },
-} as const;
+  get backgroundStyle () {
+    return { backgroundColor: colors.panel }
+  },
+  get handleIndicatorStyle () {
+    return { backgroundColor: colors.muted }
+  },
+  style: { zIndex: 999, elevation: 999 }
+} as const
 
 /** ActivityIndicator default color */
-export const spinnerColor = colors.teal;
+export const spinnerColor = colors.teal
 
 /** Switch trackColor prop */
 export const switchTrackColors = {
-  false: colors.border,
-  true: colors.teal,
-} as const;
+  get false () {
+    return colors.border
+  },
+  get true () {
+    return colors.teal
+  }
+} as const
 
 // ── Status color maps ─────────────────────────────────────────
 
 export const TABLE_STATUS_COLORS: Record<string, string> = {
   Available: colors.tableAvailable,
   available: colors.tableAvailable,
-  "In Use": colors.tableInUse,
-  "Needs Cleaning": colors.tableCleaning,
+  'In Use': colors.tableInUse,
+  'Needs Cleaning': colors.tableCleaning,
   cleaning: colors.tableCleaning,
-  "Not in Service": colors.tableNotInService,
+  'Not in Service': colors.tableNotInService,
   not_in_service: colors.tableNotInService,
   Overtime: colors.tableOvertime,
   // Session statuses
@@ -114,7 +136,7 @@ export const TABLE_STATUS_COLORS: Record<string, string> = {
   ordered: colors.tableOrdered,
   Served: colors.tableServed,
   served: colors.tableServed,
-  "Check Presented": colors.tableCheckPresented,
+  'Check Presented': colors.tableCheckPresented,
   check_presented: colors.tableCheckPresented,
   Paid: colors.tablePaid,
   paid: colors.tablePaid,
@@ -122,8 +144,8 @@ export const TABLE_STATUS_COLORS: Record<string, string> = {
   seating: colors.tableSeating,
   ordering: colors.tableOrdering,
   paying: colors.tablePaying,
-  closing: colors.tableClosing,
-};
+  closing: colors.tableClosing
+}
 
 export const ORDER_STATUS_COLORS: Record<string, string> = {
   sent_to_kitchen: colors.orderSentToKitchen,
@@ -132,8 +154,8 @@ export const ORDER_STATUS_COLORS: Record<string, string> = {
   completed: colors.orderCompleted,
   cancelled: colors.orderCancelled,
   void: colors.orderCancelled,
-  default: colors.orderDefault,
-};
+  default: colors.orderDefault
+}
 
 export const PAYMENT_STATUS_COLORS: Record<string, string> = {
   Paid: colors.paymentPaid,
@@ -142,34 +164,34 @@ export const PAYMENT_STATUS_COLORS: Record<string, string> = {
   Pending: colors.paymentPending,
   Unpaid: colors.paymentUnpaid,
   refunded: colors.paymentRefunded,
-  partial_refund: colors.paymentPartialRefund,
-};
+  partial_refund: colors.paymentPartialRefund
+}
 
 /** Indexed 0-3 for KDS urgency levels */
 export const URGENCY_COLORS = [
   colors.urgencyNormal,
   colors.urgencyWarning,
   colors.urgencyElevated,
-  colors.urgencyCritical,
-] as const;
+  colors.urgencyCritical
+] as const
 
 export const KDS_STATUS_TAB_COLORS: Record<string, string> = {
   pending: colors.kdsPending,
   cooking: colors.kdsCooking,
   ready: colors.kdsReady,
-  done: colors.kdsDone,
-};
+  done: colors.kdsDone
+}
 
 export const ORDER_TYPE_COLORS: Record<string, string> = {
   delivery: colors.orderTypeDelivery,
-  "to-go": colors.orderTypeToGo,
+  'to-go': colors.orderTypeToGo,
   takeout: colors.orderTypeToGo,
-  "dine-in": colors.orderTypeDineIn,
-};
+  'dine-in': colors.orderTypeDineIn
+}
 
 export const NOTIFICATION_COLORS = {
   success: colors.success,
   warning: colors.warning,
   error: colors.danger,
-  info: colors.info,
-} as const;
+  info: colors.info
+} as const

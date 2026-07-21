@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { View } from "react-native";
-import { LineChart } from "react-native-gifted-charts";
+import { useUiScale } from "@/lib/uiScale";
+import { LineChart } from "@/components/charts/LazyGiftedCharts";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -22,6 +23,9 @@ const orderAcceptanceData = [
 const COLORS = { dineIn: "#3b82f6", takeout: "#f97316" };
 
 const OrderAcceptanceChart = () => {
+  const scale = useUiScale();
+  const s = (value: number) => Math.round(value * scale);
+
   // --- Data Transformation ---
   // react-native-gifted-charts needs separate arrays for each line.
 
@@ -36,8 +40,10 @@ const OrderAcceptanceChart = () => {
     value: item.takeout,
   }));
 
+  const chartHeight = s(300);
+
   // Animation setup for slide-up effect (preserved from your original code)
-  const translateY = useSharedValue(300);
+  const translateY = useSharedValue(chartHeight);
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
@@ -46,8 +52,8 @@ const OrderAcceptanceChart = () => {
   }, [translateY]);
 
   return (
-    <View className="h-[300px] overflow-hidden">
-      <Animated.View style={[{ height: 300 }, animatedStyle]}>
+    <View style={{ height: chartHeight, overflow: "hidden" }}>
+      <Animated.View style={[{ height: chartHeight }, animatedStyle]}>
         <LineChart
           // --- Data ---
           data={dineInData} // Primary line data
@@ -62,12 +68,12 @@ const OrderAcceptanceChart = () => {
           startFillColor={COLORS.dineIn}
           startOpacity={0.2}
           endOpacity={0.05}
-          thickness={3}
+          thickness={s(3)}
           // --- Line 2 Styling (Takeout) ---
           color2={COLORS.takeout}
-          thickness2={3}
-          dashWidth={6} // Set dash properties for the second line
-          dashGap={6}
+          thickness2={s(3)}
+          dashWidth={s(6)} // Set dash properties for the second line
+          dashGap={s(6)}
           // --- Axis Styling ---
           xAxisColor={"#e5e7eb"}
           yAxisColor={"#e5e7eb"}

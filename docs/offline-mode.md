@@ -46,3 +46,35 @@ This app is offline-first. Core operations (orders, items, payments, kitchen sen
 - **Duplicate orders**: Confirm per-order creation lock and timeout are intact.
 - **Stuck sync**: Check pending queue size and auto-retry status; manual retry remains available.
 
+## Bad-WiFi Optimization (Option C)
+
+Category A mutations (target-state, idempotent) are wrapped with a deadline so the UI never freezes more than ~2.5s on slow WiFi. After 2 timeouts in 30s the connection-quality state machine flips `getIsOnline()` to false; subsequent mutations skip the network and queue. A `ping()` probe loop auto-recovers when the network returns.
+
+### Affected actions (Category A — fixed)
+Send to Kitchen, Close Check, Reopen Check, Void Item / Order / Payment, +/- Quantity, Modify Modifiers, Toggle Rush / Priority, Item Removal, Cancel Order, Clear Items, Lock/Unlock for Payment.
+
+### NOT affected (Category B — still freeze on bad WiFi)
+Add Item, Open Item, Process Payment, Seat Guests, Create Order, Add Discount, Add/Remove Modifier, Duplicate Item, Recall Items. These are deferred to `bad-wifi-deeper-optimizations.md` because retry safety requires server-side idempotency keys (not yet implemented).
+
+### Migration deploy order
+1. Apply `utils/supabase/migrations/00_ping_rpc.sql` to staging.
+2. Verify: `SELECT ping();` returns epoch ms.
+3. Run rollback drill: apply `00_ping_rpc_rollback.sql`, confirm clean, re-apply forward.
+4. Apply to production.
+5. **Then** deploy the client build that imports `lib/network/connectionQuality.ts`.
+
+If the order is reversed, the probe RPC is missing and the app stays in `slow` mode longer (no crash, just slower auto-recovery).
+
+### Rollback
+Single client-side toggle: `useStoreSettingsStore.deadlineWrapEnabled = false` (via `setDeadlineWrapEnabled` from `lib/network/killSwitch`). When OFF, the wrap layer falls through to original synchronous behavior. Restores main-branch behavior in <30s without redeploying.
+
+### Slow-mode is silent
+Slow-mode operates in the background — no scary "Offline" UI. The `useNetworkStatus()` hook exposes two values:
+- `isOnline` (effective): `false` during slow-mode. Use for **routing decisions** ("queue this, don't try live").
+- `rawIsOnline` (NetInfo only): unaffected by slow-mode. Use for **UI affordances** ("should I show an offline banner?").
+
+`NetworkStatusBadge`, `SyncStatusBar`, and the offline banners in `BillSection` consult `rawIsOnline` so on flaky-but-connected WiFi, the UI looks normal and the queue drains in the background. Routing checks (e.g., dine-in transfer guard, card payment disable, pin-login) still consult effective `isOnline` because those operations genuinely require a fast live network.
+
+### CI discipline
+`npm run check:rpc-discipline` fails if a new direct `supabase.rpc(...)` is added to `stores/useOrderStore.ts` without an `// rpc-discipline-allow: <reason>` comment on the previous line. Routes new mutations through `services/orderService.ts` (the wrap layer).
+

@@ -9,12 +9,15 @@ import {
   Smartphone,
 } from "lucide-react-native";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const AnalyticsScreen = () => {
   const insets = useSafeAreaInsets();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   // Dashboard Settings
   const [enableDashboard, setEnableDashboard] = useState(true);
@@ -54,28 +57,28 @@ const AnalyticsScreen = () => {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: s(20) }}>
       {/* Header */}
-      <View style={{ marginBottom: 16 }}>
-        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+      <View style={{ marginBottom: s(16) }}>
+        <Text style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}>
           Real-Time Analytics
         </Text>
-        <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+        <Text style={{ fontSize: s(12), color: colors.label, marginTop: s(2) }}>
           Configure dashboards and real-time alerts.
         </Text>
       </View>
 
-      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
+      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: s(16) }} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 20, gap: 12 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + s(20), gap: s(12) }}
       >
         {/* ── Live Dashboard Configuration ── */}
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: "hidden",
@@ -86,28 +89,28 @@ const AnalyticsScreen = () => {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 10,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
+              gap: s(10),
+              paddingHorizontal: s(14),
+              paddingVertical: s(12),
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
             }}
           >
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
+                width: s(32),
+                height: s(32),
+                borderRadius: s(8),
                 backgroundColor: colors.teal + "15",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <LayoutDashboard size={16} color={colors.teal} />
+              <LayoutDashboard size={s(16)} color={colors.teal} />
             </View>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: "700",
                 color: colors.heading,
                 textTransform: "uppercase",
@@ -118,17 +121,17 @@ const AnalyticsScreen = () => {
             </Text>
           </View>
 
-          <View style={{ padding: 14, gap: 14 }}>
+          <View style={{ padding: s(14), gap: s(14) }}>
             {/* Enable Dashboard Toggle */}
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingVertical: 4,
+                paddingVertical: s(4),
               }}
             >
-              <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>
+              <Text style={{ fontSize: s(13), color: colors.heading, fontWeight: "500" }}>
                 Enable Dashboard
               </Text>
               <Switch checked={enableDashboard} onCheckedChange={setEnableDashboard} />
@@ -137,20 +140,20 @@ const AnalyticsScreen = () => {
             {enableDashboard && (
               <>
                 {/* Widget Configurator */}
-                <View style={{ gap: 4 }}>
+                <View style={{ gap: s(4) }}>
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: "700",
                       color: colors.label,
                       textTransform: "uppercase",
                       letterSpacing: 0.5,
-                      marginBottom: 6,
+                      marginBottom: s(6),
                     }}
                   >
                     Visible Widgets
                   </Text>
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: s(8) }}>
                     {[
                       { key: "salesToday", label: "Sales Today" },
                       { key: "ordersInProgress", label: "Orders in Progress" },
@@ -168,13 +171,13 @@ const AnalyticsScreen = () => {
                           style={{
                             flexDirection: "row",
                             alignItems: "center",
-                            gap: 6,
-                            paddingHorizontal: 10,
-                            paddingVertical: 7,
+                            gap: s(6),
+                            paddingHorizontal: s(10),
+                            paddingVertical: s(7),
                             backgroundColor: checked ? colors.teal + "15" : colors.card,
                             borderWidth: 1,
                             borderColor: checked ? colors.teal + "50" : colors.border,
-                            borderRadius: 8,
+                            borderRadius: s(8),
                           }}
                         >
                           <Checkbox
@@ -185,7 +188,7 @@ const AnalyticsScreen = () => {
                           />
                           <Text
                             style={{
-                              fontSize: 12,
+                              fontSize: s(12),
                               color: checked ? colors.teal : colors.label,
                               fontWeight: checked ? "600" : "400",
                             }}
@@ -207,11 +210,11 @@ const AnalyticsScreen = () => {
                     borderWidth: 1,
                     borderStyle: "dashed",
                     borderColor: colors.border,
-                    paddingVertical: 10,
-                    borderRadius: 8,
+                    paddingVertical: s(10),
+                    borderRadius: s(8),
                   }}
                 >
-                  <Text style={{ fontSize: 12, color: colors.label, fontWeight: "500" }}>
+                  <Text style={{ fontSize: s(12), color: colors.label, fontWeight: "500" }}>
                     Customize Dashboard Layout
                   </Text>
                 </TouchableOpacity>
@@ -224,7 +227,7 @@ const AnalyticsScreen = () => {
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: "hidden",
@@ -235,28 +238,28 @@ const AnalyticsScreen = () => {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 10,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
+              gap: s(10),
+              paddingHorizontal: s(14),
+              paddingVertical: s(12),
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
             }}
           >
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
+                width: s(32),
+                height: s(32),
+                borderRadius: s(8),
                 backgroundColor: colors.warning + "15",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Bell size={16} color={colors.warning} />
+              <Bell size={s(16)} color={colors.warning} />
             </View>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: "700",
                 color: colors.heading,
                 textTransform: "uppercase",
@@ -267,11 +270,11 @@ const AnalyticsScreen = () => {
             </Text>
           </View>
 
-          <View style={{ padding: 14, gap: 14 }}>
+          <View style={{ padding: s(14), gap: s(14) }}>
             {/* Alert Triggers section label */}
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.label,
                 textTransform: "uppercase",
@@ -282,17 +285,17 @@ const AnalyticsScreen = () => {
             </Text>
 
             {/* Sales Goal Input */}
-            <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 12, color: colors.label }}>Daily Sales Goal ($)</Text>
+            <View style={{ gap: s(6) }}>
+              <Text style={{ fontSize: s(12), color: colors.label }}>Daily Sales Goal ($)</Text>
               <Input
                 style={{
                   backgroundColor: colors.screen,
                   borderColor: colors.border,
                   color: colors.heading,
-                  height: 40,
-                  fontSize: 13,
-                  borderRadius: 8,
-                  paddingHorizontal: 12,
+                  height: s(40),
+                  fontSize: s(13),
+                  borderRadius: s(8),
+                  paddingHorizontal: s(12),
                 }}
                 placeholder="e.g. 5000"
                 placeholderTextColor={colors.muted}
@@ -303,17 +306,17 @@ const AnalyticsScreen = () => {
             </View>
 
             {/* Labor Cost Threshold Input */}
-            <View style={{ gap: 6 }}>
-              <Text style={{ fontSize: 12, color: colors.label }}>Labor Cost Threshold (%)</Text>
+            <View style={{ gap: s(6) }}>
+              <Text style={{ fontSize: s(12), color: colors.label }}>Labor Cost Threshold (%)</Text>
               <Input
                 style={{
                   backgroundColor: colors.screen,
                   borderColor: colors.border,
                   color: colors.heading,
-                  height: 40,
-                  fontSize: 13,
-                  borderRadius: 8,
-                  paddingHorizontal: 12,
+                  height: s(40),
+                  fontSize: s(13),
+                  borderRadius: s(8),
+                  paddingHorizontal: s(12),
                 }}
                 placeholder="e.g. 30"
                 placeholderTextColor={colors.muted}
@@ -329,12 +332,12 @@ const AnalyticsScreen = () => {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingVertical: 6,
+                paddingVertical: s(6),
                 borderTopWidth: 1,
                 borderTopColor: colors.border,
               }}
             >
-              <Text style={{ fontSize: 13, color: colors.heading }}>Kitchen Backed Up</Text>
+              <Text style={{ fontSize: s(13), color: colors.heading }}>Kitchen Backed Up</Text>
               <Switch
                 checked={alertTriggers.kitchenBackedUp}
                 onCheckedChange={() => toggleAlertTrigger("kitchenBackedUp")}
@@ -347,12 +350,12 @@ const AnalyticsScreen = () => {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingVertical: 6,
+                paddingVertical: s(6),
                 borderTopWidth: 1,
                 borderTopColor: colors.border,
               }}
             >
-              <Text style={{ fontSize: 13, color: colors.heading }}>Inventory Low</Text>
+              <Text style={{ fontSize: s(13), color: colors.heading }}>Inventory Low</Text>
               <Switch
                 checked={alertTriggers.inventoryLow}
                 onCheckedChange={() => toggleAlertTrigger("inventoryLow")}
@@ -364,7 +367,7 @@ const AnalyticsScreen = () => {
             {/* Notification Channels */}
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.label,
                 textTransform: "uppercase",
@@ -379,12 +382,12 @@ const AnalyticsScreen = () => {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingVertical: 6,
+                paddingVertical: s(6),
               }}
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Smartphone size={14} color={colors.label} />
-                <Text style={{ fontSize: 13, color: colors.heading }}>Push Notifications</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
+                <Smartphone size={s(14)} color={colors.label} />
+                <Text style={{ fontSize: s(13), color: colors.heading }}>Push Notifications</Text>
               </View>
               <Switch
                 checked={deliveryMethods.push}
@@ -397,14 +400,14 @@ const AnalyticsScreen = () => {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingVertical: 6,
+                paddingVertical: s(6),
                 borderTopWidth: 1,
                 borderTopColor: colors.border,
               }}
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <MessageSquare size={14} color={colors.label} />
-                <Text style={{ fontSize: 13, color: colors.heading }}>SMS</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
+                <MessageSquare size={s(14)} color={colors.label} />
+                <Text style={{ fontSize: s(13), color: colors.heading }}>SMS</Text>
               </View>
               <Switch
                 checked={deliveryMethods.sms}
@@ -417,14 +420,14 @@ const AnalyticsScreen = () => {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                paddingVertical: 6,
+                paddingVertical: s(6),
                 borderTopWidth: 1,
                 borderTopColor: colors.border,
               }}
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Mail size={14} color={colors.label} />
-                <Text style={{ fontSize: 13, color: colors.heading }}>Email</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
+                <Mail size={s(14)} color={colors.label} />
+                <Text style={{ fontSize: s(13), color: colors.heading }}>Email</Text>
               </View>
               <Switch
                 checked={deliveryMethods.email}

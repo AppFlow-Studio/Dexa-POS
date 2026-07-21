@@ -2,8 +2,9 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import type { OrderPaymentItemCoverage } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useRouter } from "expo-router";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import {
   Banknote,
   ChevronDown,
@@ -60,50 +61,81 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   variant = "default",
   disabled = false,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const getButtonStyles = () => {
     if (disabled) {
-      return "bg-gray-800/50 border-gray-700";
+      return {
+        backgroundColor: colors.muted + "15",
+        borderColor: colors.muted + "30",
+      };
     }
     switch (variant) {
       case "danger":
-        return "bg-red-500/10 border-red-500/50";
+        return {
+          backgroundColor: colors.danger + "15",
+          borderColor: colors.danger + "40",
+        };
       case "success":
-        return "bg-emerald-500/10 border-emerald-500/50";
+        return {
+          backgroundColor: colors.success + "15",
+          borderColor: colors.success + "40",
+        };
       case "primary":
-        return "bg-blue-500/10 border-blue-500/50";
+        return {
+          backgroundColor: colors.teal + "15",
+          borderColor: colors.teal + "40",
+        };
       default:
-        return "bg-surface border-gray-600 active:bg-gray-700";
+        return {
+          backgroundColor: colors.panel,
+          borderColor: colors.border,
+        };
     }
   };
 
   const getTextColor = () => {
-    if (disabled) return "text-gray-600";
+    if (disabled) return colors.muted;
     switch (variant) {
       case "danger":
-        return "text-red-400";
+        return colors.danger;
       case "success":
-        return "text-emerald-400";
+        return colors.success;
       case "primary":
-        return "text-blue-400";
+        return colors.teal;
       default:
-        return "text-white";
+        return colors.heading;
     }
   };
+
+  const styles = getButtonStyles();
 
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
-      className={`
-        flex-1 min-w-[100px] py-4 px-3 rounded-xl border
-        items-center justify-center gap-2
-        ${getButtonStyles()}
-      `}
-      style={{ opacity: disabled ? 0.5 : 1 }}
+      style={{
+        flex: 1,
+        minWidth: s(100),
+        paddingVertical: s(16),
+        paddingHorizontal: s(12),
+        borderRadius: s(12),
+        borderWidth: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: s(8),
+        opacity: disabled ? 0.5 : 1,
+        ...styles,
+      }}
     >
       {icon}
       <Text
-        className={`text-xs font-semibold text-center ${getTextColor()}`}
+        style={{
+          fontSize: s(11),
+          fontWeight: "600",
+          textAlign: "center",
+          color: getTextColor(),
+        }}
         numberOfLines={1}
       >
         {label}
@@ -131,30 +163,81 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   icon,
   isNegative = false,
   accentColor = colors.info,
-}) => (
-  <View
-    className="flex-1 bg-panel rounded-xl p-4 border border-gray-800"
-    style={{ borderLeftWidth: 3, borderLeftColor: accentColor, minWidth: 160 }}
-  >
-    <View className="flex-row items-center justify-between mb-3">
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.panel,
+        borderRadius: s(12),
+        padding: s(16),
+        borderWidth: 1,
+        borderLeftWidth: 3,
+        borderColor: colors.border,
+        borderLeftColor: accentColor,
+        minWidth: s(160),
+      }}
+    >
       <View
-        className="w-10 h-10 rounded-full items-center justify-center"
-        style={{ backgroundColor: `${accentColor}15` }}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: s(12),
+        }}
       >
-        {icon}
+        <View
+          style={{
+            width: s(40),
+            height: s(40),
+            borderRadius: s(20),
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: `${accentColor}15`,
+          }}
+        >
+          {icon}
+        </View>
       </View>
+      <Text
+        style={{ fontSize: s(24), fontWeight: "bold", color: colors.heading }}
+        numberOfLines={1}
+      >
+        {isNegative && amount > 0 ? "−" : ""}${amount.toFixed(2)}
+      </Text>
+      {cashAmount && (
+        <Text
+          style={{
+            fontSize: s(18),
+            fontWeight: "bold",
+            color: colors.heading,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            marginTop: s(4),
+          }}
+          numberOfLines={1}
+        >
+          <Banknote color={"green"} size={s(20)} />{" "}
+          {isNegative && cashAmount && cashAmount > 0 ? "-" : ""}$
+          {cashAmount?.toFixed(2)}
+        </Text>
+      )}
+      <Text
+        style={{
+          fontSize: s(11),
+          color: colors.muted,
+          marginTop: s(4),
+          fontWeight: "500",
+        }}
+      >
+        {label}
+      </Text>
     </View>
-    <Text className="text-2xl font-bold text-white" numberOfLines={1}>
-      {isNegative && amount > 0 ? "−" : ""}${amount.toFixed(2)}
-    </Text>
-    {cashAmount && 
-    <Text className="text-lg font-bold text-white flex flex-row items-center justify-center" numberOfLines={1}>
-      <Banknote color={'green'} size={20} /> {(isNegative && cashAmount) && cashAmount > 0 ?  "-": ""}${cashAmount?.toFixed(2)}
-    </Text>
-    }
-    <Text className="text-xs text-gray-400 mt-1 font-medium">{label}</Text>
-  </View>
-);
+  );
+};
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -186,16 +269,17 @@ const formatTimestamp = (timestamp: string): string => {
 // ============================================================================
 /**
  * DEPRECATED
- * @param param0 
- * @returns 
+ * @param param0
+ * @returns
  */
 const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   isOpen,
   onClose,
   orderId,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const { show } = useToast();
-  const router = useRouter();
   const [expandedPaymentIndex, setExpandedPaymentIndex] = useState<
     number | null
   >(null);
@@ -215,7 +299,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
     if (!order) {
       return {
         orderTotal: 0,
-        orderCashTotal : 0,
+        orderCashTotal: 0,
         refunds: 0,
         collected: 0,
         payments: [] as PaymentRowData[],
@@ -259,7 +343,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
 
     return {
       orderTotal: order.total_amount || 0,
-      orderCashTotal : order.total_cash_amount || 0,
+      orderCashTotal: order.total_cash_amount || 0,
       refunds: totalRefunded,
       collected: totalCollected,
       payments,
@@ -286,8 +370,8 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   const handleRefund = useCallback(() => {
     if (!orderId) return;
     onClose();
-    router.push(`/previous-orders/${orderId}`);
-  }, [orderId, onClose, router]);
+    usePaymentDetailSheetStore.getState().open(orderId, "refund");
+  }, [orderId, onClose]);
 
   const handleIssueReceipt = useCallback(() => {
     show({
@@ -304,13 +388,22 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent
-        className="p-0 bg-[#161616] border-gray-800"
-        style={{ width: 650, maxWidth: "95%" }}
+        style={{
+          padding: 0,
+          backgroundColor: colors.panel,
+          borderColor: colors.border,
+          width: s(650),
+          maxWidth: "95%",
+        }}
         align="end"
       >
         <View
-          className="bg-[#161616] rounded-2xl overflow-hidden"
-          style={{ width: "100%" }}
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: s(16),
+            overflow: "hidden",
+            width: "100%",
+          }}
         >
           {/* ============================================================ */}
           {/* HEADER - Clean, minimal with subtle gradient accent */}
@@ -325,12 +418,33 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
               }}
             />
 
-            <View className="flex-row items-center justify-between px-6 py-5">
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingHorizontal: s(24),
+                paddingVertical: s(20),
+              }}
+            >
               <View>
-                <Text className="text-xl font-bold text-white tracking-tight">
+                <Text
+                  style={{
+                    fontSize: s(20),
+                    fontWeight: "bold",
+                    color: colors.heading,
+                    letterSpacing: 0.5,
+                  }}
+                >
                   Payment Summary
                 </Text>
-                <Text className="text-sm text-gray-500 mt-0.5">
+                <Text
+                  style={{
+                    fontSize: s(14),
+                    color: colors.label,
+                    marginTop: s(4),
+                  }}
+                >
                   Order
                   {order.display_number || order.order_number?.slice(-6) || "—"}
                 </Text>
@@ -346,12 +460,16 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 >
                   <View
                     className={`w-2 h-2 rounded-full mr-2 ${
-                      order.check_status === "Opened" ? "bg-emerald-400" : "bg-gray-500"
+                      order.check_status === "Opened"
+                        ? "bg-emerald-400"
+                        : "bg-gray-500"
                     }`}
                   />
                   <Text
                     className={`text-xs font-semibold uppercase tracking-wide ${
-                      order.check_status === "Opened" ? "text-emerald-400" : "text-gray-400"
+                      order.check_status === "Opened"
+                        ? "text-emerald-400"
+                        : "text-gray-400"
                     }`}
                   >
                     {order.check_status === "Opened" ? "Opened" : "Closed"}
@@ -361,7 +479,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   onPress={onClose}
                   className="w-9 h-9 rounded-full bg-gray-800 items-center justify-center"
                 >
-                  <X size={18} color={colors.label} />
+                  <X size={s(18)} color={colors.label} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -380,20 +498,22 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   amount={paymentSummary.orderTotal}
                   cashAmount={paymentSummary.orderCashTotal}
                   label="Order Total"
-                  icon={<DollarSign size={20} color={colors.info} />}
+                  icon={<DollarSign size={s(20)} color={colors.info} />}
                   accentColor={colors.info}
                 />
                 <SummaryCard
                   amount={paymentSummary.refunds}
                   label="Refunds"
-                  icon={<RefreshCcw size={18} color={colors.danger} />}
+                  icon={<RefreshCcw size={s(18)} color={colors.danger} />}
                   isNegative
                   accentColor={colors.danger}
                 />
                 <SummaryCard
                   amount={paymentSummary.collected}
                   label="Collected"
-                  icon={<CircleDollarSign size={20} color={colors.success} />}
+                  icon={
+                    <CircleDollarSign size={s(20)} color={colors.success} />
+                  }
                   accentColor={colors.success}
                 />
               </View>
@@ -439,7 +559,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
               {paymentSummary.payments.length === 0 ? (
                 <View className="py-12 items-center">
                   <View className="w-16 h-16 rounded-full bg-gray-800/50 items-center justify-center mb-4">
-                    <CreditCard size={28} color="#4B5563" />
+                    <CreditCard size={s(28)} color="#4B5563" />
                   </View>
                   <Text className="text-gray-500 text-sm font-medium">
                     No payments recorded
@@ -479,11 +599,11 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                             }`}
                           >
                             {payment.isVoided ? (
-                              <X size={14} color={colors.danger} />
+                              <X size={s(14)} color={colors.danger} />
                             ) : payment.method === "Card" ? (
-                              <CreditCard size={14} color={colors.label} />
+                              <CreditCard size={s(14)} color={colors.label} />
                             ) : (
-                              <DollarSign size={14} color={colors.success} />
+                              <DollarSign size={s(14)} color={colors.success} />
                             )}
                           </View>
                           <View className="flex-1">
@@ -499,13 +619,15 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                                   ? `•••• ${payment.last4}`
                                   : payment.method}
                               </Text>
-                              {payment.isCashPriced && payment.cashSavings && payment.cashSavings > 0 && (
-                                <View className="ml-2 px-1.5 py-0.5 bg-emerald-500/20 rounded">
-                                  <Text className="text-[10px] text-emerald-400 font-medium">
-                                    Saved ${payment.cashSavings.toFixed(2)}
-                                  </Text>
-                                </View>
-                              )}
+                              {payment.isCashPriced &&
+                                payment.cashSavings &&
+                                payment.cashSavings > 0 && (
+                                  <View className="ml-2 px-1.5 py-0.5 bg-emerald-500/20 rounded">
+                                    <Text className="text-[10px] text-emerald-400 font-medium">
+                                      Saved ${payment.cashSavings.toFixed(2)}
+                                    </Text>
+                                  </View>
+                                )}
                             </View>
                             <View className="flex-row items-center mt-0.5">
                               <Text className="text-xs text-gray-500">
@@ -513,7 +635,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                               </Text>
                               {hasItemsCovered && (
                                 <View className="flex-row items-center ml-2">
-                                  <Package size={10} color={colors.muted} />
+                                  <Package size={s(10)} color={colors.muted} />
                                   <Text className="text-xs text-gray-500 ml-1">
                                     {payment.itemsCovered!.length} item
                                     {payment.itemsCovered!.length !== 1
@@ -522,15 +644,15 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                                   </Text>
                                   {isExpanded ? (
                                     <ChevronUp
-                                      size={12}
+                                      size={s(12)}
                                       color={colors.muted}
-                                      style={{ marginLeft: 4 }}
+                                      style={{ marginLeft: s(4) }}
                                     />
                                   ) : (
                                     <ChevronDown
-                                      size={12}
+                                      size={s(12)}
                                       color={colors.muted}
-                                      style={{ marginLeft: 4 }}
+                                      style={{ marginLeft: s(4) }}
                                     />
                                   )}
                                 </View>
@@ -589,7 +711,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                       {isExpanded && hasItemsCovered && (
                         <View className="bg-panel rounded-lg mx-2 mb-3 p-3 border border-gray-800">
                           <View className="flex-row items-center mb-2 pb-2 border-b border-gray-800">
-                            <Package size={12} color={colors.muted} />
+                            <Package size={s(12)} color={colors.muted} />
                             <Text className="text-xs font-semibold text-gray-400 ml-1.5 uppercase tracking-wide">
                               Items Covered
                             </Text>
@@ -631,28 +753,31 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                             </View>
                           ))}
                           {/* Subtotal/Tax breakdown if available */}
-                          {(payment.subtotal_portion || payment.tax_portion) && (
+                          {(payment.subtotal_portion ||
+                            payment.tax_portion) && (
                             <View className="mt-2 pt-2 border-t border-gray-700">
-                              {payment.subtotal_portion !== undefined && payment.subtotal_portion > 0 && (
-                                <View className="flex-row justify-between">
-                                  <Text className="text-xs text-gray-500">
-                                    Subtotal
-                                  </Text>
-                                  <Text className="text-xs text-gray-400">
-                                    ${payment.subtotal_portion.toFixed(2)}
-                                  </Text>
-                                </View>
-                              )}
-                              {payment.tax_portion !== undefined && payment.tax_portion > 0 && (
-                                <View className="flex-row justify-between mt-1">
-                                  <Text className="text-xs text-gray-500">
-                                    Tax
-                                  </Text>
-                                  <Text className="text-xs text-gray-400">
-                                    ${payment.tax_portion.toFixed(2)}
-                                  </Text>
-                                </View>
-                              )}
+                              {payment.subtotal_portion !== undefined &&
+                                payment.subtotal_portion > 0 && (
+                                  <View className="flex-row justify-between">
+                                    <Text className="text-xs text-gray-500">
+                                      Subtotal
+                                    </Text>
+                                    <Text className="text-xs text-gray-400">
+                                      ${payment.subtotal_portion.toFixed(2)}
+                                    </Text>
+                                  </View>
+                                )}
+                              {payment.tax_portion !== undefined &&
+                                payment.tax_portion > 0 && (
+                                  <View className="flex-row justify-between mt-1">
+                                    <Text className="text-xs text-gray-500">
+                                      Tax
+                                    </Text>
+                                    <Text className="text-xs text-gray-400">
+                                      ${payment.tax_portion.toFixed(2)}
+                                    </Text>
+                                  </View>
+                                )}
                             </View>
                           )}
                         </View>
@@ -670,7 +795,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
           <View className="px-6 py-5 border-t border-gray-800 bg-panel">
             <View className="flex-row gap-3">
               <ActionButton
-                icon={<RotateCcw size={18} color={colors.label} />}
+                icon={<RotateCcw size={s(18)} color={colors.label} />}
                 label="Re-open"
                 onPress={handleReOpenOrder}
                 variant="default"
@@ -678,7 +803,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
               <ActionButton
                 icon={
                   <DollarSign
-                    size={18}
+                    size={s(18)}
                     color={hasTips ? colors.label : "#4B5563"}
                   />
                 }
@@ -688,13 +813,13 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 disabled={!hasTips}
               />
               <ActionButton
-                icon={<RefreshCcw size={18} color={colors.danger} />}
+                icon={<RefreshCcw size={s(18)} color={colors.danger} />}
                 label="Refund"
                 onPress={handleRefund}
                 variant="danger"
               />
               <ActionButton
-                icon={<Printer size={18} color={colors.success} />}
+                icon={<Printer size={s(18)} color={colors.success} />}
                 label="Receipt"
                 onPress={handleIssueReceipt}
                 variant="success"

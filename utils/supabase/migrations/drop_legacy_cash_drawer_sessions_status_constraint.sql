@@ -1,0 +1,46 @@
+-- ============================================================
+-- Fix: drop conflicting CHECK on cash_drawer_sessions.status
+-- File: utils/supabase/migrations/drop_legacy_cash_drawer_sessions_status_constraint.sql
+-- Workstream C — task C1
+-- ============================================================
+-- Bug:
+--   cash_drawer_sessions had TWO CHECK constraints on `status`.
+--   A row must satisfy BOTH, so the effective allowed set is
+--   the intersection — which silently rejected 'counting'.
+--
+--     chk_session_status    (broad, kept):
+--       open, counting, closed, reconciled
+--
+--     valid_session_status  (legacy, dropped):
+--       open, closed, reconciled        ← missing 'counting'
+--
+--   Intersection was {open, closed, reconciled}, so any attempt
+--   to move a session into the 'counting' lifecycle state would
+--   be rejected by valid_session_status even though the
+--   intended/canonical constraint chk_session_status allows it.
+--
+-- App-side usage audit (services/cashDrawerService.ts):
+--   - openSession  → 'open'   (lines 85, 111, 312)
+--   - closeSession → 'closed' (line 149)
+--   'counting' and 'reconciled' are reserved lifecycle states
+--   used by the close/blind-count flow; chk_session_status is
+--   the constraint that matches the real state machine.
+--
+-- Resolution:
+--   Drop valid_session_status (the more restrictive one).
+--   Keep chk_session_status as the single source of truth.
+--
+-- Scope:
+--   Staging (dfwqakoyittmrwbqvxgw) and Production
+--   (hifouuofcaytijrkbvcy). Idempotent via IF EXISTS.
+-- ============================================================
+
+ALTER TABLE public.cash_drawer_sessions
+  DROP CONSTRAINT IF EXISTS valid_session_status;
+
+-- Verification (run after apply):
+--   SELECT conname, pg_get_constraintdef(oid)
+--   FROM pg_constraint
+--   WHERE conrelid = 'public.cash_drawer_sessions'::regclass
+--     AND contype = 'c';
+-- Expect exactly ONE CHECK on `status` to remain.

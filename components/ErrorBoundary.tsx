@@ -7,6 +7,7 @@
  * When Sentry is configured, add reporting here (see docs/SENTRY_SETUP.md).
  */
 
+import * as Sentry from "@sentry/react-native";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -36,7 +37,10 @@ export class ProductionErrorBoundary extends React.Component<Props, State> {
       error,
       info.componentStack,
     );
-    // TODO: Report to Sentry when configured (see docs/SENTRY_SETUP.md)
+    Sentry.captureException(error, {
+      tags: { section: this.props.section },
+      contexts: { react: { componentStack: info.componentStack ?? undefined } },
+    });
   }
 
   handleRetry = () => {

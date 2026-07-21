@@ -2,11 +2,7 @@ import type { PaymentMethod } from "@/types/db-order-management-types";
 import type { DejavooRefundResponse } from "@/types/dejavoo-spin-api";
 import { StationPaymentTerminal } from "./station";
 
-export type ReversalType =
-  | "void"
-  | "refund"
-  | "partial_refund"
-  | "item_return";
+export type ReversalType = "void" | "refund" | "partial_refund" | "item_return";
 
 export type RefundReasonType =
   | "customer_request"
@@ -46,6 +42,7 @@ export interface RefundRequest {
   payment_terminal_name?: string;
   payment_terminal?: StationPaymentTerminal;
   stationId?: string; // station performing the refund
+  metadata?: Record<string, unknown>; // Fraud flags, audit context
 }
 
 export interface ReversalRecord {
@@ -112,8 +109,37 @@ export interface PaymentRefundContext {
   paymentMethod: PaymentMethod;
   batchNumber: string;
   isVoidable: boolean;
+  // Wave R-SC: per-payment SC share baked into `amount` by process_payment_v14.
+  // Used by buildItemRefundAllocation to prorate the SC slice into item refunds
+  // so the customer is refunded what they actually paid (items + tax + SC),
+  // not just (items + tax). Pre-v13 payments default to 0 — no-op.
+  serviceCharge: number;
   terminalId?: string | null;
+  terminalConfig?: StationPaymentTerminal; // resolved from payment_terminals at gather time
 }
+
+// ─────────────────────────────────────────────
+// Wave R-1 — Refund pipeline outcome union
+// ─────────────────────────────────────────────
+
+/**
+ * Discriminated union returned by refundService.processRefund (and the
+ * store wrappers refundFullOrder / refundItems). The modal branches on
+ * `kind`:
+ *   'success'   — pipeline completed; data holds the RefundResult.
+ *   'verifying' — a transient error (DEADLINE_EXCEEDED / 40001) left the
+ *                 outcome unknown; show the polling verifying view.
+ *   'error'     — permanent failure (e.g. terminal declined); show error toast.
+ */
+export type RefundRpcOutcome<T = RefundResult> =
+  | { kind: "success"; data: T }
+  | {
+      kind: "verifying";
+      journalId: string;
+      failedStep: import("@/services/refundJournal").RefundPipelineStep;
+      reason: string;
+    }
+  | { kind: "error"; error: string };
 
 export interface PaymentItemAllocation {
   paymentId: string;
@@ -122,6 +148,10 @@ export interface PaymentItemAllocation {
   unitPrice: number;
   subtotal: number;
   tax: number;
+  // Wave R-SC: prorated SC slice from the parent payment's service_charge.
+  // Already folded into `total` for downstream callers; surfaced separately
+  // for observability + tests.
+  scShare?: number;
   total: number;
 }
 

@@ -1,74 +1,24 @@
 // contexts/CFDDisplayDataContext.tsx
 // Abstraction layer: both external CFD tablets and built-in secondary displays
 // read from the same interface via useCFDDisplayData().
+//
+// The context constant + types live in `./CFDDisplayDataContext.base.ts` so
+// the WebView's react-native-web bundle can reuse them without dragging in
+// the Zustand stores below (which transitively pull MMKV via lib/storage).
 import { useCFDBuiltinStore } from '@/stores/useCFDBuiltinStore'
 import { useCFDClientStore } from '@/stores/useCFDClientStore'
-import type {
-  CFDBranding,
-  CFDCartItem,
-  CFDPayload,
-  CFDScreenState
-} from '@/types/cfd.types'
-import React, { createContext, useContext } from 'react'
+import React, { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import {
+  CFDDisplayDataContext,
+  useCFDDisplayData,
+  type CFDDisplayData
+} from './CFDDisplayDataContext.base'
 
-export interface CFDDisplayData {
-  // Connection
-  connectionStatus: 'disconnected' | 'connecting' | 'connected'
-  latency: number | null
-
-  // Display state
-  screenState: CFDScreenState
-  serverName: string | null
-  customerName: string | null
-  customerPhone: string | null
-  orderNumber: string | null
-  orderType: string | null
-  tableName: string | null
-  guestCount: number | null
-  items: CFDCartItem[]
-
-  // Totals (all cents)
-  subtotal: number
-  subtotalCash: number
-  subtotalCard: number
-  discountAmount: number
-  taxAmount: number
-  taxCash: number
-  taxCard: number
-  tipAmount: number
-  tipPercentage: number | null
-  total: number
-  totalCash: number
-  totalCard: number
-  savingsAmount: number
-  outstandingTotal: number
-  amountPaid: number
-
-  // Branding & config
-  branding: CFDBranding | null
-  layout: CFDPayload['layout'] | null
-  orderingPanelImages: NonNullable<CFDPayload['orderingPanelImages']>
-  tipConfig: CFDPayload['tipConfig'] | null
-  carouselImages: string[]
-
-  // Loyalty
-  loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
-  loyaltyResult: CFDPayload['loyaltyResult'] | null
-
-  // Payment
-  paymentMethod: 'cash' | 'card' | 'manual' | null
-}
-
-const CFDDisplayDataContext = createContext<CFDDisplayData | null>(null)
-
-export function useCFDDisplayData (): CFDDisplayData {
-  const context = useContext(CFDDisplayDataContext)
-  if (!context) {
-    throw new Error(
-      'useCFDDisplayData must be used within a CFDExternalDisplayProvider or CFDBuiltinDisplayProvider'
-    )
-  }
-  return context
+export {
+  CFDDisplayDataContext,
+  useCFDDisplayData,
+  type CFDDisplayData
 }
 
 /** For external CFD tablets — reads from useCFDClientStore (WebSocket-driven) */
@@ -77,9 +27,50 @@ export function CFDExternalDisplayProvider ({
 }: {
   children: React.ReactNode
 }) {
-  const store = useCFDClientStore()
+  const store = useCFDClientStore(useShallow(s => ({
+    connectionStatus: s.connectionStatus,
+    latency: s.latency,
+    screenState: s.screenState,
+    serverName: s.serverName,
+    customerName: s.customerName,
+    customerPhone: s.customerPhone,
+    orderNumber: s.orderNumber,
+    orderType: s.orderType,
+    tableName: s.tableName,
+    guestCount: s.guestCount,
+    items: s.items,
+    subtotal: s.subtotal,
+    subtotalCash: s.subtotalCash,
+    subtotalCard: s.subtotalCard,
+    discountAmount: s.discountAmount,
+    serviceCharge: s.serviceCharge,
+    serviceChargeName: s.serviceChargeName,
+    serviceChargeRate: s.serviceChargeRate,
+    taxAmount: s.taxAmount,
+    taxCash: s.taxCash,
+    taxCard: s.taxCard,
+    tipAmount: s.tipAmount,
+    tipPercentage: s.tipPercentage,
+    total: s.total,
+    totalCash: s.totalCash,
+    totalCard: s.totalCard,
+    savingsAmount: s.savingsAmount,
+    outstandingTotal: s.outstandingTotal,
+    amountPaid: s.amountPaid,
+    branding: s.branding,
+    layout: s.layout,
+    orderingPanelImages: s.orderingPanelImages,
+    tipConfig: s.tipConfig,
+    carouselImages: s.carouselImages,
+    loyaltyPrompt: s.loyaltyPrompt,
+    loyaltyResult: s.loyaltyResult,
+    paymentMethod: s.paymentMethod,
+    merchantHasLoyalty: s.merchantHasLoyalty,
+    pricingDisplayMode: s.pricingDisplayMode,
+    themeMode: s.themeMode
+  })))
 
-  const data: CFDDisplayData = {
+  const data = useMemo<CFDDisplayData>(() => ({
     connectionStatus: store.connectionStatus,
     latency: store.latency,
     screenState: store.screenState,
@@ -95,6 +86,9 @@ export function CFDExternalDisplayProvider ({
     subtotalCash: store.subtotalCash,
     subtotalCard: store.subtotalCard,
     discountAmount: store.discountAmount,
+    serviceCharge: store.serviceCharge,
+    serviceChargeName: store.serviceChargeName,
+    serviceChargeRate: store.serviceChargeRate,
     taxAmount: store.taxAmount,
     taxCash: store.taxCash,
     taxCard: store.taxCard,
@@ -113,8 +107,11 @@ export function CFDExternalDisplayProvider ({
     carouselImages: store.carouselImages,
     loyaltyPrompt: store.loyaltyPrompt ?? null,
     loyaltyResult: store.loyaltyResult ?? null,
-    paymentMethod: store.paymentMethod ?? null
-  }
+    paymentMethod: store.paymentMethod ?? null,
+    merchantHasLoyalty: store.merchantHasLoyalty,
+    pricingDisplayMode: store.pricingDisplayMode ?? 'dual',
+    themeMode: store.themeMode
+  }), [store])
 
   return (
     <CFDDisplayDataContext.Provider value={data}>
@@ -129,11 +126,50 @@ export function CFDBuiltinDisplayProvider ({
 }: {
   children: React.ReactNode
 }) {
-  const store = useCFDBuiltinStore()
+  const store = useCFDBuiltinStore(useShallow(s => ({
+    screenState: s.screenState,
+    serverName: s.serverName,
+    customerName: s.customerName,
+    customerPhone: s.customerPhone,
+    orderNumber: s.orderNumber,
+    orderType: s.orderType,
+    tableName: s.tableName,
+    guestCount: s.guestCount,
+    items: s.items,
+    subtotal: s.subtotal,
+    subtotalCash: s.subtotalCash,
+    subtotalCard: s.subtotalCard,
+    discountAmount: s.discountAmount,
+    serviceCharge: s.serviceCharge,
+    serviceChargeName: s.serviceChargeName,
+    serviceChargeRate: s.serviceChargeRate,
+    taxAmount: s.taxAmount,
+    taxCash: s.taxCash,
+    taxCard: s.taxCard,
+    tipAmount: s.tipAmount,
+    tipPercentage: s.tipPercentage,
+    total: s.total,
+    totalCash: s.totalCash,
+    totalCard: s.totalCard,
+    savingsAmount: s.savingsAmount,
+    outstandingTotal: s.outstandingTotal,
+    amountPaid: s.amountPaid,
+    branding: s.branding,
+    layout: s.layout,
+    orderingPanelImages: s.orderingPanelImages,
+    tipConfig: s.tipConfig,
+    carouselImages: s.carouselImages,
+    loyaltyPrompt: s.loyaltyPrompt,
+    loyaltyResult: s.loyaltyResult,
+    paymentMethod: s.paymentMethod,
+    merchantHasLoyalty: s.merchantHasLoyalty,
+    pricingDisplayMode: s.pricingDisplayMode,
+    themeMode: s.themeMode
+  })))
 
-  const data: CFDDisplayData = {
-    connectionStatus: 'connected', // Always connected for built-in
-    latency: null, // No network latency
+  const data = useMemo<CFDDisplayData>(() => ({
+    connectionStatus: 'connected',
+    latency: null,
     screenState: store.screenState,
     serverName: store.serverName,
     customerName: store.customerName ?? null,
@@ -147,6 +183,9 @@ export function CFDBuiltinDisplayProvider ({
     subtotalCash: store.subtotalCash,
     subtotalCard: store.subtotalCard,
     discountAmount: store.discountAmount,
+    serviceCharge: store.serviceCharge,
+    serviceChargeName: store.serviceChargeName,
+    serviceChargeRate: store.serviceChargeRate,
     taxAmount: store.taxAmount,
     taxCash: store.taxCash,
     taxCard: store.taxCard,
@@ -165,8 +204,11 @@ export function CFDBuiltinDisplayProvider ({
     carouselImages: store.carouselImages,
     loyaltyPrompt: store.loyaltyPrompt ?? null,
     loyaltyResult: store.loyaltyResult ?? null,
-    paymentMethod: store.paymentMethod ?? null
-  }
+    paymentMethod: store.paymentMethod ?? null,
+    merchantHasLoyalty: store.merchantHasLoyalty,
+    pricingDisplayMode: store.pricingDisplayMode ?? 'dual',
+    themeMode: store.themeMode
+  }), [store])
 
   return (
     <CFDDisplayDataContext.Provider value={data}>

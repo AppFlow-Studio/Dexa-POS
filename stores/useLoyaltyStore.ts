@@ -1,9 +1,9 @@
 // stores/useLoyaltyStore.ts
 // Minimal store that caches whether the merchant has active loyalty programs.
 // TTL: 5 minutes — refreshed by CFDProvider on mount.
-import { mmkvStorage } from "@/lib/storage";
+import { createLazyPersistStorage } from "@/lib/storage";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 
 interface LoyaltyStore {
   merchantHasLoyalty: boolean;
@@ -21,7 +21,13 @@ export const useLoyaltyStore = create<LoyaltyStore>()(
     }),
     {
       name: "loyalty-store",
-      storage: createJSONStorage(() => mmkvStorage),
-    }
-  )
+      storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
+      partialize: (state) => ({
+        merchantHasLoyalty: state.merchantHasLoyalty,
+        checkedAt: state.checkedAt,
+      }),
+    },
+  ),
 );

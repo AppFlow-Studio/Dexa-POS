@@ -4,6 +4,22 @@ type NavRef = { current: { dispatch: (action: any) => void } | null };
 
 let _navRef: NavRef | null = null;
 
+// ── Navigation timing ──────────────────────────────────────────────
+// Background services use this to skip non-critical work (order pruning,
+// toasts) during the brief window after a screen transition.
+
+let _lastNavigationTs = 0;
+
+/** Call on every navigation state change (from _layout.tsx). */
+export function markNavigationEvent(): void {
+  _lastNavigationTs = Date.now();
+}
+
+/** True if the user navigated within the last `withinMs` milliseconds. */
+export function isRecentlyNavigated(withinMs = 2000): boolean {
+  return Date.now() - _lastNavigationTs < withinMs;
+}
+
 /**
  * Store the navigation container ref (called once from _layout.tsx).
  */

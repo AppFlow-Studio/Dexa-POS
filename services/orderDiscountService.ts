@@ -1,5 +1,7 @@
 // services/orderDiscountService.ts
 
+import { DEADLINES } from "@/lib/network/deadlines";
+import { rpcWithIdempotency } from "@/lib/network/idempotencyKey";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export type DiscountType = "percentage" | "fixed_amount";
@@ -55,6 +57,17 @@ export interface OrderState {
   amount_due: number;
   cash_amount_due: number;
   amount_paid: number;
+  // Wave A (manage_order_discount_v3): SC + sync metadata carried back so
+  // clients can reconcile against the post-recalc orders row without a
+  // second round-trip. Optional on the type because v2 fallback responses
+  // (pre-Wave-A) omit them.
+  total_amount?: number;
+  service_charge?: number;
+  service_charge_rate?: number | null;
+  service_charge_applies_on?: string | null;
+  service_charge_rule_id?: string | null;
+  service_charge_name?: string | null;
+  sync_version?: number;
 }
 
 export interface AffectedItem {
@@ -102,19 +115,28 @@ export class OrderDiscountService {
   ): Promise<DiscountResult> {
     console.log("[OrderDiscountService:applyDiscount]", params);
 
-    const { data, error } = await client.rpc("manage_order_discount", {
-      p_action: "apply",
-      p_order_id: params.order_id,
-      p_staff_id: params.staff_id,
-      p_discount_id: params.discount_id ?? null,
-      p_discount_name: params.discount_name,
-      p_discount_type: params.discount_type,
-      p_discount_value: params.discount_value,
-      p_source: params.source ?? "preset",
-      p_reason: params.reason ?? null,
-      p_applied_to_item_ids: params.applied_to_item_ids ?? null,
-      p_approved_by_staff_id: params.approved_by_staff_id ?? null,
-    });
+    // Wave A: v2 → v3 fallback. v3 hands off totals + SC re-resolution to
+    // apply_service_charge_v1 (internally PERFORMs calculate_order_totals_fast)
+    // so card_total/amount_due include service_charge atomically. v2 fallback
+    // writes (subtotal+tax) without SC and is the source of the SC drift
+    // bug Wave A closes. See manage_order_discount_v3_sc_recompute.sql.
+    const { data, error } = await rpcWithIdempotency(
+      client, "manage_order_discount", "manage_order_discount_v2", "manage_order_discount_v3",
+      {
+        p_action: "apply",
+        p_order_id: params.order_id,
+        p_staff_id: params.staff_id,
+        p_discount_id: params.discount_id ?? null,
+        p_discount_name: params.discount_name,
+        p_discount_type: params.discount_type,
+        p_discount_value: params.discount_value,
+        p_source: params.source ?? "preset",
+        p_reason: params.reason ?? null,
+        p_applied_to_item_ids: params.applied_to_item_ids ?? null,
+        p_approved_by_staff_id: params.approved_by_staff_id ?? null,
+      },
+      { deadline: DEADLINES.hotMutation },
+    );
 
     if (error) {
       console.error("[OrderDiscountService:applyDiscount] RPC error:", error);
@@ -179,13 +201,18 @@ export class OrderDiscountService {
   ): Promise<DiscountResult> {
     console.log("[OrderDiscountService:voidDiscount]", params);
 
-    const { data, error } = await client.rpc("manage_order_discount", {
-      p_action: "void",
-      p_order_id: params.order_id,
-      p_staff_id: params.staff_id,
-      p_order_discount_id: params.order_discount_id,
-      p_void_reason: params.void_reason ?? null,
-    });
+    // Wave A: v2 → v3 fallback (see applyDiscount above for rationale).
+    const { data, error } = await rpcWithIdempotency(
+      client, "manage_order_discount", "manage_order_discount_v2", "manage_order_discount_v3",
+      {
+        p_action: "void",
+        p_order_id: params.order_id,
+        p_staff_id: params.staff_id,
+        p_order_discount_id: params.order_discount_id,
+        p_void_reason: params.void_reason ?? null,
+      },
+      { deadline: DEADLINES.hotMutation },
+    );
 
     if (error) {
       console.error("[OrderDiscountService:voidDiscount] RPC error:", error);

@@ -1,21 +1,49 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { queryClient } from "@/contexts/TanstackProvider";
 import { orderQueryKeys } from "@/hooks/pos/useOrdersQuery";
+import { useRealtimeFallbackPolling } from "@/hooks/pos/useRealtimeFallbackPolling";
+
+const MIN_INVALIDATION_GAP_MS = 15_000;
 
 /**
  * Recovers order sync when the realtime WebSocket drops.
  *
  * 1. Detects reconnection (was disconnected → now connected) and immediately
- *    invalidates the active-orders query so React Query refetches.
- * 2. Runs adaptive polling: 15 s while disconnected, 120 s while connected
- *    (same cadence as the KDS screen).
+ *    invalidates the active-orders query so React Query refetches to catch
+ *    anything missed during the outage.
+ * 2. While the orders channel is disconnected, invalidates `orders.active`
+ *    every 30s. While it's connected, polling fully stops — broadcasts keep
+ *    `useOrderStore` fresh via the `_handleOrderBroadcast` fan-out in the
+ *    main layout.
  *
  * Must be rendered inside <LocationRealtimeProvider>.
  */
 export function useOrderSyncRecovery(locationId: string) {
   const { orders } = useLocationRealtime();
   const wasConnectedRef = useRef(orders.isConnected);
+  const lastInvalidatedRef = useRef(0);
+
+  /** Invalidate only if not already fetching and at least 5s since last invalidation. */
+  const throttledInvalidate = useCallback(() => {
+    // queryKey now includes stationId; use prefix-match isFetching instead of
+    // exact-match getQueryState so this hook stays station-agnostic.
+    if (
+      queryClient.isFetching({
+        queryKey: orderQueryKeys.active(locationId),
+      }) > 0
+    ) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastInvalidatedRef.current < MIN_INVALIDATION_GAP_MS) return;
+    lastInvalidatedRef.current = now;
+
+    queryClient.invalidateQueries({
+      queryKey: orderQueryKeys.active(locationId),
+    });
+  }, [locationId]);
 
   // Detect reconnection → immediate refetch
   useEffect(() => {
@@ -24,20 +52,10 @@ export function useOrderSyncRecovery(locationId: string) {
 
     if (!wasConnected && orders.isConnected) {
       console.log("[OrderSyncRecovery] Reconnected — refetching orders");
-      queryClient.invalidateQueries({
-        queryKey: orderQueryKeys.active(locationId),
-      });
+      throttledInvalidate();
     }
-  }, [orders.isConnected, locationId]);
+  }, [orders.isConnected, throttledInvalidate]);
 
-  // Adaptive polling (KDS pattern: 15 s disconnected, 120 s connected)
-  useEffect(() => {
-    const pollInterval = orders.isConnected ? 120_000 : 15_000;
-    const id = setInterval(() => {
-      queryClient.invalidateQueries({
-        queryKey: orderQueryKeys.active(locationId),
-      });
-    }, pollInterval);
-    return () => clearInterval(id);
-  }, [orders.isConnected, locationId]);
+  // Realtime-first, polling-fallback: runs only while the channel is down.
+  useRealtimeFallbackPolling(throttledInvalidate, { intervalMs: 30_000 });
 }

@@ -1,75 +1,89 @@
 import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
+import CashTipDeclarationModal from "@/components/timeclock/CashTipDeclarationModal";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import {
+    getDeviceInfo,
+    sanitizeIpAddress,
+    sendKickBroadcast,
+    usePinSignIn,
+} from "@/hooks/usePinSignIn";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { colors } from "@/lib/theme";
 import { useTimeClock } from "@/hooks/useTimeclock";
+import {
+    getPinAuthFailure,
+    getPinPromptLabel,
+    resolvePostLoginRoute,
+} from "@/lib/authFlow";
 import { getDeviceId } from "@/lib/deviceId";
-import { v4 as uuidv4 } from "uuid";
 import { getDeviceName } from "@/lib/deviceName";
-import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
+import { markStart } from "@/lib/perf";
+import { replaceRoute } from "@/lib/rootNavigation";
+import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { MerchantRole } from "@/lib/types";
+import {
+    EmployeeProfile,
+    STATION_IN_USE_AUTH_ERROR,
+    useEmployeeStore,
+} from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { PosStaffLoginResponse } from "@/types/station";
-import * as Application from "expo-application";
-import * as Device from "expo-device";
-import * as Network from "expo-network";
-import { replaceRoute } from "@/lib/rootNavigation";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withTiming,
+    useAnimatedStyle,
+    useSharedValue,
+    withSequence,
+    withTiming,
 } from "react-native-reanimated";
 
 const MAX_PIN_LENGTH = 4;
-// Helper function to validate and clean IP address
-const sanitizeIpAddress = (ip: string | null | undefined): string | null => {
-  if (!ip || ip.trim() === '') return null;
-  
-  // Basic IPv4 validation (optional but good practice)
-  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-  const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
-  
-  const trimmed = ip.trim();
-  if (ipv4Regex.test(trimmed) || ipv6Regex.test(trimmed)) {
-    return trimmed;
-  }
-  
-  return null; // Invalid format, send null instead of crashing DB
-};
-
-const getDeviceInfo = async () => {
-  const ip = await Network.getIpAddressAsync().catch(() => null);
-  return {
-    ip_address: ip !== '' ? ip : null,
-    app_version: Application.nativeApplicationVersion,
-    os_version: `${Device.osName} ${Device.osVersion}`,
-    hardware_model: Device.modelName,
-  };
-};
 
 const PinLoginScreen = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const router = useRouter();
   const { forceTakeover } = useLocalSearchParams<{ forceTakeover?: string }>();
   const [pin, setPin] = useState("");
   const [deviceId, setDeviceId] = useState<string>("");
+  const [showCashDeclaration, setShowCashDeclaration] = useState(false);
+  const pendingClockOutPinRef = useRef<string | null>(null);
+  const [clockOutEmployee, setClockOutEmployee] = useState<{
+    name: string;
+    profileId: string;
+    shiftId: string;
+    clockInTime: Date;
+  } | null>(null);
   const [cachedDeviceInfo, setCachedDeviceInfo] = useState<Awaited<
     ReturnType<typeof getDeviceInfo>
   > | null>(null);
   const supabase = useSupabaseClient();
 
-  // Clear PIN when screen comes into focus
+  // Clear PIN when screen comes into focus; also handle rollback feedback from background RPC
   useFocusEffect(
     useCallback(() => {
       setPin("");
+      const err = useEmployeeStore.getState().pendingAuthError;
+      if (err) {
+        if (err === STATION_IN_USE_AUTH_ERROR) {
+          showDialog(
+            "Take Over Station?",
+            "Another employee is signed in on this station. Enter your PIN again to take over.",
+            "warning",
+            { showTakeover: false },
+          );
+        } else {
+          triggerShakeAnimation();
+          showDialog("Sign In Failed", err, "error");
+        }
+        useEmployeeStore.getState().setPendingAuthError(null);
+      }
     }, []),
   );
 
@@ -92,10 +106,19 @@ const PinLoginScreen = () => {
   const setStationSessionId = useStoreSettingsStore(
     (state) => state.setStationSessionId,
   );
-  const { getSession, clockIn: timeclockClockIn, queueAction } = useTimeclockStore();
-  const { isOnline } = useNetworkStatus();
+  const {
+    getSession,
+    clockIn: timeclockClockIn,
+    queueAction,
+    currentStaffId,
+    employeeName: tcEmployeeName,
+    sessions,
+    activeEmployeeId,
+  } = useTimeclockStore();
+  const { isOnline, rawIsOnline } = useNetworkStatus();
 
   const timeClock = useTimeClock();
+  const { performOptimisticSignIn } = usePinSignIn();
 
   const canSubmit = useMemo(
     () =>
@@ -171,7 +194,7 @@ const PinLoginScreen = () => {
 
     try {
       const deviceName = getDeviceName();
-      const info = cachedDeviceInfo ?? await getDeviceInfo();
+      const info = cachedDeviceInfo ?? (await getDeviceInfo());
 
       console.log("Calling pos_staff_login for TAKEOVER with:", {
         p_location_id: selectedStore.id,
@@ -225,31 +248,18 @@ const PinLoginScreen = () => {
         setStationSessionId(response.session.session_id);
       }
 
-      // Send broadcast kick notification to the kicked device
-      // This is Layer 1 of the kick system - instant, no RLS dependency
-      if (response.session?.kicked_previous && response.session?.kicked_device_id) {
-        const kickedDeviceId = response.session.kicked_device_id;
-        console.log(`[Takeover] Broadcasting kick to device: ${kickedDeviceId}`);
-        try {
-          const kickChannel = supabase.channel(`station-kick:${kickedDeviceId}`);
-          await kickChannel.send({
-            type: "broadcast",
-            event: "kick",
-            payload: {
-              device_id: kickedDeviceId,
-              session_id: response.session.session_id,
-              kicked_by: response.staff?.display_name || "Unknown",
-              reason: "Taken over",
-              station_id: selectedStation.id,
-            },
-          });
-          // Clean up the temporary channel after sending
-          supabase.removeChannel(kickChannel);
-          console.log("[Takeover] Broadcast kick sent successfully");
-        } catch (broadcastErr) {
-          // Non-critical - other kick layers will catch it
-          console.warn("[Takeover] Broadcast kick failed (non-critical):", broadcastErr);
-        }
+      // Send broadcast kick notification to the kicked device (Layer 1)
+      if (
+        response.session?.kicked_previous &&
+        response.session?.kicked_device_id
+      ) {
+        await sendKickBroadcast(supabase, response.session.kicked_device_id, {
+          session_id: response.session.session_id,
+          kicked_by: response.staff?.display_name || "Unknown",
+          station_id: selectedStation.id,
+          source_device_id: deviceId,
+          target_session_id: response.session.kicked_session_id,
+        });
       }
 
       let employee: EmployeeProfile | null = null;
@@ -265,17 +275,20 @@ const PinLoginScreen = () => {
         console.log("Employee not found locally (takeover), re-syncing...");
         const { data } = await supabase
           .from("location_members")
-          .select(`
+          .select(
+            `
             id, pin_code, pin_plain, role_code, staff_profile_id,
             staff_profiles (id, first_name, last_name, display_name, avatar_url, email, phone)
-          `)
+          `,
+          )
           .eq("location_id", selectedStore.id)
           .eq("is_active", true);
 
         if (data?.length) {
           const mappedEmployees: EmployeeProfile[] = data.map((row: any) => {
             const profile = row.staff_profiles;
-            const fullName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+            const fullName =
+              `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
             return {
               id: row.id,
               profileId: profile?.id || "",
@@ -290,9 +303,10 @@ const PinLoginScreen = () => {
             };
           });
           setEmployees(mappedEmployees);
-          employee = mappedEmployees.find(
-            (e) => e.profileId === response.staff?.staff_profile_id
-          ) || null;
+          employee =
+            mappedEmployees.find(
+              (e) => e.profileId === response.staff?.staff_profile_id,
+            ) || null;
         }
       }
 
@@ -309,7 +323,7 @@ const PinLoginScreen = () => {
       hideLoading();
       setPendingTakeoverPin(null);
       const isKDS = selectedStation?.station_type === "kds";
-      replaceRoute('(main)', isKDS ? 'kds' : 'home');
+      replaceRoute("(main)", isKDS ? "kds" : "home");
     } catch (error: any) {
       console.error("Takeover error details:", {
         message: error?.message,
@@ -364,67 +378,45 @@ const PinLoginScreen = () => {
       return;
     }
 
-    // ── OFFLINE PATH ─────────────────────────────────────────────────────────
-    if (!isOnline) {
-      const employee = findEmployeeByPin(pin);
-      if (!employee) {
+    // ── FAST PATH: optimistic sign-in (works online AND offline, cache hit) ──
+    const result = await performOptimisticSignIn({
+      pin,
+      selectedStore,
+      selectedStation,
+      deviceId,
+      cachedDeviceInfo,
+      forceTakeover: forceTakeover === "true",
+      isOnline,
+    });
+
+    if (result.outcome === "navigating") {
+      setPin("");
+      return;
+    }
+
+    // ── CACHE MISS: employees not loaded (first startup / empty cache) ────────
+    if (result.outcome === "cache_miss") {
+      if (!isOnline) {
+        const authFailure = getPinAuthFailure({ offline: true });
         triggerShakeAnimation();
-        showDialog("Sign In Failed", "Incorrect PIN. Please try again.", "error");
+        showDialog(authFailure.title, authFailure.message, "error");
         setPin("");
         return;
       }
-
-      showLoading("Signing in offline...");
-
-      const existingSession = getSession(employee.id);
-      if (!existingSession) {
-        employeeClockIn(employee.id);
-        timeclockClockIn(employee.id);
-      }
-      setActiveSession(employee);
-
-      queueAction({
-        id: uuidv4(),
-        type: "sign_in",
-        pinCode: pin,
-        locationId: selectedStore.id,
-        timestamp: new Date().toISOString(),
-        deviceId,
-      });
-
-      hideLoading();
-      setPin("");
-      const isKDS = selectedStation?.station_type === "kds";
-      replaceRoute("(main)", isKDS ? "kds" : "home");
-      return;
+      // Fall through to blocking online flow below
     }
-    // ── END OFFLINE PATH ──────────────────────────────────────────────────────
 
+    if (result.outcome === "server_validation_required") {
+      // Fall through to blocking online flow below
+    }
+
+    // ── BLOCKING ONLINE FLOW (cache miss + online) ────────────────────────────
     showLoading("Signing in...");
 
     try {
       const deviceName = getDeviceName();
-      const info = cachedDeviceInfo ?? await getDeviceInfo();
+      const info = cachedDeviceInfo ?? (await getDeviceInfo());
 
-      // Call the new combined RPC for station + clock in
-      console.log("Calling pos_staff_login with:", {
-        p_location_id: selectedStore.id,
-        p_pin_code: pin,
-        p_station_id: selectedStation.id,
-        p_device_id: deviceId,
-        p_device_name: deviceName,
-        p_auto_clock_in: true,
-        p_force_takeover: forceTakeover === "true",
-        p_ip_address: sanitizeIpAddress(info.ip_address),
-        p_app_version: info.app_version,
-        p_os_version: info.os_version,
-        p_hardware_model: info.hardware_model,
-      });
-      if (navigator.onLine) {
-        console.log('Internet connection is available');
-      } else {
-        console.log('Internet connection is not available');
-      }
       const { data, error } = await supabase.rpc("pos_staff_login_v2", {
         p_location_id: selectedStore.id,
         p_pin_code: pin,
@@ -439,8 +431,6 @@ const PinLoginScreen = () => {
         p_hardware_model: info.hardware_model,
       });
 
-      console.log("pos_staff_login response:", data, error);
-
       if (error) throw error;
 
       const response = data as PosStaffLoginResponse;
@@ -449,7 +439,6 @@ const PinLoginScreen = () => {
         hideLoading();
 
         if (response.error_code === "STATION_IN_USE") {
-          // Store the PIN for potential takeover
           setPendingTakeoverPin(pin);
           showDialog(
             "Take Over Station?",
@@ -466,52 +455,35 @@ const PinLoginScreen = () => {
           return;
         }
 
+        const authFailure = getPinAuthFailure({
+          error: response.error,
+          errorCode: response.error_code,
+        });
         triggerShakeAnimation();
-        showDialog(
-          "Sign In Failed",
-          response.error || "Unable to sign in.",
-          "error",
-        );
+        showDialog(authFailure.title, authFailure.message, "error");
         setPin("");
         return;
       }
 
-      // Store session ID for later logout
       if (response.session?.session_id) {
-        console.log(
-          "📝 Setting stationSessionId:",
-          response.session.session_id,
-        );
         setStationSessionId(response.session.session_id);
       }
 
-      // Send broadcast kick notification to the kicked device (Layer 1)
-      if (response.session?.kicked_previous && response.session?.kicked_device_id) {
-        const kickedDeviceId = response.session.kicked_device_id;
-        console.log(`[Login] Broadcasting kick to device: ${kickedDeviceId}`);
-        try {
-          const kickChannel = supabase.channel(`station-kick:${kickedDeviceId}`);
-          await kickChannel.send({
-            type: "broadcast",
-            event: "kick",
-            payload: {
-              device_id: kickedDeviceId,
-              session_id: response.session.session_id,
-              kicked_by: response.staff?.display_name || "Unknown",
-              reason: "Taken over",
-              station_id: selectedStation.id,
-            },
-          });
-          supabase.removeChannel(kickChannel);
-          console.log("[Login] Broadcast kick sent successfully");
-        } catch (broadcastErr) {
-          console.warn("[Login] Broadcast kick failed (non-critical):", broadcastErr);
-        }
+      if (
+        response.session?.kicked_previous &&
+        response.session?.kicked_device_id
+      ) {
+        await sendKickBroadcast(supabase, response.session.kicked_device_id, {
+          session_id: response.session.session_id,
+          kicked_by: response.staff?.display_name || "Unknown",
+          station_id: selectedStation.id,
+          source_device_id: deviceId,
+          target_session_id: response.session.kicked_session_id,
+        });
       }
 
       let employee: EmployeeProfile | null = null;
 
-      // Get employee from local store using staff profile ID
       if (response.staff?.staff_profile_id) {
         employee =
           getEmployeeByStaffId(response.staff.staff_profile_id) || null;
@@ -520,41 +492,46 @@ const PinLoginScreen = () => {
       // If not found locally, re-sync employees and retry
       if (!employee && response.staff?.staff_profile_id && selectedStore?.id) {
         console.log("Employee not found locally, re-syncing...");
-        const { data } = await supabase
+        const { data: membersData } = await supabase
           .from("location_members")
-          .select(`
+          .select(
+            `
             id, pin_code, pin_plain, role_code, staff_profile_id,
             staff_profiles (id, first_name, last_name, display_name, avatar_url, email, phone)
-          `)
+          `,
+          )
           .eq("location_id", selectedStore.id)
           .eq("is_active", true);
 
-        if (data?.length) {
-          const mappedEmployees: EmployeeProfile[] = data.map((row: any) => {
-            const profile = row.staff_profiles;
-            const fullName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
-            return {
-              id: row.id,
-              profileId: profile?.id || "",
-              fullName: fullName || "Unknown Staff",
-              displayName: profile?.display_name || fullName || "Unknown",
-              role: row.role_code as MerchantRole,
-              profilePictureUrl: profile?.avatar_url || undefined,
-              pin: row.pin_plain ?? null,
-              email: profile?.email,
-              phone: profile?.phone,
-              shiftStatus: "clocked_out" as const,
-            };
-          });
+        if (membersData?.length) {
+          const mappedEmployees: EmployeeProfile[] = membersData.map(
+            (row: any) => {
+              const profile = row.staff_profiles;
+              const fullName =
+                `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+              return {
+                id: row.id,
+                profileId: profile?.id || "",
+                fullName: fullName || "Unknown Staff",
+                displayName: profile?.display_name || fullName || "Unknown",
+                role: row.role_code as MerchantRole,
+                profilePictureUrl: profile?.avatar_url || undefined,
+                pin: row.pin_plain ?? null,
+                email: profile?.email,
+                phone: profile?.phone,
+                shiftStatus: "clocked_out" as const,
+              };
+            },
+          );
           setEmployees(mappedEmployees);
-          employee = mappedEmployees.find(
-            (e) => e.profileId === response.staff?.staff_profile_id
-          ) || null;
+          employee =
+            mappedEmployees.find(
+              (e) => e.profileId === response.staff?.staff_profile_id,
+            ) || null;
         }
       }
 
       if (employee) {
-        // Sync local session state
         const existingSession = getSession(employee.id);
         if (!existingSession) {
           employeeClockIn(employee.id);
@@ -564,18 +541,16 @@ const PinLoginScreen = () => {
       }
 
       hideLoading();
-
-      if (!employee) {
-        // Staff found in database but not synced locally - still allow login
-        console.warn(
-          "Staff profile not found locally:",
-          response.staff?.staff_profile_id,
-        );
-      }
-
       setPin("");
-      const isKDS = selectedStation?.station_type === "kds";
-      replaceRoute('(main)', isKDS ? 'kds' : 'home');
+      // Perf Phase 0: PIN success → order screen interactive. Ended by
+      // order-processing at renderStage 2; auto-cancelled (TTL) on KDS routes.
+      markStart("pos.boot_to_order", {
+        station_type: selectedStation?.station_type ?? "unknown",
+      });
+      replaceRoute(
+        "(main)",
+        resolvePostLoginRoute(selectedStation?.station_type),
+      );
     } catch (error: any) {
       console.error("Login error details:", {
         message: error?.message,
@@ -586,11 +561,11 @@ const PinLoginScreen = () => {
       });
       hideLoading();
       triggerShakeAnimation();
-      const errorMessage =
-        error?.message?.includes("PIN") || error?.message?.includes("pin")
-          ? "The PIN you entered is incorrect."
-          : error?.message || "Unable to sign in. Please try again.";
-      showDialog("Sign In Failed", errorMessage, "error");
+      const authFailure = getPinAuthFailure({
+        error: error?.message,
+        errorCode: error?.code,
+      });
+      showDialog(authFailure.title, authFailure.message, "error");
       setPin("");
     }
   };
@@ -607,18 +582,11 @@ const PinLoginScreen = () => {
       return;
     }
 
-    showLoading("Clocking in...");
-
     try {
-      // Use server for clock in (handles both online and offline via the hook)
+      // useTimeClock updates state optimistically; success/error toasts handled by the hook
       await timeClock.clockIn(pin, selectedStore.id, deviceId);
-      // Success toast is handled by the hook
-      hideLoading();
       setPin("");
-    } catch (error: any) {
-      hideLoading();
-      // Toast notification is already shown by the useTimeClock hook
-      // Just shake and clear PIN for visual feedback
+    } catch {
       triggerShakeAnimation();
       setPin("");
     }
@@ -636,22 +604,124 @@ const PinLoginScreen = () => {
       return;
     }
 
-    showLoading("Clocking out...");
+    // Call the actual clock-out RPC first — it validates the PIN and returns
+    // the staff_id + shift_id. Then show the declaration modal with correct info.
+    // The clock-out completes on the backend, but we still need the declaration.
+    const enteredPin = pin;
+    setPin("");
 
     try {
-      // Use server for clock out (handles both online and offline via the hook)
-      await timeClock.clockOut(pin, selectedStore.id, deviceId);
-      // Success toast is handled by the hook
-      hideLoading();
-      setPin("");
-    } catch (error: any) {
-      hideLoading();
-      // Toast notification is already shown by the useTimeClock hook
-      // Just shake and clear PIN for visual feedback
+      const result = await timeClock.clockOut(
+        enteredPin,
+        selectedStore.id,
+        deviceId,
+      );
+
+      // Offline path: RPC was queued, resolve employee from PIN locally
+      if (result?.queued) {
+        const allEmployees = useEmployeeStore.getState().employees;
+        const offlineEmp = allEmployees.find((e) => e.pin === enteredPin);
+        if (!offlineEmp) {
+          triggerShakeAnimation();
+          return;
+        }
+        const offlineSession = sessions[offlineEmp.id];
+        const offlineClockIn = offlineSession?.clockInTime
+          ? new Date(offlineSession.clockInTime)
+          : new Date();
+        const tcStore = useTimeclockStore.getState();
+
+        setClockOutEmployee({
+          name: offlineEmp.fullName || "Employee",
+          profileId: offlineEmp.profileId,
+          shiftId: tcStore.currentShiftId || "",
+          clockInTime: offlineClockIn,
+        });
+        tcStore.clockOut(offlineEmp.id);
+        pendingClockOutPinRef.current = enteredPin;
+        setShowCashDeclaration(true);
+        return;
+      }
+
+      // Online path: extract data from RPC response
+      const staffId = result?.staff_id;
+      const staffName = result?.employee_name;
+      const shiftId = result?.shift_id;
+
+      if (!staffId) {
+        triggerShakeAnimation();
+        return;
+      }
+
+      // Find clock-in time from their shift
+      const { employees: allEmps } = useEmployeeStore.getState();
+      const emp = allEmps.find((e) => e.profileId === staffId);
+      const empSession = emp ? sessions[emp.id] : null;
+      let clockInTime = empSession?.clockInTime
+        ? new Date(empSession.clockInTime)
+        : new Date();
+
+      // Try to get accurate clock-in time from backend
+      try {
+        const { data: shiftData } = await supabase
+          .from("staff_shifts")
+          .select("clock_in_time")
+          .eq("id", shiftId)
+          .single();
+        if (shiftData?.clock_in_time) {
+          clockInTime = new Date(shiftData.clock_in_time);
+        }
+      } catch {}
+
+      setClockOutEmployee({
+        name: staffName || emp?.fullName || "Employee",
+        profileId: staffId,
+        shiftId: shiftId || "",
+        clockInTime,
+      });
+
+      // Update local store
+      if (emp) {
+        useTimeclockStore.getState().clockOut(emp.id);
+      }
+
+      pendingClockOutPinRef.current = enteredPin;
+      setShowCashDeclaration(true);
+    } catch {
       triggerShakeAnimation();
-      setPin("");
     }
   };
+
+  const handleClockOutDeclarationComplete = useCallback(
+    async (declaredAmount: number) => {
+      setShowCashDeclaration(false);
+      pendingClockOutPinRef.current = null;
+      if (!selectedStore) return;
+
+      // Clock-out already happened in handleClockOut — just declare tips
+      const shiftId = clockOutEmployee?.shiftId;
+      if (shiftId || clockOutEmployee?.profileId) {
+        try {
+          await timeClock.declareCashTips(
+            shiftId || "",
+            declaredAmount,
+            selectedStore.id,
+            deviceId,
+            clockOutEmployee?.profileId,
+          );
+        } catch (e) {
+          console.warn("[PinLogin] Cash tip declaration failed:", e);
+        }
+      }
+      setClockOutEmployee(null);
+    },
+    [selectedStore, timeClock, deviceId, clockOutEmployee],
+  );
+
+  const handleClockOutDeclarationCancel = useCallback(() => {
+    setShowCashDeclaration(false);
+    pendingClockOutPinRef.current = null;
+  }, []);
 
   const handleOpenTimeclock = async () => {
     if (!canSubmit || !selectedStore) {
@@ -691,7 +761,12 @@ const PinLoginScreen = () => {
       }
 
       // Check for manager-level roles
-      const managerRoles = ["merchant.manager", "merchant.admin", "merchant.owner","merchant.shift_manager"];
+      const managerRoles = [
+        "merchant.manager",
+        "merchant.admin",
+        "merchant.owner",
+        "merchant.shift_manager",
+      ];
       if (!managerRoles.includes(employee.role)) {
         showDialog(
           "Permission Denied",
@@ -734,55 +809,83 @@ const PinLoginScreen = () => {
         {/* Title */}
         <Text
           style={{
-            fontSize: 15,
+            fontSize: s(15),
             fontWeight: "700",
             color: colors.heading,
             textAlign: "center",
-            marginBottom: 4,
+            marginBottom: s(4),
           }}
         >
-          Enter Your PIN
+          {getPinPromptLabel(MAX_PIN_LENGTH)}
         </Text>
 
         {/* Station / store subtitle */}
         {selectedStation && selectedStore ? (
           <Text
             style={{
-              fontSize: 11,
+              fontSize: s(11),
               color: colors.muted,
               textAlign: "center",
-              marginBottom: 16,
+              marginBottom: s(16),
             }}
           >
             {selectedStation.station_name} · {selectedStore.name}
           </Text>
         ) : (
-          <View style={{ marginBottom: 16 }} />
+          <View style={{ marginBottom: s(16) }} />
+        )}
+
+        {!rawIsOnline && (
+          <View
+            style={{
+              alignSelf: "center",
+              marginBottom: s(12),
+              paddingHorizontal: s(10),
+              paddingVertical: s(6),
+              borderRadius: 999,
+              backgroundColor: colors.warning + "18",
+              borderWidth: 1,
+              borderColor: colors.warning + "35",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: s(11),
+                fontWeight: "600",
+                color: colors.warning,
+                textAlign: "center",
+              }}
+            >
+              Offline mode: sign-in will sync when connection returns.
+            </Text>
+          </View>
         )}
 
         <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />
 
-        <View style={{ marginTop: 10 }}>
+        <View style={{ marginTop: s(10) }}>
           <PinNumpad onKeyPress={handleKeyPress} />
         </View>
 
         {/* Action buttons */}
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
+        <View style={{ flexDirection: "row", gap: s(8), marginTop: s(14) }}>
           <TouchableOpacity
             onPress={handleLogin}
             disabled={!canSubmit}
             style={{
               flex: 1,
-              paddingVertical: 11,
+              paddingVertical: s(11),
               backgroundColor: colors.teal + "20",
               borderWidth: 1,
               borderColor: colors.teal + "50",
-              borderRadius: 10,
+              borderRadius: s(10),
               alignItems: "center",
               opacity: canSubmit ? 1 : 0.4,
             }}
           >
-            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
+            <Text
+              style={{ fontSize: s(12), fontWeight: "700", color: colors.teal }}
+            >
               SIGN IN
             </Text>
           </TouchableOpacity>
@@ -792,16 +895,18 @@ const PinLoginScreen = () => {
             disabled={!canSubmit}
             style={{
               flex: 1,
-              paddingVertical: 11,
+              paddingVertical: s(11),
               backgroundColor: colors.success + "15",
               borderWidth: 1,
               borderColor: colors.success + "40",
-              borderRadius: 10,
+              borderRadius: s(10),
               alignItems: "center",
               opacity: canSubmit ? 1 : 0.4,
             }}
           >
-            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.success }}>
+            <Text
+              style={{ fontSize: s(12), fontWeight: "700", color: colors.success }}
+            >
               CLOCK IN
             </Text>
           </TouchableOpacity>
@@ -811,16 +916,18 @@ const PinLoginScreen = () => {
             disabled={!canSubmit}
             style={{
               flex: 1,
-              paddingVertical: 11,
+              paddingVertical: s(11),
               backgroundColor: colors.danger + "15",
               borderWidth: 1,
               borderColor: colors.danger + "40",
-              borderRadius: 10,
+              borderRadius: s(10),
               alignItems: "center",
               opacity: canSubmit ? 1 : 0.4,
             }}
           >
-            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.danger }}>
+            <Text
+              style={{ fontSize: s(12), fontWeight: "700", color: colors.danger }}
+            >
               CLOCK OUT
             </Text>
           </TouchableOpacity>
@@ -831,20 +938,22 @@ const PinLoginScreen = () => {
           onPress={handleOpenTimeclock}
           style={{
             alignSelf: "center",
-            marginTop: 12,
+            marginTop: s(12),
             flexDirection: "row",
             alignItems: "center",
-            gap: 6,
-            paddingHorizontal: 14,
-            paddingVertical: 7,
+            gap: s(6),
+            paddingHorizontal: s(14),
+            paddingVertical: s(7),
             backgroundColor: colors.card,
             borderWidth: 1,
             borderColor: colors.border,
-            borderRadius: 8,
+            borderRadius: s(8),
           }}
         >
-          <Lock size={13} color={colors.label} />
-          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
+          <Lock size={s(13)} color={colors.label} />
+          <Text
+            style={{ fontSize: s(12), fontWeight: "600", color: colors.label }}
+          >
             Open Timeclock
           </Text>
         </TouchableOpacity>
@@ -855,8 +964,8 @@ const PinLoginScreen = () => {
           <View
             style={{
               width: "100%",
-              borderRadius: 14,
-              padding: 20,
+              borderRadius: s(14),
+              padding: s(20),
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor:
@@ -865,13 +974,18 @@ const PinLoginScreen = () => {
                   : dialog.variant === "warning"
                     ? colors.warning + "60"
                     : colors.danger + "60",
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.15,
+              shadowRadius: 8,
+              elevation: 4,
             }}
           >
             <Text
               style={{
-                fontSize: 14,
+                fontSize: s(14),
                 fontWeight: "700",
-                marginBottom: 6,
+                marginBottom: s(6),
                 color:
                   dialog.variant === "success"
                     ? colors.success
@@ -882,39 +996,66 @@ const PinLoginScreen = () => {
             >
               {dialog.title}
             </Text>
-            <Text style={{ fontSize: 13, color: colors.label, marginBottom: 18, lineHeight: 19 }}>
+            <Text
+              style={{
+                fontSize: s(13),
+                color: colors.label,
+                marginBottom: s(18),
+                lineHeight: s(19),
+              }}
+            >
               {dialog.message}
             </Text>
 
             {dialog.showTakeover ? (
-              <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "flex-end",
+                  gap: s(8),
+                }}
+              >
                 <TouchableOpacity
                   onPress={() => {
                     hideDialog();
                     setPendingTakeoverPin(null);
                   }}
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                    borderRadius: 8,
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(7),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     borderColor: colors.border,
                   }}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Cancel</Text>
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      fontWeight: "600",
+                      color: colors.label,
+                    }}
+                  >
+                    Cancel
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleTakeover}
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                    borderRadius: 8,
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(7),
+                    borderRadius: s(8),
                     backgroundColor: colors.warning + "20",
                     borderWidth: 1,
                     borderColor: colors.warning + "50",
                   }}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.warning }}>
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      fontWeight: "600",
+                      color: colors.warning,
+                    }}
+                  >
                     Take Over
                   </Text>
                 </TouchableOpacity>
@@ -924,9 +1065,9 @@ const PinLoginScreen = () => {
                 onPress={hideDialog}
                 style={{
                   alignSelf: "flex-end",
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 8,
+                  paddingHorizontal: s(14),
+                  paddingVertical: s(7),
+                  borderRadius: s(8),
                   backgroundColor:
                     dialog.variant === "success"
                       ? colors.success + "20"
@@ -944,7 +1085,7 @@ const PinLoginScreen = () => {
               >
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: "600",
                     color:
                       dialog.variant === "success"
@@ -961,6 +1102,20 @@ const PinLoginScreen = () => {
           </View>
         </DialogContent>
       </Dialog>
+
+      <CashTipDeclarationModal
+        isOpen={showCashDeclaration}
+        shiftId={clockOutEmployee?.shiftId || timeClock.shiftId || ""}
+        staffProfileId={clockOutEmployee?.profileId || currentStaffId || ""}
+        locationId={selectedStore?.id || ""}
+        employeeName={clockOutEmployee?.name || "Employee"}
+        clockInTime={clockOutEmployee?.clockInTime || new Date()}
+        onComplete={handleClockOutDeclarationComplete}
+        onCancel={() => {
+          handleClockOutDeclarationCancel();
+          setClockOutEmployee(null);
+        }}
+      />
     </>
   );
 };

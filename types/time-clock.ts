@@ -1,5 +1,11 @@
-export type TimeClockStatus = 'idle' | 'active' | 'on_break' | 'completed';
-export type TimeClockActionType = 'clock_in' | 'clock_out' | 'break_start' | 'break_end' | 'sign_in';
+export type TimeClockStatus = "idle" | "active" | "on_break" | "completed";
+export type TimeClockActionType =
+  | "clock_in"
+  | "clock_out"
+  | "break_start"
+  | "break_end"
+  | "sign_in"
+  | "declare_cash_tips";
 
 export interface TimeClockAction {
   id: string; // Unique ID for the queue item
@@ -8,6 +14,12 @@ export interface TimeClockAction {
   locationId: string;
   timestamp: string; // ISO String (captured at moment of button press)
   deviceId: string;
+  retryCount?: number;
+  nextRetryAt?: string;
+  // Cash tip declaration fields (only for type: 'declare_cash_tips')
+  shiftId?: string;
+  cashTipAmount?: number;
+  staffProfileId?: string; // Fallback for shift lookup when shiftId is unknown (offline clock-in)
 }
 
 export interface StaffShiftState {

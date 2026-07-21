@@ -402,7 +402,7 @@ async function renderNode(
     }
 
     case "two_column": {
-      const w = node.lineWidth;
+      const w = node.lineWidth || 32;
       const line = padTwoColumn(
         sanitizeForPrint(node.left),
         sanitizeForPrint(node.right),

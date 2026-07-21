@@ -26,6 +26,19 @@ export type PrintJobStatus = "queued" | "processing" | "completed" | "failed";
 
 export type PrintJobPriority = "high" | "normal" | "low";
 
+// Derived reachability badge state. Computed by getPrinterReachability().
+// - connectable: probe last reported the printer claimable by us
+// - in_use: probe got StarIO10InUseError — listening but held by a peer device
+// - offline: probe failed or printer is powered off
+// - unknown: last_status_at is stale (>5 min) or we have no probe data yet
+export type PrinterReachability = "connectable" | "in_use" | "offline" | "unknown";
+
+// Sentinel value written to printers.last_status when a probe observes the
+// printer is reachable but held by another device. Free-form diagnostic strings
+// (e.g. "Paper empty", "Cover open") continue to flow through last_status for
+// other branches; only this exact value triggers the yellow badge.
+export const PRINTER_STATUS_IN_USE = "in_use";
+
 // ============================================================================
 // PRINTER CONFIG (mapped from DB row)
 // ============================================================================
@@ -43,6 +56,7 @@ export interface PrinterConfig {
   networkPort: number | null;
   bluetoothAddress: string | null;
   usbDevicePath: string | null;
+  serialNumber: string | null;
 
   // Capabilities
   supportsAutoCut: boolean;
@@ -94,6 +108,7 @@ export type PrintJobType =
   | "receipt"
   | "kitchen_ticket"
   | "void_ticket"
+  | "refund_ticket"
   | "test_page"
   | "cash_drawer";
 
@@ -203,6 +218,7 @@ export interface ReceiptTemplateData {
   orderType: string;
   tableName?: string;
   customerName?: string;
+  customerPhone?: string;
   serverName?: string;
   backendOrderNumber?: string; // "ORD-YYYYMMDD-XXXX" from orders table
 
@@ -215,6 +231,13 @@ export interface ReceiptTemplateData {
   discount: number;
   tip: number;
   total: number;
+  pricingMode?: "cash" | "card" | "dual";
+
+  // Service charge (already included in `total` from the backend; rendered
+  // as its own line between Tax and Tip when > 0).
+  serviceCharge?: number;
+  cashServiceCharge?: number;
+  serviceChargeName?: string;
 
   // Cash pricing (optional)
   cashSubtotal?: number;
@@ -241,6 +264,15 @@ export interface ReceiptTemplateData {
   // Print metadata
   printDate?: string;  // Date string when receipt was printed
   printTime?: string;  // Time string when receipt was printed
+
+  // Copy label printed at the bottom of the receipt
+  copyLabel?: string;  // e.g. "Customer Copy" | "Merchant Copy"
+
+  // Split-receipt scoping (only set for per-portion split receipts; ignored
+  // on the combined-receipt path so existing receipts are byte-identical).
+  splitLabel?: string;             // e.g. "Split 2 of 3"
+  splitPayerName?: string;         // payer name (from transactionDetails.splitLabel)
+  isPartialSplitReceipt?: boolean; // even/custom split → "Partial payment - full check below"
 }
 
 export interface ReceiptItemData {
@@ -250,6 +282,11 @@ export interface ReceiptItemData {
   cashPrice?: number;
   isVoided: boolean;
   modifiers: { name: string; price: number; isNo?: boolean }[];
+  // Aggregate modifier upcharge not already itemized by the per-option prices
+  // above — recovers a priced modifier (e.g. +$140) when its per-option price
+  // didn't round-trip onto a synced/reprinted item. 0/undefined = nothing extra.
+  modifiersUpcharge?: number;
+  cashModifiersUpcharge?: number;
   notes?: string;
   seatNumber?: number | null; // Which seat (1..N), null = shared/unassigned
 }
@@ -262,6 +299,11 @@ export interface ReceiptPaymentData {
   authCode?: string;     // Authorization/approval code
   rrn?: string;          // Retrieval Reference Number
   entryMode?: string;    // "chip", "swipe", "contactless", "manual"
+  aid?: string;              // Card Application ID (AID) from terminal
+  tipAmount?: number;        // Tip amount (shown separately so amount is clearly pre-tip)
+  originalTipAmount?: number; // Original tip before adjustment (for audit display)
+  amountTendered?: number;   // Cash amount customer handed over
+  changeGiven?: number;      // Change returned to customer
 }
 
 export interface KitchenTicketData {
@@ -274,6 +316,7 @@ export interface KitchenTicketData {
   totalItemCount?: number;
   items: KitchenTicketItemData[];
   isVoidTicket: boolean;
+  isRefundTicket?: boolean;
   maxCharsPerLine: number;
   templateConfig?: ReceiptTemplateConfig;
   readyByTime?: string;
@@ -285,9 +328,11 @@ export interface KitchenTicketItemData {
   modifiers: string[];
   notes?: string;
   isVoided?: boolean;
+  isRefunded?: boolean;
   station?: string;
   allergyAlert?: string;
   seatNumber?: number | null;
+  courseNumber?: number; // Which course this item belongs to (rendered when > 1)
 }
 
 // ============================================================================
@@ -313,6 +358,7 @@ export function printerRowToConfig(row: PrinterRow): PrinterConfig {
     networkPort: row.network_port,
     bluetoothAddress: row.bluetooth_address,
     usbDevicePath: row.usb_device_path,
+    serialNumber: row.serial_number,
     supportsAutoCut: row.supports_auto_cut ?? true,
     supportsBarcode: row.supports_barcode ?? false,
     supportsQrCode: row.supports_qr_code ?? false,

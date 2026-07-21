@@ -1,3 +1,4 @@
+import { useUiScale } from '@/lib/uiScale'
 import { colors } from "@/lib/theme";
 import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes";
@@ -46,33 +47,49 @@ const ShapeButton = ({
   ShapeComponent: React.ComponentType<any>;
   isSelected: boolean;
   onPress: () => void;
-}) => (
-  <TouchableOpacity
-    key={id}
-    onPress={onPress}
-    className={`p-3 border-2 rounded-xl items-center justify-center w-[250px] h-[130px] ${
-      isSelected
-        ? "border-blue-500 bg-blue-500/10"
-        : "border-gray-700 bg-panel"
-    }`}
-  >
-    <ShapeComponent color={isSelected ? "#3b82f6" : "#9CA3AF"} height={60} />
-    <Text
-      className={`mt-2 font-semibold text-sm text-center ${
-        isSelected ? "text-blue-400" : "text-gray-400"
-      }`}
-      numberOfLines={1}
+}) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+    <TouchableOpacity
+      key={id}
+      onPress={onPress}
+      style={{
+        padding: s(12),
+        borderWidth: 2,
+        borderRadius: s(12),
+        alignItems: "center",
+        justifyContent: "center",
+        width: s(250),
+        height: s(130),
+        borderColor: isSelected ? colors.teal : colors.border,
+        backgroundColor: isSelected ? colors.tealMuted : colors.panel,
+      }}
     >
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
+      <ShapeComponent color={isSelected ? colors.teal : colors.label} height={s(60)} />
+      <Text
+        style={{
+          marginTop: s(8),
+          fontWeight: "600",
+          fontSize: s(14),
+          textAlign: "center",
+          color: isSelected ? colors.teal : colors.label,
+        }}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  )
+}
 
 export const AddTableModal: React.FC<AddTableModalProps> = ({
   isOpen,
   onClose,
   onAdd,
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [name, setName] = useState("");
   const [selectedShapeId, setSelectedShapeId] = useState<
     keyof typeof TABLE_SHAPES
@@ -113,46 +130,62 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[620px] p-8 rounded-2xl bg-surface border border-gray-700">
+      <DialogContent
+        style={{
+          width: s(620),
+          padding: s(32),
+          borderRadius: s(16),
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+        }}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-white">
+            <DialogTitle style={{ fontSize: s(24), fontWeight: "700", color: colors.heading }}>
               Add New Object
             </DialogTitle>
-            <DialogDescription className="text-base text-gray-400 mt-1">
+            <DialogDescription style={{ fontSize: s(16), color: colors.muted, marginTop: s(4) }}>
               Enter a name and choose a shape to add to the floor plan.
             </DialogDescription>
           </DialogHeader>
 
-          <View className="gap-y-6 py-4">
-            {/* Name Input Section */}
+          <View style={{ rowGap: s(24), paddingVertical: s(16) }}>
             <View>
-              <Text className="text-base font-medium text-gray-300 mb-2">
+              <Text style={{ fontSize: s(16), fontWeight: "500", color: colors.label, marginBottom: s(8) }}>
                 Object Name
               </Text>
-              <View className="gap-y-3 py-3">
+              <View style={{ rowGap: s(12), paddingVertical: s(12) }}>
                 <View>
-                  <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                  <Text style={{ fontSize: s(18), color: colors.label, fontWeight: "500", marginBottom: s(6) }}>
                     Table Name
                   </Text>
                   <TextInput
                     value={name}
                     onChangeText={setName}
                     placeholder="e.g., T-24 or Main Bar"
-                    placeholderTextColor="#6B7280"
-                    className="p-4 bg-panel border border-gray-600 rounded-lg text-lg text-white h-14"
+                    placeholderTextColor={colors.muted}
+                    style={{
+                      paddingHorizontal: s(16),
+                      height: s(56),
+                      backgroundColor: colors.inset,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: s(10),
+                      fontSize: s(18),
+                      color: colors.heading,
+                    }}
                   />
                 </View>
 
-                {/* Shape Selection Section with Vertical Scroll */}
                 <View>
-                  <Text className="text-base font-medium text-gray-300 mb-2">
+                  <Text style={{ fontSize: s(16), fontWeight: "500", color: colors.label, marginBottom: s(8) }}>
                     Select Shape
                   </Text>
-                  <ScrollView style={{ maxHeight: 290 }}>
-                    <View className="flex-row flex-wrap gap-4 justify-center">
+                  <ScrollView style={{ maxHeight: s(290) }}>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: s(16), justifyContent: "center" }}>
                       {SHAPE_OPTIONS.map(
                         ({ id, label, component: ShapeComponent }) => (
                           <ShapeButton
@@ -175,18 +208,42 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
               </View>
             </View>
           </View>
-          <DialogFooter className="flex-row gap-4 pt-4 border-t border-gray-700">
+          <DialogFooter
+            style={{
+              flexDirection: "row",
+              gap: s(16),
+              paddingTop: s(16),
+              borderTopWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
             <TouchableOpacity
               onPress={onClose}
-              className="flex-1 py-3 bg-gray-700 rounded-lg items-center"
+              style={{
+                flex: 1,
+                paddingVertical: s(12),
+                backgroundColor: colors.inset,
+                borderRadius: s(10),
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
             >
-              <Text className="text-base font-bold text-gray-300">Cancel</Text>
+              <Text style={{ fontSize: s(16), fontWeight: "700", color: colors.label }}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleAddPress}
-              className="flex-1 bg-blue-600 py-3 rounded-lg items-center"
+              style={{
+                flex: 1,
+                backgroundColor: colors.teal,
+                paddingVertical: s(12),
+                borderRadius: s(10),
+                alignItems: "center",
+              }}
             >
-              <Text className="text-white text-base font-bold">Add Object</Text>
+              <Text style={{ color: colors.onSolid, fontSize: s(16), fontWeight: "700" }}>
+                Add Object
+              </Text>
             </TouchableOpacity>
           </DialogFooter>
         </KeyboardAvoidingView>

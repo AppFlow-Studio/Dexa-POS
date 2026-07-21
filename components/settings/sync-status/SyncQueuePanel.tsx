@@ -5,171 +5,256 @@
  * "Sync Now" and "Force Retry All" actions. Polls every 5 seconds.
  */
 
-import { colors } from "@/lib/theme";
+import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import {
   forceRetryAllPending,
   getIsOnline,
   getPendingOperations,
   getQueueStatus,
   processQueueNow,
-  type OfflineOperation,
-} from "@/services/offlineSyncService";
-import {
-  Cloud,
-  CloudOff,
-  RefreshCw,
-  RotateCcw,
-} from "lucide-react-native";
-import React, { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+  type OfflineOperation
+} from '@/services/offlineSyncService'
+import { Cloud, CloudOff, RefreshCw, RotateCcw } from 'lucide-react-native'
+import React, { useCallback, useEffect, useState } from 'react'
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 
 const OPERATION_LABELS: Record<string, string> = {
-  create_order: "Create Order",
-  add_item: "Add Item",
-  update_item: "Update Item",
-  update_item_quantity: "Update Quantity",
-  replace_modifiers: "Replace Modifiers",
-  remove_item: "Remove Item",
-  void_item: "Void Item",
-  update_order_status: "Update Order Status",
-  apply_discount: "Apply Discount",
-  void_discount: "Void Discount",
-  send_to_kitchen: "Send to Kitchen",
-  process_payment: "Process Payment",
-  process_cash_payment: "Cash Payment",
-  process_card_payment: "Card Payment",
-  seat_guests: "Seat Guests",
-  update_session_status: "Update Session",
-  link_order_to_session: "Link Order to Session",
-  close_check: "Close Check",
-  reopen_check: "Reopen Check",
-  fire_course: "Fire Course",
-  record_cash_drawer_operation: "Cash Drawer",
-  process_preauth: "Pre-Auth",
-  capture_preauth: "Capture Pre-Auth",
-  increment_preauth: "Increment Pre-Auth",
-  void_preauth: "Void Pre-Auth",
-};
+  create_order: 'Create Order',
+  add_item: 'Add Item',
+  update_item: 'Update Item',
+  update_item_quantity: 'Update Quantity',
+  replace_modifiers: 'Replace Modifiers',
+  remove_item: 'Remove Item',
+  void_item: 'Void Item',
+  update_order_status: 'Update Order Status',
+  apply_discount: 'Apply Discount',
+  void_discount: 'Void Discount',
+  send_to_kitchen: 'Send to Kitchen',
+  process_payment: 'Process Payment',
+  process_cash_payment: 'Cash Payment',
+  process_card_payment: 'Card Payment',
+  seat_guests: 'Seat Guests',
+  update_session_status: 'Update Session',
+  link_order_to_session: 'Link Order to Session',
+  close_check: 'Close Check',
+  reopen_check: 'Reopen Check',
+  fire_course: 'Fire Course',
+  record_cash_drawer_operation: 'Cash Drawer',
+  process_preauth: 'Pre-Auth',
+  capture_preauth: 'Capture Pre-Auth',
+  increment_preauth: 'Increment Pre-Auth',
+  void_preauth: 'Void Pre-Auth'
+}
 
-const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  pending: { bg: "bg-yellow-900/40", text: "text-yellow-400", label: "Pending" },
-  processing: { bg: "bg-blue-900/40", text: "text-blue-400", label: "Processing" },
-  blocked: { bg: "bg-orange-900/40", text: "text-orange-400", label: "Blocked" },
-  failed: { bg: "bg-red-900/40", text: "text-red-400", label: "Failed" },
-};
-
-function formatTimestamp(ts: string): string {
-  try {
-    const d = new Date(ts);
-    return d.toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return ts;
+const STATUS_COLORS: Record<
+  string,
+  {
+    getBg: (c: typeof colors) => string
+    getText: (c: typeof colors) => string
+    label: string
+  }
+> = {
+  pending: {
+    getBg: c => c.warning + '40',
+    getText: c => c.warning,
+    label: 'Pending'
+  },
+  processing: {
+    getBg: c => c.info + '40',
+    getText: c => c.info,
+    label: 'Processing'
+  },
+  blocked: {
+    getBg: c => c.warning + '40',
+    getText: c => c.warning,
+    label: 'Blocked'
+  },
+  failed: {
+    getBg: c => c.danger + '40',
+    getText: c => c.danger,
+    label: 'Failed'
   }
 }
 
-export function SyncQueuePanel(): React.ReactElement {
-  const [operations, setOperations] = useState<OfflineOperation[]>([]);
-  const [queueStatus, setQueueStatus] = useState<ReturnType<typeof getQueueStatus> | null>(null);
-  const [online, setOnline] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [forceRetrying, setForceRetrying] = useState(false);
+function formatTimestamp (ts: string): string {
+  try {
+    const d = new Date(ts)
+    return d.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    })
+  } catch {
+    return ts
+  }
+}
+
+export function SyncQueuePanel (): React.ReactElement {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  const [operations, setOperations] = useState<OfflineOperation[]>([])
+  const [queueStatus, setQueueStatus] = useState<ReturnType<
+    typeof getQueueStatus
+  > | null>(null)
+  const [online, setOnline] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [forceRetrying, setForceRetrying] = useState(false)
 
   const refresh = useCallback(() => {
-    setOperations(getPendingOperations());
-    setQueueStatus(getQueueStatus());
-    setOnline(getIsOnline());
-  }, []);
+    setOperations(getPendingOperations())
+    setQueueStatus(getQueueStatus())
+    setOnline(getIsOnline())
+  }, [])
 
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 5_000);
-    return () => clearInterval(interval);
-  }, [refresh]);
+    refresh()
+    const interval = setInterval(refresh, 5_000)
+    return () => clearInterval(interval)
+  }, [refresh])
 
   const handleSyncNow = async () => {
-    setSyncing(true);
+    setSyncing(true)
     try {
-      const beforeCount = operations.length;
-      await processQueueNow({ force: true });
-      refresh();
-      const afterCount = getPendingOperations().length;
+      const beforeCount = operations.length
+      await processQueueNow({ force: true })
+      refresh()
+      const afterCount = getPendingOperations().length
       if (afterCount > 0 && afterCount >= beforeCount) {
-        console.warn("[SyncQueuePanel] Sync completed but operations remain:", afterCount);
+        console.warn(
+          '[SyncQueuePanel] Sync completed but operations remain:',
+          afterCount
+        )
       }
     } finally {
-      setSyncing(false);
+      setSyncing(false)
     }
-  };
+  }
 
   const handleForceRetry = async () => {
-    setForceRetrying(true);
+    setForceRetrying(true)
     try {
-      await forceRetryAllPending();
-      refresh();
+      await forceRetryAllPending()
+      refresh()
     } finally {
-      setForceRetrying(false);
+      setForceRetrying(false)
     }
-  };
+  }
 
-  const hasStuckOps = queueStatus != null && (queueStatus.processing > 0 || queueStatus.blocked > 0);
+  const hasStuckOps =
+    queueStatus != null &&
+    (queueStatus.processing > 0 || queueStatus.blocked > 0)
 
   // Empty state
   if (operations.length === 0) {
     return (
-      <View className="p-4 bg-panel rounded-xl border border-gray-700">
-        <View className="flex-row items-center gap-2 mb-2">
-          <Cloud size={16} color={colors.teal} />
-          <Text className="text-base font-semibold text-white">
+      <View
+        style={{
+          paddingHorizontal: s(16),
+          paddingVertical: s(16),
+          backgroundColor: colors.panel,
+          borderRadius: s(12),
+          borderWidth: 1,
+          borderColor: colors.border
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: s(8),
+            marginBottom: s(8)
+          }}
+        >
+          <Cloud size={s(16)} color={colors.teal} />
+          <Text
+            style={{ fontSize: s(16), fontWeight: '600', color: colors.heading }}
+          >
             Sync Queue
           </Text>
-          <View className="bg-gray-700/60 px-2 py-0.5 rounded-full">
-            <Text className="text-xs font-bold text-gray-400">0</Text>
+          <View
+            style={{
+              backgroundColor: colors.card,
+              paddingHorizontal: s(8),
+              paddingVertical: s(2),
+              borderRadius: s(8)
+            }}
+          >
+            <Text
+              style={{ fontSize: s(12), fontWeight: '700', color: colors.muted }}
+            >
+              0
+            </Text>
           </View>
         </View>
-        <Text className="text-sm text-gray-400">
+        <Text style={{ fontSize: s(14), color: colors.label }}>
           Queue is empty. All operations synced.
         </Text>
       </View>
-    );
+    )
   }
 
   return (
-    <View className="bg-panel rounded-xl border border-teal-900/50 overflow-hidden">
+    <View
+      style={{
+        backgroundColor: colors.panel,
+        borderRadius: s(12),
+        borderWidth: 1,
+        borderColor: colors.teal + '50',
+        overflow: 'hidden'
+      }}
+    >
       {/* Header */}
-      <View className="flex-row items-center justify-between p-4 border-b border-gray-700">
-        <View className="flex-row items-center gap-2">
-          <Cloud size={16} color={colors.teal} />
-          <Text className="text-base font-semibold text-white">
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: s(16),
+          paddingVertical: s(16),
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+          <Cloud size={s(16)} color={colors.teal} />
+          <Text
+            style={{ fontSize: s(16), fontWeight: '600', color: colors.heading }}
+          >
             Sync Queue
           </Text>
-          <View className="bg-teal-900/40 px-2 py-0.5 rounded-full">
-            <Text className="text-xs font-bold text-teal-400">
+          <View
+            style={{
+              backgroundColor: colors.teal + '40',
+              paddingHorizontal: s(8),
+              paddingVertical: s(2),
+              borderRadius: s(12)
+            }}
+          >
+            <Text
+              style={{ fontSize: s(12), fontWeight: '700', color: colors.teal }}
+            >
               {operations.length}
             </Text>
           </View>
         </View>
 
         {/* Online/Offline indicator */}
-        <View className="flex-row items-center gap-1.5">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}>
           {online ? (
             <>
-              <Cloud size={12} color="#22c55e" />
-              <Text className="text-xs text-green-400">Online</Text>
+              <Cloud size={s(12)} color={colors.success} />
+              <Text style={{ fontSize: s(12), color: colors.success }}>
+                Online
+              </Text>
             </>
           ) : (
             <>
-              <CloudOff size={12} color="#f97316" />
-              <Text className="text-xs text-orange-400">Offline</Text>
+              <CloudOff size={s(12)} color={colors.warning} />
+              <Text style={{ fontSize: s(12), color: colors.warning }}>
+                Offline
+              </Text>
             </>
           )}
         </View>
@@ -177,31 +262,89 @@ export function SyncQueuePanel(): React.ReactElement {
 
       {/* Status summary */}
       {queueStatus != null && (
-        <View className="flex-row items-center gap-2 px-4 py-2.5 border-b border-gray-700/50">
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: s(8),
+            paddingHorizontal: s(16),
+            paddingVertical: s(10),
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border + '50'
+          }}
+        >
           {queueStatus.pending > 0 && (
-            <View className="bg-yellow-900/40 px-2 py-0.5 rounded-full">
-              <Text className="text-[10px] font-bold text-yellow-400">
+            <View
+              style={{
+                backgroundColor: colors.warning + '40',
+                paddingHorizontal: s(8),
+                paddingVertical: s(2),
+                borderRadius: s(8)
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: s(10),
+                  fontWeight: '700',
+                  color: colors.warning
+                }}
+              >
                 {queueStatus.pending} Pending
               </Text>
             </View>
           )}
           {queueStatus.processing > 0 && (
-            <View className="bg-blue-900/40 px-2 py-0.5 rounded-full">
-              <Text className="text-[10px] font-bold text-blue-400">
+            <View
+              style={{
+                backgroundColor: colors.info + '40',
+                paddingHorizontal: s(8),
+                paddingVertical: s(2),
+                borderRadius: s(8)
+              }}
+            >
+              <Text
+                style={{ fontSize: s(10), fontWeight: '700', color: colors.info }}
+              >
                 {queueStatus.processing} Processing
               </Text>
             </View>
           )}
           {queueStatus.blocked > 0 && (
-            <View className="bg-orange-900/40 px-2 py-0.5 rounded-full">
-              <Text className="text-[10px] font-bold text-orange-400">
+            <View
+              style={{
+                backgroundColor: colors.warning + '40',
+                paddingHorizontal: s(8),
+                paddingVertical: s(2),
+                borderRadius: s(8)
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: s(10),
+                  fontWeight: '700',
+                  color: colors.warning
+                }}
+              >
                 {queueStatus.blocked} Blocked
               </Text>
             </View>
           )}
           {queueStatus.failed > 0 && (
-            <View className="bg-red-900/40 px-2 py-0.5 rounded-full">
-              <Text className="text-[10px] font-bold text-red-400">
+            <View
+              style={{
+                backgroundColor: colors.danger + '40',
+                paddingHorizontal: s(8),
+                paddingVertical: s(2),
+                borderRadius: s(8)
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: s(10),
+                  fontWeight: '700',
+                  color: colors.danger
+                }}
+              >
                 {queueStatus.failed} Failed
               </Text>
             </View>
@@ -210,53 +353,103 @@ export function SyncQueuePanel(): React.ReactElement {
       )}
 
       {/* Operations list */}
-      {operations.map((op) => {
-        const statusStyle = STATUS_COLORS[op.status] ?? STATUS_COLORS.pending;
+      {operations.map(op => {
+        const statusStyle = STATUS_COLORS[op.status] ?? STATUS_COLORS.pending
 
         return (
           <View
             key={op.id}
-            className="flex-row items-center p-4 border-b border-gray-700/50"
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: s(16),
+              paddingVertical: s(16),
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border + '50'
+            }}
           >
-            <View className="flex-1 mr-3">
-              <View className="flex-row items-center gap-2">
-                <Text className="text-sm font-semibold text-white">
+            <View style={{ flex: 1, marginRight: s(12) }}>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}
+              >
+                <Text
+                  style={{
+                    fontSize: s(14),
+                    fontWeight: '600',
+                    color: colors.heading
+                  }}
+                >
                   {OPERATION_LABELS[op.type] || op.type}
                 </Text>
-                <View className={`${statusStyle.bg} px-1.5 py-0.5 rounded`}>
-                  <Text className={`text-[10px] font-bold ${statusStyle.text}`}>
+                <View
+                  style={{
+                    paddingHorizontal: s(6),
+                    paddingVertical: s(2),
+                    borderRadius: s(4),
+                    backgroundColor: statusStyle.getBg(colors)
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      fontWeight: '700',
+                      color: statusStyle.getText(colors)
+                    }}
+                  >
                     {statusStyle.label.toUpperCase()}
                   </Text>
                 </View>
               </View>
-              <Text className="text-xs text-gray-400 mt-0.5">
+              <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}>
                 {formatTimestamp(op.timestamp)}
-                {op.retryCount > 0 ? ` · ${op.retryCount} retries` : ""}
+                {op.retryCount > 0 ? ` · ${op.retryCount} retries` : ''}
               </Text>
               {op.localOrderId && (
-                <Text className="text-xs text-gray-500 mt-0.5" numberOfLines={1}>
+                <Text
+                  style={{ fontSize: s(12), color: colors.muted, marginTop: s(2) }}
+                  numberOfLines={1}
+                >
                   Order: {op.localOrderId.substring(0, 20)}...
                 </Text>
               )}
             </View>
           </View>
-        );
+        )
       })}
 
       {/* Action buttons footer */}
-      <View className="flex-row items-center justify-end gap-2 p-3">
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: s(8),
+          paddingHorizontal: s(12),
+          paddingVertical: s(12)
+        }}
+      >
         {hasStuckOps && (
           <TouchableOpacity
             onPress={handleForceRetry}
             disabled={forceRetrying}
-            className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-900/30"
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: s(6),
+              paddingHorizontal: s(12),
+              paddingVertical: s(6),
+              borderRadius: s(8),
+              backgroundColor: colors.warning + '30'
+            }}
           >
             {forceRetrying ? (
-              <ActivityIndicator size="small" color="#f97316" />
+              <ActivityIndicator size='small' color={colors.warning} />
             ) : (
-              <RotateCcw size={12} color="#f97316" />
+              <RotateCcw size={s(12)} color={colors.warning} />
             )}
-            <Text className="text-xs font-medium text-orange-400">
+            <Text
+              style={{ fontSize: s(12), fontWeight: '500', color: colors.warning }}
+            >
               Force Retry All
             </Text>
           </TouchableOpacity>
@@ -264,16 +457,26 @@ export function SyncQueuePanel(): React.ReactElement {
         <TouchableOpacity
           onPress={handleSyncNow}
           disabled={syncing}
-          className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-900/30"
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: s(6),
+            paddingHorizontal: s(12),
+            paddingVertical: s(6),
+            borderRadius: s(8),
+            backgroundColor: colors.teal + '30'
+          }}
         >
           {syncing ? (
-            <ActivityIndicator size="small" color={colors.teal} />
+            <ActivityIndicator size='small' color={colors.teal} />
           ) : (
-            <RefreshCw size={12} color={colors.teal} />
+            <RefreshCw size={s(12)} color={colors.teal} />
           )}
-          <Text className="text-xs font-medium text-teal-400">Sync Now</Text>
+          <Text style={{ fontSize: s(12), fontWeight: '500', color: colors.teal }}>
+            Sync Now
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
-  );
+  )
 }

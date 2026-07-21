@@ -12,6 +12,36 @@ import { PrinterDriver } from "./PrinterDriver";
 /** Node types the Landi C20Pro built-in thermal printer cannot handle. */
 const UNSUPPORTED_LANDI_NODES = new Set(["barcode", "image"]);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LANDI C20Pro RECEIPT LAYOUT CALIBRATION
+// Hardware: pixelWidth=576px (confirmed via getValidWidth() in logcat)
+// Font size: VP_FONT_SIZE=28 (set in LandiPrinterModule.kt)
+//
+// TUNING GUIDE:
+//   If right column is NOT flush to right edge  → DECREASE the value
+//   If text wraps to the next line              → INCREASE the value
+//
+// WHY normal=48 but bold≠38:
+//   Normal char ≈ 12px  → 576/12 = 48 chars ✓  (Section I confirmed working)
+//   Bold char   ≈ 14.4px, BUT space chars stay at 12px even in bold mode.
+//   A bold line: textChars×14.4 + spaceChars×12 = 576
+//   → for typical 13-char bold content: need ~45 total chars to fill paper.
+//
+// SECTIONS:
+//   D. Items          → bold two_column  (use BOLD)
+//   E. Subtotal/Tax   → normal two_column with cl() centering (use NORMAL)
+//   F. Card/Cash/Total→ bold two_column with cl() centering  (use BOLD)
+//   G. Tip lines      → Tip: normal, Total w/ Tip: bold
+//   H. Payments       → bold two_column
+//   I. Server/Date    → normal two_column  (working ✓)
+//   Dividers          → use NORMAL (non-bold font, same as normal chars)
+// ─────────────────────────────────────────────────────────────────────────────
+const LANDI_CPL = {
+  NORMAL: 48, // ← working ✓ — tune if Sections E/I/G misalign
+  BOLD: 48,   // ← try 42–46 — tune if Sections D/F/G/H price not flush right
+  DIVIDER: 48, // ← solid line width — use NORMAL
+};
+
 export class LandiDriver implements PrinterDriver {
   readonly supportsRawPrint = false;
   private connected = false;
@@ -52,20 +82,53 @@ export class LandiDriver implements PrinterDriver {
     if (!this.connected) {
       throw new Error("Landi printer not initialized");
     }
-    // Built-in thermal printer: no cutter, no image, no barcode support.
-    // Filter unsupported nodes and add trailing feed for tear-off gap.
+    // Built-in thermal printer: no image, no barcode support. The C20Pro
+    // does have a hardware cutter — `cut` nodes are honored by the native
+    // module (LandiPrinterModule.kt defers `simplePrinter.cutPaper()` to
+    // post-print on the vector path).
     const filtered: PrintNode[] = doc.nodes.filter(
       (n) => !UNSUPPORTED_LANDI_NODES.has(n.type),
     );
-    filtered.push({ type: "feed", lines: 4 });
-    await printLandiDocument(JSON.stringify({ ...doc, nodes: filtered }));
+
+    // Inject calibrated lineWidths — Kotlin uses these directly.
+    // Template builds content for w=32 (maxCharsPerLine default).
+    // We override here so Kotlin doesn't need to guess format or CPL.
+    const calibrated = filtered.map((node) => {
+      if (node.type === "two_column") {
+        const fmt = node.format as Record<string, boolean> | undefined;
+        const isBold = fmt?.bold ?? false;
+        const isDW = fmt?.doubleWidth ?? false;
+        const cpl = isDW
+          ? Math.floor(LANDI_CPL.BOLD / 2) // doubleWidth = 2× char size
+          : isBold
+            ? LANDI_CPL.BOLD
+            : LANDI_CPL.NORMAL;
+        return { ...node, lineWidth: cpl };
+      }
+      if (node.type === "divider") {
+        return { ...node, lineWidth: LANDI_CPL.DIVIDER };
+      }
+      return node;
+    });
+
+    // Trailing feed before the deferred `cutPaper()`. C20Pro cutter sits
+    // ~10–15 mm above the print head and each VectorPrinter line is ~3.5 mm
+    // (fontSize 28 @ lineSpace 0). 5 lines (~17.5 mm) clears the blade with
+    // a small bottom margin; less risks cutting into the last text line.
+    calibrated.push({ type: "feed", lines: 5 });
+    await printLandiDocument(JSON.stringify({ ...doc, nodes: calibrated }));
   }
 
   async openCashDrawer(): Promise<void> {
     if (!this.connected) {
-      throw new Error("Landi printer not initialized");
+      // Try to re-initialize — cash drawer might be requested before a print job
+      console.warn("[LandiDriver] Not connected, attempting init for cash drawer...");
+      await this.initialize({} as any);
     }
-    await openLandiCashDrawer();
+    const success = await openLandiCashDrawer();
+    if (!success) {
+      throw new Error("Cash drawer kick returned false");
+    }
   }
 
   async disconnect(): Promise<void> {

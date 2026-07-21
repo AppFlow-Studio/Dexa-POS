@@ -1,42 +1,43 @@
-import { colors } from '@/lib/theme'
-import { POLineItem, PurchaseOrder } from '@/lib/types'
-import { useInventoryStore } from '@/stores/useInventoryStore'
+import { colors } from "@/lib/theme";
+import { POLineItem, PurchaseOrder } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
+import { useInventoryStore } from "@/stores/useInventoryStore";
 import {
-  AlertTriangle,
-  CircleCheckBig,
-  Edit3,
-  Search,
-  Trash2,
-  X
-} from 'lucide-react-native'
-import { useEffect, useMemo, useRef, useState } from 'react'
+    AlertTriangle,
+    CircleCheckBig,
+    Edit3,
+    Search,
+    Trash2,
+    X,
+} from "lucide-react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
-} from 'react-native'
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 type ItemLite = {
-  id: string
-  name: string
-  category?: string
-  unit?: string
-  cost: number
-}
+  id: string;
+  name: string;
+  category?: string;
+  unit?: string;
+  cost: number;
+};
 
 type Props = {
-  vendorId: string
-  vendorName: string
-  vendorPOs: PurchaseOrder[]
-  items: ItemLite[]
-  resolveItemName: (id: string) => string
-  openSignal: number
-}
+  vendorId: string;
+  vendorName: string;
+  vendorPOs: PurchaseOrder[];
+  items: ItemLite[];
+  resolveItemName: (id: string) => string;
+  openSignal: number;
+};
 
 const VendorCreatePOModule = ({
   vendorId,
@@ -44,186 +45,188 @@ const VendorCreatePOModule = ({
   vendorPOs,
   items,
   resolveItemName,
-  openSignal
+  openSignal,
 }: Props) => {
-  const [isChooserOpen, setIsChooserOpen] = useState(false)
-  const [isBuilderOpen, setIsBuilderOpen] = useState(false)
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const [isChooserOpen, setIsChooserOpen] = useState(false);
+  const [isBuilderOpen, setIsBuilderOpen] = useState(false);
 
-  const [poLineItems, setPoLineItems] = useState<POLineItem[]>([])
+  const [poLineItems, setPoLineItems] = useState<POLineItem[]>([]);
   const [selectedTemplatePo, setSelectedTemplatePo] =
-    useState<PurchaseOrder | null>(null)
-  const [isEditingItem, setIsEditingItem] = useState<string | null>(null)
-  const [editingQuantity, setEditingQuantity] = useState('')
-  const [itemSearchText, setItemSearchText] = useState('')
+    useState<PurchaseOrder | null>(null);
+  const [isEditingItem, setIsEditingItem] = useState<string | null>(null);
+  const [editingQuantity, setEditingQuantity] = useState("");
+  const [itemSearchText, setItemSearchText] = useState("");
   const [resultModal, setResultModal] = useState<{
-    type: 'success' | 'error'
-    title: string
-    message: string
-  } | null>(null)
-  const lastOpenSignalRef = useRef<number | null>(null)
+    type: "success" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
+  const lastOpenSignalRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (lastOpenSignalRef.current === null) {
-      lastOpenSignalRef.current = openSignal
+      lastOpenSignalRef.current = openSignal;
       if (openSignal > 0) {
-        setIsChooserOpen(true)
+        setIsChooserOpen(true);
       }
-      return
+      return;
     }
 
     if (openSignal !== lastOpenSignalRef.current) {
-      lastOpenSignalRef.current = openSignal
-      setIsChooserOpen(true)
+      lastOpenSignalRef.current = openSignal;
+      setIsChooserOpen(true);
     }
-  }, [openSignal])
+  }, [openSignal]);
 
   const filteredItems = useMemo(() => {
-    const q = itemSearchText.trim().toLowerCase()
-    if (!q) return items
-    return items.filter(it => {
-      const name = it.name?.toLowerCase() || ''
-      const category = it.category?.toLowerCase() || ''
-      return name.includes(q) || category.includes(q)
-    })
-  }, [itemSearchText, items])
+    const q = itemSearchText.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) => {
+      const name = it.name?.toLowerCase() || "";
+      const category = it.category?.toLowerCase() || "";
+      return name.includes(q) || category.includes(q);
+    });
+  }, [itemSearchText, items]);
 
   const recentTemplates = useMemo(() => {
     return [...vendorPOs]
       .sort(
         (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       )
-      .slice(0, 5)
-  }, [vendorPOs])
+      .slice(0, 5);
+  }, [vendorPOs]);
 
   const openPOBuilder = (templatePo?: PurchaseOrder) => {
-    setSelectedTemplatePo(templatePo ?? null)
-    setPoLineItems(templatePo ? templatePo.items : [])
-    setIsChooserOpen(false)
-    setIsBuilderOpen(true)
-  }
+    setSelectedTemplatePo(templatePo ?? null);
+    setPoLineItems(templatePo ? templatePo.items : []);
+    setIsChooserOpen(false);
+    setIsBuilderOpen(true);
+  };
 
   const closeAll = () => {
-    setIsChooserOpen(false)
-    setIsBuilderOpen(false)
-    setSelectedTemplatePo(null)
-    setIsEditingItem(null)
-    setEditingQuantity('')
-    setItemSearchText('')
-  }
+    setIsChooserOpen(false);
+    setIsBuilderOpen(false);
+    setSelectedTemplatePo(null);
+    setIsEditingItem(null);
+    setEditingQuantity("");
+    setItemSearchText("");
+  };
 
   const addItemToPO = (item: ItemLite) => {
     const existingIndex = poLineItems.findIndex(
-      li => li.inventoryItemId === item.id
-    )
+      (li) => li.inventoryItemId === item.id,
+    );
     if (existingIndex >= 0) {
-      const updated = [...poLineItems]
+      const updated = [...poLineItems];
       updated[existingIndex] = {
         ...updated[existingIndex],
-        quantity: updated[existingIndex].quantity + 1
-      }
-      setPoLineItems(updated)
-      return
+        quantity: updated[existingIndex].quantity + 1,
+      };
+      setPoLineItems(updated);
+      return;
     }
 
-    setPoLineItems(prev => [
+    setPoLineItems((prev) => [
       ...prev,
-      { inventoryItemId: item.id, quantity: 1, cost: item.cost }
-    ])
-  }
+      { inventoryItemId: item.id, quantity: 1, cost: item.cost },
+    ]);
+  };
 
   const removeItemFromPO = (inventoryItemId: string) => {
-    setPoLineItems(prev =>
-      prev.filter(li => li.inventoryItemId !== inventoryItemId)
-    )
-  }
+    setPoLineItems((prev) =>
+      prev.filter((li) => li.inventoryItemId !== inventoryItemId),
+    );
+  };
 
   const startEditItem = (inventoryItemId: string, currentQuantity: number) => {
-    setIsEditingItem(inventoryItemId)
-    setEditingQuantity(currentQuantity.toString())
-  }
+    setIsEditingItem(inventoryItemId);
+    setEditingQuantity(currentQuantity.toString());
+  };
 
   const saveEditItem = () => {
-    if (!isEditingItem) return
-    const newQuantity = parseInt(editingQuantity) || 0
+    if (!isEditingItem) return;
+    const newQuantity = parseInt(editingQuantity) || 0;
     if (newQuantity <= 0) {
-      removeItemFromPO(isEditingItem)
+      removeItemFromPO(isEditingItem);
     } else {
-      setPoLineItems(prev =>
-        prev.map(li =>
+      setPoLineItems((prev) =>
+        prev.map((li) =>
           li.inventoryItemId === isEditingItem
             ? { ...li, quantity: newQuantity }
-            : li
-        )
-      )
+            : li,
+        ),
+      );
     }
-    setIsEditingItem(null)
-    setEditingQuantity('')
-  }
+    setIsEditingItem(null);
+    setEditingQuantity("");
+  };
 
   const cancelEditItem = () => {
-    setIsEditingItem(null)
-    setEditingQuantity('')
-  }
+    setIsEditingItem(null);
+    setEditingQuantity("");
+  };
 
-  const submitPurchaseOrder = async (status: 'Draft' | 'Pending Delivery') => {
+  const submitPurchaseOrder = async (status: "Draft" | "Pending Delivery") => {
     if (poLineItems.length === 0) {
       setResultModal({
-        type: 'error',
-        title: 'Unable to Create PO',
-        message: 'Please add at least one item to the purchase order.'
-      })
-      return
+        type: "error",
+        title: "Unable to Create PO",
+        message: "Please add at least one item to the purchase order.",
+      });
+      return;
     }
 
     try {
-      const { createPurchaseOrder } = useInventoryStore.getState()
-      await createPurchaseOrder({ vendorId, status, items: poLineItems })
+      const { createPurchaseOrder } = useInventoryStore.getState();
+      await createPurchaseOrder({ vendorId, status, items: poLineItems });
       setResultModal({
-        type: 'success',
-        title: 'Purchase Order Created',
+        type: "success",
+        title: "Purchase Order Created",
         message: `Purchase order ${
-          status === 'Draft' ? 'saved as draft' : 'submitted'
-        } successfully.`
-      })
-      setPoLineItems([])
-      closeAll()
+          status === "Draft" ? "saved as draft" : "submitted"
+        } successfully.`,
+      });
+      setPoLineItems([]);
+      closeAll();
     } catch {
       setResultModal({
-        type: 'error',
-        title: 'Creation Failed',
-        message: 'Failed to create purchase order. Please try again.'
-      })
+        type: "error",
+        title: "Creation Failed",
+        message: "Failed to create purchase order. Please try again.",
+      });
     }
-  }
+  };
 
   return (
     <>
       <Modal
         transparent
         visible={isChooserOpen}
-        animationType='fade'
+        animationType="fade"
         onRequestClose={closeAll}
       >
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.45)',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16
+            backgroundColor: "rgba(0,0,0,0.45)",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
           }}
         >
           <View
             style={{
-              width: '100%',
+              width: "100%",
               maxWidth: 620,
-              maxHeight: '82%',
+              maxHeight: "82%",
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
               borderRadius: 14,
-              overflow: 'hidden'
+              overflow: "hidden",
             }}
           >
             <View
@@ -232,17 +235,17 @@ const VendorCreatePOModule = ({
                 paddingVertical: 12,
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center'
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
               }}
             >
               <View>
                 <Text
                   style={{
                     fontSize: 14,
-                    fontWeight: '700',
-                    color: colors.heading
+                    fontWeight: "700",
+                    color: colors.heading,
                   }}
                 >
                   Create Purchase Order
@@ -250,8 +253,8 @@ const VendorCreatePOModule = ({
                 <Text
                   style={{ fontSize: 12, color: colors.label, marginTop: 2 }}
                 >
-                  Vendor:{' '}
-                  <Text style={{ color: colors.heading, fontWeight: '600' }}>
+                  Vendor:{" "}
+                  <Text style={{ color: colors.heading, fontWeight: "600" }}>
                     {vendorName}
                   </Text>
                 </Text>
@@ -265,20 +268,20 @@ const VendorCreatePOModule = ({
               <TouchableOpacity
                 onPress={() => openPOBuilder()}
                 style={{
-                  backgroundColor: colors.teal + '20',
+                  backgroundColor: colors.teal + "20",
                   borderWidth: 1,
-                  borderColor: colors.teal + '50',
+                  borderColor: colors.teal + "50",
                   borderRadius: 8,
                   paddingVertical: 10,
-                  alignItems: 'center',
-                  marginBottom: 10
+                  alignItems: "center",
+                  marginBottom: 10,
                 }}
               >
                 <Text
                   style={{
                     fontSize: 13,
-                    fontWeight: '600',
-                    color: colors.teal
+                    fontWeight: "600",
+                    color: colors.teal,
                   }}
                 >
                   Start New Purchase
@@ -288,18 +291,18 @@ const VendorCreatePOModule = ({
               <Text
                 style={{
                   fontSize: 12,
-                  fontWeight: '600',
+                  fontWeight: "600",
                   color: colors.muted,
-                  textTransform: 'uppercase',
+                  textTransform: "uppercase",
                   letterSpacing: 0.5,
-                  marginBottom: 8
+                  marginBottom: 8,
                 }}
               >
                 Recent Templates
               </Text>
 
               {recentTemplates.length === 0 ? (
-                <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                <View style={{ alignItems: "center", paddingVertical: 16 }}>
                   <Text style={{ fontSize: 12, color: colors.muted }}>
                     No past orders for this vendor.
                   </Text>
@@ -314,17 +317,17 @@ const VendorCreatePOModule = ({
                       borderRadius: 8,
                       marginBottom: 8,
                       padding: 10,
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
                     }}
                   >
                     <View style={{ flex: 1, paddingRight: 10 }}>
                       <Text
                         style={{
                           fontSize: 13,
-                          fontWeight: '600',
-                          color: colors.heading
+                          fontWeight: "600",
+                          color: colors.heading,
                         }}
                       >
                         {po.poNumber}
@@ -333,29 +336,29 @@ const VendorCreatePOModule = ({
                         style={{
                           fontSize: 11,
                           color: colors.muted,
-                          marginTop: 2
+                          marginTop: 2,
                         }}
                       >
-                        {po.status} �{' '}
+                        {po.status} •{" "}
                         {new Date(po.createdAt).toLocaleDateString()}
                       </Text>
                     </View>
                     <TouchableOpacity
                       onPress={() => openPOBuilder(po)}
                       style={{
-                        backgroundColor: colors.teal + '20',
+                        backgroundColor: colors.teal + "20",
                         borderWidth: 1,
-                        borderColor: colors.teal + '50',
+                        borderColor: colors.teal + "50",
                         borderRadius: 8,
                         paddingHorizontal: 10,
-                        paddingVertical: 6
+                        paddingVertical: 6,
                       }}
                     >
                       <Text
                         style={{
                           fontSize: 12,
-                          fontWeight: '600',
-                          color: colors.teal
+                          fontWeight: "600",
+                          color: colors.teal,
                         }}
                       >
                         Use
@@ -372,32 +375,32 @@ const VendorCreatePOModule = ({
       <Modal
         transparent
         visible={isBuilderOpen}
-        animationType='fade'
+        animationType="fade"
         onRequestClose={closeAll}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={{ flex: 1 }}
         >
           <View
             style={{
               flex: 1,
-              backgroundColor: 'rgba(0,0,0,0.45)',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 16
+              backgroundColor: "rgba(0,0,0,0.45)",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
             }}
           >
             <View
               style={{
-                width: '100%',
+                width: "100%",
                 maxWidth: 900,
-                maxHeight: '90%',
+                maxHeight: "90%",
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
                 borderRadius: 14,
-                overflow: 'hidden'
+                overflow: "hidden",
               }}
             >
               <View
@@ -406,24 +409,24 @@ const VendorCreatePOModule = ({
                   paddingVertical: 12,
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
                 }}
               >
                 <View style={{ gap: 2 }}>
                   <Text
                     style={{
                       fontSize: 14,
-                      fontWeight: '700',
-                      color: colors.heading
+                      fontWeight: "700",
+                      color: colors.heading,
                     }}
                   >
                     Build PO
                   </Text>
                   <Text style={{ fontSize: 12, color: colors.label }}>
-                    Vendor:{' '}
-                    <Text style={{ color: colors.heading, fontWeight: '600' }}>
+                    Vendor:{" "}
+                    <Text style={{ color: colors.heading, fontWeight: "600" }}>
                       {vendorName}
                     </Text>
                   </Text>
@@ -434,45 +437,45 @@ const VendorCreatePOModule = ({
                   )}
                 </View>
                 <View
-                  style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}
+                  style={{ flexDirection: "row", gap: 8, alignItems: "center" }}
                 >
                   <TouchableOpacity
-                    onPress={() => submitPurchaseOrder('Draft')}
+                    onPress={() => submitPurchaseOrder("Draft")}
                     style={{
                       paddingHorizontal: 12,
                       paddingVertical: 7,
-                      backgroundColor: 'transparent',
+                      backgroundColor: "transparent",
                       borderWidth: 1,
                       borderColor: colors.border,
-                      borderRadius: 8
+                      borderRadius: 8,
                     }}
                   >
                     <Text
                       style={{
                         fontSize: 12,
-                        fontWeight: '600',
-                        color: colors.label
+                        fontWeight: "600",
+                        color: colors.label,
                       }}
                     >
                       Save Draft
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => submitPurchaseOrder('Pending Delivery')}
+                    onPress={() => submitPurchaseOrder("Pending Delivery")}
                     style={{
                       paddingHorizontal: 12,
                       paddingVertical: 7,
-                      backgroundColor: colors.teal + '20',
+                      backgroundColor: colors.teal + "20",
                       borderWidth: 1,
-                      borderColor: colors.teal + '50',
-                      borderRadius: 8
+                      borderColor: colors.teal + "50",
+                      borderRadius: 8,
                     }}
                   >
                     <Text
                       style={{
                         fontSize: 12,
-                        fontWeight: '600',
-                        color: colors.teal
+                        fontWeight: "600",
+                        color: colors.teal,
                       }}
                     >
                       Submit
@@ -490,11 +493,11 @@ const VendorCreatePOModule = ({
                 <Text
                   style={{
                     fontSize: 12,
-                    fontWeight: '600',
+                    fontWeight: "600",
                     color: colors.muted,
-                    textTransform: 'uppercase',
+                    textTransform: "uppercase",
                     letterSpacing: 0.5,
-                    marginBottom: 8
+                    marginBottom: 8,
                   }}
                 >
                   Items ({poLineItems.length})
@@ -507,8 +510,8 @@ const VendorCreatePOModule = ({
                       borderColor: colors.border,
                       borderRadius: 8,
                       padding: 14,
-                      alignItems: 'center',
-                      marginBottom: 10
+                      alignItems: "center",
+                      marginBottom: 10,
                     }}
                   >
                     <Text style={{ fontSize: 12, color: colors.muted }}>
@@ -519,9 +522,9 @@ const VendorCreatePOModule = ({
 
                 {poLineItems.map((lineItem, index) => {
                   const item = items.find(
-                    i => i.id === lineItem.inventoryItemId
-                  )
-                  const isEditing = isEditingItem === lineItem.inventoryItemId
+                    (i) => i.id === lineItem.inventoryItemId,
+                  );
+                  const isEditing = isEditingItem === lineItem.inventoryItemId;
                   return (
                     <View
                       key={`${lineItem.inventoryItemId}-${index}`}
@@ -531,31 +534,31 @@ const VendorCreatePOModule = ({
                         borderColor: colors.border,
                         borderRadius: 8,
                         padding: 12,
-                        marginBottom: 6
+                        marginBottom: 6,
                       }}
                     >
                       <View
                         style={{
-                          flexDirection: 'row',
-                          justifyContent: 'space-between',
-                          alignItems: 'center'
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
                         }}
                       >
                         <View style={{ flex: 1, paddingRight: 10 }}>
                           <Text
                             style={{
                               fontSize: 13,
-                              fontWeight: '600',
-                              color: colors.heading
+                              fontWeight: "600",
+                              color: colors.heading,
                             }}
                           >
-                            {item?.name || 'Unknown'}
+                            {item?.name || "Unknown"}
                           </Text>
                           <Text
                             style={{
                               fontSize: 11,
                               color: colors.label,
-                              marginTop: 2
+                              marginTop: 2,
                             }}
                           >
                             ${lineItem.cost.toFixed(2)} per {item?.unit}
@@ -563,9 +566,9 @@ const VendorCreatePOModule = ({
                         </View>
                         <View
                           style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 6
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 6,
                           }}
                         >
                           {isEditing ? (
@@ -573,36 +576,40 @@ const VendorCreatePOModule = ({
                               <TextInput
                                 value={editingQuantity}
                                 onChangeText={setEditingQuantity}
-                                keyboardType='number-pad'
+                                keyboardType="number-pad"
                                 style={{
                                   backgroundColor: colors.panel,
                                   borderWidth: 1,
                                   borderColor: colors.border,
                                   borderRadius: 6,
                                   paddingHorizontal: 8,
+                                  paddingVertical: 0,
                                   color: colors.heading,
                                   fontSize: 13,
-                                  textAlign: 'center',
+                                  lineHeight: 16,
+                                  textAlign: "center",
+                                  textAlignVertical: "center",
+                                  includeFontPadding: false,
                                   width: 52,
-                                  height: 32
+                                  height: 28,
                                 }}
                               />
                               <TouchableOpacity
                                 onPress={saveEditItem}
                                 style={{
-                                  backgroundColor: colors.success + '20',
+                                  backgroundColor: colors.success + "20",
                                   borderWidth: 1,
-                                  borderColor: colors.success + '50',
+                                  borderColor: colors.success + "50",
                                   borderRadius: 6,
                                   paddingHorizontal: 8,
-                                  paddingVertical: 4
+                                  paddingVertical: 4,
                                 }}
                               >
                                 <Text
                                   style={{
                                     fontSize: 11,
-                                    fontWeight: '600',
-                                    color: colors.success
+                                    fontWeight: "600",
+                                    color: colors.success,
                                   }}
                                 >
                                   Save
@@ -611,19 +618,19 @@ const VendorCreatePOModule = ({
                               <TouchableOpacity
                                 onPress={cancelEditItem}
                                 style={{
-                                  backgroundColor: 'transparent',
+                                  backgroundColor: "transparent",
                                   borderWidth: 1,
                                   borderColor: colors.border,
                                   borderRadius: 6,
                                   paddingHorizontal: 8,
-                                  paddingVertical: 4
+                                  paddingVertical: 4,
                                 }}
                               >
                                 <Text
                                   style={{
                                     fontSize: 11,
-                                    fontWeight: '600',
-                                    color: colors.label
+                                    fontWeight: "600",
+                                    color: colors.label,
                                   }}
                                 >
                                   Cancel
@@ -641,12 +648,31 @@ const VendorCreatePOModule = ({
                                 onPress={() =>
                                   startEditItem(
                                     lineItem.inventoryItemId,
-                                    lineItem.quantity
+                                    lineItem.quantity,
                                   )
                                 }
-                                style={{ padding: 5 }}
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 5,
+                                  borderWidth: 1,
+                                  borderColor: colors.border,
+                                  borderRadius: 6,
+                                  backgroundColor: colors.panel,
+                                }}
                               >
                                 <Edit3 size={13} color={colors.label} />
+                                <Text
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: "600",
+                                    color: colors.label,
+                                  }}
+                                >
+                                  Edit
+                                </Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() =>
@@ -664,33 +690,33 @@ const VendorCreatePOModule = ({
                         style={{
                           fontSize: 11,
                           color: colors.teal,
-                          textAlign: 'right',
-                          marginTop: 6
+                          textAlign: "right",
+                          marginTop: 6,
                         }}
                       >
                         Total: ${(lineItem.quantity * lineItem.cost).toFixed(2)}
                       </Text>
                     </View>
-                  )
+                  );
                 })}
 
                 <Text
                   style={{
                     fontSize: 12,
-                    fontWeight: '600',
+                    fontWeight: "600",
                     color: colors.muted,
-                    textTransform: 'uppercase',
+                    textTransform: "uppercase",
                     letterSpacing: 0.5,
                     marginTop: 8,
-                    marginBottom: 8
+                    marginBottom: 8,
                   }}
                 >
                   Add Items
                 </Text>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
@@ -698,14 +724,14 @@ const VendorCreatePOModule = ({
                     paddingHorizontal: 10,
                     height: 38,
                     gap: 8,
-                    marginBottom: 10
+                    marginBottom: 10,
                   }}
                 >
                   <Search size={14} color={colors.muted} />
                   <TextInput
                     value={itemSearchText}
                     onChangeText={setItemSearchText}
-                    placeholder='Search items...'
+                    placeholder="Search items..."
                     placeholderTextColor={colors.muted}
                     style={{ flex: 1, fontSize: 13, color: colors.heading }}
                   />
@@ -713,7 +739,7 @@ const VendorCreatePOModule = ({
 
                 <View style={{ gap: 6 }}>
                   {filteredItems.length === 0 ? (
-                    <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                    <View style={{ alignItems: "center", paddingVertical: 16 }}>
                       <Text style={{ fontSize: 12, color: colors.muted }}>
                         No items found
                       </Text>
@@ -730,17 +756,17 @@ const VendorCreatePOModule = ({
                           borderRadius: 8,
                           paddingHorizontal: 12,
                           paddingVertical: 9,
-                          flexDirection: 'row',
-                          justifyContent: 'space-between',
-                          alignItems: 'center'
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
                         }}
                       >
                         <View style={{ flex: 1, paddingRight: 10 }}>
                           <Text
                             style={{
                               fontSize: 13,
-                              fontWeight: '600',
-                              color: colors.heading
+                              fontWeight: "600",
+                              color: colors.heading,
                             }}
                           >
                             {item.name}
@@ -749,28 +775,28 @@ const VendorCreatePOModule = ({
                             style={{
                               fontSize: 11,
                               color: colors.label,
-                              marginTop: 2
+                              marginTop: 2,
                             }}
                           >
-                            {item.category} � ${item.cost.toFixed(2)} per{' '}
+                            {item.category} | ${item.cost.toFixed(2)} per{" "}
                             {item.unit}
                           </Text>
                         </View>
                         <View
                           style={{
-                            backgroundColor: colors.teal + '20',
+                            backgroundColor: colors.teal + "20",
                             borderWidth: 1,
-                            borderColor: colors.teal + '50',
+                            borderColor: colors.teal + "50",
                             borderRadius: 6,
                             paddingHorizontal: 8,
-                            paddingVertical: 4
+                            paddingVertical: 4,
                           }}
                         >
                           <Text
                             style={{
                               fontSize: 11,
-                              fontWeight: '600',
-                              color: colors.teal
+                              fontWeight: "600",
+                              color: colors.teal,
                             }}
                           >
                             + Add
@@ -785,9 +811,9 @@ const VendorCreatePOModule = ({
                   <View
                     style={{
                       marginTop: 12,
-                      flexDirection: 'row',
-                      flexWrap: 'wrap',
-                      gap: 4
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: 4,
                     }}
                   >
                     {selectedTemplatePo.items.map((li, idx) => (
@@ -799,7 +825,7 @@ const VendorCreatePOModule = ({
                           borderColor: colors.border,
                           borderRadius: 20,
                           paddingHorizontal: 7,
-                          paddingVertical: 2
+                          paddingVertical: 2,
                         }}
                       >
                         <Text style={{ fontSize: 10, color: colors.label }}>
@@ -818,45 +844,45 @@ const VendorCreatePOModule = ({
       <Modal
         transparent
         visible={!!resultModal}
-        animationType='fade'
+        animationType="fade"
         onRequestClose={() => setResultModal(null)}
       >
         <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.45)',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16
+            backgroundColor: "rgba(0,0,0,0.45)",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
           }}
         >
           <View
             style={{
-              width: '100%',
+              width: "100%",
               maxWidth: 420,
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor:
-                resultModal?.type === 'success'
-                  ? colors.teal + '50'
-                  : colors.danger + '45',
+                resultModal?.type === "success"
+                  ? colors.teal + "50"
+                  : colors.danger + "45",
               borderRadius: 14,
-              padding: 16
+              padding: 16,
             }}
           >
-            <View style={{ alignItems: 'center', marginBottom: 12 }}>
-              {resultModal?.type === 'success' ? (
+            <View style={{ alignItems: "center", marginBottom: 12 }}>
+              {resultModal?.type === "success" ? (
                 <View
                   style={{
                     width: 44,
                     height: 44,
                     borderRadius: 22,
-                    backgroundColor: colors.teal + '20',
+                    backgroundColor: colors.teal + "20",
                     borderWidth: 1,
-                    borderColor: colors.teal + '50',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: 10
+                    borderColor: colors.teal + "50",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: 10,
                   }}
                 >
                   <CircleCheckBig size={22} color={colors.teal} />
@@ -867,12 +893,12 @@ const VendorCreatePOModule = ({
                     width: 44,
                     height: 44,
                     borderRadius: 22,
-                    backgroundColor: colors.danger + '20',
+                    backgroundColor: colors.danger + "20",
                     borderWidth: 1,
-                    borderColor: colors.danger + '45',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: 10
+                    borderColor: colors.danger + "45",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: 10,
                   }}
                 >
                   <AlertTriangle size={22} color={colors.danger} />
@@ -881,8 +907,8 @@ const VendorCreatePOModule = ({
               <Text
                 style={{
                   fontSize: 15,
-                  fontWeight: '700',
-                  color: colors.heading
+                  fontWeight: "700",
+                  color: colors.heading,
                 }}
               >
                 {resultModal?.title}
@@ -891,9 +917,9 @@ const VendorCreatePOModule = ({
                 style={{
                   fontSize: 12,
                   color: colors.label,
-                  textAlign: 'center',
+                  textAlign: "center",
                   marginTop: 6,
-                  lineHeight: 18
+                  lineHeight: 18,
                 }}
               >
                 {resultModal?.message}
@@ -903,31 +929,31 @@ const VendorCreatePOModule = ({
             <TouchableOpacity
               onPress={() => setResultModal(null)}
               style={{
-                alignSelf: 'center',
+                alignSelf: "center",
                 minWidth: 120,
-                alignItems: 'center',
+                alignItems: "center",
                 backgroundColor:
-                  resultModal?.type === 'success'
-                    ? colors.teal + '20'
-                    : colors.danger + '15',
+                  resultModal?.type === "success"
+                    ? colors.teal + "20"
+                    : colors.danger + "15",
                 borderWidth: 1,
                 borderColor:
-                  resultModal?.type === 'success'
-                    ? colors.teal + '50'
-                    : colors.danger + '45',
+                  resultModal?.type === "success"
+                    ? colors.teal + "50"
+                    : colors.danger + "45",
                 borderRadius: 8,
                 paddingHorizontal: 16,
-                paddingVertical: 9
+                paddingVertical: 9,
               }}
             >
               <Text
                 style={{
                   fontSize: 12,
-                  fontWeight: '700',
+                  fontWeight: "700",
                   color:
-                    resultModal?.type === 'success'
+                    resultModal?.type === "success"
                       ? colors.teal
-                      : colors.danger
+                      : colors.danger,
                 }}
               >
                 OK
@@ -937,7 +963,7 @@ const VendorCreatePOModule = ({
         </View>
       </Modal>
     </>
-  )
-}
+  );
+};
 
-export default VendorCreatePOModule
+export default VendorCreatePOModule;

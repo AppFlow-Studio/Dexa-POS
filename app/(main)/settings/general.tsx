@@ -1,157 +1,161 @@
-import PinDisplay from '@/components/auth/PinDisplay'
-import PinNumpad from '@/components/auth/PinNumpad'
-import SessionLogoutModal from '@/components/auth/SessionLogoutModal'
-import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
-import { FailedSyncsPanel } from '@/components/settings/sync-status/FailedSyncsPanel'
-import { SyncQueuePanel } from '@/components/settings/sync-status/SyncQueuePanel'
-import { Switch } from '@/components/ui/switch'
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
-import { getDeviceId } from '@/lib/deviceId'
-import { replaceRoute } from '@/lib/rootNavigation'
-import { colors, spinnerColor } from '@/lib/theme'
-import { toastService } from '@/lib/toastService'
-import type { MerchantRole } from '@/lib/types'
-import { clearLocationData, clearStationData } from '@/services/cacheService'
-import { FloorPlanService } from '@/services/floorPlanService'
-import { syncNow } from '@/services/offlineSyncService'
-import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
-import { useEmployeeStore } from '@/stores/useEmployeeStore'
-import { useSettingsStore } from '@/stores/useSettingsStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useSessionKick } from '@/contexts/SessionKickListenerProvider'
-import { useClerk } from '@clerk/clerk-expo'
-import { useQueryClient } from '@tanstack/react-query'
+import PinDisplay from "@/components/auth/PinDisplay";
+import PinNumpad from "@/components/auth/PinNumpad";
+import SessionLogoutModal from "@/components/auth/SessionLogoutModal";
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { Switch } from "@/components/ui/switch";
+import { useSessionKick } from "@/contexts/SessionKickListenerProvider";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { getDeviceId } from "@/lib/deviceId";
+import { replaceRoute } from "@/lib/rootNavigation";
 import {
-  Building2,
-  ChevronDown,
-  ChevronUp,
-  Clock,
-  ExternalLink,
-  LayoutGrid,
-  ListChecks,
-  LogOut,
-  MapPin,
-  Phone,
-  RefreshCw,
-  ShoppingBag,
-  Store,
-  Sun,
-  Trash2,
-  UtensilsCrossed
-} from 'lucide-react-native'
-import React, { useCallback, useState } from 'react'
+    getSpeedQuality,
+    runSpeedTest,
+    type SpeedTestResult,
+} from "@/lib/speedTest";
+import { colors, spinnerColor } from "@/lib/theme";
+import { toastService } from "@/lib/toastService";
+import type { MerchantRole } from "@/lib/types";
+import { useColorScheme } from "@/lib/useColorScheme";
+import { useUiScale } from "@/lib/uiScale";
 import {
-  ActivityIndicator,
-  Modal,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native'
+  isTelemetryHooksMuted,
+  setTelemetryHooksMuted,
+} from "@/lib/telemetry/registry";
+import { clearStationData, resetClientSession } from "@/services/cacheService";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useClerk } from "@clerk/clerk-expo";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+    Building2,
+    ChevronDown,
+    ChevronUp,
+    Clock,
+    ExternalLink,
+    LogOut,
+    MapPin,
+    Phone,
+    Store,
+    Sun,
+    Trash2,
+    Wifi,
+} from "lucide-react-native";
+import React, { useCallback, useState } from "react";
+import {
+    ActivityIndicator,
+    Modal,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withTiming
-} from 'react-native-reanimated'
+    useAnimatedStyle,
+    useSharedValue,
+    withSequence,
+    withTiming,
+} from "react-native-reanimated";
 
 const MANAGER_ROLES: MerchantRole[] = [
-  'merchant.manager',
-  'merchant.admin',
-  'merchant.owner'
-]
+  "merchant.manager",
+  "merchant.admin",
+  "merchant.owner",
+];
 
 // ─── Manager PIN Gate Modal ──────────────────────────────────────────────────
 
 interface PinGateModalProps {
-  visible: boolean
-  title: string
-  onSuccess: () => void
-  onCancel: () => void
+  visible: boolean;
+  title: string;
+  onSuccess: () => void;
+  onCancel: () => void;
 }
 
 const PinGateModal: React.FC<PinGateModalProps> = ({
   visible,
   title,
   onSuccess,
-  onCancel
+  onCancel,
 }) => {
-  const [pin, setPin] = useState('')
-  const shakeX = useSharedValue(0)
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  const [pin, setPin] = useState("");
+  const shakeX = useSharedValue(0);
   const shakeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shakeX.value }]
-  }))
+    transform: [{ translateX: shakeX.value }],
+  }));
 
   const handleVerify = useCallback(() => {
-    const employee = useEmployeeStore.getState().findEmployeeByPin(pin)
-    const isManager = employee && MANAGER_ROLES.includes(employee.role)
+    const employee = useEmployeeStore.getState().findEmployeeByPin(pin);
+    const isManager = employee && MANAGER_ROLES.includes(employee.role);
     if (isManager) {
-      setPin('')
-      onSuccess()
+      setPin("");
+      onSuccess();
     } else {
       shakeX.value = withSequence(
         withTiming(-10, { duration: 100 }),
         withTiming(10, { duration: 100 }),
         withTiming(-10, { duration: 100 }),
         withTiming(10, { duration: 100 }),
-        withTiming(0, { duration: 100 })
-      )
-      setPin('')
+        withTiming(0, { duration: 100 }),
+      );
+      setPin("");
       toastService.show({
-        title: 'Invalid PIN',
+        title: "Invalid PIN",
         message: employee
-          ? 'This employee does not have manager access.'
-          : 'PIN does not match any employee.',
-        type: 'error'
-      })
+          ? "This employee does not have manager access."
+          : "PIN does not match any employee.",
+        type: "error",
+      });
     }
-  }, [pin, onSuccess, shakeX])
+  }, [pin, onSuccess, shakeX]);
 
   const handleCancel = () => {
-    setPin('')
-    onCancel()
-  }
+    setPin("");
+    onCancel();
+  };
 
   return (
     <Modal
       visible={visible}
       transparent
-      animationType='fade'
+      animationType="fade"
       onRequestClose={handleCancel}
       statusBarTranslucent
     >
       <TouchableOpacity
         activeOpacity={1}
         onPress={handleCancel}
-        className='flex-1 bg-black/60 items-center justify-center px-6'
+        className="flex-1 bg-black/60 items-center justify-center px-6"
       >
-        <TouchableOpacity activeOpacity={1} className='w-full max-w-sm'>
+        <TouchableOpacity activeOpacity={1} className="w-full max-w-sm">
           <View
             style={{
               backgroundColor: colors.panel,
               borderColor: colors.border,
               borderWidth: 1,
-              borderRadius: 16,
-              padding: 24
+              borderRadius: s(16),
+              padding: s(24),
             }}
           >
             <Text
               style={{
-                textAlign: 'center',
-                fontSize: 18,
-                fontWeight: '700',
+                textAlign: "center",
+                fontSize: s(18),
+                fontWeight: "700",
                 color: colors.heading,
-                marginBottom: 4
+                marginBottom: s(4),
               }}
             >
               Manager PIN Required
             </Text>
             <Text
               style={{
-                textAlign: 'center',
-                fontSize: 13,
+                textAlign: "center",
+                fontSize: s(13),
                 color: colors.label,
-                marginBottom: 16
+                marginBottom: s(16),
               }}
             >
               {title}
@@ -159,13 +163,13 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
             <Animated.View style={shakeStyle}>
               <PinDisplay pinLength={pin.length} maxLength={4} />
               <PinNumpad
-                onKeyPress={input => {
-                  if (typeof input === 'number') {
-                    if (pin.length < 4) setPin(pin + input.toString())
-                  } else if (input === 'clear') {
-                    setPin('')
-                  } else if (input === 'backspace') {
-                    setPin(pin.slice(0, -1))
+                onKeyPress={(input) => {
+                  if (typeof input === "number") {
+                    if (pin.length < 4) setPin(pin + input.toString());
+                  } else if (input === "clear") {
+                    setPin("");
+                  } else if (input === "backspace") {
+                    setPin(pin.slice(0, -1));
                   }
                 }}
               />
@@ -173,20 +177,20 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
             <TouchableOpacity
               onPress={handleVerify}
               style={{
-                paddingVertical: 10,
-                backgroundColor: colors.teal + '20',
+                paddingVertical: s(10),
+                backgroundColor: colors.teal + "20",
                 borderWidth: 1,
-                borderColor: colors.teal + '50',
-                borderRadius: 8,
-                marginTop: 12
+                borderColor: colors.teal + "50",
+                borderRadius: s(8),
+                marginTop: s(12),
               }}
             >
               <Text
                 style={{
-                  textAlign: 'center',
-                  fontSize: 13,
-                  fontWeight: '700',
-                  color: colors.teal
+                  textAlign: "center",
+                  fontSize: s(13),
+                  fontWeight: "700",
+                  color: colors.teal,
                 }}
               >
                 Verify
@@ -194,13 +198,13 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleCancel}
-              style={{ paddingVertical: 8, marginTop: 8 }}
+              style={{ paddingVertical: s(8), marginTop: s(8) }}
             >
               <Text
                 style={{
-                  textAlign: 'center',
-                  fontSize: 13,
-                  color: colors.label
+                  textAlign: "center",
+                  fontSize: s(13),
+                  color: colors.label,
                 }}
               >
                 Cancel
@@ -210,338 +214,347 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
+  );
+};
+
+// ─── UI Scale Setting Component ───────────────────────────────────────────────
+
+function UiScaleSetting () {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  const override = useSettingsStore((s) => s.uiScaleOverride)
+  const setUiScaleOverride = useSettingsStore((s) => s.setUiScaleOverride)
+
+  const OPTIONS: { label: string; value: number | null }[] = [
+    { label: 'Small', value: 0.85 },
+    { label: 'Default', value: null },
+    { label: 'Large', value: 1.1 },
+    { label: 'Extra Large', value: 1.2 },
+  ]
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: s(10),
+      }}
+    >
+      <View style={{ flex: 1, marginRight: s(16) }}>
+        <Text
+          style={{
+            fontSize: s(13),
+            color: colors.heading,
+            fontWeight: '500',
+          }}
+        >
+          UI Scale
+        </Text>
+        <Text
+          style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
+        >
+          Adjust the overall size of buttons, text, and spacing
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: s(6) }}>
+        {OPTIONS.map((opt) => {
+          const active = override === opt.value
+          return (
+            <TouchableOpacity
+              key={opt.label}
+              onPress={() => setUiScaleOverride(opt.value)}
+              style={{
+                paddingHorizontal: s(10),
+                paddingVertical: s(5),
+                borderRadius: s(6),
+                backgroundColor: active ? colors.teal + '20' : 'transparent',
+                borderWidth: 1,
+                borderColor: active ? colors.teal + '50' : colors.border,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: s(11),
+                  fontWeight: '600',
+                  color: active ? colors.teal : colors.label,
+                }}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
+      </View>
+    </View>
   )
 }
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 const GeneralSettingsScreen = () => {
-  const queryClient = useQueryClient()
-  const supabase = useSupabaseClient()
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const selectedStation = useStoreSettingsStore(s => s.selectedStation)
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  const queryClient = useQueryClient();
+  const supabase = useSupabaseClient();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
 
-  const showMenuImages = useSettingsStore(s => s.showMenuImages)
-  const setShowMenuImages = useSettingsStore(s => s.setShowMenuImages)
+  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
+  const setShowMenuImages = useSettingsStore((s) => s.setShowMenuImages);
+  const posMenuNavigationMode = useSettingsStore(
+    (s) => s.posMenuNavigationMode ?? "classic",
+  );
+  const setPosMenuNavigationMode = useSettingsStore(
+    (s) => s.setPosMenuNavigationMode,
+  );
+  const autoSelectFirstRequiredOption = useSettingsStore(
+    (s) => s.autoSelectFirstRequiredOption,
+  );
+  const setAutoSelectFirstRequiredOption = useSettingsStore(
+    (s) => s.setAutoSelectFirstRequiredOption,
+  );
+  const telemetryEnabled = useSettingsStore((s) => s.telemetryEnabled);
+  const setTelemetryEnabled = useSettingsStore((s) => s.setTelemetryEnabled);
+  // Hidden overhead-A/B control (not persisted): long-press the row title to
+  // mute the instrumented call sites while the long-task watcher keeps
+  // recording — the hooks-on vs hooks-muted comparison proves <1% overhead.
+  const [telemetryHooksMuted, setTelemetryHooksMutedState] = useState(
+    isTelemetryHooksMuted(),
+  );
+  const toggleTelemetryHooksMuted = useCallback(() => {
+    const next = !isTelemetryHooksMuted();
+    setTelemetryHooksMuted(next);
+    setTelemetryHooksMutedState(next);
+    toastService.show({
+      type: "success",
+      title: next ? "Telemetry hooks muted" : "Telemetry hooks unmuted",
+      message: next
+        ? "Instrumented call sites are silenced; the long-task watcher keeps recording (overhead A/B mode)."
+        : "All telemetry recording restored.",
+    });
+  }, []);
+  const { colorScheme, setColorScheme } = useColorScheme();
 
   // ── Derived display values ──────────────────────────────────────────────
-  const displayStoreName = selectedStore?.name || 'No store selected'
+  const displayStoreName = selectedStore?.name || "No store selected";
   const displayAddress = selectedStore
     ? [
         selectedStore.address_line1,
         selectedStore.address_line2,
         selectedStore.city,
         selectedStore.state,
-        selectedStore.postal_code
+        selectedStore.postal_code,
       ]
         .filter(Boolean)
-        .join(', ')
-    : 'Select a store to see address'
-  const displayPhone = selectedStore?.phone || '—'
+        .join(", ")
+    : "Select a store to see address";
+  const displayPhone = selectedStore?.phone || "—";
 
   interface DisplayHour {
-    day: string
-    open: string
-    close: string
-    enabled: boolean
+    day: string;
+    open: string;
+    close: string;
+    enabled: boolean;
   }
   const displayHours: DisplayHour[] = selectedStore?.business_hours
     ? [
-        'Monday',
-        'Tuesday',
-        'Wednesday',
-        'Thursday',
-        'Friday',
-        'Saturday',
-        'Sunday'
-      ].map(day => {
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+      ].map((day) => {
         const key =
-          day.toLowerCase() as keyof typeof selectedStore.business_hours
-        const h = selectedStore.business_hours[key]
+          day.toLowerCase() as keyof typeof selectedStore.business_hours;
+        const h = selectedStore.business_hours[key];
         return {
           day,
-          open: h?.open || '09:00',
-          close: h?.close || '17:00',
-          enabled: !h?.is_closed
-        }
+          open: h?.open || "09:00",
+          close: h?.close || "17:00",
+          enabled: !h?.is_closed,
+        };
       })
-    : []
+    : [];
 
   // ── Collapsible sections ────────────────────────────────────────────────
   const [expandedSections, setExpandedSections] = useState({
     info: true,
     hours: false,
     display: true,
-    sync: true,
-    cache: true
-  })
+    network: false,
+    cache: true,
+  });
   const toggleSection = (s: keyof typeof expandedSections) =>
-    setExpandedSections(prev => ({ ...prev, [s]: !prev[s] }))
+    setExpandedSections((prev) => ({ ...prev, [s]: !prev[s] }));
 
-  // ── Sync actions ────────────────────────────────────────────────────────
-  const [syncingKey, setSyncingKey] = useState<string | null>(null)
+  // ── Speed test ──────────────────────────────────────────────────────────
+  const [speedTestResult, setSpeedTestResult] =
+    useState<SpeedTestResult | null>(null);
+  const [isTestingSpeed, setIsTestingSpeed] = useState(false);
 
-  const resyncFloorPlan = async () => {
-    const locationId = selectedStore?.id
-    if (!supabase || !locationId) return
-
-    const { data: floorPlans, error } =
-      await FloorPlanService.getLocationFloorPlans(supabase, locationId)
-    if (error) throw error
-
-    const defaultPlan = floorPlans?.find((fp) => fp.is_default) || floorPlans?.[0]
-    useFloorPlanStore.getState().setFloorPlans(floorPlans || [])
-    useFloorPlanStore.getState().setActiveFloorPlanId(defaultPlan?.id || null)
-
-    if (defaultPlan?.id) {
-      await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id)
-    }
-  }
-
-  const handleSyncPOS = async () => {
-    setSyncingKey('pos')
+  const handleSpeedTest = async () => {
+    setIsTestingSpeed(true);
+    setSpeedTestResult(null);
     try {
-      await syncNow()
-      await resyncFloorPlan()
-      toastService.show({
-        title: 'POS Synced',
-        message: 'All pending operations have been flushed.',
-        type: 'success'
-      })
+      const result = await runSpeedTest();
+      setSpeedTestResult(result);
     } catch {
       toastService.show({
-        title: 'Sync Failed',
-        message: 'Could not sync. Check your connection.',
-        type: 'error'
-      })
+        title: "Speed Test Failed",
+        message: "Could not complete the speed test. Check your connection.",
+        type: "error",
+      });
     } finally {
-      setSyncingKey(null)
+      setIsTestingSpeed(false);
     }
-  }
-
-  const handleFetchFloorPlan = async () => {
-    if (!selectedStore?.id) return
-    setSyncingKey('floorplan')
-    try {
-      await resyncFloorPlan()
-      toastService.show({
-        title: 'Floor Plan Refreshed',
-        message: 'Tables and sections have been re-fetched.',
-        type: 'success'
-      })
-    } catch {
-      toastService.show({
-        title: 'Failed',
-        message: 'Could not fetch floor plan.',
-        type: 'error'
-      })
-    } finally {
-      setSyncingKey(null)
-    }
-  }
-
-  const handleFetchOrders = async () => {
-    if (!selectedStore?.id) return
-    setSyncingKey('orders')
-    try {
-      await queryClient.invalidateQueries({
-        queryKey: ['active_orders', selectedStore.id]
-      })
-      toastService.show({
-        title: 'Orders Refreshed',
-        message: 'Latest orders have been fetched.',
-        type: 'success'
-      })
-    } catch {
-      toastService.show({
-        title: 'Failed',
-        message: 'Could not fetch orders.',
-        type: 'error'
-      })
-    } finally {
-      setSyncingKey(null)
-    }
-  }
-
-  const handleFetchMenus = async () => {
-    if (!selectedStore?.id) return
-    setSyncingKey('menus')
-    try {
-      await queryClient.invalidateQueries({
-        queryKey: ['pos_sync', selectedStore.id]
-      })
-      toastService.show({
-        title: 'Menu Refreshed',
-        message: 'Latest menu data has been fetched.',
-        type: 'success'
-      })
-    } catch {
-      toastService.show({
-        title: 'Failed',
-        message: 'Could not fetch menus.',
-        type: 'error'
-      })
-    } finally {
-      setSyncingKey(null)
-    }
-  }
-
-  const handleFetchSettings = async () => {
-    setSyncingKey('settings')
-    try {
-      await queryClient.invalidateQueries({ queryKey: ['pos_sync'] })
-      await queryClient.invalidateQueries({ queryKey: ['standalone_sync'] })
-      toastService.show({
-        title: 'Settings Refreshed',
-        message: 'Latest POS settings have been fetched.',
-        type: 'success'
-      })
-    } catch {
-      toastService.show({
-        title: 'Failed',
-        message: 'Could not fetch settings.',
-        type: 'error'
-      })
-    } finally {
-      setSyncingKey(null)
-    }
-  }
+  };
 
   // ── Clear cache (preserves user session) ───────────────────────────────
-  const [showClearCacheModal, setShowClearCacheModal] = useState(false)
-  const [isClearing, setIsClearing] = useState(false)
+  const [showClearCacheModal, setShowClearCacheModal] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const handleClearCache = async () => {
-    setIsClearing(true)
-    setShowClearCacheModal(false)
+    setIsClearing(true);
+    setShowClearCacheModal(false);
     try {
-      clearStationData()
+      clearStationData();
       toastService.show({
-        title: 'Cache Cleared',
-        message: 'Orders and local data cleared. Your session is preserved.',
-        type: 'success'
-      })
+        title: "Cache Cleared",
+        message: "Orders and local data cleared. Your session is preserved.",
+        type: "success",
+      });
     } catch {
       toastService.show({
-        title: 'Error',
-        message: 'Failed to clear cache.',
-        type: 'error'
-      })
+        title: "Error",
+        message: "Failed to clear cache.",
+        type: "error",
+      });
     } finally {
-      setIsClearing(false)
+      setIsClearing(false);
     }
-  }
+  };
 
   // ── Log out — requires manager PIN ─────────────────────────────────────
-  const { signOut } = useClerk()
-  const { markVoluntaryLogout } = useSessionKick()
-  const stationSessionId = useStoreSettingsStore(s => s.stationSessionId)
-  const clearSelectedStore = useStoreSettingsStore(s => s.clearSelectedStore)
-  const clearStationSession = useStoreSettingsStore(s => s.clearStationSession)
+  const { signOut } = useClerk();
+  const { markVoluntaryLogout } = useSessionKick();
+  const stationSessionId = useStoreSettingsStore((s) => s.stationSessionId);
+  const clearSelectedStore = useStoreSettingsStore((s) => s.clearSelectedStore);
+  const clearStationSession = useStoreSettingsStore(
+    (s) => s.clearStationSession,
+  );
 
-  const [showLogoutPinGate, setShowLogoutPinGate] = useState(false)
-  const [showLogoutModal, setShowLogoutModal] = useState(false)
-  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [showLogoutPinGate, setShowLogoutPinGate] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const endStationSessionOnServer = async () => {
-    if (!stationSessionId || !selectedStore) return
+    if (!stationSessionId || !selectedStore) return;
     try {
-      await supabase.rpc('pos_staff_logout', {
+      await supabase.rpc("pos_staff_logout", {
         p_session_id: stationSessionId,
         p_location_id: selectedStore.id,
-        p_pin_code: '',
+        p_pin_code: "",
         p_device_id: getDeviceId(),
-        p_clock_out: false
-      })
+        p_clock_out: false,
+      });
     } catch {
       // Non-blocking — clear local state anyway
     }
-  }
+  };
 
   const handleEndStationSession = async () => {
-    setIsLoggingOut(true)
-    markVoluntaryLogout()
+    setIsLoggingOut(true);
+    markVoluntaryLogout();
     try {
-      await endStationSessionOnServer()
-      clearStationSession()
-      clearStationData()
-      setShowLogoutModal(false)
+      await endStationSessionOnServer();
+      clearStationSession();
+      clearStationData();
+      setShowLogoutModal(false);
       toastService.show({
-        title: 'Session Ended',
-        message: 'Station session has been ended.',
-        type: 'success'
-      })
-      replaceRoute('(auth)', 'station-select')
+        title: "Session Ended",
+        message: "Station session has been ended.",
+        type: "success",
+      });
+      replaceRoute("(auth)", "station-select");
     } catch {
       toastService.show({
-        title: 'Error',
-        message: 'Failed to end session. Please try again.',
-        type: 'error'
-      })
+        title: "Error",
+        message: "Failed to end session. Please try again.",
+        type: "error",
+      });
     } finally {
-      setIsLoggingOut(false)
+      setIsLoggingOut(false);
     }
-  }
+  };
 
   const handleFullLogout = async () => {
-    setIsLoggingOut(true)
-    markVoluntaryLogout()
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    markVoluntaryLogout();
     try {
-      await endStationSessionOnServer()
-      clearStationSession()
-      clearSelectedStore()
-      clearLocationData()
-      await signOut()
-      setShowLogoutModal(false)
-      replaceRoute('(auth)', 'login')
+      await endStationSessionOnServer();
+      await resetClientSession();
+      try {
+        await signOut();
+      } catch (error) {
+        console.warn(
+          "Settings logout network call failed after local reset:",
+          error,
+        );
+      }
+      setShowLogoutModal(false);
+      replaceRoute("(auth)", "login");
     } catch {
       toastService.show({
-        title: 'Error',
-        message: 'Failed to logout. Please try again.',
-        type: 'error'
-      })
+        title: "Error",
+        message: "Failed to logout. Please try again.",
+        type: "error",
+      });
     } finally {
-      setIsLoggingOut(false)
+      setIsLoggingOut(false);
     }
-  }
+  };
 
   // ── Helpers ─────────────────────────────────────────────────────────────
   const renderSectionHeader = (
     title: string,
     icon: React.ReactNode,
     section: keyof typeof expandedSections,
-    badge?: string
+    badge?: string,
   ) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 14,
-        paddingVertical: 11,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: s(14),
+        paddingVertical: s(11),
         borderBottomWidth: expandedSections[section] ? 1 : 0,
-        borderBottomColor: colors.border
+        borderBottomColor: colors.border,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: s(10) }}>
         <View
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            backgroundColor: colors.teal + '15',
-            alignItems: 'center',
-            justifyContent: 'center'
+            width: s(32),
+            height: s(32),
+            borderRadius: s(8),
+            backgroundColor: colors.teal + "15",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
           {icon}
         </View>
         <Text
           style={{
-            fontSize: 13,
-            fontWeight: '700',
-            color: colors.heading
+            fontSize: s(13),
+            fontWeight: "700",
+            color: colors.heading,
           }}
         >
           {title}
@@ -549,149 +562,86 @@ const GeneralSettingsScreen = () => {
         {badge && (
           <View
             style={{
-              paddingHorizontal: 8,
-              paddingVertical: 3,
-              backgroundColor: colors.teal + '20',
+              paddingHorizontal: s(8),
+              paddingVertical: s(3),
+              backgroundColor: colors.teal + "20",
               borderWidth: 1,
-              borderColor: colors.teal + '50',
-              borderRadius: 20
+              borderColor: colors.teal + "50",
+              borderRadius: s(20),
             }}
           >
-            <Text style={{ fontSize: 11, color: colors.teal }}>{badge}</Text>
+            <Text style={{ fontSize: s(11), color: colors.teal }}>{badge}</Text>
           </View>
         )}
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={14} color={colors.label} />
+        <ChevronUp size={s(14)} color={colors.label} />
       ) : (
-        <ChevronDown size={14} color={colors.label} />
+        <ChevronDown size={s(14)} color={colors.label} />
       )}
     </TouchableOpacity>
-  )
-
-  const renderSyncButton = (
-    label: string,
-    subtitle: string,
-    icon: React.ReactNode,
-    key: string,
-    onPress: () => void
-  ) => (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={syncingKey !== null}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 9,
-        backgroundColor: colors.screen,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 10,
-        marginBottom: 8
-      }}
-    >
-      <View
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          backgroundColor: colors.teal + '15',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginRight: 12
-        }}
-      >
-        {syncingKey === key ? (
-          <ActivityIndicator size='small' color={spinnerColor} />
-        ) : (
-          icon
-        )}
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text
-          style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}
-        >
-          {label}
-        </Text>
-        <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
-          {subtitle}
-        </Text>
-      </View>
-      {syncingKey !== key && <RefreshCw size={14} color={colors.label} />}
-    </TouchableOpacity>
-  )
+  );
 
   return (
     <View
       style={{
         flex: 1,
         backgroundColor: colors.screen,
-        paddingHorizontal: 14,
-        paddingVertical: 10
+        paddingHorizontal: s(14),
+        paddingVertical: s(10),
       }}
     >
       {/* Header */}
-      <View style={{ marginBottom: 10 }}>
+      <View style={{ marginBottom: s(10) }}>
         <Text
-          style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}
         >
           General Settings
         </Text>
-        <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
+        <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
           Business information, display preferences, and system utilities.
         </Text>
       </View>
 
       <View
-        style={{ height: 1, backgroundColor: colors.border, marginBottom: 10 }}
+        style={{ height: 1, backgroundColor: colors.border, marginBottom: s(10) }}
       />
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Sync Queue */}
-        <View style={{ marginBottom: 12 }}>
-          <SyncQueuePanel />
-        </View>
-
-        {/* Failed Sync Operations */}
-        <View style={{ marginBottom: 12 }}>
-          <FailedSyncsPanel />
-        </View>
-
         {/* ── Business Information (read-only) ── */}
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 12,
-            overflow: 'hidden'
+            marginBottom: s(12),
+            overflow: "hidden",
           }}
         >
           {renderSectionHeader(
-            'Business Information',
+            "Business Information",
             <Store size={16} color={colors.teal} />,
-            'info',
-            'Read-only'
+            "info",
+            "Read-only",
           )}
           {expandedSections.info && (
-            <View style={{ padding: 12, gap: 8 }}>
+            <View style={{ padding: s(12), gap: s(8) }}>
               {/* Info notice */}
               <View
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: 9,
-                  backgroundColor: colors.teal + '15',
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(8),
+                  padding: s(9),
+                  backgroundColor: colors.teal + "15",
                   borderWidth: 1,
-                  borderColor: colors.teal + '40',
-                  borderRadius: 8
+                  borderColor: colors.teal + "40",
+                  borderRadius: s(8),
                 }}
               >
-                <ExternalLink size={13} color={colors.teal} />
-                <Text style={{ fontSize: 10, color: colors.teal, flex: 1 }}>
+                <ExternalLink size={s(13)} color={colors.teal} />
+                <Text style={{ fontSize: s(10), color: colors.teal, flex: 1 }}>
                   To update business information, visit your dashboard on the
                   website.
                 </Text>
@@ -701,30 +651,30 @@ const GeneralSettingsScreen = () => {
               <View>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.label,
-                    marginBottom: 4,
-                    fontWeight: '500'
+                    marginBottom: s(4),
+                    fontWeight: "500",
                   }}
                 >
                   Business Name
                 </Text>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    gap: 8
+                    borderRadius: s(8),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    gap: s(8),
                   }}
                 >
-                  <Building2 size={14} color={colors.teal} />
+                  <Building2 size={s(14)} color={colors.teal} />
                   <Text
-                    style={{ fontSize: 13, color: colors.heading, flex: 1 }}
+                    style={{ fontSize: s(13), color: colors.heading, flex: 1 }}
                   >
                     {displayStoreName}
                   </Text>
@@ -735,30 +685,30 @@ const GeneralSettingsScreen = () => {
               <View>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.label,
-                    marginBottom: 4,
-                    fontWeight: '500'
+                    marginBottom: s(4),
+                    fontWeight: "500",
                   }}
                 >
                   Address
                 </Text>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    gap: 8
+                    borderRadius: s(8),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    gap: s(8),
                   }}
                 >
-                  <MapPin size={14} color={colors.teal} />
+                  <MapPin size={s(14)} color={colors.teal} />
                   <Text
-                    style={{ fontSize: 13, color: colors.heading, flex: 1 }}
+                    style={{ fontSize: s(13), color: colors.heading, flex: 1 }}
                   >
                     {displayAddress}
                   </Text>
@@ -769,89 +719,33 @@ const GeneralSettingsScreen = () => {
               <View>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.label,
-                    marginBottom: 4,
-                    fontWeight: '500'
+                    marginBottom: s(4),
+                    fontWeight: "500",
                   }}
                 >
                   Phone
                 </Text>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    gap: 8
+                    borderRadius: s(8),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    gap: s(8),
                   }}
                 >
-                  <Phone size={14} color={colors.teal} />
+                  <Phone size={s(14)} color={colors.teal} />
                   <Text
-                    style={{ fontSize: 13, color: colors.heading, flex: 1 }}
+                    style={{ fontSize: s(13), color: colors.heading, flex: 1 }}
                   >
                     {displayPhone}
                   </Text>
-                </View>
-              </View>
-
-              {/* Theme: coming soon placeholder */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  paddingVertical: 10,
-                }}
-              >
-                <View style={{ flex: 1, marginRight: 16 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>App Theme</Text>
-                    <View
-                      style={{
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        backgroundColor: colors.card,
-                        borderRadius: 4,
-                      }}
-                    >
-                      <Text style={{ fontSize: 10, color: colors.muted }}>Coming Soon</Text>
-                    </View>
-                  </View>
-                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
-                    Choose between Dark and Light mode
-                  </Text>
-                </View>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <View
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      backgroundColor: colors.teal + "20",
-                      borderWidth: 1,
-                      borderColor: colors.teal + "50",
-                      borderRadius: 8,
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "500" }}>Dark</Text>
-                  </View>
-                  <View
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      backgroundColor: "transparent",
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 8,
-                      opacity: 0.4,
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, color: colors.label }}>Light</Text>
-                  </View>
                 </View>
               </View>
             </View>
@@ -866,32 +760,32 @@ const GeneralSettingsScreen = () => {
             borderWidth: 1,
             borderColor: colors.border,
             marginBottom: 12,
-            overflow: 'hidden'
+            overflow: "hidden",
           }}
         >
           {renderSectionHeader(
-            'Operating Hours',
+            "Operating Hours",
             <Clock size={16} color={colors.teal} />,
-            'hours',
-            'Read-only'
+            "hours",
+            "Read-only",
           )}
           {expandedSections.hours && (
-            <View style={{ padding: 12 }}>
+            <View style={{ padding: s(12) }}>
               <View
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: 9,
-                  backgroundColor: colors.teal + '15',
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(8),
+                  padding: s(9),
+                  backgroundColor: colors.teal + "15",
                   borderWidth: 1,
-                  borderColor: colors.teal + '40',
-                  borderRadius: 8,
-                  marginBottom: 10
+                  borderColor: colors.teal + "40",
+                  borderRadius: s(8),
+                  marginBottom: s(10),
                 }}
               >
-                <ExternalLink size={13} color={colors.teal} />
-                <Text style={{ fontSize: 10, color: colors.teal, flex: 1 }}>
+                <ExternalLink size={s(13)} color={colors.teal} />
+                <Text style={{ fontSize: s(10), color: colors.teal, flex: 1 }}>
                   To update operating hours, visit your dashboard on the
                   website.
                 </Text>
@@ -900,48 +794,48 @@ const GeneralSettingsScreen = () => {
               {displayHours.length === 0 ? (
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     color: colors.label,
-                    textAlign: 'center',
-                    paddingVertical: 8
+                    textAlign: "center",
+                    paddingVertical: s(8),
                   }}
                 >
                   No hours configured.
                 </Text>
               ) : (
-                displayHours.map(h => (
+                displayHours.map((h) => (
                   <View
                     key={h.day}
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      paddingVertical: 10,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingVertical: s(10),
                       borderBottomWidth: 1,
                       borderBottomColor: colors.border,
-                      opacity: h.enabled ? 1 : 0.4
+                      opacity: h.enabled ? 1 : 0.4,
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         color: colors.heading,
-                        fontWeight: '500',
-                        width: 100
+                        fontWeight: "500",
+                        width: s(100),
                       }}
                     >
                       {h.day}
                     </Text>
                     {h.enabled ? (
-                      <Text style={{ fontSize: 13, color: colors.label }}>
+                      <Text style={{ fontSize: s(13), color: colors.label }}>
                         {h.open} – {h.close}
                       </Text>
                     ) : (
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           color: colors.muted,
-                          fontStyle: 'italic'
+                          fontStyle: "italic",
                         }}
                       >
                         Closed
@@ -962,39 +856,130 @@ const GeneralSettingsScreen = () => {
             borderWidth: 1,
             borderColor: colors.border,
             marginBottom: 12,
-            overflow: 'hidden'
+            overflow: "hidden",
           }}
         >
           {renderSectionHeader(
-            'Display',
+            "Display",
             <Sun size={16} color={colors.teal} />,
-            'display'
+            "display",
           )}
           {expandedSections.display && (
-            <View style={{ padding: 12, gap: 2 }}>
+            <View style={{ padding: s(12), gap: s(2) }}>
+              {/* POS Menu Navigation */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: s(10),
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <View style={{ flex: 1, marginRight: s(16) }}>
+                  <Text
+                    style={{
+                      fontSize: s(13),
+                      color: colors.heading,
+                      fontWeight: "500",
+                    }}
+                  >
+                    POS Menu Navigation
+                  </Text>
+                  <Text
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
+                  >
+                    Choose between menu category popups and the compact selector
+                  </Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: s(8) }}>
+                  <TouchableOpacity
+                    onPress={() => setPosMenuNavigationMode("popup")}
+                    style={{
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(6),
+                      backgroundColor:
+                        posMenuNavigationMode === "popup"
+                          ? colors.teal + "20"
+                          : "transparent",
+                      borderWidth: 1,
+                      borderColor:
+                        posMenuNavigationMode === "popup"
+                          ? colors.teal + "50"
+                          : colors.border,
+                      borderRadius: s(8),
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: s(12),
+                        color:
+                          posMenuNavigationMode === "popup"
+                            ? colors.teal
+                            : colors.label,
+                        fontWeight: "500",
+                      }}
+                    >
+                      Popup
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setPosMenuNavigationMode("classic")}
+                    style={{
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(6),
+                      backgroundColor:
+                        posMenuNavigationMode === "classic"
+                          ? colors.teal + "20"
+                          : "transparent",
+                      borderWidth: 1,
+                      borderColor:
+                        posMenuNavigationMode === "classic"
+                          ? colors.teal + "50"
+                          : colors.border,
+                      borderRadius: s(8),
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: s(12),
+                        color:
+                          posMenuNavigationMode === "classic"
+                            ? colors.teal
+                            : colors.label,
+                        fontWeight: "500",
+                      }}
+                    >
+                      Classic
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
               {/* Show Menu Item Images */}
               <View
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingVertical: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: s(10),
                   borderBottomWidth: 1,
-                  borderBottomColor: colors.border
+                  borderBottomColor: colors.border,
                 }}
               >
-                <View style={{ flex: 1, marginRight: 16 }}>
+                <View style={{ flex: 1, marginRight: s(16) }}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       color: colors.heading,
-                      fontWeight: '500'
+                      fontWeight: "500",
                     }}
                   >
                     Show Menu Item Images
                   </Text>
                   <Text
-                    style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
                   >
                     Display images on menu items in the order screen
                   </Text>
@@ -1005,94 +990,182 @@ const GeneralSettingsScreen = () => {
                 />
               </View>
 
-              {/* Theme: coming soon placeholder */}
+              {/* Auto-select first required option */}
               <View
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingVertical: 10
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: s(10),
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
                 }}
               >
-                <View style={{ flex: 1, marginRight: 16 }}>
+                <View style={{ flex: 1, marginRight: s(16) }}>
+                  <Text
+                    style={{
+                      fontSize: s(13),
+                      color: colors.heading,
+                      fontWeight: "500",
+                    }}
+                  >
+                    Auto-select first required option
+                  </Text>
+                  <Text
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
+                  >
+                    When a required modifier group has no preset default,
+                    automatically pick the first free option. Turn off to
+                    require manual selection.
+                  </Text>
+                </View>
+                <Switch
+                  checked={autoSelectFirstRequiredOption}
+                  onCheckedChange={setAutoSelectFirstRequiredOption}
+                />
+              </View>
+
+              {/* Performance diagnostics (Wave-0 telemetry) */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: s(10),
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <TouchableOpacity
+                  style={{ flex: 1, marginRight: s(16) }}
+                  activeOpacity={1}
+                  onLongPress={toggleTelemetryHooksMuted}
+                  delayLongPress={800}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(13),
+                      color: colors.heading,
+                      fontWeight: "500",
+                    }}
+                  >
+                    Performance diagnostics
+                    {telemetryHooksMuted ? " (hooks muted)" : ""}
+                  </Text>
+                  <Text
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
+                  >
+                    Record local performance metrics for troubleshooting
+                    slowness. Stays on this device; export by long-pressing the
+                    app version in Devices &amp; Connections.
+                  </Text>
+                </TouchableOpacity>
+                <Switch
+                  checked={telemetryEnabled}
+                  onCheckedChange={setTelemetryEnabled}
+                />
+              </View>
+
+              {/* UI Scale */}
+              <UiScaleSetting />
+
+              {/* Theme */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: s(10),
+                }}
+              >
+                <View style={{ flex: 1, marginRight: s(16) }}>
                   <View
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(8),
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         color: colors.heading,
-                        fontWeight: '500'
+                        fontWeight: "500",
                       }}
                     >
                       App Theme
                     </Text>
-                    <View
-                      style={{
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        backgroundColor: colors.card,
-                        borderRadius: 4
-                      }}
-                    >
-                      <Text style={{ fontSize: 10, color: colors.muted }}>
-                        Coming Soon
-                      </Text>
-                    </View>
                   </View>
                   <Text
-                    style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
+                    style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}
                   >
                     Choose between Dark and Light mode
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View
+                <View style={{ flexDirection: "row", gap: s(8) }}>
+                  <TouchableOpacity
+                    onPress={() => setColorScheme("dark")}
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      backgroundColor: colors.teal + '20',
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(6),
+                      backgroundColor:
+                        colorScheme === "dark"
+                          ? colors.teal + "20"
+                          : "transparent",
                       borderWidth: 1,
-                      borderColor: colors.teal + '50',
-                      borderRadius: 8
+                      borderColor:
+                        colorScheme === "dark"
+                          ? colors.teal + "50"
+                          : colors.border,
+                      borderRadius: s(8),
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 12,
-                        color: colors.teal,
-                        fontWeight: '500'
+                        fontSize: s(12),
+                        color:
+                          colorScheme === "dark" ? colors.teal : colors.label,
+                        fontWeight: "500",
                       }}
                     >
                       Dark
                     </Text>
-                  </View>
-                  <View
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setColorScheme("light")}
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      backgroundColor: 'transparent',
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(6),
+                      backgroundColor:
+                        colorScheme === "light"
+                          ? colors.teal + "20"
+                          : "transparent",
                       borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 8,
-                      opacity: 0.4
+                      borderColor:
+                        colorScheme === "light"
+                          ? colors.teal + "50"
+                          : colors.border,
+                      borderRadius: s(8),
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: colors.label }}>
+                    <Text
+                      style={{
+                        fontSize: s(12),
+                        color:
+                          colorScheme === "light" ? colors.teal : colors.label,
+                        fontWeight: "500",
+                      }}
+                    >
                       Light
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
           )}
         </View>
 
-        {/* ── Sync ── */}
+        {/* ── Network Speed Test ── */}
         <View
           style={{
             backgroundColor: colors.panel,
@@ -1100,51 +1173,224 @@ const GeneralSettingsScreen = () => {
             borderWidth: 1,
             borderColor: colors.border,
             marginBottom: 12,
-            overflow: 'hidden'
+            overflow: "hidden",
           }}
         >
           {renderSectionHeader(
-            'Sync',
-            <RefreshCw size={16} color={colors.teal} />,
-            'sync'
+            "Network",
+            <Wifi size={16} color={colors.teal} />,
+            "network",
           )}
-          {expandedSections.sync && (
-            <View style={{ padding: 12 }}>
-              {renderSyncButton(
-                'Sync POS',
-                'Flush all pending operations to the server',
-                <RefreshCw size={16} color={colors.teal} />,
-                'pos',
-                handleSyncPOS
-              )}
-              {renderSyncButton(
-                'Fetch Latest Orders',
-                'Re-download active orders from the server',
-                <ShoppingBag size={16} color={colors.teal} />,
-                'orders',
-                handleFetchOrders
-              )}
-              {renderSyncButton(
-                'Fetch Latest Menus',
-                'Re-download current menu items and categories',
-                <UtensilsCrossed size={16} color={colors.teal} />,
-                'menus',
-                handleFetchMenus
-              )}
-              {renderSyncButton(
-                'Fetch Latest POS Settings',
-                'Re-download all POS configurations',
-                <ListChecks size={16} color={colors.teal} />,
-                'settings',
-                handleFetchSettings
-              )}
-              {renderSyncButton(
-                'Fetch Floor Plan',
-                'Re-download tables, sections, and layout',
-                <LayoutGrid size={16} color={colors.teal} />,
-                'floorplan',
-                handleFetchFloorPlan
-              )}
+          {expandedSections.network && (
+            <View style={{ padding: s(12) }}>
+              {/* Run Speed Test button */}
+              <TouchableOpacity
+                onPress={handleSpeedTest}
+                disabled={isTestingSpeed}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(9),
+                  backgroundColor: colors.screen,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: s(10),
+                  marginBottom: speedTestResult ? s(12) : 0,
+                }}
+              >
+                <View
+                  style={{
+                    width: s(32),
+                    height: s(32),
+                    borderRadius: s(8),
+                    backgroundColor: colors.teal + "15",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: s(12),
+                  }}
+                >
+                  {isTestingSpeed ? (
+                    <ActivityIndicator size="small" color={spinnerColor} />
+                  ) : (
+                    <Wifi size={s(16)} color={colors.teal} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: s(13),
+                      fontWeight: "600",
+                      color: colors.heading,
+                    }}
+                  >
+                    {isTestingSpeed ? "Testing..." : "Run Speed Test"}
+                  </Text>
+                  <Text
+                    style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
+                  >
+                    Check download speed, latency, and connection type
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Results */}
+              {speedTestResult &&
+                (() => {
+                  const quality = getSpeedQuality(speedTestResult);
+                  const qualityColor =
+                    quality === "good"
+                      ? colors.success
+                      : quality === "fair"
+                        ? colors.warning
+                        : colors.danger;
+                  const qualityLabel =
+                    quality === "good"
+                      ? "Good"
+                      : quality === "fair"
+                        ? "Fair"
+                        : "Poor";
+
+                  return (
+                    <View style={{ gap: s(8) }}>
+                      {/* Quality badge */}
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: s(8),
+                          padding: s(9),
+                          backgroundColor: qualityColor + "15",
+                          borderWidth: 1,
+                          borderColor: qualityColor + "40",
+                          borderRadius: s(8),
+                        }}
+                      >
+                        <Wifi size={s(13)} color={qualityColor} />
+                        <Text
+                          style={{
+                            fontSize: s(12),
+                            color: qualityColor,
+                            fontWeight: "600",
+                          }}
+                        >
+                          Connection Quality: {qualityLabel}
+                        </Text>
+                      </View>
+
+                      {/* Metrics */}
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          gap: s(8),
+                        }}
+                      >
+                        {/* Download Speed */}
+                        <View
+                          style={{
+                            flex: 1,
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: s(8),
+                            padding: s(10),
+                            alignItems: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(10),
+                              color: colors.muted,
+                              marginBottom: s(4),
+                            }}
+                          >
+                            Download
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: s(18),
+                              fontWeight: "700",
+                              color: colors.heading,
+                            }}
+                          >
+                            {speedTestResult.downloadMbps}
+                          </Text>
+                          <Text style={{ fontSize: s(10), color: colors.label }}>
+                            Mbps
+                          </Text>
+                        </View>
+
+                        {/* Latency */}
+                        <View
+                          style={{
+                            flex: 1,
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: s(8),
+                            padding: s(10),
+                            alignItems: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(10),
+                              color: colors.muted,
+                              marginBottom: s(4),
+                            }}
+                          >
+                            Latency
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: s(18),
+                              fontWeight: "700",
+                              color: colors.heading,
+                            }}
+                          >
+                            {speedTestResult.latencyMs}
+                          </Text>
+                          <Text style={{ fontSize: s(10), color: colors.label }}>
+                            ms
+                          </Text>
+                        </View>
+
+                        {/* Connection Type */}
+                        <View
+                          style={{
+                            flex: 1,
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: s(8),
+                            padding: s(10),
+                            alignItems: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(10),
+                              color: colors.muted,
+                              marginBottom: s(4),
+                            }}
+                          >
+                            Type
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: s(13),
+                              fontWeight: "700",
+                              color: colors.heading,
+                            }}
+                            numberOfLines={1}
+                          >
+                            {speedTestResult.connectionType || "Unknown"}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })()}
             </View>
           )}
         </View>
@@ -1157,36 +1403,36 @@ const GeneralSettingsScreen = () => {
             borderWidth: 1,
             borderColor: colors.border,
             marginBottom: 12,
-            overflow: 'hidden'
+            overflow: "hidden",
           }}
         >
           {renderSectionHeader(
-            'Cache & Data',
+            "Cache & Data",
             <Trash2 size={16} color={colors.teal} />,
-            'cache'
+            "cache",
           )}
           {expandedSections.cache && (
-            <View style={{ padding: 12 }}>
+            <View style={{ padding: s(12) }}>
               <View
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 8
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: s(8),
                 }}
               >
-                <View style={{ flex: 1, marginRight: 16 }}>
+                <View style={{ flex: 1, marginRight: s(16) }}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       color: colors.heading,
-                      fontWeight: '500'
+                      fontWeight: "500",
                     }}
                   >
                     Clear Cache
                   </Text>
                   <Text
-                    style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}
+                    style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}
                   >
                     Clears orders and local data. Your session and account
                     remain active.
@@ -1196,26 +1442,26 @@ const GeneralSettingsScreen = () => {
                   onPress={() => setShowClearCacheModal(true)}
                   disabled={isClearing}
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 8,
-                    backgroundColor: colors.danger + '15',
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(8),
+                    backgroundColor: colors.danger + "15",
                     borderWidth: 1,
-                    borderColor: colors.danger + '30',
-                    borderRadius: 8
+                    borderColor: colors.danger + "30",
+                    borderRadius: s(8),
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 12,
-                      fontWeight: '600',
-                      color: colors.danger
+                      fontSize: s(12),
+                      fontWeight: "600",
+                      color: colors.danger,
                     }}
                   >
-                    {isClearing ? 'Clearing...' : 'Clear'}
+                    {isClearing ? "Clearing..." : "Clear"}
                   </Text>
                 </TouchableOpacity>
               </View>
-              <Text style={{ fontSize: 11, color: colors.muted }}>
+              <Text style={{ fontSize: s(11), color: colors.muted }}>
                 Device ID, store settings, employees, and your logged-in account
                 will be preserved.
               </Text>
@@ -1227,46 +1473,46 @@ const GeneralSettingsScreen = () => {
         <View
           style={{
             backgroundColor: colors.panel,
-            borderRadius: 12,
+            borderRadius: s(12),
             borderWidth: 1,
             borderColor: colors.border,
-            marginBottom: 32,
-            padding: 14
+            marginBottom: s(32),
+            padding: s(14),
           }}
         >
           <View
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between'
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
             }}
           >
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+              style={{ flexDirection: "row", alignItems: "center", gap: s(10) }}
             >
               <View
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  backgroundColor: colors.danger + '15',
-                  alignItems: 'center',
-                  justifyContent: 'center'
+                  width: s(32),
+                  height: s(32),
+                  borderRadius: s(8),
+                  backgroundColor: colors.danger + "15",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                <LogOut size={16} color={colors.danger} />
+                <LogOut size={s(16)} color={colors.danger} />
               </View>
               <View>
                 <Text
                   style={{
-                    fontSize: 13,
-                    fontWeight: '700',
-                    color: colors.heading
+                    fontSize: s(13),
+                    fontWeight: "700",
+                    color: colors.heading,
                   }}
                 >
                   Log Out
                 </Text>
-                <Text style={{ fontSize: 11, color: colors.label }}>
+                <Text style={{ fontSize: s(11), color: colors.label }}>
                   Requires manager PIN
                 </Text>
               </View>
@@ -1275,19 +1521,19 @@ const GeneralSettingsScreen = () => {
               onPress={() => setShowLogoutPinGate(true)}
               disabled={isLoggingOut}
               style={{
-                paddingHorizontal: 14,
-                paddingVertical: 7,
-                backgroundColor: colors.danger + '15',
+                paddingHorizontal: s(14),
+                paddingVertical: s(7),
+                backgroundColor: colors.danger + "15",
                 borderWidth: 1,
-                borderColor: colors.danger + '30',
-                borderRadius: 8
+                borderColor: colors.danger + "30",
+                borderRadius: s(8),
               }}
             >
               <Text
                 style={{
-                  fontSize: 13,
-                  fontWeight: '600',
-                  color: colors.danger
+                  fontSize: s(13),
+                  fontWeight: "600",
+                  color: colors.danger,
                 }}
               >
                 Log Out
@@ -1300,10 +1546,10 @@ const GeneralSettingsScreen = () => {
       {/* ── Manager PIN gate for logout ── */}
       <PinGateModal
         visible={showLogoutPinGate}
-        title='Approve logout from this station'
+        title="Approve logout from this station"
         onSuccess={() => {
-          setShowLogoutPinGate(false)
-          setShowLogoutModal(true)
+          setShowLogoutPinGate(false);
+          setShowLogoutModal(true);
         }}
         onCancel={() => setShowLogoutPinGate(false)}
       />
@@ -1323,13 +1569,13 @@ const GeneralSettingsScreen = () => {
         isOpen={showClearCacheModal}
         onClose={() => setShowClearCacheModal(false)}
         onConfirm={handleClearCache}
-        title='Clear Cache?'
-        description='This will remove all locally cached orders and session data. Your account, employees, device settings, and store configuration will be preserved.'
-        confirmText='Clear Cache'
-        variant='destructive'
+        title="Clear Cache?"
+        description="This will remove all locally cached orders and session data. Your account, employees, device settings, and store configuration will be preserved."
+        confirmText="Clear Cache"
+        variant="destructive"
       />
     </View>
-  )
-}
+  );
+};
 
-export default GeneralSettingsScreen
+export default GeneralSettingsScreen;

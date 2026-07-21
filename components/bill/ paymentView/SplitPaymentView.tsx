@@ -1,6 +1,9 @@
+import { useUiScale } from "@/lib/uiScale";
 import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { colors } from "@/lib/theme";
+import { round2 } from "@/utils/money";
 import { getItemEffectiveSubtotal, useOrderStore } from "@/stores/useOrderStore";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -32,13 +35,16 @@ interface Split {
 }
 
 const SplitPaymentView = () => {
-  const { activeOrderId, orders, activeOrderOutstandingTotal } =
-    useOrderStore();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const activeOrderOutstandingTotal = useOrderStore(
+    (state) => state.activeOrderOutstandingTotal
+  );
   const close = usePaymentStore((s) => s.close);
   const setView = usePaymentStore((s) => s.setView);
   const { show } = useToast();
 
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrder = useActiveOrder();
   // Filter out voided items - they should not be included in splits
   const originalItems = (activeOrder?.items || []).filter(
     (item) => !item.is_voided
@@ -65,9 +71,6 @@ const SplitPaymentView = () => {
       )
     );
   };
-
-  const { activeOrderSubtotal, activeOrderTax, activeOrderDiscount } =
-    useOrderStore();
 
   useEffect(() => {
     // Initialize unassigned quantities when the component loads or items change
@@ -96,17 +99,24 @@ const SplitPaymentView = () => {
             return acc + getItemEffectiveSubtotal(tempItem);
           }, 0);
 
-          // Calculate tax on the post-discount subtotal
-          // Use item's taxRate if available, otherwise use a default
-          const splitTax = split.items.reduce((acc, splitItem) => {
+          // v6: aggregate tax per rate group (round ONCE per group), matching
+          // the server's group-by tax_rate. Group by the item's snapshotted
+          // taxRate; sum each group's net subtotal, then round its tax once.
+          const splitBaseByRate = new Map<number, number>();
+          for (const splitItem of split.items) {
             const tempItem = { ...splitItem.cartItem, quantity: splitItem.quantity };
             const itemSubtotal = getItemEffectiveSubtotal(tempItem);
-            const taxRate = splitItem.cartItem.taxRate || 0;
-            return acc + (itemSubtotal * taxRate / 100);
-          }, 0);
+            const rate = splitItem.cartItem.taxRate || 0;
+            if (rate <= 0) continue;
+            splitBaseByRate.set(rate, (splitBaseByRate.get(rate) ?? 0) + itemSubtotal);
+          }
+          let splitTax = 0;
+          for (const [rate, base] of splitBaseByRate) {
+            splitTax += round2((base * rate) / 100);
+          }
 
           // Calculate the final amount (subtotal already has discount removed, no need to subtract again)
-          const newAmount = Math.round((splitSubtotal + splitTax) * 100) / 100;
+          const newAmount = round2(splitSubtotal + splitTax);
 
           if (split.amount !== newAmount) {
             return { ...split, amount: newAmount };
@@ -354,7 +364,7 @@ const SplitPaymentView = () => {
                         onPress={() => handleRemoveSplit(split)}
                         className="p-2 bg-red-900/30 rounded-full"
                       >
-                        <Minus color={colors.danger} size={20} />
+                        <Minus color={colors.danger} size={s(20)} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -420,7 +430,7 @@ const SplitPaymentView = () => {
                     onPress={() => handleRemoveSplit(split)}
                     className="p-2 ml-2"
                   >
-                    <Minus color={colors.danger} size={20} />
+                    <Minus color={colors.danger} size={s(20)} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -443,7 +453,8 @@ const SplitPaymentView = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="rounded-2xl overflow-hidden bg-panel border border-gray-700 w-[550px]"
+      className="rounded-2xl overflow-hidden bg-panel border border-gray-700"
+      style={{ width: s(550) }}
     >
       {/* Dark Header */}
       <View className="p-4">
@@ -455,8 +466,8 @@ const SplitPaymentView = () => {
       {/* Dark Content */}
       <View className="p-4 bg-surface rounded-b-2xl">
         <ScrollView
-          className="max-h-[800px]"
           showsVerticalScrollIndicator={false}
+          style={{ maxHeight: s(800) }}
         >
           {/* Total */}
           <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-600 mb-4">

@@ -1,6 +1,6 @@
+import { createLazyPersistStorage } from "@/lib/storage";
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { mmkvStorage } from "@/lib/storage";
+import { persist } from "zustand/middleware";
 
 export interface DeliveryPartner {
   id: string;
@@ -115,7 +115,13 @@ export interface SyncableDiningSettings {
 export interface OrderLineSettings {
   /** Number of days of orders to show. 0 = today only, 1 = today + yesterday, etc. */
   daysToShow: number;
+  /** Controls how order line entries are presented in order-processing. */
+  viewMode: "default" | "minimal";
+  /** Controls minimal-mode sheet height profile. */
+  minimalModeRows: 2 | 3;
 }
+
+export type PosMenuNavigationMode = "popup" | "classic";
 
 interface SettingsState extends DiningRoomSettings, DeliverySettings {
   defaultSittingTimeMinutes: number;
@@ -136,19 +142,54 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   showPrepTimesToCustomers: boolean;
   autoAdjustPrepTimes: boolean;
 
+  // Printer Assignment (per-station, persisted locally via MMKV)
+  defaultReceiptPrinterId: string | null;
+  setDefaultReceiptPrinterId: (printerId: string | null) => void;
+
   // Order Line
   orderLineSettings: OrderLineSettings;
+
+  // Performance diagnostics (Wave-0 rush-lag telemetry harness)
+  telemetryEnabled: boolean;
+  setTelemetryEnabled: (enabled: boolean) => void;
 
   // Menu Display
   showMenuItemPrices: boolean;
   setShowMenuItemPrices: (show: boolean) => void;
   showMenuImages: boolean;
   setShowMenuImages: (show: boolean) => void;
+  posMenuNavigationMode: PosMenuNavigationMode;
+  setPosMenuNavigationMode: (mode: PosMenuNavigationMode) => void;
+  // When a required modifier group has no preset default, auto-select the
+  // first free (then first available) option. Off = require manual selection.
+  autoSelectFirstRequiredOption: boolean;
+  setAutoSelectFirstRequiredOption: (value: boolean) => void;
 
-  // Actions
+  // UI Scale Override
+  uiScaleOverride: number | null;
+  setUiScaleOverride: (value: number | null) => void;
   setDefaultSittingTimeMinutes: (minutes: number) => void;
   setOrderLineSettings: (settings: Partial<OrderLineSettings>) => void;
-  updateDiningSettings: (settings: Partial<Omit<SettingsState, "updateDiningSettings" | "setDefaultSittingTimeMinutes" | "updateDeliverySettings" | "toggleDeliveryPartnerStatus" | "setPermissions" | "togglePermission" | "setClockInSettings" | "setDualPricing" | "setSurcharging" | "setFunding" | "setThrottling" | "setPrepCategories" | "adjustPrepTime">>) => void;
+  updateDiningSettings: (
+    settings: Partial<
+      Omit<
+        SettingsState,
+        | "updateDiningSettings"
+        | "setDefaultSittingTimeMinutes"
+        | "updateDeliverySettings"
+        | "toggleDeliveryPartnerStatus"
+        | "setPermissions"
+        | "togglePermission"
+        | "setClockInSettings"
+        | "setDualPricing"
+        | "setSurcharging"
+        | "setFunding"
+        | "setThrottling"
+        | "setPrepCategories"
+        | "adjustPrepTime"
+      >
+    >,
+  ) => void;
   updateDeliverySettings: (settings: Partial<DeliverySettings>) => void;
   toggleDeliveryPartnerStatus: (partnerId: string) => void;
 
@@ -192,29 +233,177 @@ const initialDeliverySettings: DeliverySettings = {
     { id: "3", name: "Zone 3", distanceRange: "4-6 mi", fee: 8.0, eta: 45 },
   ],
   partners: [
-    { id: "doordash", name: "DoorDash", status: "Active", commission: 25, orders: 347, revenue: 8437 },
-    { id: "ubereats", name: "UberEats", status: "Active", commission: 28, orders: 289, revenue: 7124 },
-    { id: "grubhub", name: "Grubhub", status: "Paused", commission: 23, orders: 0, revenue: 0 },
-    { id: "self", name: "Self-Delivery", status: "Active", commission: 0, orders: 142, revenue: 6247 },
+    {
+      id: "doordash",
+      name: "DoorDash",
+      status: "Active",
+      commission: 25,
+      orders: 347,
+      revenue: 8437,
+    },
+    {
+      id: "ubereats",
+      name: "UberEats",
+      status: "Active",
+      commission: 28,
+      orders: 289,
+      revenue: 7124,
+    },
+    {
+      id: "grubhub",
+      name: "Grubhub",
+      status: "Paused",
+      commission: 23,
+      orders: 0,
+      revenue: 0,
+    },
+    {
+      id: "self",
+      name: "Self-Delivery",
+      status: "Active",
+      commission: 0,
+      orders: 142,
+      revenue: 6247,
+    },
   ],
 };
 
 const initialPermissions: Permission[] = [
-  { id: 1, name: "Void Orders", admin: true, manager: true, server: false, kitchen: false, host: false },
-  { id: 2, name: "Refund Payments", admin: true, manager: true, server: false, kitchen: false, host: false },
-  { id: 3, name: "Discount Items", admin: true, manager: true, server: true, kitchen: false, host: false },
-  { id: 4, name: "Access Settings", admin: true, manager: false, server: false, kitchen: false, host: false },
-  { id: 5, name: "View Reports", admin: true, manager: true, server: false, kitchen: false, host: false },
-  { id: 6, name: "Manage Staff", admin: true, manager: true, server: false, kitchen: false, host: false },
-  { id: 7, name: "Edit Menu", admin: true, manager: true, server: false, kitchen: true, host: false },
-  { id: 8, name: "Close Registers", admin: true, manager: true, server: false, kitchen: false, host: false },
-  { id: 9, name: "Accept Returns", admin: true, manager: true, server: true, kitchen: false, host: false },
-  { id: 10, name: "Override Prices", admin: true, manager: true, server: false, kitchen: false, host: false },
-  { id: 11, name: "View Payroll", admin: true, manager: false, server: false, kitchen: false, host: false },
-  { id: 12, name: "Manage Inventory", admin: true, manager: true, server: false, kitchen: true, host: false },
-  { id: 13, name: "Delete Orders", admin: true, manager: false, server: false, kitchen: false, host: false },
-  { id: 14, name: "Access Admin Panel", admin: true, manager: false, server: false, kitchen: false, host: false },
-  { id: 15, name: "Export Data", admin: true, manager: true, server: false, kitchen: false, host: false },
+  {
+    id: 1,
+    name: "Void Orders",
+    admin: true,
+    manager: true,
+    server: false,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 2,
+    name: "Refund Payments",
+    admin: true,
+    manager: true,
+    server: false,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 3,
+    name: "Discount Items",
+    admin: true,
+    manager: true,
+    server: true,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 4,
+    name: "Access Settings",
+    admin: true,
+    manager: false,
+    server: false,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 5,
+    name: "View Reports",
+    admin: true,
+    manager: true,
+    server: false,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 6,
+    name: "Manage Staff",
+    admin: true,
+    manager: true,
+    server: false,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 7,
+    name: "Edit Menu",
+    admin: true,
+    manager: true,
+    server: false,
+    kitchen: true,
+    host: false,
+  },
+  {
+    id: 8,
+    name: "Close Registers",
+    admin: true,
+    manager: true,
+    server: false,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 9,
+    name: "Accept Returns",
+    admin: true,
+    manager: true,
+    server: true,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 10,
+    name: "Override Prices",
+    admin: true,
+    manager: true,
+    server: false,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 11,
+    name: "View Payroll",
+    admin: true,
+    manager: false,
+    server: false,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 12,
+    name: "Manage Inventory",
+    admin: true,
+    manager: true,
+    server: false,
+    kitchen: true,
+    host: false,
+  },
+  {
+    id: 13,
+    name: "Delete Orders",
+    admin: true,
+    manager: false,
+    server: false,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 14,
+    name: "Access Admin Panel",
+    admin: true,
+    manager: false,
+    server: false,
+    kitchen: false,
+    host: false,
+  },
+  {
+    id: 15,
+    name: "Export Data",
+    admin: true,
+    manager: true,
+    server: false,
+    kitchen: false,
+    host: false,
+  },
 ];
 
 const initialClockInSettings: ClockInSettings = {
@@ -227,7 +416,12 @@ const initialClockInSettings: ClockInSettings = {
 const initialDualPricing: DualPricingSettings = {
   enabled: true,
   discount: "3.5",
-  signageChecklist: { priceDisplay: true, registerSign: true, entranceSign: false, menuNote: true },
+  signageChecklist: {
+    priceDisplay: true,
+    registerSign: true,
+    entranceSign: false,
+    menuNote: true,
+  },
 };
 
 const initialSurcharging: SurchargingSettings = {
@@ -278,56 +472,109 @@ export const useSettingsStore = create<SettingsState>()(
       showPrepTimesToCustomers: true,
       autoAdjustPrepTimes: true,
 
+      // Printer Assignment
+      defaultReceiptPrinterId: null,
+      setDefaultReceiptPrinterId: (printerId) =>
+        set({ defaultReceiptPrinterId: printerId }),
+
       // Order Line
-      orderLineSettings: { daysToShow: 0 },
+      orderLineSettings: {
+        daysToShow: 0,
+        viewMode: "default",
+        minimalModeRows: 3,
+      },
+
+      // Performance diagnostics — default ON for the Wave-0 pilot
+      telemetryEnabled: true,
+      setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
 
       // Menu Display
       showMenuItemPrices: true,
       setShowMenuItemPrices: (show) => set({ showMenuItemPrices: show }),
       showMenuImages: true,
       setShowMenuImages: (show) => set({ showMenuImages: show }),
+      posMenuNavigationMode: "classic",
+      setPosMenuNavigationMode: (mode) => set({ posMenuNavigationMode: mode }),
+      autoSelectFirstRequiredOption: true,
+      setAutoSelectFirstRequiredOption: (value) =>
+        set({ autoSelectFirstRequiredOption: value }),
 
-      setDefaultSittingTimeMinutes: (minutes) => set({ defaultSittingTimeMinutes: minutes }),
+      // UI Scale Override
+      uiScaleOverride: null,
 
-      updateDiningSettings: (settings) => set((state) => ({ ...state, ...settings })),
+      setDefaultSittingTimeMinutes: (minutes) =>
+        set({ defaultSittingTimeMinutes: minutes }),
 
-      updateDeliverySettings: (settings) => set((state) => ({ ...state, ...settings })),
+      updateDiningSettings: (settings) =>
+        set((state) => ({ ...state, ...settings })),
 
-      toggleDeliveryPartnerStatus: (partnerId) => set((state) => ({
-        partners: state.partners.map((p) => p.id === partnerId ? { ...p, status: p.status === "Active" ? "Paused" : "Active" } : p),
-      })),
+      updateDeliverySettings: (settings) =>
+        set((state) => ({ ...state, ...settings })),
+
+      toggleDeliveryPartnerStatus: (partnerId) =>
+        set((state) => ({
+          partners: state.partners.map((p) =>
+            p.id === partnerId
+              ? { ...p, status: p.status === "Active" ? "Paused" : "Active" }
+              : p,
+          ),
+        })),
 
       // Staff permissions actions
       setPermissions: (permissions) => set({ permissions }),
 
-      togglePermission: (permId, role) => set((state) => ({
-        permissions: state.permissions.map((p) => p.id === permId ? { ...p, [role]: !p[role as keyof Permission] } : p),
-      })),
+      togglePermission: (permId, role) =>
+        set((state) => ({
+          permissions: state.permissions.map((p) =>
+            p.id === permId
+              ? { ...p, [role]: !p[role as keyof Permission] }
+              : p,
+          ),
+        })),
 
-      setClockInSettings: (settings) => set((state) => ({ clockInSettings: { ...state.clockInSettings, ...settings } })),
+      setClockInSettings: (settings) =>
+        set((state) => ({
+          clockInSettings: { ...state.clockInSettings, ...settings },
+        })),
 
       // Payment systems actions
-      setDualPricing: (settings) => set((state) => ({ dualPricing: { ...state.dualPricing, ...settings } })),
+      setDualPricing: (settings) =>
+        set((state) => ({
+          dualPricing: { ...state.dualPricing, ...settings },
+        })),
 
-      setSurcharging: (settings) => set((state) => ({ surcharging: { ...state.surcharging, ...settings } })),
+      setSurcharging: (settings) =>
+        set((state) => ({
+          surcharging: { ...state.surcharging, ...settings },
+        })),
 
-      setFunding: (settings) => set((state) => ({ funding: { ...state.funding, ...settings } })),
+      setFunding: (settings) =>
+        set((state) => ({ funding: { ...state.funding, ...settings } })),
 
-      setThrottling: (settings) => set((state) => ({ throttling: { ...state.throttling, ...settings } })),
+      setThrottling: (settings) =>
+        set((state) => ({ throttling: { ...state.throttling, ...settings } })),
 
       setPrepCategories: (categories) => set({ prepCategories: categories }),
 
-      adjustPrepTime: (id, delta) => set((state) => ({
-        prepCategories: state.prepCategories.map((c) => c.id === id ? { ...c, minutes: Math.max(1, c.minutes + delta) } : c),
-      })),
+      adjustPrepTime: (id, delta) =>
+        set((state) => ({
+          prepCategories: state.prepCategories.map((c) =>
+            c.id === id ? { ...c, minutes: Math.max(1, c.minutes + delta) } : c,
+          ),
+        })),
 
-      setOrderLineSettings: (settings) => set((state) => ({
-        orderLineSettings: { ...state.orderLineSettings, ...settings },
-      })),
+      setUiScaleOverride: (value) => set({ uiScaleOverride: value }),
+
+      setOrderLineSettings: (settings) =>
+        set((state) => ({
+          orderLineSettings: { ...state.orderLineSettings, ...settings },
+        })),
     }),
     {
       name: "settings-storage",
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
       partialize: (state) => ({
         // Dining
         tablePrefix: state.tablePrefix,
@@ -344,12 +591,18 @@ export const useSettingsStore = create<SettingsState>()(
         defaultSittingTimeMinutes: state.defaultSittingTimeMinutes,
         // KDS
         kdsEnabled: state.kdsEnabled,
+        // Performance diagnostics
+        telemetryEnabled: state.telemetryEnabled,
         // Menu Display
         showMenuItemPrices: state.showMenuItemPrices,
         showMenuImages: state.showMenuImages,
+        posMenuNavigationMode: state.posMenuNavigationMode,
+        autoSelectFirstRequiredOption: state.autoSelectFirstRequiredOption,
         // Order Line
         orderLineSettings: state.orderLineSettings,
+        // UI Scale Override
+        uiScaleOverride: state.uiScaleOverride,
       }),
-    }
-  )
+    },
+  ),
 );

@@ -1,42 +1,38 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { InventoryItem, InventoryUnitType, Vendor } from "@/lib/types";
+import { InventoryItem, InventoryUnitType } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
 
-interface InventorySyncResponse {
-  vendors: {
-    id: string;
-    name: string;
-    contact_name: string;
-    email: string | null;
-    phone: string | null;
-    address: string | null;
-    website: string | null;
-    is_active: boolean;
-  }[];
-  inventory_items: {
-    id: string;
-    name: string;
-    category: string;
-    description: string | null;
-    image_url: string | null;
-    stock_quantity: number;
-    unit: string;
-    unit_type: string;
-    reorder_threshold: number;
-    cost: number;
-    vendor_id: string | null;
-  }[];
-  menu_recipes: {
-    menu_item_id: string;
-    inventory_item_id: string;
-    quantity_used: number;
-  }[];
-  modifier_recipes: {
-    modifier_group_item_id: string;
-    inventory_item_id: string;
-    quantity_used: number;
-  }[];
+interface RpcInventoryRow {
+  id: string;
+  name: string;
+  sku: string | null;
+  unit_type: string;
+  stock_mode: string | null;
+  reorder_point: number | null;
+  reorder_quantity: number | null;
+  is_active: boolean;
+  updated_at: string | null;
+  stock_quantity: number;
+  effective_cost: number;
+  effective_reorder_point: number | null;
 }
+
+const normalizeInventoryTrackingMode = (
+  mode: string | null | undefined,
+  currentStock?: number | null,
+  reorderPoint?: number | null
+): InventoryItem["stockTrackingMode"] => {
+  if (mode === "stock_tracking") return "quantity";
+  if (
+    mode === "in_stock" &&
+    (currentStock !== null && currentStock !== undefined ||
+      reorderPoint !== null && reorderPoint !== undefined)
+  ) {
+    return "quantity";
+  }
+  if (mode === "in_stock" || mode === "out_of_stock") return mode;
+  return "quantity";
+};
 
 export const useInventorySync = (locationId: string | null) => {
   const supabase = useSupabaseClient();
@@ -45,57 +41,116 @@ export const useInventorySync = (locationId: string | null) => {
     queryKey: ["inventory_sync", locationId],
     queryFn: async () => {
       if (!locationId) throw new Error("Location ID required");
-      console.log("Location ID:", locationId);
 
-      const { data, error } = await supabase.rpc("get_pos_inventory_sync", {
-        p_location_id: locationId,
-      });
+      // Fetch inventory items via RPC
+      const { data: itemsData, error: itemsError } = await supabase.rpc(
+        "get_pos_inventory_sync",
+        { p_location_id: locationId }
+      );
 
-      if (error) {
-        console.error("Inventory sync error:", error);
-        throw error;
+      if (itemsError) {
+        console.error("Inventory sync error:", itemsError);
+        throw itemsError;
       }
 
-      const response = data as InventorySyncResponse;
+      // Fetch the live item rows directly so recent stock/item writes are
+      // visible immediately even if the sync RPC lags behind.
+      const { data: itemRows } = await supabase
+        .from("inventory_items")
+        .select(
+          "id, name, category, current_stock, unit_type, reorder_point, cost_per_unit, vendor_id, stock_mode"
+        )
+        .eq("location_id", locationId)
+        .eq("is_active", true);
 
-      // Transform Backend Snail_Case -> Frontend CamelCase
-      const vendors: Vendor[] = (response.vendors || []).map((v) => ({
+      const itemRowMap = new Map((itemRows ?? []).map((row) => [row.id, row]));
+
+      // Fetch vendors scoped to the active location
+      const { data: vendorsData, error: vendorsError } = await supabase
+        .from("vendors")
+        .select("id, name, contact_name, email, phone, address_line1, city, state, zip_code")
+        .eq("location_id", locationId)
+        .eq("is_active", true);
+
+      if (vendorsError) {
+        console.warn("Vendors fetch error:", vendorsError);
+      }
+
+      const rows = (itemsData as RpcInventoryRow[] | null) ?? [];
+
+      const inventoryItems: InventoryItem[] = rows.filter((i) => itemRowMap.has(i.id)).map((i) => {
+        const directRow = itemRowMap.get(i.id);
+        return {
+          id: i.id,
+          name: directRow?.name ?? i.name,
+          category: directRow?.category ?? "",
+          description: null,
+          image: null,
+          stockQuantity: i.stock_quantity ?? directRow?.current_stock ?? 0,
+          unit: directRow?.unit_type ?? i.unit_type,
+          unitType: (directRow?.unit_type ?? i.unit_type) as InventoryUnitType,
+          reorderThreshold:
+            directRow?.reorder_point ??
+            i.effective_reorder_point ??
+            i.reorder_point ??
+            0,
+          cost: directRow?.cost_per_unit ?? i.effective_cost ?? 0,
+          vendorId: directRow?.vendor_id ?? null,
+          locationId: locationId,
+          isGlobal: false,
+          stockTrackingMode: normalizeInventoryTrackingMode(
+            directRow?.stock_mode,
+            directRow?.current_stock,
+            directRow?.reorder_point
+          ),
+        };
+      });
+
+      const rpcItemIds = new Set(inventoryItems.map((item) => item.id));
+      const missingDirectItems: InventoryItem[] = (itemRows ?? [])
+        .filter((row) => !rpcItemIds.has(row.id))
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          category: row.category ?? "",
+          description: null,
+          image: null,
+          stockQuantity: row.current_stock ?? 0,
+          unit: row.unit_type,
+          unitType: row.unit_type as InventoryUnitType,
+          reorderThreshold: row.reorder_point ?? 0,
+          cost: row.cost_per_unit ?? 0,
+          vendorId: row.vendor_id ?? null,
+          locationId: locationId,
+          isGlobal: false,
+          stockTrackingMode: normalizeInventoryTrackingMode(
+            row.stock_mode,
+            row.current_stock,
+            row.reorder_point
+          ),
+        }));
+
+      const vendors = (vendorsData ?? []).map((v) => ({
         id: v.id,
         name: v.name,
-        contactName: v.contact_name,
-        email: v.email,
-        phone: v.phone,
-        address: v.address,
-        website: v.website,
+        contactName: v.contact_name ?? "",
+        email: v.email ?? null,
+        phone: v.phone ?? null,
+        address: [v.address_line1, v.city, v.state].filter(Boolean).join(", ") || null,
+        website: null,
         description: "",
-      }));
-
-      const inventoryItems: InventoryItem[] = (
-        response.inventory_items || []
-      ).map((i) => ({
-        id: i.id,
-        name: i.name,
-        category: i.category,
-        description: i.description,
-        image: i.image_url,
-        stockQuantity: i.stock_quantity,
-        unit: i.unit,
-        unitType: i.unit_type as InventoryUnitType,
-        reorderThreshold: i.reorder_threshold,
-        cost: i.cost,
-        vendorId: i.vendor_id,
-        locationId: (i as any).location_id,
-        isGlobal: (i as any).is_global,
-        stockTrackingMode: "quantity", // Inventory items are always quantity tracked
       }));
 
       return {
         vendors,
-        inventoryItems,
-        menuRecipes: response.menu_recipes || [],
-        modifierRecipes: response.modifier_recipes || [],
+        inventoryItems: [...inventoryItems, ...missingDirectItems],
+        menuRecipes: [] as any[],
+        modifierRecipes: [] as any[],
       };
     },
     enabled: !!locationId,
+    networkMode: "offlineFirst",
+    staleTime: Infinity, // Broadcast/manual-invalidation controls updates
+    gcTime: 1000 * 60 * 60 * 2, // 2 hours — matches usePosSync, prevents cold-cache on idle
   });
 };

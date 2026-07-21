@@ -1,6 +1,7 @@
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { useToast } from '@/contexts/ToastContext'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { useInventoryStore } from '@/stores/useInventoryStore'
 import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -26,7 +27,8 @@ import {
 
 const PurchaseOrderDetailScreen = () => {
   const router = useRouter()
-  const { poId } = useLocalSearchParams()
+  const { poId: rawPoId } = useLocalSearchParams()
+  const poId = Array.isArray(rawPoId) ? rawPoId[0] : rawPoId
   const {
     purchaseOrders,
     vendors,
@@ -38,6 +40,8 @@ const PurchaseOrderDetailScreen = () => {
     deletePurchaseOrder
   } = useInventoryStore()
   const { show } = useToast()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   const po = purchaseOrders.find(p => p.id === poId)
   const vendor = po ? vendors.find(v => v.id === po.vendorId) : null
@@ -106,7 +110,7 @@ const PurchaseOrderDetailScreen = () => {
     }
   }
 
-  const handleLogDelivery = () => {
+  const handleLogDelivery = async () => {
     if (!poId) return
     // Build received items payload from draft (fallback to original quantities)
     const receivedItems = po.items
@@ -117,21 +121,27 @@ const PurchaseOrderDetailScreen = () => {
       }))
       .filter(li => li.quantity > 0)
 
-    logDeliveryForPO(poId as string, {
-      photos: deliveryPhotos,
-      deliveredAt: deliveryDate,
-      notes: deliveryNotes,
-      receivedItems
-    })
-    setShowDeliveryForm(false)
-    show({
-      title: 'Success',
-      message: `Delivery logged for PO #${po.poNumber}`,
-      type: 'success'
-    })
+    try {
+      await logDeliveryForPO(poId as string, {
+        photos: deliveryPhotos,
+        deliveredAt: deliveryDate,
+        notes: deliveryNotes,
+        receivedItems
+      })
+      setShowDeliveryForm(false)
+      show({
+        title: 'Success',
+        message: `Delivery logged for PO #${po.poNumber}`,
+        type: 'success'
+      })
+    } catch {
+      Alert.alert('Error', 'Failed to log delivery.')
+    }
   }
 
-  const handleSubmitDelivery = () => handleLogDelivery()
+  const handleSubmitDelivery = () => {
+    void handleLogDelivery()
+  }
 
   const adjustReceivedQty = (inventoryItemId: string, qty: number) => {
     setReceivedDraft(prev => ({
@@ -140,59 +150,75 @@ const PurchaseOrderDetailScreen = () => {
     }))
   }
 
-  const handleLogPayment = () => {
+  const handleLogPayment = async () => {
     if (!poId || !paymentAmount) return
     const amount = parseFloat(paymentAmount)
     if (isNaN(amount)) {
       Alert.alert('Invalid Amount', 'Please enter a valid payment amount.')
       return
     }
-    logPaymentForPO(poId as string, {
-      method: paymentMethod,
-      amount,
-      paidAt: new Date().toISOString(),
-      cardLast4: paymentMethod === 'Card' ? cardLast4 : undefined,
-      paidToEmployee
-    })
-    setShowPaymentForm(false)
-    show({
-      title: 'Success',
-      message: `Payment logged for PO #${po.poNumber}`,
-      type: 'success'
-    })
+    try {
+      await logPaymentForPO(poId as string, {
+        method: paymentMethod,
+        amount,
+        paidAt: new Date().toISOString(),
+        cardLast4: paymentMethod === 'Card' ? cardLast4 : undefined,
+        paidToEmployee
+      })
+      setShowPaymentForm(false)
+      show({
+        title: 'Success',
+        message: `Payment logged for PO #${po.poNumber}`,
+        type: 'success'
+      })
+    } catch {
+      Alert.alert('Error', 'Failed to log payment.')
+    }
   }
 
-  const handleCancelPO = () => {
+  const handleCancelPO = async () => {
     if (!poId) return
-    cancelPurchaseOrder(poId as string)
-    setShowCancelDialog(false)
-    show({
-      title: 'Success',
-      message: `PO #${po.poNumber} has been cancelled`,
-      type: 'success'
-    })
+    try {
+      await cancelPurchaseOrder(poId as string)
+      setShowCancelDialog(false)
+      show({
+        title: 'Success',
+        message: `PO #${po.poNumber} has been cancelled`,
+        type: 'success'
+      })
+    } catch {
+      Alert.alert('Error', 'Failed to cancel purchase order.')
+    }
   }
 
-  const handleSubmitDraft = () => {
+  const handleSubmitDraft = async () => {
     if (!poId) return
-    submitPurchaseOrder(poId as string)
-    show({
-      title: 'Success',
-      message: `PO #${po.poNumber} submitted to Pending Delivery`,
-      type: 'success'
-    })
+    try {
+      await submitPurchaseOrder(poId as string)
+      show({
+        title: 'Success',
+        message: `PO #${po.poNumber} submitted to Pending Delivery`,
+        type: 'success'
+      })
+    } catch {
+      Alert.alert('Error', 'Failed to submit draft purchase order.')
+    }
   }
 
-  const handleDeleteDraft = () => {
+  const handleDeleteDraft = async () => {
     if (!poId) return
-    deletePurchaseOrder(poId as string)
-    setShowDeleteDraftDialog(false)
-    show({
-      title: 'Success',
-      message: `Draft ${po.poNumber} deleted`,
-      type: 'success'
-    })
-    router.back()
+    try {
+      await deletePurchaseOrder(poId as string)
+      setShowDeleteDraftDialog(false)
+      show({
+        title: 'Success',
+        message: `Draft ${po.poNumber} deleted`,
+        type: 'success'
+      })
+      router.back()
+    } catch {
+      Alert.alert('Error', 'Failed to delete draft purchase order.')
+    }
   }
 
   const handleAddPhoto = async () => {
@@ -282,16 +308,16 @@ const PurchaseOrderDetailScreen = () => {
     backgroundColor: colors.screen,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderRadius: s(8),
     color: colors.heading,
-    fontSize: 12,
-    height: 36,
-    paddingHorizontal: 10,
+    fontSize: s(12),
+    height: s(36),
+    paddingHorizontal: s(10),
     paddingVertical: 0
   } as const
 
   const sectionTitleStyle = {
-    fontSize: 13,
+    fontSize: s(13),
     fontWeight: '700' as const,
     color: colors.heading
   } as const

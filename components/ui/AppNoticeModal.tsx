@@ -16,62 +16,67 @@ const AppNoticeModal: React.FC<AppNoticeModalProps> = ({
   onClose,
   title,
   description,
-  variant = 'info'
+  variant = 'info',
 }) => {
-  const Icon =
-    variant === 'error' ? CircleX : variant === 'warning' ? AlertTriangle : Bell
+  const Icon = variant === 'error' ? CircleX : variant === 'warning' ? AlertTriangle : Bell
 
   const accentColor =
-    variant === 'error'
-      ? colors.danger
-      : variant === 'warning'
-      ? colors.warning
-      : colors.teal
-
-  const accentBg =
-    variant === 'error'
-      ? 'bg-red-900/30 border-red-500/30'
-      : variant === 'warning'
-      ? 'bg-amber-900/30 border-amber-500/30'
-      : 'bg-teal/20 border-teal/30'
+    variant === 'error' ? colors.danger : variant === 'warning' ? colors.warning : colors.teal
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType='fade'
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType='fade' onRequestClose={onClose}>
       <Pressable
-        className='flex-1 items-center justify-center'
-        style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
         onPress={onClose}
+        style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.6)' }}
       >
         <Pressable
           onPress={() => {}}
-          className='bg-panel rounded-2xl w-[420px] border border-border p-6'
+          style={{
+            width: 360,
+            backgroundColor: colors.panel,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.4,
+            shadowRadius: 20,
+            elevation: 16,
+          }}
         >
-          <View className='items-center'>
-            <View
-              className={`w-16 h-16 rounded-full items-center justify-center border-4 mb-4 ${accentBg}`}
-            >
-              <Icon color={accentColor} size={34} />
+          {/* Accent top bar */}
+          <View style={{ height: 3, backgroundColor: accentColor }} />
+
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            {/* Icon box */}
+            <View style={{
+              width: 44, height: 44, borderRadius: 12,
+              backgroundColor: accentColor + '18',
+              borderWidth: 1, borderColor: accentColor + '40',
+              alignItems: 'center', justifyContent: 'center',
+              marginBottom: 12,
+            }}>
+              <Icon size={20} color={accentColor} />
             </View>
 
-            <Text className='text-2xl font-bold text-white text-center'>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading, textAlign: 'center', marginBottom: 6 }}>
               {title}
             </Text>
-            <Text className='text-center text-gray-400 mt-2 text-lg'>
+            <Text style={{ fontSize: 12, color: colors.label, textAlign: 'center', lineHeight: 18 }}>
               {description}
             </Text>
 
             <TouchableOpacity
               onPress={onClose}
-              className='mt-6 py-3 rounded-lg bg-teal w-full'
+              style={{
+                marginTop: 16, width: '100%', paddingVertical: 8, borderRadius: 8,
+                alignItems: 'center',
+                backgroundColor: accentColor + '20',
+                borderWidth: 1, borderColor: accentColor + '50',
+              }}
             >
-              <Text className='font-bold text-white text-lg text-center'>
-                OK
-              </Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: accentColor }}>OK</Text>
             </TouchableOpacity>
           </View>
         </Pressable>

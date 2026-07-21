@@ -1,8 +1,10 @@
-import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext'
+import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
+import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import type { CFDCartItem } from '@/types/cfd.types'
 import { Banknote, CreditCard, UtensilsCrossed } from 'lucide-react-native'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FlatList,
   Image,
@@ -12,7 +14,7 @@ import {
   View
 } from 'react-native'
 import Animated, {
-  FadeInDown,
+  cancelAnimation,
   LinearTransition,
   runOnJS,
   useAnimatedStyle,
@@ -33,6 +35,8 @@ export function OrderingScreen () {
     subtotalCash,
     subtotalCard,
     discountAmount,
+    serviceCharge,
+    serviceChargeName,
     taxAmount,
     taxCash,
     taxCard,
@@ -45,8 +49,15 @@ export function OrderingScreen () {
     amountPaid,
     branding,
     layout,
-    orderingPanelImages
+    orderingPanelImages,
+    pricingDisplayMode
   } = useCFDDisplayData()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+
+  const showCard = pricingDisplayMode !== 'cash_only'
+  const showCash = pricingDisplayMode !== 'card_only'
+  const showDual = pricingDisplayMode === 'dual'
 
   const listRef = useRef<FlatList>(null)
   const prevCount = useRef(items.length)
@@ -153,8 +164,8 @@ export function OrderingScreen () {
           {/* Header with Restaurant Name & Order Info */}
           <View
             style={{
-              paddingHorizontal: 16,
-              paddingVertical: 12,
+              paddingHorizontal: s(16),
+              paddingVertical: s(12),
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
               backgroundColor: colors.panel,
@@ -169,14 +180,14 @@ export function OrderingScreen () {
                 flex: 1,
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 12
+                gap: s(12)
               }}
             >
               <View
                 style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 10,
+                  width: s(40),
+                  height: s(40),
+                  borderRadius: s(10),
                   backgroundColor: colors.card,
                   borderWidth: 1,
                   borderColor: colors.border,
@@ -184,27 +195,27 @@ export function OrderingScreen () {
                   justifyContent: 'center'
                 }}
               >
-                <UtensilsCrossed size={20} color={colors.teal} />
+                <UtensilsCrossed size={s(20)} color={colors.teal} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
-                    fontSize: 16,
+                    fontSize: s(16),
                     fontWeight: '700',
                     color: colors.heading,
-                    marginBottom: 2
+                    marginBottom: s(2)
                   }}
                 >
                   {branding?.restaurantName ?? 'Restaurant'}
                 </Text>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '500',
                     color: colors.label
                   }}
                 >
-                  {orderType?.toUpperCase()}
+                  {orderType}
                   {tableName
                     ? ` · Table ${tableName}`
                     : serverName
@@ -217,16 +228,16 @@ export function OrderingScreen () {
             <View style={{ alignItems: 'flex-end' }}>
               <Text
                 style={{
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: '600',
                   color: colors.teal,
-                  marginBottom: 2
+                  marginBottom: s(2)
                 }}
               >
                 {orderNumber || 'Your Order'}
               </Text>
               <Text
-                style={{ fontSize: 12, fontWeight: '500', color: colors.label }}
+                style={{ fontSize: s(12), fontWeight: '500', color: colors.label }}
               >
                 {customerName ? `${customerName} · ` : ''}
                 {items.length} item{items.length !== 1 ? 's' : ''}
@@ -240,12 +251,16 @@ export function OrderingScreen () {
             data={items}
             keyExtractor={(_, index) => index.toString()}
             renderItem={({ item, index }) => (
-              <CartItemRow item={item} index={index} />
+              <CartItemRow
+                item={item}
+                index={index}
+                isLast={index === items.length - 1}
+              />
             )}
             style={{ flex: 1 }}
             contentContainerStyle={{
-              padding: 16,
-              paddingBottom: 24
+              padding: s(16),
+              paddingBottom: s(24)
             }}
             showsVerticalScrollIndicator={false}
           />
@@ -254,14 +269,14 @@ export function OrderingScreen () {
           <View
             style={{
               backgroundColor: colors.panel,
-              paddingHorizontal: 16,
-              paddingVertical: 6,
+              paddingHorizontal: s(16),
+              paddingVertical: s(6),
               borderTopWidth: 1,
               borderTopColor: colors.border
             }}
           >
             {/* Subtotal & Tax rows */}
-            <View style={{ gap: 2, marginBottom: 6 }}>
+            <View style={{ gap: s(2), marginBottom: s(6) }}>
               <View
                 style={{
                   flexDirection: 'row',
@@ -272,7 +287,7 @@ export function OrderingScreen () {
                 <Text
                   style={{
                     color: colors.label,
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '500'
                   }}
                 >
@@ -281,13 +296,42 @@ export function OrderingScreen () {
                 <Text
                   style={{
                     color: colors.label,
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '500'
                   }}
                 >
                   {formatCurrency(displaySubtotalCard)}
                 </Text>
               </View>
+
+              {serviceCharge > 0 && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: s(11),
+                      fontWeight: '500'
+                    }}
+                  >
+                    {serviceChargeName ?? 'Service Charge'}
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: s(11),
+                      fontWeight: '500'
+                    }}
+                  >
+                    {formatCurrency(serviceCharge)}
+                  </Text>
+                </View>
+              )}
 
               {discountAmount > 0 && (
                 <View
@@ -300,7 +344,7 @@ export function OrderingScreen () {
                   <Text
                     style={{
                       color: colors.teal,
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: '500'
                     }}
                   >
@@ -309,7 +353,7 @@ export function OrderingScreen () {
                   <Text
                     style={{
                       color: colors.teal,
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: '500'
                     }}
                   >
@@ -328,7 +372,7 @@ export function OrderingScreen () {
                 <Text
                   style={{
                     color: colors.label,
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '500'
                   }}
                 >
@@ -337,7 +381,7 @@ export function OrderingScreen () {
                 <Text
                   style={{
                     color: colors.label,
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '500'
                   }}
                 >
@@ -356,7 +400,7 @@ export function OrderingScreen () {
                   <Text
                     style={{
                       color: colors.label,
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: '500'
                     }}
                   >
@@ -365,7 +409,7 @@ export function OrderingScreen () {
                   <Text
                     style={{
                       color: colors.label,
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: '500'
                     }}
                   >
@@ -380,69 +424,75 @@ export function OrderingScreen () {
               style={{
                 height: 1,
                 backgroundColor: colors.border,
-                marginBottom: 6
+                marginBottom: s(6)
               }}
             />
 
-            {/* Total (cash) */}
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 2
-              }}
-            >
-              <Text
-                style={{ color: colors.teal, fontSize: 14, fontWeight: '600' }}
-              >
-                Total (cash)
-              </Text>
-              <Text
-                style={{ color: colors.teal, fontSize: 22, fontWeight: '700' }}
-              >
-                {formatCurrency(displayTotalCash)}
-              </Text>
-            </View>
-
             {/* Total (card) */}
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 4
-              }}
-            >
-              <Text
-                style={{ color: colors.label, fontSize: 14, fontWeight: '600' }}
-              >
-                Total (card)
-              </Text>
-              <Text
+            {showCard && (
+              <View
                 style={{
-                  color: colors.heading,
-                  fontSize: 20,
-                  fontWeight: '700'
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: s(2)
                 }}
               >
-                {formatCurrency(displayTotalCard)}
-              </Text>
-            </View>
+                <Text
+                  style={{ color: colors.teal, fontSize: s(14), fontWeight: '600' }}
+                >
+                  {showDual ? 'Total (card)' : 'Total'}
+                </Text>
+                <Text
+                  style={{ color: colors.teal, fontSize: s(22), fontWeight: '700' }}
+                >
+                  {formatCurrency(displayTotalCard)}
+                </Text>
+              </View>
+            )}
 
-            {/* Cash Savings - Always visible to avoid layout flicker */}
-            <View style={{ marginBottom: 4 }}>
-              <Text
+            {/* Total (cash) */}
+            {showCash && (
+              <View
                 style={{
-                  color: displaySavingsAmount > 0 ? colors.teal : colors.label,
-                  fontWeight: '600',
-                  fontSize: 11,
-                  textAlign: 'center'
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: s(4)
                 }}
               >
-                Save {formatCurrency(displaySavingsAmount)} with cash
-              </Text>
-            </View>
+                <Text
+                  style={{ color: showDual ? colors.label : colors.teal, fontSize: s(14), fontWeight: '600' }}
+                >
+                  {showDual ? 'Total (cash)' : 'Total'}
+                </Text>
+                <Text
+                  style={{
+                    color: showDual ? colors.heading : colors.teal,
+                    fontSize: showDual ? s(20) : s(22),
+                    fontWeight: '700'
+                  }}
+                >
+                  {formatCurrency(displayTotalCash)}
+                </Text>
+              </View>
+            )}
+
+            {/* Cash Savings - only shown in dual mode */}
+            {showDual && (
+              <View style={{ marginBottom: s(4) }}>
+                <Text
+                  style={{
+                    color: displaySavingsAmount > 0 ? colors.teal : colors.label,
+                    fontWeight: '600',
+                    fontSize: s(11),
+                    textAlign: 'center'
+                  }}
+                >
+                  Save {formatCurrency(displaySavingsAmount)} with cash
+                </Text>
+              </View>
+            )}
 
             {/* Divider before Amount Due */}
             {amountPaid > 0 && (
@@ -450,14 +500,14 @@ export function OrderingScreen () {
                 style={{
                   height: 1,
                   backgroundColor: colors.border,
-                  marginBottom: 6
+                  marginBottom: s(6)
                 }}
               />
             )}
 
             {/* Amount Paid & Due */}
             {amountPaid > 0 && (
-              <View style={{ gap: 8 }}>
+              <View style={{ gap: s(8) }}>
                 <View
                   style={{
                     flexDirection: 'row',
@@ -468,7 +518,7 @@ export function OrderingScreen () {
                   <Text
                     style={{
                       color: colors.label,
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '500'
                     }}
                   >
@@ -477,7 +527,7 @@ export function OrderingScreen () {
                   <Text
                     style={{
                       color: colors.label,
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '500'
                     }}
                   >
@@ -489,9 +539,9 @@ export function OrderingScreen () {
                     backgroundColor: colors.warning + '15',
                     borderWidth: 1,
                     borderColor: colors.warning + '30',
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8
+                    borderRadius: s(8),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(8)
                   }}
                 >
                   <View
@@ -503,7 +553,7 @@ export function OrderingScreen () {
                   >
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: '600',
                         color: colors.warning
                       }}
@@ -512,7 +562,7 @@ export function OrderingScreen () {
                     </Text>
                     <Text
                       style={{
-                        fontSize: 16,
+                        fontSize: s(16),
                         fontWeight: '700',
                         color: colors.warning
                       }}
@@ -540,6 +590,7 @@ export function OrderingScreen () {
               mode={rightPanelMode}
               primaryImages={orderingPanelImages.primary}
               secondaryImages={orderingPanelImages.secondary}
+              uiScale={uiScale}
             />
           </View>
         )}
@@ -551,22 +602,28 @@ export function OrderingScreen () {
 function OrderingPanelMedia ({
   mode,
   primaryImages,
-  secondaryImages
+  secondaryImages,
+  uiScale
 }: {
   mode: 'single' | 'stacked'
   primaryImages: string[]
   secondaryImages: string[]
+  uiScale: number
 }) {
+  const styles = getStylesForScale(uiScale)
+
   if (mode === 'stacked') {
     return (
       <View style={styles.rightPanelStack}>
         <RotatingImagePanel
           images={primaryImages}
           style={styles.rightPanelStackItem}
+          styles={styles}
         />
         <RotatingImagePanel
           images={secondaryImages}
           style={styles.rightPanelStackItem}
+          styles={styles}
         />
       </View>
     )
@@ -576,43 +633,95 @@ function OrderingPanelMedia ({
     <RotatingImagePanel
       images={primaryImages}
       style={styles.rightPanelSingle}
+      styles={styles}
     />
   )
 }
 
 function RotatingImagePanel ({
   images,
-  style
+  style,
+  styles
 }: {
   images: string[]
   style?: any
+  styles: ReturnType<typeof createStyles>
 }) {
-  const [currentIndex, setCurrentIndex] = React.useState(0)
-  const [nextIndex, setNextIndex] = React.useState(0)
+  const currentIndexRef = React.useRef(0)
+  const [displayUri, setDisplayUri] = React.useState<string | null>(null)
+  const [overlayUri, setOverlayUri] = React.useState<string | null>(null)
+  const [pendingIndex, setPendingIndex] = React.useState<number | null>(null)
+  const isTransitioningRef = React.useRef(false)
   const fadeOpacity = useSharedValue(0)
 
+  // Use content-based key so the reset only fires when the actual URLs change,
+  // not when the parent re-renders with a new array reference (e.g. every WS
+  // payload update on the external CFD path).
+  const imagesKey = images.join('\0')
   useEffect(() => {
-    setCurrentIndex(0)
-    setNextIndex(0)
+    if (!images || images.length === 0) {
+      currentIndexRef.current = 0
+      setDisplayUri(null)
+      setOverlayUri(null)
+      setPendingIndex(null)
+      isTransitioningRef.current = false
+      cancelAnimation(fadeOpacity)
+      fadeOpacity.value = 0
+      return
+    }
+    currentIndexRef.current = 0
+    setDisplayUri(images[0] ?? null)
+    setOverlayUri(null)
+    setPendingIndex(null)
+    isTransitioningRef.current = false
+    cancelAnimation(fadeOpacity)
     fadeOpacity.value = 0
-  }, [images, fadeOpacity])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagesKey, fadeOpacity])
+
+  // Promote overlay → base after fade completes
+  const completeTransition = (nextIndex: number, nextUri: string) => {
+    currentIndexRef.current = nextIndex
+    setDisplayUri(nextUri)
+    // Brief delay lets the base image commit before removing the overlay
+    setTimeout(() => {
+      setOverlayUri(null)
+      setPendingIndex(null)
+      fadeOpacity.value = 0
+      isTransitioningRef.current = false
+    }, 50)
+  }
+
+  // Only start fading once the overlay image has actually loaded
+  const handleOverlayLoad = () => {
+    if (overlayUri === null || pendingIndex === null) return
+    fadeOpacity.value = withTiming(1, { duration: 700 }, finished => {
+      if (finished) {
+        runOnJS(completeTransition)(pendingIndex, overlayUri)
+      }
+    })
+  }
 
   useEffect(() => {
     if (!images || images.length <= 1) return
 
     const interval = setInterval(() => {
-      const next = (currentIndex + 1) % images.length
-      setNextIndex(next)
-      fadeOpacity.value = withTiming(1, { duration: 900 }, finished => {
-        if (finished) {
-          runOnJS(setCurrentIndex)(next)
-          fadeOpacity.value = 0
-        }
-      })
+      if (isTransitioningRef.current) return
+      const next = (currentIndexRef.current + 1) % images.length
+      const nextUri = images[next]
+      if (!nextUri) return
+      isTransitioningRef.current = true
+      fadeOpacity.value = 0
+      setPendingIndex(next)
+      setOverlayUri(nextUri)
     }, 8000)
 
-    return () => clearInterval(interval)
-  }, [currentIndex, images, fadeOpacity])
+    return () => {
+      clearInterval(interval)
+      cancelAnimation(fadeOpacity)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagesKey, fadeOpacity])
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: fadeOpacity.value
@@ -626,30 +735,53 @@ function RotatingImagePanel ({
     )
   }
 
-  const currentImage = images[currentIndex] ?? images[0]
-  const nextImage = images[nextIndex] ?? images[0]
-
   return (
     <View style={[styles.mediaFrame, style]}>
-      <Image
-        source={{ uri: currentImage }}
-        style={styles.mediaImage}
-        resizeMode='cover'
-      />
-      {images.length > 1 && (
+      {displayUri ? (
+        <Image
+          source={{ uri: displayUri }}
+          style={styles.mediaImage}
+          resizeMode='cover'
+          onError={() =>
+            console.warn('[RotatingImagePanel] Image failed:', displayUri)
+          }
+        />
+      ) : null}
+      {overlayUri ? (
         <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>
           <Image
-            source={{ uri: nextImage }}
+            source={{ uri: overlayUri }}
             style={styles.mediaImage}
             resizeMode='cover'
+            onLoad={handleOverlayLoad}
+            onError={() => {
+              console.warn(
+                '[RotatingImagePanel] Next image failed:',
+                overlayUri
+              )
+              setOverlayUri(null)
+              setPendingIndex(null)
+              isTransitioningRef.current = false
+              fadeOpacity.value = 0
+            }}
           />
         </Animated.View>
-      )}
+      ) : null}
     </View>
   )
 }
 
-function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
+const CartItemRow = React.memo(function CartItemRow ({
+  item,
+  index,
+  isLast
+}: {
+  item: CFDCartItem
+  index: number
+  isLast: boolean
+}) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
   // Check if there are any modifiers to display
@@ -657,93 +789,104 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
 
   return (
     <Animated.View
-      entering={FadeInDown.duration(300).delay(index * 50)}
-      layout={LinearTransition.duration(200)}
+      layout={iosOnly(LinearTransition.duration(200))}
       style={{
-        backgroundColor: colors.card,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: colors.border,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        marginBottom: 8
+        backgroundColor: colors.screen,
+        paddingHorizontal: s(8),
+        paddingVertical: s(8),
+        marginBottom: 0
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-        {/* Quantity Badge */}
-        <View
-          style={{
-            backgroundColor: colors.panel,
-            borderRadius: 8,
-            height: 28,
-            width: 32,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: colors.border
-          }}
-        >
-          <Text
-            style={{ color: colors.label, fontWeight: '700', fontSize: 13 }}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: s(10) }}>
+        {/* Quantity badge (bill style) */}
+        <View style={{ alignItems: 'center', width: s(40) }}>
+          <View
+            style={{
+              minWidth: s(22),
+              height: s(22),
+              borderRadius: s(6),
+              backgroundColor: colors.teal + '18',
+              borderWidth: 1,
+              borderColor: colors.teal + '40',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
           >
-            {item.quantity}
-          </Text>
-        </View>
+            <Text
+              style={{
+                color: colors.teal,
+                fontWeight: '700',
+                fontSize: s(11)
+              }}
+            >
+              {item.quantity}
+            </Text>
+          </View>
 
-        {/* Item Details */}
-        <View style={{ flex: 1 }}>
           {(item.seatNumber || item.courseNumber) && (
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 2 }}>
+            <View style={{ marginTop: s(3), alignItems: 'center', gap: s(1) }}>
               {item.seatNumber && (
                 <Text
                   style={{
                     color: colors.teal,
-                    fontSize: 10,
+                    fontSize: s(9),
                     fontWeight: '600'
                   }}
+                  numberOfLines={1}
                 >
-                  Seat {item.seatNumber}
+                  S{item.seatNumber}
                 </Text>
               )}
               {item.courseNumber && (
                 <Text
                   style={{
                     color: colors.teal,
-                    fontSize: 10,
+                    fontSize: s(9),
                     fontWeight: '600'
                   }}
+                  numberOfLines={1}
                 >
-                  Course {item.courseNumber}
+                  C{item.courseNumber}
                 </Text>
               )}
             </View>
           )}
+        </View>
+
+        {/* Item Details */}
+        <View style={{ flex: 1, paddingTop: s(1) }}>
           <View
             style={{
               flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              marginBottom: 4
+              alignItems: 'center',
+              marginBottom: s(4)
             }}
           >
+            <View style={{ flex: 1, minWidth: 0, paddingRight: s(8) }}>
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontWeight: '600',
+                  fontSize: s(14),
+                  lineHeight: Math.round(s(14) * (16 / 14)),
+                  includeFontPadding: false
+                }}
+                numberOfLines={1}
+              >
+                {item.name}
+              </Text>
+            </View>
             <Text
+              numberOfLines={1}
               style={{
-                color: colors.heading,
+                color: colors.teal,
+                fontSize: s(14),
+                lineHeight: Math.round(s(14) * (16 / 14)),
+                includeFontPadding: false,
                 fontWeight: '600',
-                fontSize: 14,
-                lineHeight: 18,
-                flex: 1
-              }}
-              numberOfLines={2}
-            >
-              {item.name}
-            </Text>
-            <Text
-              style={{
-                color: colors.label,
-                fontSize: 13,
-                fontWeight: '600',
-                marginLeft: 8
+                marginLeft: s(8),
+                flexShrink: 0,
+                textAlign: 'right'
               }}
             >
               {formatCurrency(item.lineTotalCard || item.lineTotal || 0)}
@@ -752,24 +895,49 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
 
           {/* Modifiers */}
           {hasModifiers && (
-            <View style={{ marginTop: 4, gap: 2 }}>
+            <View style={{ marginTop: s(4), gap: s(2), marginLeft: s(1) }}>
               {item.modifiers.map((mod, idx) => {
                 const isNegativeModifier = mod.isNo === true
+                const modifierPrice = mod.priceCard || mod.price || 0
 
                 return (
-                  <Text
+                  <View
                     key={idx}
                     style={{
-                      color: isNegativeModifier
-                        ? colors.danger
-                        : colors.heading,
-                      fontSize: 11,
-                      fontWeight: isNegativeModifier ? '600' : '400'
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: s(4),
+                      paddingLeft: s(4),
+                      borderLeftColor: colors.border,
+                      borderLeftWidth: 1,
+                      paddingVertical: s(1)
                     }}
                   >
-                    {isNegativeModifier ? 'NO ' : ''}
-                    {mod.name}
-                  </Text>
+                    <Text
+                      style={{
+                        color: isNegativeModifier
+                          ? colors.danger
+                          : colors.label,
+                        fontSize: s(10),
+                        fontWeight: isNegativeModifier ? '600' : '400',
+                        flexShrink: 1
+                      }}
+                    >
+                      {isNegativeModifier ? 'NO ' : ''}
+                      {mod.name}
+                    </Text>
+                    {!isNegativeModifier && modifierPrice > 0 && (
+                      <Text
+                        style={{
+                          color: colors.teal,
+                          fontSize: s(10),
+                          fontWeight: '600'
+                        }}
+                      >
+                        +{formatCurrency(modifierPrice)}
+                      </Text>
+                    )}
+                  </View>
                 )
               })}
             </View>
@@ -780,9 +948,10 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
             <Text
               style={{
                 color: colors.warning,
-                fontSize: 10,
+                fontSize: s(10),
                 fontStyle: 'italic',
-                marginTop: hasModifiers ? 3 : 4
+                marginTop: hasModifiers ? s(3) : s(4),
+                marginLeft: hasModifiers ? s(6) : 0
               }}
             >
               {item.notes}
@@ -790,48 +959,70 @@ function CartItemRow ({ item, index }: { item: CFDCartItem; index: number }) {
           )}
         </View>
       </View>
+      {!isLast && (
+        <View
+          style={{
+            height: StyleSheet.hairlineWidth,
+            backgroundColor: colors.border + '55',
+            marginTop: s(8),
+            marginLeft: s(40)
+          }}
+        />
+      )}
     </Animated.View>
   )
+})
+
+const createStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale)
+  return StyleSheet.create({
+    rightPanelSingle: {
+      flex: 1,
+      margin: s(12),
+      borderRadius: s(14)
+    },
+    rightPanelStack: {
+      flex: 1,
+      padding: s(12),
+      gap: s(12)
+    },
+    rightPanelStackItem: {
+      flex: 1,
+      borderRadius: s(14)
+    },
+    mediaFrame: {
+      overflow: 'hidden',
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border
+    },
+    mediaImage: {
+      width: '100%',
+      height: '100%'
+    },
+    mediaFallback: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border
+    },
+    mediaFallbackText: {
+      color: colors.muted,
+      fontSize: s(12),
+      fontWeight: '600'
+    }
+  })
 }
 
-const styles = StyleSheet.create({
-  rightPanelSingle: {
-    flex: 1,
-    margin: 12,
-    borderRadius: 14
-  },
-  rightPanelStack: {
-    flex: 1,
-    padding: 12,
-    gap: 12
-  },
-  rightPanelStackItem: {
-    flex: 1,
-    borderRadius: 14
-  },
-  mediaFrame: {
-    overflow: 'hidden',
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  mediaImage: {
-    width: '100%',
-    height: '100%'
-  },
-  mediaFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  mediaFallbackText: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: '600'
-  }
-})
+const stylesByScale = new Map<number, ReturnType<typeof createStyles>>()
+const getStylesForScale = (scale: number) => {
+  const cached = stylesByScale.get(scale)
+  if (cached) return cached
+  const next = createStyles(scale)
+  stylesByScale.set(scale, next)
+  return next
+}
 
 function TotalRowTwoColumn ({
   label,
@@ -846,6 +1037,8 @@ function TotalRowTwoColumn ({
   isDiscount?: boolean
   isTotal?: boolean
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const formatCurrency = (cents: number) =>
     `$${(Math.abs(cents) / 100).toFixed(2)}`
 
@@ -856,21 +1049,21 @@ function TotalRowTwoColumn ({
           flexDirection: 'row',
           justifyContent: 'space-between',
           alignItems: 'center',
-          paddingVertical: 2
+          paddingVertical: s(2)
         }}
       >
         <Text
-          style={{ color: colors.heading, fontSize: 12, fontWeight: '700' }}
+          style={{ color: colors.heading, fontSize: s(12), fontWeight: '700' }}
         >
           {label}
         </Text>
-        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', gap: s(12), alignItems: 'center' }}>
           <Text
             style={{
               color: colors.heading,
-              fontSize: 12,
+              fontSize: s(12),
               fontWeight: '600',
-              width: 50,
+              width: s(50),
               textAlign: 'right'
             }}
           >
@@ -880,9 +1073,9 @@ function TotalRowTwoColumn ({
           <Text
             style={{
               color: colors.teal,
-              fontSize: 14,
+              fontSize: s(14),
               fontWeight: '700',
-              width: 50,
+              width: s(50),
               textAlign: 'right'
             }}
           >
@@ -900,25 +1093,25 @@ function TotalRowTwoColumn ({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: 2
+        paddingVertical: s(2)
       }}
     >
       <Text
         style={{
           color: isDiscount ? colors.teal : colors.label,
-          fontSize: 10,
+          fontSize: s(10),
           fontWeight: '500'
         }}
       >
         {label}
       </Text>
-      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', gap: s(12), alignItems: 'center' }}>
         <Text
           style={{
             color: colors.label,
-            fontSize: 10,
+            fontSize: s(10),
             fontWeight: '500',
-            width: 50,
+            width: s(50),
             textAlign: 'right'
           }}
         >
@@ -928,9 +1121,9 @@ function TotalRowTwoColumn ({
         <Text
           style={{
             color: colors.teal,
-            fontSize: 10,
+            fontSize: s(10),
             fontWeight: '600',
-            width: 50,
+            width: s(50),
             textAlign: 'right'
           }}
         >
@@ -955,6 +1148,8 @@ function TotalRow ({
   isDiscount?: boolean
   isTotal?: boolean
 }) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const formatCurrency = (cents: number) =>
     `$${(Math.abs(cents) / 100).toFixed(2)}`
 
@@ -965,24 +1160,24 @@ function TotalRow ({
           flexDirection: 'row',
           justifyContent: 'space-between',
           alignItems: 'center',
-          paddingVertical: 4
+          paddingVertical: s(4)
         }}
       >
         <Text
-          style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}
+          style={{ color: colors.heading, fontSize: s(14), fontWeight: '700' }}
         >
           {label}
         </Text>
         {secondaryValue !== undefined ? (
-          <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', gap: s(16), alignItems: 'center' }}>
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}
             >
-              <CreditCard size={12} color={colors.heading} />
+              <CreditCard size={s(12)} color={colors.heading} />
               <Text
                 style={{
                   color: colors.heading,
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '600'
                 }}
               >
@@ -990,11 +1185,11 @@ function TotalRow ({
               </Text>
             </View>
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}
             >
-              <Banknote size={12} color={colors.teal} />
+              <Banknote size={s(12)} color={colors.teal} />
               <Text
-                style={{ color: colors.teal, fontSize: 16, fontWeight: '700' }}
+                style={{ color: colors.teal, fontSize: s(16), fontWeight: '700' }}
               >
                 {formatCurrency(secondaryValue)}
               </Text>
@@ -1002,7 +1197,7 @@ function TotalRow ({
           </View>
         ) : (
           <Text
-            style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}
+            style={{ color: colors.heading, fontSize: s(14), fontWeight: '700' }}
           >
             {formatCurrency(value)}
           </Text>
@@ -1017,33 +1212,33 @@ function TotalRow ({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: 3
+        paddingVertical: s(3)
       }}
     >
       <Text
         style={{
           color: isDiscount ? colors.teal : colors.label,
-          fontSize: 11,
+          fontSize: s(11),
           fontWeight: '500'
         }}
       >
         {label}
       </Text>
       {secondaryValue !== undefined ? (
-        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-            <CreditCard size={10} color={colors.label} />
+        <View style={{ flexDirection: 'row', gap: s(12), alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(3) }}>
+            <CreditCard size={s(10)} color={colors.label} />
             <Text
-              style={{ color: colors.label, fontSize: 11, fontWeight: '500' }}
+              style={{ color: colors.label, fontSize: s(11), fontWeight: '500' }}
             >
               {isDiscount ? '-' : ''}
               {formatCurrency(value)}
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-            <Banknote size={10} color={colors.teal} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(3) }}>
+            <Banknote size={s(10)} color={colors.teal} />
             <Text
-              style={{ color: colors.teal, fontSize: 11, fontWeight: '600' }}
+              style={{ color: colors.teal, fontSize: s(11), fontWeight: '600' }}
             >
               {isDiscount ? '-' : ''}
               {formatCurrency(secondaryValue)}
@@ -1054,7 +1249,7 @@ function TotalRow ({
         <Text
           style={{
             color: isDiscount ? colors.teal : colors.heading,
-            fontSize: 11,
+            fontSize: s(11),
             fontWeight: isDiscount ? '600' : '500'
           }}
         >

@@ -1,5 +1,8 @@
 import { useToast } from "@/contexts/ToastContext";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { InventoryUnit } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
+import { useColorScheme } from "@/lib/useColorScheme";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
@@ -7,7 +10,7 @@ import BottomSheet, {
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
-import React, { forwardRef, useMemo, useState } from "react";
+import { forwardRef, useMemo, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -16,31 +19,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { bottomSheetTheme, colors } from "@/lib/theme";
 import { UNIT_OPTIONS } from "./InventoryItemFormModal";
 
 export type AddInventoryItemSheetRef = BottomSheet;
-
-const inputStyle = {
-  backgroundColor: colors.screen,
-  borderWidth: 1,
-  borderColor: colors.border,
-  borderRadius: 10,
-  color: colors.heading,
-  fontSize: 13,
-  height: 38,
-  paddingHorizontal: 12,
-  paddingVertical: 8,
-};
-
-const fieldLabel = {
-  fontSize: 10,
-  fontWeight: "700" as const,
-  color: colors.muted,
-  textTransform: "uppercase" as const,
-  letterSpacing: 0.4,
-  marginBottom: 6,
-};
 
 const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
   (props, ref) => {
@@ -54,12 +35,35 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
           opacity={0.7}
         />
       ),
-      []
+      [],
     );
 
     const { vendors, addInventoryItem } = useInventoryStore();
     const { show } = useToast();
     const { selectedStore } = useStoreSettingsStore();
+    const { colorScheme } = useColorScheme();
+    const keyboardAppearance = colorScheme === "dark" ? "dark" : "light";
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
+    const inputStyle = {
+      backgroundColor: colors.screen,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: s(10),
+      color: colors.heading,
+      fontSize: s(13),
+      height: s(38),
+      paddingHorizontal: s(12),
+      paddingVertical: s(8),
+    };
+    const fieldLabel = {
+      fontSize: s(10),
+      fontWeight: "700" as const,
+      color: colors.muted,
+      textTransform: "uppercase" as const,
+      letterSpacing: 0.4,
+      marginBottom: s(6),
+    };
 
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [name, setName] = useState("");
@@ -93,16 +97,21 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
       const thresholdNum = reorderThreshold ? parseInt(reorderThreshold) : 0;
 
       try {
-        await addInventoryItem({
-          name: name.trim(),
-          category: category.trim() || "Uncategorized",
-          stockQuantity: isNaN(stockQty) ? 0 : Number(stockQty.toFixed(2)),
-          unit,
-          reorderThreshold: isNaN(thresholdNum) ? 0 : thresholdNum,
-          cost: isNaN(costNum) ? 0 : Number(costNum.toFixed(2)),
-          vendorId: vendorId || null,
-          stockTrackingMode,
-        }, selectedStore.id);
+        await addInventoryItem(
+          {
+            name: name.trim(),
+            category: category.trim() || "Uncategorized",
+            stockQuantity: isNaN(stockQty) ? 0 : Number(stockQty.toFixed(2)),
+            unit,
+            unitType: "unit",
+            reorderThreshold: isNaN(thresholdNum) ? 0 : thresholdNum,
+            cost: isNaN(costNum) ? 0 : Number(costNum.toFixed(2)),
+            vendorId: vendorId || null,
+            locationId: selectedStore.id,
+            stockTrackingMode,
+          },
+          selectedStore.id,
+        );
 
         show({
           title: "Item Added",
@@ -139,7 +148,15 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
         {...bottomSheetTheme}
         backdropComponent={renderBackdrop}
       >
-        <BottomSheetView style={{ backgroundColor: colors.panel, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: "hidden", flex: 1 }}>
+        <BottomSheetView
+          style={{
+            backgroundColor: colors.panel,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            overflow: "hidden",
+            flex: 1,
+          }}
+        >
           {/* Header */}
           <View
             style={{
@@ -149,12 +166,26 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
               backgroundColor: colors.panel,
             }}
           >
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
               <View>
-                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontWeight: "700",
+                    color: colors.heading,
+                  }}
+                >
                   Add Item
                 </Text>
-                <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+                <Text
+                  style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}
+                >
                   Step {step} of 3
                 </Text>
               </View>
@@ -166,21 +197,30 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                   borderRadius: 8,
                 }}
               >
-                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "700",
+                    color: colors.teal,
+                  }}
+                >
                   {step}/3
                 </Text>
               </View>
             </View>
           </View>
 
-          <KeyboardAvoidingView
-            behavior="padding"
-            style={{ flex: 1 }}
-          >
+          <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
             <View style={{ padding: 14 }}>
               {step === 1 && (
                 <View>
-                  <Text style={{ fontSize: 12, color: colors.label, marginBottom: 14 }}>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: colors.label,
+                      marginBottom: 14,
+                    }}
+                  >
                     Let's start with the basics.
                   </Text>
                   <View style={{ marginBottom: 16 }}>
@@ -190,6 +230,9 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       onChangeText={setName}
                       placeholder="e.g., Jalapeño Peppers"
                       placeholderTextColor={colors.muted}
+                      keyboardAppearance={keyboardAppearance}
+                      selectionColor={colors.teal}
+                      cursorColor={colors.teal}
                       style={inputStyle}
                     />
                   </View>
@@ -197,7 +240,9 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                     disabled={!canNextFromStep1}
                     onPress={() => setStep(2)}
                     style={{
-                      backgroundColor: canNextFromStep1 ? colors.teal : colors.muted + "20",
+                      backgroundColor: canNextFromStep1
+                        ? colors.teal
+                        : colors.muted + "20",
                       borderRadius: 10,
                       paddingVertical: 10,
                       alignItems: "center",
@@ -219,7 +264,13 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
 
               {step === 2 && (
                 <View>
-                  <Text style={{ fontSize: 12, color: colors.label, marginBottom: 14 }}>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: colors.label,
+                      marginBottom: 14,
+                    }}
+                  >
                     How do you purchase this item?
                   </Text>
                   <View style={{ flexDirection: "row", gap: 12 }}>
@@ -240,14 +291,20 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                               alignItems: "center",
                               justifyContent: "center",
                               borderRadius: 8,
-                              backgroundColor: unit === item.value ? colors.teal + "15" : colors.muted + "05",
+                              backgroundColor:
+                                unit === item.value
+                                  ? colors.teal + "15"
+                                  : colors.muted + "05",
                             }}
                           >
                             <Text
                               style={{
                                 fontSize: 11,
                                 fontWeight: unit === item.value ? "700" : "500",
-                                color: unit === item.value ? colors.teal : colors.label,
+                                color:
+                                  unit === item.value
+                                    ? colors.teal
+                                    : colors.label,
                                 textAlign: "center",
                               }}
                             >
@@ -265,6 +322,9 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                         keyboardType="decimal-pad"
                         placeholder="0.00"
                         placeholderTextColor={colors.muted}
+                        keyboardAppearance={keyboardAppearance}
+                        selectionColor={colors.teal}
+                        cursorColor={colors.teal}
                         style={inputStyle}
                       />
                     </View>
@@ -272,7 +332,10 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
 
                   <View style={{ marginBottom: 16 }}>
                     <Text style={fieldLabel}>Vendor (Optional)</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                    >
                       <View style={{ flexDirection: "row", gap: 6 }}>
                         <TouchableOpacity
                           onPress={() => setVendorId("")}
@@ -280,14 +343,18 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                             paddingHorizontal: 12,
                             paddingVertical: 6,
                             borderRadius: 8,
-                            backgroundColor: vendorId === "" ? colors.teal + "15" : colors.muted + "05",
+                            backgroundColor:
+                              vendorId === ""
+                                ? colors.teal + "15"
+                                : colors.muted + "05",
                           }}
                         >
                           <Text
                             style={{
                               fontSize: 11,
                               fontWeight: vendorId === "" ? "700" : "500",
-                              color: vendorId === "" ? colors.teal : colors.label,
+                              color:
+                                vendorId === "" ? colors.teal : colors.label,
                             }}
                           >
                             None
@@ -301,14 +368,20 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                               paddingHorizontal: 12,
                               paddingVertical: 6,
                               borderRadius: 8,
-                              backgroundColor: vendorId === v.id ? colors.teal + "15" : colors.muted + "05",
+                              backgroundColor:
+                                vendorId === v.id
+                                  ? colors.teal + "15"
+                                  : colors.muted + "05",
                             }}
                           >
                             <Text
                               style={{
                                 fontSize: 11,
                                 fontWeight: vendorId === v.id ? "700" : "500",
-                                color: vendorId === v.id ? colors.teal : colors.label,
+                                color:
+                                  vendorId === v.id
+                                    ? colors.teal
+                                    : colors.label,
                               }}
                             >
                               {v.name}
@@ -330,7 +403,13 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                         alignItems: "center",
                       }}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.label }}>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "700",
+                          color: colors.label,
+                        }}
+                      >
                         ← Back
                       </Text>
                     </TouchableOpacity>
@@ -340,7 +419,9 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       style={{
                         flex: 1,
                         paddingVertical: 10,
-                        backgroundColor: canNextFromStep2 ? colors.teal : colors.muted + "20",
+                        backgroundColor: canNextFromStep2
+                          ? colors.teal
+                          : colors.muted + "20",
                         borderRadius: 10,
                         alignItems: "center",
                         opacity: canNextFromStep2 ? 1 : 0.5,
@@ -362,41 +443,55 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
 
               {step === 3 && (
                 <View>
-                  <Text style={{ fontSize: 12, color: colors.label, marginBottom: 14 }}>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: colors.label,
+                      marginBottom: 14,
+                    }}
+                  >
                     Set inventory rules.
                   </Text>
                   <View style={{ marginBottom: 12 }}>
                     <Text style={fieldLabel}>Tracking Mode</Text>
                     <View style={{ flexDirection: "row", gap: 8 }}>
-                      {(["in_stock", "out_of_stock", "quantity"] as const).map((mode) => {
-                        const isActive = stockTrackingMode === mode;
-                        const label =
-                          mode === "in_stock" ? "In Stock" : mode === "out_of_stock" ? "Out" : "Quantity";
-                        return (
-                          <TouchableOpacity
-                            key={mode}
-                            onPress={() => setStockTrackingMode(mode)}
-                            style={{
-                              flex: 1,
-                              paddingHorizontal: 12,
-                              paddingVertical: 8,
-                              borderRadius: 10,
-                              backgroundColor: isActive ? colors.teal + "15" : colors.muted + "05",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Text
+                      {(["in_stock", "out_of_stock", "quantity"] as const).map(
+                        (mode) => {
+                          const isActive = stockTrackingMode === mode;
+                          const label =
+                            mode === "in_stock"
+                              ? "In Stock"
+                              : mode === "out_of_stock"
+                                ? "Out"
+                                : "Quantity";
+                          return (
+                            <TouchableOpacity
+                              key={mode}
+                              onPress={() => setStockTrackingMode(mode)}
                               style={{
-                                fontSize: 12,
-                                fontWeight: isActive ? "700" : "500",
-                                color: isActive ? colors.teal : colors.label,
+                                flex: 1,
+                                paddingHorizontal: 12,
+                                paddingVertical: 8,
+                                borderRadius: 10,
+                                backgroundColor: isActive
+                                  ? colors.teal + "15"
+                                  : colors.muted + "05",
+                                alignItems: "center",
                               }}
                             >
-                              {label}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: isActive ? "700" : "500",
+                                  color: isActive ? colors.teal : colors.label,
+                                }}
+                              >
+                                {label}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        },
+                      )}
                     </View>
                   </View>
                   {stockTrackingMode === "quantity" && (
@@ -404,13 +499,24 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       <Text style={fieldLabel}>Reorder Threshold</Text>
                       <BottomSheetTextInput
                         value={reorderThreshold}
-                        onChangeText={(t) => setReorderThreshold(t.replace(/[^0-9]/g, ""))}
+                        onChangeText={(t) =>
+                          setReorderThreshold(t.replace(/[^0-9]/g, ""))
+                        }
                         keyboardType="number-pad"
                         placeholder="e.g., 5"
                         placeholderTextColor={colors.muted}
+                        keyboardAppearance={keyboardAppearance}
+                        selectionColor={colors.teal}
+                        cursorColor={colors.teal}
                         style={inputStyle}
                       />
-                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: colors.muted,
+                          marginTop: 4,
+                        }}
+                      >
                         Alert at this level
                       </Text>
                     </View>
@@ -420,13 +526,24 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       <Text style={fieldLabel}>Initial Stock</Text>
                       <BottomSheetTextInput
                         value={initialStock}
-                        onChangeText={(t) => setInitialStock(t.replace(/[^0-9.]/g, ""))}
+                        onChangeText={(t) =>
+                          setInitialStock(t.replace(/[^0-9.]/g, ""))
+                        }
                         keyboardType="decimal-pad"
                         placeholder="e.g., 10"
                         placeholderTextColor={colors.muted}
+                        keyboardAppearance={keyboardAppearance}
+                        selectionColor={colors.teal}
+                        cursorColor={colors.teal}
                         style={inputStyle}
                       />
-                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: colors.muted,
+                          marginTop: 4,
+                        }}
+                      >
                         Current quantity on hand
                       </Text>
                     </View>
@@ -442,7 +559,13 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                         alignItems: "center",
                       }}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.label }}>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "700",
+                          color: colors.label,
+                        }}
+                      >
                         ← Back
                       </Text>
                     </TouchableOpacity>
@@ -457,7 +580,11 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       }}
                     >
                       <Text
-                        style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "700",
+                          color: colors.onSolid,
+                        }}
                       >
                         ✓ Save Item
                       </Text>
@@ -470,7 +597,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
         </BottomSheetView>
       </BottomSheet>
     );
-  }
+  },
 );
 
 AddInventoryItemSheet.displayName = "AddInventoryItemSheet";

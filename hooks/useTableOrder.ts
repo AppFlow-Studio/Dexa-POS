@@ -52,10 +52,12 @@ export function useTableOrder(tableId: string | null | undefined): UseTableOrder
   const session = table?.session ?? null;
   const sessionOrderId = session?.order_id ?? null;
 
-  // Get order from order store (O(1) lookup)
-  const order = useOrderStore((state) =>
-    sessionOrderId ? state.ordersById[sessionOrderId] ?? null : null
-  );
+  // Get order from order store (O(1) lookup via dbOrderIdIndex)
+  const order = useOrderStore((state) => {
+    if (!sessionOrderId) return null
+    const localKey = state.dbOrderIdIndex[sessionOrderId] ?? sessionOrderId
+    return state.ordersById[localKey] ?? null
+  });
 
   return {
     table,

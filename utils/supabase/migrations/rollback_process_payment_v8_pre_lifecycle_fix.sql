@@ -1,0 +1,15 @@
+-- ROLLBACK: process_payment_v8 BEFORE lifecycle fix (2026-04-23)
+-- To restore: execute this entire file against the database
+-- Changes this reverts:
+--   1. Full remaining path: reverts paid_qty=quantity,refunded_qty=0 back to paid_qty=quantity+refunded_qty
+--   2. Per-item path: removes paid_qty cap at quantity and refunded_qty clearing
+--   3. Split complete + fallback: same as #1
+--
+-- The full pre-fix function source was captured via:
+--   SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname = 'process_payment_v8';
+-- on 2026-04-23 before deployment.
+--
+-- To rollback, run the process_payment_v7_terminal_id.sql from the git commit
+-- BEFORE this fix (check git log for the pre-fix commit).
+-- The pre-fix version uses: paid_quantity = quantity + COALESCE(refunded_quantity, 0)
+-- in 3 places (full remaining, split complete, fallback fully-paid).

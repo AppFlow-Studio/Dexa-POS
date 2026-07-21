@@ -29,13 +29,49 @@ private val CASTLES_PRODUCT_IDS = intArrayOf(0x0070)
 /** Read buffer size — 16 KB handles large JSON payment responses */
 private const val READ_BUFFER_SIZE = 16 * 1024
 
+/**
+ * Per-read timeout for the background read thread (ms). MUST be > 0.
+ *
+ * With the library default of 0 the read blocks indefinitely, so on a cable
+ * detach the read thread never notices stop() and keeps occupying the single
+ * ioExecutor thread. The next open()'s read manager then queues behind that
+ * stuck thread and never runs — the port opens and writes succeed, but no
+ * responses are ever read (return2Idle/getData time out → "Offline"), until
+ * the OS eventually errors the dead read minutes later. A finite timeout makes
+ * the read loop wake periodically, observe stop(), and exit promptly so a
+ * replug reconnects immediately.
+ */
+private const val READ_TIMEOUT_MS = 200
+
 class CastlesUsbModule : Module() {
 
   // ── State (guarded by `lock`) ──
   private val lock = Object()
   private var serialPort: UsbSerialPort? = null
   private var ioManager: SerialInputOutputManager? = null
-  private val ioExecutor = Executors.newSingleThreadExecutor()
+
+  // Background read thread. The thread factory installs an UncaughtExceptionHandler
+  // so a fault on the read loop (e.g. an exception escaping the SerialInputOutputManager
+  // listener / a JSI emit failure during teardown) can NEVER reach the JVM default
+  // handler, which would crash the whole process. This is the defensive net behind
+  // the per-listener try/catch in open(). See the S1-0002 USB refund crash.
+  private val ioExecutor = Executors.newSingleThreadExecutor { r ->
+    Thread(r, "castles-usb-io").apply {
+      setUncaughtExceptionHandler { t, e ->
+        android.util.Log.e("CastlesUsbModule", "Uncaught on ${t.name}: ${e.message}", e)
+      }
+    }
+  }
+
+  // Dedicated thread for blocking port teardown. closeInternal()'s DTR/RTS
+  // de-assert + close() are USB control transfers that can each block up to ~5s
+  // on a dead/glitching device. Running them here keeps that blocking OFF the
+  // main/UI thread (which would ANR — the detach broadcast is delivered on main)
+  // and off the read thread.
+  private val cleanupExecutor = Executors.newSingleThreadExecutor { r ->
+    Thread(r, "castles-usb-cleanup")
+  }
+
   private var permissionPromise: Promise? = null
 
   // ── Helpers ──
@@ -88,15 +124,38 @@ class CastlesUsbModule : Module() {
         val device = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
         val deviceId = device?.deviceId ?: -1
 
-        // If the detached device is the one we have open, clean up
-        synchronized(lock) {
+        // If the detached device is the one we have open, clean up. This receiver
+        // is delivered on the MAIN thread, and closeInternal() can block on up-to-5s
+        // control transfers — so post the teardown to the cleanup thread instead of
+        // blocking main (which would ANR).
+        val isOurDevice = synchronized(lock) {
           val currentDevice = serialPort?.device
-          if (currentDevice != null && currentDevice.deviceId == deviceId) {
-            closeInternal()
-          }
+          currentDevice != null && currentDevice.deviceId == deviceId
+        }
+        if (isOurDevice) {
+          cleanupExecutor.submit { closeInternal() }
         }
 
         sendEvent("onCastlesUsbDetached", mapOf("deviceId" to deviceId))
+      }
+    }
+  }
+
+  private val attachReceiver = object : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+      if (intent.action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
+        val device = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE) ?: return
+        // Emit for every attach; the JS coordinator filters by Castles VID and
+        // decides whether to auto-connect. Keeping the native side dumb avoids
+        // baking connection policy into the driver.
+        sendEvent(
+          "onCastlesUsbAttached",
+          mapOf(
+            "deviceId" to device.deviceId,
+            "vendorId" to device.vendorId,
+            "productId" to device.productId
+          )
+        )
       }
     }
   }
@@ -107,7 +166,7 @@ class CastlesUsbModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("CastlesUsbModule")
 
-    Events("onCastlesUsbData", "onCastlesUsbError", "onCastlesUsbDetached")
+    Events("onCastlesUsbData", "onCastlesUsbError", "onCastlesUsbDetached", "onCastlesUsbAttached")
 
     OnCreate {
       registerReceivers()
@@ -116,6 +175,8 @@ class CastlesUsbModule : Module() {
     OnDestroy {
       closeInternal()
       unregisterReceivers()
+      try { cleanupExecutor.shutdownNow() } catch (_: Exception) {}
+      try { ioExecutor.shutdownNow() } catch (_: Exception) {}
     }
 
     // ── listDevices() ──
@@ -190,8 +251,13 @@ class CastlesUsbModule : Module() {
     // Sets DTR + RTS to signal terminal readiness (required by CDC ACM devices).
     AsyncFunction("open") { deviceId: Int, baudRate: Int ->
       synchronized(lock) {
+        // Defensive: if a port is still registered (e.g. a stale handle that
+        // survived a cable yank where the detach broadcast was missed), recycle
+        // it cleanly instead of failing the reconnect. Reopening on a fresh
+        // cable insertion must never be blocked by leftover state.
         if (serialPort != null) {
-          throw Exception("A port is already open. Call close() first.")
+          android.util.Log.w("CastlesUsbModule", "open(): a port was still registered — recycling before reopen")
+          closeInternal()
         }
 
         val drivers = findAllDrivers()
@@ -228,16 +294,39 @@ class CastlesUsbModule : Module() {
         // Start background read thread with larger buffer for JSON payloads
         val manager = SerialInputOutputManager(port, object : SerialInputOutputManager.Listener {
           override fun onNewData(data: ByteArray) {
-            val str = String(data, Charsets.UTF_8)
-            sendEvent("onCastlesUsbData", mapOf("data" to str))
+            // MUST NOT throw: this runs on the read thread inside
+            // SerialInputOutputManager.run(), whose exception handling around the
+            // listener call is not guaranteed to contain a throw — an escaping
+            // exception would propagate off the read thread and crash the process.
+            try {
+              val str = String(data, Charsets.UTF_8)
+              sendEvent("onCastlesUsbData", mapOf("data" to str))
+            } catch (t: Throwable) {
+              android.util.Log.e("CastlesUsbModule", "onNewData handler threw (swallowed): ${t.message}", t)
+            }
           }
 
           override fun onRunError(e: Exception) {
-            sendEvent("onCastlesUsbError", mapOf("message" to (e.message ?: "Unknown read error")))
-            closeInternal()
+            // Same contract as onNewData — never let a throw escape the read thread.
+            // Emit the error, then run the (potentially blocking) teardown on the
+            // cleanup thread rather than synchronously here on the read thread.
+            try {
+              sendEvent("onCastlesUsbError", mapOf("message" to (e.message ?: "Unknown read error")))
+            } catch (t: Throwable) {
+              android.util.Log.e("CastlesUsbModule", "onRunError emit threw (swallowed): ${t.message}", t)
+            }
+            try {
+              cleanupExecutor.submit { closeInternal() }
+            } catch (t: Throwable) {
+              android.util.Log.e("CastlesUsbModule", "onRunError cleanup submit failed: ${t.message}", t)
+            }
           }
         })
         manager.readBufferSize = READ_BUFFER_SIZE
+        // Finite read timeout so the loop wakes periodically and exits promptly
+        // on stop() — without this a cable detach leaves the read thread blocked
+        // forever, starving the next connection's reads (see READ_TIMEOUT_MS).
+        manager.readTimeout = READ_TIMEOUT_MS
         ioManager = manager
         ioExecutor.submit(manager)
       }
@@ -288,19 +377,26 @@ class CastlesUsbModule : Module() {
   // ── Internal helpers ──
 
   private fun closeInternal() {
+    // Capture-and-null the handles UNDER the lock, then do the blocking native
+    // calls OUTSIDE it. This makes the method non-reentrant (a concurrent second
+    // caller sees null handles and no-ops) AND ensures the up-to-5s-each DTR/RTS/
+    // close control transfers never hold `lock` — so a concurrent open()/write()
+    // is never blocked waiting on a dead device's teardown.
+    val mgr: SerialInputOutputManager?
+    val port: UsbSerialPort?
     synchronized(lock) {
-      try { ioManager?.stop() } catch (_: Exception) {}
+      mgr = ioManager
       ioManager = null
-
-      try {
-        // De-assert DTR/RTS before closing to signal disconnect cleanly
-        serialPort?.dtr = false
-        serialPort?.rts = false
-      } catch (_: Exception) {}
-
-      try { serialPort?.close() } catch (_: Exception) {}
+      port = serialPort
       serialPort = null
     }
+
+    try { mgr?.stop() } catch (_: Exception) {}
+    // De-assert DTR then RTS to signal disconnect cleanly. Each is guarded
+    // separately so a failure on one still attempts the next and the close().
+    try { port?.dtr = false } catch (_: Exception) {}
+    try { port?.rts = false } catch (_: Exception) {}
+    try { port?.close() } catch (_: Exception) {}
   }
 
   private fun registerReceivers() {
@@ -308,15 +404,19 @@ class CastlesUsbModule : Module() {
 
     val permFilter = IntentFilter(ACTION_USB_PERMISSION)
     val detachFilter = IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED)
+    val attachFilter = IntentFilter(UsbManager.ACTION_USB_DEVICE_ATTACHED)
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
       // Permission receiver: app-internal broadcast via PendingIntent → NOT_EXPORTED
       context.registerReceiver(permissionReceiver, permFilter, Context.RECEIVER_NOT_EXPORTED)
-      // Detach receiver: system broadcast → EXPORTED (required to receive USB_DEVICE_DETACHED on LANDI/Android 13+)
+      // Attach/detach receivers: system broadcasts → EXPORTED (required to receive
+      // USB_DEVICE_ATTACHED/DETACHED on LANDI/Android 13+)
       context.registerReceiver(detachReceiver, detachFilter, Context.RECEIVER_EXPORTED)
+      context.registerReceiver(attachReceiver, attachFilter, Context.RECEIVER_EXPORTED)
     } else {
       context.registerReceiver(permissionReceiver, permFilter)
       context.registerReceiver(detachReceiver, detachFilter)
+      context.registerReceiver(attachReceiver, attachFilter)
     }
 
     receiversRegistered = true
@@ -326,6 +426,7 @@ class CastlesUsbModule : Module() {
     if (!receiversRegistered) return
     try { context.unregisterReceiver(permissionReceiver) } catch (_: Exception) {}
     try { context.unregisterReceiver(detachReceiver) } catch (_: Exception) {}
+    try { context.unregisterReceiver(attachReceiver) } catch (_: Exception) {}
     receiversRegistered = false
   }
 }

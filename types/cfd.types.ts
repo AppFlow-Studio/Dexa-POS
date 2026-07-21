@@ -72,6 +72,11 @@ export interface CFDPayload {
 
   discountAmount: number
 
+  // Service charge folded into total_amount (cents). 0 when not applicable.
+  serviceCharge: number
+  serviceChargeName: string | null
+  serviceChargeRate: number | null
+
   taxAmount: number // Default/Card tax
   taxCash: number
   taxCard: number
@@ -105,6 +110,13 @@ export interface CFDPayload {
     subtotalForTip: number // Base amount for tip calculation
     presetPercentages: number[] // e.g., [15, 18, 20, 25]
     allowCustom: boolean
+    maxTipPercentage?: number // Cap on custom tip as % of subtotal (default 100)
+    // Optional platform tip surcharge baked into displayed amounts (P1).
+    // When > 0, preset chips and custom-tip math show
+    // `subtotal × pct × (1 + tipSurchargePercentage / 100)` — customer
+    // sees only the final marked-up number. Backend extracts the
+    // surcharge silently into order_payments.tip_fee.
+    tipSurchargePercentage?: number
   }
 
   carouselImages?: string[]
@@ -130,6 +142,20 @@ export interface CFDPayload {
   }
   // Payment method (when screenState is 'payment' or 'processing')
   paymentMethod?: 'cash' | 'card' | 'manual' | null
+
+  // Whether the merchant has any active loyalty program. When false, the CFD
+  // hides the "Join Loyalty" CTA on the result screen so customers don't see
+  // a button that would lead nowhere.
+  merchantHasLoyalty?: boolean
+
+  // Controls which price totals the CFD ordering screen displays.
+  // 'dual' = show both card and cash totals (default)
+  // 'card_only' = show only card total
+  // 'cash_only' = show only cash total
+  pricingDisplayMode?: 'dual' | 'card_only' | 'cash_only'
+
+  // Theme
+  themeMode?: 'light' | 'dark'
 
   // Timestamp
   timestamp: number

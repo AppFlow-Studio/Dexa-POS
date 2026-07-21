@@ -8,7 +8,9 @@
  * Used by: store, payment preview, offline mode, tests
  */
 
-import { CartItem } from "@/lib/types";
+import { isServiceChargeEnabled } from '@/lib/serviceCharge'
+import { payableQuantity } from '@/lib/payableQuantity'
+import { CartItem } from '@/lib/types'
 import {
   DualPriceSplitResult,
   EvenSplitResult,
@@ -20,29 +22,34 @@ import {
   PaidStatus,
   PaymentForCalculation,
   PaymentPreviewInput,
-  PaymentPreviewResult,
-} from "@/types/order-calculations";
-import Decimal from 'decimal.js';
+  PaymentPreviewResult
+} from '@/types/order-calculations'
+import { round2 as round2FromMoney } from '@/utils/money'
+import Decimal from 'decimal.js'
+
+// Re-export the correct round2 implementation (decimal.js, PostgreSQL-compatible)
+// Fixes: replaces broken Math.round + Number.EPSILON version
+export const round2 = round2FromMoney
 
 // ============================================================================
 // CALCULATION CACHE - TTL-based memoization for performance
 // ============================================================================
 
 interface CacheEntry {
-  result: OrderTotals;
-  timestamp: number;
+  result: OrderTotals
+  timestamp: number
 }
 
-const calculationCache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 2000; // 2 seconds - covers rapid UI updates
-const MAX_CACHE_SIZE = 20; // Limit memory usage
+const calculationCache = new Map<string, CacheEntry>()
+const CACHE_TTL_MS = 2000 // 2 seconds - covers rapid UI updates
+const MAX_CACHE_SIZE = 20 // Limit memory usage
 
 /**
  * Clear the calculation cache.
  * Call when tax rates change or on critical actions like payment.
  */
-export function invalidateCalculationCache(): void {
-  calculationCache.clear();
+export function invalidateCalculationCache (): void {
+  calculationCache.clear()
 }
 
 /**
@@ -50,46 +57,27 @@ export function invalidateCalculationCache(): void {
  * Use for broadcast handlers and batch sync paths where multiple items may trigger
  * invalidation in rapid succession.
  */
-let _cacheInvalidationScheduled = false;
-export function scheduleCalculationCacheInvalidation(): void {
-  if (_cacheInvalidationScheduled) return;
-  _cacheInvalidationScheduled = true;
+let _cacheInvalidationScheduled = false
+export function scheduleCalculationCacheInvalidation (): void {
+  if (_cacheInvalidationScheduled) return
+  _cacheInvalidationScheduled = true
   queueMicrotask(() => {
-    _cacheInvalidationScheduled = false;
-    invalidateCalculationCache();
-  });
+    _cacheInvalidationScheduled = false
+    invalidateCalculationCache()
+  })
 }
 
 /**
  * Prune expired entries from cache.
  * Called automatically during cache operations.
  */
-function pruneCache(): void {
-  const now = Date.now();
+function pruneCache (): void {
+  const now = Date.now()
   for (const [key, entry] of calculationCache) {
     if (now - entry.timestamp > CACHE_TTL_MS * 2) {
-      calculationCache.delete(key);
+      calculationCache.delete(key)
     }
   }
-}
-
-// ============================================================================
-// ROUNDING UTILITY - Matches PostgreSQL ROUND(x, 2)
-// ============================================================================
-
-/**
- * Round to 2 decimal places matching PostgreSQL's rounding behavior.
- * Uses Math.round with EPSILON to handle floating point edge cases.
- *
- * CRITICAL: All monetary calculations MUST use this function.
- *
- * @example
- * round2(10.005) // 10.01 (matches PostgreSQL)
- * round2(0.1 + 0.2) // 0.30 (handles floating point)
- */
-export function round2(num: number): number {
-  // console.log('[round2] num', num);
-  return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
 // ============================================================================
@@ -123,7 +111,7 @@ export function round2(num: number): number {
 //         }
 //       }
 //     }
-  
+
 //     return round2(effectivePrice);
 //   }
 
@@ -147,24 +135,23 @@ export function round2(num: number): number {
 //   console.log('CalculateItemEffective Cash Price After Modifiers', effectivePrice)
 //   return round2(effectivePrice);
 // }
-export function calculateItemEffectiveCashPrice(item: CartItem): number {
-  let effectivePrice = new Decimal(item.baseCashPrice ?? item.cashPrice ?? item.unitPrice ?? 0);
-  
+export function calculateItemEffectiveCashPrice (item: CartItem): number {
+  let effectivePrice = new Decimal(item.baseCashPrice ?? item.unitPrice ?? 0)
+
   if (item.customizations?.size?.priceModifier) {
-    effectivePrice = effectivePrice.plus(item.customizations.size.priceModifier);
+    effectivePrice = effectivePrice.plus(item.customizations.size.priceModifier)
   }
-  
+
   if (item.customizations?.modifiers) {
     for (const modifierGroup of item.customizations.modifiers) {
       for (const option of modifierGroup.options) {
-        effectivePrice = effectivePrice.plus(option.price ?? 0);
+        effectivePrice = effectivePrice.plus(option.price ?? 0)
       }
     }
   }
-  
-  return effectivePrice.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
-}
 
+  return effectivePrice.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber()
+}
 
 /**
  * Calculate the effective cash price for a single cart item.
@@ -192,7 +179,7 @@ export function calculateItemEffectiveCashPrice(item: CartItem): number {
 //         }
 //       }
 //     }
-  
+
 //     return round2(effectivePrice);
 //   }
 
@@ -218,37 +205,40 @@ export function calculateItemEffectiveCashPrice(item: CartItem): number {
 //   return round2(effectivePrice);
 // }
 // Use Decimal for modifier calculations too
-export function calculateItemEffectiveCardPrice(item: CartItem): number {
-  let effectivePrice = new Decimal(item.baseCardPrice ?? item.unitPrice ?? 0);
-  // Hot-path log removed for perf
-  // Size modifier
+export function calculateItemEffectiveCardPrice (item: CartItem): number {
+  let effectivePrice = new Decimal(item.baseCardPrice ?? item.unitPrice ?? 0)
+
   if (item.customizations?.size?.priceModifier) {
-    effectivePrice = effectivePrice.plus(item.customizations.size.priceModifier);
+    effectivePrice = effectivePrice.plus(item.customizations.size.priceModifier)
   }
-  
-  // All modifier options
+
   if (item.customizations?.modifiers) {
     for (const modifierGroup of item.customizations.modifiers) {
       for (const option of modifierGroup.options) {
-        effectivePrice = effectivePrice.plus(option.price ?? 0);
+        effectivePrice = effectivePrice.plus(option.price ?? 0)
       }
     }
   }
-  
-  return effectivePrice.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
-}
 
+  return effectivePrice.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber()
+}
 
 /**
  * Calculate tax for a single item given its taxable amount and tax rate.
+ *
+ * NOTE (v6): this is a PER-ITEM display/split value only. The authoritative
+ * order-level `tax_amount` is computed as an aggregate per rate group in
+ * `calculateOrderTotals` (round once per group, not per item), so the sum of
+ * per-item `calculateItemTax` values may differ from the order tax by up to a
+ * cent per rate group. Do not sum these to derive the order total.
  */
-export function calculateItemTax(
+export function calculateItemTax (
   taxableAmount: number,
   taxRatePercent: number,
   isTaxExempt: boolean
 ): number {
-  if (isTaxExempt || taxRatePercent <= 0) return 0;
-  return round2(taxableAmount * (taxRatePercent / 100));
+  if (isTaxExempt || taxRatePercent <= 0) return 0
+  return round2(taxableAmount * (taxRatePercent / 100))
 }
 
 // ============================================================================
@@ -263,35 +253,43 @@ export function calculateItemTax(
  * @param totalAmount - The order's total amount (card price)
  * @returns The calculated paid status
  */
-export function calculatePaidStatus(
+export function calculatePaidStatus (
   payments: PaymentForCalculation[] | undefined,
   totalAmount: number
 ): PaidStatus {
-  const nonVoidedPayments = payments?.filter((p) => !p.isVoided) ?? [];
-  const totalPaid = nonVoidedPayments.reduce(
-    (sum, p) => {
-      // For cash-priced payments, add back cashSavings to get card-equivalent amount
-      // so comparison against card totalAmount is apples-to-apples
-      const cardEquivalent = p.isCashPriced && p.cashSavings
+  const nonVoidedPayments = payments?.filter(p => !p.isVoided) ?? []
+  const totalPaid = nonVoidedPayments.reduce((sum, p) => {
+    // For cash-priced payments, add back cashSavings to get card-equivalent amount
+    // so comparison against card totalAmount is apples-to-apples
+    const cardEquivalent =
+      p.isCashPriced && p.cashSavings
         ? (p.amount ?? 0) + p.cashSavings
-        : (p.amount ?? 0);
-      return sum + cardEquivalent;
-    },
-    0
-  );
+        : p.amount ?? 0
+    // Refund subtraction must scale by the cash↔card ratio: refundedAmount is
+    // stored in the payment's own currency, so for a fully-refunded cash
+    // payment we have to remove the entire card-equivalent (cash + savings),
+    // not just the cash portion — otherwise the cashSavings residue is left
+    // counted as "paid" and the order misreads as fully settled. Mirrors the
+    // proportional refund handling in calculateOrderTotals.
+    const refunded = p.refundedAmount ?? 0
+    const amount = p.amount ?? 0
+    const cardEquivalentRefunded =
+      amount > 0 ? (cardEquivalent * refunded) / amount : refunded
+    return sum + (cardEquivalent - cardEquivalentRefunded)
+  }, 0)
 
   // No payments or zero total paid
   if (totalPaid <= 0 || nonVoidedPayments.length === 0) {
-    return "Pending";
+    return 'Pending'
   }
 
-  // Fully paid 
+  // Fully paid
   if (totalPaid >= totalAmount - 0.01) {
-    return "Paid";
+    return 'Paid'
   }
 
   // Has some payments but not fully paid
-  return "Partial";
+  return 'Partial'
 }
 
 // ============================================================================
@@ -313,65 +311,65 @@ export function calculatePaidStatus(
  * @param totalCashDiscount - Total discount for cash pricing (defaults to card)
  * @returns Items with updated discount_amount and discount_cash_amount
  */
-export function distributeDiscountToItems(
+export function distributeDiscountToItems (
   items: CartItem[],
   totalCardDiscount: number,
   totalCashDiscount?: number
 ): CartItem[] {
-  const cashDiscount = totalCashDiscount ?? totalCardDiscount;
+  const cashDiscount = totalCashDiscount ?? totalCardDiscount
   // Calculate totals for proportion
-  let orderCardSubtotal = 0;
-  let orderCashSubtotal = 0;
-  const activeItems = items.filter((item) => !item.is_voided);
+  let orderCardSubtotal = 0
+  let orderCashSubtotal = 0
+  const activeItems = items.filter(item => !item.is_voided && !item.isDraft)
 
   for (const item of activeItems) {
-    orderCardSubtotal += item.price * item.quantity;
-    orderCashSubtotal += item.cashPrice * item.quantity;
+    orderCardSubtotal += item.price * item.quantity
+    orderCashSubtotal += item.cashPrice * item.quantity
   }
 
   // Track distributed amounts for rounding adjustment
-  let distributedCard = 0;
-  let distributedCash = 0;
-  let lastActiveIndex = -1;
+  let distributedCard = 0
+  let distributedCash = 0
+  let lastActiveIndex = -1
 
   const result = items.map((item, index) => {
-    if (item.is_voided) return item;
+    if (item.is_voided) return item
 
-    lastActiveIndex = index;
+    lastActiveIndex = index
 
-    const itemCardSubtotal = item.price * item.quantity;
+    const itemCardSubtotal = item.price * item.quantity
     const itemCashSubtotal =
-      calculateItemEffectiveCashPrice(item) * item.quantity;
+      calculateItemEffectiveCashPrice(item) * item.quantity
 
     // Calculate proportions
     const cardProportion =
-      orderCardSubtotal > 0 ? itemCardSubtotal / orderCardSubtotal : 0;
+      orderCardSubtotal > 0 ? itemCardSubtotal / orderCardSubtotal : 0
     const cashProportion =
-      orderCashSubtotal > 0 ? itemCashSubtotal / orderCashSubtotal : 0;
+      orderCashSubtotal > 0 ? itemCashSubtotal / orderCashSubtotal : 0
 
     // Calculate discounts
-    const itemCardDiscount = round2(totalCardDiscount * cardProportion);
-    const itemCashDiscount = round2(cashDiscount * cashProportion);
+    const itemCardDiscount = round2(totalCardDiscount * cardProportion)
+    const itemCashDiscount = round2(cashDiscount * cashProportion)
 
-    distributedCard += itemCardDiscount;
-    distributedCash += itemCashDiscount;
+    distributedCard += itemCardDiscount
+    distributedCash += itemCashDiscount
 
     return {
       ...item,
       discount_amount: itemCardDiscount,
       discount_cash_amount: itemCashDiscount,
       subtotal: round2(itemCardSubtotal - itemCardDiscount),
-      cashSubtotal: round2(itemCashSubtotal - itemCashDiscount),
-    };
-  });
+      cashSubtotal: round2(itemCashSubtotal - itemCashDiscount)
+    }
+  })
 
   // Handle rounding remainder on last active item
   if (lastActiveIndex >= 0) {
-    const cardRemainder = round2(totalCardDiscount - distributedCard);
-    const cashRemainder = round2(cashDiscount - distributedCash);
+    const cardRemainder = round2(totalCardDiscount - distributedCard)
+    const cashRemainder = round2(cashDiscount - distributedCash)
 
     if (cardRemainder !== 0 || cashRemainder !== 0) {
-      const lastItem = result[lastActiveIndex];
+      const lastItem = result[lastActiveIndex]
       result[lastActiveIndex] = {
         ...lastItem,
         discount_amount: round2(
@@ -381,12 +379,12 @@ export function distributeDiscountToItems(
           (lastItem.discount_cash_amount ?? 0) + cashRemainder
         ),
         subtotal: round2(lastItem.subtotal - cardRemainder),
-        cashSubtotal: round2(lastItem.cashSubtotal - cashRemainder),
-      };
+        cashSubtotal: round2(lastItem.cashSubtotal - cashRemainder)
+      }
     }
   }
 
-  return result;
+  return result
 }
 
 // ============================================================================
@@ -407,255 +405,546 @@ export function distributeDiscountToItems(
  * @param input - OrderCalculationInput with items, discount, taxRates
  * @returns OrderTotals with all calculated values
  */
-export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals {
+export function calculateOrderTotals (
+  input: OrderCalculationInput
+): OrderTotals {
   // CACHE CHECK - Return cached result if valid
-  const cacheKey = hashCalculationInput(input);
-  const cached = calculationCache.get(cacheKey);
+  const cacheKey = hashCalculationInput(input)
+  const cached = calculationCache.get(cacheKey)
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.result;
+    return cached.result
   }
 
-  const { items, checkDiscount, taxRatesMap, payments = [] } = input;
-  const activeItems = items.filter((item) => !item.is_voided);
+  const {
+    items,
+    checkDiscount,
+    taxRatesMap,
+    payments = [],
+    preserveItemLevelOutstanding = false,
+    serviceChargeRule,
+    partySize,
+    orderType,
+    snapshottedRate,
+    snapshottedAppliesOn,
+    snapshottedName,
+    manualServiceCharge,
+    manualServiceChargeTaxable,
+    serverConfirmedServiceCharge,
+  } = input
+  const activeItems = items.filter(item => !item.is_voided && !item.isDraft)
 
   if (activeItems.length === 0) {
-    return createEmptyTotals();
+    return createEmptyTotals()
   }
 
   // =========================================================================
   // FIRST PASS: Calculate gross subtotals (using Decimal for exact arithmetic)
   // =========================================================================
-  
-  let grossCardSubtotal = new Decimal(0);
-  let grossCashSubtotal = new Decimal(0);
-  
+
+  let grossCardSubtotal = new Decimal(0)
+  let grossCashSubtotal = new Decimal(0)
+
   const itemData: Array<{
-    item: CartItem;
-    cardSubtotal: Decimal;
-    cashSubtotal: Decimal;
-    taxRatePercent: number;
-    isTaxExempt: boolean;
-  }> = [];
+    item: CartItem
+    cardSubtotal: Decimal
+    cashSubtotal: Decimal
+    taxRatePercent: number
+    isTaxExempt: boolean
+  }> = []
 
   for (const item of activeItems) {
-    const effectiveCardPrice = calculateItemEffectiveCardPrice(item);
-    const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
-    
-    const cardSubtotal = new Decimal(effectiveCardPrice).times(item.quantity);
-    const cashSubtotal = new Decimal(effectiveCashPrice).times(item.quantity);
-    
-    grossCardSubtotal = grossCardSubtotal.plus(cardSubtotal);
-    grossCashSubtotal = grossCashSubtotal.plus(cashSubtotal);
-    
-    const taxCategory = item.tax_category ?? 'standard';
-    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-    
+    const effectiveCardPrice = calculateItemEffectiveCardPrice(item)
+    const effectiveCashPrice = calculateItemEffectiveCashPrice(item)
+
+    const cardSubtotal = new Decimal(effectiveCardPrice).times(item.quantity)
+    const cashSubtotal = new Decimal(effectiveCashPrice).times(item.quantity)
+
+    grossCardSubtotal = grossCardSubtotal.plus(cardSubtotal)
+    grossCashSubtotal = grossCashSubtotal.plus(cashSubtotal)
+
+    const taxCategory = item.tax_category ?? 'standard'
+    const taxRatePercent = taxRatesMap[taxCategory] ?? 0
+
     itemData.push({
       item,
       cardSubtotal,
       cashSubtotal,
       taxRatePercent: item.is_tax_exempt ? 0 : taxRatePercent,
-      isTaxExempt: item.is_tax_exempt ?? false,
-    });
+      isTaxExempt: item.is_tax_exempt ?? false
+    })
   }
 
   // =========================================================================
   // DISCOUNT CALCULATION (matching recalculate_order_discount)
   // =========================================================================
-  
-  let totalDiscountAmount = new Decimal(0);
-  
+
+  let totalDiscountAmount = new Decimal(0)
+  let totalCashDiscountAmount = new Decimal(0)
+
   if (checkDiscount) {
     if (checkDiscount.type === 'percentage') {
       // value is already a decimal fraction (e.g., 0.05 for 5%)
       totalDiscountAmount = grossCardSubtotal
         .times(checkDiscount.value)
-        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+      // Apply same percentage to cash subtotal (matching SQL calculate_item_totals)
+      totalCashDiscountAmount = grossCashSubtotal
+        .times(checkDiscount.value)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
     } else {
       // Fixed: can't exceed subtotal
       totalDiscountAmount = Decimal.min(
         new Decimal(checkDiscount.value),
         grossCardSubtotal
-      ).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      ).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+      // Scale fixed discount proportionally for cash (matching SQL ratio: cash_price / card_price)
+      totalCashDiscountAmount = grossCardSubtotal.gt(0)
+        ? Decimal.min(
+            totalDiscountAmount
+              .times(grossCashSubtotal)
+              .dividedBy(grossCardSubtotal),
+            grossCashSubtotal
+          ).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+        : totalDiscountAmount
     }
   }
 
   // =========================================================================
   // DISTRIBUTE DISCOUNT TO ITEMS (matching backend's proportional distribution)
   // =========================================================================
-  
-  let distributedDiscount = new Decimal(0);
-  const itemDiscounts: Decimal[] = [];
-  
+
+  let distributedDiscount = new Decimal(0)
+  let distributedCashDiscount = new Decimal(0)
+  const itemDiscounts: Decimal[] = []
+  const itemCashDiscounts: Decimal[] = []
+
   for (let i = 0; i < itemData.length; i++) {
-    const data = itemData[i];
-    
+    const data = itemData[i]
+
     // PostgreSQL: v_item_proportion := v_item.item_gross_subtotal / v_applicable_subtotal
     // PostgreSQL: v_item_discount_amount := ROUND(v_new_calculated_amount * v_item_proportion, 2)
-    const proportion = grossCardSubtotal.isZero() 
+    const cardProportion = grossCardSubtotal.isZero()
       ? new Decimal(0)
-      : data.cardSubtotal.dividedBy(grossCardSubtotal);
-    
+      : data.cardSubtotal.dividedBy(grossCardSubtotal)
+
     let itemDiscount = totalDiscountAmount
-      .times(proportion)
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    
-    distributedDiscount = distributedDiscount.plus(itemDiscount);
-    itemDiscounts.push(itemDiscount);
+      .times(cardProportion)
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+
+    distributedDiscount = distributedDiscount.plus(itemDiscount)
+    itemDiscounts.push(itemDiscount)
+
+    // Cash discount: distribute using cash proportions (matching SQL calculate_item_totals)
+    const cashProportion = grossCashSubtotal.isZero()
+      ? new Decimal(0)
+      : data.cashSubtotal.dividedBy(grossCashSubtotal)
+
+    let itemCashDiscount = totalCashDiscountAmount
+      .times(cashProportion)
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+
+    distributedCashDiscount = distributedCashDiscount.plus(itemCashDiscount)
+    itemCashDiscounts.push(itemCashDiscount)
   }
-  
+
   // CRITICAL: Assign rounding remainder to last item (matching PostgreSQL)
-  if (itemData.length > 0 && !distributedDiscount.equals(totalDiscountAmount)) {
-    const remainder = totalDiscountAmount.minus(distributedDiscount);
-    itemDiscounts[itemDiscounts.length - 1] = itemDiscounts[itemDiscounts.length - 1].plus(remainder);
+  if (itemData.length > 0) {
+    if (!distributedDiscount.equals(totalDiscountAmount)) {
+      const remainder = totalDiscountAmount.minus(distributedDiscount)
+      itemDiscounts[itemDiscounts.length - 1] =
+        itemDiscounts[itemDiscounts.length - 1].plus(remainder)
+    }
+    if (!distributedCashDiscount.equals(totalCashDiscountAmount)) {
+      const cashRemainder = totalCashDiscountAmount.minus(
+        distributedCashDiscount
+      )
+      itemCashDiscounts[itemCashDiscounts.length - 1] =
+        itemCashDiscounts[itemCashDiscounts.length - 1].plus(cashRemainder)
+    }
   }
 
   // =========================================================================
   // SECOND PASS: Calculate tax on discounted amounts
-  // Per-item: ROUND((itemSubtotal - itemDiscount) * taxRate / 100, 2)
+  // v6: AGGREGATE PER TAX-RATE GROUP — accumulate net subtotals per resolved
+  // rate here, then ROUND(groupBase * rate / 100, 2) ONCE per group after the
+  // loop (see below). This matches calculate_order_totals_fast v6; summing
+  // per-item-rounded taxes drifted a cent low on multi-item orders.
   // =========================================================================
-  
-  let totalCardTax = new Decimal(0);
-  let totalCashTax = new Decimal(0);
-  let netCardSubtotal = new Decimal(0);
-  let netCashSubtotal = new Decimal(0);
-  
+
+  let totalCardTax = new Decimal(0)
+  let totalCashTax = new Decimal(0)
+  let netCardSubtotal = new Decimal(0)
+  let netCashSubtotal = new Decimal(0)
+
   // Outstanding tracking
-  let outstandingCardSubtotal = new Decimal(0);
-  let outstandingCashSubtotal = new Decimal(0);
-  let outstandingCardTax = new Decimal(0);
-  let outstandingCashTax = new Decimal(0);
+  let outstandingCardSubtotal = new Decimal(0)
+  let outstandingCashSubtotal = new Decimal(0)
+  let outstandingCardTax = new Decimal(0)
+  let outstandingCashTax = new Decimal(0)
+
+  // v6: net subtotal accumulated per resolved rate (card/cash, full + unpaid).
+  // Tax is rounded once per group after the loop — never per item. Keys are the
+  // resolved numeric rate (e.g. 8.875), matching the server's group-by tax_rate.
+  const cardBaseByRate = new Map<number, Decimal>()
+  const cashBaseByRate = new Map<number, Decimal>()
+  const cardUnpaidByRate = new Map<number, Decimal>()
+  const cashUnpaidByRate = new Map<number, Decimal>()
 
   for (let i = 0; i < itemData.length; i++) {
-    const data = itemData[i];
-    const itemDiscount = itemDiscounts[i];
-    
+    const data = itemData[i]
+    const itemDiscount = itemDiscounts[i]
+    const itemCashDiscount = itemCashDiscounts[i]
+
     // Net subtotals (after discount)
-    const itemNetCardSubtotal = data.cardSubtotal.minus(itemDiscount);
-    const itemNetCashSubtotal = data.cashSubtotal.minus(itemDiscount); // Same discount amount
-    
-    netCardSubtotal = netCardSubtotal.plus(itemNetCardSubtotal);
-    netCashSubtotal = netCashSubtotal.plus(itemNetCashSubtotal);
-    
-    // Tax: ROUND(discounted_subtotal * rate / 100, 2) - PER ITEM
+    const itemNetCardSubtotal = data.cardSubtotal.minus(itemDiscount)
+    const itemNetCashSubtotal = data.cashSubtotal.minus(itemCashDiscount)
+
+    netCardSubtotal = netCardSubtotal.plus(itemNetCardSubtotal)
+    netCashSubtotal = netCashSubtotal.plus(itemNetCashSubtotal)
+
+    // v6: accumulate net subtotal into the item's rate group; the group tax is
+    // rounded once after the loop (aggregate-per-rate-group, matches server).
     if (!data.isTaxExempt && data.taxRatePercent > 0) {
-      const itemCardTax = itemNetCardSubtotal
-        .times(data.taxRatePercent)
-        .dividedBy(100)
-        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-      
-      const itemCashTax = itemNetCashSubtotal
-        .times(data.taxRatePercent)
-        .dividedBy(100)
-        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-      
-      totalCardTax = totalCardTax.plus(itemCardTax);
-      totalCashTax = totalCashTax.plus(itemCashTax);
-      
+      const rate = data.taxRatePercent
+      cardBaseByRate.set(
+        rate,
+        (cardBaseByRate.get(rate) ?? new Decimal(0)).plus(itemNetCardSubtotal)
+      )
+      cashBaseByRate.set(
+        rate,
+        (cashBaseByRate.get(rate) ?? new Decimal(0)).plus(itemNetCashSubtotal)
+      )
+
       // Outstanding calculations
       // Account for refunded quantities - refunded items need to be paid again
-      const effectivePaidQty = (data.item.paidQuantity ?? 0) - (data.item.refundedQuantity ?? 0);
-      const unpaidQty = data.item.quantity - effectivePaidQty;
+      // Cap at quantity to prevent over-counting from stale refunded/paid state
+      const effectivePaidQty =
+        (data.item.paidQuantity ?? 0) - (data.item.refundedQuantity ?? 0)
+      const unpaidQty = Math.min(
+        data.item.quantity,
+        data.item.quantity - effectivePaidQty
+      )
       if (unpaidQty > 0) {
-        const unpaidProportion = new Decimal(unpaidQty).dividedBy(data.item.quantity);
-        
-        const unpaidCardSubtotal = itemNetCardSubtotal.times(unpaidProportion);
-        const unpaidCashSubtotal = itemNetCashSubtotal.times(unpaidProportion);
-        
-        outstandingCardSubtotal = outstandingCardSubtotal.plus(unpaidCardSubtotal);
-        outstandingCashSubtotal = outstandingCashSubtotal.plus(unpaidCashSubtotal);
-        
-        // Tax on unpaid portion - round per item
-        const unpaidCardTax = unpaidCardSubtotal
-          .times(data.taxRatePercent)
-          .dividedBy(100)
-          .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-        
-        const unpaidCashTax = unpaidCashSubtotal
-          .times(data.taxRatePercent)
-          .dividedBy(100)
-          .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-        
-        outstandingCardTax = outstandingCardTax.plus(unpaidCardTax);
-        outstandingCashTax = outstandingCashTax.plus(unpaidCashTax);
+        const unpaidProportion = new Decimal(unpaidQty).dividedBy(
+          data.item.quantity
+        )
+
+        const unpaidCardSubtotal = itemNetCardSubtotal.times(unpaidProportion)
+        const unpaidCashSubtotal = itemNetCashSubtotal.times(unpaidProportion)
+
+        outstandingCardSubtotal =
+          outstandingCardSubtotal.plus(unpaidCardSubtotal)
+        outstandingCashSubtotal =
+          outstandingCashSubtotal.plus(unpaidCashSubtotal)
+
+        // v6: accumulate unpaid net into the rate group; outstanding tax is
+        // rounded once per group after the loop (aggregate-per-rate-group).
+        cardUnpaidByRate.set(
+          rate,
+          (cardUnpaidByRate.get(rate) ?? new Decimal(0)).plus(unpaidCardSubtotal)
+        )
+        cashUnpaidByRate.set(
+          rate,
+          (cashUnpaidByRate.get(rate) ?? new Decimal(0)).plus(unpaidCashSubtotal)
+        )
       }
     } else {
       // Tax exempt item - still track outstanding subtotals
       // Account for refunded quantities - refunded items need to be paid again
-      const effectivePaidQty = (data.item.paidQuantity ?? 0) - (data.item.refundedQuantity ?? 0);
-      const unpaidQty = data.item.quantity - effectivePaidQty;
+      // Cap at quantity to prevent over-counting from stale refunded/paid state
+      const effectivePaidQty =
+        (data.item.paidQuantity ?? 0) - (data.item.refundedQuantity ?? 0)
+      const unpaidQty = Math.min(
+        data.item.quantity,
+        data.item.quantity - effectivePaidQty
+      )
       if (unpaidQty > 0) {
-        const unpaidProportion = new Decimal(unpaidQty).dividedBy(data.item.quantity);
+        const unpaidProportion = new Decimal(unpaidQty).dividedBy(
+          data.item.quantity
+        )
         outstandingCardSubtotal = outstandingCardSubtotal.plus(
           itemNetCardSubtotal.times(unpaidProportion)
-        );
+        )
         outstandingCashSubtotal = outstandingCashSubtotal.plus(
           itemNetCashSubtotal.times(unpaidProportion)
-        );
+        )
       }
+    }
+  }
+
+  // v6: round tax ONCE per rate group (aggregate-per-rate-group), card and cash
+  // independently, for both the full and unpaid/outstanding buckets. Summing
+  // already-2dp group taxes is order-independent, so Map iteration order is
+  // irrelevant. Accumulators stay in Decimal — never coerce to number here.
+  for (const [rate, base] of cardBaseByRate) {
+    totalCardTax = totalCardTax.plus(
+      base.times(rate).dividedBy(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    )
+  }
+  for (const [rate, base] of cashBaseByRate) {
+    totalCashTax = totalCashTax.plus(
+      base.times(rate).dividedBy(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    )
+  }
+  for (const [rate, base] of cardUnpaidByRate) {
+    outstandingCardTax = outstandingCardTax.plus(
+      base.times(rate).dividedBy(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    )
+  }
+  for (const [rate, base] of cashUnpaidByRate) {
+    outstandingCashTax = outstandingCashTax.plus(
+      base.times(rate).dividedBy(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    )
+  }
+
+  // =========================================================================
+  // SERVICE CHARGE
+  // Flat $ folded into both card and cash totals (matches calculate_order_totals_fast).
+  // Snapshot rate/name/applies_on take precedence over the live rule, so mid-shift
+  // rule edits don't retroactively change an open order's SC.
+  // =========================================================================
+
+  let serviceCharge = new Decimal(0)
+  let cashServiceCharge = new Decimal(0)
+  let serviceChargeName = ''
+
+  const effectiveRate =
+    snapshottedRate != null && snapshottedRate > 0
+      ? snapshottedRate
+      : serviceChargeRule?.rate_percent ?? 0
+  const effectiveAppliesOn =
+    snapshottedAppliesOn ?? serviceChargeRule?.applies_on ?? 'pre_discount'
+  const effectiveName = snapshottedName ?? serviceChargeRule?.name ?? ''
+
+  const ruleEligible =
+    isServiceChargeEnabled &&
+    serviceChargeRule != null &&
+    serviceChargeRule.is_active &&
+    serviceChargeRule.auto_apply &&
+    effectiveRate > 0 &&
+    serviceChargeRule.applies_to_order_types.includes(orderType ?? '') &&
+    partySize != null &&
+    partySize >= serviceChargeRule.min_party_size
+
+  if (manualServiceCharge != null) {
+    // Manager override — bypass rule eligibility entirely. Percent-mode
+    // overrides (snapshottedRate != null) recompute dynamically from
+    // rate × current base, mirroring calculate_order_totals_fast v3.
+    // Amount-mode overrides (rate null) stay frozen at the flat dollar
+    // amount the manager set.
+    if (snapshottedRate != null && snapshottedRate > 0) {
+      const cardBase =
+        effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
+      serviceCharge = Decimal.max(cardBase, 0)
+        .times(snapshottedRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    } else {
+      serviceCharge = new Decimal(manualServiceCharge)
+    }
+    cashServiceCharge = serviceCharge
+    serviceChargeName = snapshottedName ?? (effectiveName || 'Service Charge')
+  } else if (ruleEligible) {
+    const cardBase =
+      effectiveAppliesOn === 'pre_discount' ? grossCardSubtotal : netCardSubtotal
+    serviceCharge = cardBase
+      .times(effectiveRate)
+      .dividedBy(100)
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+
+    // The SC dollar amount is identical for cash and card. Cash pricing only
+    // changes the item subtotal; taxable SC is added before the cash tax total.
+    cashServiceCharge = serviceCharge
+
+    serviceChargeName = effectiveName
+
+    if (__DEV__ && partySize != null && partySize < serviceChargeRule!.min_party_size) {
+      // Invariant: should never reach here per the eligibility check above.
+      // Logged in case the eligibility branch is later refactored unsafely.
+      console.warn(
+        '[service_charge] applied below threshold',
+        { partySize, threshold: serviceChargeRule!.min_party_size }
+      )
+    }
+  } else if (serverConfirmedServiceCharge != null && serverConfirmedServiceCharge > 0) {
+    // Rule eligibility failed locally (rules store not yet loaded, partySize
+    // unresolvable) but the server already applied SC. Use as a fallback so
+    // outstanding totals don't drop SC and under-collect from the customer.
+    serviceCharge = new Decimal(serverConfirmedServiceCharge)
+    cashServiceCharge = serviceCharge
+    serviceChargeName = snapshottedName ?? (effectiveName || 'Service Charge')
+  }
+
+  // =========================================================================
+  // SERVICE CHARGE TAX (when is_taxable = true)
+  // Tax is applied to the SC amount using the weighted effective tax rate.
+  // =========================================================================
+
+  let serviceChargeTax = new Decimal(0)
+  let cashServiceChargeTax = new Decimal(0)
+
+  // SC tax applies in two cases, both mirroring calculate_order_totals_fast:
+  //  1) Rule-eligible SC whose rule has is_taxable = true.
+  //  2) Manual override flagged taxable (orders.service_charge_is_taxable),
+  //     surfaced here via manualServiceChargeTaxable. The server taxes the
+  //     overridden SC via the service_charge_is_taxable column fallback (the
+  //     rule_id is nulled on override), so the client must match or the
+  //     cashier prompt would diverge from the server-authoritative total.
+  const scIsTaxable =
+    (ruleEligible && serviceChargeRule!.is_taxable === true) ||
+    (manualServiceCharge != null && manualServiceChargeTaxable === true)
+  if (scIsTaxable && serviceCharge.gt(0)) {
+    // Resolve the SC tax rate: prefer 'standard', fall back to the first non-zero
+    // rate in the map (handles locations where the category key differs from 'standard').
+    const rawScTaxRate =
+      taxRatesMap['standard'] ??
+      Object.values(taxRatesMap).find((r) => r > 0) ??
+      0
+    const scTaxRate = new Decimal(rawScTaxRate)
+    if (scTaxRate.gt(0)) {
+      serviceChargeTax = serviceCharge
+        .times(scTaxRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+      cashServiceChargeTax = cashServiceCharge
+        .times(scTaxRate)
+        .dividedBy(100)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+      totalCardTax = totalCardTax.plus(serviceChargeTax)
+      totalCashTax = totalCashTax.plus(cashServiceChargeTax)
     }
   }
 
   // =========================================================================
   // FINAL TOTALS
   // =========================================================================
-  
-  const cardTotal = netCardSubtotal.plus(totalCardTax);
-  const cashTotal = netCashSubtotal.plus(totalCashTax);
-  let outstandingCardTotal = outstandingCardSubtotal.plus(outstandingCardTax);
-  let outstandingCashTotal = outstandingCashSubtotal.plus(outstandingCashTax);
+
+  const cardTotal = netCardSubtotal.plus(totalCardTax).plus(serviceCharge)
+  const cashTotal = netCashSubtotal.plus(totalCashTax).plus(cashServiceCharge)
+
+  // Outstanding SC: proportional to the unpaid portion of the net subtotal.
+  // When nothing has been paid yet, outstanding ~= net, so full SC is outstanding.
+  //
+  // The SC dollar amount is a FLAT shared charge — identical for cash and card
+  // (cashServiceCharge === serviceCharge above) — so its remaining portion is
+  // also shared, NOT dual-priced. Using a separate cash-subtotal proportion
+  // produced a cash remainder that diverged from (and could exceed) the card
+  // remainder, which is nonsensical: cash must never cost more than card. Both
+  // sides therefore use the same card-subtotal proportion. This matches how the
+  // flat SC remainder (customRefundBalance) is added equally to both totals below.
+  const scUnpaidProportion = netCardSubtotal.gt(0)
+    ? Decimal.min(outstandingCardSubtotal.div(netCardSubtotal), new Decimal(1))
+    : new Decimal(activeItems.length > 0 ? 1 : 0)
+  const outstandingServiceCharge = serviceCharge
+    .times(scUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+  // Flat/shared: cash remainder equals the card remainder.
+  const outstandingCashServiceCharge = cashServiceCharge
+    .times(scUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+  const outstandingServiceChargeTax = serviceChargeTax
+    .times(scUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+  const outstandingCashServiceChargeTax = cashServiceChargeTax
+    .times(scUnpaidProportion)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+
+  let outstandingCardTotal = outstandingCardSubtotal
+    .plus(outstandingCardTax)
+    .plus(outstandingServiceCharge)
+    .plus(outstandingServiceChargeTax)
+  let outstandingCashTotal = outstandingCashSubtotal
+    .plus(outstandingCashTax)
+    .plus(outstandingCashServiceCharge)
+    .plus(outstandingCashServiceChargeTax)
 
   // =========================================================================
   // PAYMENT-LEVEL REFUND HANDLING
   // For custom amount refunds that aren't tied to specific items
   // =========================================================================
-  
+
   if (payments.length > 0) {
     // Calculate effective paid using card-equivalent amounts (matches SQL §10)
     // For cash-priced payments, amount is cash price but cashSavings = original_amount - amount
     // So amount + cashSavings = original_amount = card equivalent
+    //
+    // Refund subtraction must scale by the same card↔cash ratio: order_payments
+    // stores refunded_amount in the payment's own currency (cash for a
+    // cash-priced payment). Subtracting that raw cash amount from
+    // cardEquivalent leaves the cashSavings residue counted as "paid", which
+    // diverges from the backend (it removes the refunded payment's full
+    // card-equivalent share). Proportional refund: cardEquiv × (refunded /
+    // amount), so a full refund zeros the contribution exactly.
     const effectivePaid = payments
       .filter(p => !p.isVoided && !p.isPreAuth)
       .reduce((sum, p) => {
-        const refunded = p.refundedAmount ?? 0;
+        const refunded = p.refundedAmount ?? 0
         // Use card-equivalent: for cash-priced payments, add cashSavings to get original_amount
-        const cardEquivalentAmount = p.isCashPriced && p.cashSavings
-          ? new Decimal(p.amount).plus(p.cashSavings)
-          : new Decimal(p.amount);
-        return sum.plus(cardEquivalentAmount.minus(refunded));
-      }, new Decimal(0));
+        const cardEquivalentAmount =
+          p.isCashPriced && p.cashSavings
+            ? new Decimal(p.amount).plus(p.cashSavings)
+            : new Decimal(p.amount)
+        const cardEquivalentRefunded =
+          p.amount > 0
+            ? cardEquivalentAmount
+                .times(refunded)
+                .div(p.amount)
+            : new Decimal(refunded)
+        return sum.plus(cardEquivalentAmount.minus(cardEquivalentRefunded))
+      }, new Decimal(0))
 
     // Payment-based outstanding = total - effective_paid
     const paymentBasedOutstanding = Decimal.max(
       cardTotal.minus(effectivePaid),
       new Decimal(0)
-    );
+    )
 
-    // Custom refund balance = payment-based due NOT covered by item-level unpaid (upward adjustment)
-    const customRefundBalance = Decimal.max(
-      paymentBasedOutstanding.minus(outstandingCardTotal),
-      new Decimal(0)
-    );
-    outstandingCardTotal = outstandingCardTotal.plus(customRefundBalance);
-    // customRefundBalance is in card-equivalent terms; scale to cash-equivalent
-    // using order-level ratio (not current outstanding, which can be 0 when items are paid)
-    const cashToCardRatio = cardTotal.gt(0)
-      ? cashTotal.div(cardTotal)
-      : new Decimal(1);
-    outstandingCashTotal = outstandingCashTotal.plus(
-      customRefundBalance.times(cashToCardRatio)
-    );
+    // Custom refund balance = payment-based due NOT covered by item-level unpaid (upward adjustment).
+    // Skip when preserveItemLevelOutstanding: for a reopened order the item-level outstanding is
+    // authoritative, and the card-equivalent payment reconstruction (amount + cashSavings) under-counts
+    // mixed cash/card payments, manufacturing a phantom residual (ORD-S2-0001). This mirrors the
+    // downward clamp below, which is already disabled under preserveItemLevelOutstanding.
+    //
+    // ALSO skip when the order has per-ITEM refunds. The item-level outstanding
+    // already re-exposes a refunded item at its OWN card and cash price (via
+    // refundedQuantity → subtotal / cash_subtotal), i.e. correctly dual-priced.
+    // The payment-level residual, by contrast, reconstructs the refund's
+    // card-equivalent PROPORTIONALLY (cardEquivalent × refunded/amount), which
+    // is wrong when items have different card/cash spreads — it inflates BOTH
+    // bases and, added flat, makes card and cash diverge unreconcilably
+    // (e.g. refunding a low-spread item on an order with a high-spread item).
+    // Letting item-level win here keeps the two bases reconcilable. The downward
+    // clamp below still guards genuine over-counts (e.g. split-evenly, which does
+    // NOT mark items and so never sets refundedQuantity — this gate stays inert
+    // there). This only diverges from the payment-level path in the rare case of
+    // an item refund coexisting with a payment gap (underpayment / custom refund),
+    // where item-level — populated only by real payment allocations — is trusted.
+    const hasItemRefunds = items.some((i) => (i.refundedQuantity ?? 0) > 0)
+    const customRefundBalance =
+      preserveItemLevelOutstanding || hasItemRefunds
+        ? new Decimal(0)
+        : Decimal.max(
+            paymentBasedOutstanding.minus(outstandingCardTotal),
+            new Decimal(0)
+          )
+    outstandingCardTotal = outstandingCardTotal.plus(customRefundBalance)
+    // Non-item residual (shared SC, custom refund, reopen rounding) is flat by
+    // nature — the same remainder on both bases, so do not dual-price it.
+    outstandingCashTotal = outstandingCashTotal.plus(customRefundBalance)
 
     // Clamping: when payments exceed item-level tracking (e.g., split-evenly doesn't mark items),
     // clamp outstanding down to payment-based remaining (matches SQL §10 lines 796-803)
-    if (paymentBasedOutstanding.lt(outstandingCardTotal)) {
+    if (
+      !preserveItemLevelOutstanding &&
+      paymentBasedOutstanding.lt(outstandingCardTotal)
+    ) {
       if (outstandingCardTotal.gt(0)) {
         outstandingCashTotal = outstandingCashTotal
           .times(paymentBasedOutstanding)
           .div(outstandingCardTotal)
-          .toDecimalPlaces(2);
+          .toDecimalPlaces(2)
       }
-      outstandingCardTotal = paymentBasedOutstanding;
+      outstandingCardTotal = paymentBasedOutstanding
     }
   }
 
@@ -667,6 +956,7 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
 
     // Discount
     discount_amount: totalDiscountAmount.toNumber(),
+    cash_discount_amount: totalCashDiscountAmount.toNumber(),
 
     // Net subtotals (post-discount) - these match effective_subtotal in PostgreSQL
     // effective_subtotal: netCardSubtotal.toDecimalPlaces(2).toNumber(),
@@ -684,25 +974,38 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
     outstanding_subtotal: outstandingCardSubtotal.toDecimalPlaces(2).toNumber(),
     outstanding_tax: outstandingCardTax.toNumber(),
     outstanding_total: outstandingCardTotal.toDecimalPlaces(2).toNumber(),
-    cash_outstanding_subtotal: outstandingCashSubtotal.toDecimalPlaces(2).toNumber(),
+    cash_outstanding_subtotal: outstandingCashSubtotal
+      .toDecimalPlaces(2)
+      .toNumber(),
     cash_outstanding_tax: outstandingCashTax.toNumber(),
     cash_outstanding_total: outstandingCashTotal.toDecimalPlaces(2).toNumber(),
-  };
 
-  if (calculationCache.size >= MAX_CACHE_SIZE) pruneCache();
-  if (calculationCache.size >= MAX_CACHE_SIZE) {
-    const oldestKey = calculationCache.keys().next().value;
-    if (oldestKey) calculationCache.delete(oldestKey);
+    // Service Charge
+    service_charge: serviceCharge.toNumber(),
+    cash_service_charge: cashServiceCharge.toNumber(),
+    // Outstanding (remaining) SC — proportional to the unpaid subtotal portion.
+    // Folded into outstanding_total above; exposed separately so the breakdown
+    // UI can show the remaining SC on a partially-paid order (the rows must
+    // reconcile to balance due).
+    outstanding_service_charge: outstandingServiceCharge.toNumber(),
+    cash_outstanding_service_charge: outstandingCashServiceCharge.toNumber(),
+    service_charge_name: serviceChargeName
   }
-  calculationCache.set(cacheKey, { result, timestamp: Date.now() });
 
-  return result;
+  if (calculationCache.size >= MAX_CACHE_SIZE) pruneCache()
+  if (calculationCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = calculationCache.keys().next().value
+    if (oldestKey) calculationCache.delete(oldestKey)
+  }
+  calculationCache.set(cacheKey, { result, timestamp: Date.now() })
+
+  return result
 }
 
 /**
  * Create empty totals object - used for empty orders
  */
-function createEmptyTotals(): OrderTotals {
+function createEmptyTotals (): OrderTotals {
   return {
     subtotal: 0,
     discount_amount: 0,
@@ -712,12 +1015,18 @@ function createEmptyTotals(): OrderTotals {
     outstanding_tax: 0,
     outstanding_total: 0,
     cash_subtotal: 0,
+    cash_discount_amount: 0,
     cash_tax_amount: 0,
     cash_total_amount: 0,
     cash_outstanding_subtotal: 0,
     cash_outstanding_tax: 0,
     cash_outstanding_total: 0,
-  };
+    service_charge: 0,
+    cash_service_charge: 0,
+    outstanding_service_charge: 0,
+    cash_outstanding_service_charge: 0,
+    service_charge_name: ''
+  }
 }
 
 // ============================================================================
@@ -731,88 +1040,86 @@ function createEmptyTotals(): OrderTotals {
  * @param input - Order calculation input
  * @returns Extended result with item-level details
  */
-export function calculateOrderTotalsWithDetails(
+export function calculateOrderTotalsWithDetails (
   input: OrderCalculationInput
 ): OrderCalculationResult {
-  const totals = calculateOrderTotals(input);
-  const { items, taxRatesMap, checkDiscount } = input;
+  const totals = calculateOrderTotals(input)
+  const { items, taxRatesMap, checkDiscount } = input
 
-  const activeItems = items.filter((item) => !item.is_voided);
-  const itemDetails: ItemCalculationDetail[] = [];
+  const activeItems = items.filter(item => !item.is_voided && !item.isDraft)
+  const itemDetails: ItemCalculationDetail[] = []
 
   // Calculate total discount for proportional distribution
-  const totalDiscount = totals.discount_amount;
+  const totalDiscount = totals.discount_amount
 
   // Calculate cash discount using the same logic as calculateOrderTotals
-  let totalCashDiscount = 0;
+  let totalCashDiscount = 0
   if (checkDiscount) {
-    if (checkDiscount.type === "percentage") {
+    if (checkDiscount.type === 'percentage') {
       // Apply the same percentage to cash subtotal
-      totalCashDiscount = totals.cash_subtotal * checkDiscount.value;
+      totalCashDiscount = totals.cash_subtotal * checkDiscount.value
     } else {
       // For fixed discounts, use the same amount but don't exceed cash subtotal
-      totalCashDiscount = Math.min(totalDiscount, totals.cash_subtotal);
+      totalCashDiscount = Math.min(totalDiscount, totals.cash_subtotal)
     }
   }
-  totalCashDiscount = round2(totalCashDiscount);
+  totalCashDiscount = round2(totalCashDiscount)
 
   for (const item of activeItems) {
-    const cashUnitPrice = calculateItemEffectiveCashPrice(item);
-    const taxCategory = item.tax_category ?? "standard";
-    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+    const cashUnitPrice = calculateItemEffectiveCashPrice(item)
+    const taxCategory = item.tax_category ?? 'standard'
+    const taxRatePercent = taxRatesMap[taxCategory] ?? 0
 
     // Calculate subtotals
-    const subtotal = item.price * item.quantity;
-    const cashSubtotal = cashUnitPrice * item.quantity;
+    const subtotal = item.price * item.quantity
+    const cashSubtotal = cashUnitPrice * item.quantity
 
     // Calculate proportional discount
-    const proportion = totals.subtotal > 0 ? subtotal / totals.subtotal : 0;
-    const discountAmount = round2(totalDiscount * proportion);
+    const proportion = totals.subtotal > 0 ? subtotal / totals.subtotal : 0
+    const discountAmount = round2(totalDiscount * proportion)
 
     const cashProportion =
-      totals.cash_subtotal > 0 ? cashSubtotal / totals.cash_subtotal : 0;
-    const cashDiscountAmount = round2(totalCashDiscount * cashProportion);
+      totals.cash_subtotal > 0 ? cashSubtotal / totals.cash_subtotal : 0
+    const cashDiscountAmount = round2(totalCashDiscount * cashProportion)
 
     // Calculate taxable amounts
-    const taxableAmount = Math.max(0, subtotal - discountAmount);
-    const cashTaxableAmount = Math.max(0, cashSubtotal - cashDiscountAmount);
+    const taxableAmount = Math.max(0, subtotal - discountAmount)
+    const cashTaxableAmount = Math.max(0, cashSubtotal - cashDiscountAmount)
 
     // Calculate tax
     const taxAmount = calculateItemTax(
       taxableAmount,
       taxRatePercent,
       item.is_tax_exempt ?? false
-    );
+    )
     const cashTaxAmount = calculateItemTax(
       cashTaxableAmount,
       taxRatePercent,
       item.is_tax_exempt ?? false
-    );
+    )
 
     // Calculate totals with tax
-    const totalWithTax = round2(taxableAmount + taxAmount);
-    const cashTotalWithTax = round2(cashTaxableAmount + cashTaxAmount);
+    const totalWithTax = round2(taxableAmount + taxAmount)
+    const cashTotalWithTax = round2(cashTaxableAmount + cashTaxAmount)
 
     // Per-unit totals (for split by item)
-    const unitTotalWithTax = round2(totalWithTax / item.quantity);
-    const cashUnitTotalWithTax = round2(cashTotalWithTax / item.quantity);
+    const unitTotalWithTax = round2(totalWithTax / item.quantity)
+    const cashUnitTotalWithTax = round2(cashTotalWithTax / item.quantity)
 
     // Outstanding amounts
-    const unpaidQuantity = item.quantity - (item.paidQuantity ?? 0);
+    const unpaidQuantity = payableQuantity(item)
     const outstandingProportion =
-      item.quantity > 0 ? unpaidQuantity / item.quantity : 0;
+      item.quantity > 0 ? unpaidQuantity / item.quantity : 0
 
-    const outstandingSubtotal = round2(subtotal * outstandingProportion);
-    const outstandingTax = round2(taxAmount * outstandingProportion);
-    const outstandingTotal = round2(totalWithTax * outstandingProportion);
+    const outstandingSubtotal = round2(subtotal * outstandingProportion)
+    const outstandingTax = round2(taxAmount * outstandingProportion)
+    const outstandingTotal = round2(totalWithTax * outstandingProportion)
 
-    const cashOutstandingSubtotal = round2(
-      cashSubtotal * outstandingProportion
-    );
-    const cashOutstandingTax = round2(cashTaxAmount * outstandingProportion);
+    const cashOutstandingSubtotal = round2(cashSubtotal * outstandingProportion)
+    const cashOutstandingTax = round2(cashTaxAmount * outstandingProportion)
     const cashOutstandingTotal = round2(
       cashTotalWithTax * outstandingProportion
-    );
+    )
 
     itemDetails.push({
       itemId: item.id,
@@ -844,16 +1151,16 @@ export function calculateOrderTotalsWithDetails(
       cashOutstandingTotal,
       taxCategory,
       taxRate: taxRatePercent,
-      isTaxExempt: item.is_tax_exempt ?? false,
-    });
+      isTaxExempt: item.is_tax_exempt ?? false
+    })
   }
 
   return {
     ...totals,
     items: itemDetails,
     calculatedAt: new Date().toISOString(),
-    isOfflineCalculation: true, // Will be updated by caller if validated with backend
-  };
+    isOfflineCalculation: true // Will be updated by caller if validated with backend
+  }
 }
 
 // ============================================================================
@@ -871,35 +1178,76 @@ export function calculateOrderTotalsWithDetails(
  * @param splitCount - Number of people splitting
  * @returns Split amounts for each person
  */
-export function calculateEvenSplit(
+export function calculateEvenSplit (
   total: number,
   splitCount: number
 ): EvenSplitResult {
   if (splitCount <= 0) {
-    return { perPerson: total, lastPerson: total, amounts: [total] };
+    return { perPerson: total, lastPerson: total, amounts: [total] }
   }
 
   if (splitCount === 1) {
-    return { perPerson: total, lastPerson: total, amounts: [total] };
+    return { perPerson: total, lastPerson: total, amounts: [total] }
   }
 
   // Calculate base amount per person (floor to avoid overpaying)
-  const perPerson = Math.floor((total / splitCount) * 100) / 100;
+  const perPerson = Math.floor((total / splitCount) * 100) / 100
 
   // Calculate what the first N-1 people pay
-  const sumOfFirst = round2(perPerson * (splitCount - 1));
+  const sumOfFirst = round2(perPerson * (splitCount - 1))
 
   // Last person pays the remainder
-  const lastPerson = round2(total - sumOfFirst);
+  const lastPerson = round2(total - sumOfFirst)
 
   // Build amounts array
-  const amounts: number[] = [];
+  const amounts: number[] = []
   for (let i = 0; i < splitCount - 1; i++) {
-    amounts.push(perPerson);
+    amounts.push(perPerson)
   }
-  amounts.push(lastPerson);
+  amounts.push(lastPerson)
 
-  return { perPerson, lastPerson, amounts };
+  return { perPerson, lastPerson, amounts }
+}
+
+/**
+ * Calculate even split amounts using a largest-remainder distribution.
+ *
+ * Unlike {@link calculateEvenSplit} (which floors every portion and dumps the
+ * full remainder on the last person — producing multiple $0 portions for tiny
+ * totals and a heavier final guest), this floors every portion to the cent and
+ * then hands out the leftover cents one-per-portion. Result: every portion
+ * differs by at most one cent, and the sum equals the total exactly.
+ *
+ * Operates in integer cents to avoid float drift.
+ *
+ * @param total - Total amount to split
+ * @param splitCount - Number of people splitting
+ * @returns Split amounts for each person (sums exactly to total)
+ */
+export function calculateEvenSplitSpread (
+  total: number,
+  splitCount: number
+): EvenSplitResult {
+  if (splitCount <= 1) {
+    return { perPerson: total, lastPerson: total, amounts: [total] }
+  }
+
+  const totalCents = Math.round(total * 100)
+  const baseCents = Math.floor(totalCents / splitCount)
+  // Number of portions that receive one extra cent (the remainder).
+  const extra = totalCents - baseCents * splitCount
+
+  const amounts: number[] = []
+  for (let i = 0; i < splitCount; i++) {
+    const cents = baseCents + (i < extra ? 1 : 0)
+    amounts.push(cents / 100)
+  }
+
+  return {
+    perPerson: amounts[0],
+    lastPerson: amounts[amounts.length - 1],
+    amounts
+  }
 }
 
 /**
@@ -911,15 +1259,15 @@ export function calculateEvenSplit(
  * @param splitCount - Number of people splitting
  * @returns Split results for both pricing modes
  */
-export function calculateDualPriceSplit(
+export function calculateDualPriceSplit (
   cardTotal: number,
   cashTotal: number,
   splitCount: number
 ): DualPriceSplitResult {
   return {
     card: calculateEvenSplit(cardTotal, splitCount),
-    cash: calculateEvenSplit(cashTotal, splitCount),
-  };
+    cash: calculateEvenSplit(cashTotal, splitCount)
+  }
 }
 
 // ============================================================================
@@ -936,113 +1284,113 @@ export function calculateDualPriceSplit(
  * @param itemDetails - Optional item details for split by item
  * @returns Payment preview result
  */
-export function calculatePaymentPreview(
+export function calculatePaymentPreview (
   totals: OrderTotals,
   amountPaidSoFar: number,
   input: PaymentPreviewInput,
   itemDetails?: ItemCalculationDetail[]
 ): PaymentPreviewResult {
-  const errors: string[] = [];
-  let amountToCharge = 0;
-  const itemsCovered: PaymentPreviewResult["itemsCovered"] = [];
+  const errors: string[] = []
+  let amountToCharge = 0
+  const itemsCovered: PaymentPreviewResult['itemsCovered'] = []
 
-  const isCash = input.paymentMethod === "cash";
-  const totalAmount = isCash ? totals.cash_total_amount : totals.total_amount;
+  const isCash = input.paymentMethod === 'cash'
+  const totalAmount = isCash ? totals.cash_total_amount : totals.total_amount
   const outstandingAmount = isCash
     ? totals.cash_outstanding_total
-    : totals.outstanding_total;
+    : totals.outstanding_total
 
   switch (input.type) {
-    case "full":
-      amountToCharge = outstandingAmount;
-      break;
+    case 'full':
+      amountToCharge = outstandingAmount
+      break
 
-    case "split_even":
+    case 'split_even':
       if (!input.splitCount || input.splitCount < 2) {
-        errors.push("Split count must be at least 2");
-        break;
+        errors.push('Split count must be at least 2')
+        break
       }
-      const split = calculateEvenSplit(outstandingAmount, input.splitCount);
-      const index = (input.splitIndex ?? 1) - 1; // Convert 1-based to 0-based
-      amountToCharge = split.amounts[index] ?? split.perPerson;
-      break;
+      const split = calculateEvenSplit(outstandingAmount, input.splitCount)
+      const index = (input.splitIndex ?? 1) - 1 // Convert 1-based to 0-based
+      amountToCharge = split.amounts[index] ?? split.perPerson
+      break
 
-    case "split_by_item":
+    case 'split_by_item':
       if (!input.itemAllocations || input.itemAllocations.length === 0) {
-        errors.push("No items selected for payment");
-        break;
+        errors.push('No items selected for payment')
+        break
       }
       if (!itemDetails) {
-        errors.push("Item details required for split by item");
-        break;
+        errors.push('Item details required for split by item')
+        break
       }
 
       for (const alloc of input.itemAllocations) {
-        const itemDetail = itemDetails.find((i) => i.itemId === alloc.itemId);
+        const itemDetail = itemDetails.find(i => i.itemId === alloc.itemId)
         if (!itemDetail) {
-          errors.push(`Item ${alloc.itemId} not found`);
-          continue;
+          errors.push(`Item ${alloc.itemId} not found`)
+          continue
         }
         if (alloc.quantity > itemDetail.unpaidQuantity) {
           errors.push(
             `Cannot pay for ${alloc.quantity} of ${itemDetail.name} - only ${itemDetail.unpaidQuantity} unpaid`
-          );
-          continue;
+          )
+          continue
         }
 
         const perUnitAmount = isCash
           ? itemDetail.cashUnitTotalWithTax
-          : itemDetail.unitTotalWithTax;
-        const itemAmount = round2(perUnitAmount * alloc.quantity);
+          : itemDetail.unitTotalWithTax
+        const itemAmount = round2(perUnitAmount * alloc.quantity)
 
-        amountToCharge += itemAmount;
+        amountToCharge += itemAmount
         itemsCovered.push({
           itemId: alloc.itemId,
           dbOrderItemId: alloc.dbOrderItemId,
           name: itemDetail.name,
           quantity: alloc.quantity,
-          amount: itemAmount,
-        });
+          amount: itemAmount
+        })
       }
-      break;
+      break
 
-    case "custom_amount":
+    case 'custom_amount':
       if (!input.customAmount || input.customAmount <= 0) {
-        errors.push("Custom amount must be greater than 0");
-        break;
+        errors.push('Custom amount must be greater than 0')
+        break
       }
       if (input.customAmount > outstandingAmount + 0.01) {
         // Allow 1 cent tolerance
         errors.push(
           `Custom amount ${input.customAmount} exceeds outstanding ${outstandingAmount}`
-        );
-        break;
+        )
+        break
       }
-      amountToCharge = input.customAmount;
-      break;
+      amountToCharge = input.customAmount
+      break
   }
 
-  const tipAmount = input.tipAmount ?? 0;
-  const totalToCollect = round2(amountToCharge + tipAmount);
+  const tipAmount = input.tipAmount ?? 0
+  const totalToCollect = round2(amountToCharge + tipAmount)
 
   // Change calculation for cash
-  let changeToGive = 0;
+  let changeToGive = 0
   if (isCash && input.amountTendered) {
     if (input.amountTendered < totalToCollect) {
       errors.push(
         `Amount tendered ${input.amountTendered} is less than total ${totalToCollect}`
-      );
+      )
     } else {
-      changeToGive = round2(input.amountTendered - totalToCollect);
+      changeToGive = round2(input.amountTendered - totalToCollect)
     }
   }
 
   // Post-payment state
-  const orderAmountPaidAfter = round2(amountPaidSoFar + amountToCharge);
+  const orderAmountPaidAfter = round2(amountPaidSoFar + amountToCharge)
   const orderAmountDueAfter = round2(
     Math.max(0, totalAmount - orderAmountPaidAfter)
-  );
-  const orderFullyPaidAfter = orderAmountDueAfter < 0.01;
+  )
+  const orderFullyPaidAfter = orderAmountDueAfter < 0.01
 
   return {
     amountToCharge: round2(amountToCharge),
@@ -1055,9 +1403,9 @@ export function calculatePaymentPreview(
     orderFullyPaidAfter,
     isValid: errors.length === 0,
     validationErrors: errors,
-    source: "local",
-    backendValidated: false,
-  };
+    source: 'local',
+    backendValidated: false
+  }
 }
 
 // ============================================================================
@@ -1072,30 +1420,28 @@ export function calculatePaymentPreview(
  * @param allocations - What was paid
  * @returns New items array with updated paidQuantity
  */
-export function applyPaymentToItems(
+export function applyPaymentToItems (
   items: CartItem[],
   allocations: ItemPaymentAllocation[]
 ): CartItem[] {
-  const allocationMap = new Map(allocations.map((a) => [a.itemId, a]));
+  const allocationMap = new Map(allocations.map(a => [a.itemId, a]))
 
-  return items.map((item) => {
-    const allocation = allocationMap.get(item.id);
-    if (!allocation) return item;
+  return items.map(item => {
+    const allocation = allocationMap.get(item.id)
+    if (!allocation) return item
 
     const newPaidQuantity = Math.min(
       item.quantity,
       (item.paidQuantity ?? 0) + allocation.quantityPaid
-    );
+    )
 
     return {
       ...item,
       paidQuantity: newPaidQuantity,
       paymentId:
-        allocation.quantityPaid > 0
-          ? `payment_${Date.now()}`
-          : item.paymentId,
-    };
-  });
+        allocation.quantityPaid > 0 ? `payment_${Date.now()}` : item.paymentId
+    }
+  })
 }
 
 // ============================================================================
@@ -1109,9 +1455,9 @@ export function applyPaymentToItems(
  * @param input - Order calculation input
  * @returns String hash of the input
  */
-export function hashCalculationInput(input: OrderCalculationInput): string {
+export function hashCalculationInput (input: OrderCalculationInput): string {
   const key = {
-    items: input.items.map((i) => ({
+    items: input.items.map(i => ({
       id: i.id,
       price: i.price,
       quantity: i.quantity,
@@ -1119,18 +1465,37 @@ export function hashCalculationInput(input: OrderCalculationInput): string {
       is_voided: i.is_voided,
       tax_category: i.tax_category,
       is_tax_exempt: i.is_tax_exempt,
-      appliedDiscount: i.appliedDiscount?.id,
+      appliedDiscount: i.appliedDiscount?.id
     })),
     discount: input.checkDiscount
       ? {
           id: input.checkDiscount.id,
           type: input.checkDiscount.type,
-          value: input.checkDiscount.value,
+          value: input.checkDiscount.value
         }
       : null,
+    // Service charge inputs — must invalidate cache when these change.
+    preserveItemLevelOutstanding: input.preserveItemLevelOutstanding ?? false,
+    sc: {
+      ruleId: input.serviceChargeRule?.id ?? null,
+      rate: input.serviceChargeRule?.rate_percent ?? null,
+      appliesOn: input.serviceChargeRule?.applies_on ?? null,
+      minParty: input.serviceChargeRule?.min_party_size ?? null,
+      active: input.serviceChargeRule?.is_active ?? null,
+      auto: input.serviceChargeRule?.auto_apply ?? null,
+      taxable: input.serviceChargeRule?.is_taxable ?? null,
+      partySize: input.partySize ?? null,
+      orderType: input.orderType ?? null,
+      snapRate: input.snapshottedRate ?? null,
+      snapAppliesOn: input.snapshottedAppliesOn ?? null,
+      snapName: input.snapshottedName ?? null,
+      manual: input.manualServiceCharge ?? null,
+      manualTaxable: input.manualServiceChargeTaxable ?? null,
+      serverConfirmed: input.serverConfirmedServiceCharge ?? null,
+    }
     // Don't include taxRatesMap in hash - it rarely changes
-  };
-  return JSON.stringify(key);
+  }
+  return JSON.stringify(key)
 }
 
 // ============================================================================
@@ -1141,4 +1506,4 @@ export function hashCalculationInput(input: OrderCalculationInput): string {
  * Legacy function name for backward compatibility.
  * @deprecated Use calculatePaidStatus instead
  */
-export const calculatePaidStatusFromPayments = calculatePaidStatus;
+export const calculatePaidStatusFromPayments = calculatePaidStatus

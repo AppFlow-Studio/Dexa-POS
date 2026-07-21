@@ -2,7 +2,13 @@ import { FloorPlanService } from '@/services/floorPlanService'
 import { AddToWaitlistParams, WaitlistEntry } from '@/types/db-floor-plan-types'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
+import { useLocationConfigStore } from './useLocationConfigStore'
 import { useTableSessionStore } from './useTableSessionStore'
+
+// Automated guest SMS (add/cancel confirmations) only fire when the merchant has
+// left the "auto SMS" toggle on. Manual "Notify" composer sends are unaffected.
+const isAutoSmsEnabled = () =>
+  useLocationConfigStore.getState().config.waitlist.autoSmsEnabled !== false
 
 // Global client reference (pattern used by other stores)
 let _supabaseClient: SupabaseClient | null = null
@@ -39,7 +45,31 @@ interface WaitlistState {
     tableIds: string[]
   ) => Promise<{ session_id: string; order_id?: string } | null>
   updateWaitlistStatus: (entryId: string, status: string) => Promise<void>
+  updateWaitlistEntryAsync: (
+    entryId: string,
+    updates: {
+      party_name?: string
+      party_size?: number
+      phone?: string | null
+      email?: string | null
+      seating_preference?: string | null
+      preferred_section?: string | null
+      notes?: string | null
+      quoted_wait_minutes?: number
+    }
+  ) => Promise<void>
   notifyWaitlistPartyAsync: (entryId: string) => Promise<{
+    success: boolean
+    sms?: boolean
+    error?: string
+    message?: string
+    reason?: string
+  }>
+  sendWaitlistCustomNotification: (
+    entryId: string,
+    message: string,
+    templateKey: string
+  ) => Promise<{
     success: boolean
     sms?: boolean
     error?: string
@@ -201,6 +231,19 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         waitlist: [...state.waitlist, newEntry],
         isLoading: false
       }))
+
+      // Fire-and-forget add-confirmation SMS to the guest. The edge function
+      // renders the message server-side from `template_key` + waitlist row.
+      const phoneDigits = (newEntry.phone ?? '').replace(/\D/g, '')
+      if (phoneDigits.length > 0 && data?.waitlist_id && isAutoSmsEnabled()) {
+        // No await — we don't want to block the add flow if SMS provider is slow.
+        FloorPlanService.sendWaitlistSms(getClient(), {
+          waitlist_id: data.waitlist_id,
+          template_key: 'waitlist.added'
+        }).catch(err => {
+          console.warn('Add-confirmation SMS failed:', err)
+        })
+      }
     } catch (err: any) {
       console.error('Failed to add to waitlist:', err)
       set({
@@ -224,6 +267,9 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
   },
 
   removeFromWaitlistAsync: async (entryId: string) => {
+    // Snapshot phone before we mutate so we can fire the cancel SMS on success.
+    const entry = get().waitlist.find(e => e.id === entryId)
+    const phoneDigits = (entry?.phone ?? '').replace(/\D/g, '')
     try {
       const { error } = await FloorPlanService.updateWaitlistStatus(
         getClient(),
@@ -235,13 +281,24 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
 
       // Remove from local state
       set(state => ({
-        waitlist: state.waitlist.filter(entry => entry.id !== entryId)
+        waitlist: state.waitlist.filter(e => e.id !== entryId)
       }))
+
+      // Fire-and-forget cancellation SMS. Edge function reads the row
+      // server-side and renders the message from template_key.
+      if (phoneDigits.length > 0 && isAutoSmsEnabled()) {
+        FloorPlanService.sendWaitlistSms(getClient(), {
+          waitlist_id: entryId,
+          template_key: 'waitlist.cancelled'
+        }).catch(err => {
+          console.warn('Cancel SMS failed:', err)
+        })
+      }
     } catch (err: any) {
       console.error('Failed to remove from waitlist:', err)
       // Still remove locally for UX
       set(state => ({
-        waitlist: state.waitlist.filter(entry => entry.id !== entryId)
+        waitlist: state.waitlist.filter(e => e.id !== entryId)
       }))
     }
   },
@@ -272,7 +329,7 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         guestName: entry.party_name,
         guestPhone: entry.phone ?? undefined,
         waitlistId: entryId,
-        createOrder: true,
+        createOrder: true
       })
 
       // Retry accuracy tracking post-seat if pre-seat write did not persist.
@@ -297,7 +354,9 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         waitlist: state.waitlist.filter(entry => entry.id !== entryId)
       }))
 
-      return result.sessionId ? { session_id: result.sessionId, order_id: result.orderId } : null
+      return result.sessionId
+        ? { session_id: result.sessionId, order_id: result.orderId }
+        : null
     } catch (err: any) {
       console.error('Failed to seat from waitlist:', err)
       // Still remove locally
@@ -332,6 +391,28 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
           entry.id === entryId ? { ...entry, status: status as any } : entry
         )
       }))
+    }
+  },
+
+  updateWaitlistEntryAsync: async (entryId, updates) => {
+    // Optimistic local update
+    set(state => ({
+      waitlist: state.waitlist.map(entry =>
+        entry.id === entryId ? { ...entry, ...updates } : entry
+      )
+    }))
+    try {
+      const { error } = await FloorPlanService.updateWaitlistEntry(
+        getClient(),
+        entryId,
+        updates
+      )
+      if (error) throw error
+    } catch (err: any) {
+      console.error('Failed to update waitlist entry:', err)
+      // Revert: refetch to restore server state
+      const locationId = get().waitlist.find(e => e.id === entryId)?.location_id
+      if (locationId) get().fetchWaitlist(locationId, { silent: true })
     }
   },
 
@@ -399,7 +480,7 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
       if (smsFailed) {
         const failureMessage =
           smsData?.message ||
-          smsData?.twilio_error ||
+          smsData?.provider_error ||
           (typeof smsResult.error?.message === 'string' &&
             smsResult.error.message) ||
           (typeof smsData?.error === 'string' && smsData.error !== 'sms_failed'
@@ -437,6 +518,92 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         message:
           err.message ||
           'Could not send SMS. Failure logged. Please notify guest verbally.'
+      }
+    }
+  },
+
+  sendWaitlistCustomNotification: async (
+    entryId: string,
+    message: string,
+    templateKey: string
+  ) => {
+    try {
+      const entry = get().waitlist.find(e => e.id === entryId)
+      if (!entry) return { success: false, error: 'Entry not found' }
+
+      const phoneDigits = entry.phone?.replace(/\D/g, '') ?? ''
+      if (!phoneDigits) {
+        return {
+          success: false,
+          error: 'no_phone',
+          message: 'No phone on file for this guest'
+        }
+      }
+
+      const isCustom = templateKey === 'custom'
+      const smsResult = await FloorPlanService.sendWaitlistSms(getClient(), {
+        waitlist_id: entryId,
+        template_key: templateKey,
+        // Only forward the freeform body when the template explicitly allows it.
+        message: isCustom ? message : undefined
+      })
+
+      const smsData = smsResult.data
+      const smsFailed =
+        !!smsResult.error ||
+        !smsData ||
+        !smsData.success ||
+        smsData.sms === false
+
+      if (smsData?.success && smsData.sms) {
+        set(state => ({
+          waitlist: state.waitlist.map(e =>
+            e.id === entryId
+              ? {
+                  ...e,
+                  notified_at: new Date().toISOString(),
+                  last_notification_type: templateKey
+                }
+              : e
+          )
+        }))
+      } else if (smsFailed) {
+        set(state => ({
+          waitlist: state.waitlist.map(e =>
+            e.id === entryId
+              ? {
+                  ...e,
+                  notification_failures: (e.notification_failures ?? 0) + 1
+                }
+              : e
+          )
+        }))
+      }
+
+      if (smsFailed) {
+        const failureMessage =
+          smsData?.message ||
+          smsData?.provider_error ||
+          (typeof smsResult.error?.message === 'string' &&
+            smsResult.error.message) ||
+          'Could not send SMS. Failure logged. Please notify guest verbally.'
+        return {
+          success: false,
+          error: 'sms_failed',
+          message: failureMessage,
+          reason: smsData?.reason
+        }
+      }
+
+      return smsData ?? { success: true, sms: true }
+    } catch (err: any) {
+      console.error('Failed to send custom waitlist notification:', err)
+      return {
+        success: false,
+        error: 'sms_failed',
+        message:
+          err.message ||
+          'Could not send SMS. Please notify guest verbally.'
       }
     }
   },

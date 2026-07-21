@@ -8,13 +8,15 @@ import {
 } from "react-native";
 import { Plus, XCircle, Wifi } from "lucide-react-native";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 
 // ---------------------------------------------------------------------------
 // IPv4 validation helper
 // ---------------------------------------------------------------------------
 
 export const isValidIpv4 = (ip: string): boolean => {
-  const parts = ip.split(".");
+  const clean = ip.replace(/\s/g, '');
+  const parts = clean.split(".");
   if (parts.length !== 4) return false;
   return parts.every((p) => {
     const n = Number(p);
@@ -55,10 +57,12 @@ export function ManualIpPanel({
   onScanNetwork,
   onCancel,
 }: ManualIpPanelProps) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const isReceipt = forRole === "receipt";
   const accentColor = isReceipt ? colors.teal : "#f97316";
 
-  const trimmedIp = manualIp.trim();
+  const trimmedIp = manualIp.replace(/\s/g, '');
   const ipValid = isValidIpv4(trimmedIp);
   const connectDisabled = isProbing || !trimmedIp || !ipValid;
 
@@ -66,11 +70,11 @@ export function ManualIpPanel({
     <View
       style={{
         backgroundColor: colors.card,
-        padding: 14,
-        borderRadius: 12,
+        padding: s(14),
+        borderRadius: s(12),
         borderWidth: 1,
         borderColor: colors.border,
-        marginBottom: 10,
+        marginBottom: s(10),
       }}
     >
       {/* Header + Cancel */}
@@ -79,14 +83,14 @@ export function ManualIpPanel({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          marginBottom: 10,
+          marginBottom: s(10),
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Plus size={14} color={accentColor} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
+          <Plus size={s(14)} color={accentColor} />
           <Text
             style={{
-              fontSize: 13,
+              fontSize: s(13),
               fontWeight: "700",
               color: colors.heading,
             }}
@@ -97,16 +101,16 @@ export function ManualIpPanel({
         <TouchableOpacity
           onPress={onCancel}
           style={{
-            padding: 6,
+            padding: s(6),
             backgroundColor: colors.panel,
-            borderRadius: 6,
+            borderRadius: s(6),
           }}
         >
-          <XCircle size={14} color={colors.label} />
+          <XCircle size={s(14)} color={colors.label} />
         </TouchableOpacity>
       </View>
 
-      <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 10 }}>
+      <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(10) }}>
         Enter the IP address from the printer's configuration receipt.
       </Text>
 
@@ -124,12 +128,12 @@ export function ManualIpPanel({
           backgroundColor: colors.panel,
           borderWidth: 1,
           borderColor: colors.border,
-          borderRadius: 8,
-          paddingHorizontal: 12,
-          paddingVertical: 9,
-          fontSize: 13,
+          borderRadius: s(8),
+          paddingHorizontal: s(12),
+          paddingVertical: s(9),
+          fontSize: s(13),
           color: colors.heading,
-          marginBottom: 10,
+          marginBottom: s(10),
         }}
         editable={!isProbing}
       />
@@ -138,10 +142,10 @@ export function ManualIpPanel({
       {trimmedIp.length > 0 && !ipValid && !manualIpError && (
         <Text
           style={{
-            fontSize: 11,
+            fontSize: s(11),
             color: colors.warning,
-            marginBottom: 6,
-            marginTop: -4,
+            marginBottom: s(6),
+            marginTop: s(-4),
           }}
         >
           Enter a valid IPv4 address (e.g. 192.168.1.100)
@@ -155,26 +159,26 @@ export function ManualIpPanel({
             backgroundColor: colors.danger + "12",
             borderWidth: 1,
             borderColor: colors.danger + "30",
-            borderRadius: 8,
-            padding: 10,
-            marginBottom: 10,
+            borderRadius: s(8),
+            padding: s(10),
+            marginBottom: s(10),
           }}
         >
-          <Text style={{ fontSize: 11, color: colors.danger }}>
+          <Text style={{ fontSize: s(11), color: colors.danger }}>
             {manualIpError}
           </Text>
         </View>
       )}
 
       {/* Connect + Scan buttons */}
-      <View style={{ flexDirection: "row", marginBottom: 10, gap: 8 }}>
+      <View style={{ flexDirection: "row", marginBottom: s(10), gap: s(8) }}>
         <TouchableOpacity
           onPress={onConnect}
           disabled={connectDisabled}
           style={{
             flex: 1,
-            paddingVertical: 10,
-            borderRadius: 8,
+            paddingVertical: s(10),
+            borderRadius: s(8),
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
@@ -192,14 +196,14 @@ export function ManualIpPanel({
           ) : (
             <>
               <Wifi
-                size={14}
+                size={s(14)}
                 color={connectDisabled ? colors.muted : accentColor}
               />
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: "600",
-                  marginLeft: 6,
+                  marginLeft: s(6),
                   color: connectDisabled ? colors.muted : accentColor,
                 }}
               >
@@ -213,9 +217,9 @@ export function ManualIpPanel({
           onPress={onScanNetwork}
           disabled={isScanningStar}
           style={{
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            borderRadius: 8,
+            paddingHorizontal: s(14),
+            paddingVertical: s(10),
+            borderRadius: s(8),
             flexDirection: "row",
             alignItems: "center",
             backgroundColor: colors.panel,
@@ -227,12 +231,12 @@ export function ManualIpPanel({
             <ActivityIndicator size="small" color={colors.teal} />
           ) : (
             <>
-              <Wifi size={13} color={colors.teal} />
+              <Wifi size={s(13)} color={colors.teal} />
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: "600",
-                  marginLeft: 5,
+                  marginLeft: s(5),
                   color: colors.teal,
                 }}
               >

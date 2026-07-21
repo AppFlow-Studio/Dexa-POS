@@ -20,7 +20,10 @@ export async function adjustTips(
   adjustments: TipAdjustment[],
   staffId?: string,
 ): Promise<AdjustTipsResult> {
-  const { data, error } = await supabase.rpc("adjust_tips", {
+  // adjust_tips_v2: recomputes tip_fee from tip_surcharge_percentage_snapshot
+  // and preserves original_tip_fee on first adjustment. Pre-v10 rows have
+  // snapshot=0 so the recompute is a no-op for historical data.
+  const { data, error } = await supabase.rpc("adjust_tips_v2", {
     p_order_id: orderId,
     p_adjustments: adjustments,
     p_staff_id: staffId || null,

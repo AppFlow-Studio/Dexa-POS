@@ -310,6 +310,7 @@ BEGIN
             discount_type = v_discount.discount_type::discount_type,
             discount_value = v_discount.discount_value,
             discount_amount = v_item_discount_amount,
+            discount_cash_amount = (v_item_calcs->>'cash_discount_amount')::numeric,
             discount_source = v_discount.source::discount_source,
             discount_applied_by = v_discount.applied_by_staff_profiles_id,
             discount_approved_by = v_discount.approved_by_staff_profiles_id,

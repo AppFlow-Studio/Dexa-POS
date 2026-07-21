@@ -55,9 +55,11 @@ export async function openTab(
   amount: number,
   terminal: TerminalInstance,
   supabase: SupabaseClient,
+  onTransactionStart?: (refId: string) => void,
 ): Promise<PreAuthResult> {
   try {
     const referenceId = generateRefId("AUTH");
+    onTransactionStart?.(referenceId);
     let terminalResponse: Record<string, unknown> | undefined;
     let rrn: string | undefined;
     let stan: string | undefined;
@@ -162,19 +164,23 @@ export async function openTab(
     });
 
     // 4. Auto-send to kitchen after successful auth hold
+    // Respect KDS workflow mode (2-step skips "sent_to_kitchen" → goes straight to "preparing")
     if (order.order_status === "draft") {
+      const { getOrderSentStatus, getKitchenSentStatus } = require("@/lib/kitchenStatusUtils");
+      const orderStatus = getOrderSentStatus();
+      const kitchenStatus = getKitchenSentStatus();
       const now = new Date().toISOString();
 
       // Update local state: order status + item kitchen statuses
       store.patchOrder(orderId, {
-        order_status: "sent_to_kitchen",
+        order_status: orderStatus,
         sent_to_kitchen_at: order.sent_to_kitchen_at || now,
         check_status: "Opened",
         items: order.items.map((item) => ({
           ...item,
           kitchen_status:
             !item.kitchen_status || item.kitchen_status === "new"
-              ? ("sent" as const)
+              ? (kitchenStatus as "sent" | "preparing")
               : item.kitchen_status,
           item_status: !item.item_status
             ? ("Preparing" as const)
@@ -188,7 +194,7 @@ export async function openTab(
         OrderService.updateOrderStatus(
           supabase,
           order.db_order_id,
-          "sent_to_kitchen",
+          orderStatus,
         )
           .then(({ error }: { error: any }) => {
             if (
@@ -203,10 +209,13 @@ export async function openTab(
               .map((i) => i.db_order_item_id)
               .filter((id): id is string => !!id);
             if (dbItemIds.length > 0) {
+              // Wave 3.0d-4: per-intent idempotency key so retries dedupe.
+              const { toBulkUpdateStatusKey } = require("@/lib/network/idempotencyKey");
               OrderService.bulkUpdateOrderItemStatus(
                 supabase,
                 dbItemIds,
-                "sent",
+                kitchenStatus,
+                { keyOverride: toBulkUpdateStatusKey(dbItemIds, kitchenStatus) },
               ).catch((err: Error) =>
                 console.error(
                   "[PreAuthService] Item status sync failed:",
@@ -244,6 +253,7 @@ export async function increaseTab(
   newAmount: number,
   terminal: TerminalInstance,
   supabase: SupabaseClient,
+  onTransactionStart?: (refId: string) => void,
 ): Promise<IncrementResult> {
   try {
     const store = useOrderStore.getState();
@@ -259,6 +269,7 @@ export async function increaseTab(
     if (terminal.type === "castles") {
       // Castles supports native incremental auth
       const referenceId = generateRefId("INCR");
+      onTransactionStart?.(referenceId);
       const result = await terminal.service.processAuthIncremental({
         amount: newAmount,
         referenceId,
@@ -338,6 +349,7 @@ export async function closeTab(
   tipAmount: number,
   terminal: TerminalInstance,
   supabase: SupabaseClient,
+  onTransactionStart?: (refId: string) => void,
 ): Promise<CaptureResult> {
   try {
     const store = useOrderStore.getState();
@@ -353,6 +365,7 @@ export async function closeTab(
 
     // 1. Call terminal to capture
     if (terminal.type === "castles") {
+      onTransactionStart?.(referenceId);
       const result = await terminal.service.processAuthComplete({
         captureAmount: captureAmount + tipAmount,
         referenceId,
@@ -366,11 +379,13 @@ export async function closeTab(
 
       terminalResponse = result.terminalResponse;
     } else {
+      const dejavooRef = payment.preAuthReferenceId ?? referenceId;
+      onTransactionStart?.(dejavooRef);
       const result = await terminal.api
         .capture()
         .amount(captureAmount)
         .tip(tipAmount)
-        .referenceId(payment.preAuthReferenceId ?? referenceId)
+        .referenceId(dejavooRef)
         .execute();
 
       if (!result.success) {
@@ -476,6 +491,7 @@ export async function releaseTab(
   paymentId: string,
   terminal: TerminalInstance,
   supabase: SupabaseClient,
+  onTransactionStart?: (refId: string) => void,
 ): Promise<VoidResult> {
   try {
     const store = useOrderStore.getState();
@@ -489,6 +505,7 @@ export async function releaseTab(
     // 1. Call terminal to release hold FIRST (before backend)
     if (terminal.type === "castles") {
       const referenceId = generateRefId("VOID");
+      onTransactionStart?.(referenceId);
       const result = await terminal.service.processVoid({
         rrn: payment.preAuthRrn,
         stan: payment.preAuthStan,
@@ -499,10 +516,12 @@ export async function releaseTab(
         return { success: false, error: result.error || "Failed to release hold on terminal" };
       }
     } else {
+      const dejavooRef = payment.preAuthReferenceId ?? "";
+      onTransactionStart?.(dejavooRef);
       const result = await terminal.api
         .void()
         .amount(payment.preAuthAmount ?? payment.amount)
-        .referenceId(payment.preAuthReferenceId ?? "")
+        .referenceId(dejavooRef)
         .execute();
 
       if (!result.success) {
@@ -543,6 +562,14 @@ export async function releaseTab(
 // BACKEND SYNC HELPERS
 // ============================================================
 
+// Pre-auth v3 adds processor_fee_percentage_snapshot / dual_pricing_fee /
+// tip_fee stamping. Gated by EXPO_PUBLIC_PREAUTH_V3 — flip to '1' on staging
+// first, then prod, mirroring the v9 → v10 rollout for process_payment.
+const PREAUTH_USE_V3 =
+  process.env.EXPO_PUBLIC_PREAUTH_V3 === "1" ||
+  process.env.EXPO_PUBLIC_PREAUTH_V3 === "true";
+
+
 async function syncPreAuthToBackend(
   orderId: string,
   payment: OrderProfilePayment,
@@ -558,7 +585,8 @@ async function syncPreAuthToBackend(
     return;
   }
 
-  const { data, error } = await supabase.rpc("process_preauth_v1", {
+  const rpcName = PREAUTH_USE_V3 ? "process_preauth_v3" : "process_preauth_v1";
+  const { data, error } = await supabase.rpc(rpcName, {
     p_order_id: dbOrderId,
     p_amount: payment.amount,
     p_terminal_response: terminalResponse ?? null,
@@ -567,7 +595,7 @@ async function syncPreAuthToBackend(
   });
 
   if (error) {
-    console.error("[PreAuthService] process_preauth_v1 failed:", error.message);
+    console.error(`[PreAuthService] ${rpcName} failed:`, error.message);
     return;
   }
 
@@ -590,14 +618,15 @@ async function syncIncrementToBackend(
   terminalResponse: Record<string, unknown> | undefined,
   supabase: SupabaseClient,
 ): Promise<void> {
-  const { error } = await supabase.rpc("update_preauth_amount_v1", {
+  const rpcName = PREAUTH_USE_V3 ? "update_preauth_amount_v3" : "update_preauth_amount_v1";
+  const { error } = await supabase.rpc(rpcName, {
     p_payment_id: dbPaymentId,
     p_new_amount: newAmount,
     p_terminal_response: terminalResponse ?? null,
   });
 
   if (error) {
-    console.error("[PreAuthService] update_preauth_amount_v1 failed:", error.message);
+    console.error(`[PreAuthService] ${rpcName} failed:`, error.message);
   }
 }
 
@@ -608,7 +637,8 @@ async function syncCaptureToBackend(
   terminalResponse: Record<string, unknown> | undefined,
   supabase: SupabaseClient,
 ): Promise<void> {
-  const { error } = await supabase.rpc("capture_preauth_v1", {
+  const rpcName = PREAUTH_USE_V3 ? "capture_preauth_v3" : "capture_preauth_v1";
+  const { error } = await supabase.rpc(rpcName, {
     p_payment_id: dbPaymentId,
     p_capture_amount: captureAmount,
     p_tip_amount: tipAmount,
@@ -617,7 +647,7 @@ async function syncCaptureToBackend(
   });
 
   if (error) {
-    console.error("[PreAuthService] capture_preauth_v1 failed:", error.message);
+    console.error(`[PreAuthService] ${rpcName} failed:`, error.message);
   }
 }
 

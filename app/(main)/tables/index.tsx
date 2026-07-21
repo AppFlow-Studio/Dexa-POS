@@ -1,62 +1,98 @@
-import ServerSectionManager from '@/components/floor-plan/ServerSectionManager'
-import HostStationScreenEnhanced from '@/components/host-station/HostStationScreenEnhanced'
-import { GuestCountModal } from '@/components/tables/GuestCountModal'
-import MergeActionBar from '@/components/tables/MergeActionBar'
-import Sidebar from '@/components/tables/Sidebar'
-import TableContextSheet from '@/components/tables/TableContextSheet'
-import TableLayoutSkeleton from '@/components/tables/TableLayoutSkeleton'
-import TableLayoutView from '@/components/tables/TableLayoutView'
-import { useLoading } from '@/contexts/LoadingContext'
-import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
-import { useToast } from '@/contexts/ToastContext'
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
-import { pauseTimerTick, resumeTimerTick } from '@/hooks/useTableTimerTick'
-import { getDeviceId } from '@/lib/deviceId'
-import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
-import { useEmployeeStore } from '@/stores/useEmployeeStore'
-import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import OrderPinGate from "@/components/auth/OrderPinGate";
+import ServerSectionManager from "@/components/floor-plan/ServerSectionManager";
+import { GuestCountModal } from "@/components/tables/GuestCountModal";
+import MergeActionBar from "@/components/tables/MergeActionBar";
+import ServerSelectSheet from "@/components/tables/ServerSelectSheet";
+import Sidebar from "@/components/tables/Sidebar";
+import TableContextSheet from "@/components/tables/TableContextSheet";
+import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
+import TableLayoutView from "@/components/tables/TableLayoutView";
+import TableOrderOverlay from "@/components/tables/TableOrderOverlay";
+import { useLoading } from "@/contexts/LoadingContext";
+import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
+import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { pauseTimerTick, resumeTimerTick } from "@/hooks/useTableTimerTick";
+import { getDeviceId } from "@/lib/deviceId";
+import { startInteraction } from "@/lib/perf";
+import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
+import { useColorScheme } from "@/lib/useColorScheme";
+import { transferTableServer } from "@/services/serverAssignmentService";
+import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
+import {
+  PENDING_SEAT_ATTRIBUTION,
+  useEmployeeStore,
+} from "@/stores/useEmployeeStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import {
   registerPendingOrderCreation,
-  useOrderStore
-} from '@/stores/useOrderStore'
-import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
+  useOrderStore,
+} from "@/stores/useOrderStore";
+import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import {
   setReservationSupabaseClient,
-  useReservationStore
-} from '@/stores/useReservationStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useTableSessionStore } from '@/stores/useTableSessionStore'
-import { useTimeclockStore } from '@/stores/useTimeclockStore'
-import { setWaitlistSupabaseClient } from '@/stores/useWaitlistStore'
-import { FloorPlanObject, Reservation } from '@/types/db-floor-plan-types'
-import { Href, useFocusEffect, useRouter } from 'expo-router'
+  useReservationStore,
+} from "@/stores/useReservationStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
+import { FloorPlanObject, Reservation } from "@/types/db-floor-plan-types";
+import { Href, useFocusEffect, useRouter } from "expo-router";
 import {
   GitMerge,
   HelpCircle,
   Pencil,
   Search,
   Users,
-  UtensilsCrossed,
-  X
-} from 'lucide-react-native'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Modal, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import { useShallow } from 'zustand/react/shallow'
+  X,
+} from "lucide-react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  InteractionManager,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useShallow } from "zustand/react/shallow";
 
 const canSeatFromSidebar = (status?: string | null) => {
-  const normalized = status?.toLowerCase()
-  return !normalized || normalized === 'available' || normalized === 'reserved'
-}
+  const normalized = status?.toLowerCase();
+  return !normalized || normalized === "available" || normalized === "reserved";
+};
+
+const getSelectedTablesCapacity = (
+  tablesById: Record<string, FloorPlanObject>,
+  tableIds: string[],
+) => {
+  let totalCapacity = 0;
+  let hasKnownCapacity = false;
+
+  for (const tableId of tableIds) {
+    const capacity = tablesById[tableId]?.capacity;
+    if (typeof capacity === "number" && capacity > 0) {
+      totalCapacity += capacity;
+      hasKnownCapacity = true;
+    }
+  }
+
+  return { totalCapacity, hasKnownCapacity };
+};
 
 const TablesScreen = () => {
-  const router = useRouter()
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const { colorScheme } = useColorScheme();
+  const router = useRouter();
   // Subscribe to tables directly to ensure real-time updates
-  const tables = useFloorPlanStore(useShallow(s => s.tables))
-  const floorPlans = useFloorPlanStore(s => s.floorPlans)
-  const activeFloorPlanId = useFloorPlanStore(s => s.activeFloorPlanId)
-  const floorPlanLoading = useFloorPlanStore(s => s.isLoading)
-  const sections = useFloorPlanStore(s => s.sections)
-  const sectionsById = useFloorPlanStore(s => s.sectionsById)
+  const tables = useFloorPlanStore(useShallow((s) => s.tables));
+  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
+  const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
+  const floorPlanLoading = useFloorPlanStore((s) => s.isLoading);
+  const sections = useFloorPlanStore((s) => s.sections);
+  const sectionsById = useFloorPlanStore((s) => s.sectionsById);
 
   // DON'T sync sessions into floor plan store tables.
   // DraggableTable reads liveSession directly from useTableSessionStore (line 65),
@@ -64,392 +100,556 @@ const TablesScreen = () => {
   // is only for persistence, not runtime rendering.
 
   // Selection state — separate (changes on every tap in merge mode)
-  const selectedTableIds = useFloorPlanStore(s => s.selectedTableIds)
+  const selectedTableIds = useFloorPlanStore((s) => s.selectedTableIds);
 
   // Actions — stable refs, separate is fine
-  const setActiveFloorPlan = useFloorPlanStore(s => s.setActiveFloorPlan)
-  const toggleTableSelection = useFloorPlanStore(s => s.toggleTableSelection)
-  const clearSelection = useFloorPlanStore(s => s.clearSelection)
-  const mergeTable = useTableSessionStore(s => s.mergeTable)
-  const unmergeTable = useTableSessionStore(s => s.unmergeTable)
-  const selectedStation = useStoreSettingsStore(s => s.selectedStation)
-  const device_id = getDeviceId()
-  const startNewOrder = useOrderStore(s => s.startNewOrder)
-  const setActiveOrder = useOrderStore(s => s.setActiveOrder)
-  const getOrderByDbId = useOrderStore(s => s.getOrderByDbId)
-  const getOrder = useOrderStore(s => s.getOrder)
-  const syncOrderFromDatabase = useOrderStore(s => s.syncOrderFromDatabase)
-  const { show } = useToast()
-  const { showLoading, hideLoading } = useLoading()
+  const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
+  const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
+  const clearSelection = useFloorPlanStore((s) => s.clearSelection);
+  const selectMultipleTables = useFloorPlanStore((s) => s.selectMultipleTables);
+  const mergeTable = useTableSessionStore((s) => s.mergeTable);
+  const unmergeTable = useTableSessionStore((s) => s.unmergeTable);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  const device_id = getDeviceId();
+  const startNewOrder = useOrderStore((s) => s.startNewOrder);
+  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
+  const getOrderByDbId = useOrderStore((s) => s.getOrderByDbId);
+  const getOrder = useOrderStore((s) => s.getOrder);
+  const openTableOverlay = usePendingTableOverlay((s) => s.openTable);
+  const { show } = useToast();
+  const { showLoading, hideLoading } = useLoading();
 
-  const supabaseClient = useSupabaseClient()
-  const location_id = useStoreSettingsStore(s => s.selectedStore?.id || '')
+  const supabaseClient = useSupabaseClient();
+  const location_id = useStoreSettingsStore((s) => s.selectedStore?.id || "");
 
-  const [legendVisible, setLegendVisible] = useState(false)
-  const [searchInput, setSearchInput] = useState('')
-  const [searchText, setSearchText] = useState('')
-  const [isGuestModalOpen, setGuestModalOpen] = useState(false)
+  const [legendVisible, setLegendVisible] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [isGuestModalOpen, setGuestModalOpen] = useState(false);
+  // Per-order PIN gate for dine-in seating: when required, hold the pending
+  // guest count until a PIN is verified, then resume seating.
+  const [isSeatingPinGateOpen, setSeatingPinGateOpen] = useState(false);
+  const pendingSeatGuestCountRef = useRef<number | null>(null);
+  const [seatingErrorMessage, setSeatingErrorMessage] = useState<string | null>(
+    null,
+  );
   const [pendingReservation, setPendingReservation] =
-    useState<Reservation | null>(null)
-  const [isMergeMode, setMergeMode] = useState(false)
-  const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
-  const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
-  const [isHostStationOpen, setHostStationOpen] = useState(false)
-  const [isSectionManagerOpen, setSectionManagerOpen] = useState(false)
-  // overlayTableId removed in favor of router.push
+    useState<Reservation | null>(null);
+  const [isMergeMode, setMergeMode] = useState(false);
+  const [contextTable, setContextTable] = useState<FloorPlanObject | null>(
+    null,
+  );
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const [isSectionManagerOpen, setSectionManagerOpen] = useState(false);
+  const [transferServerTarget, setTransferServerTarget] = useState<{
+    tableId: string;
+    sessionId: string;
+  } | null>(null);
+
+  // Camera zoom-to-table: set by sidebar tap, consumed by TableLayoutView effect
+  const [zoomToTableId, setZoomToTableId] = useState<string | null>(null);
+  const zoomTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When zoomToTableId is set, the TableLayoutView effect will animate the
+  // camera. We clear any pending timer, set null → tableId to guarantee the
+  // effect fires even for the same table twice, then clear back to null after
+  // a grace period so stale values don't re-trigger on subsequent re-renders.
+  const handleFocusTable = useCallback((tableId: string) => {
+    if (zoomTimerRef.current) {
+      clearTimeout(zoomTimerRef.current);
+      zoomTimerRef.current = null;
+    }
+    setZoomToTableId(null);
+    requestAnimationFrame(() => {
+      setZoomToTableId(tableId);
+      // Clear after animation settles so a sidebar collapse/re-render doesn't
+      // re-trigger the zoom for a stale ID.
+      zoomTimerRef.current = setTimeout(() => {
+        setZoomToTableId(null);
+        zoomTimerRef.current = null;
+      }, 600);
+    });
+  }, []);
 
   useEffect(() => {
     if (supabaseClient) {
-      setWaitlistSupabaseClient(supabaseClient)
+      setWaitlistSupabaseClient(supabaseClient);
     }
-  }, [supabaseClient])
+  }, [supabaseClient]);
 
-  const fetchReservations = useReservationStore(s => s.fetchReservations)
+  const fetchReservations = useReservationStore((s) => s.fetchReservations);
+  const fetchReservationsRef = useRef(fetchReservations);
+  fetchReservationsRef.current = fetchReservations;
 
   useEffect(() => {
-    if (!supabaseClient || !location_id) return
-    setReservationSupabaseClient(supabaseClient)
-    fetchReservations(location_id)
-    const interval = setInterval(
-      () => fetchReservations(location_id, undefined, { silent: true }),
-      30000
-    )
-    return () => clearInterval(interval)
-  }, [supabaseClient, location_id, fetchReservations])
+    if (!supabaseClient || !location_id) return;
+    setReservationSupabaseClient(supabaseClient);
+    let interval: ReturnType<typeof setInterval> | null = null;
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      fetchReservationsRef.current(location_id);
+      interval = setInterval(
+        () =>
+          fetchReservationsRef.current(location_id, undefined, {
+            silent: true,
+          }),
+        30000,
+      );
+    });
+    return () => {
+      cancelled = true;
+      task.cancel();
+      if (interval) clearInterval(interval);
+    };
+  }, [supabaseClient, location_id]);
 
-  // Consume pending table overlay from waitlist seating flow
+  // Consume pending table overlay from waitlist seating flow / cross-screen handoff.
   useFocusEffect(
     useCallback(() => {
-      const pendingId = usePendingTableOverlay.getState().consume()
+      const pendingId = usePendingTableOverlay.getState().consume();
       if (pendingId) {
-        router.push(('/tables/' + pendingId) as Href)
+        openTableOverlay(pendingId);
       }
-    }, [])
-  )
+    }, [openTableOverlay]),
+  );
 
   // Pause background timer ticks when screen loses focus
   useFocusEffect(
     useCallback(() => {
-      resumeTimerTick()
-      return () => pauseTimerTick()
-    }, [])
-  )
+      resumeTimerTick();
+      return () => pauseTimerTick();
+    }, []),
+  );
+
+  // DEV: log the live realtime subscriptions for the Tables screen — which
+  // location channels are open and their current connection state. Re-logs
+  // whenever a channel's state changes so you can watch (re)subscribes.
+  const { floor, orders } = useLocationRealtime();
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log("[Tables] Active realtime subscriptions:", {
+      floor: { topic: floor.status.topic, state: floor.status.state },
+      orders: { topic: orders.status.topic, state: orders.status.state },
+    });
+  }, [
+    floor.status.topic,
+    floor.status.state,
+    orders.status.topic,
+    orders.status.state,
+  ]);
 
   // Debounce search input
   useEffect(() => {
-    const timer = setTimeout(() => setSearchText(searchInput), 200)
-    return () => clearTimeout(timer)
-  }, [searchInput])
+    const timer = setTimeout(() => setSearchText(searchInput), 200);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
-  const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore()
-  const { loggedInEmployee } = useEmployeeStore()
-
-  // Subscribe to realtime floor updates to trigger visual refresh
-  // This ensures the floor plan immediately reflects changes from other stations
-  const { floor } = useLocationRealtime()
+  const isClockedIn = useTimeclockStore((s) => {
+    if (!s.activeEmployeeId) return false;
+    return s.sessions[s.activeEmployeeId]?.status === "clockedIn";
+  });
+  const showClockInWall = useTimeclockStore((s) => s.showClockInWall);
+  const getEmployeeByStaffId = useEmployeeStore((s) => s.getEmployeeByStaffId);
 
   useEffect(() => {
     if (!activeFloorPlanId && floorPlans.length > 0) {
-      setActiveFloorPlan(floorPlans[0].id)
+      setActiveFloorPlan(floorPlans[0].id);
     }
-    clearSelection()
-  }, [activeFloorPlanId, floorPlans, setActiveFloorPlan, clearSelection])
+    clearSelection();
+  }, [activeFloorPlanId, floorPlans, setActiveFloorPlan, clearSelection]);
 
   // activePlan logic is now handled by store loading 'tables' only for active plan.
   // tables = current active tables.
 
-  const isClockedIn = useMemo(() => {
-    if (!activeEmployeeId) return false
-    const session = getSession(activeEmployeeId)
-    return session?.status === 'clockedIn'
-  }, [activeEmployeeId, getSession])
-
   // Filter tables by search (uses debounced searchText)
   const filteredTables = useMemo(() => {
-    let result = tables
+    let result = tables;
     if (searchText.trim()) {
-      const query = searchText.toLowerCase()
-      result = result.filter(t => t.name?.toLowerCase().includes(query))
+      const query = searchText.toLowerCase();
+      result = result.filter((t) => t.name?.toLowerCase().includes(query));
     }
     if (activeSectionId) {
-      result = result.filter(t => t.section_id === activeSectionId)
+      result = result.filter((t) => t.section_id === activeSectionId);
     }
-    return result
-  }, [tables, searchText, activeSectionId])
+    return result;
+  }, [tables, searchText, activeSectionId]);
 
   const handleCloseGuestModal = useCallback(() => {
-    setGuestModalOpen(false)
-    clearSelection()
-  }, [clearSelection])
+    setGuestModalOpen(false);
+    setSeatingErrorMessage(null);
+    resumeTimerTick();
+    clearSelection();
+  }, [clearSelection]);
 
   const handleTablePress = useCallback(
     (table: FloorPlanObject) => {
       if (!isClockedIn) {
-        showClockInWall()
-        return
+        showClockInWall();
+        return;
       }
 
       // MERGE MODE: Multi-select behavior
       if (isMergeMode) {
-        toggleTableSelection(table.id)
-        return
+        toggleTableSelection(table.id);
+        return;
+      }
+
+      // Eager prefetch: if table is occupied, start loading order now
+      // so it's cached by the time the user taps "View Order" in the context sheet
+      const liveSession = useTableSessionStore.getState().sessions[table.id];
+      const activeSession = liveSession ?? table.session;
+      if (activeSession?.order_id && activeSession.status !== "available") {
+        const existing = useOrderStore
+          .getState()
+          .getOrder(activeSession.order_id);
+        if (!existing) {
+          ensureOrderPrefetched(activeSession.order_id).catch(() => {});
+        }
       }
 
       // NORMAL MODE: Open context sheet regardless of session state
-      setContextTable(table)
+      setContextTable(table);
     },
-    [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection]
-  )
+    [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection],
+  );
 
   const handleSheetSeatGuests = useCallback(
     (table: FloorPlanObject) => {
       // Look up the fresh table data from store to get latest session
-      const freshTable = useFloorPlanStore.getState().getTableById(table.id)
-      if (!freshTable) return
+      const freshTable = useFloorPlanStore.getState().getTableById(table.id);
+      if (!freshTable) return;
 
       // Only allow seating on available tables — check live session store too (floor plan store can lag)
-      const liveSession = useTableSessionStore.getState().sessions[table.id]
-      const activeSession = liveSession ?? freshTable.session
+      const liveSession = useTableSessionStore.getState().sessions[table.id];
+      const activeSession = liveSession ?? freshTable.session;
       if (!canSeatFromSidebar(activeSession?.status)) {
         show({
-          title: 'Table Occupied',
+          title: "Table Occupied",
           message:
-            'This table is already in use. View the existing order instead.',
-          type: 'warning'
-        })
-        return
+            "This table is already in use. View the existing order instead.",
+          type: "warning",
+        });
+        return;
       }
-      setContextTable(null)
-      clearSelection()
-      toggleTableSelection(table.id)
-      setGuestModalOpen(true)
+      setContextTable(null);
+      clearSelection();
+      toggleTableSelection(table.id);
+      setSeatingErrorMessage(null);
+      setGuestModalOpen(true);
     },
-    [clearSelection, toggleTableSelection, show]
-  )
+    [clearSelection, toggleTableSelection, show],
+  );
 
   const handleSeatReservation = useCallback(
     (table: FloorPlanObject, reservation: Reservation) => {
-      const freshTable = useFloorPlanStore.getState().getTableById(table.id)
-      if (!freshTable) return
-      const liveSession = useTableSessionStore.getState().sessions[table.id]
-      const activeSession = liveSession ?? freshTable.session
+      const freshTable = useFloorPlanStore.getState().getTableById(table.id);
+      if (!freshTable) return;
+      const liveSession = useTableSessionStore.getState().sessions[table.id];
+      const activeSession = liveSession ?? freshTable.session;
       if (!canSeatFromSidebar(activeSession?.status)) {
         show({
-          title: 'Table Occupied',
-          message: 'This table is already in use.',
-          type: 'warning'
-        })
-        return
+          title: "Table Occupied",
+          message: "This table is already in use.",
+          type: "warning",
+        });
+        return;
       }
-      setContextTable(null)
-      clearSelection()
-      toggleTableSelection(table.id)
-      setPendingReservation(reservation)
-      setGuestModalOpen(true)
+      setContextTable(null);
+      clearSelection();
+      toggleTableSelection(table.id);
+      setSeatingErrorMessage(null);
+      setPendingReservation(reservation);
+      setGuestModalOpen(true);
     },
-    [clearSelection, toggleTableSelection, show]
-  )
+    [clearSelection, toggleTableSelection, show],
+  );
 
   const handleSheetNavigate = useCallback(
     (tableId: string) => {
-      setContextTable(null)
-      const table = tables.find(t => t.id === tableId)
-      if (table?.session?.order_id) {
-        const existingOrder = getOrder(table.session.order_id)
+      setContextTable(null);
+      const table = tables.find((t) => t.id === tableId);
+      const orderId = table?.session?.order_id;
+      if (orderId) {
+        const existingOrder = getOrder(orderId);
         if (existingOrder) {
-          setActiveOrder(existingOrder.id)
+          setActiveOrder(existingOrder.id);
+        }
+        const prefetch = ensureOrderPrefetched(orderId);
+        openTableOverlay(tableId);
+        // Background sync for fresh data if order wasn't cached
+        if (!existingOrder) {
+          prefetch
+            .then((localOrderId) => {
+              if (localOrderId) setActiveOrder(localOrderId);
+            })
+            .catch(() => {});
+        }
+      } else {
+        openTableOverlay(tableId);
+      }
+    },
+    [tables, getOrder, setActiveOrder, openTableOverlay],
+  );
+
+  const handleTransferServer = useCallback(
+    (tableId: string, sessionId: string) => {
+      setContextTable(null);
+      setTransferServerTarget({ tableId, sessionId });
+    },
+    [],
+  );
+
+  const handleServerSelectedForTransfer = useCallback(
+    (name: string) => {
+      if (!transferServerTarget) return;
+      const { tableId, sessionId } = transferServerTarget;
+      setTransferServerTarget(null);
+
+      const employee = useEmployeeStore
+        .getState()
+        .employees.find((e) => e.fullName === name);
+      const staffProfileId = employee?.profileId;
+      if (!staffProfileId) return;
+
+      // Optimistic update
+      useTableSessionStore.getState().dispatch(tableId, {
+        type: "PATCH",
+        updates: { server_staff_id: staffProfileId },
+      });
+
+      // Keep order-based UI in sync (sidebar/details that read order.server_name)
+      const session = useTableSessionStore.getState().sessions[tableId];
+      const sessionOrderId = session?.order_id;
+      if (sessionOrderId) {
+        const localOrder =
+          useOrderStore.getState().getOrderByDbId(sessionOrderId) ||
+          useOrderStore.getState().getOrder(sessionOrderId);
+        if (localOrder?.id) {
+          useOrderStore
+            .getState()
+            .patchOrder(localOrder.id, { server_name: name });
         }
       }
-      router.push(('/tables/' + tableId) as Href)
+
+      // Persist to DB
+      if (supabaseClient) {
+        transferTableServer(supabaseClient, sessionId, staffProfileId).catch(
+          (err) =>
+            console.warn(
+              "[handleServerSelectedForTransfer] DB update failed:",
+              err,
+            ),
+        );
+      }
     },
-    [tables, getOrder, setActiveOrder]
-  )
+    [transferServerTarget, supabaseClient],
+  );
+
+  const currentTransferServerName = useMemo(() => {
+    if (!transferServerTarget) return null;
+    const session =
+      useTableSessionStore.getState().sessions[transferServerTarget.tableId];
+    const staffId = session?.server_staff_id;
+    if (!staffId) return null;
+    return getEmployeeByStaffId(staffId)?.fullName || null;
+  }, [transferServerTarget, getEmployeeByStaffId]);
 
   const handleTableLongPress = useCallback(
     (table: FloorPlanObject) => {
       if (!isClockedIn) {
-        showClockInWall()
-        return
+        showClockInWall();
+        return;
       }
 
       // If table is occupied, sync the order from DB (to get fresh items) then navigate
-      const liveSessionLP = useTableSessionStore.getState().sessions[table.id]
-      const activeSessionLP = liveSessionLP ?? table.session
-      if (activeSessionLP && activeSessionLP.status !== 'available') {
-        const orderId = activeSessionLP.order_id
+      const liveSessionLP = useTableSessionStore.getState().sessions[table.id];
+      const activeSessionLP = liveSessionLP ?? table.session;
+      if (activeSessionLP && activeSessionLP.status !== "available") {
+        const orderId = activeSessionLP.order_id;
         if (orderId) {
           // Set active order synchronously if already in store (avoids skeleton on destination screen)
-          const existing = useOrderStore.getState().getOrder(orderId)
-          if (existing) setActiveOrder(existing.id)
+          const existing = useOrderStore.getState().getOrder(orderId);
+          if (existing) setActiveOrder(existing.id);
 
           // Show overlay immediately — no routing latency
-          router.push(('/tables/' + table.id) as Href)
+          const prefetch = ensureOrderPrefetched(orderId);
+          openTableOverlay(table.id);
 
           // Background sync for fresh data (no-op if order already current)
-          syncOrderFromDatabase(orderId)
-            .then(localOrderId => {
-              if (localOrderId) setActiveOrder(localOrderId)
+          prefetch
+            .then((localOrderId) => {
+              if (localOrderId) setActiveOrder(localOrderId);
             })
-            .catch(() => {})
+            .catch(() => {});
         } else {
-          router.push(('/tables/' + table.id) as Href)
+          openTableOverlay(table.id);
         }
-        return
+        return;
       }
 
       // For available tables, show guest count modal
-      clearSelection()
-      toggleTableSelection(table.id)
-      setGuestModalOpen(true)
+      // Batch selection into a single store update to avoid cascading through
+      // selectedTableIds twice (clear + toggle = two Zustand sets = two full
+      // re-render cascades through the entire floor plan).
+      selectMultipleTables([table.id]);
+      setSeatingErrorMessage(null);
+      setGuestModalOpen(true);
+      pauseTimerTick();
     },
     [
       isClockedIn,
       showClockInWall,
-      clearSelection,
-      toggleTableSelection,
-      syncOrderFromDatabase,
-      setActiveOrder
-    ]
-  )
+      selectMultipleTables,
+      setActiveOrder,
+      openTableOverlay,
+    ],
+  );
 
   // OPTIMIZED: Use Set for O(1) membership tests instead of .includes() O(n)
   const selectedTableIdsSet = useMemo(
     () => new Set(selectedTableIds),
-    [selectedTableIds]
-  )
+    [selectedTableIds],
+  );
 
-  // Analyze selected tables for merge actions
-  const selectedTables = useMemo(
-    () => tables.filter(t => selectedTableIdsSet.has(t.id)), // O(1) per check
-    [tables, selectedTableIdsSet]
-  )
-  const availableSelectedTables = useMemo(
-    () =>
-      selectedTables.filter(
-        t => !t.session || t.session.status === 'available'
-      ),
-    [selectedTables]
-  )
-  const inUseSelectedTables = useMemo(
-    () =>
-      selectedTables.filter(t => t.session && t.session.status !== 'available'),
-    [selectedTables]
-  )
+  // Wave 3.4: single-pass partition. Was three full-array filters per tap
+  // (tables.filter → .filter → .filter); now one walk producing all three.
+  const { selectedTables, availableSelectedTables, inUseSelectedTables } =
+    useMemo(() => {
+      const selected: FloorPlanObject[] = [];
+      const available: FloorPlanObject[] = [];
+      const inUse: FloorPlanObject[] = [];
+      for (const t of tables) {
+        if (!selectedTableIdsSet.has(t.id)) continue;
+        selected.push(t);
+        if (!t.session || t.session.status === "available") {
+          available.push(t);
+        } else {
+          inUse.push(t);
+        }
+      }
+      return {
+        selectedTables: selected,
+        availableSelectedTables: available,
+        inUseSelectedTables: inUse,
+      };
+    }, [tables, selectedTableIdsSet]);
 
   // Determine which merge action is valid
   const canMergeAndSeat =
-    availableSelectedTables.length >= 2 && inUseSelectedTables.length === 0
+    availableSelectedTables.length >= 2 && inUseSelectedTables.length === 0;
   const canAddToSession =
-    inUseSelectedTables.length === 1 && availableSelectedTables.length >= 1
+    inUseSelectedTables.length === 1 && availableSelectedTables.length >= 1;
   const canUnmerge =
     selectedTables.length === 1 &&
-    (selectedTables[0]?.session?.merged_tables?.length ?? 0) > 0
+    (selectedTables[0]?.session?.merged_tables?.length ?? 0) > 0;
 
   // Check if unmerge is blocked due to pending items
   const checkUnmergeAllowed = (): boolean => {
-    if (!canUnmerge) return false
+    if (!canUnmerge) return false;
 
     // If table is in "cleaning" status, always allow unmerge
-    const tableStatus = selectedTables[0]?.session?.status?.toLowerCase()
-    if (tableStatus === 'cleaning') return true
+    const tableStatus = selectedTables[0]?.session?.status?.toLowerCase();
+    if (tableStatus === "cleaning") return true;
 
-    const sessionOrderId = selectedTables[0]?.session?.order_id
-    if (!sessionOrderId) return true
+    const sessionOrderId = selectedTables[0]?.session?.order_id;
+    if (!sessionOrderId) return true;
 
     // Find the order - OPTIMIZED: Use getState() to avoid subscription
-    const currentOrdersById = useOrderStore.getState().ordersById
+    const currentOrdersById = useOrderStore.getState().ordersById;
     let order =
-      currentOrdersById[sessionOrderId] || getOrderByDbId(sessionOrderId)
-    if (!order) return true
+      currentOrdersById[sessionOrderId] || getOrderByDbId(sessionOrderId);
+    if (!order) return true;
 
     // Check for pending items
     const hasPendingItems = order.items.some(
-      item =>
-        item.item_status !== 'ready' &&
-        item.item_status !== 'served' &&
-        item.item_status !== 'Ready' &&
-        item.item_status !== 'Served'
-    )
-    return !hasPendingItems
-  }
+      (item) =>
+        item.item_status !== "ready" &&
+        item.item_status !== "served" &&
+        item.item_status !== "Ready" &&
+        item.item_status !== "Served",
+    );
+    return !hasPendingItems;
+  };
 
   const handleMergeAndSeat = useCallback(() => {
     if (availableSelectedTables.length < 2) {
       show({
-        title: 'Select More Tables',
-        message: 'Please select at least 2 tables to merge.',
-        type: 'warning'
-      })
-      return
+        title: "Select More Tables",
+        message: "Please select at least 2 tables to merge.",
+        type: "warning",
+      });
+      return;
     }
-    setGuestModalOpen(true)
-  }, [availableSelectedTables.length, show])
+    setSeatingErrorMessage(null);
+    setGuestModalOpen(true);
+  }, [availableSelectedTables.length, show]);
 
   const handleAddToSession = useCallback(async () => {
     if (inUseSelectedTables.length !== 1 || availableSelectedTables.length < 1)
-      return
+      return;
 
-    const targetSession = inUseSelectedTables[0].session
-    if (!targetSession?.id) return
+    const targetSession = inUseSelectedTables[0].session;
+    if (!targetSession?.id) return;
 
     try {
       for (const table of availableSelectedTables) {
-        await mergeTable(targetSession.id, table.id)
+        await mergeTable(targetSession.id, table.id);
       }
       show({
-        title: 'Tables Merged',
+        title: "Tables Merged",
         message: `Added ${availableSelectedTables.length} table(s) to the session.`,
-        type: 'success'
-      })
-      clearSelection()
-      setMergeMode(false)
+        type: "success",
+      });
+      clearSelection();
+      setMergeMode(false);
     } catch (err) {
-      console.error('Failed to merge tables:', err)
+      console.error("Failed to merge tables:", err);
       show({
-        title: 'Merge Failed',
-        message: 'Could not merge tables. Please try again.',
-        type: 'error'
-      })
+        title: "Merge Failed",
+        message: "Could not merge tables. Please try again.",
+        type: "error",
+      });
     }
   }, [
     inUseSelectedTables,
     availableSelectedTables,
     mergeTable,
     show,
-    clearSelection
-  ])
+    clearSelection,
+  ]);
 
   const handleUnmerge = useCallback(async () => {
-    if (!canUnmerge) return
+    if (!canUnmerge) return;
 
     if (!checkUnmergeAllowed()) {
       show({
-        title: 'Cannot Unmerge',
-        message: 'This table has pending items. Complete them first.',
-        type: 'error'
-      })
-      return
+        title: "Cannot Unmerge",
+        message: "This table has pending items. Complete them first.",
+        type: "error",
+      });
+      return;
     }
 
-    const table = selectedTables[0]
-    if (!table.session?.id) return
+    const table = selectedTables[0];
+    if (!table.session?.id) return;
 
     try {
-      await unmergeTable(table.session.id, table.id)
+      await unmergeTable(table.session.id, table.id);
       show({
-        title: 'Table Unmerged',
+        title: "Table Unmerged",
         message: `${table.name} has been removed from the session.`,
-        type: 'success'
-      })
-      clearSelection()
-      setMergeMode(false)
+        type: "success",
+      });
+      clearSelection();
+      setMergeMode(false);
     } catch (err) {
-      console.error('Failed to unmerge table:', err)
+      console.error("Failed to unmerge table:", err);
       show({
-        title: 'Unmerge Failed',
-        message: 'Could not unmerge table. Please try again.',
-        type: 'error'
-      })
+        title: "Unmerge Failed",
+        message: "Could not unmerge table. Please try again.",
+        type: "error",
+      });
     }
   }, [
     canUnmerge,
@@ -457,61 +657,85 @@ const TablesScreen = () => {
     selectedTables,
     unmergeTable,
     show,
-    clearSelection
-  ])
+    clearSelection,
+  ]);
 
   const handleCancelMerge = useCallback(() => {
-    clearSelection()
-    setMergeMode(false)
-  }, [clearSelection])
+    clearSelection();
+    setMergeMode(false);
+  }, [clearSelection]);
 
   const handleGuestCountSubmit = async (guestCount: number) => {
-    const primaryTableId = selectedTableIds[0]
-    if (!primaryTableId) return
-    const activeReservation = pendingReservation
-    setPendingReservation(null)
+    setSeatingErrorMessage(null);
+    const primaryTableId = selectedTableIds[0];
+    if (!primaryTableId) return;
+
+    // Per-order PIN: when required and no staff has been verified yet, capture
+    // the PIN BEFORE seating (which creates the dine-in order) so the order's
+    // creator + assigned server are the staff who actually rang it. Stash the
+    // guest count, open the PIN gate, and resume seating once verified.
+    const requirePinPerOrder =
+      useStoreSettingsStore.getState().requirePinPerOrder;
+    // Only a seat-specific verification counts here — a leftover QSR order's
+    // attribution (bound to a real order id) must NOT satisfy seating.
+    const empState = useEmployeeStore.getState();
+    const hasSeatAttribution =
+      !!empState.orderAttributionStaffId &&
+      empState.orderAttributionOrderId === PENDING_SEAT_ATTRIBUTION;
+    if (requirePinPerOrder && !hasSeatAttribution) {
+      pendingSeatGuestCountRef.current = guestCount;
+      setGuestModalOpen(false);
+      setSeatingPinGateOpen(true);
+      return;
+    }
+
+    const activeReservation = pendingReservation;
+    setPendingReservation(null);
 
     // Double-check table is still available
-    const freshTable = useFloorPlanStore.getState().getTableById(primaryTableId)
+    const freshTable = useFloorPlanStore
+      .getState()
+      .getTableById(primaryTableId);
     if (!canSeatFromSidebar(freshTable?.session?.status)) {
+      setSeatingErrorMessage("This table is no longer available.");
       show({
-        title: 'Table Occupied',
+        title: "Table Occupied",
         message:
-          'This table is no longer available. It was occupied by another station.',
-        type: 'error'
-      })
-      setGuestModalOpen(false)
-      clearSelection()
-      return
+          "This table is no longer available. It was occupied by another station.",
+        type: "error",
+      });
+      setGuestModalOpen(false);
+      clearSelection();
+      return;
     }
 
     // Auto-resolve server from section assignment
-    const sectionId = freshTable?.section_id
+    const sectionId = freshTable?.section_id;
     const assignedServerId = sectionId
-      ? useFloorPlanStore.getState().sectionsById[sectionId]
-          ?.assigned_staff_id ?? undefined
-      : undefined
+      ? (useFloorPlanStore.getState().sectionsById[sectionId]
+          ?.assigned_staff_id ?? undefined)
+      : undefined;
 
-    const tableIdsToSeat = isMergeMode ? selectedTableIds : [primaryTableId]
+    const tableIdsToSeat = isMergeMode ? selectedTableIds : [primaryTableId];
 
     // 1. Create local order immediately (synchronous — ~0ms)
-    const newOrder = startNewOrder({ tableId: primaryTableId, guestCount })
-    setActiveOrder(newOrder.id)
+    const newOrder = startNewOrder({ tableId: primaryTableId, guestCount });
+    setActiveOrder(newOrder.id);
 
-    // 2. Navigate immediately — no loading spinner
-    setGuestModalOpen(false)
-    clearSelection()
-    setMergeMode(false)
-    router.push(('/tables/' + primaryTableId) as Href)
+    // 2. Register pending creation to prevent ensureOrderCreated from duplicating
+    let resolveCreation: (dbOrderId: string | null) => void;
+    const creationPromise = new Promise<string | null>((resolve) => {
+      resolveCreation = resolve;
+    });
+    registerPendingOrderCreation(newOrder.id, creationPromise);
 
-    // 3. Register pending creation to prevent ensureOrderCreated from duplicating
-    let resolveCreation: (dbOrderId: string | null) => void
-    const creationPromise = new Promise<string | null>(resolve => {
-      resolveCreation = resolve
-    })
-    registerPendingOrderCreation(newOrder.id, creationPromise)
+    // 3. Open overlay immediately — order is already in local store
+    setGuestModalOpen(false);
+    clearSelection();
+    setMergeMode(false);
+    openTableOverlay(primaryTableId);
 
-    // 4. Fire seatGuests in background — don't block navigation
+    // 4. Seat guests in background
     try {
       const { orderId } = await useTableSessionStore.getState().seatGuests({
         tableIds: tableIdsToSeat,
@@ -521,86 +745,116 @@ const TablesScreen = () => {
         selected_station: selectedStation?.id,
         device_id: device_id,
         serverId: assignedServerId,
-        reservationId: activeReservation?.id
-      })
+        reservationId: activeReservation?.id,
+      });
+
+      // Per-order PIN: seating captured the verified staff for this table's
+      // order. Clear it so seating the NEXT table re-prompts for a PIN (the
+      // attribution value is global, not per-table).
+      useEmployeeStore.getState().clearOrderAttributionStaff();
 
       if (activeReservation?.id && orderId) {
         const sessionId =
-          useTableSessionStore.getState().sessions[primaryTableId]?.id
+          useTableSessionStore.getState().sessions[primaryTableId]?.id;
         if (sessionId) {
           useReservationStore
             .getState()
-            .registerReservationSession(sessionId, activeReservation.id)
+            .registerReservationSession(sessionId, activeReservation.id);
         }
       }
 
       if (orderId && orderId !== newOrder.id) {
-        resolveCreation!(orderId)
+        resolveCreation!(orderId);
       } else {
-        resolveCreation!(null)
+        resolveCreation!(null);
       }
 
       // Mark reservation as seated
       if (activeReservation) {
         useReservationStore
           .getState()
-          .updateStatus(activeReservation.id, 'seated')
-          .catch(() => {})
+          .updateStatus(activeReservation.id, "seated")
+          .catch(() => {});
       }
     } catch (err) {
-      console.error('[GuestCountSubmit] Background seatGuests failed:', err)
-      resolveCreation!(null)
+      console.error("[GuestCountSubmit] seatGuests failed:", err);
+      resolveCreation!(null);
     }
-  }
+  };
 
   return (
-    <View className='flex-1 bg-screen px-2 py-1'>
-      <View className='flex-1 flex-row bg-screen rounded-lg border border-border'>
-        {/* NEW: Sidebar Component */}
+    <View
+      key={colorScheme}
+      className="flex-1 px-2 py-1"
+      style={{ backgroundColor: colors.screen }}
+    >
+      <View
+        className="flex-1 flex-row rounded-lg"
+        style={{
+          backgroundColor: colors.screen,
+          borderWidth: 1,
+          borderColor: colors.border,
+        }}
+      >
         <Sidebar
-          // layouts={layouts} REMOVED
           activeLayoutId={activeFloorPlanId}
           setActiveLayout={setActiveFloorPlan}
+          onFocusTable={handleFocusTable}
         />
 
         {/* Right Side: Floor Plan */}
-        <View style={{ flex: 1, padding: 12, gap: 8 }}>
+        <View style={{ flex: 1, padding: s(12), gap: s(8) }}>
           {/* Top Bar */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}
+          >
             {/* Layout Tabs */}
             <View
               style={{
-                flexDirection: 'row',
+                flexDirection: "row",
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 8,
-                padding: 3
+                borderRadius: s(8),
+                padding: s(3),
               }}
             >
-              {floorPlans.map(layout => (
+              {floorPlans.map((layout) => (
                 <TouchableOpacity
                   key={layout.id}
-                  onPress={() => setActiveFloorPlan(layout.id)}
+                  onPress={() => {
+                    if (layout.id === activeFloorPlanId) return;
+                    // Perf T0: tap → switched-floor painted. `cached` tells us
+                    // whether the instant cache path or the skeleton+RPC path ran.
+                    const perf = startInteraction("pos.floor_switch", {
+                      cached:
+                        !!useFloorPlanStore.getState().floorPlanCache[
+                          layout.id
+                        ],
+                    });
+                    setActiveFloorPlan(layout.id).finally(() =>
+                      perf.endAfterPaint(),
+                    );
+                  }}
                   style={[
                     {
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 6
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(5),
+                      borderRadius: s(6),
                     },
                     activeFloorPlanId === layout.id && {
-                      backgroundColor: colors.screen
-                    }
+                      backgroundColor: colors.screen,
+                    },
                   ]}
                 >
                   <Text
                     style={{
-                      fontSize: 12,
-                      fontWeight: '600',
+                      fontSize: s(12),
+                      fontWeight: "600",
                       color:
                         activeFloorPlanId === layout.id
                           ? colors.teal
-                          : colors.label
+                          : colors.label,
                     }}
                   >
                     {layout.name}
@@ -612,30 +866,30 @@ const TablesScreen = () => {
             {/* Search Bar */}
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
+                flexDirection: "row",
+                alignItems: "center",
                 backgroundColor: colors.screen,
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 8,
-                paddingHorizontal: 8,
-                paddingVertical: 5,
-                width: 200
+                borderRadius: s(8),
+                paddingHorizontal: s(8),
+                paddingVertical: s(5),
+                width: s(200),
               }}
             >
-              <Search color={colors.muted} size={13} />
+              <Search color={colors.muted} size={s(13)} />
               <TextInput
-                placeholder='Search tables...'
+                placeholder="Search tables..."
                 placeholderTextColor={colors.muted}
                 value={searchInput}
                 onChangeText={setSearchInput}
                 style={{
-                  marginLeft: 6,
-                  fontSize: 12,
+                  marginLeft: s(6),
+                  fontSize: s(12),
                   flex: 1,
                   color: colors.heading,
                   includeFontPadding: false,
-                  padding: 4
+                  padding: s(4),
                 }}
               />
             </View>
@@ -647,39 +901,41 @@ const TablesScreen = () => {
             <TouchableOpacity
               onPress={() => {
                 if (isMergeMode) {
-                  handleCancelMerge()
+                  handleCancelMerge();
                 } else {
-                  clearSelection()
-                  setMergeMode(true)
+                  clearSelection();
+                  setMergeMode(true);
                 }
               }}
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 8,
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: s(10),
+                paddingVertical: s(5),
+                borderRadius: s(8),
                 borderWidth: 1,
                 backgroundColor: isMergeMode
-                  ? colors.border + '30'
-                  : colors.warning + '15',
-                borderColor: isMergeMode ? colors.border : colors.warning + '50'
+                  ? colors.border + "30"
+                  : colors.warning + "15",
+                borderColor: isMergeMode
+                  ? colors.border
+                  : colors.warning + "50",
               }}
             >
               {isMergeMode ? (
-                <X color={colors.label} size={13} />
+                <X color={colors.label} size={s(13)} />
               ) : (
-                <GitMerge color={colors.warning} size={13} />
+                <GitMerge color={colors.warning} size={s(13)} />
               )}
               <Text
                 style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  marginLeft: 5,
-                  color: isMergeMode ? colors.label : colors.warning
+                  fontSize: s(12),
+                  fontWeight: "600",
+                  marginLeft: s(5),
+                  color: isMergeMode ? colors.label : colors.warning,
                 }}
               >
-                {isMergeMode ? 'Cancel' : 'Merge Tables'}
+                {isMergeMode ? "Cancel" : "Merge Tables"}
               </Text>
             </TouchableOpacity>
 
@@ -688,23 +944,23 @@ const TablesScreen = () => {
               <TouchableOpacity
                 onPress={() => setSectionManagerOpen(true)}
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 8,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(5),
+                  borderRadius: s(8),
                   borderWidth: 1,
-                  backgroundColor: colors.teal + '15',
-                  borderColor: colors.teal + '40'
+                  backgroundColor: colors.teal + "15",
+                  borderColor: colors.teal + "40",
                 }}
               >
-                <Users color={colors.teal} size={13} />
+                <Users color={colors.teal} size={s(13)} />
                 <Text
                   style={{
-                    fontSize: 12,
-                    fontWeight: '600',
+                    fontSize: s(12),
+                    fontWeight: "600",
                     color: colors.teal,
-                    marginLeft: 5
+                    marginLeft: s(5),
                   }}
                 >
                   Servers
@@ -712,54 +968,27 @@ const TablesScreen = () => {
               </TouchableOpacity>
             )}
 
-            {/* Host Station */}
-            <TouchableOpacity
-              onPress={() => setHostStationOpen(true)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 8,
-                borderWidth: 1,
-                backgroundColor: colors.info + '15',
-                borderColor: colors.info + '40'
-              }}
-            >
-              <UtensilsCrossed color={colors.info} size={13} />
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  color: colors.info,
-                  marginLeft: 5
-                }}
-              >
-                Host Station
-              </Text>
-            </TouchableOpacity>
-
             {/* Edit Layout */}
             <TouchableOpacity
               onPress={() => router.push(`/tables/floor-plan` as Href)}
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 8,
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: s(10),
+                paddingVertical: s(5),
+                borderRadius: s(8),
                 borderWidth: 1,
                 backgroundColor: colors.panel,
-                borderColor: colors.border
+                borderColor: colors.border,
               }}
             >
-              <Pencil color={colors.label} size={13} />
+              <Pencil color={colors.label} size={s(13)} />
               <Text
                 style={{
-                  fontSize: 12,
-                  fontWeight: '600',
+                  fontSize: s(12),
+                  fontWeight: "600",
                   color: colors.label,
-                  marginLeft: 5
+                  marginLeft: s(5),
                 }}
               >
                 Edit Layout
@@ -769,58 +998,58 @@ const TablesScreen = () => {
 
           {/* Section Filter Pills */}
           {sections.length > 0 && (
-            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            <View style={{ flexDirection: "row", gap: s(6), flexWrap: "wrap" }}>
               <TouchableOpacity
                 onPress={() => setActiveSectionId(null)}
                 style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 3,
-                  borderRadius: 20,
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(3),
+                  borderRadius: s(20),
                   borderWidth: 1,
                   backgroundColor: !activeSectionId
                     ? colors.teal
-                    : 'transparent',
-                  borderColor: !activeSectionId ? colors.teal : colors.border
+                    : "transparent",
+                  borderColor: !activeSectionId ? colors.teal : colors.border,
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 11,
-                    fontWeight: '600',
-                    color: !activeSectionId ? colors.onSolid : colors.label
+                    fontSize: s(11),
+                    fontWeight: "600",
+                    color: !activeSectionId ? colors.onSolid : colors.label,
                   }}
                 >
                   All
                 </Text>
               </TouchableOpacity>
-              {sections.map(section => (
+              {sections.map((section) => (
                 <TouchableOpacity
                   key={section.id}
                   onPress={() =>
                     setActiveSectionId(
-                      activeSectionId === section.id ? null : section.id
+                      activeSectionId === section.id ? null : section.id,
                     )
                   }
                   style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 3,
-                    borderRadius: 20,
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(3),
+                    borderRadius: s(20),
                     borderWidth: 1,
                     borderColor: section.color,
                     backgroundColor:
                       activeSectionId === section.id
                         ? section.color
-                        : 'transparent'
+                        : "transparent",
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 11,
-                      fontWeight: '600',
+                      fontSize: s(11),
+                      fontWeight: "600",
                       color:
                         activeSectionId === section.id
                           ? colors.onSolid
-                          : section.color
+                          : section.color,
                     }}
                   >
                     {section.name}
@@ -851,25 +1080,27 @@ const TablesScreen = () => {
               backgroundColor: colors.screen,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 12,
-              overflow: 'hidden'
+              borderRadius: s(12),
+              overflow: "hidden",
             }}
           >
-            {floorPlanLoading && tables.length === 0 ? (
+            {floorPlanLoading ? (
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
               <TableLayoutView
+                key={activeFloorPlanId}
                 tables={filteredTables || []}
                 isSelectionMode={true}
                 onTableSelect={handleTablePress}
                 showConnections={true}
-                layoutId={activeFloorPlanId || ''}
+                layoutId={activeFloorPlanId || ""}
                 sectionsById={sectionsById}
                 onTableLongPress={
                   isMergeMode ? undefined : handleTableLongPress
                 }
                 disableLongPress={isMergeMode}
-                interactionMode={isMergeMode ? 'merge' : 'normal'}
+                interactionMode={isMergeMode ? "merge" : "normal"}
+                zoomToTableId={zoomToTableId}
               />
             )}
 
@@ -877,53 +1108,53 @@ const TablesScreen = () => {
             {legendVisible && (
               <View
                 style={{
-                  position: 'absolute',
-                  top: 48,
-                  right: 10,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 10,
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: 12,
-                  backgroundColor: colors.panel + 'F8',
+                  position: "absolute",
+                  top: s(48),
+                  right: s(10),
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: s(10),
+                  paddingHorizontal: s(14),
+                  paddingVertical: s(8),
+                  borderRadius: s(12),
+                  backgroundColor: colors.panel + "F8",
                   borderWidth: 1,
-                  borderColor: colors.border
+                  borderColor: colors.border,
                 }}
               >
                 {(
                   [
-                    ['available', 'Available'],
-                    ['seated', 'Seated'],
-                    ['ordered', 'Ordered'],
-                    ['served', 'Served'],
-                    ['check_presented', 'Check'],
-                    ['paid', 'Paid'],
-                    ['cleaning', 'Cleaning'],
-                    ['not_in_service', 'Blocked']
+                    ["available", "Available"],
+                    ["seated", "Seated"],
+                    ["ordered", "Ordered"],
+                    ["served", "Served"],
+                    ["check_presented", "Check"],
+                    ["paid", "Paid"],
+                    ["cleaning", "Cleaning"],
+                    ["not_in_service", "Blocked"],
                   ] as const
                 ).map(([status, label]) => (
                   <View
                     key={status}
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(4),
                     }}
                   >
                     <View
                       style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: TABLE_STATUS_COLORS[status]
+                        width: s(8),
+                        height: s(8),
+                        borderRadius: s(4),
+                        backgroundColor: TABLE_STATUS_COLORS[status],
                       }}
                     />
                     <Text
                       style={{
-                        fontSize: 11,
-                        fontWeight: '500',
-                        color: colors.label
+                        fontSize: s(11),
+                        fontWeight: "500",
+                        color: colors.label,
                       }}
                     >
                       {label}
@@ -933,25 +1164,25 @@ const TablesScreen = () => {
               </View>
             )}
             <TouchableOpacity
-              onPress={() => setLegendVisible(v => !v)}
+              onPress={() => setLegendVisible((v) => !v)}
               style={{
-                position: 'absolute',
-                top: 10,
-                right: 10,
-                width: 32,
-                height: 32,
-                borderRadius: 16,
+                position: "absolute",
+                top: s(10),
+                right: s(10),
+                width: s(32),
+                height: s(32),
+                borderRadius: s(16),
                 backgroundColor: legendVisible
-                  ? colors.teal + '20'
+                  ? colors.teal + "20"
                   : colors.card,
                 borderWidth: 1,
-                borderColor: legendVisible ? colors.teal + '60' : colors.border,
-                alignItems: 'center',
-                justifyContent: 'center'
+                borderColor: legendVisible ? colors.teal + "60" : colors.border,
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               <HelpCircle
-                size={16}
+                size={s(16)}
                 color={legendVisible ? colors.teal : colors.muted}
               />
             </TouchableOpacity>
@@ -964,12 +1195,38 @@ const TablesScreen = () => {
         onSeatGuests={handleSheetSeatGuests}
         onSeatReservation={handleSeatReservation}
         onNavigate={handleSheetNavigate}
+        onTransferServer={handleTransferServer}
       />
       <GuestCountModal
         isOpen={isGuestModalOpen}
         onClose={handleCloseGuestModal}
         onSubmit={handleGuestCountSubmit}
         defaultCount={pendingReservation?.party_size}
+        errorMessage={seatingErrorMessage}
+        onClearError={() => setSeatingErrorMessage(null)}
+      />
+
+      {/* Per-order PIN gate for dine-in seating */}
+      <OrderPinGate
+        open={isSeatingPinGateOpen}
+        attributionOrderId={PENDING_SEAT_ATTRIBUTION}
+        onVerified={() => {
+          setSeatingPinGateOpen(false);
+          const count = pendingSeatGuestCountRef.current;
+          pendingSeatGuestCountRef.current = null;
+          if (count != null) {
+            // Attribution is now set; this call passes the PIN check and seats.
+            void handleGuestCountSubmit(count);
+          }
+        }}
+        onCancel={() => {
+          // Abort seating entirely: drop the pending seat and clear selection.
+          setSeatingPinGateOpen(false);
+          pendingSeatGuestCountRef.current = null;
+          clearSelection();
+          setMergeMode(false);
+          setPendingReservation(null);
+        }}
       />
 
       {/* Server Section Manager */}
@@ -978,55 +1235,17 @@ const TablesScreen = () => {
         onClose={() => setSectionManagerOpen(false)}
       />
 
-      {/* Host Station Modal */}
-      <Modal
-        visible={isHostStationOpen}
-        animationType='fade'
-        transparent
-        onRequestClose={() => setHostStationOpen(false)}
-      >
-        <TouchableOpacity
-          activeOpacity={1}
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center'
-          }}
-          onPress={() => setHostStationOpen(false)}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            style={{
-              width: 480,
-              height: '85%',
-              backgroundColor: colors.screen,
-              borderRadius: 16,
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: colors.border
-            }}
-          >
-            {location_id ? (
-              <HostStationScreenEnhanced location_id={location_id} />
-            ) : (
-              <View
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <Text style={{ color: colors.muted, fontSize: 12 }}>
-                  Please select a location
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-    </View>
-  )
-}
+      {/* Transfer Server Sheet */}
+      <ServerSelectSheet
+        isOpen={transferServerTarget !== null}
+        onClose={() => setTransferServerTarget(null)}
+        onSelect={handleServerSelectedForTransfer}
+        currentServer={currentTransferServerName}
+      />
 
-export default TablesScreen
+      <TableOrderOverlay />
+    </View>
+  );
+};
+
+export default TablesScreen;

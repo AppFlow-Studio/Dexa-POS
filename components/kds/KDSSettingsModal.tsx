@@ -1,34 +1,35 @@
+import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
-import type { KdsConfig } from "@/types/locationConfig";
 import KDSSoundService, {
-  DEFAULT_SOUND_CONFIG,
-  SOUND_PRESET_OPTIONS,
-  type KDSSoundConfig,
-  type SoundPreset,
+    DEFAULT_SOUND_CONFIG,
+    SOUND_PRESET_OPTIONS,
+    type KDSSoundConfig,
+    type SoundPreset,
 } from "@/services/kds/kdsSoundService";
 import { useKDSStore } from "@/stores/useKDSStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import type { KdsConfig } from "@/types/locationConfig";
 import {
-  ChevronDown,
-  Minus,
-  Play,
-  Plus,
-  Printer,
-  Settings,
-  X,
+    ChevronDown,
+    Minus,
+    Play,
+    Plus,
+    Printer,
+    Settings,
+    X,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  Dimensions,
-  Modal,
-  Pressable,
-  ScrollView,
-  Switch,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    Modal,
+    Pressable,
+    ScrollView,
+    Switch,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // ─── Tab types ────────────────────────────────────────────────────
@@ -74,16 +75,19 @@ const ToggleRow = ({
     }}
   >
     <View style={{ flex: 1, marginRight: 12 }}>
-      <Text style={{ color: "#fff", fontSize: 13, fontWeight: "500" }}>{label}</Text>
+      <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "500" }}>
+        {label}
+      </Text>
       {subtitle && (
-        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>{subtitle}</Text>
+        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+          {subtitle}
+        </Text>
       )}
     </View>
     <Switch
       value={value}
       onValueChange={onToggle}
       trackColor={{ false: colors.border, true: colors.teal }}
-      thumbColor="#fff"
     />
   </View>
 );
@@ -114,7 +118,16 @@ function DropdownRow<T extends string>({
         borderBottomColor: colors.border,
       }}
     >
-      <Text style={{ color: "#fff", fontSize: 13, fontWeight: "500", flex: 1 }}>{label}</Text>
+      <Text
+        style={{
+          color: colors.heading,
+          fontSize: 13,
+          fontWeight: "500",
+          flex: 1,
+        }}
+      >
+        {label}
+      </Text>
       <View>
         <TouchableOpacity
           onPress={() => setOpen(!open)}
@@ -129,7 +142,9 @@ function DropdownRow<T extends string>({
             borderColor: colors.border,
           }}
         >
-          <Text style={{ color: "#fff", fontSize: 12, marginRight: 4 }}>{currentLabel}</Text>
+          <Text style={{ color: colors.label, fontSize: 12, marginRight: 4 }}>
+            {currentLabel}
+          </Text>
           <ChevronDown size={14} color={colors.muted} />
         </TouchableOpacity>
         {open && (
@@ -139,7 +154,7 @@ function DropdownRow<T extends string>({
               top: 36,
               right: 0,
               zIndex: 50,
-              backgroundColor: colors.panel,
+              backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
               borderRadius: 8,
@@ -161,12 +176,13 @@ function DropdownRow<T extends string>({
                 style={{
                   paddingHorizontal: 12,
                   paddingVertical: 8,
-                  backgroundColor: opt.value === value ? "rgba(59,130,246,0.15)" : "transparent",
+                  backgroundColor:
+                    opt.value === value ? colors.info + "20" : "transparent",
                 }}
               >
                 <Text
                   style={{
-                    color: opt.value === value ? colors.info : "#fff",
+                    color: opt.value === value ? colors.info : colors.heading,
                     fontSize: 12,
                     fontWeight: opt.value === value ? "600" : "400",
                   }}
@@ -197,7 +213,8 @@ function SoundPresetRow({
   testDisabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const currentLabel = SOUND_PRESET_OPTIONS.find((o) => o.value === value)?.label ?? value;
+  const currentLabel =
+    SOUND_PRESET_OPTIONS.find((o) => o.value === value)?.label ?? value;
 
   return (
     <View
@@ -208,7 +225,9 @@ function SoundPresetRow({
         paddingVertical: 8,
       }}
     >
-      <Text style={{ color: colors.label, fontSize: 12, flex: 1 }}>{label}</Text>
+      <Text style={{ color: colors.label, fontSize: 12, flex: 1 }}>
+        {label}
+      </Text>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <View>
           <TouchableOpacity
@@ -224,7 +243,9 @@ function SoundPresetRow({
               borderColor: colors.border,
             }}
           >
-            <Text style={{ color: "#fff", fontSize: 11, marginRight: 4 }}>{currentLabel}</Text>
+            <Text style={{ color: colors.label, fontSize: 11, marginRight: 4 }}>
+              {currentLabel}
+            </Text>
             <ChevronDown size={12} color={colors.muted} />
           </TouchableOpacity>
           {open && (
@@ -234,7 +255,7 @@ function SoundPresetRow({
                 top: 30,
                 right: 0,
                 zIndex: 50,
-                backgroundColor: colors.panel,
+                backgroundColor: colors.card,
                 borderWidth: 1,
                 borderColor: colors.border,
                 borderRadius: 8,
@@ -256,12 +277,13 @@ function SoundPresetRow({
                   style={{
                     paddingHorizontal: 10,
                     paddingVertical: 6,
-                    backgroundColor: opt.value === value ? "rgba(59,130,246,0.15)" : "transparent",
+                    backgroundColor:
+                      opt.value === value ? colors.info + "20" : "transparent",
                   }}
                 >
                   <Text
                     style={{
-                      color: opt.value === value ? colors.info : "#fff",
+                      color: opt.value === value ? colors.info : colors.heading,
                       fontSize: 11,
                       fontWeight: opt.value === value ? "600" : "400",
                     }}
@@ -320,7 +342,16 @@ const StepperRow = ({
       borderBottomColor: colors.border,
     }}
   >
-    <Text style={{ color: "#fff", fontSize: 13, fontWeight: "500", flex: 1 }}>{label}</Text>
+    <Text
+      style={{
+        color: colors.heading,
+        fontSize: 13,
+        fontWeight: "500",
+        flex: 1,
+      }}
+    >
+      {label}
+    </Text>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
       <TouchableOpacity
         onPress={() => onChange(Math.max(min, value - step))}
@@ -337,10 +368,19 @@ const StepperRow = ({
           opacity: value <= min ? 0.4 : 1,
         }}
       >
-        <Minus size={14} color="#fff" />
+        <Minus size={14} color={colors.label} />
       </TouchableOpacity>
-      <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600", minWidth: 36, textAlign: "center" }}>
-        {value}{suffix ?? ""}
+      <Text
+        style={{
+          color: colors.heading,
+          fontSize: 14,
+          fontWeight: "600",
+          minWidth: 36,
+          textAlign: "center",
+        }}
+      >
+        {value}
+        {suffix ?? ""}
       </Text>
       <TouchableOpacity
         onPress={() => onChange(Math.min(max, value + step))}
@@ -357,14 +397,17 @@ const StepperRow = ({
           opacity: value >= max ? 0.4 : 1,
         }}
       >
-        <Plus size={14} color="#fff" />
+        <Plus size={14} color={colors.label} />
       </TouchableOpacity>
     </View>
   </View>
 );
 
 // ─── Modifier group name options ─────────────────────────────────
-const MODIFIER_GROUP_OPTIONS: { value: KdsConfig["displayModifierGroupName"]; label: string }[] = [
+const MODIFIER_GROUP_OPTIONS: {
+  value: KdsConfig["displayModifierGroupName"];
+  label: string;
+}[] = [
   { value: "for_group_priced", label: "FOR GROUP PRICED" },
   { value: "always", label: "ALWAYS" },
   { value: "never", label: "NEVER" },
@@ -383,7 +426,10 @@ export interface KDSSettingsModalProps {
   onClose: () => void;
 }
 
-export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalProps) {
+export default function KDSSettingsModal({
+  visible,
+  onClose,
+}: KDSSettingsModalProps) {
   const supabase = useSupabaseClient();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
@@ -411,35 +457,42 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
 
   // Shim: maps old kds field names to new config namespace
   const KDS_FIELD_MAP: Record<string, string> = {
-    kdsDisplayModifierGroupName: 'displayModifierGroupName',
-    kdsItemNameLines: 'itemNameLines',
-    kdsDisplaySeatNumbers: 'displaySeatNumbers',
-    kdsDisplayGuestCount: 'displayGuestCount',
-    kdsAlphabeticalSort: 'alphabeticalSort',
-    kdsHighlightNotes: 'highlightNotes',
-    kdsDisplayExclusionsAtTop: 'displayExclusionsAtTop',
-    kdsAggregateIdenticalItems: 'aggregateIdenticalItems',
-    kdsHideDoneItems: 'hideDoneItems',
-    kdsAggregateToExistingTickets: 'aggregateToExistingTickets',
-    kdsAutoFireEnabled: 'autoFireEnabled',
-    kdsAutoFireDelayMinutes: 'autoFireDelayMinutes',
-    kdsYellowThresholdMinutes: 'yellowThresholdMinutes',
-    kdsOrangeThresholdMinutes: 'orangeThresholdMinutes',
-    kdsRedThresholdMinutes: 'redThresholdMinutes',
+    kdsDisplayModifierGroupName: "displayModifierGroupName",
+    kdsItemNameLines: "itemNameLines",
+    kdsDisplaySeatNumbers: "displaySeatNumbers",
+    kdsDisplayGuestCount: "displayGuestCount",
+    kdsAlphabeticalSort: "alphabeticalSort",
+    kdsHighlightNotes: "highlightNotes",
+    kdsDisplayExclusionsAtTop: "displayExclusionsAtTop",
+    kdsAggregateIdenticalItems: "aggregateIdenticalItems",
+    kdsHideDoneItems: "hideDoneItems",
+    kdsAggregateToExistingTickets: "aggregateToExistingTickets",
+    kdsAutoFireEnabled: "autoFireEnabled",
+    kdsAutoFireDelayMinutes: "autoFireDelayMinutes",
+    kdsYellowThresholdMinutes: "yellowThresholdMinutes",
+    kdsOrangeThresholdMinutes: "orangeThresholdMinutes",
+    kdsRedThresholdMinutes: "redThresholdMinutes",
   };
   const updateField = (field: string, value: any) => {
     const configKey = KDS_FIELD_MAP[field] || field;
-    _updateConfig('kds', { [configKey]: value });
+    _updateConfig("kds", { [configKey]: value });
   };
 
   // KDS display (sound config lives in Supabase per-display)
   const kdsDisplayId = useKDSStore((s) => s.kdsDisplayId);
   const kdsDisplayConfig = useKDSStore((s) => s.kdsDisplayConfig);
   const fetchKDSDisplay = useKDSStore((s) => s.fetchKDSDisplay);
+  const routingMode = useKDSStore((s) => s.routingMode);
+  const enrichedRules = useKDSStore((s) => s.enrichedRules);
+  const prepStations = useKDSStore((s) => s.prepStations);
+
+  const toast = useToast();
 
   // Sound state (local, synced from kdsDisplayConfig)
   const [soundOnNewOrder, setSoundOnNewOrder] = useState(false);
-  const [soundConfig, setSoundConfig] = useState<KDSSoundConfig>({ ...DEFAULT_SOUND_CONFIG });
+  const [soundConfig, setSoundConfig] = useState<KDSSoundConfig>({
+    ...DEFAULT_SOUND_CONFIG,
+  });
   const [soundServicePreview] = useState(() => new KDSSoundService());
   const [isSavingSound, setIsSavingSound] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
@@ -519,7 +572,14 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
       statusBarTranslucent
     >
       {/* Backdrop — absolute fill so tapping outside closes */}
-      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.6)",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
         <Pressable
           onPress={onClose}
           style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
@@ -544,10 +604,27 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
               borderBottomColor: colors.border,
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 12,
+              }}
+            >
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
                 <Settings size={18} color={colors.teal} />
-                <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Settings</Text>
+                <Text
+                  style={{
+                    color: colors.heading,
+                    fontSize: 16,
+                    fontWeight: "700",
+                  }}
+                >
+                  Settings
+                </Text>
                 <View
                   style={{
                     backgroundColor: colors.teal,
@@ -556,7 +633,15 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                     borderRadius: 6,
                   }}
                 >
-                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>KDS</Text>
+                  <Text
+                    style={{
+                      color: colors.onSolid,
+                      fontSize: 10,
+                      fontWeight: "700",
+                    }}
+                  >
+                    KDS
+                  </Text>
                 </View>
               </View>
               <TouchableOpacity
@@ -588,7 +673,7 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                   >
                     <Text
                       style={{
-                        color: isActive ? "#fff" : colors.label,
+                        color: isActive ? colors.onSolid : colors.label,
                         fontSize: 13,
                         fontWeight: isActive ? "700" : "500",
                         textTransform: "capitalize",
@@ -606,7 +691,10 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
           {activeTab === "general" ? (
             <ScrollView
               style={{ flex: 1 }}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+              contentContainerStyle={{
+                paddingHorizontal: 16,
+                paddingBottom: 40,
+              }}
               showsVerticalScrollIndicator={false}
             >
               {/* RECEIPTS Section */}
@@ -616,13 +704,18 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                 label="Display Modifier Group Name"
                 value={kdsDisplayModifierGroupName}
                 options={MODIFIER_GROUP_OPTIONS}
-                onChange={(val) => updateField("kdsDisplayModifierGroupName", val)}
+                onChange={(val) =>
+                  updateField("kdsDisplayModifierGroupName", val)
+                }
               />
 
               <DropdownRow
                 label="Number of Item Name Lines"
                 value={String(kdsItemNameLines)}
-                options={ITEM_NAME_LINES_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))}
+                options={ITEM_NAME_LINES_OPTIONS.map((o) => ({
+                  value: String(o.value),
+                  label: o.label,
+                }))}
                 onChange={(val) => updateField("kdsItemNameLines", Number(val))}
               />
 
@@ -654,22 +747,57 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                 label="Aggregate Identical Items"
                 subtitle="Merge items with same name, modifiers, and notes"
                 value={kdsAggregateIdenticalItems}
-                onToggle={(val) => updateField("kdsAggregateIdenticalItems", val)}
+                onToggle={(val) =>
+                  updateField("kdsAggregateIdenticalItems", val)
+                }
               />
 
               <ToggleRow
                 label="Aggregate Items to Existing Tickets"
                 subtitle="Single Ticket Mode"
                 value={kdsAggregateToExistingTickets}
-                onToggle={(val) => updateField("kdsAggregateToExistingTickets", val)}
+                onToggle={(val) =>
+                  updateField("kdsAggregateToExistingTickets", val)
+                }
+              />
+
+              <ToggleRow
+                label="Display Server Name"
+                subtitle="Show the server's name on each ticket"
+                value={kdsDisplayConfig?.showServerName ?? false}
+                onToggle={async (val) => {
+                  if (!kdsDisplayId) return;
+                  try {
+                    await supabase
+                      .from("kds_displays")
+                      .update({ show_server_name: val })
+                      .eq("id", kdsDisplayId);
+                    if (selectedStation?.id) {
+                      fetchKDSDisplay(selectedStation.id);
+                    }
+                  } catch (err) {
+                    console.error(
+                      "[KDSSettings] saveShowServerName error:",
+                      err,
+                    );
+                  }
+                }}
               />
 
               {/* SOUND Section */}
               <SectionHeader title="Sound" />
 
               {!kdsDisplayId ? (
-                <Text style={{ color: colors.muted, fontSize: 12, fontStyle: "italic", marginBottom: 8 }}>
-                  No KDS display configured for this station. Sound settings are per-display.
+                <Text
+                  style={{
+                    color: colors.muted,
+                    fontSize: 12,
+                    fontStyle: "italic",
+                    marginBottom: 8,
+                  }}
+                >
+                  No KDS display configured for this station. Sound settings are
+                  per-display.
                 </Text>
               ) : (
                 <>
@@ -678,6 +806,66 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                     value={soundOnNewOrder}
                     onToggle={handleSoundToggle}
                   />
+                  <TouchableOpacity
+                    onPress={() => {
+                      const cb = useKDSStore.getState()._onNewOrderCallback;
+                      if (!cb) {
+                        toast.show({
+                          title: "KDS not ready",
+                          message:
+                            "Open the KDS screen first so the sound trigger is wired up.",
+                          type: "warning",
+                          duration: 3000,
+                        });
+                        return;
+                      }
+                      if (!soundOnNewOrder) {
+                        toast.show({
+                          title: "Sound is disabled",
+                          message:
+                            "Turn on 'Sound on New Order' first, then test again.",
+                          type: "warning",
+                          duration: 3000,
+                        });
+                        return;
+                      }
+                      cb("pos");
+                    }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      marginTop: 8,
+                      marginBottom: 4,
+                      backgroundColor: colors.teal,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Play size={14} color={colors.onSolid} />
+                    <Text
+                      style={{
+                        color: colors.onSolid,
+                        fontSize: 12,
+                        fontWeight: "600",
+                      }}
+                    >
+                      Test New-Order Sound
+                    </Text>
+                  </TouchableOpacity>
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: 10,
+                      marginBottom: 4,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    Simulates a real broadcast — exercises the full trigger →
+                    audio path the kitchen hears for live orders.
+                  </Text>
                   {soundOnNewOrder && (
                     <View style={{ marginLeft: 8 }}>
                       <SoundPresetRow
@@ -704,7 +892,9 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                       <SoundPresetRow
                         label="Third-party"
                         value={soundConfig.third_party}
-                        onChange={(v) => handleSoundPresetChange("third_party", v)}
+                        onChange={(v) =>
+                          handleSoundPresetChange("third_party", v)
+                        }
                         onTest={(v) => soundServicePreview.playPreview(v)}
                         testDisabled={!previewReady}
                       />
@@ -716,11 +906,321 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                         testDisabled={!previewReady}
                       />
                       {isSavingSound && (
-                        <Text style={{ color: colors.muted, fontSize: 10, marginTop: 4 }}>Saving...</Text>
+                        <Text
+                          style={{
+                            color: colors.muted,
+                            fontSize: 10,
+                            marginTop: 4,
+                          }}
+                        >
+                          Saving...
+                        </Text>
                       )}
                     </View>
                   )}
                 </>
+              )}
+
+              {/* ROUTING Section */}
+              <SectionHeader title="Routing" />
+
+              {!kdsDisplayId ? (
+                <Text
+                  style={{
+                    color: colors.muted,
+                    fontSize: 12,
+                    fontStyle: "italic",
+                    marginBottom: 8,
+                  }}
+                >
+                  No KDS display configured for this station.
+                </Text>
+              ) : (
+                <View style={{ paddingVertical: 8 }}>
+                  <View style={{ marginBottom: 12 }}>
+                    <Text
+                      style={{
+                        color: colors.heading,
+                        fontSize: 13,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {kdsDisplayConfig?.displayName ?? "Kitchen Display"}
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.muted,
+                        fontSize: 10,
+                        marginTop: 2,
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {kdsDisplayId}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      marginBottom: 8,
+                    }}
+                  >
+                    {(() => {
+                      const mode = routingMode ?? "unset";
+                      const isFiltered = routingMode === "filtered";
+                      const isAll = routingMode === "all";
+                      const fg = isFiltered
+                        ? colors.teal
+                        : isAll
+                          ? colors.warning
+                          : colors.muted;
+                      return (
+                        <View
+                          style={{
+                            backgroundColor: fg + "20",
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: fg + "55",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: fg,
+                              fontSize: 10,
+                              fontWeight: "700",
+                              letterSpacing: 0.5,
+                            }}
+                          >
+                            MODE: {mode.toUpperCase()}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                    {(() => {
+                      const orphanOn = kdsDisplayConfig?.showAllItems === true;
+                      const fg = orphanOn ? colors.warning : colors.teal;
+                      return (
+                        <View
+                          style={{
+                            backgroundColor: fg + "20",
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: fg + "55",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: fg,
+                              fontSize: 10,
+                              fontWeight: "700",
+                              letterSpacing: 0.5,
+                            }}
+                          >
+                            ORPHANED ITEMS: {orphanOn ? "ON" : "OFF"}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                  </View>
+
+                  {kdsDisplayConfig?.showAllItems === true && (
+                    <Text
+                      style={{
+                        color: colors.warning,
+                        fontSize: 11,
+                        marginBottom: 12,
+                      }}
+                    >
+                      This display also receives items that didn&apos;t match
+                      any rule.
+                    </Text>
+                  )}
+
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: 11,
+                      fontWeight: "700",
+                      marginTop: 4,
+                      marginBottom: 6,
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    ACTIVE RULES
+                  </Text>
+                  {enrichedRules.length === 0 ? (
+                    <Text
+                      style={{
+                        color: colors.muted,
+                        fontSize: 11,
+                        fontStyle: "italic",
+                        marginBottom: 12,
+                      }}
+                    >
+                      No rules configured.
+                    </Text>
+                  ) : (
+                    <View style={{ marginBottom: 12 }}>
+                      {(
+                        ["prep_station", "category", "order_type"] as const
+                      ).map((type) => {
+                        const group = enrichedRules.filter(
+                          (r) => r.rule_type === type,
+                        );
+                        if (group.length === 0) return null;
+                        const groupLabel =
+                          type === "prep_station"
+                            ? "Prep Stations"
+                            : type === "category"
+                              ? "Categories"
+                              : "Order Types";
+                        return (
+                          <View key={type} style={{ marginBottom: 8 }}>
+                            <Text
+                              style={{
+                                color: colors.muted,
+                                fontSize: 10,
+                                marginBottom: 4,
+                              }}
+                            >
+                              {groupLabel}
+                            </Text>
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                flexWrap: "wrap",
+                                gap: 6,
+                              }}
+                            >
+                              {group.map((rule) => {
+                                const swatch =
+                                  type === "prep_station"
+                                    ? prepStations[rule.rule_value]?.color
+                                    : null;
+                                return (
+                                  <View
+                                    key={`${rule.rule_type}-${rule.rule_value}`}
+                                    style={{
+                                      flexDirection: "row",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      backgroundColor: colors.skeleton,
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 4,
+                                      borderRadius: 6,
+                                      borderWidth: 1,
+                                      borderColor: colors.border,
+                                    }}
+                                  >
+                                    {swatch && (
+                                      <View
+                                        style={{
+                                          width: 8,
+                                          height: 8,
+                                          borderRadius: 4,
+                                          backgroundColor: swatch,
+                                        }}
+                                      />
+                                    )}
+                                    <Text
+                                      style={{
+                                        color: colors.heading,
+                                        fontSize: 11,
+                                      }}
+                                    >
+                                      {rule.label}
+                                    </Text>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {Object.keys(prepStations).length > 0 && (
+                    <>
+                      <Text
+                        style={{
+                          color: colors.label,
+                          fontSize: 11,
+                          fontWeight: "700",
+                          marginBottom: 6,
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        PREP STATIONS AT LOCATION
+                      </Text>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          flexWrap: "wrap",
+                          gap: 6,
+                          marginBottom: 12,
+                        }}
+                      >
+                        {Object.values(prepStations).map((ps) => {
+                          const isBound = enrichedRules.some(
+                            (r) =>
+                              r.rule_type === "prep_station" &&
+                              r.rule_value === ps.name,
+                          );
+                          return (
+                            <View
+                              key={ps.name}
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: 6,
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                                borderRadius: 6,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                backgroundColor: isBound
+                                  ? colors.skeleton
+                                  : "transparent",
+                                opacity: isBound ? 1 : 0.5,
+                              }}
+                            >
+                              <View
+                                style={{
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: 4,
+                                  backgroundColor: ps.color,
+                                }}
+                              />
+                              <Text
+                                style={{ color: colors.heading, fontSize: 11 }}
+                              >
+                                {ps.name}
+                              </Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </>
+                  )}
+
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: 10,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    Routes & rules are configured in the admin website.
+                  </Text>
+                </View>
               )}
 
               {/* OTHER Section */}
@@ -728,12 +1228,12 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
 
               <DropdownRow
                 label="New Orders Appear"
-                value={kdsConfig.newOrderPosition ?? 'right'}
+                value={kdsConfig.newOrderPosition ?? "right"}
                 options={[
-                  { value: 'left', label: 'LEFT (Newest First)' },
-                  { value: 'right', label: 'RIGHT (Newest Last)' },
+                  { value: "left", label: "LEFT (Newest First)" },
+                  { value: "right", label: "RIGHT (Newest Last)" },
                 ]}
-                onChange={(val) => updateField('newOrderPosition', val)}
+                onChange={(val) => updateField("newOrderPosition", val)}
               />
 
               <ToggleRow
@@ -749,7 +1249,9 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                   max={30}
                   step={1}
                   suffix="m"
-                  onChange={(val) => updateField("kdsAutoFireDelayMinutes", val)}
+                  onChange={(val) =>
+                    updateField("kdsAutoFireDelayMinutes", val)
+                  }
                 />
               )}
 
@@ -763,7 +1265,9 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                 max={kdsOrangeThresholdMinutes - 1}
                 step={1}
                 suffix="m"
-                onChange={(val) => updateField("kdsYellowThresholdMinutes", val)}
+                onChange={(val) =>
+                  updateField("kdsYellowThresholdMinutes", val)
+                }
               />
 
               <StepperRow
@@ -773,7 +1277,9 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                 max={kdsRedThresholdMinutes - 1}
                 step={1}
                 suffix="m"
-                onChange={(val) => updateField("kdsOrangeThresholdMinutes", val)}
+                onChange={(val) =>
+                  updateField("kdsOrangeThresholdMinutes", val)
+                }
               />
 
               <StepperRow
@@ -787,9 +1293,18 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
               />
             </ScrollView>
           ) : (
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 40 }}>
+            <View
+              style={{
+                flex: 1,
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 40,
+              }}
+            >
               <Printer size={32} color={colors.muted} />
-              <Text style={{ color: colors.muted, fontSize: 13, marginTop: 12 }}>
+              <Text
+                style={{ color: colors.muted, fontSize: 13, marginTop: 12 }}
+              >
                 Kitchen ticket print format settings coming soon.
               </Text>
             </View>

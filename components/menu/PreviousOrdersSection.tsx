@@ -1,21 +1,26 @@
 import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
-import { useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { RefreshCw, Search, X } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  Pressable,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Pressable,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import { useShallow } from "zustand/react/shallow";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { useShallow } from "zustand/react/shallow";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
+import DatePillRow, { type DatePillDef } from "./DatePillRow";
 import OrderActionsMenu from "./OrderActionsMenu";
 import OrdersTable, { SortColumn, SortDirection } from "./OrdersTable";
 
@@ -47,12 +52,26 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
   counts,
   activeTab,
 }) => {
-  const TAB_NAMES: TabName[] = ["All", "Takeaway", "Dine In", "Delivery", "Online"];
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const TAB_NAMES: TabName[] = [
+    "All",
+    "Takeaway",
+    "Dine In",
+    "Delivery",
+    "Online",
+  ];
 
   return (
     <View
       className="flex-row self-start rounded-lg p-0.5"
-      style={{ height: 36, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, gap: 2 }}
+      style={{
+        height: s(36),
+        backgroundColor: colors.card,
+        borderWidth: 1,
+        borderColor: colors.border,
+        gap: s(2),
+      }}
     >
       {TAB_NAMES.map((name) => {
         const isActive = activeTab === name;
@@ -63,19 +82,39 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
             onPress={() => onTabChange(name)}
             className="flex-row items-center rounded-md gap-x-1.5"
             style={[
-              { paddingHorizontal: 14, alignSelf: "stretch", justifyContent: "center", borderRadius: 6, borderWidth: 1 },
+              {
+                paddingHorizontal: s(14),
+                alignSelf: "stretch",
+                justifyContent: "center",
+                borderRadius: s(6),
+                borderWidth: 1,
+              },
               isActive
                 ? name === "Online"
-                  ? { backgroundColor: colors.info + "20", borderColor: colors.info + "40" }
-                  : { backgroundColor: colors.teal + "20", borderColor: colors.teal + "40" }
+                  ? {
+                      backgroundColor: colors.info + "20",
+                      borderColor: colors.info + "40",
+                    }
+                  : {
+                      backgroundColor: colors.teal + "20",
+                      borderColor: colors.teal + "40",
+                    }
                 : { borderColor: "transparent" },
             ]}
           >
             <Text
-              className="text-xs font-semibold"
-              style={{ color: isActive ? (name === "Online" ? colors.info : colors.teal) : colors.label }}
+              style={{
+                fontSize: s(12),
+                fontWeight: "600",
+                color: isActive
+                  ? name === "Online"
+                    ? colors.info
+                    : colors.teal
+                  : colors.muted,
+              }}
             >
-              {name}{count > 0 ? ` (${count})` : ""}
+              {name}
+              {count > 0 ? ` (${count})` : ""}
             </Text>
           </Pressable>
         );
@@ -87,31 +126,64 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 // Old OrderRow and RetrieveButton components removed - replaced by OrdersTable
 
 const PreviousOrdersSection = () => {
-  // Narrow selector: only subscribe to live/active orders, not the full ordersById map
-  const liveOrders = useOrderStore(
+  // Previous Orders is server-fetched ONLY — it renders exactly what
+  // `previousOrders` (date-bounded fetch from the backend) returns. We do NOT
+  // merge in live in-memory orders from useOrderStore anymore: a just-created /
+  // unsynced order is not a "previous order" and was previously pinned to the
+  // top of every date window (it has no backend row yet, so it bypassed the
+  // date filter). It now appears here only once it syncs and a fetch/broadcast
+  // surfaces it.
+  const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
+  const { rawIsOnline } = useNetworkStatus();
+
+  // OFFLINE ONLY: the backend is unreachable, so previousOrders can't refresh.
+  // Surface the device's own non-final orders (active + working set + own-station
+  // open) so staff still see everything pending — including open/unpaid orders
+  // created while offline — each badged "Offline". When online this is empty and
+  // the list stays server-fetched only.
+  const offlineLiveOrders = useOrderStore(
     useShallow((s) => {
+      if (rawIsOnline) return [] as OrderProfile[];
+      const finalStatuses = new Set([
+        "completed",
+        "void",
+        "cancelled",
+        "voided",
+      ]);
       const ids = new Set<string>();
       if (s.activeOrderId) ids.add(s.activeOrderId);
-      for (const wsId of (s.workingSetOrderIds || [])) {
-        const localId = s.dbOrderIdIndex[wsId] || wsId;
-        ids.add(localId);
+      for (const wsId of s.workingSetOrderIds || []) {
+        ids.add(s.dbOrderIdIndex[wsId] || wsId);
       }
       for (const id of s.orderIds) {
+        if (ids.has(id)) continue;
         const o = s.ordersById[id];
-        if (o && (o.order_status !== 'draft' || o.items.length > 0)) {
-          ids.add(id);
-        }
+        if (!o) continue;
+        if (o.station_id !== s.currentStationId) continue; // own station only
+        if (finalStatuses.has(o.order_status ?? "")) continue;
+        ids.add(id);
       }
       const result: OrderProfile[] = [];
+      const seen = new Set<string>();
       for (const id of ids) {
         const o = s.ordersById[id];
-        if (o) result.push(o);
+        if (!o) continue;
+        if (o.order_status === "draft" && o.items.length === 0) continue;
+        const canonical = o.db_order_id ?? o.id;
+        if (seen.has(canonical)) continue;
+        seen.add(canonical);
+        // Tag as offline/unsynced when it has no backend row yet.
+        result.push(o.db_order_id ? o : { ...o, _offlineUnsynced: true });
       }
       return result;
-    })
+    }),
   );
-  const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
-  const router = useRouter();
+  const dateWindowLabel = usePreviousOrdersStore(
+    (s) => s.dateWindow?.label ?? "today",
+  );
+  const setDateWindow = usePreviousOrdersStore((s) => s.setDateWindow);
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const [activeTab, setActiveTab] = useState<TabName>("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -120,6 +192,41 @@ const PreviousOrdersSection = () => {
   const loadMoreOrders = usePreviousOrdersStore((s) => s.loadMoreOrders);
   const isLoadingMore = usePreviousOrdersStore((s) => s._isLoadingMore);
   const hasMore = usePreviousOrdersStore((s) => s._hasMore);
+  // Store-driven loading flag: true during the initial fetch AND on every
+  // filter/date-window switch (setDateWindow clears the list + flags a refetch).
+  // Drives the empty-state spinner so a switch never shows "No orders found".
+  const isFetching = usePreviousOrdersStore((s) => s._isRefreshing);
+
+  // Release previous orders from memory when navigating away. Nothing is
+  // persisted locally — the list is re-fetched from the backend on next entry
+  // via usePreviousOrdersListSync. Pagination + refresh-throttle state is reset
+  // so a re-entry starts from a clean keyset cursor and always re-fetches.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        usePreviousOrdersStore.setState({
+          previousOrders: [],
+          _orderLookup: {},
+          newOrdersCount: 0,
+          _isRefreshing: false,
+          _currentOffset: 0,
+          _hasMore: false,
+          _isLoadingMore: false,
+          _oldestCursor: null,
+          lastHistoryRefreshAt: null,
+          _lastRefreshLocationId: null,
+        });
+      };
+    }, []),
+  );
+
+  const handleDatePillSelect = useCallback(
+    (pill: DatePillDef) => {
+      const { startDate, endDate } = pill.getDateRange();
+      setDateWindow({ startDate, endDate, label: pill.windowLabel });
+    },
+    [setDateWindow],
+  );
 
   const handleLoadMore = useCallback(() => {
     if (hasMore && !isLoadingMore) void loadMoreOrders();
@@ -138,81 +245,86 @@ const PreviousOrdersSection = () => {
     height: number;
   } | null>(null);
 
-  // Get all orders - combine live orders with history for compatibility
+  // Server-fetched history mapped to OrderProfile. Online: this is exactly the
+  // date-bounded backend fetch. Offline: offlineLiveOrders (the device's own
+  // pending orders) is prepended so open/unpaid offline orders are visible too.
   const allOrders: OrderProfile[] = useMemo(() => {
-    // liveOrders already filtered to non-empty drafts + active/working set
-    const activeOrders = liveOrders;
+    const mappedHistory: OrderProfile[] = previousOrders.map(
+      (po) =>
+        ({
+          id: po.orderId,
+          db_order_id: po.db_order_id,
+          // Helper fields
+          display_number: po.display_number,
+          order_number: po.display_number,
+          customer_name: po.customer,
+          server_name: po.server,
 
-    // Create sets for O(1) lookup of active orders to prevent duplicates
-    const activeIds = new Set(activeOrders.map((o) => o.id));
-    const activeDbIds = new Set(
-      activeOrders.map((o) => o.db_order_id).filter(Boolean),
+          // Status mapping
+          order_status: po.voided
+            ? "void"
+            : po.refunded
+              ? "refunded"
+              : po.closed_at
+                ? "completed"
+                : "pending", // Best guess mapping
+          check_status: po.checkStatus || "Opened",
+          paid_status: po.paymentStatus,
+
+          // Type mapping
+          order_type: po.type,
+
+          // Items and totals
+          items: po.items,
+          total_amount: po.total,
+          total_cash_amount: po.total_cash_amount,
+          total_tax: po.tax,
+          service_charge: po.service_charge,
+          service_charge_name: po.service_charge_name,
+          service_charge_rate: po.service_charge_rate,
+          service_charge_is_taxable: po.service_charge_is_taxable,
+          amount_paid: po.amount_paid,
+          amount_due: po.amount_due,
+          cash_amount_due: po.cash_amount_due,
+
+          // Timestamps
+          opened_at: po.timestamp || po.opened_at,
+          created_at: po.timestamp, // Ensure sort works if it uses created_at
+          closed_at: po.closed_at,
+
+          // Location/Station
+          service_location_id: po.service_location_id || null, // strict null for type safety
+          service_location_name: po.service_location_name,
+          station_id: po.station_id || null,
+          _sourceStationName: po.station_name,
+
+          // Extras
+          notes: po.notes,
+          payments: po.payments,
+          order_source: po.order_source ?? null,
+          delivery_platform: po.delivery_platform ?? null,
+          _isOnlineOrder: po._isOnlineOrder,
+          reversals: po.reversals,
+          order_refund_items: po.order_refund_items,
+          _offlineUnsynced: po._offlineUnsynced,
+        }) as OrderProfile,
     );
 
-    // 2. Map Previous Orders to OrderProfile format
-    // Filter out any that are already in activeOrders to avoid duplicates
-    const mappedHistoryOrders: OrderProfile[] = previousOrders
-      .filter((po) => {
-        // Exclude if ID matches or DB_ID matches an active order
-        if (activeIds.has(po.orderId)) return false;
-        if (po.db_order_id && activeDbIds.has(po.db_order_id)) return false;
-        return true;
-      })
-      .map(
-        (po) =>
-          ({
-            id: po.orderId,
-            db_order_id: po.db_order_id,
-            // Helper fields
-            display_number: po.display_number,
-            order_number: po.display_number,
-            customer_name: po.customer,
-            server_name: po.server,
+    if (offlineLiveOrders.length === 0) return mappedHistory;
 
-            // Status mapping
-            order_status: po.voided
-              ? "void"
-              : po.refunded
-                ? "refunded"
-                : po.closed_at
-                  ? "completed"
-                  : "pending", // Best guess mapping
-            check_status: po.checkStatus || "Opened",
-            paid_status: po.paymentStatus,
-
-            // Type mapping
-            order_type: po.type,
-
-            // Items and totals
-            items: po.items,
-            total_amount: po.total,
-            amount_paid: po.amount_paid,
-            amount_due: po.amount_due,
-
-            // Timestamps
-            opened_at: po.timestamp || po.opened_at,
-            created_at: po.timestamp, // Ensure sort works if it uses created_at
-            closed_at: po.closed_at,
-
-            // Location/Station
-            service_location_id: po.service_location_id || null, // strict null for type safety
-            service_location_name: po.service_location_name,
-            station_id: po.station_id || null,
-            _sourceStationName: po.station_name,
-
-            // Extras
-            notes: po.notes,
-            payments: po.payments,
-            order_source: po.order_source ?? null,
-            delivery_platform: po.delivery_platform ?? null,
-            reversals: po.reversals,
-            order_refund_items: po.order_refund_items,
-          }) as OrderProfile,
-      );
-
-    // Combined list: Active Orders + Missing History Orders
-    return [...activeOrders, ...mappedHistoryOrders];
-  }, [liveOrders, previousOrders]);
+    // Offline: prepend live pending orders, deduped against history (a finalized
+    // order can be in both the cache and the live store). Live copy wins.
+    const liveIds = new Set<string>();
+    for (const o of offlineLiveOrders) {
+      liveIds.add(o.id);
+      if (o.db_order_id) liveIds.add(o.db_order_id);
+    }
+    const historyMinusLive = mappedHistory.filter(
+      (o) =>
+        !liveIds.has(o.id) && !(o.db_order_id && liveIds.has(o.db_order_id)),
+    );
+    return [...offlineLiveOrders, ...historyMinusLive];
+  }, [previousOrders, offlineLiveOrders]);
 
   // Compute per-tab counts
   const tabCounts = useMemo<TabCounts>(() => {
@@ -225,9 +337,15 @@ const PreviousOrdersSection = () => {
       if (DINE_IN_VALUES.has(t)) dineIn++;
       else if (TAKEAWAY_VALUES.has(t)) takeaway++;
       else if (DELIVERY_VALUES.has(t)) delivery++;
-      if (o.order_source?.toLowerCase() === "online") online++;
+      if (o._isOnlineOrder) online++;
     }
-    return { All: allOrders.length, "Dine In": dineIn, Takeaway: takeaway, Delivery: delivery, Online: online };
+    return {
+      All: allOrders.length,
+      "Dine In": dineIn,
+      Takeaway: takeaway,
+      Delivery: delivery,
+      Online: online,
+    };
   }, [allOrders]);
 
   // Filter orders based on active tab and search query
@@ -236,9 +354,14 @@ const PreviousOrdersSection = () => {
 
     // Filter by tab
     if (activeTab === "Online") {
-      filtered = filtered.filter((o) => o.order_source?.toLowerCase() === "online");
+      filtered = filtered.filter((o) => o._isOnlineOrder);
     } else if (activeTab !== "All") {
-      const tabSet = activeTab === "Dine In" ? DINE_IN_VALUES : activeTab === "Takeaway" ? TAKEAWAY_VALUES : DELIVERY_VALUES;
+      const tabSet =
+        activeTab === "Dine In"
+          ? DINE_IN_VALUES
+          : activeTab === "Takeaway"
+            ? TAKEAWAY_VALUES
+            : DELIVERY_VALUES;
       filtered = filtered.filter((o) => tabSet.has(o.order_type ?? ""));
     }
 
@@ -269,9 +392,9 @@ const PreviousOrdersSection = () => {
     }
   };
 
-  // Handle row click - navigate to order details screen
+  // Handle row click - open PaymentDetailBottomSheet
   const handleRowClick = (orderId: string) => {
-    router.push(`/previous-orders/${orderId}`);
+    usePaymentDetailSheetStore.getState().open(orderId);
   };
 
   // Handle double-click - set order as active
@@ -291,34 +414,84 @@ const PreviousOrdersSection = () => {
     setMenuOpen(true);
   };
 
-  // Handle view details from menu
+  // Handle view details from menu — opens the PaymentDetailBottomSheet
+  // (same as the main POS screens) instead of navigating to a separate route.
   const handleViewDetails = () => {
     if (menuOrderId) {
-      router.push(`/previous-orders/${menuOrderId}`);
+      usePaymentDetailSheetStore.getState().open(menuOrderId);
     }
   };
 
   return (
-    <View className="flex-1 px-3 pt-3">
-      {/* Header: Tabs + Search + Refresh */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <OrderTabs onTabChange={handleTabChange} counts={tabCounts} activeTab={activeTab} />
+    <View
+      style={{
+        flex: 1,
+        paddingHorizontal: s(12),
+        paddingTop: s(12),
+        backgroundColor: colors.screen,
+      }}
+    >
+      {/* Header: Date Pills + Tabs + Search + Refresh */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: s(8),
+          marginBottom: s(6),
+        }}
+      >
+        <DatePillRow
+          activeLabel={dateWindowLabel}
+          onSelect={handleDatePillSelect}
+        />
+      </View>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: s(8),
+          marginBottom: s(10),
+        }}
+      >
+        <OrderTabs
+          onTabChange={handleTabChange}
+          counts={tabCounts}
+          activeTab={activeTab}
+        />
 
         {/* Search Bar */}
-        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}>
-          <Search color={colors.muted} size={12} />
+        <View
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: s(10),
+            paddingVertical: s(6),
+            borderRadius: s(8),
+            backgroundColor: colors.screen,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Search color={colors.muted} size={s(12)} />
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search orders..."
             placeholderTextColor={colors.muted}
-            style={{ flex: 1, marginLeft: 7, color: colors.heading, fontSize: 12, padding: 0 }}
+            style={{
+              flex: 1,
+              marginLeft: s(7),
+              color: colors.heading,
+              fontSize: s(12),
+              padding: 0,
+            }}
             autoCapitalize="none"
             autoCorrect={false}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery("")}>
-              <X color={colors.muted} size={12} />
+              <X color={colors.muted} size={s(12)} />
             </TouchableOpacity>
           )}
         </View>
@@ -326,14 +499,32 @@ const PreviousOrdersSection = () => {
         {/* Refresh button */}
         <TouchableOpacity
           onPress={handleRefresh}
-          style={{ width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}
+          style={{
+            width: s(32),
+            height: s(32),
+            borderRadius: s(8),
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: colors.screen,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
         >
-          <RefreshCw size={13} color={isRefreshing ? colors.teal : colors.label} />
+          <RefreshCw
+            size={s(13)}
+            color={isRefreshing ? colors.teal : colors.muted}
+          />
         </TouchableOpacity>
       </View>
 
       {/* Orders Table Container - relative for absolute positioning of banner */}
-      <View className="flex-1 relative">
+      <View
+        style={{
+          flex: 1,
+          position: "relative",
+          backgroundColor: colors.screen,
+        }}
+      >
         {/* Orders Table - No ScrollView wrapper to avoid nested VirtualizedLists */}
         <OrdersTable
           orders={filteredOrders}
@@ -345,13 +536,14 @@ const PreviousOrdersSection = () => {
           onRefresh={handleRefresh}
           onEndReached={handleLoadMore}
           isLoadingMore={isLoadingMore}
+          isInitialLoading={isFetching}
         />
 
         {/* New Orders Banner - Floating */}
         {newOrdersCount > 0 && (
           <Animated.View
-            entering={FadeIn.duration(200)}
-            exiting={FadeOut.duration(200)}
+            entering={iosOnly(FadeIn.duration(200))}
+            exiting={iosOnly(FadeOut.duration(200))}
             className="absolute top-4 left-0 right-0 items-center z-10"
             pointerEvents="box-none"
           >
@@ -368,9 +560,13 @@ const PreviousOrdersSection = () => {
                 elevation: 8,
               }}
             >
-              <RefreshCw size={13} color={colors.onSolid} />
-              <Text className="text-xs font-semibold" style={{ color: colors.onSolid }}>
-                {newOrdersCount} new order{newOrdersCount > 1 ? "s" : ""} — tap to refresh
+              <RefreshCw size={s(13)} color={colors.onSolid} />
+              <Text
+                className="text-xs font-semibold"
+                style={{ color: colors.onSolid }}
+              >
+                {newOrdersCount} new order{newOrdersCount > 1 ? "s" : ""} — tap
+                to refresh
               </Text>
             </TouchableOpacity>
           </Animated.View>

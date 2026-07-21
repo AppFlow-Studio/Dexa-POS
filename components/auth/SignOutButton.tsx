@@ -1,14 +1,13 @@
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { useClerk } from "@clerk/clerk-expo";
 import { replaceRoute } from "@/lib/rootNavigation";
-import { useRouter } from "expo-router";
+import { resetClientSession } from "@/services/cacheService";
+import { useClerk } from "@clerk/clerk-expo";
 import React from "react";
 import {
-  ActivityIndicator,
-  Text,
-  TouchableOpacity,
-  View,
-  ViewStyle,
+    ActivityIndicator,
+    Text,
+    TouchableOpacity,
+    View,
+    ViewStyle,
 } from "react-native";
 
 interface SignOutButtonProps {
@@ -21,24 +20,27 @@ export const SignOutButton = ({
   showText = true,
 }: SignOutButtonProps) => {
   const { signOut } = useClerk();
-  const router = useRouter();
-  const clearSelectedStore = useStoreSettingsStore(
-    (state) => state.clearSelectedStore
-  );
   const [isLoading, setIsLoading] = React.useState(false);
+  const signOutInFlightRef = React.useRef(false);
 
   const handleSignOut = async () => {
+    if (signOutInFlightRef.current) return;
     try {
+      signOutInFlightRef.current = true;
       setIsLoading(true);
-      // Clear the selected store from persistent storage
-      clearSelectedStore();
-      await signOut();
+      await resetClientSession();
+      try {
+        await signOut();
+      } catch (err) {
+        console.warn("Sign out network call failed after local reset:", err);
+      }
       // Redirect to login page after sign out
-      replaceRoute('(auth)', 'login');
+      replaceRoute("(auth)", "login");
     } catch (err) {
       console.error("Error signing out:", JSON.stringify(err, null, 2));
     } finally {
       setIsLoading(false);
+      signOutInFlightRef.current = false;
     }
   };
 

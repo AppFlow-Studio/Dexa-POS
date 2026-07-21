@@ -33,6 +33,7 @@ yarn-error.*
 # local env files
 .env
 .env*.local
+.env.*
 
 # typescript
 *.tsbuildinfo
@@ -52,9 +53,20 @@ ios/*.xcworkspace
 ios/*.xcodeproj/xcuserdata/
 
 android/app/build/
+# Generated Gradle/Kotlin output for local Expo modules (never commit build artifacts)
+modules/*/android/build/
+modules/*/android/.gradle/
 android/.gradle/
 android/local.properties
 android/*.iml
 android/.idea/
 android/.cxx
 # android/gradle.properties must NOT be ignored — EAS Build needs it
+
+.env.local
+
+# Sentry
+sentry.properties
+
+# Supabase CLI ephemeral local state (version markers, etc.) — conflicts on merges
+supabase/.temp/

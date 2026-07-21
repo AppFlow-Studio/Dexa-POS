@@ -1,5 +1,8 @@
-import { MOCK_CUSTOMERS } from "@/lib/mockData";
 import { create } from "zustand";
+
+// Monotonic counter so ids stay unique even when two customers are added in the
+// same millisecond (Date.now() alone is not collision-safe).
+let customerSeq = 0;
 export interface Customer {
   id: string;
   name: string;
@@ -24,7 +27,7 @@ interface CustomerState {
 }
 
 export const useCustomerStore = create<CustomerState>()((set, get) => ({
-  customers: MOCK_CUSTOMERS,
+  customers: [],
 
   addCustomer: (customerData) => {
     const { customers } = get();
@@ -42,7 +45,7 @@ export const useCustomerStore = create<CustomerState>()((set, get) => ({
 
     const newCustomer: Customer = {
       ...customerData,
-      id: `customer_${Date.now()}`,
+      id: `customer_${Date.now()}_${customerSeq++}`,
       createdAt: new Date(),
       totalOrders: 1,
     };

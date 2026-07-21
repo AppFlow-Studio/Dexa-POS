@@ -2,25 +2,33 @@
   "expo": {
     "name": "Dexa-POS",
     "slug": "dexa-pos",
-    "version": "1.0.2",
+    "version": "2.1.9",
     "orientation": "landscape",
-    "icon": "./assets/images/dexalogo.png",
+    "icon": "./assets/images/dexalogolight.png",
     "scheme": "dexapos",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "jsEngine": "hermes",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.temurappflowstudios.dexapos"
+      "bundleIdentifier": "com.temurappflowstudios.dexapos",
+      "runtimeVersion": "2.1.9"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/dexalogo.png",
+        "foregroundImage": "./assets/images/dexalogolight.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "softwareKeyboardLayoutMode": "pan",
-      "package": "com.temurappflowstudios.dexapos"
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "com.temurappflowstudios.dexapos",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "runtimeVersion": "2.1.9"
     },
     "web": {
       "bundler": "metro",
@@ -42,19 +50,31 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/dexalogo.png",
+          "image": "./assets/images/dexalogolight.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#F8FAFC",
+          "dark": {
+            "image": "./assets/images/dexalogolight.png",
+            "backgroundColor": "#0C0F1A"
+          }
         }
       ],
       "expo-web-browser",
       "expo-secure-store",
       "expo-dev-client",
-      "expo-audio"
+      "expo-audio",
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "dexa-pos",
+          "organization": "appflow-studios"
+        }
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
-      "reactCompiler": true,
       "typedRoutes": true
     },
     "extra": {
@@ -63,6 +83,12 @@
         "projectId": "b0e0ce4a-6ad2-4ad5-9a23-47131c7f3bc2"
       }
     },
-    "owner": "appflow-studios"
+    "owner": "appflow-studios",
+    "updates": {
+      "url": "https://u.expo.dev/b0e0ce4a-6ad2-4ad5-9a23-47131c7f3bc2",
+      "enabled": true,
+      "checkOnLaunch": "ALWAYS",
+      "fallbackToCacheTimeout": 0
+    }
   }
 }

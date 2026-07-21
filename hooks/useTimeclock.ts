@@ -4,7 +4,7 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { TimeClockAction, TimeClockActionType } from "@/types/time-clock";
 import NetInfo from "@react-native-community/netinfo";
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 export interface UseTimeClockOptions {
@@ -22,7 +22,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
       type: TimeClockActionType,
       pinCode: string,
       locationId: string,
-      deviceId: string
+      deviceId: string,
     ) => {
       console.log("[useTimeClock] performAction called:", {
         type,
@@ -31,7 +31,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
       });
       const previousStatus = store.status;
 
-      // A. Create the payload
+      // A. Create the payload — include staff context for offline fallback
       const actionPayload: TimeClockAction = {
         id: uuidv4(),
         type,
@@ -39,6 +39,12 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
         locationId,
         timestamp: new Date().toISOString(),
         deviceId,
+        // For clock_out: include staffProfileId and shiftId so the queue
+        // processor can directly update staff_shifts if the RPC fails
+        ...(type === "clock_out" && {
+          staffProfileId: store.currentStaffId || undefined,
+          shiftId: store.currentShiftId || undefined,
+        }),
       };
 
       // B. Optimistic Update (Immediate Feedback)
@@ -93,6 +99,33 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
           // Update real ID from server response if clocking in
           if (type === "clock_in" || (type === "sign_in" && data?.shift_id)) {
             store.setStatus(nextStatus, data.shift_id);
+
+            // For sign_in, fetch the real clock_in_time from the shift
+            if (type === "sign_in" && data.shift_id && data.staff_id) {
+              (async () => {
+                try {
+                  const { data: shiftData } = await supabase
+                    .from("staff_shifts")
+                    .select("clock_in_time")
+                    .eq("id", data.shift_id)
+                    .single();
+                  if (shiftData?.clock_in_time) {
+                    const empId = useEmployeeStore
+                      .getState()
+                      .employees.find((e) => e.profileId === data.staff_id)?.id;
+                    if (empId) {
+                      useTimeclockStore.setState((state: any) => {
+                        if (state.sessions[empId]) {
+                          state.sessions[empId].clockInTime = new Date(
+                            shiftData.clock_in_time,
+                          );
+                        }
+                      });
+                    }
+                  }
+                } catch {} // Non-critical, best-effort
+              })();
+            }
           }
 
           // Store employee info from backend response
@@ -104,6 +137,9 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
           if (type === "break_start") {
             store.setBreakStartTime(new Date().toISOString());
           } else if (type === "break_end") {
+            store.setBreakStartTime(null);
+          } else if (type === "sign_in") {
+            // New employee signing in — clear any stale break time from previous employee
             store.setBreakStartTime(null);
           } else if (type === "clock_out") {
             // Clear all state on clock out
@@ -151,6 +187,10 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
             break_end: {
               title: "Break Ended",
               message: "Welcome back! Your break has ended.",
+            },
+            declare_cash_tips: {
+              title: "Tips Declared",
+              message: "Cash tips have been recorded.",
             },
           };
 
@@ -227,6 +267,8 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                 clock_out: "Failed to clock out. Please try again.",
                 break_start: "Failed to start break. Please try again.",
                 break_end: "Failed to end break. Please try again.",
+                declare_cash_tips:
+                  "Failed to declare cash tips. Please try again.",
               };
               errorToastMessage = errorMessages[type];
             }
@@ -253,67 +295,94 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
         return { success: true, queued: true };
       }
     },
-    [store, supabase, options]
+    [store, supabase, options],
   );
 
-  // 2. Sync Processor (The "Queue Flusher")
-  useEffect(() => {
-    const processQueue = async () => {
-      if (store.offlineQueue.length === 0 || store.isSyncing) return;
+  // Cash tip declaration — separate from performAction (no optimistic status change)
+  const declareCashTips = useCallback(
+    async (
+      shiftId: string,
+      amount: number,
+      locationId: string,
+      deviceId: string,
+      staffProfileId?: string,
+    ): Promise<{ success: boolean; queued?: boolean }> => {
+      let resolvedShiftId = shiftId;
+
+      // If shift ID is missing (common in SessionDock), resolve the latest open shift.
+      if (!resolvedShiftId && staffProfileId && locationId) {
+        const { data: activeShift, error: lookupError } = await supabase
+          .from("staff_shifts")
+          .select("id")
+          .eq("staff_profile_id", staffProfileId)
+          .eq("location_id", locationId)
+          .in("status", ["active", "on_break"])
+          .order("clock_in_time", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!lookupError && activeShift?.id) {
+          resolvedShiftId = activeShift.id;
+        }
+      }
 
       const netState = await NetInfo.fetch();
-      if (!netState.isConnected || !netState.isInternetReachable) return;
 
-      store.setSyncing(true);
-
-      // Process strictly in order (FIFO)
-      const actionToProcess = store.offlineQueue[0];
-
-      try {
-        console.log(`Syncing action: ${actionToProcess.type}`);
-
-        const { error } = await supabase.rpc("handle_time_clock", {
-          p_pin_code: actionToProcess.pinCode,
-          p_location_id: actionToProcess.locationId,
-          p_action_type: actionToProcess.type,
-          p_device_id: actionToProcess.deviceId,
-        });
-
-        if (error) {
-          console.error("Sync failed for action", actionToProcess.id, error);
-          const isLogicError =
-            error.code && !error.message?.includes("network");
-          if (isLogicError) {
-            store.removeFromQueue(actionToProcess.id);
-            toastService.show({
-              title: "Sync Warning",
-              message:
-                "An offline action could not be processed. It has been removed.",
-              type: "warning",
-            });
+      if (netState.isConnected && netState.isInternetReachable) {
+        try {
+          if (!resolvedShiftId) {
+            throw {
+              code: "NO_SHIFT",
+              message: "Could not resolve shift for cash tip declaration",
+            };
           }
-        } else {
-          store.removeFromQueue(actionToProcess.id);
-          if (store.offlineQueue.length === 1) {
-            toastService.show({
-              title: "Sync Complete",
-              message: "All pending actions have been synced.",
-              type: "success",
+
+          const { error } = await supabase.rpc("declare_cash_tips_for_shift", {
+            p_shift_id: resolvedShiftId,
+            p_amount: amount,
+          });
+          if (error) throw error;
+          return { success: true };
+        } catch (e: any) {
+          const isNetwork =
+            !e.code ||
+            e.message?.includes("network") ||
+            e.message?.includes("fetch");
+          if (isNetwork) {
+            // Queue for retry
+            store.queueAction({
+              id: uuidv4(),
+              type: "declare_cash_tips",
+              pinCode: "",
+              locationId,
+              timestamp: new Date().toISOString(),
+              deviceId,
+              shiftId: resolvedShiftId,
+              cashTipAmount: amount,
+              staffProfileId,
             });
+            return { success: true, queued: true };
           }
+          throw e;
         }
-      } catch (e) {
-        console.error("Critical Sync Error", e);
-      } finally {
-        store.setSyncing(false);
+      } else {
+        // Offline — queue
+        store.queueAction({
+          id: uuidv4(),
+          type: "declare_cash_tips",
+          pinCode: "",
+          locationId,
+          timestamp: new Date().toISOString(),
+          deviceId,
+          shiftId: resolvedShiftId,
+          cashTipAmount: amount,
+          staffProfileId,
+        });
+        return { success: true, queued: true };
       }
-    };
-
-    processQueue();
-
-    const interval = setInterval(processQueue, 10000);
-    return () => clearInterval(interval);
-  }, [store.offlineQueue, store.isSyncing, supabase]);
+    },
+    [supabase, store],
+  );
 
   return {
     status: store.status,
@@ -330,5 +399,6 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
       performAction("break_end", pin, loc, dev),
     signIn: (pin: string, loc: string, dev: string) =>
       performAction("sign_in", pin, loc, dev),
+    declareCashTips,
   };
 };

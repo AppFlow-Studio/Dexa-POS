@@ -1,10 +1,20 @@
+import DiscardChangesModal from '@/components/ui/DiscardChangesModal'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { X } from 'lucide-react-native'
-import React, { useCallback } from 'react'
-import { Modal, Platform, Text, TouchableOpacity, View, KeyboardAvoidingView } from 'react-native'
+import React, { useCallback, useEffect, useState } from 'react'
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
 import AddToWaitlistForm from './AddToWaitlistForm'
 
-type AddWaitlistPayload = {
+export type AddWaitlistPayload = {
   party_name: string
   party_size: number
   phone?: string
@@ -13,41 +23,159 @@ type AddWaitlistPayload = {
   preferred_section?: string
   notes?: string
   quoted_wait_minutes?: number
+  estimated_ready_at?: string
 }
 
 interface AddWaitlistModalProps {
   visible: boolean
   onClose: () => void
-  onSubmit: (data: AddWaitlistPayload) => void
+  onSubmit: (data: AddWaitlistPayload) => Promise<void> | void
   isLoading: boolean
+  mode?: 'add' | 'edit'
+  initialValues?: Partial<AddWaitlistPayload>
 }
 
-export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(({ visible, onClose, onSubmit, isLoading }) => {
-  const handleCancel = useCallback(() => onClose(), [onClose])
-  const handleSubmit = useCallback((data: AddWaitlistPayload) => onSubmit(data), [onSubmit])
+export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(
+  ({ visible, onClose, onSubmit, isLoading, mode = 'add', initialValues }) => {
+    const uiScale = useUiScale()
+    const s = (n: number) => Math.round(n * uiScale)
 
-  return (
-    <Modal visible={visible} animationType='fade' transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}
+    const [isDirty, setIsDirty] = useState(false)
+    const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+
+    useEffect(() => {
+      if (!visible) {
+        setIsDirty(false)
+        setShowDiscardConfirm(false)
+      }
+    }, [visible])
+
+    const requestClose = useCallback(() => {
+      if (isDirty) {
+        setShowDiscardConfirm(true)
+        return
+      }
+      onClose()
+    }, [isDirty, onClose])
+
+    const handleCancel = useCallback(() => requestClose(), [requestClose])
+    const handleSubmit = useCallback(
+      async (data: AddWaitlistPayload) => {
+        await onSubmit(data)
+        setIsDirty(false)
+      },
+      [onSubmit]
+    )
+
+    const confirmDiscard = useCallback(() => {
+      setShowDiscardConfirm(false)
+      setIsDirty(false)
+      onClose()
+    }, [onClose])
+
+    return (
+      <Modal
+        visible={visible}
+        animationType='fade'
+        transparent
+        onRequestClose={requestClose}
       >
-        <View style={{ width: 460, height: 580, backgroundColor: colors.screen, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
-          {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '700' }}>Add to Waitlist</Text>
-            <TouchableOpacity onPress={onClose} style={{ padding: 4, borderRadius: 6, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-              <X size={14} color={colors.label} />
-            </TouchableOpacity>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.6)'
+          }}
+        >
+          <View
+            style={{
+              width: s(480),
+              maxHeight: '88%',
+              backgroundColor: colors.panel,
+              borderRadius: s(16),
+              borderWidth: 1,
+              borderColor: colors.border,
+              overflow: 'hidden',
+              // Shadow for depth
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: s(8) },
+              shadowOpacity: 0.4,
+              shadowRadius: s(24),
+              elevation: 20
+            }}
+          >
+            {/* Header */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: s(16),
+                paddingVertical: s(13),
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                backgroundColor: colors.card
+              }}
+            >
+              <View>
+                <Text
+                  style={{
+                    color: colors.heading,
+                    fontSize: s(14),
+                    fontWeight: '700'
+                  }}
+                >
+                  {mode === 'edit' ? 'Edit Waitlist Entry' : 'Add to Waitlist'}
+                </Text>
+                <Text
+                  style={{ color: colors.muted, fontSize: s(11), marginTop: s(1) }}
+                >
+                  {mode === 'edit'
+                    ? 'Update the party details below'
+                    : 'Fill in the party details below'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={requestClose}
+                style={{
+                  padding: s(6),
+                  borderRadius: s(8),
+                  backgroundColor: colors.screen,
+                  borderWidth: 1,
+                  borderColor: colors.border
+                }}
+              >
+                <X size={s(14)} color={colors.label} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Form — scrollable so keyboard never pushes the modal */}
+            <ScrollView
+              keyboardShouldPersistTaps='handled'
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <AddToWaitlistForm
+                onSubmit={handleSubmit}
+                onCancel={handleCancel}
+                isLoading={isLoading}
+                mode={mode}
+                initialValues={initialValues}
+                onDirtyChange={setIsDirty}
+              />
+            </ScrollView>
           </View>
-          {/* Form takes up all remaining space */}
-          <View style={{ flex: 1 }}>
-            <AddToWaitlistForm onSubmit={handleSubmit} onCancel={handleCancel} isLoading={isLoading} />
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  )
-})
+        </KeyboardAvoidingView>
+        <DiscardChangesModal
+          visible={showDiscardConfirm}
+          onClose={() => setShowDiscardConfirm(false)}
+          onConfirm={confirmDiscard}
+        />
+      </Modal>
+    )
+  }
+)
 
 AddWaitlistModal.displayName = 'AddWaitlistModal'

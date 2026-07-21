@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import React from "react";
 import { View } from "react-native";
 
@@ -11,27 +12,29 @@ const PinDisplay: React.FC<PinDisplayProps> = ({
   pinLength,
   maxLength = 6,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   return (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        gap: 16,
-        height: 64,
+        gap: s(16),
+        height: s(64),
         backgroundColor: colors.screen,
         borderWidth: 1,
         borderColor: colors.border,
-        borderRadius: 10,
-        marginBottom: 12,
+        borderRadius: s(10),
+        marginBottom: s(12),
       }}
     >
       {Array.from({ length: maxLength }).map((_, index) => (
         <View
           key={index}
           style={{
-            width: index < pinLength ? 14 : 10,
-            height: index < pinLength ? 14 : 10,
+            width: index < pinLength ? s(14) : s(10),
+            height: index < pinLength ? s(14) : s(10),
             borderRadius: 999,
             backgroundColor: index < pinLength ? colors.teal : colors.border,
           }}

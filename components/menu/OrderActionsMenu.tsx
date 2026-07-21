@@ -1,22 +1,31 @@
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { PrinterService } from "@/services/printing/PrinterService";
-import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useOrder } from "@/stores/selectors/orderSelectors";
+import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { getTerminalMatchInfo } from "@/utils/terminalMatchGuard";
+import * as Haptics from "expo-haptics";
 import {
-  ChefHat,
-  DollarSign,
-  Eye,
-  Plus,
-  Printer,
-  ReceiptText,
-  Trash2,
+    ChefHat,
+    DollarSign,
+    Eye,
+    LogIn,
+    Plus,
+    Printer,
+    Trash2,
 } from "lucide-react-native";
 import React, { useMemo } from "react";
-import { Modal, Pressable, Text, TouchableOpacity, View } from "react-native";
+import {
+    Modal,
+    Pressable,
+    Text,
+    TouchableOpacity,
+    View,
+    useWindowDimensions,
+} from "react-native";
 
 interface OrderActionsMenuProps {
   isOpen: boolean;
@@ -41,12 +50,16 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   onViewDetails,
   position,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const currentStationId = useOrderStore((s) => s.currentStationId);
   const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
   const generateCartItemId = useOrderStore((s) => s.generateCartItemId);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const { show } = useToast();
+  const { height: screenHeight } = useWindowDimensions();
 
   // Get order (single index lookup - benefits from immer structural sharing)
   const order = useOrder(orderId);
@@ -90,6 +103,11 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
         ...item,
         id: generateCartItemId(item.menuItemId, item.customizations),
         isDraft: false,
+        // Defensive backfill: source items from older legacy paths might lack
+        // base prices. Without these, addItemToBackend sends NULL to the RPC
+        // and the server's 4% cash-discount fallback fires.
+        baseCardPrice: item.baseCardPrice ?? item.price ?? item.originalPrice,
+        baseCashPrice: item.baseCashPrice ?? item.cashPrice ?? item.price,
       };
       addItemToActiveOrder(newItem);
       addedCount++;
@@ -117,19 +135,31 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     onClose();
 
     if (!order) {
-      show({ title: "Print Error", message: "No order data available.", type: "error" });
+      show({
+        title: "Print Error",
+        message: "No order data available.",
+        type: "error",
+      });
       return;
     }
 
     if (!selectedStore) {
-      show({ title: "Print Error", message: "No store location selected.", type: "error" });
+      show({
+        title: "Print Error",
+        message: "No store location selected.",
+        type: "error",
+      });
       return;
     }
 
     const success = await PrinterService.printReceipt(order, selectedStore);
 
     if (success) {
-      show({ title: "Receipt Sent", message: "Receipt sent to printer.", type: "success" });
+      show({
+        title: "Receipt Sent",
+        message: "Receipt sent to printer.",
+        type: "success",
+      });
     } else {
       useNoPrinterModalStore.getState().show("receipt");
     }
@@ -140,38 +170,48 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     onClose();
 
     if (!order) {
-      show({ title: "Print Error", message: "No order data available.", type: "error" });
+      show({
+        title: "Print Error",
+        message: "No order data available.",
+        type: "error",
+      });
       return;
     }
 
     if (!selectedStore) {
-      show({ title: "Print Error", message: "No store location selected.", type: "error" });
+      show({
+        title: "Print Error",
+        message: "No store location selected.",
+        type: "error",
+      });
       return;
     }
 
     const nonVoidedItems = order.items.filter((item) => !item.is_voided);
     if (nonVoidedItems.length === 0) {
-      show({ title: "No Items", message: "No items to print on kitchen ticket.", type: "warning" });
+      show({
+        title: "No Items",
+        message: "No items to print on kitchen ticket.",
+        type: "warning",
+      });
       return;
     }
 
-    const success = await PrinterService.printKitchenTickets(order, nonVoidedItems, selectedStore);
+    const success = await PrinterService.printKitchenTickets(
+      order,
+      nonVoidedItems,
+      selectedStore,
+    );
 
     if (success) {
-      show({ title: "Kitchen Ticket Sent", message: "Kitchen ticket sent to printer.", type: "success" });
+      show({
+        title: "Kitchen Ticket Sent",
+        message: "Kitchen ticket sent to printer.",
+        type: "success",
+      });
     } else {
       useNoPrinterModalStore.getState().show("kitchen");
     }
-  };
-
-  // Handle refund
-  const handleRefund = () => {
-    onClose();
-    show({
-      title: "Refund",
-      message: "Refund functionality coming soon",
-      type: "warning",
-    });
   };
 
   // Handle void order
@@ -184,51 +224,86 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     });
   };
 
+  // Handle take over (foreign-station claim) — no confirm modal, the menu
+  // tap itself is the deliberate action. Light haptic for feedback.
+  const handleTakeOver = () => {
+    onClose();
+    if (!orderId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    void (async () => {
+      const result = await useOrderStore.getState().claimOrderById(orderId);
+      if (!result.success) return;
+
+      const claimedOrder = useOrderStore.getState().ordersById[orderId];
+      const isEmptyDraft =
+        claimedOrder?.order_status === "draft" &&
+        (claimedOrder.items?.length ?? 0) === 0;
+
+      if (isEmptyDraft) {
+        useOrderStore.getState().setActiveOrder(orderId);
+        router.replace("/order-processing");
+      }
+    })();
+  };
+
   if (!order) return null;
 
   const hasOutstanding = order.paid_status !== "Paid";
+  const isForeign =
+    !!order.station_id &&
+    !!currentStationId &&
+    order.station_id !== currentStationId;
+  const overlayBackground = "rgba(0,0,0,0.5)";
+  const menuBorder = colors.border;
+  const rowDivider = colors.border;
+  const destructiveColor = colors.danger;
+  const normalLabelColor = colors.heading;
+  const disabledOpacity = 0.4;
 
   const menuItems: MenuItem[] = [
     {
-      icon: <Eye size={18} color={colors.muted} />,
+      icon: <Eye size={s(18)} color={colors.muted} />,
       label: "View Details",
       onPress: () => {
         onClose();
         onViewDetails();
       },
     },
+    ...(isForeign
+      ? [
+          {
+            icon: <LogIn size={s(18)} color={colors.warning} />,
+            label: "Take Over Order",
+            onPress: handleTakeOver,
+          },
+        ]
+      : []),
     {
-      icon: <Plus size={18} color={colors.muted} />,
+      icon: <Plus size={s(18)} color={colors.muted} />,
       label: "Add to Bill",
       onPress: handleAddToBill,
       disabled: !activeOrderId || !order.items || order.items.length === 0,
     },
     {
-      icon: <DollarSign size={18} color={colors.muted} />,
+      icon: <DollarSign size={s(18)} color={colors.muted} />,
       label: "Pay Outstanding",
       onPress: handlePayOutstanding,
       disabled: !hasOutstanding,
     },
     {
-      icon: <Printer size={18} color={colors.muted} />,
+      icon: <Printer size={s(18)} color={colors.muted} />,
       label: "Print Receipt",
       onPress: handlePrintReceipt,
     },
     {
-      icon: <ChefHat size={18} color={colors.muted} />,
+      icon: <ChefHat size={s(18)} color={colors.muted} />,
       label: "Print Kitchen Ticket",
       onPress: handlePrintKitchenTicket,
-      disabled: !order.items || order.items.filter((i) => !i.is_voided).length === 0,
+      disabled:
+        !order.items || order.items.filter((i) => !i.is_voided).length === 0,
     },
     {
-      icon: <ReceiptText size={18} color={colors.danger} />,
-      label: canTerminalRefund ? "Refund" : "Refund — wrong terminal",
-      onPress: handleRefund,
-      destructive: true,
-      disabled: !canTerminalRefund,
-    },
-    {
-      icon: <Trash2 size={18} color={colors.danger} />,
+      icon: <Trash2 size={s(18)} color={colors.danger} />,
       label: canTerminalRefund ? "Void Order" : "Void — wrong terminal",
       onPress: handleVoidOrder,
       destructive: true,
@@ -243,55 +318,139 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <Pressable className="flex-1 bg-black/50" onPress={onClose}>
+      <Pressable
+        className="flex-1"
+        style={{ backgroundColor: overlayBackground }}
+        onPress={onClose}
+      >
         <View
           className={`flex-1 p-4 ${
             position ? "" : "items-center justify-center"
           }`}
         >
           <Pressable
-            className="bg-panel rounded-lg shadow-2xl overflow-hidden min-w-[220px] border border-gray-700"
+            className="rounded-lg overflow-hidden min-w-[220px] border"
             onPress={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: colors.panel,
+              borderColor: menuBorder,
+              shadowColor: colors.screen,
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.28,
+              shadowRadius: 20,
+              elevation: 20,
+            }}
             style={
               position
                 ? {
+                    backgroundColor: colors.panel,
+                    borderColor: menuBorder,
+                    shadowColor: colors.screen,
+                    shadowOffset: { width: 0, height: 10 },
+                    shadowOpacity: 0.28,
+                    shadowRadius: 20,
+                    elevation: 20,
                     position: "absolute",
-                    top: position.y, // Align top with button
-                    left: position.x - 210, // Align right of menu with left of button (approx)
+                    // Estimate menu height: header (~44) + items (46 each) + padding
+                    // Flip above the button if too close to bottom of screen
+                    ...(() => {
+                      const ROW_H = s(46);
+                      const MENU_HEIGHT = s(44) + menuItems.length * ROW_H + s(16);
+                      const spaceBelow = screenHeight - position.y;
+                      if (spaceBelow < MENU_HEIGHT) {
+                        return {
+                          bottom: screenHeight - position.y - position.height,
+                        };
+                      }
+                      return { top: position.y };
+                    })(),
+                    left: position.x - s(210),
                   }
-                : {}
+                : {
+                    backgroundColor: colors.panel,
+                    borderColor: menuBorder,
+                    shadowColor: colors.screen,
+                    shadowOffset: { width: 0, height: 10 },
+                    shadowOpacity: 0.28,
+                    shadowRadius: 20,
+                    elevation: 20,
+                  }
             }
           >
             {/* Menu Header */}
-            <View className="px-4 py-3 border-b border-gray-700 bg-panel">
-              <Text className="text-xs font-semibold text-gray-400 uppercase">
+            <View
+              className="px-4 py-3 border-b"
+              style={{
+                borderBottomColor: rowDivider,
+                backgroundColor: colors.panel,
+              }}
+            >
+              <Text
+                className="text-xs font-semibold uppercase"
+                style={{ color: colors.muted }}
+              >
                 Order Actions
               </Text>
             </View>
 
             {/* Menu Items */}
             <View className="py-1">
-              {menuItems.map((item, index) => (
-                <TouchableOpacity
-                  key={index}
-                  onPress={item.onPress}
-                  disabled={item.disabled}
-                  className={`
-                    flex-row items-center px-4 py-3
-                    ${item.disabled ? "opacity-40" : "hover:bg-gray-800 active:bg-gray-700"}
-                    ${index < menuItems.length - 1 && !item.destructive ? "border-b border-gray-800" : ""}
-                  `}
-                >
-                  <View className="mr-3">{item.icon}</View>
-                  <Text
-                    className={`text-sm font-medium ${
-                      item.destructive ? "text-red-500" : "text-white"
-                    }`}
+              {menuItems.map((item, index) => {
+                const isLastNormal =
+                  !item.destructive &&
+                  (index === menuItems.length - 1 ||
+                    menuItems[index + 1]?.destructive);
+                const isFirstDestructive =
+                  item.destructive &&
+                  (index === 0 || !menuItems[index - 1]?.destructive);
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    onPress={item.onPress}
+                    disabled={item.disabled}
+                    className="flex-row items-center px-4"
+                    style={{
+                      opacity: item.disabled ? disabledOpacity : 1,
+                      height: s(46),
+                      marginTop: isFirstDestructive ? s(4) : 0,
+                      borderTopWidth: isFirstDestructive ? 1 : 0,
+                      borderTopColor: item.destructive
+                        ? colors.danger + "25"
+                        : rowDivider,
+                      backgroundColor: item.destructive
+                        ? colors.danger + "08"
+                        : colors.panel,
+                    }}
                   >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <View
+                      style={{
+                        width: s(32),
+                        height: s(32),
+                        borderRadius: s(8),
+                        backgroundColor: item.destructive
+                          ? colors.danger + "15"
+                          : colors.muted + "12",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: s(12),
+                      }}
+                    >
+                      {item.icon}
+                    </View>
+                    <Text
+                      className="text-sm font-medium"
+                      style={{
+                        color: item.destructive
+                          ? destructiveColor
+                          : normalLabelColor,
+                        flex: 1,
+                      }}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </Pressable>
         </View>

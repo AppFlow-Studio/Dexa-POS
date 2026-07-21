@@ -2,6 +2,7 @@
 import { Canvas, Path, interpolateColors } from "@shopify/react-native-skia";
 import React, { useEffect, type FC } from "react";
 import { View } from "react-native";
+import { useUiScale } from "@/lib/uiScale";
 import {
   SharedValue,
   useDerivedValue,
@@ -68,13 +69,16 @@ const AnimatedArc: FC<AnimatedArcProps> = ({
 
 // --- Main Card Component ---
 const RevenueCentersCard = () => {
+  const scale = useUiScale();
+  const s = (value: number) => Math.round(value * scale);
+
   const progress = useSharedValue(0);
   useEffect(() => {
     progress.value = withTiming(1, { duration: 1200 });
   }, [progress]);
 
-  const size = 120;
-  const strokeWidth = 12;
+  const size = s(120);
+  const strokeWidth = s(12);
   const center = size / 2;
   const radii = [center - strokeWidth / 2, center - strokeWidth * 2];
 
@@ -93,13 +97,13 @@ const RevenueCentersCard = () => {
 
   return (
     <View>
-      <View className="flex-row items-center">
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
         {/* Chart Container */}
         <View style={{ width: size, height: size }}>
           <Canvas style={{ flex: 1 }}>
             <Path
               path={trackPath}
-              color="#e5e7eb" // A slightly darker gray for better visibility if needed
+              color="#e5e7eb"
               style="stroke"
               strokeWidth={strokeWidth}
               strokeCap="round"
@@ -123,7 +127,7 @@ const RevenueCentersCard = () => {
         </View>
 
         {/* Legend */}
-        <View className="flex-1 ml-4 gap-y-2">
+        <View style={{ flex: 1, marginLeft: s(16), gap: s(8) }}>
           {revenueCentersData.map((item) => (
             <LegendRow
               key={item.label}

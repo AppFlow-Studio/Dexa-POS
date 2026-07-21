@@ -11,6 +11,7 @@ import type {
   BroadcastOrderItemData,
   BroadcastOrderPaymentData
 } from '@/hooks/realtime/useOrdersRealtime'
+import { resolveInboundToGo } from '@/lib/pendingToGo'
 import { normalizePlatform } from '@/lib/platformAliases'
 import type {
   CartItem,
@@ -20,6 +21,16 @@ import type {
   OrderRefundItemRecord,
   ReversalRecord
 } from '@/lib/types'
+import { restoreDiscountsFromBackend } from '@/utils/discountUtils'
+import { round2 } from '@/utils/money'
+
+/**
+ * Check if a broadcast payload is header-only (v2 — no items/reversals/refund_items).
+ * Payments may or may not be present depending on whether payment fields changed.
+ */
+export function isHeaderOnlyBroadcast (order: BroadcastOrderData): boolean {
+  return (order._broadcast_version ?? 1) >= 2
+}
 
 /**
  * Derive cashSavings for a cash-priced payment.
@@ -43,7 +54,7 @@ export function deriveCashSavings (
     payment.original_amount != null &&
     payment.original_amount > payment.amount
   ) {
-    return Number((payment.original_amount - payment.amount).toFixed(2))
+    return round2(payment.original_amount - payment.amount)
   }
 
   // Fallback: derive from order-level cash:card ratio
@@ -54,7 +65,7 @@ export function deriveCashSavings (
     orderCashTotal > 0
   ) {
     const ratio = orderCardTotal / orderCashTotal
-    return Number((payment.amount * (ratio - 1)).toFixed(2))
+    return round2(payment.amount * (ratio - 1))
   }
 
   return undefined
@@ -155,6 +166,7 @@ export interface BackendItemInput {
 
   // Flags
   is_voided?: boolean | null
+  is_to_go?: boolean | null
   is_open_item?: boolean | null
   open_item_name?: string | null
   open_item_price?: number | null
@@ -179,9 +191,16 @@ export interface BackendItemInput {
  */
 export function mapBackendItemToCartItem (
   item: BackendItemInput,
-  modifiers: CartItem['customizations']['modifiers']
+  modifiers: CartItem['customizations']['modifiers'],
+  existingItem?: CartItem
 ): CartItem {
   const isOpenItem = item.is_open_item || false
+  const effectiveModifiers =
+    modifiers && modifiers.length > 0
+      ? modifiers
+      : isOpenItem
+      ? existingItem?.customizations?.modifiers
+      : undefined
 
   // Resolve price: open items use open_item_price, regular items use unit_price
   const unitPrice = isOpenItem
@@ -227,7 +246,8 @@ export function mapBackendItemToCartItem (
     baseCardPrice: isOpenItem
       ? item.open_item_price || 0
       : item.base_card_price ?? item.unit_price ?? 0,
-    baseCashPrice: item.base_cash_price || cashPrice,
+    baseCashPrice:
+      item.base_cash_price ?? (isOpenItem ? item.open_item_price || 0 : unitPrice),
 
     // Discount distribution
     discount_amount: item.discount_amount ?? 0,
@@ -243,6 +263,9 @@ export function mapBackendItemToCartItem (
 
     // Item flags
     is_voided: item.is_voided || false,
+    // Prefer an in-flight optimistic to-go toggle over a stale backend value so a
+    // concurrent fetch/broadcast can't clobber the user's change mid-persist.
+    is_to_go: resolveInboundToGo(item.id, item.is_to_go || false),
     is_open_item: isOpenItem,
     open_item_name: item.open_item_name || undefined,
     open_item_price: item.open_item_price || undefined,
@@ -262,7 +285,7 @@ export function mapBackendItemToCartItem (
             priceModifier: item.size_price_modifier || 0
           }
         : undefined,
-      modifiers: modifiers,
+      modifiers: effectiveModifiers,
       notes: item.special_instructions || undefined
     }
   }
@@ -275,14 +298,16 @@ export function mapBackendItemToCartItem (
  * @returns Array of CartItem objects for local store
  */
 export function transformBroadcastItems (
-  items: BroadcastOrderItemData[] | undefined
+  items: BroadcastOrderItemData[] | undefined,
+  existingItemsByDbId?: Map<string, CartItem>
 ): CartItem[] {
   if (!items || items.length === 0) return []
 
   return items.map(item => {
     const cartItem = mapBackendItemToCartItem(
       item as unknown as BackendItemInput,
-      transformBroadcastModifiers(item.modifiers)
+      transformBroadcastModifiers(item.modifiers),
+      existingItemsByDbId?.get(item.id)
     )
     // Broadcast items use remote_ prefix for local ID
     return {
@@ -445,6 +470,8 @@ function transformBroadcastPaymentToProfile (
     subtotal_portion: payment.subtotal_portion,
     tax_portion: payment.tax_portion,
     discount_portion: payment.discount_portion ?? undefined,
+    service_charge: payment.service_charge ?? 0,
+    service_charge_refunded: payment.service_charge_refunded ?? 0,
     voidedAt: payment.voided_at ?? undefined,
     splitInfo,
     itemsCovered,
@@ -628,10 +655,16 @@ export function mapOrderType (
  */
 export function transformBroadcastToOrder (
   backendOrder: BroadcastOrderData,
-  sourceStationName?: string | null
+  sourceStationName?: string | null,
+  existingOrder?: OrderProfile
 ): OrderProfile {
   // Use db_order_id directly as local ID (no prefix)
   const localId = backendOrder.id
+  const existingItemsByDbId = new Map(
+    (existingOrder?.items || [])
+      .filter(item => item.db_order_item_id)
+      .map(item => [item.db_order_item_id!, item] as const)
+  )
 
   return {
     // Core identifiers - use db_order_id as both id and db_order_id
@@ -642,6 +675,10 @@ export function transformBroadcastToOrder (
 
     // Station tracking (for display purposes)
     station_id: backendOrder.station_id,
+    // Wave 2.7: `station_name` mirrors `station_id` semantics — current
+    // owner's display name. Distinct from `_sourceStationName` which is
+    // pinned to the ORIGINAL creator and used for orderline cards.
+    station_name: sourceStationName || null,
     _sourceStationId: backendOrder.station_id,
     _sourceStationName: sourceStationName || null,
 
@@ -649,17 +686,35 @@ export function transformBroadcastToOrder (
     order_type: mapOrderType(backendOrder.order_type),
     order_status: backendOrder.status,
     check_status: backendOrder.check_status || 'Opened',
+    reopen_count: backendOrder.reopen_count ?? 0,
     paid_status: mapPaymentStatus(backendOrder.payment_status),
     service_location_id: backendOrder.table_number,
     // table_number IS the table name (e.g., "T1"), so use it directly for display
     service_location_name: backendOrder.table_number || undefined,
+    // Session binding — preserved so downstream merges (upsertOrder,
+    // _handleOrderBroadcast) can enforce session-boundary checks and so the
+    // [FIFO-ORDER-BLEED] diagnostics can correlate cross-order item leaks
+    // back to the originating session. Broadcasts already carry this on
+    // BroadcastOrderData; we just need to surface it on OrderProfile.
+    session_id: backendOrder.session_id ?? undefined,
     server_name:
       backendOrder.server_name || backendOrder.assigned_server_id || undefined,
+    created_by_staff_profile_id:
+      backendOrder.created_by_staff_id ??
+      backendOrder.assigned_server_id ??
+      null,
     customer_name: backendOrder.customer_name || '',
     customer_phone: backendOrder.customer_phone || undefined,
     customer_email: backendOrder.customer_email || undefined,
     customer_id: backendOrder.customer_id || undefined,
     delivery_address: backendOrder.delivery_address || undefined,
+
+    // Party size: broadcasts don't carry guest_count (it lives on
+    // table_sessions.party_size, not orders), so preserve whatever the local
+    // store already had. Without this, every broadcast wipes guest_count back
+    // to undefined → header falls through to session.party_size or default,
+    // which breaks service-charge eligibility on the next recalc.
+    guest_count: existingOrder?.guest_count,
 
     // Financial - use card pricing as default
     total_amount: backendOrder.card_total || backendOrder.total_amount,
@@ -669,12 +724,34 @@ export function transformBroadcastToOrder (
       backendOrder.total_amount,
     total_tax: backendOrder.card_tax_amount || backendOrder.tax_amount,
     total_discount: backendOrder.discount_amount,
+
+    // Service charge snapshot — round-tripped so post-payment edits + future
+    // refund reconciliation (Part 3) can see what was billed.
+    service_charge: backendOrder.service_charge ?? 0,
+    service_charge_name: backendOrder.service_charge_name ?? null,
+    service_charge_rate: backendOrder.service_charge_rate ?? null,
+    service_charge_applies_on:
+      backendOrder.service_charge_applies_on ?? null,
+    service_charge_rule_id: backendOrder.service_charge_rule_id ?? null,
+    service_charge_is_manual: backendOrder.service_charge_is_manual ?? false,
+    service_charge_is_taxable: backendOrder.service_charge_is_taxable ?? null,
+
+    // Eagerly restore discount metadata when order_discounts are present (from query joins)
+    ...(backendOrder.order_discounts && backendOrder.order_discounts.length > 0
+      ? restoreDiscountsFromBackend(backendOrder.order_discounts)
+      : {}),
+
     amount_paid: backendOrder.amount_paid,
     amount_due: backendOrder.amount_due,
     cash_amount_due: backendOrder.cash_amount_due,
 
-    // Items
-    items: transformBroadcastItems(backendOrder.order_items),
+    // Items — v2 (header-only) broadcasts omit items; fetch on-demand via syncOrderFromBackendComplete
+    items: isHeaderOnlyBroadcast(backendOrder)
+      ? []
+      : transformBroadcastItems(backendOrder.order_items, existingItemsByDbId),
+
+    // Broadcast item count (v2) — used for display when items array is empty
+    _broadcastItemCount: backendOrder.item_count,
 
     // Payments - transform with item context for coverage derivation
     payments: transformBroadcastPaymentsToProfile(
@@ -685,11 +762,14 @@ export function transformBroadcastToOrder (
       backendOrder.cash_total
     ),
     // Cast reversals and refund items to proper types (broadcast returns Record<string, unknown>[])
-    reversals:
-      (backendOrder.reversals as unknown as ReversalRecord[]) ?? undefined,
-    order_refund_items:
-      (backendOrder.order_refund_items as unknown as OrderRefundItemRecord[]) ??
-      undefined,
+    // v2 broadcasts omit these — preserved from existing order in upsertOrder
+    reversals: isHeaderOnlyBroadcast(backendOrder)
+      ? undefined
+      : (backendOrder.reversals as unknown as ReversalRecord[]) ?? undefined,
+    order_refund_items: isHeaderOnlyBroadcast(backendOrder)
+      ? undefined
+      : (backendOrder.order_refund_items as unknown as OrderRefundItemRecord[]) ??
+        undefined,
 
     // Timestamps
     opened_at: backendOrder.created_at,
@@ -701,6 +781,10 @@ export function transformBroadcastToOrder (
     delivery_platform:
       backendOrder.delivery_platform ??
       normalizePlatform((backendOrder as any).metadata?.delivery_company) ??
+      undefined,
+    platform_order_number:
+      (backendOrder as any).platform_order_number ??
+      (backendOrder as any).metadata?.provider_order_id ??
       undefined,
     split_payment_path:
       (backendOrder.split_payment_path as import('@/lib/types').SplitPaymentPath) ??
@@ -742,6 +826,7 @@ export interface FetchedOrderData {
   station_id?: string | null
   station_name?: string | null
   check_status?: string | null
+  reopen_count?: number | null
   session_id?: string | null
   order_source?: string | null
   delivery_platform?: string | null
@@ -755,6 +840,12 @@ export interface FetchedOrderData {
   tip_amount?: number | null
   discount_amount?: number | null
   service_charge?: number | null
+  service_charge_name?: string | null
+  service_charge_rate?: number | null
+  service_charge_applies_on?: string | null
+  service_charge_rule_id?: string | null
+  service_charge_is_manual?: boolean | null
+  service_charge_is_taxable?: boolean | null
   total_amount?: number | null
   card_subtotal?: number | null
   card_tax_amount?: number | null
@@ -788,6 +879,7 @@ export interface FetchedOrderData {
   // Nested relations from Supabase
   order_items?: FetchedOrderItem[]
   order_payments?: FetchedOrderPayment[]
+  order_discounts?: FetchedOrderDiscount[]
   metadata?: Record<string, unknown> | null
   stations?: { station_name: string } | null
   created_by_staff?: { first_name: string; last_name: string } | null
@@ -812,6 +904,7 @@ export interface FetchedOrderItem {
   refunded_amount?: number | null
   course_number?: number | null
   is_voided?: boolean | null
+  is_to_go?: boolean | null
   is_open_item?: boolean | null
   open_item_name?: string | null
   open_item_price?: number | null
@@ -896,6 +989,10 @@ export interface FetchedOrderPayment {
   refunded_amount: number | null
   refunded_at: string | null
 
+  // Service-charge per-payment snapshot (process_payment_v13+ / apply_refund_to_payment_v4)
+  service_charge: number | null
+  service_charge_refunded: number | null
+
   // Return/refund tracking fields
   is_returned: boolean | null
   returned_at: string | null
@@ -922,6 +1019,23 @@ export interface FetchedOrderPayment {
 
   // Metadata
   metadata: Record<string, unknown> | null
+}
+
+export interface FetchedOrderDiscount {
+  id: string
+  discount_id: string | null
+  discount_name: string
+  discount_type: string
+  discount_value: number
+  calculated_amount: number
+  pre_discount_subtotal: number
+  source: string
+  applied_at: string
+  applied_by_staff_profiles_id: string | null
+  approved_by_staff_profiles_id: string | null
+  applied_to_item_ids: string[] | null
+  voided_at: string | null
+  created_at: string
 }
 
 /**
@@ -976,6 +1090,7 @@ function normalizeFetchedItems (
     refunded_amount: item.refunded_amount ?? 0,
     course_number: item.course_number ?? null,
     is_voided: item.is_voided ?? false,
+    is_to_go: item.is_to_go ?? false,
     is_open_item: item.is_open_item ?? false,
     open_item_name: item.open_item_name ?? null,
     open_item_price: item.open_item_price ?? null,
@@ -1032,6 +1147,8 @@ function normalizeFetchedPayment (
     subtotal_portion: payment.subtotal_portion ?? 0,
     tax_portion: payment.tax_portion ?? 0,
     discount_portion: payment.discount_portion ?? 0,
+    service_charge: payment.service_charge ?? 0,
+    service_charge_refunded: payment.service_charge_refunded ?? 0,
     voided_at: payment.voided_at ?? null,
     amount_tendered: payment.amount_tendered,
     change_given: payment.change_given ?? 0,
@@ -1145,6 +1262,16 @@ export function normalizeFetchedOrder (
     tip_amount: fetchedOrder.tip_amount ?? 0,
     discount_amount: fetchedOrder.discount_amount ?? 0,
     service_charge: fetchedOrder.service_charge ?? 0,
+    service_charge_name: fetchedOrder.service_charge_name ?? null,
+    service_charge_rate: fetchedOrder.service_charge_rate ?? null,
+    service_charge_applies_on:
+      (fetchedOrder.service_charge_applies_on as
+        | 'pre_discount'
+        | 'post_discount'
+        | null) ?? null,
+    service_charge_rule_id: fetchedOrder.service_charge_rule_id ?? null,
+    service_charge_is_manual: fetchedOrder.service_charge_is_manual ?? false,
+    service_charge_is_taxable: fetchedOrder.service_charge_is_taxable ?? null,
     total_amount: fetchedOrder.total_amount ?? 0,
     card_subtotal: fetchedOrder.card_subtotal ?? 0,
     card_tax_amount: fetchedOrder.card_tax_amount ?? 0,
@@ -1188,6 +1315,10 @@ export function normalizeFetchedOrder (
       fetchedOrder.delivery_platform ??
       normalizePlatform(fetchedOrder.metadata?.delivery_company) ??
       null,
+    platform_order_number:
+      (fetchedOrder as any).platform_order_number ??
+      fetchedOrder.metadata?.provider_order_id ??
+      null,
     split_payment_path: fetchedOrder.split_payment_path ?? null,
 
     // Sync
@@ -1200,11 +1331,17 @@ export function normalizeFetchedOrder (
     // Normalize nested order_payments
     order_payments: normalizeFetchedPayments(fetchedOrder.order_payments),
 
+    // Pass through order_discounts (filter out voided)
+    order_discounts: (fetchedOrder.order_discounts ?? [])
+      .filter(d => !d.voided_at)
+      .map(d => d as unknown as Record<string, unknown>),
+
     session_id: fetchedOrder.session_id ?? null,
     station_name:
       fetchedOrder.stations?.station_name ?? fetchedOrder.station_name ?? null,
     check_status:
       (fetchedOrder.check_status as 'Opened' | 'Closed' | null) ?? 'Opened',
+    reopen_count: (fetchedOrder.reopen_count as number | null) ?? 0,
     server_name: fetchedOrder.created_by_staff
       ? `${fetchedOrder.created_by_staff.first_name || ''} ${
           fetchedOrder.created_by_staff.last_name || ''

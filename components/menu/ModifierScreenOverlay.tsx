@@ -1,86 +1,128 @@
-import { colors } from '@/lib/theme'
+import { colors } from "@/lib/theme";
 import {
-  selectIsFullscreen,
-  useModifierSidebarStore
-} from '@/stores/useModifierSidebarStore'
-import React, { useEffect } from 'react'
-import { Dimensions, StyleSheet } from 'react-native'
+    selectIsFullscreen,
+    useModifierSidebarStore,
+} from "@/stores/useModifierSidebarStore";
+import React, { useEffect, useState } from "react";
+import { Dimensions, Keyboard, Platform, StyleSheet } from "react-native";
 import Animated, {
-  cancelAnimation,
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming
-} from 'react-native-reanimated'
-import ModifierScreen from './ModifierScreen'
+    cancelAnimation,
+    Easing,
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
+} from "react-native-reanimated";
+import ModifierScreen from "./ModifierScreen";
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window')
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 /**
  * ModifierScreenOverlay - Slides up from the bottom.
  *
- * PERFORMANCE: ModifierScreen mounts immediately when isOpen becomes true
- * (hidden via translateY), giving React the full animation window (~150ms)
- * to render the component tree. By the time the slide completes, ModifierScreen
- * is already painted — no post-animation mount lag.
+ * PERFORMANCE: ModifierScreen mounts on demand and remains mounted briefly
+ * after close for fast repeat edits without keeping its subscription tree
+ * alive for the full table-order session.
  */
 const ModifierScreenOverlay: React.FC = () => {
-  const isFullscreen = useModifierSidebarStore(selectIsFullscreen)
-  const isOpen = useModifierSidebarStore(s => s.isOpen)
+  const isFullscreen = useModifierSidebarStore(selectIsFullscreen);
+  const isOpen = useModifierSidebarStore((s) => s.isOpen);
+  const [shouldMountScreen, setShouldMountScreen] = useState(false);
+  const [keepScreenPainted, setKeepScreenPainted] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
-  const translateY = useSharedValue(SCREEN_HEIGHT)
-  const opacity = useSharedValue(0)
+  const translateY = useSharedValue(SCREEN_HEIGHT);
 
   useEffect(() => {
+    if (isOpen || isFullscreen) {
+      setShouldMountScreen(true);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setShouldMountScreen(false);
+    }, 1500);
+
+    return () => clearTimeout(timeoutId);
+  }, [isOpen, isFullscreen]);
+
+  useEffect(() => {
+    if (isOpen || isFullscreen) {
+      setKeepScreenPainted(true);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setKeepScreenPainted(false);
+    }, 160);
+
+    return () => clearTimeout(timeoutId);
+  }, [isOpen, isFullscreen]);
+
+  useEffect(() => {
+    cancelAnimation(translateY);
     if (isFullscreen) {
-      cancelAnimation(translateY)
-      cancelAnimation(opacity)
       translateY.value = withTiming(0, {
-        duration: 70,
-        easing: Easing.out(Easing.cubic)
-      })
-      opacity.value = withTiming(1, {
-        duration: 70,
-        easing: Easing.out(Easing.cubic)
-      })
+        duration: 60,
+        easing: Easing.out(Easing.quad),
+      });
     } else {
       translateY.value = withTiming(SCREEN_HEIGHT, {
         duration: 60,
-        easing: Easing.in(Easing.cubic)
-      })
-      opacity.value = withTiming(0, {
-        duration: 60,
-        easing: Easing.in(Easing.cubic)
-      })
+        easing: Easing.out(Easing.quad),
+      });
     }
-  }, [isFullscreen, translateY, opacity])
+  }, [isFullscreen, translateY]);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardInset(event.endCoordinates?.height ?? 0);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardInset(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
-    opacity: opacity.value
-  }))
+  }));
 
-  // Keep mounted while open so ModifierScreen renders during the slide animation.
-  // pointerEvents blocks touches when visually hidden (translateY = SCREEN_HEIGHT).
-  if (!isOpen) return null
+  if (!isOpen && !shouldMountScreen) return null;
 
   return (
     <Animated.View
-      style={[styles.overlay, animatedStyle]}
-      pointerEvents={isOpen ? 'auto' : 'none'}
+      style={[
+        styles.overlay,
+        animatedStyle,
+        keyboardInset > 0 ? { paddingBottom: keyboardInset } : null,
+      ]}
+      pointerEvents={isOpen && isFullscreen ? "auto" : "none"}
     >
-      <ModifierScreen />
+      <ModifierScreen keepMountedDuringClose={keepScreenPainted && !isOpen} />
     </Animated.View>
-  )
-}
+  );
+};
 
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.card,
     zIndex: 9999,
-    elevation: 100
-  }
-})
+    elevation: 0,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+  },
+});
 
-export default ModifierScreenOverlay
+export default ModifierScreenOverlay;

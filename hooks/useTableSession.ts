@@ -1,7 +1,9 @@
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
 import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
+import { orderStoreDiagnosticLog } from '@/lib/performanceDiagnostics'
 import { OrderProfile } from '@/lib/types'
+import { ensureOrderPrefetched } from '@/services/tableOrderPrefetch'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { hasPendingOrderCreation, useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
@@ -10,11 +12,18 @@ import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { TableStatus } from '@/types/db-floor-plan-types'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 // Module-level counter to detect when a newer useTableSession mount has claimed
 // activeOrderId. The lazy useState initializer stamps a generation; the cleanup
 // only clears activeOrderId if no newer generation has claimed it.
 let _mountGeneration = 0
+
+// Orders in these statuses are archived/finished and must not be returned by
+// fallback table-scan selectors. Without this guard a previously-closed order
+// (still in ordersById for history) would be picked up by the service_location_id
+// scan when a new session is seated on the same table.
+const TERMINAL_ORDER_STATUSES = new Set(['completed', 'void', 'cancelled'])
 
 export type SessionPhase =
   | 'initializing' // Waiting for data
@@ -67,28 +76,41 @@ export function useTableSession (
     if (!t) return 'initializing'
 
     const session = useTableSessionStore.getState().sessions[tableId]
+    const tableSession = t.session
 
     // No session → available table, auto-create will run, start ready
-    if (!session || session.status === 'available') return 'ready'
-
-    // Session has an order — check if we already have it locally
-    if (session.order_id) {
-      const orderState = useOrderStore.getState()
-      const found = orderState.getOrder(session.order_id)
-      if (found) {
-        // Synchronously claim activeOrderId before any effects run.
-        // This prevents a re-key from briefly having a null activeOrderId
-        // between the old mount's cleanup and the new mount's first effect.
-        _mountGeneration++
-        mountGenRef.current = _mountGeneration
-        if (orderState.activeOrderId !== found.id) {
-          useOrderStore.getState().setActiveOrder(found.id)
-        }
-        return 'ready' // order in store, render immediately
-      }
+    // If floor plan already marks this table as occupied, wait for session hydration
+    // instead of rendering an empty order view.
+    if (!session) {
+      if (tableSession && tableSession.status !== 'available')
+        return 'initializing'
+      return 'ready'
     }
 
-    // Session exists but order not yet loaded
+    if (session.status === 'available') {
+      if (tableSession && tableSession.status !== 'available')
+        return 'initializing'
+      return 'ready'
+    }
+
+    // Session has an order — check if we already have it locally.
+    // Treat a terminal-status hit as "not found" so a late SYNC that resurrects
+    // a freshly-archived session locally can't drag the screen into the closed
+    // order's data.
+    if (session.order_id) {
+      const orderState = useOrderStore.getState()
+      const candidate = orderState.getOrder(session.order_id)
+      const found =
+        candidate &&
+        !TERMINAL_ORDER_STATUSES.has(candidate.order_status ?? '')
+          ? candidate
+          : null
+      if (found) {
+        _mountGeneration++
+        mountGenRef.current = _mountGeneration
+        return 'ready'
+      }
+    }
     return 'initializing'
   })
   const phaseRef = useRef<SessionPhase>(phase)
@@ -114,42 +136,63 @@ export function useTableSession (
 
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
   const syncOrderFromDatabase = useOrderStore(s => s.syncOrderFromDatabase)
-  const syncOrderFromBackendComplete = useOrderStore(s => s.syncOrderFromBackendComplete)
+  const syncOrderFromBackendComplete = useOrderStore(
+    s => s.syncOrderFromBackendComplete
+  )
   const activeOrderId = useOrderStore(s => s.activeOrderId)
 
   const setActiveTableId = usePaymentStore(s => s.setActiveTableId)
   const clearActiveTableId = usePaymentStore(s => s.clearActiveTableId)
 
-  // Reactive order subscription — raw selector (inlined O(1) lookup for narrow subscription)
-  const rawActiveOrder = useOrderStore(state => {
-    // Priority 1: resolve via session's order_id (DB UUID → local key via index)
-    if (sessionOrderId) {
-      const localKey = state.dbOrderIdIndex[sessionOrderId] ?? sessionOrderId
-      const found = state.ordersById[localKey]
-      if (found) return found
-    }
-    // Priority 2: active order already set and belongs to this table
-    if (state.activeOrderId) {
-      const active = state.ordersById[state.activeOrderId]
-      if (active?.service_location_id === tableId) return active
-    }
-    // Priority 3: scan ordersById for any active order for this table
-    // (handles gaps where activeOrderId is transiently null but order still exists)
-    const keys = Object.keys(state.ordersById)
-    for (let i = 0; i < keys.length; i++) {
-      const o = state.ordersById[keys[i]]
-      if (
-        o.service_location_id === tableId &&
-        o.order_status !== 'completed' &&
-        o.order_status !== 'void' &&
-        o.order_status !== 'voided' &&
-        o.order_status !== 'cancelled'
-      ) {
-        return o
+  // Reactive order subscription — uses shallow comparison to avoid re-renders
+  // when unrelated store fields change. The selector only returns a new reference
+  // when the resolved order actually mutates (Immer structural sharing keeps
+  // untouched objects stable).
+  const rawActiveOrder = useOrderStore(
+    useShallow(state => {
+      // Priority 1: resolve via session's order_id (DB UUID → local key via index).
+      if (sessionOrderId) {
+        const localKey = state.dbOrderIdIndex[sessionOrderId] ?? sessionOrderId
+        const found = state.ordersById[localKey]
+        if (found && !TERMINAL_ORDER_STATUSES.has(found.order_status ?? '')) {
+          return found
+        }
       }
-    }
-    return undefined
-  })
+      // Priority 2: active order already set and belongs to this table.
+      if (state.activeOrderId) {
+        const active = state.ordersById[state.activeOrderId]
+        if (
+          active?.service_location_id === tableId &&
+          !TERMINAL_ORDER_STATUSES.has(active.order_status ?? '')
+        ) {
+          return active
+        }
+      }
+      // Priority 2.5: resolve via table index.
+      const indexedOrderId = state.tableOrderIdIndex[tableId]
+      if (indexedOrderId) {
+        const indexedOrder = state.ordersById[indexedOrderId]
+        if (
+          indexedOrder?.service_location_id === tableId &&
+          !TERMINAL_ORDER_STATUSES.has(indexedOrder.order_status ?? '')
+        ) {
+          return indexedOrder
+        }
+      }
+      // Priority 3: scan for any order belonging to this table (last resort).
+      for (let i = 0; i < state.orderIds.length; i++) {
+        const o = state.ordersById[state.orderIds[i]]
+        if (!o) continue
+        if (
+          o.service_location_id === tableId &&
+          !TERMINAL_ORDER_STATUSES.has(o.order_status ?? '')
+        ) {
+          return o
+        }
+      }
+      return undefined
+    })
+  )
 
   // Cache last valid order; use as fallback during transitional gaps
   const activeOrder = useMemo(() => {
@@ -157,15 +200,14 @@ export function useTableSession (
       cachedOrderRef.current = rawActiveOrder
       return rawActiveOrder
     }
-    // Session expects an order but selector can't resolve it — return cached
-    if (cachedOrderRef.current) {
-      if (cachedOrderRef.current.service_location_id === tableId)
-        return cachedOrderRef.current
-      if (
-        sessionOrderId &&
-        cachedOrderRef.current.db_order_id === sessionOrderId
-      )
-        return cachedOrderRef.current
+    // Session expects an order but selector can't resolve it — return cached.
+    // Skip the cached fallback if the cached order is now in a terminal state
+    // (it was archived after a previous Close Table), so reseating the same
+    // table doesn't surface the closed-out order's items.
+    const cached = cachedOrderRef.current
+    if (cached && !TERMINAL_ORDER_STATUSES.has(cached.order_status ?? '')) {
+      if (cached.service_location_id === tableId) return cached
+      if (sessionOrderId && cached.db_order_id === sessionOrderId) return cached
     }
     return undefined
   }, [rawActiveOrder, sessionOrderId, tableId])
@@ -180,14 +222,49 @@ export function useTableSession (
     }
   }, [tableId])
 
+  // Claim active order on mount if session has one
+  // Must be separate from the render-phase initializer to avoid updating stores during render
+  useEffect(() => {
+    const myGen = mountGenRef.current
+    if (myGen === 0) return // Not the current mount
+
+    const session = useTableSessionStore.getState().sessions[tableId]
+    if (session?.order_id) {
+      const orderState = useOrderStore.getState()
+      const found = orderState.getOrder(session.order_id)
+      if (
+        found &&
+        !TERMINAL_ORDER_STATUSES.has(found.order_status ?? '') &&
+        orderState.activeOrderId !== found.id
+      ) {
+        setActiveOrder(found.id)
+      }
+    }
+  }, [tableId, setActiveOrder])
+
   // Set active order when we have one (no cleanup on re-run)
   // Also re-claims if the store's activeOrderId was externally cleared while we still have the order
   useEffect(() => {
     if (!activeOrder?.id) return
-    const storeActiveId = useOrderStore.getState().activeOrderId
-    if (activeOrder.id !== lastSetOrderIdRef.current || storeActiveId !== activeOrder.id) {
-      lastSetOrderIdRef.current = activeOrder.id
-      setActiveOrder(activeOrder.id)
+    // Guard: only set activeOrderId if the order actually exists at that key.
+    // During rekey, cachedOrderRef may hold a stale order with old tempId
+    // that no longer exists in ordersById — setting activeOrderId to that
+    // stale key causes ModifierScreen and addItemToActiveOrder to silently fail.
+    const orderState = useOrderStore.getState()
+    const resolvedId = orderState.ordersById[activeOrder.id]
+      ? activeOrder.id
+      : activeOrder.db_order_id
+      ? orderState.dbOrderIdIndex[activeOrder.db_order_id] ??
+        activeOrder.db_order_id
+      : activeOrder.id
+    if (!orderState.ordersById[resolvedId]) return // Order truly gone — don't set stale ID
+    const storeActiveId = orderState.activeOrderId
+    if (
+      resolvedId !== lastSetOrderIdRef.current ||
+      storeActiveId !== resolvedId
+    ) {
+      lastSetOrderIdRef.current = resolvedId
+      setActiveOrder(resolvedId)
     }
   }, [activeOrder?.id, setActiveOrder])
 
@@ -212,7 +289,7 @@ export function useTableSession (
       return
     }
     if (tableStatus === 'available' && hasAutoCreatedRef.current && !session) {
-      console.log('[useTableSession] Table cleared, navigating away')
+      orderStoreDiagnosticLog('[useTableSession] Table cleared, navigating away')
       updatePhase('navigating_away')
       navigateAway()
     }
@@ -265,8 +342,13 @@ export function useTableSession (
 
         // Check session store for existing session
         const currentSession = sessionSnap.getSession(tableId)
+        const currentFloorPlanSession = useFloorPlanStore
+          .getState()
+          .getTableById(tableId)?.session
         const hasExistingSession =
-          currentSession?.status && currentSession.status !== 'available'
+          (currentSession?.status && currentSession.status !== 'available') ||
+          (!!currentFloorPlanSession &&
+            currentFloorPlanSession.status !== 'available')
 
         if (!hasExistingSession) {
           // Check if caller already created an order for this table (seatGuests in-flight)
@@ -290,9 +372,12 @@ export function useTableSession (
         // Re-snapshot after potential async work
         sessionSnap = useTableSessionStore.getState()
         const updatedSession = sessionSnap.getSession(tableId)
+        const updatedFloorPlanSession = useFloorPlanStore
+          .getState()
+          .getTableById(tableId)?.session
         const updatedTableStatus = updatedSession?.status || 'available'
 
-        console.log('[useTableSession] Auto-session check:', {
+        orderStoreDiagnosticLog('[useTableSession] Auto-session check:', {
           tableId,
           status: updatedTableStatus,
           sessionId: updatedSession?.id,
@@ -301,13 +386,28 @@ export function useTableSession (
 
         if (!tableId) return
 
+        // If floor plan indicates the table is occupied but session hydration hasn't
+        // landed in useTableSessionStore yet, keep waiting instead of auto-creating.
+        if (
+          !updatedSession &&
+          updatedFloorPlanSession &&
+          updatedFloorPlanSession.status !== 'available'
+        ) {
+          updatePhase('initializing')
+          return
+        }
+
         // Case 1: Session exists with an order
         if (updatedSession?.order_id) {
           const sOrderId = updatedSession.order_id
 
           // Early guard: if getOrder resolves to active order, this is a local→DB UUID swap
           const earlyResolved = useOrderStore.getState().getOrder(sOrderId)
-          if (earlyResolved && earlyResolved.id === useOrderStore.getState().activeOrderId) return
+          if (
+            earlyResolved &&
+            earlyResolved.id === useOrderStore.getState().activeOrderId
+          )
+            return
 
           // Skip if already matched by db_order_id
           if (activeOrder?.db_order_id === sOrderId) return
@@ -370,13 +470,25 @@ export function useTableSession (
             }
 
             updatePhase('loading_session')
-            console.log(
+            orderStoreDiagnosticLog(
               '[useTableSession] Syncing order from database:',
               sOrderId
             )
 
             try {
-              const localOrderId = await syncOrderFromDatabase(sOrderId)
+              // Deduplicate: skip if this order is already syncing elsewhere.
+              if (syncInFlightRef.current === sOrderId) {
+                updatePhase('ready')
+                return
+              }
+              syncInFlightRef.current = sOrderId
+
+              // Perf T3a: join the shared prefetch (single-flight) instead of
+              // issuing a parallel syncOrderFromDatabase. If the floor-plan
+              // tap already started this fetch, we await THAT promise; if not,
+              // ensureOrderPrefetched starts one and registers it so later
+              // callers join us. Also kicks the coursing prefetch.
+              const localOrderId = await ensureOrderPrefetched(sOrderId)
               if (getPhase(phaseRef) === 'navigating_away') return
 
               if (localOrderId) {
@@ -386,7 +498,10 @@ export function useTableSession (
                 // Skip if this order is being created right now (same-station seating race)
                 if (!hasPendingOrderCreation(localOrderId)) {
                   syncOrderFromBackendComplete(localOrderId).catch(err =>
-                    console.warn('[useTableSession] Background full sync failed:', err)
+                    console.warn(
+                      '[useTableSession] Background full sync failed:',
+                      err
+                    )
                   )
                 }
               }
@@ -398,6 +513,10 @@ export function useTableSession (
                 type: 'error'
               })
               updatePhase('ready')
+            } finally {
+              if (syncInFlightRef.current === sOrderId) {
+                syncInFlightRef.current = null
+              }
             }
           }
           return
@@ -407,6 +526,8 @@ export function useTableSession (
         if (
           !updatedSession &&
           updatedTableStatus === 'available' &&
+          (!updatedFloorPlanSession ||
+            updatedFloorPlanSession.status === 'available') &&
           !hasAutoCreatedRef.current
         ) {
           hasAutoCreatedRef.current = true
@@ -417,8 +538,17 @@ export function useTableSession (
           orderSnap = useOrderStore.getState()
 
           // Check if seatGuests is already in-flight from the caller (e.g. handleGuestCountSubmit)
+          // Also check tableOrderIdIndex in case activeOrderId was briefly cleared during mount transition
           const activeOid3 = orderSnap.activeOrderId
-          if (activeOid3 && hasPendingOrderCreation(activeOid3)) {
+          const tableIndexedOid = orderSnap.tableOrderIdIndex[tableId]
+          const pendingOid = activeOid3 || tableIndexedOid
+          if (pendingOid && hasPendingOrderCreation(pendingOid)) {
+            updatePhase('ready')
+            return
+          }
+          // If there's already an order for this table (by index or active), don't auto-create
+          if (tableIndexedOid && orderSnap.ordersById[tableIndexedOid]?.service_location_id === tableId) {
+            hasAutoCreatedRef.current = true
             updatePhase('ready')
             return
           }
@@ -436,7 +566,14 @@ export function useTableSession (
               activeOrd2?.service_location_id === tableId
                 ? activeOrd2
                 : undefined
-            const partySize = existingLocalOrder?.guest_count || 1
+            // Auto-create-session path: no seat data exists yet, no session
+            // exists. Default party_size = 1 (the seating modal flow goes
+            // through tables/index.tsx → seatGuests with the user-entered
+            // value; this branch only fires for accidental auto-creates).
+            // order.guest_count intentionally not read — see useOrderStore
+            // buildServiceChargeInputForOrder for the source-of-truth chain.
+            const partySize = 1
+            void existingLocalOrder // (kept in scope for future logging)
 
             const { sessionId, orderId } = await useTableSessionStore
               .getState()
@@ -446,7 +583,7 @@ export function useTableSession (
                 createOrder: true
               })
 
-            console.log(
+            orderStoreDiagnosticLog(
               '[useTableSession] Created session:',
               sessionId,
               'Order:',
@@ -491,6 +628,7 @@ export function useTableSession (
     }
 
     handleAutoCreateSession()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableId, tableStatus, session?.order_id])
 
   // Recovery: re-sync if order vanishes while phase is "ready"
@@ -504,8 +642,15 @@ export function useTableSession (
       const timer = setTimeout(async () => {
         if (getPhase(phaseRef) !== 'ready' || !sessionOrderId) return
 
-        // Double-check the order is truly missing (not just a render lag)
-        const found = useOrderStore.getState().getOrder(sessionOrderId)
+        // Double-check the order is truly missing (not just a render lag).
+        // A terminal-status hit is treated as missing so we don't claim a just-archived
+        // order on a session that's about to be replaced by a new seat.
+        const candidate = useOrderStore.getState().getOrder(sessionOrderId)
+        const found =
+          candidate &&
+          !TERMINAL_ORDER_STATUSES.has(candidate.order_status ?? '')
+            ? candidate
+            : null
         if (found) {
           setActiveOrder(found.id)
           return
@@ -524,7 +669,10 @@ export function useTableSession (
             // Skip if this order is being created right now (same-station seating race)
             if (!hasPendingOrderCreation(localId)) {
               syncOrderFromBackendComplete(localId).catch(err =>
-                console.warn('[useTableSession] Recovery full sync failed:', err)
+                console.warn(
+                  '[useTableSession] Recovery full sync failed:',
+                  err
+                )
               )
             }
           }

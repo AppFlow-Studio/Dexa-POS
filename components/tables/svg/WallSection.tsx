@@ -1,58 +1,117 @@
-import * as React from "react";
-import Svg, { Rect, Line } from "react-native-svg";
+import * as React from 'react'
+import Svg, { Line, Rect } from 'react-native-svg'
 
 interface WallSectionProps {
-  color?: string;
-  width?: number;
-  height?: number;
+  darkMode?: boolean
+  color?: string
+  width?: number
+  height?: number
+  hideTop?: boolean
+  hideRight?: boolean
+  hideBottom?: boolean
+  hideLeft?: boolean
 }
 
-// viewBox 0 0 200 10
-// Thick architectural wall — dark fill, neon stroke, with a lighter inner highlight
-// line to suggest wall thickness/depth.
-const WallSection = ({
-  color = "#94A3B8",
+const WallSection = React.memo(function WallSection ({
+  darkMode = false,
+  color = '#94A3B8',
   width = 200,
   height = 10,
-}: WallSectionProps) => (
-  <Svg
-    width={width}
-    height={height}
-    viewBox="0 0 200 10"
-    fill="none"
-    preserveAspectRatio="none"
-  >
-    {/* Wall body */}
-    <Rect
-      x="0"
-      y="0"
-      width="200"
-      height="10"
-      fill="#1E2340"
-      stroke={color}
-      strokeWidth="1.5"
-    />
-    {/* Inner highlight line — suggests top surface of wall thickness */}
-    <Line
-      x1="0"
-      y1="3"
-      x2="200"
-      y2="3"
-      stroke={color}
-      strokeWidth="0.5"
-      strokeOpacity="0.35"
-    />
-    {/* Bottom shadow line */}
-    <Line
-      x1="0"
-      y1="7.5"
-      x2="200"
-      y2="7.5"
-      stroke={color}
-      strokeWidth="0.5"
-      strokeOpacity="0.15"
-    />
-  </Svg>
-);
+  hideTop = false,
+  hideRight = false,
+  hideBottom = false,
+  hideLeft = false
+}: WallSectionProps) {
+  const lightStroke = '#111827'
+  const stroke = darkMode ? color : lightStroke
+  const highlightY = Math.min(3, height * 0.3)
+  const shadowY = Math.max(height - 2.5, height * 0.7)
 
-export default WallSection;
+  return (
+    <Svg
+      width='100%'
+      height='100%'
+      viewBox={`0 0 ${width} ${height}`}
+      fill='none'
+      preserveAspectRatio='none'
+    >
+      {/* Wall body */}
+      <Rect
+        x='0'
+        y='0'
+        width={width}
+        height={height}
+        fill={darkMode ? '#1E2340' : '#F3F4F6'}
+        stroke='none'
+      />
+
+      {!hideTop && (
+        <Line
+          x1='0'
+          y1='0.75'
+          x2={width}
+          y2='0.75'
+          stroke={stroke}
+          strokeWidth='1.5'
+        />
+      )}
+
+      {!hideRight && (
+        <Line
+          x1={width - 0.75}
+          y1='0'
+          x2={width - 0.75}
+          y2={height}
+          stroke={stroke}
+          strokeWidth='1.5'
+        />
+      )}
+
+      {!hideBottom && (
+        <Line
+          x1='0'
+          y1={height - 0.75}
+          x2={width}
+          y2={height - 0.75}
+          stroke={stroke}
+          strokeWidth='1.5'
+        />
+      )}
+
+      {!hideLeft && (
+        <Line
+          x1='0.75'
+          y1='0'
+          x2='0.75'
+          y2={height}
+          stroke={stroke}
+          strokeWidth='1.5'
+        />
+      )}
+
+      {/* Inner highlight line */}
+      <Line
+        x1='0'
+        y1={highlightY}
+        x2={width}
+        y2={highlightY}
+        stroke={stroke}
+        strokeWidth='0.5'
+        strokeOpacity={darkMode ? 0.35 : 0.4}
+      />
+
+      {/* Bottom shadow line */}
+      <Line
+        x1='0'
+        y1={shadowY}
+        x2={width}
+        y2={shadowY}
+        stroke={stroke}
+        strokeWidth='0.5'
+        strokeOpacity={darkMode ? 0.15 : 0.25}
+      />
+    </Svg>
+  )
+})
+
+export default WallSection

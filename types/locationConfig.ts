@@ -12,115 +12,168 @@
  * Zero changes to sync infrastructure needed.
  */
 
-import type { SoundPreset } from '@/services/kds/kdsSoundService'
+import type { SoundPreset } from "@/services/kds/kdsSoundService";
 
 // ============================================================================
 // NAMESPACE TYPES
 // ============================================================================
 
 export interface DiningConfig {
-  enablePerSeatOrdering: boolean
-  enableCoursing: boolean
-  allowTableMerging: boolean
-  allowTableSplitting: boolean
-  autoUpdateTableStatus: boolean
-  defaultSittingTimeMinutes: number
-  defaultPartySize: number
+  enablePerSeatOrdering: boolean;
+  enableCoursing: boolean;
+  allowTableMerging: boolean;
+  allowTableSplitting: boolean;
+  autoUpdateTableStatus: boolean;
+  autoClearTableOnPayment: boolean;
+  defaultSittingTimeMinutes: number;
+  defaultPartySize: number;
 }
 
 export interface KdsConfig {
-  workflowMode: '2-step' | '3-step'
-  autoFireEnabled: boolean
-  autoFireDelayMinutes: number
-  hideDoneItems: boolean
-  displayModifierGroupName: 'for_group_priced' | 'always' | 'never'
-  itemNameLines: number
-  displaySeatNumbers: boolean
-  displayGuestCount: boolean
-  alphabeticalSort: boolean
-  highlightNotes: boolean
-  displayExclusionsAtTop: boolean
-  aggregateIdenticalItems: boolean
-  aggregateToExistingTickets: boolean
-  yellowThresholdMinutes: number
-  orangeThresholdMinutes: number
-  redThresholdMinutes: number
-  newOrderPosition: 'left' | 'right'
+  workflowMode: "2-step" | "3-step";
+  autoFireEnabled: boolean;
+  autoFireDelayMinutes: number;
+  hideDoneItems: boolean;
+  displayModifierGroupName: "for_group_priced" | "always" | "never";
+  itemNameLines: number;
+  displaySeatNumbers: boolean;
+  displayGuestCount: boolean;
+  alphabeticalSort: boolean;
+  highlightNotes: boolean;
+  displayExclusionsAtTop: boolean;
+  aggregateIdenticalItems: boolean;
+  aggregateToExistingTickets: boolean;
+  yellowThresholdMinutes: number;
+  orangeThresholdMinutes: number;
+  redThresholdMinutes: number;
+  newOrderPosition: "left" | "right";
+  servedOrderSort: "newest-first" | "oldest-first";
+  ticketTapMode: "double-tap" | "single-select";
+  /** When "block-advance" (default), tickets with unacknowledged void/refund
+   *  items cannot be bumped. When "ack-on-advance", bumping a ticket
+   *  auto-acknowledges all unacknowledged items and then advances. */
+  acknowledgmentMode: "block-advance" | "ack-on-advance";
 }
 
 export interface PrintingConfig {
-  autoPrintKitchenTickets: boolean
-  autoPrintReceipt: boolean
-  autoPrintVoidReceipt: boolean
+  autoPrintKitchenTickets: boolean;
+  autoPrintReceipt: boolean;
+  // When true, split-payment orders auto-print one receipt per portion as each
+  // portion completes (instead of the single combined receipt).
+  autoPrintSplitReceipts: boolean;
+  autoPrintVoidReceipt: boolean;                                                                                                                                                                                                                                                                                                                                                                                                  
+  printVoidTickets: boolean;
+  printRefundTickets: boolean;
+  printMerchantCopy: boolean;
+  printCustomerCopy: boolean;
+  // When true, receipts show only the pricing for how the guest paid
+  // (card payment → card pricing only; cash payment → cash pricing only)
+  // instead of the dual Card Total / Cash Total breakdown.
+  matchReceiptPricingToPaymentMethod: boolean;
 }
 
 export interface CashDrawerConfig {
-  requireNoSaleReason: boolean
-  requireNoSaleApproval: boolean
-  noSaleAlertThreshold: number
-  blindCloseCount: boolean
-  autoPrintNoSaleReceipt: boolean
-  defaultOpeningAmount: number
-  varianceWarningThreshold: number
-  varianceAlertThreshold: number
-  requireEodBeforeClose: boolean
+  requireNoSaleReason: boolean;
+  requireNoSaleApproval: boolean;
+  noSaleAlertThreshold: number;
+  blindCloseCount: boolean;
+  autoPrintNoSaleReceipt: boolean;
+  defaultOpeningAmount: number;
+  varianceWarningThreshold: number;
+  varianceAlertThreshold: number;
+  requireEodBeforeClose: boolean;
 }
 
 export interface OnlineOrderingConfig {
-  enabled: boolean
-  pauseReason: string | null
-  autoResumeTime: string | null
-  autoAcceptOrders: boolean
-  largeOrderApprovalThreshold: number
-  rejectWhenBusyThreshold: number
-  dynamicPrepTimeEnabled: boolean
-  basePrepTime: number
+  enabled: boolean;
+  pauseReason: string | null;
+  autoResumeTime: string | null;
+  autoAcceptOrders: boolean;
+  largeOrderApprovalThreshold: number;
+  rejectWhenBusyThreshold: number;
+  dynamicPrepTimeEnabled: boolean;
+  basePrepTime: number;
   prepTimeAdjustments: {
-    kitchenLoad: boolean
-    peakHours: boolean
-  }
-  preOrderingEnabled: boolean
-  preOrderMaxDays: number
-  preOrderMinAdvanceMinutes: number
-  preOrderMaxDaily: number
+    kitchenLoad: boolean;
+    peakHours: boolean;
+  };
+  preOrderingEnabled: boolean;
+  preOrderMaxDays: number;
+  preOrderMinAdvanceMinutes: number;
+  preOrderMaxDaily: number;
 }
 
 export interface TipsConfig {
-  presetPercentages: number[]
-  openDrawerOnTip: boolean
+  presetPercentages: number[];
+  openDrawerOnTip: boolean;
+  allowCustom: boolean;
+  maxTipPercentage: number;
+  tipAdjustTimeoutSeconds: number;
+  defaultTipOption: "none" | "first" | null;
+  highTipWarningThreshold: number;
+  requireTipOnCard: boolean;
+  enableTipOnCash: boolean;
 }
 
 export interface PreAuthConfig {
-  enabled: boolean
-  defaultAmount: number
+  enabled: boolean;
+  defaultAmount: number;
 }
 
 export interface WaitlistConfig {
-  notificationGracePeriodMinutes: number
-  enabled: boolean
-  autoSmsEnabled: boolean
-  smsTemplate: string
-  reservationsEnabled: boolean
-  reservationDaysAhead: number
-  maxGuestsPerSlot: number
-  slotDurationMinutes: number
-  requireDeposit: boolean
-  depositAmount: number
-  cancellationPolicy: string
+  notificationGracePeriodMinutes: number;
+  enabled: boolean;
+  autoSmsEnabled: boolean;
+  /** @deprecated Legacy single field — kept as the `waitlist.tableReady` override. Use `messageTemplates`. */
+  smsTemplate: string;
+  /**
+   * Per-event SMS templates keyed by notify template_key
+   * (e.g. `waitlist.added`, `reservation.created`). A non-blank value overrides
+   * the built-in default; blank/absent falls back to the server default.
+   * Supports `{token}` placeholders — see WAITLIST_TOKENS / RESERVATION_TOKENS.
+   */
+  messageTemplates?: Record<string, string>;
+  reservationsEnabled: boolean;
+  reservationDaysAhead: number;
+  maxGuestsPerSlot: number;
+  slotDurationMinutes: number;
+  requireDeposit: boolean;
+  depositAmount: number;
+  cancellationPolicy: string;
 }
 
 export interface PaymentConfig {
-  cashEnabled: boolean
-  splitByAmount: boolean
-  splitByItem: boolean
-  splitEvenly: boolean
+  cashEnabled: boolean;
+  splitByAmount: boolean;
+  splitByItem: boolean;
+  splitEvenly: boolean;
+  dualPricingEnabled: boolean;
+  dualPricingCashDiscountPercent: number;
+  textToPayEnabled: boolean;
+}
+
+export interface TimeclockConfig {
+  breakAndSwitchEnabled: boolean;
+  breakDurationMinutes: number;
+  clockInRequirePin: boolean;
+  preventEarlyClockIn: boolean;
+  preventOpenOrdersClockOut: boolean;
+  autoCloseStaleShifts: boolean; // Legacy only; auto clock-out is now locations.auto_clock_out_enabled/time
+  maxShiftHours: number; // Legacy only; cutoff-time auto clock-out is handled server-side
 }
 
 export interface NotificationsConfig {
-  soundEnabled: boolean
-  onlineOrderSound: SoundPreset
-  kioskOrderSound: SoundPreset
-  thirdPartyOrderSound: SoundPreset
+  soundEnabled: boolean;
+  onlineOrderSound: SoundPreset;
+  kioskOrderSound: SoundPreset;
+  thirdPartyOrderSound: SoundPreset;
+}
+
+export interface FraudDetectionConfig {
+  refundToSelfEnabled: boolean;
+  alertThreshold: number; // Number of same-cashier cash refunds before manager alert
+  blockThreshold: number; // Number before refund is blocked pending manager approval
+  windowMinutes: number; // Sliding window in minutes for velocity detection
 }
 
 // ============================================================================
@@ -128,26 +181,47 @@ export interface NotificationsConfig {
 // ============================================================================
 
 export interface LocationPosConfig {
-  _version: number
-  _updated_at: string | null
+  _version: number;
+  _updated_at: string | null;
 
-  dining: DiningConfig
-  kds: KdsConfig
-  printing: PrintingConfig
-  cashDrawer: CashDrawerConfig
-  onlineOrdering: OnlineOrderingConfig
-  tips: TipsConfig
-  preAuth: PreAuthConfig
-  waitlist: WaitlistConfig
-  payment: PaymentConfig
-  notifications: NotificationsConfig
+  dining: DiningConfig;
+  kds: KdsConfig;
+  printing: PrintingConfig;
+  cashDrawer: CashDrawerConfig;
+  onlineOrdering: OnlineOrderingConfig;
+  tips: TipsConfig;
+  preAuth: PreAuthConfig;
+  waitlist: WaitlistConfig;
+  payment: PaymentConfig;
+  notifications: NotificationsConfig;
+  timeclock: TimeclockConfig;
+  fraudDetection: FraudDetectionConfig;
 }
 
 /** All valid namespace keys */
-export type ConfigNamespace = keyof Omit<LocationPosConfig, '_version' | '_updated_at'>
+export type ConfigNamespace = keyof Omit<
+  LocationPosConfig,
+  "_version" | "_updated_at"
+>;
+
+export type DeepPartialConfig<T> = {
+  [K in keyof T]?: T[K] extends readonly unknown[]
+    ? T[K]
+    : T[K] extends object
+      ? DeepPartialConfig<T[K]>
+      : T[K]
+}
+
+export type LocationPosConfigPatch = DeepPartialConfig<LocationPosConfig>
+
+/** Station override payload. Version metadata remains location-owned. */
+export type StationPosConfigOverrides = DeepPartialConfig<
+  Omit<LocationPosConfig, '_version' | '_updated_at'>
+>
 
 /** Map from namespace to its config type */
-export type ConfigForNamespace<N extends ConfigNamespace> = LocationPosConfig[N]
+export type ConfigForNamespace<N extends ConfigNamespace> =
+  LocationPosConfig[N];
 
 // ============================================================================
 // DEFAULTS
@@ -159,16 +233,17 @@ export const DEFAULT_DINING_CONFIG: DiningConfig = {
   allowTableMerging: true,
   allowTableSplitting: false,
   autoUpdateTableStatus: true,
+  autoClearTableOnPayment: false,
   defaultSittingTimeMinutes: 60,
   defaultPartySize: 2,
-}
+};
 
 export const DEFAULT_KDS_CONFIG: KdsConfig = {
-  workflowMode: '3-step',
+  workflowMode: "2-step",
   autoFireEnabled: false,
   autoFireDelayMinutes: 5,
   hideDoneItems: false,
-  displayModifierGroupName: 'for_group_priced',
+  displayModifierGroupName: "for_group_priced",
   itemNameLines: 0,
   displaySeatNumbers: false,
   displayGuestCount: true,
@@ -180,14 +255,23 @@ export const DEFAULT_KDS_CONFIG: KdsConfig = {
   yellowThresholdMinutes: 5,
   orangeThresholdMinutes: 10,
   redThresholdMinutes: 15,
-  newOrderPosition: 'right',
-}
+  newOrderPosition: "right",
+  servedOrderSort: "newest-first",
+  ticketTapMode: "double-tap",
+  acknowledgmentMode: "block-advance",
+};
 
 export const DEFAULT_PRINTING_CONFIG: PrintingConfig = {
   autoPrintKitchenTickets: true,
   autoPrintReceipt: false,
+  autoPrintSplitReceipts: false,
   autoPrintVoidReceipt: true,
-}
+  printVoidTickets: true,
+  printRefundTickets: true,
+  printMerchantCopy: false,
+  printCustomerCopy: true,
+  matchReceiptPricingToPaymentMethod: false,
+};
 
 export const DEFAULT_CASH_DRAWER_CONFIG: CashDrawerConfig = {
   requireNoSaleReason: true,
@@ -199,7 +283,7 @@ export const DEFAULT_CASH_DRAWER_CONFIG: CashDrawerConfig = {
   varianceWarningThreshold: 5.0,
   varianceAlertThreshold: 20.0,
   requireEodBeforeClose: true,
-}
+};
 
 export const DEFAULT_ONLINE_ORDERING_CONFIG: OnlineOrderingConfig = {
   enabled: true,
@@ -218,45 +302,75 @@ export const DEFAULT_ONLINE_ORDERING_CONFIG: OnlineOrderingConfig = {
   preOrderMaxDays: 30,
   preOrderMinAdvanceMinutes: 120,
   preOrderMaxDaily: 25,
-}
+};
 
 export const DEFAULT_TIPS_CONFIG: TipsConfig = {
   presetPercentages: [18, 20, 25],
   openDrawerOnTip: false,
-}
+  allowCustom: true,
+  maxTipPercentage: 100,
+  tipAdjustTimeoutSeconds: 30,
+  defaultTipOption: null,
+  highTipWarningThreshold: 30,
+  requireTipOnCard: false,
+  enableTipOnCash: true,
+};
 
 export const DEFAULT_PRE_AUTH_CONFIG: PreAuthConfig = {
   enabled: false,
   defaultAmount: 25,
-}
+};
 
 export const DEFAULT_WAITLIST_CONFIG: WaitlistConfig = {
   notificationGracePeriodMinutes: 10,
   enabled: true,
   autoSmsEnabled: true,
-  smsTemplate: 'Hi {name}, your table for {party_size} is ready! Please check in with the host within 5 minutes.',
+  smsTemplate:
+    "Hi {name}, your table for {party_size} is ready! Please check in with the host within 5 minutes.",
+  messageTemplates: {},
   reservationsEnabled: true,
   reservationDaysAhead: 30,
   maxGuestsPerSlot: 6,
   slotDurationMinutes: 90,
   requireDeposit: false,
   depositAmount: 20,
-  cancellationPolicy: 'Cancellations must be made 24 hours in advance to receive a full refund.',
-}
+  cancellationPolicy:
+    "Cancellations must be made 24 hours in advance to receive a full refund.",
+};
 
 export const DEFAULT_PAYMENT_CONFIG: PaymentConfig = {
   cashEnabled: true,
   splitByAmount: true,
   splitByItem: true,
   splitEvenly: true,
-}
+  dualPricingEnabled: false,
+  dualPricingCashDiscountPercent: 4.0,
+  textToPayEnabled: false,
+};
+
+export const DEFAULT_TIMECLOCK_CONFIG: TimeclockConfig = {
+  breakAndSwitchEnabled: true,
+  breakDurationMinutes: 30,
+  clockInRequirePin: true,
+  preventEarlyClockIn: true,
+  preventOpenOrdersClockOut: true,
+  autoCloseStaleShifts: false,
+  maxShiftHours: 24,
+};
 
 export const DEFAULT_NOTIFICATIONS_CONFIG: NotificationsConfig = {
   soundEnabled: true,
-  onlineOrderSound: 'bell',
-  kioskOrderSound: 'ding',
-  thirdPartyOrderSound: 'alert',
-}
+  onlineOrderSound: "bell",
+  kioskOrderSound: "ding",
+  thirdPartyOrderSound: "alert",
+};
+
+export const DEFAULT_FRAUD_DETECTION_CONFIG: FraudDetectionConfig = {
+  refundToSelfEnabled: false,
+  alertThreshold: 2,
+  blockThreshold: 3,
+  windowMinutes: 60,
+};
 
 export const DEFAULT_POS_CONFIG: LocationPosConfig = {
   _version: 1,
@@ -272,4 +386,6 @@ export const DEFAULT_POS_CONFIG: LocationPosConfig = {
   waitlist: DEFAULT_WAITLIST_CONFIG,
   payment: DEFAULT_PAYMENT_CONFIG,
   notifications: DEFAULT_NOTIFICATIONS_CONFIG,
-}
+  timeclock: DEFAULT_TIMECLOCK_CONFIG,
+  fraudDetection: DEFAULT_FRAUD_DETECTION_CONFIG,
+};

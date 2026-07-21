@@ -1,13 +1,16 @@
-import { calculateItemEffectiveCardPrice, calculateItemEffectiveCashPrice } from "@/lib/order-calculator";
+import { calculateOrderTotals } from "@/lib/order-calculator";
 import { CartItem, OrderProfile } from "@/lib/types";
 import { PrinterService } from "@/services/printing/PrinterService";
-import { SelectedLocation } from "@/stores/useStoreSettingsStore";
+import { SelectedLocation, useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { colors } from "@/lib/theme";
-import { Printer, X } from "lucide-react-native";
+import { Barcode, Mail, MessageSquare, Printer, QrCode, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
+  Image,
   Modal,
   PanResponder,
   Pressable,
@@ -17,6 +20,8 @@ import {
   View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
+import SendReceiptSheet from "@/components/receipts/SendReceiptSheet";
+import type { SendReceiptDeliveryMethod } from "@/services/messaging/sendReceiptService";
 
 // ==========================================
 // TYPES
@@ -141,36 +146,16 @@ const DoubleLine: React.FC = () => (
   </View>
 );
 
-// Info row component
-const InfoRow: React.FC<{ label: string; value: string }> = ({
-  label,
-  value,
-}) => (
-  <View className="flex-row justify-between py-0.5">
-    <Text
-      className="text-xs text-zinc-700"
-      style={{ fontFamily: "monospace" }}
-    >
-      {label}
-    </Text>
-    <Text
-      className="text-xs text-zinc-800 font-medium"
-      style={{ fontFamily: "monospace" }}
-    >
-      {value}
-    </Text>
-  </View>
-);
-
 // Item row component
 const ItemRow: React.FC<{
   item: CartItem;
-}> = ({ item }) => {
+  showModifiers?: boolean;
+}> = ({ item, showModifiers = true }) => {
   const itemName = item.is_open_item
     ? item.open_item_name || item.name
     : item.name;
-  const itemSubtotal = calculateItemEffectiveCardPrice(item);
-  const itemCashSubtotal = calculateItemEffectiveCashPrice(item);
+  const itemSubtotal = item.subtotal;
+  const itemCashSubtotal = item.cashSubtotal;
   const hasDifferentCashPrice = itemCashSubtotal !== itemSubtotal;
 
   return (
@@ -205,73 +190,48 @@ const ItemRow: React.FC<{
         </View>
       </View>
 
-      {/* Size modifier */}
-      {item.customizations?.size && (
-        <View className="pl-3">
-          <Text
-            className="text-[10px] text-zinc-500"
-            style={{ fontFamily: "monospace" }}
-          >
-            Size: {item.customizations.size.name}
-          </Text>
-        </View>
-      )}
-
-      {/* Modifiers */}
-      {item.customizations?.modifiers?.map((modGroup, idx) =>
-        modGroup.options.map((opt, optIdx) => (
-          <View
-            key={`${idx}-${optIdx}`}
-            className="flex-row justify-between pl-3"
-          >
-            <Text
-              className="text-[10px] text-zinc-500"
-              style={{ fontFamily: "monospace" }}
-            >
-              + {opt.name}
-            </Text>
-            {opt.price > 0 && (
-              <Text
-                className="text-[10px] text-zinc-500"
-                style={{ fontFamily: "monospace" }}
-              >
-                {formatCurrency(opt.price)}
+      {showModifiers && (
+        <>
+          {/* Size modifier */}
+          {item.customizations?.size && (
+            <View className="pl-3">
+              <Text className="text-[10px] text-zinc-500" style={{ fontFamily: "monospace" }}>
+                Size: {item.customizations.size.name}
               </Text>
-            )}
-          </View>
-        ))
-      )}
-
-      {/* Add-ons */}
-      {item.customizations?.addOns?.map((addon, idx) => (
-        <View key={idx} className="flex-row justify-between pl-3">
-          <Text
-            className="text-[10px] text-zinc-500"
-            style={{ fontFamily: "monospace" }}
-          >
-            + {addon.name}
-          </Text>
-          {addon.price > 0 && (
-            <Text
-              className="text-[10px] text-zinc-500"
-              style={{ fontFamily: "monospace" }}
-            >
-              {formatCurrency(addon.price)}
-            </Text>
+            </View>
           )}
-        </View>
-      ))}
 
-      {/* Special instructions / notes */}
-      {item.customizations?.notes && (
-        <View className="pl-3">
-          <Text
-            className="text-[10px] text-zinc-500 italic"
-            style={{ fontFamily: "monospace" }}
-          >
-            Note: {item.customizations.notes}
-          </Text>
-        </View>
+          {/* Modifiers */}
+          {item.customizations?.modifiers?.map((modGroup, idx) =>
+            modGroup.options.map((opt, optIdx) => (
+              <View key={`${idx}-${optIdx}`} className="flex-row justify-between pl-3">
+                <Text className="text-[10px] text-zinc-500" style={{ fontFamily: "monospace" }}>+ {opt.name}</Text>
+                {opt.price > 0 && (
+                  <Text className="text-[10px] text-zinc-500" style={{ fontFamily: "monospace" }}>{formatCurrency(opt.price)}</Text>
+                )}
+              </View>
+            ))
+          )}
+
+          {/* Add-ons */}
+          {item.customizations?.addOns?.map((addon, idx) => (
+            <View key={idx} className="flex-row justify-between pl-3">
+              <Text className="text-[10px] text-zinc-500" style={{ fontFamily: "monospace" }}>+ {addon.name}</Text>
+              {addon.price > 0 && (
+                <Text className="text-[10px] text-zinc-500" style={{ fontFamily: "monospace" }}>{formatCurrency(addon.price)}</Text>
+              )}
+            </View>
+          ))}
+
+          {/* Special instructions / notes */}
+          {item.customizations?.notes && (
+            <View className="pl-3">
+              <Text className="text-[10px] text-zinc-500 italic" style={{ fontFamily: "monospace" }}>
+                Note: {item.customizations.notes}
+              </Text>
+            </View>
+          )}
+        </>
       )}
 
       {/* Open item indicator */}
@@ -294,27 +254,31 @@ const TotalsRow: React.FC<{
   label: string;
   value: string;
   bold?: boolean;
+  large?: boolean;
   isDiscount?: boolean;
-}> = ({ label, value, bold = false, isDiscount = false }) => (
-  <View className="flex-row justify-between py-0.5">
-    <Text
-      className={`text-xs ${bold ? "font-bold text-sm" : ""} ${
-        isDiscount ? "text-green-600" : "text-zinc-700"
-      }`}
-      style={{ fontFamily: "monospace" }}
-    >
-      {label}
-    </Text>
-    <Text
-      className={`text-xs ${bold ? "font-bold text-sm" : ""} ${
-        isDiscount ? "text-green-600" : "text-zinc-800"
-      }`}
-      style={{ fontFamily: "monospace" }}
-    >
-      {value}
-    </Text>
-  </View>
-);
+}> = ({ label, value, bold = false, large = false, isDiscount = false }) => {
+  const sizeClass = large ? "font-bold text-base" : bold ? "font-bold text-sm" : "";
+  return (
+    <View className="flex-row justify-between py-0.5">
+      <Text
+        className={`text-xs ${sizeClass} ${
+          isDiscount ? "text-green-600" : "text-zinc-700"
+        }`}
+        style={{ fontFamily: "monospace" }}
+      >
+        {label}
+      </Text>
+      <Text
+        className={`text-xs ${sizeClass} ${
+          isDiscount ? "text-green-600" : "text-zinc-800"
+        }`}
+        style={{ fontFamily: "monospace" }}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+};
 
 // ==========================================
 // ANIMATION CONSTANTS
@@ -337,6 +301,10 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const dragY = useRef(new Animated.Value(0)).current;
   const [isVisible, setIsVisible] = useState(false);
+  const [receiptSheet, setReceiptSheet] = useState<{
+    open: boolean;
+    method: SendReceiptDeliveryMethod;
+  }>({ open: false, method: "email" });
 
   // Pan responder for drag gesture
   const panResponder = useRef(
@@ -429,43 +397,24 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
       };
     }
 
-    const items = order.items.filter((item) => !item.is_voided);
+    // Use the single source of truth for order totals — same as the app's order summary.
+    const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
+    const orderTotals = calculateOrderTotals({
+      items: order.items,
+      checkDiscount: order.checkDiscount ?? null,
+      taxRatesMap,
+      payments: order.payments ?? [],
+    });
 
-    // Card prices (default)
-    const subtotal = items.reduce((sum, item) => {
-      return sum + calculateItemEffectiveCardPrice(item);
-    }, 0);
-
-    // Cash prices
-    const cashSubtotal = items.reduce((sum, item) => {
-      return sum + calculateItemEffectiveCashPrice(item);
-    }, 0);
-
-    // Use order-level tax for card, fall back to item-level calculation
-    const tax = order.total_tax ?? items.reduce((sum, item) => {
-      return sum + (item.taxAmount || 0);
-    }, 0);
-
-    // Calculate cash tax using the same tax rate applied to cash subtotal
-    // Derive tax rate from card pricing, apply to cash subtotal
-    let cashTax = 0;
-    if (subtotal > 0 && tax > 0) {
-      const effectiveTaxRate = tax / subtotal;
-      cashTax = cashSubtotal * effectiveTaxRate;
-    } else {
-      // Fall back to item-level if available
-      cashTax = items.reduce((sum, item) => {
-        return sum + (item.cashTaxAmount || 0);
-      }, 0);
-    }
-
-    const discount = order.total_discount || 0;
-
+    const subtotal = orderTotals.subtotal;
+    const cashSubtotal = orderTotals.cash_subtotal;
+    const tax = orderTotals.tax_amount;
+    const cashTax = orderTotals.cash_tax_amount;
+    const discount = orderTotals.discount_amount;
     const tip =
       order.payments?.reduce((sum, p) => sum + (p.tip_amount || 0), 0) || 0;
-
-    const total = order.total_amount || subtotal + tax - discount + tip;
-    const cashTotal = cashSubtotal + cashTax - discount + tip;
+    const total = order.total_amount || (orderTotals.total_amount + tip);
+    const cashTotal = orderTotals.cash_total_amount + tip;
 
     return { subtotal, cashSubtotal, tax, cashTax, discount, tip, total, cashTotal };
   }, [order]);
@@ -491,8 +440,33 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
   // Format date/time
   const { date, time } = formatReceiptDate(order?.opened_at);
 
-  // Get table name from service_location_id
-  const tableName = order?.service_location_id ? "Table" : null;
+  // Receipt template
+  const getReceiptTemplate = useReceiptTemplateStore(s => s.getReceiptTemplate);
+  const template = location ? getReceiptTemplate(location.id) : null;
+  const cachedLogoBase64 = useReceiptTemplateStore(s => s.cachedLogoBase64);
+  const logoSource = template?.showLogo
+    ? cachedLogoBase64
+      ? { uri: `data:image/png;base64,${cachedLogoBase64}` }
+      : template.logoUrl
+        ? { uri: template.logoUrl }
+        : null
+    : null;
+  const receiptTableName = useMemo(() => {
+    if (!order) return null;
+    const uuidLike =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const explicitName = order.service_location_name?.trim();
+    if (explicitName && !uuidLike.test(explicitName)) return explicitName;
+    return (
+      (order.service_location_id
+        ? useFloorPlanStore.getState().tablesById[order.service_location_id]?.name
+        : null) ||
+      (explicitName
+        ? useFloorPlanStore.getState().tablesById[explicitName]?.name
+        : null) ||
+      null
+    );
+  }, [order]);
 
   // Handle print action
   const handlePrint = () => {
@@ -522,8 +496,12 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
         {/* Bottom sheet */}
         <Animated.View
-          className="absolute bottom-0 left-0 right-0 bg-[#1a1a1a] rounded-t-3xl"
           style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            backgroundColor: colors.card,
+            borderTopLeftRadius: 16, borderTopRightRadius: 16,
+            borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
+            borderColor: colors.border,
             maxHeight: "90%",
             shadowColor: "#000",
             shadowOffset: { width: 0, height: -4 },
@@ -546,20 +524,25 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
         >
           {/* Drag Handle */}
           <Animated.View
-            className="items-center pt-3 pb-2"
+            style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 2 }}
             {...panResponder.panHandlers}
           >
-            <View className="w-10 h-1 bg-gray-600 rounded-full" />
+            <View style={{ width: 32, height: 3, backgroundColor: colors.border, borderRadius: 2 }} />
           </Animated.View>
 
           {/* Header */}
-          <View className="flex-row justify-between items-center px-5 pb-4">
-            <Text className="text-xl font-bold text-white">Receipt Preview</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: colors.teal + '18', alignItems: 'center', justifyContent: 'center' }}>
+                <Printer size={14} color={colors.teal} />
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>Receipt Preview</Text>
+            </View>
             <TouchableOpacity
               onPress={onClose}
-              className="p-2 rounded-full bg-gray-800"
+              style={{ padding: 6, borderRadius: 8, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
             >
-              <X color={colors.label} size={20} />
+              <X color={colors.label} size={14} />
             </TouchableOpacity>
           </View>
 
@@ -587,264 +570,204 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 <TornEdgeTop />
                 <TornEdgeBottom />
 
-                {/* Business Header */}
-                <View className="items-center mb-4 px-5">
-                  <Text
-                    className="text-base font-semibold text-zinc-900 tracking-tight"
-                    style={{ fontFamily: "monospace" }}
-                  >
+                {/* logo */}
+                {template?.showLogo && (
+                  <View style={{ alignItems: "center", marginBottom: 2, paddingHorizontal: 20 }}>
+                    {logoSource ? (
+                      <Image
+                        source={logoSource}
+                        style={{ width: 64, height: 64 }}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View style={{ width: 36, height: 36, backgroundColor: "#e5e7eb", borderRadius: 6, alignItems: "center", justifyContent: "center" }}>
+                        <Text style={{ fontSize: 8, color: "#9ca3af", fontWeight: "700", fontFamily: "monospace" }}>LOGO</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* storeInfo */}
+                <View style={{ alignItems: "center", paddingHorizontal: 20, marginBottom: 2 }}>
+                  {template?.headerText ? (
+                    <Text style={{ fontSize: 9, color: "#374151", textAlign: "center", marginBottom: 2, fontFamily: "monospace" }}>
+                      {template.headerText}
+                    </Text>
+                  ) : null}
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: "#111827", textAlign: "center", fontFamily: "monospace" }}>
                     {location?.name || "Restaurant Name"}
                   </Text>
                   {locationAddress ? (
-                    <Text
-                      className="text-[10px] text-zinc-500 text-center mt-1"
-                      style={{ fontFamily: "monospace" }}
-                    >
+                    <Text style={{ fontSize: 9, color: "#6b7280", textAlign: "center", marginTop: 1, fontFamily: "monospace" }}>
                       {locationAddress}
                     </Text>
                   ) : null}
-                  {location?.phone && (
-                    <Text
-                      className="text-[10px] text-zinc-500"
-                      style={{ fontFamily: "monospace" }}
-                    >
+                  {location?.phone ? (
+                    <Text style={{ fontSize: 9, color: "#6b7280", fontFamily: "monospace" }}>
                       {location.phone}
                     </Text>
-                  )}
+                  ) : null}
+                  <DoubleLine />
                 </View>
 
-                <View className="px-5"><DottedLine /></View>
-
-                {/* Order Info */}
-                <View className="mb-1 px-5">
-                  <InfoRow
-                    label="Order #:"
-                    value={order.display_number || order.order_number || `#${order.id.slice(-4)}`}
-                  />
-                  <InfoRow label="Date:" value={date} />
-                  <InfoRow label="Time:" value={time} />
-                  <InfoRow
-                    label="Type:"
-                    value={getOrderTypeDisplay(order.order_type)}
-                  />
-                  {tableName && order.service_location_id && (
-                    <InfoRow label="Table:" value={tableName} />
+                {/* orderInfo */}
+                <View style={{ paddingHorizontal: 20, marginBottom: 2 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ fontSize: 9, color: "#111827", fontFamily: "monospace" }}>
+                      Order #{order.display_number || order.order_number || order.id.slice(-4)}
+                    </Text>
+                    <Text style={{ fontSize: 9, color: "#111827", fontFamily: "monospace" }}>{date}</Text>
+                  </View>
+                  <Text style={{ fontSize: 9, color: "#6b7280", marginTop: 1, fontFamily: "monospace" }}>{time}</Text>
+                  {template?.showOrderType !== false && (
+                    <Text style={{ fontSize: 9, color: "#6b7280", marginTop: 1, fontFamily: "monospace" }}>
+                      {getOrderTypeDisplay(order.order_type)}{receiptTableName ? ` - Table: ${receiptTableName}` : ""}
+                    </Text>
                   )}
-                  {order.customer_name && (
-                    <InfoRow label="Customer:" value={order.customer_name} />
-                  )}
-                  {order.server_name && (
-                    <InfoRow label="Server:" value={order.server_name} />
-                  )}
+                  {template?.showServerName !== false && order.server_name ? (
+                    <Text style={{ fontSize: 9, color: "#6b7280", fontFamily: "monospace" }}>Server: {order.server_name}</Text>
+                  ) : null}
+                  {order.customer_name ? (
+                    <Text style={{ fontSize: 9, color: "#6b7280", fontFamily: "monospace" }}>Customer: {order.customer_name}</Text>
+                  ) : null}
+                  {template?.showCustomerPhone !== false && order.customer_phone ? (
+                    <Text style={{ fontSize: 9, color: "#6b7280", fontFamily: "monospace" }}>Phone: {order.customer_phone}</Text>
+                  ) : null}
+                  <DottedLine />
                 </View>
 
-                <View className="px-5"><DoubleLine /></View>
-
-                {/* Items */}
-                <View className="mb-1 px-5">
-                  {order.items
-                    .filter((item) => !item.is_voided)
-                    .map((item) => (
-                      <ItemRow key={item.id} item={item} />
-                    ))}
+                {/* items */}
+                <View style={{ paddingHorizontal: 20, marginBottom: 2, gap: 3 }}>
+                  {order.items.filter(i => !i.is_voided).map((item) => (
+                    <ItemRow key={item.id} item={item} showModifiers={template?.showItemModifiers !== false} />
+                  ))}
+                  <DottedLine />
                 </View>
 
-                <View className="px-5"><DottedLine /></View>
-
-                {/* Totals */}
-                <View className="mb-1 px-5">
-                  {/* Card Prices Section */}
-                  <Text
-                    className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1"
-                    style={{ fontFamily: "monospace" }}
-                  >
-                    Card Price
-                  </Text>
-                  <TotalsRow
-                    label="Subtotal"
-                    value={formatCurrency(totals.subtotal)}
-                  />
-                  {totals.tax > 0 && (
+                {/* totals */}
+                <View style={{ paddingHorizontal: 20, marginBottom: 2 }}>
+                  <TotalsRow label="Subtotal" value={formatCurrency(totals.subtotal)} />
+                  {template?.showTaxBreakdown !== false && totals.tax > 0 && (
                     <TotalsRow label="Tax" value={formatCurrency(totals.tax)} />
                   )}
                   {totals.discount > 0 && (
-                    <TotalsRow
-                      label="Discount"
-                      value={`-${formatCurrency(totals.discount)}`}
-                      isDiscount
-                    />
+                    <TotalsRow label="Discount" value={`-${formatCurrency(totals.discount)}`} isDiscount />
                   )}
-                  {totals.tip > 0 && (
-                    <TotalsRow label="Tip" value={formatCurrency(totals.tip)} />
-                  )}
-                  <View className="border-t border-zinc-300 mt-2 pt-2">
-                    <TotalsRow
-                      label="TOTAL (Card)"
-                      value={formatCurrency(totals.total)}
-                      bold
-                    />
-                  </View>
-
-                  {/* Cash Prices Section - Only show if different from card */}
+                  <DoubleLine />
+                  <TotalsRow label="TOTAL" value={formatCurrency(totals.total)} bold />
                   {totals.cashTotal !== totals.total && (
-                    <View className="mt-3 pt-2 border-t border-dashed border-zinc-300 px-5">
-                      <Text
-                        className="text-[10px] text-green-700 uppercase tracking-wider mb-1"
-                        style={{ fontFamily: "monospace" }}
-                      >
-                        Cash Price
-                      </Text>
-                      <TotalsRow
-                        label="Subtotal"
-                        value={formatCurrency(totals.cashSubtotal)}
-                      />
-                      {totals.cashTax > 0 && (
-                        <TotalsRow label="Tax" value={formatCurrency(totals.cashTax)} />
-                      )}
-                      {totals.discount > 0 && (
-                        <TotalsRow
-                          label="Discount"
-                          value={`-${formatCurrency(totals.discount)}`}
-                          isDiscount
-                        />
-                      )}
-                      {totals.tip > 0 && (
-                        <TotalsRow label="Tip" value={formatCurrency(totals.tip)} />
-                      )}
-                      <View className="border-t border-zinc-300 mt-2 pt-2">
-                        <View className="flex-row justify-between py-0.5">
-                          <Text
-                            className="text-sm font-bold text-green-700"
-                            style={{ fontFamily: "monospace" }}
-                          >
-                            TOTAL (Cash)
-                          </Text>
-                          <Text
-                            className="text-sm font-bold text-green-700"
-                            style={{ fontFamily: "monospace" }}
-                          >
-                            {formatCurrency(totals.cashTotal)}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
+                    <TotalsRow label="TOTAL (Cash)" value={formatCurrency(totals.cashTotal)} />
                   )}
                 </View>
 
-                {/* Payments */}
-                {completedPayments.length > 0 && (
-                  <>
-                    <View className="px-5"><DottedLine /></View>
-                    <View className="mb-1 px-5" >
-                      <Text
-                        className="text-[10px] text-zinc-500 text-center uppercase tracking-wider mb-2"
-                        style={{ fontFamily: "monospace" }}
-                      >
-                        Payment
-                      </Text>
-                      {completedPayments.map((payment, idx) => (
-                        <View key={idx} className="flex-row justify-between">
-                          <Text
-                            className="text-xs text-zinc-700"
-                            style={{ fontFamily: "monospace" }}
-                          >
-                            {getPaymentMethodName(payment.method)}
-                            {payment.last4 && ` ****${payment.last4}`}
-                          </Text>
-                          <Text
-                            className="text-xs text-zinc-800"
-                            style={{ fontFamily: "monospace" }}
-                          >
-                            {formatCurrency(payment.amount)}
-                          </Text>
-                        </View>
-                      ))}
-                      {order.amount_paid !== undefined && order.amount_paid > 0 && (
-                        <View className="flex-row justify-between mt-1 pt-1 border-t border-dashed border-zinc-300">
-                          <Text
-                            className="text-xs text-zinc-700"
-                            style={{ fontFamily: "monospace" }}
-                          >
-                            Amount Paid
-                          </Text>
-                          <Text
-                            className="text-xs text-zinc-800"
-                            style={{ fontFamily: "monospace" }}
-                          >
-                            {formatCurrency(order.amount_paid)}
-                          </Text>
-                        </View>
-                      )}
-                      {order.amount_due !== undefined && order.amount_due > 0 && (
-                        <View className="flex-row justify-between">
-                          <Text
-                            className="text-xs text-amber-600"
-                            style={{ fontFamily: "monospace" }}
-                          >
-                            Amount Due
-                          </Text>
-                          <Text
-                            className="text-xs text-amber-600"
-                            style={{ fontFamily: "monospace" }}
-                          >
-                            {formatCurrency(order.amount_due)}
-                          </Text>
-                        </View>
-                      )}
+                {/* tipLine */}
+                {template?.showTipLine && (
+                  <View style={{ paddingHorizontal: 20, marginBottom: 2 }}>
+                    <DottedLine />
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ fontSize: 9, color: "#111827", fontFamily: "monospace" }}>Tip:</Text>
+                      <Text style={{ fontSize: 9, color: "#111827", fontFamily: "monospace" }}>________</Text>
                     </View>
-                  </>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 3 }}>
+                      <Text style={{ fontSize: 9, fontWeight: "700", color: "#111827", fontFamily: "monospace" }}>Total w/ Tip:</Text>
+                      <Text style={{ fontSize: 9, fontWeight: "700", color: "#111827", fontFamily: "monospace" }}>________</Text>
+                    </View>
+                  </View>
                 )}
 
-                <DoubleLine />
+                {/* payment */}
+                {completedPayments.length > 0 && (
+                  <View style={{ paddingHorizontal: 20, marginBottom: 2 }}>
+                    <DottedLine />
+                    {completedPayments.map((payment, idx) => (
+                      <View key={idx} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <Text style={{ fontSize: 9, color: "#374151", fontFamily: "monospace" }}>
+                          {getPaymentMethodName(payment.method)}{payment.last4 ? ` ****${payment.last4}` : ""}
+                        </Text>
+                        <Text style={{ fontSize: 9, color: "#374151", fontFamily: "monospace" }}>
+                          {formatCurrency(payment.amount)}
+                        </Text>
+                      </View>
+                    ))}
+                    {order.amount_due !== undefined && order.amount_due > 0 && (
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 2 }}>
+                        <Text style={{ fontSize: 9, color: "#d97706", fontFamily: "monospace" }}>Amount Due</Text>
+                        <Text style={{ fontSize: 9, color: "#d97706", fontFamily: "monospace" }}>{formatCurrency(order.amount_due)}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
 
-                {/* Footer */}
-                <View className="items-center px-5">
-                  <Text
-                    className="text-xs font-medium text-zinc-800"
-                    style={{ fontFamily: "monospace" }}
-                  >
-                    Thank You!
-                  </Text>
-                  <Text
-                    className="text-[10px] text-zinc-500"
-                    style={{ fontFamily: "monospace" }}
-                  >
-                    We appreciate your business
-                  </Text>
-                  <Text
-                    className="text-[10px] text-zinc-500 mt-2"
-                    style={{ fontFamily: "monospace" }}
-                  >
-                    {new Date().toLocaleDateString("en-US", {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </Text>
+                {/* footer */}
+                <View style={{ alignItems: "center", paddingHorizontal: 20, marginBottom: 2 }}>
+                  {template?.footerText ? (
+                    <>
+                      <DottedLine />
+                      <Text style={{ fontSize: 9, color: "#374151", textAlign: "center", fontFamily: "monospace" }}>
+                        {template.footerText}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: "#111827", fontFamily: "monospace" }}>Thank You!</Text>
+                      <Text style={{ fontSize: 9, color: "#6b7280", fontFamily: "monospace" }}>We appreciate your business</Text>
+                    </>
+                  )}
                 </View>
+
+                {/* barcode */}
+                {(template?.showBarcode || template?.showQrCode) && (
+                  <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, marginTop: 8, paddingHorizontal: 20 }}>
+                    {template.showBarcode && <Barcode size={28} color="#9ca3af" strokeWidth={1.5} />}
+                    {template.showQrCode && <QrCode size={28} color="#9ca3af" strokeWidth={1.5} />}
+                  </View>
+                )}
               </View>
             </View>
           </ScrollView>
 
           {/* Footer with Buttons */}
-          <View className="flex-row px-5 py-4 pb-8 gap-3 border-t border-gray-800">
+          <View style={{ flexDirection: 'row', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 16, gap: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
             <TouchableOpacity
-              className="flex-1 py-3.5 border border-gray-600 rounded-xl items-center bg-gray-800"
+              style={{ flex: 1, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: 'center', backgroundColor: colors.panel }}
               onPress={onClose}
             >
-              <Text className="text-base font-semibold text-gray-300">Close</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.label }}>Close</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className="flex-1 flex-row justify-center items-center gap-2 py-3.5 bg-blue-600 rounded-xl"
+              style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: colors.teal + '40', backgroundColor: colors.teal + '15' }}
+              onPress={() => setReceiptSheet({ open: true, method: 'email' })}
+              disabled={!order?.db_order_id}
+            >
+              <Mail color={colors.teal} size={14} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>Email</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: colors.teal + '40', backgroundColor: colors.teal + '15' }}
+              onPress={() => setReceiptSheet({ open: true, method: 'sms' })}
+              disabled={!order?.db_order_id}
+            >
+              <MessageSquare color={colors.teal} size={14} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>Text</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1.5, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 9, backgroundColor: colors.teal, borderRadius: 8 }}
               onPress={handlePrint}
             >
-              <Printer color="#FFFFFF" size={18} />
-              <Text className="text-base font-bold text-white">Print</Text>
+              <Printer color={colors.onSolid} size={14} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}>Print</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
       </View>
+      <SendReceiptSheet
+        isOpen={receiptSheet.open}
+        onClose={() => setReceiptSheet((s) => ({ ...s, open: false }))}
+        dbOrderId={order?.db_order_id ?? null}
+        defaultMethod={receiptSheet.method}
+        defaultEmail={order?.customer_email}
+        defaultPhone={order?.customer_phone}
+      />
     </Modal>
   );
 };

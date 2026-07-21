@@ -1,68 +1,124 @@
-import { colors } from "@/lib/theme";
-import { MenuItemType } from "@/lib/types";
-import { useMenuStore } from "@/stores/useMenuStore";
-import { Pencil } from "lucide-react-native";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { colors } from '@/lib/theme'
+import { MenuItemType } from '@/lib/types'
+import { useMenuStore } from '@/stores/useMenuStore'
+import { useUiScale } from '@/lib/uiScale'
+import { Pencil } from 'lucide-react-native'
+import React from 'react'
+import { Text, TouchableOpacity, View } from 'react-native'
 
 interface CategoryCardProps {
-  categoryName: string;
-  isExpanded: boolean;
-  onToggleExpand: (name: string) => void;
-  onEdit: () => void;
+  categoryName: string
+  isExpanded: boolean
+  onToggleExpand: (name: string) => void
+  onEdit: () => void
 }
 
 export const CategoryCard: React.FC<CategoryCardProps> = ({
   categoryName,
   isExpanded,
   onToggleExpand,
-  onEdit,
+  onEdit
 }) => {
-  const getItemsInCategory = useMenuStore((s) => s.getItemsInCategory);
-  const categories = useMenuStore((s) => s.categories);
-  const categoryItems = getItemsInCategory(categoryName);
-  const categoryDetails = categories.find((c) => c.name === categoryName);
+  const getItemsInCategory = useMenuStore(s => s.getItemsInCategory)
+  const categories = useMenuStore(s => s.categories)
+  const categoryItems = getItemsInCategory(categoryName)
+  const categoryDetails = categories.find(c => c.name === categoryName)
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   return (
-    <View className="bg-surface rounded-lg border border-gray-700 p-4 mb-3">
-      <View className="flex-row justify-between items-center">
+    <View
+      style={{
+        backgroundColor: colors.panel,
+        borderRadius: s(8),
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: s(16),
+        marginBottom: s(12)
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
         <TouchableOpacity
           onPress={() => onToggleExpand(categoryName)}
-          className="flex-row items-center gap-2 flex-1"
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: s(8),
+            flex: 1
+          }}
         >
-          <Text className="font-medium text-white text-xl">{categoryName}</Text>
-          <View className="bg-blue-900/30 border border-blue-500 px-2 py-1 rounded">
-            <Text className="text-sm text-blue-400">
+          <Text
+            style={{ fontWeight: '500', color: colors.heading, fontSize: s(20) }}
+          >
+            {categoryName}
+          </Text>
+          <View
+            style={{
+              backgroundColor: colors.heading + '30',
+              borderWidth: 1,
+              borderColor: colors.heading,
+              paddingHorizontal: s(8),
+              paddingVertical: s(4),
+              borderRadius: s(4)
+            }}
+          >
+            <Text style={{ fontSize: s(14), color: colors.heading }}>
               {categoryItems.length} items
             </Text>
           </View>
         </TouchableOpacity>
 
-        <View className="flex-row items-center gap-2">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
           <TouchableOpacity
             onPress={onEdit}
-            className="p-2 bg-panel rounded border border-gray-600"
+            style={{
+              padding: s(8),
+              backgroundColor: colors.panel,
+              borderRadius: s(4),
+              borderWidth: 1,
+              borderColor: colors.border
+            }}
           >
-            <Pencil size={16} color={colors.label} />
+            <Pencil size={s(16)} color={colors.label} />
           </TouchableOpacity>
         </View>
       </View>
 
       {isExpanded && (
-        <View className="mt-3 gap-2">
+        <View style={{ marginTop: s(12), gap: s(8) }}>
           {categoryItems.length === 0 ? (
-            <Text className="text-base text-gray-400">
+            <Text style={{ fontSize: s(16), color: colors.muted }}>
               No items in this category.
             </Text>
           ) : (
-            <View className="gap-2 flex flex-row flex-wrap">
+            <View style={{ gap: s(8), flexDirection: 'row', flexWrap: 'wrap' }}>
               {categoryItems.map((item: MenuItemType) => (
                 <View
                   key={item.id}
-                  className="flex-row items-center justify-between bg-panel border border-gray-700 rounded-md px-3 py-2"
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: colors.panel,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: s(6),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(8)
+                  }}
                 >
-                  <Text className="text-base text-white">{item.name}</Text>
-                  <Text className="text-base text-gray-300 ml-2">
+                  <Text style={{ fontSize: s(16), color: colors.heading }}>
+                    {item.name}
+                  </Text>
+                  <Text
+                    style={{ fontSize: s(16), color: colors.label, marginLeft: s(8) }}
+                  >
                     $ ${item.price.toFixed(2)}
                   </Text>
                 </View>
@@ -72,7 +128,7 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
         </View>
       )}
     </View>
-  );
-};
+  )
+}
 
-export const DraggableMenuCategory = () => <View />; // Placeholder remains
+export const DraggableMenuCategory = () => <View /> // Placeholder remains

@@ -13,7 +13,9 @@ import {
   XCircle,
 } from "lucide-react-native";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import type { DiscoveredStarPrinter } from "@/services/printing/discovery/StarPrinterDiscovery";
+import { selectAvailableDiscovered } from "@/stores/selectors/printerSelectors";
 import type { PrinterConfig } from "@/types/printer";
 
 // ---------------------------------------------------------------------------
@@ -39,17 +41,19 @@ export interface DiscoveredPrinterListProps {
 // ---------------------------------------------------------------------------
 
 function SectionHeader({ title, rightContent }: { title: string; rightContent?: React.ReactNode }) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   return (
     <View style={{
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginTop: 16,
-      marginBottom: 6,
-      paddingHorizontal: 2,
+      marginTop: s(16),
+      marginBottom: s(6),
+      paddingHorizontal: s(2),
     }}>
       <Text style={{
-        fontSize: 11,
+        fontSize: s(11),
         fontWeight: "700",
         color: colors.muted,
         textTransform: "uppercase",
@@ -63,9 +67,11 @@ function SectionHeader({ title, rightContent }: { title: string; rightContent?: 
 }
 
 function CapabilityBadge({ label }: { label: string }) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   return (
-    <View style={{ backgroundColor: colors.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-      <Text style={{ fontSize: 10, color: colors.label }}>{label}</Text>
+    <View style={{ backgroundColor: colors.border, paddingHorizontal: s(6), paddingVertical: s(2), borderRadius: s(4) }}>
+      <Text style={{ fontSize: s(10), color: colors.label }}>{label}</Text>
     </View>
   );
 }
@@ -87,15 +93,17 @@ export function DiscoveredPrinterList({
   onProvision,
   onTest,
 }: DiscoveredPrinterListProps) {
-  const newPrinters = discoveredPrinters.filter(
-    (dp) => !storedPrinters.some((p) => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress),
-  );
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  // Dedup by MAC → serial → IP (legacy fallback). IP-only match would re-show
+  // a saved printer that has DHCP-shifted, which is the bug being fixed.
+  const newPrinters = selectAvailableDiscovered(discoveredPrinters, storedPrinters);
 
   // Hide entire section when not scanning and there are no new printers to show
   if (!isScanning && newPrinters.length === 0) return null;
 
   return (
-    <View style={{ marginBottom: 12 }}>
+    <View style={{ marginBottom: s(12) }}>
       {/* Header */}
       <SectionHeader
         title="Discovered Printers"
@@ -106,19 +114,19 @@ export function DiscoveredPrinterList({
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 4,
-              paddingHorizontal: 8,
-              paddingVertical: 4,
+              gap: s(4),
+              paddingHorizontal: s(8),
+              paddingVertical: s(4),
               backgroundColor: colors.teal + "15",
-              borderRadius: 6,
+              borderRadius: s(6),
             }}
           >
             {isScanning ? (
               <ActivityIndicator size="small" color={colors.teal} />
             ) : (
               <>
-                <RefreshCw size={11} color={colors.teal} />
-                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Refresh</Text>
+                <RefreshCw size={s(11)} color={colors.teal} />
+                <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.teal }}>Refresh</Text>
               </>
             )}
           </TouchableOpacity>
@@ -127,9 +135,9 @@ export function DiscoveredPrinterList({
 
       {/* Scanning indicator (no printers found yet) */}
       {isScanning && discoveredPrinters.length === 0 && (
-        <View style={{ alignItems: "center", paddingVertical: 20, backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
+        <View style={{ alignItems: "center", paddingVertical: s(20), backgroundColor: colors.card, borderRadius: s(10), borderWidth: 1, borderColor: colors.border }}>
           <ActivityIndicator size="large" color={colors.teal} />
-          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 10 }}>
+          <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(10) }}>
             {scanSecondsRemaining != null
               ? `Scanning... ${scanSecondsRemaining}s remaining`
               : "Scanning for Star printers..."}
@@ -139,7 +147,7 @@ export function DiscoveredPrinterList({
 
       {/* Scanning indicator (some printers already found) */}
       {isScanning && discoveredPrinters.length > 0 && (
-        <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 4 }}>
+        <Text style={{ fontSize: s(11), color: colors.muted, marginBottom: s(4) }}>
           {scanSecondsRemaining != null
             ? `Scanning... ${scanSecondsRemaining}s remaining · ${discoveredPrinters.length} found`
             : `${discoveredPrinters.length} found`}
@@ -148,8 +156,8 @@ export function DiscoveredPrinterList({
 
       {/* Scan error */}
       {scanError && (
-        <View style={{ backgroundColor: colors.danger + "12", borderWidth: 1, borderColor: colors.danger + "30", borderRadius: 8, padding: 10, marginBottom: 6 }}>
-          <Text style={{ fontSize: 12, color: colors.danger }}>{scanError}</Text>
+        <View style={{ backgroundColor: colors.danger + "12", borderWidth: 1, borderColor: colors.danger + "30", borderRadius: s(8), padding: s(10), marginBottom: s(6) }}>
+          <Text style={{ fontSize: s(12), color: colors.danger }}>{scanError}</Text>
         </View>
       )}
 
@@ -163,30 +171,30 @@ export function DiscoveredPrinterList({
             key={dp.ipAddress}
             style={{
               backgroundColor: colors.card,
-              padding: 12,
-              borderRadius: 10,
+              padding: s(12),
+              borderRadius: s(10),
               borderWidth: 1,
               borderColor: colors.border,
-              marginBottom: 6,
+              marginBottom: s(6),
             }}
           >
             {/* Model + IP header */}
-            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-              <Printer size={14} color={colors.teal} />
-              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, marginLeft: 6, flex: 1 }}>{dp.modelName}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: s(8) }}>
+              <Printer size={s(14)} color={colors.teal} />
+              <Text style={{ fontSize: s(13), fontWeight: "600", color: colors.heading, marginLeft: s(6), flex: 1 }}>{dp.modelName}</Text>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Wifi size={10} color={colors.muted} />
-                <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 4 }}>{dp.ipAddress}</Text>
+                <Wifi size={s(10)} color={colors.muted} />
+                <Text style={{ fontSize: s(11), color: colors.muted, marginLeft: s(4) }}>{dp.ipAddress}</Text>
               </View>
             </View>
 
             {/* MAC address */}
             {dp.macAddress && (
-              <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 6 }}>MAC: {dp.macAddress}</Text>
+              <Text style={{ fontSize: s(10), color: colors.muted, marginBottom: s(6) }}>MAC: {dp.macAddress}</Text>
             )}
 
             {/* Capability badges */}
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: s(4), marginBottom: s(10) }}>
               <CapabilityBadge label={`${dp.capabilities.paperWidth}mm`} />
               <CapabilityBadge label={`${dp.capabilities.maxCharsPerLine} chars`} />
               <CapabilityBadge label={dp.capabilities.supportsAutoCut ? "Auto-cut" : "Tear-off"} />
@@ -200,34 +208,34 @@ export function DiscoveredPrinterList({
               <View style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 6,
-                marginBottom: 6,
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 6,
+                gap: s(6),
+                marginBottom: s(6),
+                paddingHorizontal: s(8),
+                paddingVertical: s(4),
+                borderRadius: s(6),
                 backgroundColor: testResult.success ? colors.success + "12" : colors.danger + "12",
               }}>
                 {testResult.success ? (
-                  <CheckCircle2 size={12} color={colors.success} />
+                  <CheckCircle2 size={s(12)} color={colors.success} />
                 ) : (
-                  <XCircle size={12} color={colors.danger} />
+                  <XCircle size={s(12)} color={colors.danger} />
                 )}
-                <Text style={{ fontSize: 11, color: testResult.success ? colors.success : colors.danger }}>
+                <Text style={{ fontSize: s(11), color: testResult.success ? colors.success : colors.danger }}>
                   {testResult.message}
                 </Text>
               </View>
             )}
 
             {/* Action buttons */}
-            <View style={{ flexDirection: "row", gap: 6 }}>
+            <View style={{ flexDirection: "row", gap: s(6) }}>
               {/* Test connection */}
               <TouchableOpacity
                 onPress={() => onTest(dp.ipAddress)}
                 disabled={testingIp === dp.ipAddress || isProvisioningThis}
                 style={{
-                  paddingVertical: 8,
-                  paddingHorizontal: 10,
-                  borderRadius: 8,
+                  paddingVertical: s(8),
+                  paddingHorizontal: s(10),
+                  borderRadius: s(8),
                   alignItems: "center",
                   backgroundColor: colors.panel,
                   borderWidth: 1,
@@ -237,7 +245,7 @@ export function DiscoveredPrinterList({
                 {testingIp === dp.ipAddress ? (
                   <ActivityIndicator size="small" color={colors.muted} />
                 ) : (
-                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label }}>Test</Text>
+                  <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.label }}>Test</Text>
                 )}
               </TouchableOpacity>
 
@@ -247,8 +255,8 @@ export function DiscoveredPrinterList({
                 disabled={isProvisioningThis}
                 style={{
                   flex: 1,
-                  paddingVertical: 8,
-                  borderRadius: 8,
+                  paddingVertical: s(8),
+                  borderRadius: s(8),
                   alignItems: "center",
                   backgroundColor: isProvisioningThis ? colors.border : colors.teal + "15",
                   borderWidth: 1,
@@ -258,7 +266,7 @@ export function DiscoveredPrinterList({
                 {isProvisioningThis ? (
                   <ActivityIndicator size="small" color={colors.teal} />
                 ) : (
-                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Add as Receipt</Text>
+                  <Text style={{ fontSize: s(11), fontWeight: "600", color: colors.teal }}>Add as Receipt</Text>
                 )}
               </TouchableOpacity>
 
@@ -268,15 +276,15 @@ export function DiscoveredPrinterList({
                 disabled={isProvisioningThis}
                 style={{
                   flex: 1,
-                  paddingVertical: 8,
-                  borderRadius: 8,
+                  paddingVertical: s(8),
+                  borderRadius: s(8),
                   alignItems: "center",
                   backgroundColor: isProvisioningThis ? colors.border : "#f97316" + "15",
                   borderWidth: 1,
                   borderColor: isProvisioningThis ? colors.border : "#f97316" + "40",
                 }}
               >
-                <Text style={{ fontSize: 11, fontWeight: "600", color: isProvisioningThis ? colors.muted : "#f97316" }}>Add as Kitchen</Text>
+                <Text style={{ fontSize: s(11), fontWeight: "600", color: isProvisioningThis ? colors.muted : "#f97316" }}>Add as Kitchen</Text>
               </TouchableOpacity>
 
               {/* Add as Both */}
@@ -285,15 +293,15 @@ export function DiscoveredPrinterList({
                 disabled={isProvisioningThis}
                 style={{
                   flex: 1,
-                  paddingVertical: 8,
-                  borderRadius: 8,
+                  paddingVertical: s(8),
+                  borderRadius: s(8),
                   alignItems: "center",
                   backgroundColor: isProvisioningThis ? colors.border : "#8b5cf6" + "15",
                   borderWidth: 1,
                   borderColor: isProvisioningThis ? colors.border : "#8b5cf6" + "40",
                 }}
               >
-                <Text style={{ fontSize: 11, fontWeight: "600", color: isProvisioningThis ? colors.muted : "#8b5cf6" }}>Add as Both</Text>
+                <Text style={{ fontSize: s(11), fontWeight: "600", color: isProvisioningThis ? colors.muted : "#8b5cf6" }}>Add as Both</Text>
               </TouchableOpacity>
             </View>
           </View>

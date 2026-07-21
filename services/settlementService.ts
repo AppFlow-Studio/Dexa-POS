@@ -2,27 +2,33 @@
 // Settlement Service
 // File: services/settlementService.ts
 // ============================================================
-// Orchestrates Castles terminal batch settlement:
-// 1. Connect to terminal
-// 2. Send settlement command
-// 3. Persist results to DB (settle_castles_batch RPC)
-// 4. Reset transaction counter
-// ============================================================
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import { captureRpcError } from "@/lib/supabase";
+import { addPendingFinalize } from "@/services/pendingFinalize";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
-import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
-import type { CastlesSettlementResult, CastlesSettlementHostResult } from "@/types/castles";
-import { CASTLES_DEFAULT_PORT } from "@/types/castles";
+import type {
+    CastlesSettlementHostResult,
+    CastlesSettlementResult,
+} from "@/types/castles";
+import {
+    CASTLES_CLIENT_ERROR_CODE,
+    CASTLES_DEFAULT_PORT,
+    CASTLES_DIAGNOSTICS_TXN_ID,
+} from "@/types/castles";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 // ── Types ─────────────────────────────────────────────────────────
 
 export interface SettlementInput {
-  terminalId: string;
-  terminalHost: string;
+  terminalId: string; // payment_terminals.id (UUID)
+  merchantId: string; // required by RPCs for tenant isolation
+  initiatedBy: string; // Clerk userId — audit trail
+  /** Required for TCP terminals; ignored for USB. */
+  terminalHost?: string;
   terminalPort?: number;
+  /** 'usb' for wired Castles, otherwise TCP. Defaults to 'local_socket'. */
+  connectionType?: 'local_socket' | 'usb';
   locationId: string;
-  businessDate: string; // YYYY-MM-DD
   supabase: SupabaseClient;
   onStatus?: (message: string) => void;
 }
@@ -30,136 +36,419 @@ export interface SettlementInput {
 export interface SettlementOutput {
   success: boolean;
   partialSuccess: boolean;
+  shouldRetry: boolean;
+  requiresSupport: boolean;
   hosts: CastlesSettlementHostResult[];
   batchUuid?: string;
+  batchId?: string;
+  status?: string;
   paymentsUpdated?: number;
+  settledAcquirers?: string[];
+  failedAcquirers?: Array<{
+    acquirer: string;
+    return_code: string;
+    message: string;
+  }>;
   dbWriteFailed?: boolean;
   error?: string;
 }
 
+// Shape of a row returned by get_unsettled_summary_by_terminal
+interface UnsettledSummaryRow {
+  terminal_uuid: string;
+  payment_count: number | null;
+  total_amount: number | null;
+  gross_amount: number | null;
+  tip_amount: number | null;
+  day_span: number | null;
+  oldest_payment_date: string | null;
+  newest_payment_date: string | null;
+  has_stuck_batch: boolean;
+  stuck_batch_status: string | null;
+  stuck_batch_uuid: string | null;
+}
+
+// ── Security: Terminal Provisioning & Verification ────────────────
+
+async function verifyOrProvisionTerminal(params: {
+  supabase: SupabaseClient;
+  terminalId: string;
+  onStatus?: (msg: string) => void;
+}): Promise<void> {
+  const { supabase, terminalId, onStatus } = params;
+  const service = getSharedCastlesService();
+
+  onStatus?.("Verifying terminal identity...");
+
+  // getData and terminal row are independent — fetch in parallel
+  const [getDataResult, { data: terminalRow, error: dbError }] =
+    await Promise.all([
+      service.getTerminalData(CASTLES_DIAGNOSTICS_TXN_ID),
+      supabase
+        .from("payment_terminals")
+        .select("serial_number, firmware_version")
+        .eq("id", terminalId)
+        .single(),
+    ]);
+
+  if (!getDataResult.success || !getDataResult.data) {
+    throw new Error(
+      `Terminal identity check failed: getData did not respond. ${getDataResult.error ?? ""}`.trim(),
+    );
+  }
+  if (dbError) {
+    throw new Error(`Could not retrieve terminal record: ${dbError.message}`);
+  }
+
+  const infSN = getDataResult.data.infSN;
+  if (!infSN) {
+    throw new Error(
+      "Terminal did not return a serial number (infSN). Cannot verify device identity.",
+    );
+  }
+
+  const storedSerial: string | null = terminalRow?.serial_number ?? null;
+
+  if (!storedSerial) {
+    // Check if this physical device is already registered to a different terminal record
+    // (e.g., the same unit was moved from back counter to front counter)
+    const { data: prevOwner } = await supabase
+      .from("payment_terminals")
+      .select("id, terminal_name")
+      .eq("serial_number", infSN)
+      .neq("id", terminalId)
+      .maybeSingle();
+
+    const now = new Date().toISOString();
+
+    if (prevOwner) {
+      // Clear the old registration so the prior station record doesn't get a mismatch error
+      onStatus?.(`Transferring device from "${prevOwner.terminal_name}"...`);
+      const { error: clearError } = await supabase
+        .from("payment_terminals")
+        .update({ serial_number: null, updated_at: now })
+        .eq("id", prevOwner.id);
+
+      if (clearError) {
+        console.warn(
+          `[SettlementService] Could not clear serial from "${prevOwner.terminal_name}":`,
+          clearError.message,
+        );
+      } else {
+        console.log(
+          `[SettlementService] Device ${infSN} transferred from "${prevOwner.terminal_name}"`,
+        );
+      }
+    }
+
+    onStatus?.(`Provisioning terminal (serial: ${infSN})...`);
+    const { error: updateError } = await supabase
+      .from("payment_terminals")
+      .update({
+        serial_number: infSN,
+        firmware_version:
+          getDataResult.data.infAndroidVersion ?? terminalRow?.firmware_version,
+        updated_at: now,
+      })
+      .eq("id", terminalId);
+
+    if (updateError) {
+      // Non-fatal: don't block the first settlement
+      console.warn(
+        "[SettlementService] Could not store serial number:",
+        updateError.message,
+      );
+    }
+  } else {
+    if (infSN !== storedSerial) {
+      throw new Error(
+        `Security: terminal identity mismatch. ` +
+          `Connected device serial: "${infSN}", registered serial: "${storedSerial}". ` +
+          `Aborting settlement. If this terminal was physically replaced, ` +
+          `clear the registered serial number in admin settings.`,
+      );
+    }
+
+    // Keep firmware_version current for diagnostics (fire-and-forget)
+    if (
+      getDataResult.data.infAndroidVersion &&
+      getDataResult.data.infAndroidVersion !== terminalRow?.firmware_version
+    ) {
+      supabase
+        .from("payment_terminals")
+        .update({
+          firmware_version: getDataResult.data.infAndroidVersion,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", terminalId)
+        .then(({ error }) => {
+          if (error)
+            console.warn(
+              "[SettlementService] Firmware version sync failed:",
+              error.message,
+            );
+        });
+    }
+  }
+}
+
 // ── Service ───────────────────────────────────────────────────────
 
-export async function runSettlement(input: SettlementInput): Promise<SettlementOutput> {
+export async function runSettlement(
+  input: SettlementInput,
+): Promise<SettlementOutput> {
   const {
     terminalId,
+    merchantId,
+    initiatedBy,
     terminalHost,
     terminalPort = CASTLES_DEFAULT_PORT,
-    locationId,
-    businessDate,
+    connectionType = 'local_socket',
     supabase,
     onStatus,
   } = input;
 
-  // 1. Connect
+  const isUsb = connectionType === 'usb';
+  if (!isUsb && !terminalHost) {
+    throw new Error('Settlement requires either USB connection or a TCP terminal host');
+  }
+
   onStatus?.("Connecting to terminal...");
   const service = getSharedCastlesService();
   await service.connect({
-    host: terminalHost,
-    port: terminalPort,
+    connectionType: isUsb ? 'usb' : 'local_socket',
+    host: isUsb ? undefined : terminalHost,
+    port: isUsb ? undefined : terminalPort,
     timeout: 300_000,
     terminalId,
   });
 
-  // Register status callback for terminal messages
-  const prevCallback = service["_onStatusNotification"];
+  // Settlement is non-idempotent at the terminal layer — we only get
+  // one clean shot per tap. Run the escalated return2Idle sequence so
+  // a lingering result-screen / partial-payment UI state from prior
+  // use can't sink the first attempt (the "had to tap twice" symptom).
+  onStatus?.("Preparing terminal...");
+  await service.escalatedReset();
+
+  await verifyOrProvisionTerminal({ supabase, terminalId, onStatus });
+
+  // In the field we see a consistent "first tap rejects with 'failed' /
+  // contact-processor, second tap succeeds" pattern. prepare_castles_settlement
+  // Step 3a/3b already releases the previous failed batch's payments, so a
+  // second prepare→processSettlement→finalize cycle is safe and is exactly
+  // what staff did manually. Wrap it in one in-function retry loop.
+  const MAX_ATTEMPTS = 2;
+  let lastOutput: SettlementOutput | undefined;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const isRetry = attempt > 1;
+    if (isRetry) {
+      onStatus?.("Terminal not ready — retrying batchout...");
+      try {
+        await service.escalatedReset();
+      } catch (e) {
+        console.warn(
+          "[SettlementService] auto-retry escalatedReset failed (non-fatal):",
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    lastOutput = await _runSingleSettlementAttempt({
+      supabase,
+      terminalId,
+      merchantId,
+      initiatedBy,
+      service,
+      onStatus,
+      attempt,
+    });
+
+    // Stop unless this attempt looks like the auto-recoverable "failed" case.
+    // - dbWriteFailed: persisted as a pendingFinalize; don't double up.
+    // - partialSuccess: some acquirers settled on-device; manual review only.
+    // - shouldRetry: Castles itself asked for a retry; the existing UI handles it.
+    // - success: done.
+    const shouldAutoRetry =
+      !lastOutput.success &&
+      !lastOutput.partialSuccess &&
+      !lastOutput.shouldRetry &&
+      !lastOutput.dbWriteFailed;
+
+    if (!shouldAutoRetry) break;
+    if (attempt === MAX_ATTEMPTS) {
+      console.warn(
+        "[SettlementService] auto-retry exhausted; surfacing failure to user",
+      );
+    }
+  }
+
+  return lastOutput!;
+}
+
+// ── Inner per-attempt body (kept side-effectful: writes the settlement_batches row) ──
+
+async function _runSingleSettlementAttempt(params: {
+  supabase: SupabaseClient;
+  terminalId: string;
+  merchantId: string;
+  initiatedBy: string;
+  service: ReturnType<typeof getSharedCastlesService>;
+  onStatus?: (msg: string) => void;
+  attempt: number;
+}): Promise<SettlementOutput> {
+  const {
+    supabase,
+    terminalId,
+    merchantId,
+    initiatedBy,
+    service,
+    onStatus,
+    attempt,
+  } = params;
+
+  onStatus?.("Preparing settlement batch...");
+  const { data: prepareData, error: prepareError } = await supabase.rpc(
+    "prepare_castles_settlement",
+    {
+      p_terminal_id: terminalId,
+      p_merchant_id: merchantId,
+      p_initiated_by: initiatedBy,
+    },
+  );
+
+  if (prepareError) {
+    throw new Error(`Settlement prepare failed: ${prepareError.message}`);
+  }
+
+  const batchUuid: string = prepareData.batch_uuid;
+  const txnPosTxnId: string = prepareData.castles_request.txnPosTxnId;
+  const paymentCount: number = prepareData.payment_count ?? 0;
+
+  const prevCallback = service.getOnStatusNotification();
   service.setOnStatusNotification((n) => {
     onStatus?.(n.txnStatusMessage ?? n.txnStatus ?? "Processing...");
   });
 
-  // 2. Get reference ID
-  const counter = getOrCreateCounter({ terminalId, supabaseClient: supabase });
-  if (!counter.isInitialized) await counter.initialize();
-  const referenceId = counter.next();
-
-  // 3. Send settlement command
   onStatus?.("Settling batch — this may take a few minutes...");
   let terminalResult: CastlesSettlementResult;
   try {
-    terminalResult = await service.processSettlement({ referenceId });
+    terminalResult = await service.processSettlement({
+      referenceId: txnPosTxnId,
+    });
   } finally {
-    // Restore previous callback
     service.setOnStatusNotification(prevCallback);
   }
 
-  if (!terminalResult.success && !terminalResult.partialSuccess) {
+  // Always finalize — even on TCP failure — so the batch isn't left stuck as 'pending'
+  onStatus?.("Recording settlement results...");
+  const castlesResponse = terminalResult.raw ?? {
+    txnReturnCode: CASTLES_CLIENT_ERROR_CODE,
+    txnType: "settlement",
+    txnHostMsg: terminalResult.error ?? "Terminal communication failed",
+  };
+
+  const { data: finalizeData, error: finalizeError } = await supabase.rpc(
+    "finalize_castles_settlement",
+    {
+      p_batch_uuid: batchUuid,
+      p_merchant_id: merchantId,
+      p_castles_response: castlesResponse,
+    },
+  );
+
+  if (finalizeError) {
+    console.error(
+      "[SettlementService] finalize_castles_settlement failed:",
+      finalizeError,
+    );
+    captureRpcError("finalize_castles_settlement", finalizeError);
+
+    // Persist for later retry from the BatchoutPanel. The terminal has
+    // already closed its batch — re-talking to it would double-cut, so
+    // the only way back is replaying finalize with this exact response.
+    if (terminalResult.success || terminalResult.partialSuccess) {
+      await addPendingFinalize(
+        {
+          batchUuid,
+          merchantId,
+          terminalId,
+          castlesResponse,
+          savedAt: new Date().toISOString(),
+        },
+        supabase,
+      );
+    }
+
     return {
-      success: false,
-      partialSuccess: false,
+      success: terminalResult.success,
+      partialSuccess: terminalResult.partialSuccess,
+      shouldRetry: false,
+      requiresSupport: false,
       hosts: terminalResult.hosts,
-      error: terminalResult.error,
+      batchUuid,
+      dbWriteFailed: true,
+      error:
+        "Settlement completed on terminal but failed to save results. Retry the DB sync from settings.",
     };
   }
 
-  // 4. Persist to DB
-  onStatus?.("Saving settlement results...");
-  let batchUuid: string | undefined;
-  let paymentsUpdated: number | undefined;
-  let dbWriteFailed = false;
-
-  try {
-    // Aggregate totals from host results
-    const totals = terminalResult.hosts.reduce(
-      (acc, h) => {
-        if (h.success) {
-          acc.salesCount += h.saleTotalCount;
-          acc.refundCount += h.refundTotalCount;
-          acc.grossAmount += h.saleTotalAmount;
-          acc.refundAmount += h.refundTotalAmount;
-          acc.tipAmount += 0; // Tip is embedded in sale totals
-          acc.netDeposit += h.settleTotalAmount;
-        }
-        return acc;
-      },
-      { salesCount: 0, refundCount: 0, grossAmount: 0, refundAmount: 0, tipAmount: 0, netDeposit: 0 },
-    );
-
-    // Find first batch number from hosts
-    const batchNumber = terminalResult.hosts.find((h) => h.batchNumber)?.batchNumber;
-
-    const { data, error } = await supabase.rpc("settle_castles_batch", {
-      p_location_id: locationId,
-      p_terminal_id: terminalId,
-      p_business_date: businessDate,
-      p_batch_id: batchNumber ?? null,
-      p_raw_response: terminalResult.raw ?? null,
-      p_sales_count: totals.salesCount,
-      p_refund_count: totals.refundCount,
-      p_gross_amount: totals.grossAmount,
-      p_refund_amount: totals.refundAmount,
-      p_tip_amount: totals.tipAmount,
-      p_net_deposit: totals.netDeposit,
-    });
-
-    if (error) {
-      console.error("[SettlementService] RPC settle_castles_batch failed:", error);
-      dbWriteFailed = true;
-    } else {
-      batchUuid = data?.batch_uuid;
-      paymentsUpdated = data?.payments_updated;
-    }
-
-    // 5. Reset transaction counter
-    if (!dbWriteFailed) {
-      onStatus?.("Resetting transaction counter...");
-      await counter.resetOnSettlement(batchNumber ?? undefined).catch((err) => {
-        console.warn("[SettlementService] Counter reset failed:", err);
-      });
-    }
-  } catch (err) {
-    console.error("[SettlementService] DB write error:", err);
-    dbWriteFailed = true;
-  }
+  console.log(
+    `[SettlementService] attempt #${attempt} → status=${finalizeData.status} return_code=${finalizeData.return_code}`,
+  );
 
   return {
-    success: terminalResult.success,
-    partialSuccess: terminalResult.partialSuccess,
+    success: Boolean(finalizeData.success),
+    partialSuccess: finalizeData.status === "partial_failure",
+    shouldRetry: Boolean(finalizeData.should_retry),
+    requiresSupport: Boolean(finalizeData.requires_support),
     hosts: terminalResult.hosts,
     batchUuid,
-    paymentsUpdated,
-    dbWriteFailed,
-    error: dbWriteFailed
-      ? "Settlement succeeded on terminal but failed to save to database. Retry the DB sync from settings."
-      : undefined,
+    batchId: finalizeData.batch_id,
+    status: finalizeData.status,
+    paymentsUpdated: finalizeData.success ? paymentCount : undefined,
+    settledAcquirers: finalizeData.settled_acquirers ?? [],
+    failedAcquirers: finalizeData.failed_acquirers ?? [],
+    error:
+      !finalizeData.success && !finalizeData.should_retry
+        ? `Settlement failed (${finalizeData.return_code ?? "unknown"}). Contact your payment processor.`
+        : undefined,
+  };
+}
+
+// ── Manual reconcile (terminal already settled, POS catching up) ──
+
+export interface ManualMarkSettledInput {
+  supabase: SupabaseClient;
+  batchUuid: string;
+  merchantId: string;
+  /** Required, must be >= 10 chars after trim. RPC raises otherwise. */
+  reason: string;
+  /** Required. RPC raises otherwise. Audit row attributed to this staff. */
+  staffId: string;
+}
+
+export interface ManualMarkSettledOutput {
+  success: boolean;
+  paymentsMarkedSettled?: number;
+  error?: string;
+}
+
+export async function manualMarkBatchSettled(
+  input: ManualMarkSettledInput,
+): Promise<ManualMarkSettledOutput> {
+  const { data, error } = await input.supabase.rpc("manual_mark_batch_settled", {
+    p_batch_uuid: input.batchUuid,
+    p_merchant_id: input.merchantId,
+    p_reason: input.reason,
+    p_staff_id: input.staffId,
+  });
+  if (error) {
+    return { success: false, error: error.message ?? "Failed to mark settled" };
+  }
+  return {
+    success: Boolean(data?.success),
+    paymentsMarkedSettled: Number(data?.payments_marked_settled ?? 0),
   };
 }
 
@@ -168,30 +457,69 @@ export async function runSettlement(input: SettlementInput): Promise<SettlementO
 export interface UnsettledStats {
   count: number;
   totalAmount: number;
+  grossAmount: number;
+  tipAmount: number;
+  daySpan: number;
+  oldestDate?: string;
+  newestDate?: string;
+  hasStuckBatch: boolean;
+  stuckBatchStatus?: string;
+  stuckBatchUuid?: string;
+}
+
+export interface GetUnsettledStatsInput {
+  supabase: SupabaseClient;
+  merchantId: string;
+  locationId: string;
+  terminalId: string;
 }
 
 export async function getUnsettledPaymentStats(
-  supabase: SupabaseClient,
-  terminalId: string,
+  input: GetUnsettledStatsInput,
 ): Promise<UnsettledStats> {
-  const { data, error } = await supabase
-    .from("order_payments")
-    .select("amount, tip_amount")
-    .eq("terminal_id", terminalId)
-    .eq('is_settled', false)
-    .in("status", ["captured", "refunded", "partially_refunded"])
-    
-    console.log(data)
-  if (error) {
-    console.error("[SettlementService] getUnsettledPaymentStats failed:", error);
-    return { count: 0, totalAmount: 0 };
-  }
+  const { supabase, merchantId, locationId, terminalId } = input;
 
-  const count = data?.length ?? 0;
-  const totalAmount = (data ?? []).reduce(
-    (sum, p) => sum + (p.amount ?? 0) + (p.tip_amount ?? 0),
-    0,
+  const empty: UnsettledStats = {
+    count: 0,
+    totalAmount: 0,
+    grossAmount: 0,
+    tipAmount: 0,
+    daySpan: 0,
+    hasStuckBatch: false,
+  };
+
+  const { data, error } = await supabase.rpc(
+    "get_unsettled_summary_by_terminal",
+    {
+      p_merchant_id: merchantId,
+      p_location_id: locationId,
+    },
   );
 
-  return { count, totalAmount };
+  if (error) {
+    console.error(
+      "[SettlementService] get_unsettled_summary_by_terminal failed:",
+      error,
+    );
+    captureRpcError("get_unsettled_summary_by_terminal", error);
+    return empty;
+  }
+
+  const row = (data as UnsettledSummaryRow[] | null)?.find(
+    (r) => r.terminal_uuid === terminalId,
+  );
+  if (!row) return empty;
+
+  return {
+    count: Number(row.payment_count ?? 0),
+    totalAmount: Number(row.total_amount ?? 0),
+    grossAmount: Number(row.gross_amount ?? 0),
+    tipAmount: Number(row.tip_amount ?? 0),
+    daySpan: Number(row.day_span ?? 0),
+    oldestDate: row.oldest_payment_date ?? undefined,
+    newestDate: row.newest_payment_date ?? undefined,
+    hasStuckBatch: Boolean(row.has_stuck_batch),
+    stuckBatchStatus: row.stuck_batch_status ?? undefined,
+    stuckBatchUuid: row.stuck_batch_uuid ?? undefined,
+  };
 }

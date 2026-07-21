@@ -1,14 +1,27 @@
 import {
   calculateItemEffectiveCardPrice,
-  calculateItemEffectiveCashPrice
+  calculateItemEffectiveCashPrice,
+  calculateOrderTotals,
+  round2
 } from '@/lib/order-calculator'
 import { toastService } from '@/lib/toastService'
-import { CartItem, OrderProfile } from '@/lib/types'
+import { CartItem, OrderProfile, OrderProfilePayment } from '@/lib/types'
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { usePrintQueueStore } from '@/stores/usePrintQueueStore'
 import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useReceiptTemplateStore } from '@/stores/useReceiptTemplateStore'
 import { useSeatingStore } from '@/stores/useSeatingStore'
-import { SelectedLocation } from '@/stores/useStoreSettingsStore'
+import { useServiceChargeRulesStore } from '@/stores/useServiceChargeRulesStore'
+import { useTableSessionStore } from '@/stores/useTableSessionStore'
+import {
+  getOrderTypeDisplay as displayOrderType,
+  resolveTableDisplayName
+} from '@/lib/orderDisplay'
+import {
+  SelectedLocation,
+  useStoreSettingsStore
+} from '@/stores/useStoreSettingsStore'
 import { PrintDocument } from '@/types/print-document'
 import {
   DocumentPrintJob,
@@ -28,6 +41,13 @@ import { getReceiptPrinter, routeKitchenItems } from './PrintRouter'
 import { buildKitchenTicketDocument } from './templates/KitchenTicketDocumentTemplate'
 import { buildKitchenTicketCommands } from './templates/KitchenTicketTemplate'
 import {
+  BatchSummary,
+  BatchSummaryStoreContext,
+  BusinessDaySummary,
+  buildBatchSummaryDocument,
+  buildBusinessDaySummaryDocument
+} from './templates/BatchSummaryDocumentTemplate'
+import {
   buildNoSaleDocument,
   NoSaleReceiptData
 } from './templates/NoSaleDocumentTemplate'
@@ -43,14 +63,52 @@ import {
 } from './templates/VoidOrderDocumentTemplate'
 import { safeTimeString } from './utils/sanitizeText'
 
-let processingInterval: ReturnType<typeof setInterval> | null = null
-let isProcessing = false
-let processingStartedAt = 0
+let processingStarted = false
+// Per-printer drain state. Each printer drains independently so a stuck or
+// offline kitchen printer doesn't block receipts on the receipt printer.
+const processingPrinters = new Set<string>()
+const printerJobStartedAt = new Map<string, number>()
 let lastFailureToastAt = 0
+let backoffWakeupTimer: ReturnType<typeof setTimeout> | null = null
 
-const PROCESS_INTERVAL_MS = 500
 const FAILURE_TOAST_DEDUP_MS = 30_000
-const PROCESSING_STUCK_MS = 30_000 // Safety: reset isProcessing if stuck longer than this
+const PROCESSING_STUCK_MS = 30_000 // Safety: force-release a stuck printer slot
+const BACKOFF_WAKEUP_MS = 250 // Wake-up delay when only retry-backoff jobs remain
+
+// Schedule a queue drain. Coalesces multiple calls into one pending run.
+// At drain time we kick a parallel `drainPrinter` for every printer that has a
+// ready job and isn't already draining.
+function scheduleDrain (delayMs = 0): void {
+  if (!processingStarted) return
+  if (delayMs === 0) {
+    queueMicrotask(kickAllReadyPrinters)
+    return
+  }
+  if (backoffWakeupTimer) return
+  backoffWakeupTimer = setTimeout(() => {
+    backoffWakeupTimer = null
+    kickAllReadyPrinters()
+  }, delayMs)
+}
+
+function kickAllReadyPrinters (): void {
+  if (!processingStarted) return
+  const jobs = usePrintQueueStore.getState().jobs
+  const candidates = new Set<string>()
+  for (const j of jobs) {
+    if (j.status !== 'queued') continue
+    if (processingPrinters.has(j.printerId)) continue
+    candidates.add(j.printerId)
+  }
+  for (const printerId of candidates) {
+    drainPrinter(printerId).catch(err =>
+      console.error(
+        `[PrinterService] Drain loop error for printer ${printerId}:`,
+        err
+      )
+    )
+  }
+}
 
 // ============================================================================
 // PUBLIC API
@@ -70,18 +128,101 @@ export const PrinterService = {
       return false
     }
 
-    const templateData = buildReceiptTemplateData(order, location, printer)
-    const job = createJobForPrinter(
-      printer,
-      templateData,
-      'receipt',
-      'normal',
-      order.id,
-      'receipt'
-    )
-    usePrintQueueStore.getState().enqueue(job)
+    const { printMerchantCopy, printCustomerCopy } =
+      useLocationConfigStore.getState().config.printing
+
+    // Build copy labels to print. Fallback to customer copy if both are off.
+    const copies: string[] = []
+    if (printMerchantCopy) copies.push('Merchant Copy')
+    if (printCustomerCopy) copies.push('Customer Copy')
+    if (copies.length === 0) copies.push('Customer Copy')
+
+    const baseData = buildReceiptTemplateData(order, location, printer)
+
+    for (const label of copies) {
+      const templateData: ReceiptTemplateData = {
+        ...baseData,
+        copyLabel: copies.length > 1 ? label : baseData.copyLabel ?? label
+      }
+      const job = createJobForPrinter(
+        printer,
+        templateData,
+        'receipt',
+        'normal',
+        order.id,
+        'receipt'
+      )
+      usePrintQueueStore.getState().enqueue(job)
+    }
+
     this.ensureProcessing()
     return true
+  },
+
+  /**
+   * Print a receipt scoped to a single split-payment portion — only that
+   * payer's items/totals/tender. Supplements the combined receipt.
+   */
+  async printSplitPaymentReceipt (
+    order: OrderProfile,
+    payment: OrderProfilePayment,
+    location: SelectedLocation
+  ): Promise<boolean> {
+    if (payment.isVoided) return false
+
+    const printer = getReceiptPrinter(location.id)
+    if (!printer) {
+      console.warn('[PrinterService] No receipt printer configured')
+      return false
+    }
+
+    const { printMerchantCopy, printCustomerCopy } =
+      useLocationConfigStore.getState().config.printing
+
+    const copies: string[] = []
+    if (printMerchantCopy) copies.push('Merchant Copy')
+    if (printCustomerCopy) copies.push('Customer Copy')
+    if (copies.length === 0) copies.push('Customer Copy')
+
+    const baseData = buildReceiptTemplateData(order, location, printer, {
+      scopeToPayment: payment
+    })
+
+    for (const label of copies) {
+      const templateData: ReceiptTemplateData = {
+        ...baseData,
+        copyLabel: copies.length > 1 ? label : baseData.copyLabel ?? label
+      }
+      const job = createJobForPrinter(
+        printer,
+        templateData,
+        'receipt',
+        'normal',
+        order.id,
+        'receipt'
+      )
+      usePrintQueueStore.getState().enqueue(job)
+    }
+
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
+   * Print one separate receipt for every non-voided payment on the order.
+   */
+  async printAllSplitReceipts (
+    order: OrderProfile,
+    location: SelectedLocation
+  ): Promise<boolean> {
+    const payments = (order.payments ?? []).filter(p => !p.isVoided)
+    if (payments.length === 0) return false
+    let ok = true
+    for (const p of payments) {
+      const sent = await this.printSplitPaymentReceipt(order, p, location)
+      ok = ok && sent
+    }
+    return ok
   },
 
   /**
@@ -130,7 +271,10 @@ export const PrinterService = {
 
       // Force seat grouping for reprint-all scenarios (context menu, more options)
       if (options?.forceGroupBySeat && ticketData.templateConfig) {
-        ticketData.templateConfig = { ...ticketData.templateConfig, groupBySeat: true }
+        ticketData.templateConfig = {
+          ...ticketData.templateConfig,
+          groupBySeat: true
+        }
       }
 
       const job = createJobForPrinter(
@@ -144,6 +288,7 @@ export const PrinterService = {
       usePrintQueueStore.getState().enqueue(job)
     }
 
+    this.ensureProcessing()
     return true
   },
 
@@ -190,6 +335,60 @@ export const PrinterService = {
       usePrintQueueStore.getState().enqueue(job)
     }
 
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
+   * Print refund tickets for refunded items (notifies kitchen about refunds).
+   */
+  async printRefundTicket (
+    order: OrderProfile,
+    refundedItems: CartItem[],
+    location: SelectedLocation
+  ): Promise<boolean> {
+    const routedItems = routeKitchenItems(refundedItems, location.id, {
+      orderType: order.order_type
+    })
+
+    if (routedItems.size === 0) {
+      return false
+    }
+
+    for (const [printerId, printerItems] of routedItems) {
+      const printer = usePrinterStore.getState().getPrinterById(printerId)
+      if (!printer) continue
+
+      const routingConfig = usePrinterStore
+        .getState()
+        .getRoutingConfig(printerId)
+
+      const ticketData = buildKitchenTicketData(
+        order,
+        printerItems,
+        printer,
+        false,
+        location,
+        routingConfig.printModifiers
+      )
+      ticketData.isRefundTicket = true
+      ticketData.items = ticketData.items.map(item => ({
+        ...item,
+        isRefunded: true
+      }))
+
+      const job = createJobForPrinter(
+        printer,
+        ticketData,
+        'refund_ticket',
+        'high',
+        order.id,
+        'kitchen'
+      )
+      usePrintQueueStore.getState().enqueue(job)
+    }
+
+    this.ensureProcessing()
     return true
   },
 
@@ -205,33 +404,63 @@ export const PrinterService = {
         (p.supportsCashDrawerKick || p.printerType === 'star_micronics')
     )
 
-    // Priority: connected default receipt > any default receipt > connected any > first available
-    const printer =
-      drawerPrinters.find(p => p.isDefaultReceipt && p.isConnected) ??
-      drawerPrinters.find(p => p.isDefaultReceipt) ??
-      drawerPrinters.find(p => p.isConnected) ??
-      drawerPrinters[0]
-
-    if (!printer) {
+    if (drawerPrinters.length === 0) {
       console.warn('[PrinterService] No printer with cash drawer support')
       return false
     }
 
-    try {
-      console.log(
-        '[PrinterService] Opening cash drawer for printer:',
-        printer.networkAddress
+    // Sort by priority: Star Micronics first (has real DK port), then connected default receipt, etc.
+    const sorted = [
+      ...drawerPrinters.filter(
+        p => p.printerType === 'star_micronics' && p.isConnected
+      ),
+      ...drawerPrinters.filter(
+        p => p.printerType === 'star_micronics' && !p.isConnected
+      ),
+      ...drawerPrinters.filter(
+        p =>
+          p.printerType !== 'star_micronics' &&
+          p.isDefaultReceipt &&
+          p.isConnected
+      ),
+      ...drawerPrinters.filter(
+        p =>
+          p.printerType !== 'star_micronics' &&
+          p.isDefaultReceipt &&
+          !p.isConnected
+      ),
+      ...drawerPrinters.filter(
+        p => p.printerType !== 'star_micronics' && !p.isDefaultReceipt
       )
-      const driver = getDriver(printer)
-      if (!driver.isConnected()) {
-        await driver.initialize(printer)
+    ]
+    // Deduplicate (a printer may match multiple filters)
+    const candidates = [...new Map(sorted.map(p => [p.id, p])).values()]
+
+    // Try each candidate — if one fails, fall back to next
+    for (const printer of candidates) {
+      try {
+        console.log(
+          `[PrinterService] Opening cash drawer via ${printer.printerType} (${
+            printer.printerName
+          }, addr=${printer.networkAddress ?? 'builtin'})`
+        )
+        const driver = getDriver(printer)
+        if (!driver.isConnected()) {
+          await driver.initialize(printer)
+        }
+        await driver.openCashDrawer()
+        return true
+      } catch (e) {
+        console.warn(
+          `[PrinterService] Cash drawer failed on ${printer.printerName}:`,
+          e
+        )
+        // Continue to next candidate
       }
-      await driver.openCashDrawer()
-      return true
-    } catch (e) {
-      console.error('[PrinterService] Cash drawer failed:', e)
-      return false
     }
+
+    console.error('[PrinterService] All cash drawer candidates failed')
+    return false
   },
 
   /**
@@ -291,6 +520,49 @@ export const PrinterService = {
       .getState()
       .getTimeSheetTemplate(data.locationId)
     const doc = buildTimeSheetDocument(data, template)
+    const job = createDocumentJob(printer.id, doc, 'receipt', 'normal')
+    usePrintQueueStore.getState().enqueue(job)
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
+   * Print a Castles batch closeout summary on the receipt printer.
+   * Caller is responsible for fetching the structured summary via the
+   * `get_batch_summary_v1` Supabase RPC.
+   */
+  async printBatchSummary (
+    summary: BatchSummary,
+    locationId: string,
+    store?: BatchSummaryStoreContext
+  ): Promise<boolean> {
+    const printer = getReceiptPrinter(locationId)
+    if (!printer) {
+      console.warn('[PrinterService] No receipt printer for batch summary')
+      return false
+    }
+    const doc = buildBatchSummaryDocument(summary, store ?? {})
+    const job = createDocumentJob(printer.id, doc, 'receipt', 'normal')
+    usePrintQueueStore.getState().enqueue(job)
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
+   * Print a rolled-up business-day summary covering every batch closed on
+   * a given business day. Fetched via `get_business_day_summary_v1`.
+   */
+  async printBusinessDaySummary (
+    day: BusinessDaySummary,
+    locationId: string,
+    store?: BatchSummaryStoreContext
+  ): Promise<boolean> {
+    const printer = getReceiptPrinter(locationId)
+    if (!printer) {
+      console.warn('[PrinterService] No receipt printer for business-day summary')
+      return false
+    }
+    const doc = buildBusinessDaySummaryDocument(day, store ?? {})
     const job = createDocumentJob(printer.id, doc, 'receipt', 'normal')
     usePrintQueueStore.getState().enqueue(job)
     this.ensureProcessing()
@@ -461,24 +733,27 @@ export const PrinterService = {
       totalItemCount: 4,
       items: [
         {
+          name: 'Caesar Salad',
+          quantity: 1,
+          modifiers: ['Extra Dressing'],
+          station: 'Cold Prep',
+          courseNumber: 1
+        },
+        {
           name: 'Classic Burger',
           quantity: 2,
           modifiers: ['No Onions', 'Well Done'],
           notes: 'Allergy: gluten-free bun',
           station: 'Grill',
-          allergyAlert: 'Allergy: gluten-free bun'
-        },
-        {
-          name: 'Caesar Salad',
-          quantity: 1,
-          modifiers: ['Extra Dressing'],
-          station: 'Cold Prep'
+          allergyAlert: 'Allergy: gluten-free bun',
+          courseNumber: 2
         },
         {
           name: 'Fish & Chips',
           quantity: 1,
           modifiers: ['Tartar Sauce on Side'],
-          station: 'Grill'
+          station: 'Grill',
+          courseNumber: 2
         }
       ],
       isVoidTicket: false,
@@ -501,68 +776,126 @@ export const PrinterService = {
   },
 
   /**
-   * Ensure the processing loop is running. Safe to call multiple times.
+   * Kick the queue drain. Called after every enqueue.
    */
   ensureProcessing (): void {
-    if (!processingInterval) {
+    if (!processingStarted) {
       this.startProcessing()
+      return
     }
+    scheduleDrain(0)
   },
 
   /**
-   * Start the background print queue processing loop.
+   * Enable event-driven print queue draining. Idempotent.
    */
   startProcessing (): void {
-    if (processingInterval) return
-
-    console.log('[PrinterService] Starting print queue processing')
-    processingInterval = setInterval(processNextJob, PROCESS_INTERVAL_MS)
+    if (processingStarted) return
+    processingStarted = true
+    console.log('[PrinterService] Print queue processing enabled (event-driven)')
+    // Drain anything left over from a previous app session
+    scheduleDrain(0)
   },
 
   /**
-   * Stop the background print queue processing loop.
+   * Stop draining. Cancels any pending wake-up.
    */
   stopProcessing (): void {
-    if (processingInterval) {
-      clearInterval(processingInterval)
-      processingInterval = null
-      console.log('[PrinterService] Stopped print queue processing')
+    if (!processingStarted) return
+    processingStarted = false
+    if (backoffWakeupTimer) {
+      clearTimeout(backoffWakeupTimer)
+      backoffWakeupTimer = null
     }
+    console.log('[PrinterService] Stopped print queue processing')
   }
 }
 
 // ============================================================================
-// QUEUE PROCESSOR
+// QUEUE PROCESSOR — per-printer drain
 // ============================================================================
+//
+// Each printer drains its own queue independently. A stuck or offline kitchen
+// printer can hang indefinitely on a TCP/USB timeout without holding up the
+// receipt printer's drain loop. Single-printer setups are unaffected (only
+// one printer in `processingPrinters`).
 
-async function processNextJob (): Promise<void> {
-  // Safety valve: if isProcessing is stuck (e.g. TCP timeout hanging), force-reset it
-  if (isProcessing) {
-    if (
-      processingStartedAt > 0 &&
-      Date.now() - processingStartedAt > PROCESSING_STUCK_MS
-    ) {
-      console.warn('[PrinterService] Processing stuck, force-resetting')
-      isProcessing = false
+async function drainPrinter (printerId: string): Promise<void> {
+  if (!processingStarted) return
+
+  if (processingPrinters.has(printerId)) {
+    // Safety valve: if a drain has been hanging on an awaited TCP/USB call
+    // longer than PROCESSING_STUCK_MS, force-release the slot so a fresh
+    // invocation can take over. The hung drain's `finally` will then no-op
+    // its delete (the slot was already released and may have been re-taken).
+    const startedAt = printerJobStartedAt.get(printerId) ?? 0
+    if (startedAt > 0 && Date.now() - startedAt > PROCESSING_STUCK_MS) {
+      console.warn(
+        `[PrinterService] Printer ${printerId} drain stuck, force-releasing`
+      )
+      processingPrinters.delete(printerId)
+      printerJobStartedAt.delete(printerId)
     } else {
       return
     }
   }
 
-  const job = usePrintQueueStore.getState().dequeue()
-  if (!job) return
+  processingPrinters.add(printerId)
 
-  isProcessing = true
-  processingStartedAt = Date.now()
+  try {
+    while (processingStarted) {
+      const queueStore = usePrintQueueStore.getState()
+      const job = queueStore.dequeueForPrinter(printerId)
 
+      if (!job) {
+        // No ready job — but there may be jobs in retry back-off for this
+        // printer. Schedule a wake-up so they get picked up when the back-off
+        // expires. (Other printers' drains are unaffected.)
+        const hasPendingForPrinter = queueStore.jobs.some(
+          j => j.printerId === printerId && j.status === 'queued'
+        )
+        if (hasPendingForPrinter) {
+          scheduleDrain(BACKOFF_WAKEUP_MS)
+        }
+        break
+      }
+
+      printerJobStartedAt.set(printerId, Date.now())
+
+      const result = await processJob(job)
+
+      if (result.manualRetryScheduled) {
+        // The catch block arranged its own delayed retry (e.g. Star SDK
+        // 3s back-off, which calls drainPrinter again). Exit this loop —
+        // dequeueing the same job again would defeat the back-off.
+        break
+      }
+    }
+  } catch (err) {
+    console.error(
+      `[PrinterService] Unexpected error in drain loop for ${printerId}:`,
+      err
+    )
+  } finally {
+    processingPrinters.delete(printerId)
+    printerJobStartedAt.delete(printerId)
+  }
+}
+
+interface ProcessJobResult {
+  manualRetryScheduled: boolean
+}
+
+async function processJob (job: PrintJob): Promise<ProcessJobResult> {
   const printer = usePrinterStore.getState().getPrinterById(job.printerId)
+  let manualRetryScheduled = false
 
   try {
     if (!printer) {
       usePrintQueueStore
         .getState()
         .updateJobStatus(job.id, 'failed', 'Printer not found')
-      return
+      return { manualRetryScheduled }
     }
 
     const driver = getDriver(printer)
@@ -608,9 +941,13 @@ async function processNextJob (): Promise<void> {
     if (errorMsg.includes('Star SDK not ready')) {
       console.warn('[PrinterService] Star SDK not ready, will retry in 3s')
       usePrintQueueStore.getState().updateJobStatus(job.id, 'queued')
-      setTimeout(() => processNextJob(), 3000)
-      isProcessing = false
-      return
+      manualRetryScheduled = true
+      setTimeout(() => {
+        drainPrinter(job.printerId).catch(err =>
+          console.error('[PrinterService] Star SDK retry error:', err)
+        )
+      }, 3000)
+      return { manualRetryScheduled }
     }
 
     // Landi built-in printer error — force driver re-init so next retry reconnects fresh
@@ -618,11 +955,17 @@ async function processNextJob (): Promise<void> {
     if (
       printer?.printerType === 'builtin_landi' &&
       (/PRINT_FAILED|NOT_INITIALIZED|PRINTER_ERROR/i.test(e?.code ?? '') ||
-       /print failed|not initialized|printer.*error|printer not ready/i.test(errorMsg))
+        /print failed|not initialized|printer.*error|printer not ready/i.test(
+          errorMsg
+        ))
     ) {
-      console.warn('[PrinterService] Landi print error, forcing re-init on next attempt')
+      console.warn(
+        '[PrinterService] Landi print error, forcing re-init on next attempt'
+      )
       const landiDriver = getDriver(printer)
-      try { await landiDriver.disconnect() } catch {}
+      try {
+        await landiDriver.disconnect()
+      } catch {}
     }
 
     console.error('[PrinterService] Print job failed:', errorMsg)
@@ -649,6 +992,9 @@ async function processNextJob (): Promise<void> {
           `[PrinterService] Falling back to ${fallback.printerName} for receipt job ${job.id}`
         )
         usePrintQueueStore.getState().reassignJob(job.id, fallback.id)
+        // Job has moved to a different printer — kick a drain for that one
+        // since this drainPrinter loop won't pick it up.
+        scheduleDrain(0)
       }
     }
 
@@ -692,9 +1038,9 @@ async function processNextJob (): Promise<void> {
         errorCount: (printer.errorCount ?? 0) + 1
       })
     }
-  } finally {
-    isProcessing = false
   }
+
+  return { manualRetryScheduled }
 }
 
 // ============================================================================
@@ -776,10 +1122,62 @@ function createDocumentJob (
 // TEMPLATE DATA BUILDERS
 // ============================================================================
 
+// Resolve which pricing a receipt should display when "match pricing to
+// payment method" is enabled. 'dual' = keep the existing Card/Cash breakdown
+// (toggle off, mixed/split tender, or unpaid). Uses the authoritative
+// per-payment `isCashPriced` flag, falling back to the method name.
+function resolveReceiptPricingMode (
+  payments: OrderProfilePayment[]
+): 'cash' | 'card' | 'dual' {
+  const active = (payments ?? []).filter(p => !p.isVoided)
+  if (active.length === 0) return 'dual'
+  const usedCash = (p: OrderProfilePayment) =>
+    p.isCashPriced ?? getPaymentMethodName(p.method) === 'Cash'
+  if (active.every(usedCash)) return 'cash'
+  if (active.every(p => !usedCash(p))) return 'card'
+  return 'dual'
+}
+
+// Transform a single OrderProfilePayment into the receipt payment row. Shared
+// by the combined-receipt path (maps every non-voided payment) and the
+// per-portion split-receipt path (maps just the one scoped payment).
+function mapPaymentToReceiptData (p: OrderProfilePayment): ReceiptPaymentData {
+  const td = p.transactionDetails
+  const dejavoo = td?.dejavooTransaction
+  // Handle both nesting levels: local payments store full terminal response
+  // ({ terminal_vendor, castles_transaction, raw_castles_response }),
+  // backend-synced payments store just the inner castles_transaction object
+  const castlesRaw = td?.castlesTransaction as Record<string, any> | undefined
+  const castles = (castlesRaw?.castles_transaction ?? castlesRaw) as
+    | Record<string, string>
+    | undefined
+
+  return {
+    method: getPaymentMethodName(p.method),
+    amount: p.amount,
+    last4: p.last4 ?? td?.last4 ?? castles?.cardLast4,
+    cardBrand:
+      p.cardBrand ?? td?.cardType ?? dejavoo?.cardType ?? castles?.cardType,
+    authCode:
+      td?.authorizationCode ?? dejavoo?.authCode ?? castles?.approvalCode,
+    rrn: td?.rrn ?? dejavoo?.rrn ?? castles?.rrn,
+    entryMode: dejavoo?.entryMode ?? dejavoo?.entryType ?? castles?.entryMode,
+    aid: castles?.cardAID ?? (td as Record<string, any>)?.cardAID,
+    tipAmount: p.tip_amount || undefined,
+    originalTipAmount:
+      p.original_tip_amount != null && p.original_tip_amount !== p.tip_amount
+        ? p.original_tip_amount
+        : undefined,
+    amountTendered: p.amountTendered ?? td?.amountTendered,
+    changeGiven: p.changeGiven ?? td?.changeGiven
+  }
+}
+
 function buildReceiptTemplateData (
   order: OrderProfile,
   location: SelectedLocation,
-  printer: PrinterConfig
+  printer: PrinterConfig,
+  options?: { scopeToPayment?: OrderProfilePayment }
 ): ReceiptTemplateData {
   const template = useReceiptTemplateStore
     .getState()
@@ -787,48 +1185,62 @@ function buildReceiptTemplateData (
 
   const nonVoidedItems = order.items.filter(item => !item.is_voided)
 
-  // Calculate totals (mirrors ReceiptModal.tsx logic)
-  const subtotal = nonVoidedItems.reduce(
-    (sum, item) => sum + calculateItemEffectiveCardPrice(item),
-    0
-  )
-  const cashSubtotal = nonVoidedItems.reduce(
-    (sum, item) => sum + calculateItemEffectiveCashPrice(item),
-    0
-  )
+  // Use the single source of truth for order totals — same as the app's order summary.
+  // This avoids fragile recomputation (e.g., weighted tax rate from item.taxRate which
+  // can be 0 on backend-synced items from another station).
+  const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap
 
-  const tax =
-    order.total_tax ??
-    nonVoidedItems.reduce((sum, item) => sum + (item.taxAmount || 0), 0)
+  // Service-charge inputs — mirrors useOrderTotals selector. Without these the
+  // calculator returns service_charge=0 and the receipt SC row is suppressed.
+  const serviceChargeRule = useServiceChargeRulesStore
+    .getState()
+    .resolveRule(location.id)
+  const sessionPartySize = order.session_id
+    ? (Object.values(
+        useTableSessionStore.getState().sessions
+      ).find((s) => s.id === order.session_id)?.party_size ?? null)
+    : null
+  const seatCount =
+    useSeatingStore.getState().byOrderId[order.id]?.seatCount ?? null
+  const partySize = seatCount ?? sessionPartySize ?? null
 
-  // Compute weighted-average tax rate from item-level rates (stored as whole numbers like 8.875)
-  const totalTaxableAmount = nonVoidedItems.reduce(
-    (sum, item) =>
-      sum + (item.is_tax_exempt ? 0 : calculateItemEffectiveCardPrice(item)),
-    0
-  )
-  const weightedTaxRate =
-    totalTaxableAmount > 0
-      ? nonVoidedItems.reduce((sum, item) => {
-          if (item.is_tax_exempt) return sum
-          const weight =
-            calculateItemEffectiveCardPrice(item) / totalTaxableAmount
-          return sum + (item.taxRate ?? 0) * weight
-        }, 0)
-      : 0
+  const orderTotals = calculateOrderTotals({
+    items: order.items,
+    checkDiscount: order.checkDiscount ?? null,
+    taxRatesMap,
+    payments: order.payments ?? [],
+    serviceChargeRule,
+    partySize,
+    orderType: order.order_type ?? null,
+    snapshottedRate: order.service_charge_rate ?? null,
+    snapshottedAppliesOn: order.service_charge_applies_on ?? null,
+    snapshottedName: order.service_charge_name ?? null,
+    manualServiceCharge: order.service_charge_is_manual
+      ? order.service_charge
+      : undefined
+  })
 
-  let cashTax = 0
-  if (cashSubtotal > 0 && weightedTaxRate > 0) {
-    cashTax = cashSubtotal * (weightedTaxRate / 100)
-  }
-
-  const discount = order.total_discount || 0
+  // Calculator fallbacks — retained for the split-payment scope block, which
+  // backs tax out of inclusive per-portion amounts via a blended rate. The
+  // non-scope summary now prefers persisted totals (see reconciled block below).
+  const subtotal = orderTotals.subtotal
+  const cashSubtotal = orderTotals.cash_subtotal
+  const tax = orderTotals.tax_amount
+  const cashTax = orderTotals.cash_tax_amount
+  const discount = orderTotals.discount_amount
   const tip =
     order.payments?.reduce((sum, p) => sum + (p.tip_amount || 0), 0) || 0
-  const total = order.total_amount || subtotal + tax - discount + tip
-  const cashTotal = cashSubtotal + cashTax - discount + tip
 
-  // Map items
+  // Map items. Accumulate the exact per-line totals the rows print so the
+  // summary Subtotal reconciles to Σ(line rows) by construction — instead of
+  // re-deriving from base+modifier prices (which understate when a synced item
+  // lost its modifier price data). Also sum authoritative per-item tax.
+  let sumCardLine = 0
+  let sumCashLine = 0
+  let sumItemCardTax = 0
+  let sumItemCashTax = 0
+  let sumItemCardDiscount = 0
+  let sumItemCashDiscount = 0
   const items: ReceiptItemData[] = nonVoidedItems.map(item => {
     const modifiers: { name: string; price: number; isNo?: boolean }[] = []
 
@@ -853,45 +1265,81 @@ function buildReceiptTemplateData (
       modifiers.push({ name: addon.name, price: addon.price ?? 0 })
     })
 
+    // item.subtotal is authoritative when present (carries distributed
+    // discounts), but can be 0/undefined after a partial backend sync —
+    // which prints as $0.00 even though modifiers below render fine. Fall
+    // back to helper × qty so the item line stays consistent.
+    const fallbackCardLine =
+      calculateItemEffectiveCardPrice(item) * (item.quantity || 1)
+    const fallbackCashLine =
+      calculateItemEffectiveCashPrice(item) * (item.quantity || 1)
+    const cardLineTotal =
+      Number.isFinite(item.subtotal) && item.subtotal > 0
+        ? item.subtotal
+        : fallbackCardLine
+    const cashLineTotal =
+      Number.isFinite(item.cashSubtotal) && item.cashSubtotal > 0
+        ? item.cashSubtotal
+        : fallbackCashLine
+
+    sumCardLine += cardLineTotal
+    sumCashLine += cashLineTotal
+    sumItemCardTax += Number.isFinite(item.taxAmount) ? item.taxAmount : 0
+    sumItemCashTax += Number.isFinite(item.cashTaxAmount) ? item.cashTaxAmount : 0
+    sumItemCardDiscount += Number.isFinite(item.discount_amount)
+      ? item.discount_amount ?? 0
+      : 0
+    sumItemCashDiscount += Number.isFinite(item.discount_cash_amount)
+      ? item.discount_cash_amount ?? 0
+      : 0
+
+    // Un-itemized modifier upcharge: the part of the line total not explained by
+    // the base price or the per-option prices already shown. When option prices
+    // round-tripped intact this is ~0 (options print their own price inline);
+    // when they were lost on a synced/reprinted order this recovers the upcharge
+    // in aggregate so it never prints invisibly. Clamp ≥ 0.
+    const qtyN = item.quantity || 1
+    const baseCardLine = round2(
+      (item.baseCardPrice ?? item.unitPrice ?? 0) * qtyN
+    )
+    const baseCashLine = round2(
+      (item.baseCashPrice ?? item.baseCardPrice ?? item.unitPrice ?? 0) * qtyN
+    )
+    const shownOptTotal = round2(
+      modifiers.reduce((s, m) => s + (m.price || 0), 0) * qtyN
+    )
+    const cardUpcharge = Math.max(
+      0,
+      round2(cardLineTotal - baseCardLine - shownOptTotal)
+    )
+    const cashUpcharge = Math.max(
+      0,
+      round2(cashLineTotal - baseCashLine - shownOptTotal)
+    )
+
     return {
       name: item.is_open_item ? item.open_item_name || item.name : item.name,
       quantity: item.quantity,
-      price: calculateItemEffectiveCardPrice(item),
-      cashPrice:
-        calculateItemEffectiveCashPrice(item) !==
-        calculateItemEffectiveCardPrice(item)
-          ? calculateItemEffectiveCashPrice(item)
-          : undefined,
+      price: cardLineTotal,
+      cashPrice: cashLineTotal !== cardLineTotal ? cashLineTotal : undefined,
       isVoided: item.is_voided ?? false,
       modifiers,
+      modifiersUpcharge: cardUpcharge,
+      cashModifiersUpcharge:
+        cashUpcharge !== cardUpcharge ? cashUpcharge : undefined,
       notes: item.customizations?.notes,
-      seatNumber: item.seatNumber ?? null,
+      seatNumber: item.seatNumber ?? null
     }
   })
 
-  // Map payments
-  const payments: ReceiptPaymentData[] = (order.payments ?? [])
-    .filter(p => !p.isVoided)
-    .map(p => {
-      const td = p.transactionDetails
-      const dejavoo = td?.dejavooTransaction
-      const castles = td?.castlesTransaction as
-        | Record<string, string>
-        | undefined
-
-      return {
-        method: getPaymentMethodName(p.method),
-        amount: p.amount,
-        last4: p.last4,
-        cardBrand:
-          p.cardBrand ?? td?.cardType ?? dejavoo?.cardType ?? castles?.cardType,
-        authCode:
-          td?.authorizationCode ?? dejavoo?.authCode ?? castles?.approvalCode,
-        rrn: dejavoo?.rrn ?? castles?.rrn,
-        entryMode:
-          dejavoo?.entryMode ?? dejavoo?.entryType ?? castles?.entryMode
-      }
-    })
+  // Map payments. When scoped to a single split portion, only that payment
+  // appears in the payments section; otherwise map every non-voided payment.
+  const scopePayment = options?.scopeToPayment
+  const payments: ReceiptPaymentData[] = scopePayment
+    ? [mapPaymentToReceiptData(scopePayment)]
+    : (order.payments ?? [])
+        .filter(p => !p.isVoided)
+        .map(mapPaymentToReceiptData)
 
   // Format date/time
   const orderDate = order.opened_at ? new Date(order.opened_at) : new Date()
@@ -918,6 +1366,277 @@ function buildReceiptTemplateData (
     `${location.city}, ${location.state} ${location.postal_code}`
   ].filter(Boolean)
 
+  // ── Match pricing to payment method (optional) ────────────────────────
+  // Finalized printed receipts should reconcile to the pricing the guest
+  // actually used. Split tenders and unpaid orders stay in dual mode because
+  // there is no single charged pricing to display.
+  const pricingMode = resolveReceiptPricingMode(
+    scopePayment ? [scopePayment] : order.payments ?? []
+  )
+
+  // ── Reconciled display sources ────────────────────────────────────────
+  // Prefer persisted order-level totals (set on close), else the summed
+  // authoritative per-item values, else the calculator. Subtotal is rebuilt
+  // GROSS (line-sum + discount) so the template's separate "-Discount" row
+  // nets back to Σ(line rows). Tax is never re-derived as subtotal × rate.
+  const isFinalized = !!order.closed_at || order.paid_status === 'Paid'
+  const persisted = (v?: number | null): v is number =>
+    Number.isFinite(v as number) && ((v as number) > 0 || isFinalized)
+
+  // Discount: persisted order field first, else the summed per-item discounts
+  // (recovers the value on reprints whose remap drops checkDiscount), else the
+  // calculator. Subtotal is rebuilt as line-sum + this, so the template's
+  // "-Discount" row always nets back to Σ(line rows) regardless of the source.
+  const dispDiscountCard = persisted(order.total_discount)
+    ? order.total_discount
+    : sumItemCardDiscount > 0
+    ? sumItemCardDiscount
+    : discount
+  const dispDiscountCash =
+    sumItemCashDiscount > 0
+      ? sumItemCashDiscount
+      : orderTotals.cash_discount_amount
+
+  const dispSubtotalCard = round2(sumCardLine + dispDiscountCard)
+  const dispSubtotalCash = round2(sumCashLine + dispDiscountCash)
+
+  const dispTaxCard = persisted(order.total_tax)
+    ? order.total_tax
+    : sumItemCardTax > 0
+    ? sumItemCardTax
+    : tax
+  const dispTaxCash = sumItemCashTax > 0 ? sumItemCashTax : cashTax
+
+  const dispSCCard = persisted(order.service_charge)
+    ? order.service_charge
+    : orderTotals.service_charge
+  const dispSCCash = orderTotals.cash_service_charge
+
+  const dispTotalCard = persisted(order.total_amount)
+    ? order.total_amount
+    : orderTotals.total_amount + tip
+  const dispTotalCash = persisted(order.total_cash_amount)
+    ? order.total_cash_amount
+    : orderTotals.cash_total_amount + tip
+
+  const dispRateCard =
+    dispSubtotalCard > 0 ? (dispTaxCard / dispSubtotalCard) * 100 : 0
+
+  let displayItems = items
+  let displaySubtotal = dispSubtotalCard
+  let displayTax = dispTaxCard
+  let displayDiscount = dispDiscountCard
+  let displayTotal = dispTotalCard
+  let displayServiceCharge = dispSCCard
+  let displayCashServiceCharge: number | undefined = dispSCCash
+  let displayCashSubtotal =
+    dispTotalCash !== dispTotalCard ? dispSubtotalCash : undefined
+  let displayCashTax = dispTotalCash !== dispTotalCard ? dispTaxCash : undefined
+  let displayCashTotal =
+    dispTotalCash !== dispTotalCard ? dispTotalCash : undefined
+  let displayTaxRate = dispRateCard
+
+  if (pricingMode === 'card') {
+    // Card pricing only — strip all cash data so the template shows one Total.
+    displayItems = items.map(it => ({
+      ...it,
+      cashPrice: undefined,
+      cashModifiersUpcharge: undefined
+    }))
+    displayCashSubtotal = undefined
+    displayCashTax = undefined
+    displayCashTotal = undefined
+    displayCashServiceCharge = undefined
+  } else if (pricingMode === 'cash') {
+    // Cash pricing only — swap every card-priced field to its cash counterpart
+    // so the line items + tax reconcile to the printed cash Total.
+    displayItems = items.map(it => ({
+      ...it,
+      price: it.cashPrice ?? it.price,
+      cashPrice: undefined,
+      modifiersUpcharge: it.cashModifiersUpcharge ?? it.modifiersUpcharge,
+      cashModifiersUpcharge: undefined
+    }))
+    displaySubtotal = dispSubtotalCash
+    displayTax = dispTaxCash
+    displayDiscount = dispDiscountCash
+    displayTotal = dispTotalCash
+    displayServiceCharge = dispSCCash
+    displayCashSubtotal = undefined
+    displayCashTax = undefined
+    displayCashTotal = undefined
+    displayCashServiceCharge = undefined
+    displayTaxRate =
+      dispSubtotalCash > 0 ? (dispTaxCash / dispSubtotalCash) * 100 : 0
+  }
+
+  let displayTip = tip
+  let displayAmountPaid: number | undefined = order.amount_paid
+  let displayAmountDue: number | undefined = order.amount_due
+  let splitLabel: string | undefined
+  let splitPayerName: string | undefined
+  let isPartialSplitReceipt: boolean | undefined
+
+  // ── Scope to a single split portion ───────────────────────────────────
+  // Overrides totals + items so the receipt reflects only what this one payer
+  // paid. Anchored on the captured `amount`/`tip_amount` so the printed block
+  // always reconciles to the guest's charge, regardless of cash/card pricing.
+  if (scopePayment) {
+    const sp = scopePayment
+    const spTip = sp.tip_amount || 0
+    // `amount` is the charge for this portion — tax & service-charge inclusive,
+    // already net of any discount. Total = that charge + tip.
+    const spTotal = sp.amount + spTip
+
+    const path = order.split_payment_path
+    const isByItem = path === 'split-by-item' || path === 'pay-for-items'
+
+    // Effective blended tax rate, used to back tax out of inclusive amounts.
+    const effRate =
+      pricingMode === 'cash'
+        ? cashSubtotal > 0
+          ? cashTax / cashSubtotal
+          : 0
+        : subtotal > 0
+          ? tax / subtotal
+          : 0
+
+    let spGrossSubtotal: number
+    let spDiscount: number
+    let spTax: number
+    let spServiceCharge: number
+
+    if (isByItem) {
+      // By-item / pay-for-items: we know exactly which items this payment
+      // covered, and each order item carries its own net subtotal / tax /
+      // discount. Compute the covered portion's breakdown directly so Subtotal,
+      // Discount and Tax are exact, then attribute whatever the captured amount
+      // has left over to this portion's share of the service charge (which
+      // startSplitPaymentFlow distributes into the per-split amount as a
+      // proportional remainder). Everything reconciles to the captured amount.
+      const cartByKey = new Map<string, CartItem>()
+      const dataByKey = new Map<string, ReceiptItemData>()
+      nonVoidedItems.forEach((it, i) => {
+        for (const key of [it.db_order_item_id, it.id]) {
+          if (key && !cartByKey.has(key)) {
+            cartByKey.set(key, it)
+            dataByKey.set(key, items[i])
+          }
+        }
+      })
+      const coverage = sp.itemsCovered ?? []
+      const isCash = pricingMode === 'cash'
+
+      let grossSubtotal = 0
+      let netSubtotal = 0
+      let coveredTax = 0
+      let coveredDiscount = 0
+
+      displayItems = coverage.map(c => {
+        const cart = cartByKey.get(c.itemId)
+        const base = dataByKey.get(c.itemId)
+        const qty = cart?.quantity || 0
+        // Fraction of the order item this payment covered.
+        const frac = qty > 0 ? Math.min(1, (c.quantity || 0) / qty) : 1
+        const lineGross = c.subtotal || 0 // gross (= net + discount)
+        const lineNet = cart
+          ? (isCash ? cart.cashSubtotal ?? 0 : cart.subtotal ?? 0) * frac
+          : lineGross
+        const lineTax = cart
+          ? (isCash ? cart.cashTaxAmount ?? 0 : cart.taxAmount ?? 0) * frac
+          : lineGross * effRate
+        const lineDiscount = cart
+          ? (isCash
+              ? cart.discount_cash_amount ?? 0
+              : cart.discount_amount ?? 0) * frac
+          : 0
+        grossSubtotal += lineGross
+        netSubtotal += lineNet
+        coveredTax += lineTax
+        coveredDiscount += lineDiscount
+        return {
+          name: base?.name ?? c.itemName,
+          quantity: c.quantity,
+          price: lineGross, // gross line price (pre-discount)
+          cashPrice: undefined,
+          isVoided: false,
+          modifiers: base?.modifiers ?? [],
+          notes: base?.notes,
+          seatNumber: base?.seatNumber ?? null
+        }
+      })
+
+      spGrossSubtotal = grossSubtotal
+      spDiscount = coveredDiscount
+      spTax = coveredTax
+      // Remainder over net subtotal + tax = this portion's service-charge share
+      // (only meaningful when the order actually carries a service charge;
+      // otherwise it's sub-cent rounding and is left out of the breakdown).
+      const orderHasSC =
+        (isCash
+          ? orderTotals.cash_service_charge
+          : orderTotals.service_charge) > 0
+      const residual = sp.amount - netSubtotal - coveredTax
+      spServiceCharge = orderHasSC ? Math.max(0, residual) : 0
+    } else {
+      // Even / custom split: the amount is a share of the whole check, which
+      // bundles discount, tax AND service charge. Prorate every order-level
+      // figure by this portion's fraction so Subtotal / Discount / Tax / SC all
+      // reconcile to the charged amount. Full check is shown above for reference.
+      isPartialSplitReceipt = true
+      const orderCharge =
+        pricingMode === 'cash'
+          ? orderTotals.cash_total_amount
+          : orderTotals.total_amount
+      const f = orderCharge > 0 ? sp.amount / orderCharge : 0
+      spGrossSubtotal = (pricingMode === 'cash' ? cashSubtotal : subtotal) * f
+      spDiscount =
+        (pricingMode === 'cash' ? orderTotals.cash_discount_amount : discount) *
+        f
+      spTax = (pricingMode === 'cash' ? cashTax : tax) * f
+      spServiceCharge =
+        (pricingMode === 'cash'
+          ? orderTotals.cash_service_charge
+          : orderTotals.service_charge) * f
+    }
+
+    displaySubtotal = spGrossSubtotal
+    displayTax = spTax
+    displayDiscount = spDiscount
+    displayTotal = spTotal
+    displayTip = spTip
+    displayServiceCharge = spServiceCharge
+    // Per-portion receipts strip the order-level cash breakdown and balance.
+    displayCashSubtotal = undefined
+    displayCashTax = undefined
+    displayCashTotal = undefined
+    displayCashServiceCharge = undefined
+    displayAmountPaid = spTotal
+    displayAmountDue = undefined
+
+    const nonVoidedPayments = (order.payments ?? []).filter(p => !p.isVoided)
+    const spIndex = nonVoidedPayments.findIndex(p => p.id === sp.id)
+    const portionIndex =
+      sp.splitInfo?.portionIndex ?? (spIndex >= 0 ? spIndex + 1 : 1)
+    const totalPortions =
+      sp.splitInfo?.totalPortions ?? nonVoidedPayments.length ?? 1
+
+    if (path === 'pay-for-items') {
+      // Pay-for-items is sequential partial item payment, not a planned N-way
+      // split — "Split 1 of 1" reads oddly. Label it by what it is, and number
+      // it only when the order had more than one such payment.
+      splitLabel =
+        totalPortions > 1 ? `Items Paid #${portionIndex}` : 'Items Paid'
+      // Suppress the generic "Selected Items" placeholder payer name — it's
+      // redundant under the "Items Paid" header.
+      const payer = sp.transactionDetails?.splitLabel
+      splitPayerName = payer && payer !== 'Selected Items' ? payer : undefined
+    } else {
+      splitLabel = `Split ${portionIndex} of ${totalPortions}`
+      splitPayerName = sp.transactionDetails?.splitLabel
+    }
+  }
+
   return {
     storeName: location.name,
     storeAddress: addressParts.join(', '),
@@ -927,37 +1646,46 @@ function buildReceiptTemplateData (
     orderDate: dateStr,
     orderTime: timeStr,
     orderType: getOrderTypeDisplay(order.order_type),
-    tableName: order.service_location_name ?? undefined,
+    tableName: resolvePrintableTableName(order),
     customerName: order.customer_name,
+    customerPhone: order.customer_phone ?? undefined,
     serverName: order.server_name,
     backendOrderNumber: order.order_number ?? undefined,
-    items,
-    subtotal,
-    tax,
-    discount,
-    tip,
-    total,
-    cashSubtotal: cashTotal !== total ? cashSubtotal : undefined,
-    cashTax: cashTotal !== total ? cashTax : undefined,
-    cashTotal: cashTotal !== total ? cashTotal : undefined,
+    items: displayItems,
+    subtotal: displaySubtotal,
+    tax: displayTax,
+    discount: displayDiscount,
+    tip: displayTip,
+    total: displayTotal,
+    pricingMode,
+    cashSubtotal: displayCashSubtotal,
+    cashTax: displayCashTax,
+    cashTotal: displayCashTotal,
+    serviceCharge: displayServiceCharge,
+    cashServiceCharge: displayCashServiceCharge,
+    serviceChargeName: orderTotals.service_charge_name || undefined,
     payments,
-    amountPaid: order.amount_paid,
-    amountDue: order.amount_due,
+    amountPaid: displayAmountPaid,
+    amountDue: displayAmountDue,
     footerMessage:
       template.footerText ??
       printer.receiptFooter ??
       'Thank you for your purchase!',
     headerMessage: template.headerText ?? undefined,
     maxCharsPerLine: printer.graphicsOnly
-      ? Math.min(printer.maxCharsPerLine, 32)
+      ? // ? Math.min(printer.maxCharsPerLine, 32)
+        48
       : printer.maxCharsPerLine,
-    taxRate: weightedTaxRate / 100, // Convert from 8.875 to 0.08875
+    taxRate: displayTaxRate / 100, // Convert from 8.875 to 0.08875
     templateConfig: template,
     logoBase64: template.showLogo
       ? useReceiptTemplateStore.getState().cachedLogoBase64 ?? undefined
       : undefined,
     printDate: printDateStr,
-    printTime: printTimeStr
+    printTime: printTimeStr,
+    splitLabel,
+    splitPayerName,
+    isPartialSplitReceipt
   }
 }
 
@@ -1023,7 +1751,8 @@ function buildKitchenTicketData (
         useSeatingStore
           .getState()
           .getItemSeat(order.id, item.id, item.db_order_item_id) ??
-        null
+        null,
+      courseNumber: item.courseNumber
     }
   })
 
@@ -1037,7 +1766,7 @@ function buildKitchenTicketData (
     orderNumber:
       order.display_number || order.order_number || `#${order.id.slice(-4)}`,
     orderType: getOrderTypeDisplay(order.order_type),
-    tableName: order.service_location_name ?? undefined,
+    tableName: resolvePrintableTableName(order),
     serverName: order.server_name,
     timestamp,
     fullTimestamp,
@@ -1052,18 +1781,33 @@ function buildKitchenTicketData (
   }
 }
 
-function getOrderTypeDisplay (orderType: string | undefined): string {
-  if (!orderType) return 'Dine In'
-  const types: Record<string, string> = {
-    'Dine In': 'Dine In',
-    dine_in: 'Dine In',
-    Takeaway: 'Takeaway',
-    takeout: 'Takeaway',
-    Delivery: 'Delivery',
-    delivery: 'Delivery'
+function resolvePrintableTableName (order: OrderProfile): string | undefined {
+  const uuidLike =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const explicitName = order.service_location_name?.trim()
+  if (explicitName && !uuidLike.test(explicitName)) return explicitName
+
+  const tableId = order.service_location_id?.trim()
+  if (tableId) {
+    const tableName = useFloorPlanStore.getState().tablesById[tableId]?.name
+    if (tableName) return tableName
   }
-  return types[orderType] || orderType.replace('_', ' ')
+
+  if (explicitName) {
+    const tableName = useFloorPlanStore.getState().tablesById[explicitName]?.name
+    if (tableName) return tableName
+  }
+
+  return (
+    resolveTableDisplayName(
+      order.service_location_name,
+      order.service_location_id
+    ) ?? undefined
+  )
 }
+
+const getOrderTypeDisplay = (orderType: string | undefined): string =>
+  displayOrderType(orderType ?? null)
 
 function getPaymentMethodName (method: string | undefined): string {
   if (!method) return 'Cash'

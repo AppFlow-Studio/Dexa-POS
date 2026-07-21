@@ -49,6 +49,7 @@ BEGIN
       'delivery_platform', COALESCE(o.delivery_platform, o.metadata->>'delivery_company'),
       'table_name', o.table_number,
       'customer_name', o.customer_name,
+      'order_notes', o.special_instructions,
       'start_time', COALESCE(oi_grouped.fire_time::timestamptz, o.sent_to_kitchen_at, o.created_at),
       'item_count', oi_grouped.item_count,
       'prioritized', oi_grouped.any_prioritized,

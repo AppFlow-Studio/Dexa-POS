@@ -22,6 +22,8 @@ let appStateSubscription: ReturnType<
 let currentSupabase: SupabaseClient | null = null;
 let currentStationId: string | null = null;
 let currentLocationId: string | null = null;
+let currentSessionStart: string | null = null; // reset each startHeartbeat() call
+
 
 // ============================================================================
 // HEARTBEAT TICK
@@ -60,35 +62,30 @@ async function sendHeartbeat(): Promise<void> {
     const cached = getCachedCapabilities();
     const appVersion = Application.nativeApplicationVersion || null;
 
-    // 3. Insert into device_heartbeats
-    const { error: insertError } = await supabase
+    // 3. Upsert into device_heartbeats — one row per station.
+    // created_at is set to session start on every upsert so updated_at - created_at = current session uptime.
+    
+    const { error: upsertError } = await supabase
       .from("device_heartbeats")
-      .insert({
-        station_id: stationId,
-        location_id: locationId,
-        is_online: true,
-        app_version: appVersion,
-        battery_level: batteryLevel,
-        network_type: networkType,
-        printer_status: cached?.hasBuiltinPrinter ? "available" : "none",
-        cfd_connected: cached?.hasBuiltinCfd ?? false,
-      });
+      .upsert(
+        {
+          station_id: stationId,
+          location_id: locationId,
+          is_online: true,
+          app_version: appVersion,
+          battery_level: batteryLevel,
+          network_type: networkType,
+          printer_status: cached?.hasBuiltinPrinter ? "available" : "none",
+          cfd_connected: cached?.hasBuiltinCfd ?? false,
+          created_at: currentSessionStart,
+        },
+        { onConflict: "station_id" }
+      );
 
-    if (insertError) {
-      console.warn("[Heartbeat] Insert error:", insertError.message);
+    if (upsertError) {
+      console.warn("[Heartbeat] Upsert error:", upsertError.message);
     }
 
-    // 4. Update battery level on stations table
-    if (batteryLevel !== null) {
-      const { error: batteryError } = await supabase
-        .from("stations")
-        .update({ battery_level: batteryLevel })
-        .eq("id", stationId);
-
-      if (batteryError) {
-        console.warn("[Heartbeat] Battery update error:", batteryError.message);
-      }
-    }
   } catch (e) {
     console.warn("[Heartbeat] Failed:", e);
   }
@@ -168,6 +165,7 @@ export function startHeartbeat(
   currentSupabase = supabase;
   currentStationId = stationId;
   currentLocationId = locationId;
+  currentSessionStart = new Date().toISOString();
 
   // Send initial heartbeat immediately
   sendHeartbeat();
@@ -203,6 +201,7 @@ export async function stopHeartbeat(): Promise<void> {
   currentSupabase = null;
   currentStationId = null;
   currentLocationId = null;
+  currentSessionStart = null;
 
   console.log("[Heartbeat] Stopped");
 }

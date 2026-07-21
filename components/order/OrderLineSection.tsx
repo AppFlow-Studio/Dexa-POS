@@ -1,15 +1,16 @@
+import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import {
-    useOrderTypeCounts,
-    useStationOrders,
+  useOrderTypeCounts,
+  useStationOrders,
 } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { router } from "expo-router";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import Animated, { SlideInLeft, SlideOutUp, LinearTransition } from "react-native-reanimated";
+import Animated, { SlideInLeft } from "react-native-reanimated";
 import OrderCard from "./OrderCard";
 import OrderLineItemsModal from "./OrderLineItemsModal";
 import OrderTabs from "./OrderTabs";
@@ -48,7 +49,8 @@ const OrderLineSectionContent: React.FC = () => {
       if (o.check_status === "Closed") return false;
 
       // Hide orders that are completed AND fully paid (ready+paid stay visible for "Mark Done")
-      if (o.order_status === "completed" && o.paid_status === "Paid") return false;
+      if (o.order_status === "completed" && o.paid_status === "Paid")
+        return false;
 
       // Show everything else (sent_to_kitchen, preparing, unpaid, refunded, etc.)
       return true;
@@ -104,60 +106,101 @@ const OrderLineSectionContent: React.FC = () => {
     }
   };
 
+  const canScrollBackward = scrollIndexRef.current > 0;
+  const canScrollForward = scrollIndexRef.current < filteredOrders.length - 1;
+
   const handleViewItems = (orderId: string) => {
     setSelectedOrderId(orderId);
     setItemsModalOpen(true);
   };
 
-  const handleCompleteOrder = useCallback((orderId: string) => {
-    markAllItemsAsReady(orderId);
-    archiveOrder(orderId);
-  }, [markAllItemsAsReady, archiveOrder]);
+  const handleCompleteOrder = useCallback(
+    (orderId: string) => {
+      markAllItemsAsReady(orderId);
+      archiveOrder(orderId);
+    },
+    [markAllItemsAsReady, archiveOrder],
+  );
 
   const handleRetrieve = (orderId: string) => {
     setActiveOrder(orderId);
   };
 
   // Handler for Mark Done - marks items ready then archives the order
-  const handleMarkDone = useCallback((orderId: string) => {
-    markAllItemsAsReady(orderId);
-    archiveOrder(orderId);
-  }, [markAllItemsAsReady, archiveOrder]);
+  const handleMarkDone = useCallback(
+    (orderId: string) => {
+      markAllItemsAsReady(orderId);
+      archiveOrder(orderId);
+    },
+    [markAllItemsAsReady, archiveOrder],
+  );
 
   // Handler for Reopen Check - reopens the check and sets as active order
-  const handleReopenCheck = useCallback((orderId: string) => {
-    updateOrderCheckStatus(orderId, "Opened");
-    setActiveOrder(orderId);
-  }, [updateOrderCheckStatus, setActiveOrder]);
+  const handleReopenCheck = useCallback(
+    (orderId: string) => {
+      updateOrderCheckStatus(orderId, "Opened");
+      setActiveOrder(orderId);
+    },
+    [updateOrderCheckStatus, setActiveOrder],
+  );
   // Sort orders by timestamp (newest first) for proper order display
   const sortedFilteredOrders = useMemo(() => {
     return filteredOrders.slice().sort((a, b) => {
       // Use last_activity_at if available, otherwise fall back to opened_at
-      const timeA = a.last_activity_at || a.opened_at || '';
-      const timeB = b.last_activity_at || b.opened_at || '';
+      const timeA = a.last_activity_at || a.opened_at || "";
+      const timeB = b.last_activity_at || b.opened_at || "";
       // Sort descending (newest first)
       return new Date(timeB).getTime() - new Date(timeA).getTime();
     });
   }, [filteredOrders]);
 
   return (
-    <View
-    >
+    <View>
       <View className="flex-row justify-between items-center">
         <OrderTabs onTabChange={handleTabChange} counts={orderCounts} />
 
         <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={scrollBackward}
-            className="p-2 bg-surface border border-gray-600 rounded-full"
+            disabled={!canScrollBackward}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: colors.panel,
+              shadowColor: "#000",
+              shadowOpacity: 0.28,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 4,
+              opacity: canScrollBackward ? 1 : 0.45,
+            }}
+            activeOpacity={0.85}
           >
             <ChevronLeft color={colors.label} size={20} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={scrollForward}
-            className="p-2 bg-blue-600 rounded-full"
+            disabled={!canScrollForward}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: colors.panel,
+              shadowColor: "#000",
+              shadowOpacity: 0.28,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 4,
+              opacity: canScrollForward ? 1 : 0.45,
+            }}
+            activeOpacity={0.85}
           >
-            <ChevronRight color="#FFFFFF" size={20} />
+            <ChevronRight color={colors.label} size={20} />
           </TouchableOpacity>
         </View>
       </View>
@@ -169,7 +212,10 @@ const OrderLineSectionContent: React.FC = () => {
         horizontal
         showsHorizontalScrollIndicator={false}
         className="mt-4"
-        itemLayoutAnimation={LinearTransition.springify().damping(18).stiffness(120)}
+        // Perf F4: itemLayoutAnimation (LinearTransition.springify) removed.
+        // It re-sprang every visible card on ANY data change (realtime status
+        // flips, sorts), not just insert/remove — sustained jank on mid-tier
+        // Android during rush. Insert feedback is covered by `entering` (iOS).
         // OPTIMIZED: FlatList performance props
         initialNumToRender={4}
         maxToRenderPerBatch={4}
@@ -181,8 +227,9 @@ const OrderLineSectionContent: React.FC = () => {
         })}
         renderItem={({ item }) => (
           <Animated.View
-            entering={SlideInLeft.duration(350).springify().damping(16)}
-            exiting={SlideOutUp.duration(250)}
+            entering={iosOnly(
+              SlideInLeft.duration(350).springify().damping(16),
+            )}
           >
             <OrderCard
               order={item}
@@ -196,7 +243,7 @@ const OrderLineSectionContent: React.FC = () => {
         )}
         ListEmptyComponent={
           <View className="h-40 items-center justify-center w-full">
-            <Text className="text-lg text-gray-400">
+            <Text className="text-lg" style={{ color: colors.muted }}>
               No orders for this category.
             </Text>
           </View>
@@ -206,12 +253,22 @@ const OrderLineSectionContent: React.FC = () => {
         isOpen={isItemsModalOpen}
         onClose={() => setItemsModalOpen(false)}
         orderId={selectedOrderId}
-        onMarkDone={selectedOrderId ? () => handleMarkDone(selectedOrderId) : undefined}
-        onRetrieve={selectedOrderId ? () => handleRetrieve(selectedOrderId) : undefined}
-        onRefund={selectedOrderId ? () => {
-          setItemsModalOpen(false);
-          router.push(`/previous-orders/${selectedOrderId}`);
-        } : undefined}
+        onMarkDone={
+          selectedOrderId ? () => handleMarkDone(selectedOrderId) : undefined
+        }
+        onRetrieve={
+          selectedOrderId ? () => handleRetrieve(selectedOrderId) : undefined
+        }
+        onRefund={
+          selectedOrderId
+            ? () => {
+                setItemsModalOpen(false);
+                usePaymentDetailSheetStore
+                  .getState()
+                  .open(selectedOrderId, "refund");
+              }
+            : undefined
+        }
       />
     </View>
   );

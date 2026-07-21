@@ -1,14 +1,28 @@
+import { CFDErrorBoundary } from "@/components/cfd-client/CFDErrorBoundary";
 import { CFDClientProvider } from "@/contexts/CFDClientContext";
 import { useCFDWSClient } from "@/hooks/useCFDWSClient";
-import { Stack } from "expo-router";
 import { activateKeepAwakeAsync } from "expo-keep-awake";
-import React, { useEffect } from "react";
+import { POS_SCREEN_OPTIONS } from "@/lib/screenConfig";
+import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import React, { useEffect } from "react";
 
-export default function CFDLayout() {
-  // Initialize WS client (connects on mount if paired)
+// Inner component so that `useCFDWSClient()` (which can throw synchronously
+// on malformed pairing data or network-constructor errors) runs INSIDE the
+// error boundary. If we called it in CFDLayout directly, the throw would
+// bubble above the boundary and still produce a white screen.
+function CFDLayoutInner() {
   const cfdClient = useCFDWSClient();
 
+  return (
+    <CFDClientProvider value={cfdClient}>
+      <StatusBar hidden />
+      <Stack screenOptions={POS_SCREEN_OPTIONS} />
+    </CFDClientProvider>
+  );
+}
+
+export default function CFDLayout() {
   // Keep screen awake in CFD mode
   useEffect(() => {
     activateKeepAwakeAsync("cfd-display").catch(() => {
@@ -17,14 +31,8 @@ export default function CFDLayout() {
   }, []);
 
   return (
-    <CFDClientProvider value={cfdClient}>
-      <StatusBar hidden />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          animation: "none",
-        }}
-      />
-    </CFDClientProvider>
+    <CFDErrorBoundary>
+      <CFDLayoutInner />
+    </CFDErrorBoundary>
   );
 }

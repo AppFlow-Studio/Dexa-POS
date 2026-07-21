@@ -9,14 +9,15 @@
  * NOT persisted: sessions (hydrated from backend), shift history (fetched on demand), UI state
  */
 
-import { mmkvStorage } from "@/lib/storage";
+import { createLazyPersistStorage } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
-import { ShiftHistoryEntry, PTOAccrualEntry } from "@/lib/types";
+import { PTOAccrualEntry, ShiftHistoryEntry } from "@/lib/types";
 import { TimeClockAction, TimeClockStatus } from "@/types/time-clock";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 
+import { useLocationConfigStore } from "./useLocationConfigStore";
 import { useStoreSettingsStore } from "./useStoreSettingsStore";
 
 // ============================================================================
@@ -31,6 +32,14 @@ export interface ShiftSession {
   clockInTime: Date;
   breakStartTime: Date | null;
   breakEndTime: Date | null;
+}
+
+export interface TimeclockDeadLetterEntry {
+  action: TimeClockAction;
+  reasonCode: string;
+  reasonMessage: string;
+  discardedAt: string;
+  details?: Record<string, any>;
 }
 
 /** Alias for backward compatibility (BreakEndedModal imports this) */
@@ -55,6 +64,8 @@ interface TimeclockState {
   // === Offline queue (persisted via MMKV) ===
   offlineQueue: TimeClockAction[];
   isSyncing: boolean;
+  syncingStartedAt: string | null;
+  deadLetterQueue: TimeclockDeadLetterEntry[];
 
   // === UI state (NOT persisted) ===
   isClockInWallOpen: boolean;
@@ -84,7 +95,12 @@ interface TimeclockState {
   // === Offline queue actions ===
   queueAction: (action: TimeClockAction) => void;
   removeFromQueue: (actionId: string) => void;
+  updateQueuedAction: (
+    actionId: string,
+    updater: (action: TimeClockAction) => TimeClockAction,
+  ) => void;
   setSyncing: (isSyncing: boolean) => void;
+  addToDeadLetterQueue: (entry: TimeclockDeadLetterEntry) => void;
 
   // === UI actions ===
   showClockInWall: () => void;
@@ -95,10 +111,7 @@ interface TimeclockState {
    * Hydrate active shifts from staff_shifts table.
    * Creates local sessions for any staff with active (non-completed) shifts.
    */
-  hydrateActiveShifts: (
-    supabase: any,
-    locationId: string
-  ) => Promise<void>;
+  hydrateActiveShifts: (supabase: any, locationId: string) => Promise<void>;
 
   /**
    * Fetch shift history from staff_shifts table for display.
@@ -106,7 +119,7 @@ interface TimeclockState {
   fetchShiftHistory: (
     supabase: any,
     locationId: string,
-    dateRange?: { start: string; end: string }
+    dateRange?: { start: string; end: string },
   ) => Promise<void>;
 }
 
@@ -129,6 +142,8 @@ export const useTimeclockStore = create<TimeclockState>()(
 
       offlineQueue: [] as TimeClockAction[],
       isSyncing: false,
+      syncingStartedAt: null,
+      deadLetterQueue: [] as TimeclockDeadLetterEntry[],
 
       isClockInWallOpen: false,
 
@@ -165,7 +180,7 @@ export const useTimeclockStore = create<TimeclockState>()(
         return { ok: true };
       },
 
-      signIn: (employeeId: string) => {
+      signIn: (employeeId: string, clockInTime?: Date) => {
         const { sessions } = get();
         if (sessions[employeeId]) {
           return undefined;
@@ -174,7 +189,7 @@ export const useTimeclockStore = create<TimeclockState>()(
         const newSession: ShiftSession = {
           employeeId,
           status: "clockedIn",
-          clockInTime: new Date(),
+          clockInTime: clockInTime ?? new Date(),
           breakStartTime: null,
           breakEndTime: null,
         };
@@ -189,7 +204,9 @@ export const useTimeclockStore = create<TimeclockState>()(
 
       startBreak: () => {
         const { activeEmployeeId, sessions } = get();
-        const { isBreakAndSwitchEnabled } = useStoreSettingsStore.getState();
+        const isBreakAndSwitchEnabled =
+          useLocationConfigStore.getState().config.timeclock
+            .breakAndSwitchEnabled;
 
         if (!activeEmployeeId || !sessions[activeEmployeeId]) return;
 
@@ -309,7 +326,7 @@ export const useTimeclockStore = create<TimeclockState>()(
             };
             usePtoStore.getState().recordPtoAccrual(ptoEntry);
             console.log(
-              `PTO accrued for ${employeeId}: ${ptoEarned.toFixed(2)} hours`
+              `PTO accrued for ${employeeId}: ${ptoEarned.toFixed(2)} hours`,
             );
           }
         } catch (error) {
@@ -323,9 +340,10 @@ export const useTimeclockStore = create<TimeclockState>()(
         }
 
         // Cascade the clock-out action to the employee store (only shiftStatus update)
-        const { useEmployeeStore: empStore } = require("./useEmployeeStore") as {
-          useEmployeeStore: typeof import("./useEmployeeStore").useEmployeeStore;
-        };
+        const { useEmployeeStore: empStore } =
+          require("./useEmployeeStore") as {
+            useEmployeeStore: typeof import("./useEmployeeStore").useEmployeeStore;
+          };
         empStore.getState().clockOut(employeeId);
 
         // If the person clocking out is the active user, also sign them out of the terminal
@@ -364,12 +382,11 @@ export const useTimeclockStore = create<TimeclockState>()(
             clockOutTime.getTime() - session.clockInTime.getTime();
           if (session.breakStartTime && session.breakEndTime) {
             totalDurationMs -=
-              session.breakEndTime.getTime() -
-              session.breakStartTime.getTime();
+              session.breakEndTime.getTime() - session.breakStartTime.getTime();
           }
           const totalPaidDurationHours = Math.max(
             0,
-            totalDurationMs / (1000 * 60 * 60)
+            totalDurationMs / (1000 * 60 * 60),
           );
 
           const employee = useEmployeeStore
@@ -413,15 +430,14 @@ export const useTimeclockStore = create<TimeclockState>()(
         set((state) => {
           state.sessions = {};
           state.activeEmployeeId = null;
-          state.shiftHistory = [
-            ...newHistoryEntries,
-            ...state.shiftHistory,
-          ];
+          state.shiftHistory = [...newHistoryEntries, ...state.shiftHistory];
         });
 
         toastService.show({
           title: "All Shifts Ended",
-          message: `${allIds.length} staff member${allIds.length > 1 ? "s" : ""} clocked out.`,
+          message: `${allIds.length} staff member${
+            allIds.length > 1 ? "s" : ""
+          } clocked out.`,
           type: "success",
         });
       },
@@ -450,12 +466,11 @@ export const useTimeclockStore = create<TimeclockState>()(
             clockOutTime.getTime() - session.clockInTime.getTime();
           if (session.breakStartTime && session.breakEndTime) {
             totalDurationMs -=
-              session.breakEndTime.getTime() -
-              session.breakStartTime.getTime();
+              session.breakEndTime.getTime() - session.breakStartTime.getTime();
           }
           const totalPaidDurationHours = Math.max(
             0,
-            totalDurationMs / (1000 * 60 * 60)
+            totalDurationMs / (1000 * 60 * 60),
           );
 
           const employee = useEmployeeStore
@@ -504,15 +519,14 @@ export const useTimeclockStore = create<TimeclockState>()(
           if (activeEmployeeId !== excludeId) {
             state.activeEmployeeId = null;
           }
-          state.shiftHistory = [
-            ...newHistoryEntries,
-            ...state.shiftHistory,
-          ];
+          state.shiftHistory = [...newHistoryEntries, ...state.shiftHistory];
         });
 
         toastService.show({
           title: "Shifts Ended",
-          message: `${allIds.length} staff member${allIds.length > 1 ? "s" : ""} clocked out.`,
+          message: `${allIds.length} staff member${
+            allIds.length > 1 ? "s" : ""
+          } clocked out.`,
           type: "success",
         });
       },
@@ -539,10 +553,7 @@ export const useTimeclockStore = create<TimeclockState>()(
         });
       },
 
-      setEmployee: (
-        employeeId: string | null,
-        employeeName: string | null
-      ) => {
+      setEmployee: (employeeId: string | null, employeeName: string | null) => {
         set({ currentStaffId: employeeId, employeeName });
       },
 
@@ -570,20 +581,43 @@ export const useTimeclockStore = create<TimeclockState>()(
 
       queueAction: (action: TimeClockAction) => {
         set((state) => {
-          state.offlineQueue.push(action);
+          state.offlineQueue.push({
+            ...action,
+            retryCount: action.retryCount ?? 0,
+          });
         });
       },
 
       removeFromQueue: (actionId: string) => {
         set((state) => {
           state.offlineQueue = state.offlineQueue.filter(
-            (a) => a.id !== actionId
+            (a) => a.id !== actionId,
+          );
+        });
+      },
+
+      updateQueuedAction: (actionId, updater) => {
+        set((state) => {
+          state.offlineQueue = state.offlineQueue.map((action) =>
+            action.id === actionId ? updater(action) : action,
           );
         });
       },
 
       setSyncing: (isSyncing: boolean) => {
-        set({ isSyncing });
+        set({
+          isSyncing,
+          syncingStartedAt: isSyncing ? new Date().toISOString() : null,
+        });
+      },
+
+      addToDeadLetterQueue: (entry: TimeclockDeadLetterEntry) => {
+        set((state) => {
+          state.deadLetterQueue.push(entry);
+          if (state.deadLetterQueue.length > 100) {
+            state.deadLetterQueue = state.deadLetterQueue.slice(-100);
+          }
+        });
       },
 
       // =====================================================================
@@ -599,6 +633,22 @@ export const useTimeclockStore = create<TimeclockState>()(
 
       hydrateActiveShifts: async (supabase: any, locationId: string) => {
         try {
+          try {
+            const { error: autoClockOutError } = await supabase.rpc(
+              "auto_clock_out_stale_shifts",
+              { p_location_id: locationId },
+            );
+
+            if (autoClockOutError) {
+              console.warn(
+                "[Timeclock] Auto clock-out check skipped:",
+                autoClockOutError,
+              );
+            }
+          } catch (error) {
+            console.warn("[Timeclock] Auto clock-out check failed:", error);
+          }
+
           const { data, error } = await supabase
             .from("staff_shifts")
             .select("id, staff_profile_id, status, clock_in_time, break_logs")
@@ -606,7 +656,10 @@ export const useTimeclockStore = create<TimeclockState>()(
             .in("status", ["active", "on_break"]);
 
           if (error) {
-            console.error("[Timeclock] Failed to hydrate active shifts:", error);
+            console.error(
+              "[Timeclock] Failed to hydrate active shifts:",
+              error,
+            );
             return;
           }
 
@@ -624,7 +677,7 @@ export const useTimeclockStore = create<TimeclockState>()(
           const newSessions: Record<string, ShiftSession> = {};
           for (const shift of data) {
             const employee = employees.find(
-              (e) => e.profileId === shift.staff_profile_id
+              (e) => e.profileId === shift.staff_profile_id,
             );
             if (!employee) continue;
 
@@ -632,12 +685,11 @@ export const useTimeclockStore = create<TimeclockState>()(
             let breakStart: Date | null = null;
             let breakEnd: Date | null = null;
             if (shift.break_logs && Array.isArray(shift.break_logs)) {
-              const lastBreak =
-                shift.break_logs[shift.break_logs.length - 1] as any;
+              const lastBreak = shift.break_logs[
+                shift.break_logs.length - 1
+              ] as any;
               if (lastBreak) {
-                breakStart = lastBreak.start
-                  ? new Date(lastBreak.start)
-                  : null;
+                breakStart = lastBreak.start ? new Date(lastBreak.start) : null;
                 breakEnd = lastBreak.end ? new Date(lastBreak.end) : null;
               }
             }
@@ -652,16 +704,30 @@ export const useTimeclockStore = create<TimeclockState>()(
           }
 
           set((state) => {
-            // Merge with existing sessions (don't overwrite if already there)
+            // Backend is authoritative here: upsert hydrated sessions so
+            // local stale status (e.g. clockedIn) cannot mask onBreak.
             for (const [id, session] of Object.entries(newSessions)) {
-              if (!state.sessions[id]) {
-                state.sessions[id] = session;
-              }
+              state.sessions[id] = session;
             }
           });
 
+          // Sync shiftStatus to employee store so components like
+          // ServerSelectSheet see hydrated employees as "clocked_in"
+          const hydratedIds = new Set(Object.keys(newSessions));
+          if (hydratedIds.size > 0) {
+            useEmployeeStore.setState((prev) => ({
+              employees: prev.employees.map((e) =>
+                hydratedIds.has(e.id)
+                  ? { ...e, shiftStatus: "clocked_in" as const }
+                  : e,
+              ),
+            }));
+          }
+
           console.log(
-            `[Timeclock] Hydrated ${Object.keys(newSessions).length} active shifts`
+            `[Timeclock] Hydrated ${
+              Object.keys(newSessions).length
+            } active shifts`,
           );
         } catch (error) {
           console.error("[Timeclock] hydrateActiveShifts error:", error);
@@ -671,7 +737,7 @@ export const useTimeclockStore = create<TimeclockState>()(
       fetchShiftHistory: async (
         supabase: any,
         locationId: string,
-        dateRange?: { start: string; end: string }
+        dateRange?: { start: string; end: string },
       ) => {
         set({ historyLoading: true });
 
@@ -679,7 +745,7 @@ export const useTimeclockStore = create<TimeclockState>()(
           let query = supabase
             .from("staff_shifts")
             .select(
-              "id, staff_profile_id, status, clock_in_time, clock_out_time, break_logs, hourly_rate_snapshot"
+              "id, staff_profile_id, status, clock_in_time, clock_out_time, break_logs, hourly_rate_snapshot",
             )
             .eq("location_id", locationId)
             .order("clock_in_time", { ascending: false })
@@ -693,10 +759,7 @@ export const useTimeclockStore = create<TimeclockState>()(
             // Default: last 30 days
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            query = query.gte(
-              "clock_in_time",
-              thirtyDaysAgo.toISOString()
-            );
+            query = query.gte("clock_in_time", thirtyDaysAgo.toISOString());
           }
 
           const { data, error } = await query;
@@ -716,7 +779,7 @@ export const useTimeclockStore = create<TimeclockState>()(
           const history: ShiftHistoryEntry[] = (data || []).map(
             (shift: any) => {
               const employee = employees.find(
-                (e) => e.profileId === shift.staff_profile_id
+                (e) => e.profileId === shift.staff_profile_id,
               );
 
               // Calculate duration
@@ -754,12 +817,12 @@ export const useTimeclockStore = create<TimeclockState>()(
                 clockOut: shift.clock_out_time || "N/A",
                 duration: `${hours.toFixed(2)}h`,
               };
-            }
+            },
           );
 
           set({ shiftHistory: history, historyLoading: false });
           console.log(
-            `[Timeclock] Fetched ${history.length} shift history entries`
+            `[Timeclock] Fetched ${history.length} shift history entries`,
           );
         } catch (error) {
           console.error("[Timeclock] fetchShiftHistory error:", error);
@@ -769,7 +832,9 @@ export const useTimeclockStore = create<TimeclockState>()(
     })),
     {
       name: "dexa-pos-timeclock",
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
       partialize: (state) => ({
         // Only persist device state + offline queue
         status: state.status,
@@ -779,7 +844,9 @@ export const useTimeclockStore = create<TimeclockState>()(
         breakStartTime: state.breakStartTime,
         offlineQueue: state.offlineQueue,
         isSyncing: state.isSyncing,
+        syncingStartedAt: state.syncingStartedAt,
+        deadLetterQueue: state.deadLetterQueue,
       }),
-    }
-  )
+    },
+  ),
 );

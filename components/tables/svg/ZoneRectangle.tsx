@@ -1,6 +1,7 @@
+import * as React from 'react'
 import { Rect, Svg } from 'react-native-svg'
 
-const ZoneRectangle = ({ color = '#2DD4BF', width = 200, height = 200 }) => {
+const ZoneRectangle = React.memo(function ZoneRectangle({ color = '#2DD4BF', width = 200, height = 200 }: { color?: string; width?: number; height?: number }) {
   const defaultSize = 200
   const scaleX = (width || defaultSize) / defaultSize
 
@@ -23,6 +24,6 @@ const ZoneRectangle = ({ color = '#2DD4BF', width = 200, height = 200 }) => {
       />
     </Svg>
   )
-}
+})
 
 export default ZoneRectangle

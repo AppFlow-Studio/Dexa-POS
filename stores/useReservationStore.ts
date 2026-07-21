@@ -1,4 +1,7 @@
-import { findReservationTableConflict } from '@/lib/reservationConflicts'
+import {
+  findReservationTableConflict,
+  findReservationTableConflictForWindow
+} from '@/lib/reservationConflicts'
 import { FloorPlanService } from '@/services/floorPlanService'
 import {
   CreateReservationParams,
@@ -6,11 +9,17 @@ import {
 } from '@/types/db-floor-plan-types'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
+import { useLocationConfigStore } from './useLocationConfigStore'
 
 // Lazy accessor avoids import cycle between reservation and floor-plan stores.
 const getFloorPlanStore = () =>
   (require('./useFloorPlanStore') as typeof import('./useFloorPlanStore'))
     .useFloorPlanStore
+
+// Automated guest SMS (create/cancel confirmations) only fire when the merchant
+// has left the "auto SMS" toggle on. Manual "Notify" composer sends are unaffected.
+const isAutoSmsEnabled = () =>
+  useLocationConfigStore.getState().config.waitlist.autoSmsEnabled !== false
 
 let _supabaseClient: SupabaseClient | null = null
 
@@ -32,6 +41,19 @@ const toLocalDateKey = (date: Date) => {
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+const isReservationInFuture = (params: CreateReservationParams): boolean => {
+  const rawTime = (params.p_reservation_time ?? '').trim()
+  if (!params.p_reservation_date || !rawTime) return false
+
+  const hasDatePart = rawTime.includes('T') || rawTime.includes('-')
+  const parsed = hasDatePart
+    ? new Date(rawTime)
+    : new Date(`${params.p_reservation_date}T${rawTime}`)
+
+  if (!Number.isFinite(parsed.getTime())) return false
+  return parsed.getTime() > Date.now()
 }
 
 const getReservationEpoch = (reservation: Reservation): number | null => {
@@ -122,8 +144,60 @@ const extractReservationRows = (
   return []
 }
 
+/**
+ * Build a map of tableId → nearest upcoming reservation.
+ * Computed once when reservations change instead of O(n) per-table in components.
+ */
+function buildNextReservationByTableId(
+  reservations: Reservation[],
+  oldMap?: Record<string, Reservation>
+): Record<string, Reservation> {
+  const nowMs = Date.now()
+
+  const active = reservations.filter(r => {
+    const epoch = getReservationEpoch(r)
+    return (
+      ['pending', 'confirmed', 'reminded'].includes(r.status) &&
+      epoch !== null &&
+      epoch > nowMs
+    )
+  })
+
+  active.sort((a, b) => {
+    const aE = getReservationEpoch(a) ?? Number.MAX_SAFE_INTEGER
+    const bE = getReservationEpoch(b) ?? Number.MAX_SAFE_INTEGER
+    return aE - bE
+  })
+
+  const map: Record<string, Reservation> = {}
+  for (const r of active) {
+    for (const tableId of r.assigned_table_ids ?? []) {
+      if (!map[tableId]) map[tableId] = r
+    }
+  }
+
+  // Stabilize: reuse old object references when reservation hasn't changed,
+  // so zustand's Object.is check on s.nextReservationByTableId[tableId]
+  // returns true for tables with no change → prevents unnecessary re-renders.
+  if (oldMap) {
+    let same = true
+    const allKeys = new Set([...Object.keys(map), ...Object.keys(oldMap)])
+    for (const key of allKeys) {
+      if (map[key]?.id === oldMap[key]?.id) {
+        if (oldMap[key]) map[key] = oldMap[key]
+      } else {
+        same = false
+      }
+    }
+    if (same) return oldMap
+  }
+
+  return map
+}
+
 interface ReservationState {
   reservations: Reservation[]
+  nextReservationByTableId: Record<string, Reservation>
   reservationBySessionId: Record<string, string>
   selectedDate: Date
   isLoading: boolean
@@ -137,8 +211,23 @@ interface ReservationState {
   createReservation: (
     params: CreateReservationParams
   ) => Promise<{ reservation_id: string; confirmation_number: string } | null>
+  updateReservation: (
+    reservationId: string,
+    params: CreateReservationParams
+  ) => Promise<boolean>
   updateStatus: (reservationId: string, status: string) => Promise<void>
   cancelReservation: (reservationId: string) => Promise<void>
+  sendReservationNotification: (
+    reservationId: string,
+    message: string,
+    templateKey: string
+  ) => Promise<{
+    success: boolean
+    sms?: boolean
+    error?: string
+    message?: string
+    reason?: string
+  }>
   seatReservation: (
     reservationId: string,
     tableIds?: string[]
@@ -151,6 +240,7 @@ interface ReservationState {
 
 export const useReservationStore = create<ReservationState>((set, get) => ({
   reservations: [],
+  nextReservationByTableId: {},
   reservationBySessionId: {},
   selectedDate: new Date(),
   isLoading: false,
@@ -191,6 +281,10 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
 
       set({
         reservations: reservationRows,
+        nextReservationByTableId: buildNextReservationByTableId(
+          reservationRows,
+          get().nextReservationByTableId
+        ),
         isLoading: false,
         error: null
       })
@@ -206,6 +300,12 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
   createReservation: async params => {
     set({ isLoading: true, error: null })
     try {
+      if (!isReservationInFuture(params)) {
+        throw new Error(
+          'Reservations must be scheduled for a future date/time.'
+        )
+      }
+
       if ((params.p_assigned_table_ids ?? []).length > 0) {
         const { data: existingData, error: existingError } =
           await FloorPlanService.getReservations(
@@ -243,6 +343,19 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       )
       if (error) throw error
       set({ isLoading: false })
+
+      // Fire-and-forget reservation-confirmation SMS. The edge function renders
+      // the message server-side from `template_key` + reservation row.
+      const phoneDigits = (params.p_phone ?? '').replace(/\D/g, '')
+      if (data?.reservation_id && phoneDigits.length > 0 && isAutoSmsEnabled()) {
+        FloorPlanService.sendReservationSms(getClient(), {
+          reservation_id: data.reservation_id,
+          template_key: 'reservation.created'
+        }).catch(err => {
+          console.warn('Reservation confirmation SMS failed:', err)
+        })
+      }
+
       return data
     } catch (err: any) {
       console.error('Failed to create reservation:', err)
@@ -251,6 +364,202 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
         isLoading: false
       })
       return null
+    }
+  },
+
+  updateReservation: async (reservationId, params) => {
+    set({ isLoading: true, error: null })
+    try {
+      if (!isReservationInFuture(params)) {
+        throw new Error(
+          'Reservations must be scheduled for a future date/time.'
+        )
+      }
+
+      if ((params.p_assigned_table_ids ?? []).length > 0) {
+        const { data: existingData, error: existingError } =
+          await FloorPlanService.getReservations(
+            getClient(),
+            params.p_location_id,
+            params.p_reservation_date
+          )
+
+        if (!existingError) {
+          const existingReservations = extractReservationRows(
+            existingData,
+            params.p_reservation_date
+          )
+          const conflict = findReservationTableConflictForWindow(
+            {
+              reservationDate: params.p_reservation_date,
+              reservationTime: params.p_reservation_time,
+              durationMinutes: params.p_duration_minutes,
+              tableIds: params.p_assigned_table_ids ?? [],
+              ignoreReservationId: reservationId
+            },
+            existingReservations
+          )
+
+          if (conflict) {
+            throw new Error(
+              `Table already reserved for ${conflict.partyName} at ${conflict.reservationTime}.`
+            )
+          }
+        } else {
+          console.warn(
+            '[useReservationStore.updateReservation] Conflict pre-check skipped:',
+            existingError
+          )
+        }
+      }
+
+      let error: any = null
+      const floorPlanServiceAny = FloorPlanService as any
+
+      if (typeof floorPlanServiceAny.updateReservation === 'function') {
+        const result = await floorPlanServiceAny.updateReservation(
+          getClient(),
+          reservationId,
+          params
+        )
+        error = result?.error
+      } else {
+        console.warn(
+          '[useReservationStore.updateReservation] FloorPlanService.updateReservation missing; using inline fallback'
+        )
+
+        const { error: updateError } = await getClient()
+          .from('reservations')
+          .update({
+            party_name: params.p_party_name,
+            party_size: params.p_party_size,
+            phone: params.p_phone,
+            email: params.p_email ?? null,
+            reservation_date: params.p_reservation_date,
+            reservation_time: params.p_reservation_time,
+            duration_minutes: params.p_duration_minutes ?? null,
+            notes: params.p_notes ?? null,
+            special_requests: params.p_special_requests ?? null,
+            preferred_section: params.p_preferred_section ?? null,
+            seating_preference: params.p_seating_preference ?? null,
+            source: params.p_source ?? null,
+            is_vip: params.p_is_vip ?? false
+          })
+          .eq('id', reservationId)
+
+        if (updateError) {
+          error = updateError
+        } else {
+          const { error: assignError } = await getClient().rpc(
+            'assign_reservation_tables',
+            {
+              p_reservation_id: reservationId,
+              p_table_ids: params.p_assigned_table_ids ?? []
+            }
+          )
+          error = assignError
+        }
+      }
+
+      if (error) throw error
+
+      set(state => {
+        const reservations = state.reservations.map(r =>
+          r.id === reservationId
+            ? {
+                ...r,
+                party_name: params.p_party_name,
+                party_size: params.p_party_size,
+                phone: params.p_phone,
+                reservation_date: params.p_reservation_date,
+                reservation_time: params.p_reservation_time,
+                assigned_table_ids: params.p_assigned_table_ids ?? [],
+                duration_minutes:
+                  params.p_duration_minutes ?? r.duration_minutes,
+                email: params.p_email,
+                notes: params.p_notes,
+                special_requests: params.p_special_requests,
+                preferred_section: params.p_preferred_section,
+                seating_preference: params.p_seating_preference,
+                source: params.p_source ?? r.source,
+                is_vip: params.p_is_vip ?? false
+              }
+            : r
+        )
+        return {
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
+          ),
+          isLoading: false,
+          error: null
+        }
+      })
+      return true
+    } catch (err: any) {
+      console.error('Failed to update reservation:', err)
+      set({
+        error: err.message || 'Failed to update reservation',
+        isLoading: false
+      })
+      return false
+    }
+  },
+
+  sendReservationNotification: async (
+    reservationId: string,
+    message: string,
+    templateKey: string
+  ) => {
+    try {
+      const reservation = get().reservations.find(r => r.id === reservationId)
+      if (!reservation) return { success: false, error: 'Reservation not found' }
+      const phoneDigits = reservation.phone?.replace(/\D/g, '') ?? ''
+      if (!phoneDigits) {
+        return {
+          success: false,
+          error: 'no_phone',
+          message: 'No phone on file for this reservation'
+        }
+      }
+      const isCustom = templateKey === 'custom'
+      const smsResult = await FloorPlanService.sendReservationSms(getClient(), {
+        reservation_id: reservationId,
+        template_key: templateKey,
+        message: isCustom ? message : undefined
+      })
+      const smsData = smsResult.data
+      const smsFailed =
+        !!smsResult.error ||
+        !smsData ||
+        !smsData.success ||
+        smsData.sms === false
+
+      if (smsFailed) {
+        const failureMessage =
+          smsData?.message ||
+          smsData?.provider_error ||
+          (typeof smsResult.error?.message === 'string' &&
+            smsResult.error.message) ||
+          'Could not send SMS. Please notify guest verbally.'
+        return {
+          success: false,
+          error: 'sms_failed',
+          message: failureMessage,
+          reason: smsData?.reason
+        }
+      }
+      return smsData ?? { success: true, sms: true }
+    } catch (err: any) {
+      console.error('Failed to send reservation notification:', err)
+      return {
+        success: false,
+        error: 'sms_failed',
+        message:
+          err.message ||
+          'Could not send SMS. Please notify guest verbally.'
+      }
     }
   },
 
@@ -263,19 +572,29 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       )
       if (error) throw error
 
-      set(state => ({
-        reservations: state.reservations.map(r =>
+      set(state => {
+        const reservations = state.reservations.map(r =>
           r.id === reservationId
             ? { ...r, status: status as Reservation['status'] }
             : r
         )
-      }))
+        return {
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
+          )
+        }
+      })
     } catch (err: any) {
       console.error('Failed to update reservation status:', err)
     }
   },
 
   cancelReservation: async reservationId => {
+    // Snapshot phone before we mutate so we can fire the cancel SMS on success.
+    const reservation = get().reservations.find(r => r.id === reservationId)
+    const phoneDigits = (reservation?.phone ?? '').replace(/\D/g, '')
     try {
       const { error } = await FloorPlanService.updateReservationStatus(
         getClient(),
@@ -284,44 +603,96 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       )
       if (error) throw error
 
-      set(state => ({
-        reservations: state.reservations.filter(r => r.id !== reservationId)
-      }))
+      set(state => {
+        const reservations = state.reservations.filter(r => r.id !== reservationId)
+        return {
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
+          )
+        }
+      })
+
+      // Fire-and-forget cancellation SMS. Edge function pulls date/time from
+      // the row, which is unchanged on cancel (only the status flips).
+      if (phoneDigits.length > 0 && isAutoSmsEnabled()) {
+        FloorPlanService.sendReservationSms(getClient(), {
+          reservation_id: reservationId,
+          template_key: 'reservation.cancelled'
+        }).catch(err => {
+          console.warn('Reservation cancel SMS failed:', err)
+        })
+      }
     } catch (err: any) {
       console.error('Failed to cancel reservation:', err)
       // Remove locally for UX
-      set(state => ({
-        reservations: state.reservations.filter(r => r.id !== reservationId)
-      }))
+      set(state => {
+        const reservations = state.reservations.filter(r => r.id !== reservationId)
+        return {
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
+          )
+        }
+      })
     }
   },
 
   seatReservation: async (reservationId, tableIds) => {
     try {
-      const { data, error } = await FloorPlanService.seatReservation(
+      const reservation = get().reservations.find(r => r.id === reservationId)
+      if (!reservation) throw new Error('Reservation not found')
+      if (!tableIds || tableIds.length === 0)
+        throw new Error('No tables provided')
+
+      const { useTableSessionStore } =
+        require('./useTableSessionStore') as typeof import('./useTableSessionStore')
+
+      // Use seatGuests (same as waitlist) so the order is created locally with
+      // the currently logged-in employee as the server.
+      const result = await useTableSessionStore.getState().seatGuests({
+        tableIds,
+        partySize: reservation.party_size,
+        guestName: reservation.party_name,
+        guestPhone: reservation.phone ?? undefined,
+        reservationId,
+        createOrder: true
+      })
+
+      // Only proceed if seating was successful
+      if (!result.sessionId) {
+        throw new Error('Failed to seat reservation: no session created')
+      }
+
+      // Mark reservation as seated and update local state
+      set(state => {
+        const reservations = state.reservations.filter(r => r.id !== reservationId)
+        return {
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
+          ),
+          reservationBySessionId: {
+            ...state.reservationBySessionId,
+            [result.sessionId]: reservationId
+          }
+        }
+      })
+
+      // Also update reservation status in DB
+      await FloorPlanService.updateReservationStatus(
         getClient(),
         reservationId,
-        tableIds
+        'seated'
       )
-      if (error) throw error
 
-      set(state => ({
-        reservations: state.reservations.filter(r => r.id !== reservationId),
-        reservationBySessionId: data?.session_id
-          ? {
-              ...state.reservationBySessionId,
-              [data.session_id]: reservationId
-            }
-          : state.reservationBySessionId
-      }))
-
-      // Ensure table/session UI reflects seated state right after seating.
-      await getFloorPlanStore().getState().loadFloorPlanStatus()
-
-      return data
+      return { session_id: result.sessionId, order_id: result.orderId }
     } catch (err: any) {
       console.error('Failed to seat reservation:', err)
-      return null
+      throw err // Re-throw so caller knows it failed
     }
   },
 
@@ -375,12 +746,17 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       set(state => {
         const nextMap = { ...state.reservationBySessionId }
         delete nextMap[sessionId]
+        const reservations = state.reservations.map(r =>
+          r.id === mappedReservationId
+            ? { ...r, status: 'completed' as Reservation['status'] }
+            : r
+        )
         return {
           reservationBySessionId: nextMap,
-          reservations: state.reservations.map(r =>
-            r.id === mappedReservationId
-              ? { ...r, status: 'completed' as Reservation['status'] }
-              : r
+          reservations,
+          nextReservationByTableId: buildNextReservationByTableId(
+            reservations,
+            state.nextReservationByTableId
           )
         }
       })

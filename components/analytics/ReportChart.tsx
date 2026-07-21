@@ -2,7 +2,7 @@ import { colors } from "@/lib/theme";
 import { format } from "date-fns";
 import React from "react";
 import { Dimensions, Text, View } from "react-native";
-import { BarChart, LineChart } from "react-native-gifted-charts";
+import { BarChart, LineChart } from "@/components/charts/LazyGiftedCharts";
 import { PieChart } from "./PieChart";
 
 // --- Main ReportChart Component Types ---

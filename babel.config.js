@@ -1,5 +1,11 @@
 module.exports = function (api) {
-  api.cache(true);
+  // Cache must key on the env inputs below — a static cache would reuse a
+  // production config (console stripping on) after a local
+  // `NODE_ENV=production` run, or vice versa.
+  api.cache.using(
+    () =>
+      `${process.env.NODE_ENV}|${process.env.BABEL_ENV}|${process.env.EAS_BUILD_PROFILE}`
+  );
 
   const easProfile = process.env.EAS_BUILD_PROFILE;
   const stripConsole =
@@ -8,16 +14,24 @@ module.exports = function (api) {
     easProfile === "production" ||
     easProfile === "preview";
 
-  const plugins = ["react-native-reanimated/plugin"];
+  // React Compiler must run before other plugins transform JSX.
+  // Opt out of compilation in any single file with `"use no memo";` at top.
+  // NOTE: do not also set `experiments.reactCompiler: true` in app.json —
+  // babel-preset-expo auto-injects the compiler when that flag is on, which
+  // would apply this plugin twice.
+  const plugins = ["babel-plugin-react-compiler"];
 
   // Strip console.log/info/debug in production and preview builds.
   // Keep console.error and console.warn so crash reporting still receives them.
   if (stripConsole) {
-    plugins.unshift([
+    plugins.push([
       "transform-remove-console",
       { exclude: ["error", "warn"] },
     ]);
   }
+
+  // react-native-reanimated/plugin must be last per its plugin docs.
+  plugins.push("react-native-reanimated/plugin");
 
   return {
     presets: [

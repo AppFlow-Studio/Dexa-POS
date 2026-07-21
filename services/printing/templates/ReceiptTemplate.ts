@@ -4,6 +4,38 @@ import { formatCurrency } from "@/utils/currency";
 import { EscPosBuilder } from "../escpos/EscPosBuilder";
 
 /**
+ * Split a string into lines that each fit within maxLen, breaking at word
+ * boundaries. Lines are trimmed. Used for notes / long text that should never
+ * be silently truncated.
+ */
+function wordWrap(s: string, maxLen: number): string[] {
+  if (maxLen <= 0) return [];
+  if (!s) return [""];
+  const lines: string[] = [];
+  let current = "";
+  for (const word of s.split(/\s+/)) {
+    if (!word) continue;
+    const sep = current.length > 0 ? 1 : 0;
+    if (current.length + sep + word.length <= maxLen) {
+      current = current ? `${current} ${word}` : word;
+    } else {
+      if (current) {
+        lines.push(current);
+      }
+      if (word.length > maxLen) {
+        for (let i = 0; i < word.length; i += maxLen) {
+          lines.push(word.slice(i, i + maxLen));
+        }
+      } else {
+        current = word;
+      }
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [""];
+}
+
+/**
  * Builds ESC/POS commands for a receipt.
  * Layout matches the sales receipt mockup with conditional flags from templateConfig.
  */
@@ -61,14 +93,29 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.solidLine(w);
 
   // ── Order Info ──
-  // Combined order type + table on one line
+  // Order type and table on separate rows
   if (cfg?.showOrderType !== false) {
-    const typeLine = data.tableName
-      ? `${data.orderType} - ${data.tableName}`
-      : data.orderType;
     b.bold(true);
-    b.textLine(typeLine);
+    b.textLine(data.orderType);
+    if (data.tableName) {
+      b.textLine(`Table: ${data.tableName}`);
+    }
     b.bold(false);
+  }
+
+  // ── Split-payment header (per-portion receipts only) ──
+  if (data.splitLabel) {
+    b.alignCenter();
+    b.bold(true);
+    b.textLine(data.splitLabel);
+    b.bold(false);
+    if (data.splitPayerName) {
+      b.textLine(data.splitPayerName);
+    }
+    if (data.isPartialSplitReceipt) {
+      b.textLine("Partial payment - full check below");
+    }
+    b.alignLeft();
   }
 
   if (data.customerName) {
@@ -109,39 +156,44 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   b.twoColumnRow("Subtotal", formatCurrency(data.subtotal), w);
 
   if (data.tax > 0) {
-    const taxLabel =
-      cfg?.showTaxBreakdown !== false && data.taxRate
-        ? `Tax (${(data.taxRate * 100).toFixed(2)}%)`
-        : "Tax";
-    b.twoColumnRow(taxLabel, formatCurrency(data.tax), w);
+    b.twoColumnRow("Tax", formatCurrency(data.tax), w);
   }
   if (data.discount > 0) {
     b.twoColumnRow("Discount", `-${formatCurrency(data.discount)}`, w);
   }
+  if ((data.serviceCharge ?? 0) > 0) {
+    const scLabel = data.serviceChargeName?.trim() || "Service Charge";
+    b.twoColumnRow(scLabel, formatCurrency(data.serviceCharge!), w);
+  }
   if (data.tip > 0) {
-    b.twoColumnRow("Tip", formatCurrency(data.tip), w);
+    const tipPct =
+      data.subtotal > 0
+        ? ` (${((data.tip / data.subtotal) * 100).toFixed(1)}%)`
+        : "";
+    b.twoColumnRow(`Tip${tipPct}`, formatCurrency(data.tip), w);
   }
   b.bold(false);
 
   b.solidLine(w);
-  b.bold(true);
-  b.doubleHeight(true);
-  b.twoColumnRow("Card Total", formatCurrency(data.total), w);
-  b.doubleHeight(false);
+  // Card Total / Cash Total in normal weight — no bold, no doubleHeight.
+  const totalLabel =
+    data.pricingMode === "cash"
+      ? "TOTAL (CASH)"
+      : data.pricingMode === "card"
+        ? "TOTAL (CARD)"
+        : "TOTAL";
+  b.twoColumnRow(totalLabel, formatCurrency(data.total), w);
 
-  // Cash total (only if different from card total)
   if (
+    data.pricingMode === "dual" &&
     data.cashTotal !== undefined &&
     data.cashTotal !== data.total
   ) {
-    b.doubleHeight(true);
     b.twoColumnRow("Cash Total", formatCurrency(data.cashTotal), w);
-    b.doubleHeight(false);
   }
-  b.bold(false);
 
-  // ── Tip line (blank for customer to fill in) ──
-  if (cfg?.showTipLine !== false) {
+  // ── Tip line (blank for customer to fill in — skip if tip already collected) ──
+  if (cfg?.showTipLine !== false && data.tip <= 0) {
     b.solidLine(w);
     b.bold(true);
     b.twoColumnRow("Tip:", "________", w);
@@ -159,8 +211,27 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
 
     for (const payment of data.payments) {
       b.bold(true);
-      b.twoColumnRow(`Paid: ${payment.method}`, formatCurrency(payment.amount), w);
+      b.twoColumnRow(
+        `Paid: ${payment.method}`,
+        formatCurrency(payment.amount),
+        w,
+      );
       b.bold(false);
+      if (payment.tipAmount && payment.tipAmount > 0) {
+        if (
+          payment.originalTipAmount != null &&
+          payment.originalTipAmount !== payment.tipAmount
+        ) {
+          b.twoColumnRow(
+            "  Orig. Tip",
+            formatCurrency(payment.originalTipAmount),
+            w,
+          );
+          b.twoColumnRow("  Adj. Tip", formatCurrency(payment.tipAmount), w);
+        } else {
+          b.twoColumnRow("  Tip", formatCurrency(payment.tipAmount), w);
+        }
+      }
       if (payment.last4) {
         const cardLine = payment.cardBrand
           ? `  ${payment.cardBrand} ending in ${payment.last4}`
@@ -178,6 +249,15 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
         b.bold(true);
         b.twoColumnRow("  Ref (RRN)", payment.rrn, w);
         b.bold(false);
+      }
+      if (payment.aid) {
+        b.twoColumnRow("  AID", payment.aid, w);
+      }
+      if (payment.amountTendered != null && payment.amountTendered > 0) {
+        b.twoColumnRow("  Tendered", formatCurrency(payment.amountTendered), w);
+      }
+      if (payment.changeGiven != null && payment.changeGiven > 0) {
+        b.twoColumnRow("  Change", formatCurrency(payment.changeGiven), w);
       }
     }
 
@@ -213,6 +293,9 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   }
   if (data.customerName) {
     b.twoColumnRow("Customer", data.customerName, w);
+  }
+  if (cfg?.showCustomerPhone !== false && data.customerPhone) {
+    b.twoColumnRow("Phone", data.customerPhone, w);
   }
   b.bold(false);
 
@@ -277,13 +360,24 @@ function pushEscPosSingleItem(
       b.textLine(modLine);
       b.bold(false);
     }
+    // Un-itemized modifier upcharge (priced modifier whose per-option price
+    // didn't round-trip) — shown in aggregate so it isn't invisible.
+    if (item.modifiersUpcharge && item.modifiersUpcharge > 0) {
+      b.bold(true);
+      b.textLine(`  Modifiers  +${formatCurrency(item.modifiersUpcharge)}`);
+      b.bold(false);
+    }
   }
 
-  // Notes
+  // Notes — word-wrap long notes instead of sending a single line that the
+  // printer hardware may truncate or garble at the buffer boundary.
   if (item.notes) {
-    b.bold(true);
-    b.textLine(`  Note: ${item.notes}`);
-    b.bold(false);
+    const noteLines = wordWrap(`${item.notes}`, w - 2);
+    for (const line of noteLines) {
+      b.bold(true);
+      b.textLine(`  ${line}`);
+      b.bold(false);
+    }
   }
 }
 

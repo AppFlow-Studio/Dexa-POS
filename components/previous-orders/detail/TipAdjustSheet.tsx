@@ -1,6 +1,7 @@
 import { useToast } from '@/contexts/ToastContext'
 import { orderHistoryKeys } from '@/hooks/orders/useOrderHistory'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import { OrderProfile, OrderProfilePayment } from '@/lib/types'
 import { adjustTips, TipAdjustment } from '@/services/tipAdjustService'
@@ -44,6 +45,7 @@ const TipAdjustSheetComponent: React.ForwardRefRenderFunction<
   const { show } = useToast()
   const supabaseClient = useSupabaseClient()
   const queryClient = useQueryClient()
+  const highTipThreshold = useLocationConfigStore(s => s.config.tips.highTipWarningThreshold ?? 30) / 100
 
   useImperativeHandle(ref, () => ({
     open: () => {
@@ -77,13 +79,13 @@ const TipAdjustSheetComponent: React.ForwardRefRenderFunction<
       return
     }
 
-    // High tip warning (>30% of payment amount)
-    if (newTip > selectedPayment.amount * 0.3) {
+    // High tip warning (exceeds configured threshold of payment amount)
+    if (newTip > selectedPayment.amount * highTipThreshold) {
       Alert.alert(
         'High Tip Warning',
         `$${newTip.toFixed(
           2
-        )} is more than 30% of the payment amount ($${selectedPayment.amount.toFixed(
+        )} is more than ${Math.round(highTipThreshold * 100)}% of the payment amount ($${selectedPayment.amount.toFixed(
           2
         )}). Continue?`,
         [

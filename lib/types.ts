@@ -1,13 +1,10 @@
-import { ComponentType } from "react";
 import type { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
-import type {
-  OrderRefundItemRecord,
-  ReversalRecord,
-} from "@/types/refunds";
+import type { OrderRefundItemRecord, ReversalRecord } from "@/types/refunds";
+import { ComponentType } from "react";
 import { TABLE_SHAPES } from "./table-shapes";
 
 // Re-export refund types
-export type { ReversalRecord, OrderRefundItemRecord };
+export type { OrderRefundItemRecord, ReversalRecord };
 
 // --- INVENTORY TYPES ---
 export type InventoryUnit = "bottle" | "pcs" | "lbs" | "bag" | "qt";
@@ -180,14 +177,21 @@ export interface ModifierOption {
   id: string;
   name: string;
   price: number;
+  displayOrder?: number;
   isAvailable?: boolean; // For items that are "86'd" (unavailable)
   isDefault?: boolean; // For default selected options
   recipe?: RecipeItem[];
+  // Per-location 86/snooze state (out of stock). null/undefined = live,
+  // ISO timestamp = timed 86, "infinity" = until manual. Modifiers use binary
+  // "infinity" toggles today, but the field carries any snoozed_until value.
+  snoozedUntil?: string | null;
+  snoozeReason?: string | null;
 }
 
 export interface ModifierCategory {
   id: string;
   name: string;
+  displayOrder?: number;
   type: "required" | "optional";
   selectionType: "single" | "multiple";
   maxSelections?: number; // For multiple selection with limits
@@ -237,6 +241,7 @@ export interface MenuItemType {
   modifierGroupIds?: string[];
   allergens?: string[];
   cardBgColor?: string;
+  placeholderIcon?: string;
   availability?: boolean; // New field for availability status
   customPricing?: CustomPricing[]; // Legacy field - being replaced by priceLevels
   // Menu-specific price overrides (Level 5)
@@ -257,6 +262,10 @@ export interface MenuItemType {
   // Location ownership - null = global (merchant-wide), UUID = local to that location
   location_id?: string | null;
   displayOrder?: number;
+  // Per-location 86/snooze state (out of stock). Contract mirrors the backend:
+  // null/undefined = live, ISO timestamp = timed 86, "infinity" = until manual.
+  snoozedUntil?: string | null;
+  snoozeReason?: string | null;
 }
 
 export interface CustomPricing {
@@ -346,17 +355,6 @@ export interface Layout {
   tables: TableType[];
 }
 
-export type OnlineOrderStatus =
-  | "New Orders"
-  | "Confirmed/In-Process"
-  | "Ready to Dispatch"
-  | "Dispatched";
-export type DeliveryPartner =
-  | "Door Dash"
-  | "grubhub"
-  | "Uber-Eats"
-  | "Food Panda";
-
 export interface CartItem {
   id: string; // Unique ID for this cart instance (e.g., menuItemId + timestamp)
   menuItemId: string; // The original ID from the menu data
@@ -417,10 +415,20 @@ export interface CartItem {
   // Voided item tracking
   is_voided?: boolean;
   void_reason?: string;
+  // Per-item "TO GO" flag (e.g. one item to-go inside a dine-in check).
+  // Mirrors the per-item is_prioritized/rush pattern.
+  is_to_go?: boolean;
   // Sync status tracking for resilient backend sync
   sync_status?: "pending" | "syncing" | "synced" | "failed";
   sync_error?: string;
   sync_retry_count?: number;
+  // Optimistic-payment fingerprint. Stamped by addPaymentToOrder when the
+  // itemAllocations branch updates paidQuantity locally; cleared by the
+  // backend reconciliation path once `data.updated_items` arrives. The FIFO
+  // absorb in _handleOrderBroadcast / upsertOrder prefers stamped candidates
+  // over non-stamped ones so a same-composite-key broadcast clone arriving
+  // mid-race can't be claimed instead of the in-flight optimistic copy.
+  pendingPaymentSeq?: number;
   // NEW: Context for price level tracking - which category/menu was this item added from
   addedFromCategoryId?: string | null;
   addedFromMenuId?: string | null;
@@ -447,24 +455,6 @@ export interface CartItem {
   seatNumber?: number | null; // Which seat (1..N), null = shared/unassigned
 }
 
-export interface OnlineOrder {
-  id: string; // e.g., #45654
-  status: OnlineOrderStatus;
-  deliveryPartner: DeliveryPartner;
-  customerName: string;
-  total: number;
-  itemCount: number;
-  timestamp: string; // e.g., '02/03/25, 05:36 PM'
-  // Detailed info for the details page
-  customerDetails: {
-    id: string;
-    phone: string;
-    email: string;
-  };
-  paymentStatus: "Paid" | "Pending";
-  items: CartItem[];
-}
-
 export type PaymentStatus =
   | "Paid"
   | "In Progress"
@@ -482,6 +472,7 @@ export interface PreviousOrder {
   display_number: string;
   paymentStatus: PaymentStatus;
   customer: string;
+  customer_phone?: string | null;
   server: string;
   opened_at: string;
   closed_at: string;
@@ -493,7 +484,17 @@ export interface PreviousOrder {
   cash_amount_due: number;
   type: OrderType;
   total: number;
+  // Cash-priced grand total (card-equivalent is `total`). Server-authoritative
+  // (includes service charge + SC tax); read by getCashPricedOrderTotal so a
+  // cash-paid order's breakdown shows the real cash total, not an items-only sum.
+  total_cash_amount?: number;
   tax?: number; // Tax amount for bill display
+  // Service charge snapshot — pinned when SC was applied on the live order
+  // so the historical receipt shows the same SC line the customer paid.
+  service_charge?: number;
+  service_charge_name?: string | null;
+  service_charge_rate?: number | null;
+  service_charge_is_taxable?: boolean | null;
   items: CartItem[]; // The detailed list of items for the notes modal
   notes?: string; // Order-level notes (customer requests, special instructions)
   payments?: OrderProfile["payments"]; // Add payments array
@@ -512,8 +513,21 @@ export interface PreviousOrder {
   db_order_id?: string; // For RPC calls
   order_source?: string | null;
   delivery_platform?: string | null;
+  platform_order_number?: string | null;
   reversals?: ReversalRecord[];
   order_refund_items?: OrderRefundItemRecord[];
+  // Staff attribution (for fraud detection — who created this order)
+  created_by_staff_profile_id?: string | null;
+  // True when this entry was archived to history while OFFLINE (not yet
+  // confirmed by the backend). Drives the "Offline" badge on the row. Cleared
+  // automatically once the order syncs and a server fetch replaces it.
+  _offlineUnsynced?: boolean;
+  /**
+   * True when this order exists in the `online_orders` table (joined by
+   * `order_id`). The authoritative source for identifying online orders —
+   * prefer this over `order_source` which may carry platform-specific values.
+   */
+  _isOnlineOrder?: boolean;
 }
 
 export type InventoryItemStatus =
@@ -746,6 +760,11 @@ export interface OrderPaymentTransactionDetails {
   splitLabel?: string;
   isCashPayment?: boolean;
   isCash?: boolean;
+  rrn?: string;
+  batchNumber?: string;
+  invoiceNumber?: string;
+  entryMode?: string;
+  referenceId?: string;
   // Full Dejavoo response details (sanitized, no First4/BIN/IPosToken)
   dejavooTransaction?: DejavooSaleTransactionResponse;
   // Full Castles response JSONB (from buildCastlesTerminalResponse)
@@ -753,7 +772,11 @@ export interface OrderPaymentTransactionDetails {
   [key: string]: unknown;
 }
 
-export type SplitPaymentPath = "split-by-item" | "split-evenly" | "split-custom-amount" | "pay-for-items";
+export type SplitPaymentPath =
+  | "split-by-item"
+  | "split-evenly"
+  | "split-custom-amount"
+  | "pay-for-items";
 
 export const SPLIT_PATH_LABELS: Record<SplitPaymentPath, string> = {
   "split-by-item": "Split by Item",
@@ -773,6 +796,11 @@ export interface OrderProfilePayment {
   localId?: string; // Local ID for offline/sync tracking
 
   // Payment basics
+  /** Captured payment amount in the pricing mode the payment was taken in.
+   *  Cash terms when isCashPriced=true (matches order_payments.amount on
+   *  the server post-process_payment_v14); card terms otherwise. Do NOT
+   *  subtract cashSavings to "recover the cash amount" — this value is
+   *  already the cash amount when isCashPriced. */
   amount: number;
   method: PaymentType;
   tip_amount: number;
@@ -786,7 +814,10 @@ export interface OrderProfilePayment {
   amountTendered?: number;
   changeGiven?: number;
   isCashPriced?: boolean;
-  cashSavings?: number; // original_amount - amount (discount received)
+  /** Discount the customer received by paying cash (= original_amount −
+   *  amount). Informational only — used for receipt "you saved $X" lines.
+   *  amount is already cash-side; do not subtract cashSavings from it. */
+  cashSavings?: number;
 
   // Portions (for detailed breakdown)
   subtotal_portion?: number;
@@ -814,7 +845,7 @@ export interface OrderProfilePayment {
   preAuthStan?: string; // Castles only
   preAuthAuthCode?: string;
   preAuthReferenceId?: string;
-  preAuthTerminalType?: 'dejavoo' | 'castles';
+  preAuthTerminalType?: "dejavoo" | "castles";
 
   // Void tracking
   isVoided: boolean;
@@ -839,6 +870,26 @@ export interface OrderProfilePayment {
   original_tip_amount?: number;
   tip_adjusted_at?: string;
   tip_adjusted_by?: string;
+
+  // Platform-fee tracking (process_payment_v10 onward).
+  // Customer-invisible — never line-itemized on customer-facing paths.
+  // Pre-v10 rows have all fee fields = 0 / null.
+  dual_pricing_fee?: number;
+  tip_fee?: number;
+  refunded_dual_pricing_fee?: number;
+  refunded_tip_fee?: number;
+  original_tip_fee?: number | null;
+  dual_pricing_percentage_snapshot?: number;
+  tip_surcharge_percentage_snapshot?: number;
+
+  // Service-charge tracking (process_payment_v13 onward).
+  // service_charge: snapshot of this payment's share of orders.service_charge
+  //   captured at insert time (last split-portion snaps to gross).
+  // service_charge_refunded: cumulative SC portion reversed by
+  //   apply_refund_to_payment_v4 (LEAST-clamped, full-refund snap).
+  // Pre-v13 rows default to 0.
+  service_charge?: number;
+  service_charge_refunded?: number;
 
   // Settlement tracking
   is_settled?: boolean;
@@ -877,10 +928,12 @@ export interface OrderProfile {
   order_status:
     | "draft"
     | "pending"
+    | "accepted" // online-order manual-accept; server normalizes to sent_to_kitchen, modeled as a safety net
     | "sent_to_kitchen"
     | "preparing"
     | "ready"
     | "completed"
+    | "declined" // online-order manual-decline (terminal)
     | "cancelled"
     | "refunded"
     | "void";
@@ -916,6 +969,44 @@ export interface OrderProfile {
   total_tax?: number;
   total_discount?: number;
 
+  // === SERVICE CHARGE ===
+  // Flat $ folded into both card and cash total_amount, matching
+  // calculate_order_totals_fast. Snapshot fields lock the rate/label/applies_on
+  // at first apply so mid-shift rule changes don't retroactively shift open orders.
+  service_charge?: number;
+  service_charge_name?: string | null;
+  service_charge_rate?: number | null;
+  service_charge_applies_on?: "pre_discount" | "post_discount" | null;
+  service_charge_rule_id?: string | null;
+  /** Set true by the manager-PIN override flow (Part 3); Wave B never writes true. */
+  service_charge_is_manual?: boolean;
+  /**
+   * Whether the service charge is taxable. Snapshotted on the order
+   * (orders.service_charge_is_taxable) so a manager override — which clears
+   * service_charge_rule_id — can still drive SC tax. Mirrored to the
+   * calculator as manualServiceChargeTaxable.
+   */
+  service_charge_is_taxable?: boolean | null;
+  /**
+   * Last `service_charge` value confirmed by the server via the
+   * apply_service_charge_v1 RPC sync-back. The drift gate in
+   * recalculateOrder compares computed SC against this (NOT the locally
+   * cached `service_charge`), so a freshly-pinned client-side SC still
+   * fires the RPC even when the locally-computed value matches the
+   * prior local cache. Also seeded from server broadcasts / hydration
+   * so the next recalc detects server drift. Transient — not persisted
+   * to MMKV, not part of broadcast payload.
+   */
+  _serverConfirmedServiceCharge?: number;
+  /**
+   * Local-only lifecycle hint set after a paid check is explicitly reopened.
+   * While true, frontend outstanding totals may lead a stale backend amount_due
+   * snapshot so existing unpaid items are immediately payable.
+   */
+  _reopenedForOrdering?: boolean;
+  /** Tracks how many times this check has been reopened. Max 1 reopen allowed. */
+  reopen_count?: number;
+
   // Payment tracking - synced from backend
   amount_paid?: number; // Total amount paid so far
   amount_due?: number; // Remaining amount due (CARD price - source of truth)
@@ -938,16 +1029,43 @@ export interface OrderProfile {
   order_refund_items?: OrderRefundItemRecord[];
 
   // === STATION TRACKING ===
-  station_id?: string | null; // Station that created this order
+  station_id?: string | null; // Current OWNER station (mutable via claim_order_v1)
+  // Wave 2.7: display name for the current owner. Mirrors `station_id`
+  // semantics — refreshed by realtime broadcast, hydrate, and the focus-time
+  // recheck. Distinct from `_sourceStationName` (pinned to original creator).
+  station_name?: string | null;
   _sourceStationId?: string | null; // Original creating station ID (for display)
   _sourceStationName?: string | null; // Original creating station name (for display)
 
+  // === STAFF ATTRIBUTION ===
+  created_by_staff_profile_id?: string | null; // staff_profiles.id of the employee who created this order
+
   // === ORDER SOURCE ===
-  order_source?: string | null; // "pos" | "online" | null
+  order_source?: string | null; // "pos" | "orderout" | "online_store" | legacy "online" | null
   delivery_platform?: string | null; // "uber_eats" | "grubhub" | "doordash" | "food_panda" | null
+  platform_order_number?: string | null; // The marketplace's own order number (provider_order_id)
 
   // === SYNC VERSION (for optimistic concurrency) ===
   sync_version?: number; // Backend sync version for conflict detection
+
+  // === BROADCAST METADATA (transient, not persisted to MMKV) ===
+  _broadcastItemCount?: number; // Non-voided item count from v2 broadcasts
+
+  // Stamped by useOrdersQuery's hydrateWorkspace; read by orderHeaderReconcile
+  // to skip per-order get_order_details fan-out when the bulk fetch already
+  // delivered fresh data. Cleared on realtime/local writes that drift the order.
+  _lastBulkFetchAt?: number;
+
+  // Display-only: set on Previous Orders rows whose history entry was archived
+  // while offline (not yet confirmed by the backend). Drives the "Offline" badge.
+  _offlineUnsynced?: boolean;
+  /**
+   * True when this order exists in the `online_orders` table (joined by
+   * `order_id`). The authoritative source for identifying online orders —
+   * prefer this over `order_source` which may carry platform-specific values.
+   * Populated by `_transformFetchedOrder` in the previous-orders store.
+   */
+  _isOnlineOrder?: boolean;
 }
 
 export type CheckStatus = "Pending" | "Cleared" | "Voided";
@@ -1053,7 +1171,8 @@ export interface Notification {
     | "swap_request_peer_accepted"
     | "swap_request_peer_denied"
     | "swap_approved"
-    | "swap_denied";
+    | "swap_denied"
+    | "refund_fraud_alert";
   message: string;
   isRead: boolean;
   timestamp: string; // ISO string

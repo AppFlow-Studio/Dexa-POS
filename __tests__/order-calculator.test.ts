@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 /**
  * Order Calculator Tests
  *
@@ -6,19 +7,19 @@
  */
 
 import {
-  round2,
+  applyPaymentToItems,
+  calculateEvenSplit,
+  calculateEvenSplitSpread,
   calculateItemEffectiveCashPrice,
   calculateOrderTotals,
   calculateOrderTotalsWithDetails,
-  distributeDiscountToItems,
   calculatePaidStatus,
-  calculateEvenSplit,
   calculatePaymentPreview,
-  applyPaymentToItems,
+  distributeDiscountToItems,
+  round2,
 } from "@/lib/order-calculator";
 import { CartItem, Discount } from "@/lib/types";
 import { TaxRatesMap } from "@/types/menu";
-import { PaymentPreviewInput } from "@/types/order-calculations";
 
 // ============================================================================
 // TEST FIXTURES
@@ -34,6 +35,8 @@ const createMockItem = (overrides: Partial<CartItem> = {}): CartItem => ({
   price: 10.0,
   unitPrice: 10.0,
   cashPrice: 10.0,
+  baseCardPrice: 10.0,
+  baseCashPrice: 10.0,
   image: undefined,
   customizations: {},
   subtotal: 10.0,
@@ -202,8 +205,8 @@ describe("Scenario 5: Item with Modifiers", () => {
       originalPrice: 10.0,
       customizations: {
         addOns: [
-          { id: "a1", name: "Bacon", price: 3.0, quantity: 1 },
-          { id: "a2", name: "Avocado", price: 2.0, quantity: 1 },
+          { id: "a1", name: "Bacon", price: 3.0 },
+          { id: "a2", name: "Avocado", price: 2.0 },
         ],
       },
     });
@@ -220,7 +223,9 @@ describe("Scenario 5: Item with Modifiers", () => {
 
 describe("Scenario 6: Partially Paid Order", () => {
   it("calculates outstanding amount for partially paid items", () => {
-    const items = [createMockItem({ price: 10.0, quantity: 3, paidQuantity: 1 })];
+    const items = [
+      createMockItem({ price: 10.0, quantity: 3, paidQuantity: 1 }),
+    ];
 
     const result = calculateOrderTotals({
       items,
@@ -238,7 +243,9 @@ describe("Scenario 6: Partially Paid Order", () => {
   });
 
   it("shows zero outstanding when fully paid", () => {
-    const items = [createMockItem({ price: 10.0, quantity: 2, paidQuantity: 2 })];
+    const items = [
+      createMockItem({ price: 10.0, quantity: 2, paidQuantity: 2 }),
+    ];
 
     const result = calculateOrderTotals({
       items,
@@ -427,6 +434,57 @@ describe("Scenario 12: Even Split Payment", () => {
 });
 
 // ============================================================================
+// SCENARIO 12b: Even Split (largest-remainder spread)
+// ============================================================================
+
+describe("Scenario 12b: calculateEvenSplitSpread", () => {
+  // Acceptance matrix: every set sums EXACTLY to the total, and no portion
+  // differs from another by more than one cent.
+  const matrix: Array<[number, number]> = [
+    [0.02, 2],
+    [0.05, 3],
+    [0.1, 3],
+    [0.11, 3],
+    [1.01, 3],
+    [1.04, 3],
+    [100.0, 3],
+    [100.01, 3],
+  ];
+
+  it.each(matrix)(
+    "splits %p across %p exactly, spread <= 1 cent",
+    (total, n) => {
+      const { amounts } = calculateEvenSplitSpread(total, n);
+
+      const sum = amounts.reduce((a, b) => a + b, 0);
+      expect(round2(sum)).toBe(round2(total));
+
+      const max = Math.max(...amounts);
+      const min = Math.min(...amounts);
+      expect(round2(max - min)).toBeLessThanOrEqual(0.01);
+    },
+  );
+
+  it("never produces multiple $0 portions when total >= n cents", () => {
+    // $0.05 across 3 was the regression case: floor-last gave [0,0,0.03]-style
+    // results; the spread gives every guest a non-zero portion.
+    const { amounts } = calculateEvenSplitSpread(0.05, 3);
+    expect(amounts).toEqual([0.02, 0.02, 0.01]);
+    expect(amounts.filter((a) => a === 0)).toHaveLength(0);
+  });
+
+  it("distributes the remainder to the FIRST portions, not the last", () => {
+    const { amounts } = calculateEvenSplitSpread(1.0, 3);
+    expect(amounts).toEqual([0.34, 0.33, 0.33]);
+  });
+
+  it("handles single person (no split)", () => {
+    const split = calculateEvenSplitSpread(100.0, 1);
+    expect(split.amounts).toEqual([100.0]);
+  });
+});
+
+// ============================================================================
 // SCENARIO 13: Payment Preview - Full Payment
 // ============================================================================
 
@@ -484,7 +542,7 @@ describe("Scenario 14: Paid Status Calculation", () => {
     expect(calculatePaidStatus([{ amount: 100 }], 100)).toBe("Paid");
     expect(calculatePaidStatus([{ amount: 99.99 }], 100)).toBe("Paid"); // Within tolerance
     expect(calculatePaidStatus([{ amount: 50, isVoided: true }], 100)).toBe(
-      "Pending"
+      "Pending",
     );
   });
 
@@ -494,10 +552,7 @@ describe("Scenario 14: Paid Status Calculation", () => {
   });
 
   it("excludes voided payments", () => {
-    const payments = [
-      { amount: 50 },
-      { amount: 50, isVoided: true },
-    ];
+    const payments = [{ amount: 50 }, { amount: 50, isVoided: true }];
     expect(calculatePaidStatus(payments, 100)).toBe("Partial");
   });
 });
@@ -602,9 +657,7 @@ describe("Empty Order", () => {
   });
 
   it("returns zero totals for order with only voided items", () => {
-    const items = [
-      createMockItem({ id: "i1", price: 100.0, is_voided: true }),
-    ];
+    const items = [createMockItem({ id: "i1", price: 100.0, is_voided: true })];
 
     const result = calculateOrderTotals({
       items,
@@ -673,7 +726,9 @@ describe("Payment Preview Edge Cases", () => {
     });
 
     expect(preview.isValid).toBe(false);
-    expect(preview.validationErrors).toContain("Split count must be at least 2");
+    expect(preview.validationErrors).toContain(
+      "Split count must be at least 2",
+    );
   });
 
   it("validates custom amount bounds", () => {
@@ -723,8 +778,348 @@ describe("Payment Preview Edge Cases", () => {
     });
 
     expect(preview.tipAmount).toBe(20.0);
-    expect(preview.totalToCollect).toBe(
-      round2(preview.amountToCharge + 20.0)
-    );
+    expect(preview.totalToCollect).toBe(round2(preview.amountToCharge + 20.0));
+  });
+});
+
+// ============================================================================
+// SCENARIO 17: Dual Pricing with Percentage Discount
+// ============================================================================
+
+describe("Scenario 17: Dual Pricing with Percentage Discount", () => {
+  it("applies percentage discount independently to card and cash subtotals", () => {
+    // 2x Cappuccino: $5.25 card, $5.00 cash
+    const items = [
+      createMockItem({
+        unitPrice: 5.25,
+        price: 5.25,
+        cashPrice: 5.0,
+        baseCashPrice: 5.0,
+        originalPrice: 5.0,
+        quantity: 2,
+        subtotal: 10.5,
+        cashSubtotal: 10.0,
+      }),
+    ];
+
+    const discount: Discount = {
+      id: "d1",
+      type: "percentage",
+      value: 0.5,
+      label: "50% off",
+    };
+
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: discount,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    // Card: $10.50 * 50% = $5.25 discount
+    expect(result.discount_amount).toBe(5.25);
+    // Cash: $10.00 * 50% = $5.00 discount (NOT $5.25)
+    expect(result.cash_discount_amount).toBe(5.0);
+
+    // Card total: $5.25 + ($5.25 * 8.875%) = $5.25 + $0.47 = $5.72
+    expect(result.total_amount).toBe(5.72);
+    // Cash total: $5.00 + ($5.00 * 8.875%) = $5.00 + $0.44 = $5.44
+    expect(result.cash_total_amount).toBe(5.44);
+  });
+
+  it("applies fixed discount scaled proportionally to cash pricing", () => {
+    // Item: $10 card, $9.50 cash
+    const items = [
+      createMockItem({
+        unitPrice: 10.0,
+        price: 10.0,
+        cashPrice: 9.5,
+        baseCashPrice: 9.5,
+        originalPrice: 9.5,
+        quantity: 1,
+        subtotal: 10.0,
+        cashSubtotal: 9.5,
+      }),
+    ];
+
+    const discount: Discount = {
+      id: "d2",
+      type: "fixed",
+      value: 5.0,
+      label: "$5 off",
+    };
+
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: discount,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    // Card discount: $5.00
+    expect(result.discount_amount).toBe(5.0);
+    // Cash discount: $5.00 * (9.50 / 10.00) = $4.75
+    expect(result.cash_discount_amount).toBe(4.75);
+
+    // Card total: ($10 - $5) + tax = $5.00 + $0.44 = $5.44
+    expect(result.total_amount).toBe(5.44);
+    // Cash total: ($9.50 - $4.75) + tax = $4.75 + $0.42 = $5.17
+    expect(result.cash_total_amount).toBe(5.17);
+  });
+
+  it("distributes cash discount correctly across multiple items", () => {
+    const items = [
+      createMockItem({
+        id: "i1",
+        unitPrice: 20.0,
+        price: 20.0,
+        cashPrice: 19.0,
+        baseCashPrice: 19.0,
+        originalPrice: 19.0,
+        quantity: 1,
+        subtotal: 20.0,
+        cashSubtotal: 19.0,
+      }),
+      createMockItem({
+        id: "i2",
+        unitPrice: 10.0,
+        price: 10.0,
+        cashPrice: 9.5,
+        baseCashPrice: 9.5,
+        originalPrice: 9.5,
+        quantity: 1,
+        subtotal: 10.0,
+        cashSubtotal: 9.5,
+      }),
+    ];
+
+    const discount: Discount = {
+      id: "d3",
+      type: "percentage",
+      value: 0.25,
+      label: "25% off",
+    };
+
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: discount,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    // Card: $30 * 25% = $7.50 discount, net = $22.50
+    expect(result.discount_amount).toBe(7.5);
+    // Cash: $28.50 * 25% = $7.13 discount (rounded), net = $21.37
+    expect(result.cash_discount_amount).toBe(7.13);
+
+    // Verify cash total is based on cash discount, not card discount
+    // Cash net: $28.50 - $7.13 = $21.37
+    // Cash tax: per-item rounding
+    // Item1 cash net: $19 - ($7.13 * 19/28.5) = $19 - $4.75 = $14.25, tax = $1.26
+    // Item2 cash net: $9.50 - ($7.13 * 9.5/28.5) = $9.50 - $2.38 = $7.12, tax = $0.63
+    // Cash total: $21.37 + $1.89 = $23.26
+    expect(result.cash_total_amount).toBe(23.26);
+  });
+});
+
+// ============================================================================
+// SCENARIO 18: Aggregate-per-rate-group tax (v6)
+// Regression for the penny-drift bug: tax must be ROUND(Σ net * rate, 2) once
+// per rate group, NOT Σ ROUND(net_i * rate, 2). These differ by a cent on
+// multi-item orders — the exact bug reported ($6378.68 vs expected $6378.69).
+// ============================================================================
+
+describe("Scenario 18: Aggregate-per-rate-group tax (v6)", () => {
+  const money = (price: number, overrides: Partial<CartItem> = {}): CartItem =>
+    createMockItem({
+      originalPrice: price,
+      price,
+      unitPrice: price,
+      cashPrice: price,
+      baseCardPrice: price,
+      baseCashPrice: price,
+      ...overrides,
+    });
+
+  it("rounds tax once on the aggregate, not per item (aggregate higher)", () => {
+    // 3 items @ $2.28. Per-item: ROUND(2.28*8.875%,2)=0.20 each -> sum 0.60 (old bug).
+    // Aggregate: ROUND(6.84*8.875%,2)=ROUND(0.60705,2)=0.61 (correct).
+    const items = [
+      money(2.28, { id: "a1" }),
+      money(2.28, { id: "a2" }),
+      money(2.28, { id: "a3" }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    expect(result.subtotal).toBe(6.84);
+    expect(result.tax_amount).toBe(0.61); // NOT the old per-item-sum 0.60
+    expect(result.total_amount).toBe(7.45); // NOT 7.44
+    // Fully unpaid: outstanding (what the cashier collects) must match the total.
+    expect(result.outstanding_total).toBe(7.45);
+  });
+
+  it("rounds tax once on the aggregate (aggregate lower)", () => {
+    // 3 items @ $3.33. Per-item: ROUND(3.33*8.875%,2)=0.30 each -> 0.90.
+    // Aggregate: ROUND(9.99*8.875%,2)=ROUND(0.886613,2)=0.89.
+    const items = [
+      money(3.33, { id: "b1" }),
+      money(3.33, { id: "b2" }),
+      money(3.33, { id: "b3" }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    expect(result.subtotal).toBe(9.99);
+    expect(result.tax_amount).toBe(0.89); // NOT the old per-item-sum 0.90
+    expect(result.total_amount).toBe(10.88);
+  });
+
+  it("groups by rate: multi-rate order rounds each group once, then sums", () => {
+    // Standard 8.875%: 3 @ $2.28 -> group tax ROUND(6.84*8.875%)=0.61
+    // Alcohol 12.0%:   2 @ $7.77 -> group tax ROUND(15.54*12%)=ROUND(1.8648)=1.86
+    const items = [
+      money(2.28, { id: "s1", taxRate: 8.875, tax_category: "standard" }),
+      money(2.28, { id: "s2", taxRate: 8.875, tax_category: "standard" }),
+      money(2.28, { id: "s3", taxRate: 8.875, tax_category: "standard" }),
+      money(7.77, { id: "l1", taxRate: 12.0, tax_category: "alcohol" }),
+      money(7.77, { id: "l2", taxRate: 12.0, tax_category: "alcohol" }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    expect(result.subtotal).toBe(22.38); // 6.84 + 15.54
+    expect(result.tax_amount).toBe(2.47); // 0.61 + 1.86
+    expect(result.total_amount).toBe(24.85);
+  });
+
+  it("computes cash tax on the cash base independently of card", () => {
+    // Card net 3 @ $2.28 = 6.84 -> tax 0.61; cash net 3 @ $2.00 = 6.00 -> tax 0.53
+    const items = [
+      money(2.28, { id: "c1", cashPrice: 2.0, baseCashPrice: 2.0 }),
+      money(2.28, { id: "c2", cashPrice: 2.0, baseCashPrice: 2.0 }),
+      money(2.28, { id: "c3", cashPrice: 2.0, baseCashPrice: 2.0 }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    expect(result.tax_amount).toBe(0.61); // ROUND(6.84 * 8.875%)
+    expect(result.cash_tax_amount).toBe(0.53); // ROUND(6.00 * 8.875%) = ROUND(0.5325)
+  });
+
+  it("excludes exempt items from the aggregate base", () => {
+    const items = [
+      money(2.28, { id: "t1" }),
+      money(2.28, { id: "t2" }),
+      money(2.28, { id: "t3" }),
+      money(50.0, { id: "ex", is_tax_exempt: true }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    // Only the 3 taxable items form the base; exempt item adds subtotal but no tax.
+    expect(result.tax_amount).toBe(0.61);
+    expect(result.subtotal).toBe(56.84);
+  });
+
+  it("partially-paid: outstanding tax also uses aggregate-per-rate-group", () => {
+    // 3 @ $2.28, one fully paid -> unpaid net 4.56 -> outstanding tax ROUND(4.56*8.875%)=0.40
+    const items = [
+      money(2.28, { id: "p1", quantity: 1, paidQuantity: 1 }),
+      money(2.28, { id: "p2" }),
+      money(2.28, { id: "p3" }),
+    ];
+    const result = calculateOrderTotals({
+      items,
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+    });
+
+    // Full order tax is still the aggregate 0.61.
+    expect(result.tax_amount).toBe(0.61);
+    // Outstanding on the 2 unpaid items: ROUND(4.56 * 8.875%, 2) = ROUND(0.4047) = 0.40
+    expect(result.outstanding_tax).toBe(0.4);
+    expect(result.outstanding_total).toBe(4.96); // 4.56 + 0.40
+  });
+});
+
+// ============================================================================
+// SCENARIO 19: Per-item refund keeps card & cash amount_due reconcilable
+// ============================================================================
+
+describe("Scenario 19: Per-item refund dual pricing", () => {
+  it("single cash-paid item refunded → card and cash reconcile at the item's own prices", () => {
+    const mocha = createMockItem({
+      id: "mocha",
+      price: 6.25,
+      baseCardPrice: 6.25,
+      baseCashPrice: 6.0,
+      quantity: 1,
+      paidQuantity: 1,
+      refundedQuantity: 1,
+    });
+    const result = calculateOrderTotals({
+      items: [mocha],
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+      payments: [
+        { amount: 6.53, isCashPriced: true, cashSavings: 0.27, refundedAmount: 6.53 },
+      ],
+    } as any);
+    expect(result.outstanding_total).toBe(6.8); // 6.25 + 8.875% tax
+    expect(result.cash_outstanding_total).toBe(6.53); // 6.00 + 8.875% tax
+    // Reconcilable: differ only by the item's own card/cash spread.
+    expect(
+      +(result.outstanding_total - result.cash_outstanding_total).toFixed(2),
+    ).toBe(0.27);
+  });
+
+  it("varying-spread order, refund the low-spread item → both bases track that item, not a card-sized bump (the reported bug)", () => {
+    // Mocha 4% spread (6.25/6.00) + Wings 60% spread (30/12); one cash payment
+    // covering both; refund the Mocha. Pre-fix this diverged (card 13.15 / cash 12.88).
+    const mocha = createMockItem({ id: "mocha", price: 6.25, baseCardPrice: 6.25, baseCashPrice: 6.0, quantity: 1, paidQuantity: 1, refundedQuantity: 1 });
+    const wings = createMockItem({ id: "wings", price: 30.0, baseCardPrice: 30.0, baseCashPrice: 12.0, quantity: 1, paidQuantity: 1, refundedQuantity: 0 });
+    const cashTotal = 18.0 * 1.08875; // 19.60
+    const cardTotal = 36.25 * 1.08875; // 39.47
+    const result = calculateOrderTotals({
+      items: [mocha, wings],
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+      payments: [
+        {
+          amount: +cashTotal.toFixed(2),
+          isCashPriced: true,
+          cashSavings: +(cardTotal - cashTotal).toFixed(2),
+          refundedAmount: 6.53,
+        },
+      ],
+    } as any);
+    expect(result.outstanding_total).toBe(6.8);
+    expect(result.cash_outstanding_total).toBe(6.53);
+  });
+
+  it("custom-amount (non-item) refund still applies the payment-level residual on both bases (gate inert without item refunds)", () => {
+    const item = createMockItem({ price: 10.0, paidQuantity: 1 });
+    const result = calculateOrderTotals({
+      items: [item],
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+      payments: [{ amount: 10.89, refundedAmount: 3.0 }],
+    } as any);
+    // hasItemRefunds=false → customRefundBalance reconciles the $3 gap on both bases.
+    expect(result.outstanding_total).toBe(3);
+    expect(result.cash_outstanding_total).toBe(3);
   });
 });

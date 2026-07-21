@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
@@ -15,13 +15,13 @@ interface BreakModalProps {
 
 const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
   const router = useRouter();
-  const breakDurationMinutes = useStoreSettingsStore((s) => s.breakDurationMinutes);
-  const isBreakAndSwitchEnabled = useStoreSettingsStore((s) => s.isBreakAndSwitchEnabled);
+  const breakDurationMinutes = useLocationConfigStore((s) => s.config.timeclock.breakDurationMinutes);
+  const isBreakAndSwitchEnabled = useLocationConfigStore((s) => s.config.timeclock.breakAndSwitchEnabled);
   const BREAK_DURATION_MS = breakDurationMinutes * 60 * 1000;
   const [timeLeft, setTimeLeft] = useState(BREAK_DURATION_MS);
 
-  // Get the functions and state needed from the unified timeclock store
-  const { startBreak, activeEmployeeId, getSession } = useTimeclockStore();
+  // Get the state needed from the unified timeclock store
+  const { activeEmployeeId, getSession, setActiveEmployee } = useTimeclockStore();
   const persistedBreakStartTime = useTimeclockStore((state) => state.breakStartTime);
 
   // Get the specific session for the currently active employee
@@ -35,9 +35,10 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
     ? new Date(persistedBreakStartTime)
     : activeSession?.breakStartTime;
 
-  // This handler is now correct. It calls the store action which handles the logic.
+  // Employee is already on break when this modal is visible.
+  // Just clear the active employee (so another can log in) and navigate to PIN login.
   const handleSwitchAccount = () => {
-    startBreak();
+    setActiveEmployee(null);
     replaceRoute('(auth)', 'pin-login');
   };
 

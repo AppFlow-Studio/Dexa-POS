@@ -1,7 +1,32 @@
 import { CartItem, MenuItemType, ModifierCategory } from '@/lib/types'
+import { orderStoreDiagnosticLog } from '@/lib/performanceDiagnostics'
+import { Image } from 'expo-image'
 import { create } from 'zustand'
+import { useLocationConfigStore } from './useLocationConfigStore'
 import { useMenuStore } from './useMenuStore'
 import { useSeatingStore } from './useSeatingStore'
+import { useSettingsStore } from './useSettingsStore'
+
+/**
+ * Fire-and-forget prefetch for a single menu item's remote image. Used by
+ * preWarm so a tap on an item that wasn't in MenuSection's bulk prefetch
+ * window still warms the disk/memory cache before the modifier screen
+ * renders the image. No-op for non-http(s) sources.
+ */
+function prefetchMenuItemImage (image: string | undefined): void {
+  if (!image || typeof image !== 'string') return
+  const trimmed = image.trim()
+  if (!trimmed) return
+  try {
+    const u = new URL(trimmed)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return
+    void Image.prefetch([trimmed], { cachePolicy: 'memory-disk' }).catch(
+      () => {},
+    )
+  } catch {
+    // not a URL — ignore
+  }
+}
 
 // ============================================================================
 // SYNCHRONOUS TOUCH BLOCKING - For same-frame menu blocking
@@ -18,6 +43,37 @@ export const setMenuBlockedSync = (blocked: boolean) => {
 /** Check if menu is blocked synchronously (O(1), no React) */
 export const isMenuBlockedSync = () => menuBlockedSyncRef
 
+const nowMs = () =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+
+let lastModifierOpenStartedAt = 0
+let deferredModifierResetTimer: ReturnType<typeof setTimeout> | null = null
+let deferredDraftTimer: ReturnType<typeof setTimeout> | null = null
+
+// Drafts only become visible to the user after the modifier screen closes,
+// so a press-DONE-fast flow never benefits from the draft having been
+// written to the cart. This delay skips the draft cart-write entirely
+// on the rapid path while still showing a placeholder for users who dwell.
+const DRAFT_CREATION_DELAY_MS = 220
+
+const clearDeferredModifierResetTimer = () => {
+  if (deferredModifierResetTimer) {
+    clearTimeout(deferredModifierResetTimer)
+    deferredModifierResetTimer = null
+  }
+}
+
+const clearDeferredDraftTimer = () => {
+  if (deferredDraftTimer) {
+    clearTimeout(deferredDraftTimer)
+    deferredDraftTimer = null
+  }
+}
+
+export const getLastModifierOpenStartedAt = () => lastModifierOpenStartedAt
+
 // ============================================================================
 // PRE-WARM CACHE - Precompute modifier data ahead of store open()
 // OPTIMIZED: Persist entries with TTL (5 min) - no delete on consume for re-tap speed
@@ -30,6 +86,19 @@ type PreWarmEntry = {
 }
 
 const preWarmCache = new Map<string, PreWarmEntry>()
+
+// Perf F5: whole categories are now pre-warmed (not just the first 6-12
+// items), so cap the cache. FIFO eviction — Map iteration order is insertion
+// order, and the TTL already handles staleness.
+const PREWARM_MAX_ENTRIES = 400
+
+function capPreWarmCache () {
+  while (preWarmCache.size > PREWARM_MAX_ENTRIES) {
+    const oldestKey = preWarmCache.keys().next().value
+    if (oldestKey === undefined) break
+    preWarmCache.delete(oldestKey)
+  }
+}
 
 /** Clear all cached precomputed modifier data. Call after menu sync to avoid stale modifiers. */
 export function clearModifierPreWarmCache () {
@@ -44,6 +113,10 @@ function getOrEvictCache (itemId: string): PreWarmEntry | undefined {
     return undefined
   }
   return entry
+}
+
+export function isModifierPreWarmed (itemId: string): boolean {
+  return !!getOrEvictCache(itemId)
 }
 
 // Pre-computed modifier selections for instant UI
@@ -92,6 +165,8 @@ interface ModifierSidebarState {
   draftCreatedId: string | null // Draft item ID created by open(), null if not created
 
   seatOverride: number | null // null = shared / use active seat
+  seatCount: number
+  showSeatPicker: boolean
   setSeatOverride: (seat: number | null) => void
 
   preWarm: (item: MenuItemType, categoryId?: string, menuId?: string) => void
@@ -125,6 +200,96 @@ interface ModifierSidebarState {
   close: () => void
   cancelAndRemoveDraft: () => void // Cancel and remove draft item if adding new
   setSelectedItemPosition: (position: ItemPosition | null) => void
+}
+
+/**
+ * Build the modifier selection map for EDIT mode — restore the cart item's
+ * saved selections (true, or 'no' for explicit "no X" options). Lazy: only
+ * true/'no' values are set; the component treats unset as false.
+ */
+function buildEditModeSelections (
+  modifiers: ModifierCategory[],
+  cartItem: CartItem
+): ModifierSelection {
+  const selections: ModifierSelection = {}
+  modifiers.forEach(category => {
+    selections[category.id] = {}
+    const existingModifier = cartItem.customizations.modifiers?.find(
+      mod => mod.categoryId === category.id
+    )
+    if (existingModifier) {
+      existingModifier.options.forEach(selectedOption => {
+        selections[category.id][selectedOption.id] = selectedOption.isNo
+          ? 'no'
+          : true
+      })
+    }
+  })
+  return selections
+}
+
+/**
+ * Build the modifier selection map for ADD mode — apply the auto-select rules.
+ * Reads the local `autoSelectFirstRequiredOption` setting, so this MUST run at
+ * open() time (not only at pre-warm) or a settings toggle won't take effect on
+ * already-cached items.
+ *   - setting OFF → required groups are left empty (NO pre-selection at all,
+ *     including any configured `isDefault`); submit-time validation in
+ *     ModifierScreen enforces a manual pick.
+ *   - setting ON → required groups are pre-selected: the configured default if
+ *     present (single = first, multiple = all), otherwise the first free ($0)
+ *     option, else the first available option.
+ * Optional (non-required) groups are unaffected by the setting and always keep
+ * their configured `isDefault` options.
+ */
+function computeAddModeSelections (
+  modifiers: ModifierCategory[]
+): ModifierSelection {
+  const settings = useSettingsStore.getState()
+  const selections: ModifierSelection = {}
+  modifiers.forEach(category => {
+    selections[category.id] = {}
+    const defaultOptions = category.options.filter(
+      option => option.isDefault === true && option.isAvailable !== false
+    )
+    const isRequired = category.type === 'required'
+    // Required groups are pre-selected ONLY when the setting is on. When off,
+    // leave them empty — suppressing even configured `isDefault` options — so
+    // the cashier must pick (submit-time validation enforces it). Optional
+    // groups are unaffected and keep their defaults (handled below).
+    if (isRequired && !settings.autoSelectFirstRequiredOption) return
+
+    // Reached only when not-required, or required-with-setting-on. For a
+    // required group with no configured default, fall back to first-free.
+    const wantFirstFree = isRequired && defaultOptions.length === 0
+
+    if (wantFirstFree) {
+      // Select first available option with price $0, else first available.
+      const freeOption = category.options.find(
+        option => option.isAvailable !== false && option.price === 0
+      )
+      if (freeOption) {
+        selections[category.id][freeOption.id] = true
+      } else {
+        const firstAvailableOption = category.options.find(
+          option => option.isAvailable !== false
+        )
+        if (firstAvailableOption) {
+          selections[category.id][firstAvailableOption.id] = true
+        }
+      }
+    } else if (defaultOptions.length > 0) {
+      // For single-select, use the first default; for multiple, use all.
+      if (category.selectionType === 'single') {
+        selections[category.id][defaultOptions[0].id] = true
+      } else {
+        defaultOptions.forEach(option => {
+          selections[category.id][option.id] = true
+        })
+      }
+    }
+  })
+  return selections
 }
 
 /**
@@ -189,65 +354,14 @@ function precomputeModifierData (
     })
   }
 
-  // OPTIMIZED: Lazy modifier selections - only set true values
-  // Components use (selection ?? false) pattern for unset options
-  const initialSelections: ModifierSelection = {}
-  modifiers.forEach(category => {
-    initialSelections[category.id] = {}
-
-    if (cartItem) {
-      // For edit mode, only restore existing TRUE selections from cart item
-      const existingModifier = cartItem.customizations.modifiers?.find(
-        mod => mod.categoryId === category.id
-      )
-
-      if (existingModifier) {
-        existingModifier.options.forEach(selectedOption => {
-          initialSelections[category.id][selectedOption.id] =
-            selectedOption.isNo ? 'no' : true
-        })
-      }
-      // OPTIMIZATION: Skip setting false values - component uses ?? false
-    } else {
-      // For add mode, auto-select defaults for required categories
-      if (category.type === 'required') {
-        // Priority 1: Find options with isDefault: true
-        const defaultOptions = category.options.filter(
-          option => option.isDefault === true && option.isAvailable !== false
-        )
-
-        if (defaultOptions.length > 0) {
-          // For single-select, use the first default; for multiple, use all defaults
-          if (category.selectionType === 'single') {
-            initialSelections[category.id][defaultOptions[0].id] = true
-          } else {
-            // Multiple selection - select all defaults
-            defaultOptions.forEach(option => {
-              initialSelections[category.id][option.id] = true
-            })
-          }
-        } else {
-          // Priority 2: No defaults set - select first available option with price $0
-          const freeOption = category.options.find(
-            option => option.isAvailable !== false && option.price === 0
-          )
-
-          if (freeOption) {
-            initialSelections[category.id][freeOption.id] = true
-          } else {
-            // Priority 3: No free option - select first available option
-            const firstAvailableOption = category.options.find(
-              option => option.isAvailable !== false
-            )
-            if (firstAvailableOption) {
-              initialSelections[category.id][firstAvailableOption.id] = true
-            }
-          }
-        }
-      }
-      // OPTIMIZATION: Skip setting false values - component uses ?? false
-    }
-  })
+  // Lazy modifier selections — only true/'no' values are set; the component
+  // uses (selection ?? false). Edit mode restores the cart item's saved
+  // selections; add mode applies the auto-select rules. NOTE: add-mode
+  // selections depend on local settings, so open() recomputes them when
+  // serving a cached (pre-warmed) entry — the cache can predate a toggle.
+  const initialSelections: ModifierSelection = cartItem
+    ? buildEditModeSelections(modifiers, cartItem)
+    : computeAddModeSelections(modifiers)
 
   // Set first category as active
   const activeCategory = modifiers.length > 0 ? modifiers[0].id : null
@@ -334,6 +448,11 @@ function _createDraftInOpen (
     price: itemPrice,
     unitPrice: sourceItem.price,
     cashPrice: cashPrice,
+    // Base prices (no modifiers) — required so addItemToBackend sends correct
+    // p_unit_price/p_cash_unit_price. Without baseCashPrice, the server's
+    // 4% fallback fires and stores a wrong cash_price (e.g., 3.95 × 0.96 = 3.79).
+    baseCardPrice: itemPrice,
+    baseCashPrice: cashPrice,
     image: sourceItem.image,
     isDraft: true,
     seatNumber: activeSeat ?? undefined,
@@ -365,6 +484,8 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
 
     // Seat override for per-seat ordering
     seatOverride: null,
+    seatCount: 0,
+    showSeatPicker: false,
     setSeatOverride: (seat: number | null) => set({ seatOverride: seat }),
 
     // Pre-computed data starts empty
@@ -379,6 +500,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
     draftCreatedId: null,
 
     preWarm: (item, categoryId, menuId) => {
+      // Warm the image cache regardless of modifier-cache hit so a recently
+      // re-tapped item with an evicted image still has bytes ready.
+      prefetchMenuItemImage(item.image)
       const existing = getOrEvictCache(item.id)
       if (existing) return
       // Compute WITHOUT setFn — no deferred price update yet; open() will handle it
@@ -390,6 +514,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         null
       )
       preWarmCache.set(item.id, { data: result, createdAt: Date.now() })
+      capPreWarmCache()
     },
 
     preWarmMany: (items, categoryId, menuId) => {
@@ -408,9 +533,13 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           preWarmCache.set(item.id, { data: result, createdAt: now })
         }
       }
+      capPreWarmCache()
     },
 
     open: config => {
+      clearDeferredModifierResetTimer()
+      clearDeferredDraftTimer()
+
       const {
         menuItem: menuItemParam,
         cartItem: cartItemParam,
@@ -421,6 +550,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
 
       // CRITICAL: Block touches synchronously FIRST (same frame, before React)
       setMenuBlockedSync(true)
+      lastModifierOpenStartedAt = nowMs()
 
       // Resolve the source menu item
       let sourceItem: MenuItemType | null = menuItemParam ?? null
@@ -443,27 +573,17 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         if (cachedEntry) {
           precomputed = cachedEntry.data
 
-          // Edit mode: cache was built without cartItem → initialSelections are defaults.
-          // Override with the actual cart item modifier selections.
-          if (cartItemParam) {
-            const cartItemSelections: ModifierSelection = {}
-            precomputed.modifiers.forEach(category => {
-              cartItemSelections[category.id] = {}
-              const existingMod = cartItemParam.customizations.modifiers?.find(
-                mod => mod.categoryId === category.id
-              )
-              if (existingMod) {
-                existingMod.options.forEach(opt => {
-                  cartItemSelections[category.id][opt.id] = opt.isNo
-                    ? 'no'
-                    : true
-                })
-              }
-            })
-            precomputed = {
-              ...precomputed,
-              initialSelections: cartItemSelections
-            }
+          // The cache was built at pre-warm time, before we knew add-vs-edit
+          // and possibly before a settings toggle. Recompute the selection map
+          // now so it's current: edit mode → the cart item's saved selections;
+          // add mode → the auto-select settings (which the cached entry may
+          // predate). Without this, toggling an auto-select setting wouldn't
+          // affect already-pre-warmed items.
+          precomputed = {
+            ...precomputed,
+            initialSelections: cartItemParam
+              ? buildEditModeSelections(precomputed.modifiers, cartItemParam)
+              : computeAddModeSelections(precomputed.modifiers)
           }
 
           // PreWarm skipped setFn, so schedule deferred price lookup if menuId exists
@@ -502,7 +622,19 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         const { useOrderStore } = require('./useOrderStore')
         const { activeOrderId } = useOrderStore.getState()
         let initialSeatOverride: number | null = null
+        let seatCount = 0
+        let showSeatPicker = false
         if (activeOrderId) {
+          const activeOrder = useOrderStore.getState().ordersById[activeOrderId]
+          const enablePerSeatOrdering =
+            useLocationConfigStore.getState().config.dining
+              .enablePerSeatOrdering
+          const isTableOrder = !!activeOrder?.service_location_id
+          seatCount = isTableOrder
+            ? useSeatingStore.getState().getSeatCount(activeOrderId)
+            : 0
+          showSeatPicker = isTableOrder && seatCount > 0
+
           if (cartItemParam) {
             // Edit mode: use the item's current seat
             initialSeatOverride = useSeatingStore
@@ -524,18 +656,6 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         const stateMenuItem =
           menuItemParam || includeMenuItemInState ? sourceItem : null
 
-        // Create draft instantly for "add" mode (menuItem without cartItem)
-        let draftCreatedId: string | null = null
-        if (menuItemParam && !cartItemParam) {
-          draftCreatedId = _createDraftInOpen(
-            sourceItem,
-            precomputed.itemPrice,
-            precomputed.itemCashPrice,
-            resolvedCatId,
-            resolvedMenuId
-          )
-        }
-
         set({
           isOpen: true,
           isMenuBlocked: true,
@@ -553,13 +673,52 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           activeModifierCategory: precomputed.activeCategory,
           precomputedForItemId: precomputed.forItemId,
           activeEditingItemId: cartItemParam?.id ?? null,
-          draftCreatedId,
-          seatOverride: initialSeatOverride
+          draftCreatedId: null,
+          seatOverride: initialSeatOverride,
+          seatCount,
+          showSeatPicker
         })
+
+        // Draft creation is deferred past the rapid-DONE window. If the
+        // user closes within DRAFT_CREATION_DELAY_MS, the draft is never
+        // written to the cart — handleSave's real addItem covers the full
+        // mutation in one step. clearDeferredDraftTimer fires from close()
+        // and from the start of the next open().
+        if (menuItemParam && !cartItemParam) {
+          const expectedItemId = precomputed.forItemId
+          deferredDraftTimer = setTimeout(() => {
+            deferredDraftTimer = null
+            const state = get()
+            if (
+              !state.isOpen ||
+              state.cartItem ||
+              state.precomputedForItemId !== expectedItemId
+            ) {
+              return
+            }
+            const draftCreatedId = _createDraftInOpen(
+              sourceItem,
+              precomputed.itemPrice,
+              precomputed.itemCashPrice,
+              resolvedCatId,
+              resolvedMenuId
+            )
+            const after = get()
+            if (
+              after.isOpen &&
+              !after.cartItem &&
+              after.precomputedForItemId === expectedItemId
+            ) {
+              set({ draftCreatedId })
+            }
+          }, DRAFT_CREATION_DELAY_MS)
+        }
       } else if (cartItemParam) {
         // Fallback: no menu item found, use cart item data directly
         const { useOrderStore: uos } = require('./useOrderStore')
         const { activeOrderId: fallbackOrderId } = uos.getState()
+        const enablePerSeatOrdering =
+          useLocationConfigStore.getState().config.dining.enablePerSeatOrdering
         const fallbackSeat = fallbackOrderId
           ? useSeatingStore
               .getState()
@@ -587,7 +746,14 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
           activeModifierCategory: null,
           precomputedForItemId: cartItemParam.menuItemId,
           activeEditingItemId: cartItemParam.id,
-          seatOverride: fallbackSeat
+          seatOverride: fallbackSeat,
+          seatCount: fallbackOrderId
+            ? useSeatingStore.getState().getSeatCount(fallbackOrderId)
+            : 0,
+          showSeatPicker:
+            !!fallbackOrderId &&
+            !!uos.getState().ordersById[fallbackOrderId]?.service_location_id &&
+            useSeatingStore.getState().getSeatCount(fallbackOrderId) > 0
         })
       }
     },
@@ -608,8 +774,20 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
     close: () => {
       // Cache persisted for re-tap speed; TTL evicts stale entries
 
+      // Cancel any deferred draft creation — if it hasn't fired yet, the
+      // user pressed DONE/Cancel before the dwell threshold and we skip
+      // the cart write entirely.
+      clearDeferredDraftTimer()
+
       // CRITICAL: Unblock touches synchronously FIRST (same frame)
       setMenuBlockedSync(false)
+      if (__DEV__ && lastModifierOpenStartedAt > 0) {
+        orderStoreDiagnosticLog(
+          `[perf][modifier] close requested at ${Math.round(
+            nowMs() - lastModifierOpenStartedAt
+          )}ms`
+        )
+      }
 
       // Phase 1: hide immediately so UI responds in the same frame.
       set({
@@ -619,32 +797,43 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         activeEditingItemId: null // Clear active item highlight
       })
 
-      // Phase 2: clear heavier payload if still closed next tick.
-      queueMicrotask(() => {
+      // Phase 2: release the heavy precomputed maps once ModifierScreenOverlay
+      // has actually unmounted the screen (it keeps it mounted+subscribed for
+      // 1.5s via keepMountedDuringClose for fast repeat edits). Resetting these
+      // any sooner forces a full re-render of the still-mounted ModifierScreen
+      // (menuItemForModifiers/optionsById/total all recompute) right as the
+      // close slide and cart-mutation re-render are happening — the combo reads
+      // as a freeze on Android. open() calls clearDeferredModifierResetTimer()
+      // before any state writes, so a rapid re-open cancels this timer cleanly.
+      // The double guard below covers the off-by-a-tick case where the timer
+      // task was already dispatched when the next open() ran.
+      //
+      // Lightweight scalars (mode, seatCount, etc.) are NOT cleared here —
+      // they get overwritten by the next open() and clearing them now just
+      // adds re-render fan-out on the keep-mounted ModifierScreen.
+      clearDeferredModifierResetTimer()
+      const closedAt = nowMs()
+      deferredModifierResetTimer = setTimeout(() => {
+        deferredModifierResetTimer = null
         const state = get()
         if (state.isOpen) return
+        // A new open() landed but its timer-clear hasn't been reflected yet.
+        if (lastModifierOpenStartedAt > closedAt) return
         set({
-          mode: 'add',
-          menuItem: null,
-          cartItem: null,
-          categoryId: null,
-          menuId: null,
           precomputedModifiers: null,
           precomputedCategoriesById: null,
           precomputedOptionsById: null,
           initialSelections: null,
-          itemPrice: 0,
-          itemCashPrice: 0,
-          activeModifierCategory: null,
-          precomputedForItemId: null,
-          draftCreatedId: null,
-          seatOverride: null
+          precomputedForItemId: null
         })
-      })
+      }, 1600)
     },
 
     cancelAndRemoveDraft: () => {
       // Cache persisted for re-tap speed; TTL evicts stale entries
+
+      // Cancel any pending deferred draft creation before tearing down.
+      clearDeferredDraftTimer()
 
       // CRITICAL: Unblock touches synchronously FIRST (same frame)
       setMenuBlockedSync(false)
@@ -674,28 +863,41 @@ export const useModifierSidebarStore = create<ModifierSidebarState>(
         }
       }
 
-      // Close the modal
+      // Close the modal immediately, then clear heavier payload once
+      // ModifierScreenOverlay has actually unmounted the screen (see close()
+      // for why this can't happen at 90ms while keepMountedDuringClose is true).
       set({
         isOpen: false,
         isMenuBlocked: false,
         selectedItemPosition: null,
-        activeEditingItemId: null,
-        mode: 'add',
-        menuItem: null,
-        cartItem: null,
-        categoryId: null,
-        menuId: null,
-        precomputedModifiers: null,
-        precomputedCategoriesById: null,
-        precomputedOptionsById: null,
-        initialSelections: null,
-        itemPrice: 0,
-        itemCashPrice: 0,
-        activeModifierCategory: null,
-        precomputedForItemId: null,
-        draftCreatedId: null,
-        seatOverride: null
+        activeEditingItemId: null
       })
+
+      clearDeferredModifierResetTimer()
+      deferredModifierResetTimer = setTimeout(() => {
+        deferredModifierResetTimer = null
+        const latest = get()
+        if (latest.isOpen) return
+        set({
+          mode: 'add',
+          menuItem: null,
+          cartItem: null,
+          categoryId: null,
+          menuId: null,
+          precomputedModifiers: null,
+          precomputedCategoriesById: null,
+          precomputedOptionsById: null,
+          initialSelections: null,
+          itemPrice: 0,
+          itemCashPrice: 0,
+          activeModifierCategory: null,
+          precomputedForItemId: null,
+          draftCreatedId: null,
+          seatOverride: null,
+          seatCount: 0,
+          showSeatPicker: false
+        })
+      }, 1600)
     },
 
     setSelectedItemPosition: (position: ItemPosition | null) => {

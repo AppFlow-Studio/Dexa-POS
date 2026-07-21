@@ -10,12 +10,20 @@
  */
 
 import { calculateOrderTotals } from "@/lib/order-calculator";
-import type { OrderProfile, OrderProfilePayment } from "@/lib/types";
+import { isOnlineOrderSource } from "@/lib/orderSource";
+import type { CartItem, OrderProfile, OrderProfilePayment } from "@/lib/types";
 import { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
+import {
+  selectSeenOrderIds,
+  useOnlineOrderDrawerStore,
+} from "../useOnlineOrderDrawerStore";
 import { useOrderStore } from "../useOrderStore";
+import { useSeatingStore } from "../useSeatingStore";
+import { useServiceChargeRulesStore } from "../useServiceChargeRulesStore";
 import { useSettingsStore } from "../useSettingsStore";
 import { useStoreSettingsStore } from "../useStoreSettingsStore";
+import { useTableSessionStore } from "../useTableSessionStore";
 
 /**
  * Shallow-compare two arrays of order IDs (string[]).
@@ -41,6 +49,47 @@ function hashStr(s: string): number {
   return h;
 }
 
+function hashNumber(value: number | null | undefined): number {
+  if (value == null || !Number.isFinite(value)) return 0;
+  return Math.round(value * 100);
+}
+
+function getOrderTime(value: string | null | undefined): number {
+  if (!value) return 0;
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function isOutstandingLocalEditAhead(
+  order: OrderProfile,
+  backendAmount: number | null | undefined,
+  calculatedAmount: number,
+): boolean {
+  // Reopened checks can receive new local items before the backend header
+  // catches up. Do not let the historical paid snapshot hide that new balance.
+  const hasPendingCartEdit = order.items.some(
+    (item) =>
+      !item.isDraft &&
+      (!item.db_order_item_id || item.sync_status === "pending"),
+  );
+  return (
+    order.check_status === "Opened" &&
+    (order._reopenedForOrdering || hasPendingCartEdit) &&
+    calculatedAmount > (backendAmount ?? 0) + 0.01
+  );
+}
+
+function resolveOutstandingAmount(
+  order: OrderProfile,
+  backendAmount: number | null | undefined,
+  calculatedAmount: number,
+): number {
+  if (isOutstandingLocalEditAhead(order, backendAmount, calculatedAmount)) {
+    return calculatedAmount;
+  }
+  return backendAmount ?? calculatedAmount;
+}
+
 /**
  * Stable equality for filtered order arrays.
  * Uses a numeric hash instead of string concatenation to avoid O(N)
@@ -55,6 +104,22 @@ function useStableOrderList(orders: OrderProfile[]): OrderProfile[] {
     const o = orders[i];
     hash = ((hash << 5) - hash + hashStr(o.id)) | 0;
     hash = ((hash << 5) - hash + (o.sync_version ?? 0)) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.order_status ?? "")) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.paid_status ?? "")) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.check_status ?? "")) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.order_type ?? "")) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.customer_name ?? "")) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.customer_id ?? "")) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.service_location_id ?? "")) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.display_number ?? "")) | 0;
+    hash = ((hash << 5) - hash + hashStr(o.order_number ?? "")) | 0;
+    hash = ((hash << 5) - hash + getOrderTime(o.opened_at)) | 0;
+    hash = ((hash << 5) - hash + (o.items?.length ?? 0)) | 0;
+    hash = ((hash << 5) - hash + (o._broadcastItemCount ?? 0)) | 0;
+    hash = ((hash << 5) - hash + (o.payments?.length ?? 0)) | 0;
+    hash = ((hash << 5) - hash + hashNumber(o.total_amount)) | 0;
+    hash = ((hash << 5) - hash + hashNumber(o.amount_due)) | 0;
+    hash = ((hash << 5) - hash + hashNumber(o.cash_amount_due)) | 0;
   }
 
   if (hash !== prevHash.current) {
@@ -76,6 +141,7 @@ export interface ActiveOrderTotals {
   tax: number;
   total: number;
   discount: number;
+  cashDiscount: number;
   itemCount: number;
   tip: number;
   // Outstanding amounts (what's left to pay)
@@ -84,9 +150,21 @@ export interface ActiveOrderTotals {
   // Full breakdown if needed
   outstandingSubtotal: number;
   outstandingTax: number;
+  cashOutstandingSubtotal: number;
+  cashOutstandingTax: number;
   cashSubtotal: number;
   cashTax: number;
   cashTotal: number;
+  // Service charge (folded into total / cashTotal). Snapshot rate is preferred
+  // (so live rule edits don't shift open orders); falls back to live rule.
+  serviceCharge: number;
+  cashServiceCharge: number;
+  // Remaining (unpaid) SC for partially-paid orders. Equals serviceCharge when
+  // nothing is paid. Lets the breakdown UI reconcile rows to balance due.
+  outstandingServiceCharge: number;
+  cashOutstandingServiceCharge: number;
+  serviceChargeName: string;
+  serviceChargeRate: number | null;
 }
 
 /**
@@ -107,16 +185,57 @@ export interface ActiveOrderTotals {
  * accuracy, switches to backend amount_due after payments for authoritative values.
  */
 export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
-  const activeOrderId = useOrderStore((s) => enabled ? s.activeOrderId : null);
-  const activeOrder = useOrderStore((s) =>
-    enabled && s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+  const activeOrderId = useOrderStore((s) =>
+    enabled ? s.activeOrderId : null,
   );
-  const taxRatesMap = useStoreSettingsStore((s) => enabled ? s.taxRatesMap : EMPTY_TAX_RATES_MAP);
+  const activeOrder = useOrderStore((s) =>
+    enabled && s.activeOrderId ? s.ordersById[s.activeOrderId] : null,
+  );
+  const taxRatesMap = useStoreSettingsStore((s) =>
+    enabled ? s.taxRatesMap : EMPTY_TAX_RATES_MAP,
+  );
+
+  // Service charge: rule (location-scoped) + party_size (session-scoped).
+  // Subscribed so the totals re-derive when staff bumps the seat stepper or
+  // the rules sync hook receives a fresh payload.
+  const scLocationId = useStoreSettingsStore((s) =>
+    enabled ? (s.selectedStore?.id ?? null) : null,
+  );
+  const serviceChargeRule = useServiceChargeRulesStore((s) =>
+    enabled ? s.resolveRule(scLocationId) : null,
+  );
+  const sessionPartySize = useTableSessionStore((s) => {
+    // O(1) lookup: useTableSessionStore.sessions is keyed by tableId, and an
+    // order's service_location_id IS its tableId. The `sx.id === sessionId`
+    // guard preserves the previous full-scan semantics exactly (including the
+    // reseat/stale-session miss → null). Assumes tableId === service_location_id.
+    const sessionId = activeOrder?.session_id;
+    if (!enabled || !sessionId) return null;
+    const locationId = activeOrder?.service_location_id;
+    if (!locationId) return null;
+    const sx = s.sessions[locationId];
+    return sx && sx.id === sessionId ? sx.party_size ?? null : null;
+  });
+  // seatCount is the local UI truth (SeatSelector stepper), session.party_size
+  // is the backend-authoritative fallback. order.guest_count intentionally not
+  // read — it's a write-only mirror and gets wiped by broadcast hydration.
+  const seatCount = useSeatingStore((s) =>
+    enabled && activeOrderId ? (s.byOrderId[activeOrderId]?.seatCount ?? null) : null,
+  );
 
   return useMemo(() => {
     if (!activeOrderId || !activeOrder) return null;
 
     const activeItems = activeOrder.items.filter((item) => !item.is_voided);
+
+    // Fallback for order-processing dine-in orders: no seating store entry and
+    // no table session means guest_count is the only available party size signal.
+    const guestCountFallback =
+      seatCount == null && sessionPartySize == null && !activeOrder.session_id &&
+      typeof activeOrder.guest_count === "number" && activeOrder.guest_count > 0
+        ? activeOrder.guest_count
+        : null;
+    const partySize = seatCount ?? sessionPartySize ?? guestCountFallback ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({
@@ -124,6 +243,20 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       checkDiscount: activeOrder.checkDiscount ?? null,
       taxRatesMap,
       payments: activeOrder.payments ?? [],
+      preserveItemLevelOutstanding: activeOrder._reopenedForOrdering === true,
+      serviceChargeRule,
+      partySize,
+      orderType: activeOrder.order_type ?? null,
+      snapshottedRate: activeOrder.service_charge_rate ?? null,
+      snapshottedAppliesOn: activeOrder.service_charge_applies_on ?? null,
+      snapshottedName: activeOrder.service_charge_name ?? null,
+      manualServiceCharge: activeOrder.service_charge_is_manual === true
+        ? (activeOrder.service_charge ?? 0)
+        : null,
+      manualServiceChargeTaxable: activeOrder.service_charge_is_taxable ?? null,
+      serverConfirmedServiceCharge: activeOrder.service_charge_is_manual !== true
+        ? (activeOrder.service_charge ?? null)
+        : null,
     });
 
     // Get tip from payments array (sum of all non-voided payment tips)
@@ -140,23 +273,42 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
     // Before payment: use frontend calculations for real-time accuracy
     // After payment: use backend values as source of truth for payment state
     const amountDue = hasPayments
-      ? (backendAmountDue ?? totals.outstanding_total)
+      ? resolveOutstandingAmount(
+          activeOrder,
+          backendAmountDue,
+          totals.outstanding_total,
+        )
       : totals.outstanding_total;
 
     const cashAmountDue = hasPayments
-      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+      ? resolveOutstandingAmount(
+          activeOrder,
+          backendCashAmountDue,
+          totals.cash_outstanding_total,
+        )
       : totals.cash_outstanding_total;
 
     // Diagnostic: warn when frontend and backend values diverge
-    if (hasPayments && backendAmountDue !== undefined &&
-        Math.abs(backendAmountDue - totals.outstanding_total) > 0.02) {
-      console.warn('[useActiveOrderTotals] Frontend/backend mismatch:', {
+    if (
+      hasPayments &&
+      backendAmountDue !== undefined &&
+      !isOutstandingLocalEditAhead(
+        activeOrder,
+        backendAmountDue,
+        totals.outstanding_total,
+      ) &&
+      Math.abs(backendAmountDue - totals.outstanding_total) > 0.02
+    ) {
+      console.warn("[useActiveOrderTotals] Frontend/backend mismatch:", {
         frontend: totals.outstanding_total,
         backend: backendAmountDue,
         orderId: activeOrderId,
         // Diagnostic: dump payment cashSavings to verify derivation
-        payments: (activeOrder.payments ?? []).map(p => ({
-          id: p.id, amount: p.amount, isCashPriced: p.isCashPriced, cashSavings: p.cashSavings,
+        payments: (activeOrder.payments ?? []).map((p) => ({
+          id: p.id,
+          amount: p.amount,
+          isCashPriced: p.isCashPriced,
+          cashSavings: p.cashSavings,
         })),
       });
     }
@@ -172,16 +324,39 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
       cashTax: totals.cash_tax_amount,
       total: totals.total_amount,
       discount: totals.discount_amount,
+      cashDiscount: totals.cash_discount_amount,
       itemCount,
       tip,
       amountDue,
       cashAmountDue,
       outstandingSubtotal: totals.outstanding_subtotal,
       outstandingTax: totals.outstanding_tax,
+      cashOutstandingSubtotal: totals.cash_outstanding_subtotal,
+      cashOutstandingTax: totals.cash_outstanding_tax,
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
+      serviceCharge: totals.service_charge,
+      cashServiceCharge: totals.cash_service_charge,
+      outstandingServiceCharge: totals.outstanding_service_charge,
+      cashOutstandingServiceCharge: totals.cash_outstanding_service_charge,
+      serviceChargeName: totals.service_charge_name,
+      // Amount-mode manual overrides have a flat dollar SC with no rate —
+      // showing the auto-rule rate as a fallback misleads the cashier (the SC
+      // shown is the manager's flat amount, not rule × subtotal).
+      serviceChargeRate:
+        activeOrder.service_charge_rate ??
+        (activeOrder.service_charge_is_manual
+          ? null
+          : serviceChargeRule?.rate_percent ?? null),
     };
-  }, [activeOrderId, activeOrder, taxRatesMap]);
+  }, [
+    activeOrderId,
+    activeOrder,
+    taxRatesMap,
+    serviceChargeRule,
+    sessionPartySize,
+    seatCount,
+  ]);
 }
 
 /**
@@ -199,13 +374,40 @@ export function useActiveOrderTotals(enabled = true): ActiveOrderTotals | null {
 export function useOrderTotals(
   orderId: string | null,
 ): ActiveOrderTotals | null {
-  const order = useOrderStore((s) => orderId ? s.ordersById[orderId] : null);
+  const order = useOrderStore((s) => (orderId ? s.ordersById[orderId] : null));
   const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
+
+  const scLocationId = useStoreSettingsStore(
+    (s) => s.selectedStore?.id ?? null,
+  );
+  const serviceChargeRule = useServiceChargeRulesStore((s) =>
+    s.resolveRule(scLocationId),
+  );
+  const sessionPartySize = useTableSessionStore((s) => {
+    // O(1) lookup keyed by tableId (= order.service_location_id); the
+    // `sx.id === sessionId` guard preserves the old full-scan semantics.
+    const sessionId = order?.session_id;
+    if (!sessionId) return null;
+    const locationId = order?.service_location_id;
+    if (!locationId) return null;
+    const sx = s.sessions[locationId];
+    return sx && sx.id === sessionId ? sx.party_size ?? null : null;
+  });
+  const seatCount = useSeatingStore((s) =>
+    orderId ? (s.byOrderId[orderId]?.seatCount ?? null) : null,
+  );
 
   return useMemo(() => {
     if (!orderId || !order) return null;
 
     const activeItems = order.items.filter((item) => !item.is_voided);
+
+    const guestCountFallback =
+      seatCount == null && sessionPartySize == null && !order.session_id &&
+      typeof order.guest_count === "number" && order.guest_count > 0
+        ? order.guest_count
+        : null;
+    const partySize = seatCount ?? sessionPartySize ?? guestCountFallback ?? null;
 
     // Calculate totals (uses TTL cache internally)
     const totals = calculateOrderTotals({
@@ -213,6 +415,20 @@ export function useOrderTotals(
       checkDiscount: order.checkDiscount ?? null,
       taxRatesMap,
       payments: order.payments ?? [],
+      preserveItemLevelOutstanding: order._reopenedForOrdering === true,
+      serviceChargeRule,
+      partySize,
+      orderType: order.order_type ?? null,
+      snapshottedRate: order.service_charge_rate ?? null,
+      snapshottedAppliesOn: order.service_charge_applies_on ?? null,
+      snapshottedName: order.service_charge_name ?? null,
+      manualServiceCharge: order.service_charge_is_manual === true
+        ? (order.service_charge ?? 0)
+        : null,
+      manualServiceChargeTaxable: order.service_charge_is_taxable ?? null,
+      serverConfirmedServiceCharge: order.service_charge_is_manual !== true
+        ? (order.service_charge ?? null)
+        : null,
     });
 
     // Get tip from payments array (sum of all non-voided payment tips)
@@ -227,17 +443,29 @@ export function useOrderTotals(
 
     // Authority logic: frontend before first payment, backend after
     const amountDue = hasPayments
-      ? (backendAmountDue ?? totals.outstanding_total)
+      ? resolveOutstandingAmount(order, backendAmountDue, totals.outstanding_total)
       : totals.outstanding_total;
 
     const cashAmountDue = hasPayments
-      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+      ? resolveOutstandingAmount(
+          order,
+          backendCashAmountDue,
+          totals.cash_outstanding_total,
+        )
       : totals.cash_outstanding_total;
 
     // Diagnostic: warn when frontend and backend values diverge
-    if (hasPayments && backendAmountDue !== undefined &&
-        Math.abs(backendAmountDue - totals.outstanding_total) > 0.02) {
-      console.warn('[useOrderTotals] Frontend/backend mismatch:', {
+    if (
+      hasPayments &&
+      backendAmountDue !== undefined &&
+      !isOutstandingLocalEditAhead(
+        order,
+        backendAmountDue,
+        totals.outstanding_total,
+      ) &&
+      Math.abs(backendAmountDue - totals.outstanding_total) > 0.02
+    ) {
+      console.warn("[useOrderTotals] Frontend/backend mismatch:", {
         frontend: totals.outstanding_total,
         backend: backendAmountDue,
         orderId,
@@ -250,16 +478,29 @@ export function useOrderTotals(
       cashTax: totals.cash_tax_amount,
       total: totals.total_amount,
       discount: totals.discount_amount,
+      cashDiscount: totals.cash_discount_amount,
       itemCount: activeItems.reduce((sum, item) => sum + item.quantity, 0),
       tip,
       amountDue,
       cashAmountDue,
       outstandingSubtotal: totals.outstanding_subtotal,
       outstandingTax: totals.outstanding_tax,
+      cashOutstandingSubtotal: totals.cash_outstanding_subtotal,
+      cashOutstandingTax: totals.cash_outstanding_tax,
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
+      serviceCharge: totals.service_charge,
+      cashServiceCharge: totals.cash_service_charge,
+      outstandingServiceCharge: totals.outstanding_service_charge,
+      cashOutstandingServiceCharge: totals.cash_outstanding_service_charge,
+      serviceChargeName: totals.service_charge_name,
+      serviceChargeRate:
+        order.service_charge_rate ??
+        (order.service_charge_is_manual
+          ? null
+          : serviceChargeRule?.rate_percent ?? null),
     };
-  }, [orderId, order, taxRatesMap]);
+  }, [orderId, order, taxRatesMap, serviceChargeRule, sessionPartySize, seatCount]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -293,15 +534,19 @@ export function useWorkingSetOrders(): OrderProfile[] {
 // ═══════════════════════════════════════════════════════════════════════════
 // Returns orders for this station's active order line:
 // - Working set orders OR orders from this station
-// - Excludes Dine In orders (handled by table/floor plan flow)
 // - order_status NOT IN ('completed', 'voided', 'cancelled', 'void')
 // - Must have items
 
-const INACTIVE_STATUSES = new Set(["completed", "voided", "cancelled", "void"]);
-const DINE_IN_TYPES = new Set(["Dine In", "dine_in"]);
-
+const INACTIVE_STATUSES = new Set([
+  "completed",
+  "voided",
+  "cancelled",
+  "void",
+  "declined", // online-order manual-decline is terminal
+]);
 export function useStationOrders(): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
   const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
@@ -319,10 +564,11 @@ export function useStationOrders(): OrderProfile[] {
     const workingSet = new Set(workingSetOrderIds);
 
     const result: OrderProfile[] = [];
-    const keys = Object.keys(ordersById);
-    for (let i = 0; i < keys.length; i++) {
-      const order = ordersById[keys[i]];
-      if (DINE_IN_TYPES.has(order.order_type ?? "")) continue;
+    // Iterate the pre-maintained orderIds array instead of allocating a fresh
+    // Object.keys(ordersById) on every evaluation.
+    for (let i = 0; i < orderIds.length; i++) {
+      const order = ordersById[orderIds[i]];
+      if (!order) continue;
       if (INACTIVE_STATUSES.has(order.order_status ?? "")) continue;
       if (!order.items || order.items.length === 0) continue;
 
@@ -348,7 +594,7 @@ export function useStationOrders(): OrderProfile[] {
       return bTime - aTime;
     });
     return result;
-  }, [ordersById, currentStationId, workingSetOrderIds, cutoffTime]);
+  }, [ordersById, orderIds, currentStationId, workingSetOrderIds, cutoffTime]);
 
   return useStableOrderList(filtered);
 }
@@ -370,6 +616,7 @@ export function useStationOrderCount(): number {
 
 export function useOtherStationOrders(): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
 
@@ -378,10 +625,11 @@ export function useOtherStationOrders(): OrderProfile[] {
 
     const workingSet = new Set(workingSetOrderIds);
     const result: OrderProfile[] = [];
-    const keys = Object.keys(ordersById);
 
-    for (let i = 0; i < keys.length; i++) {
-      const order = ordersById[keys[i]];
+    // Iterate the pre-maintained orderIds array instead of Object.keys(ordersById).
+    for (let i = 0; i < orderIds.length; i++) {
+      const order = ordersById[orderIds[i]];
+      if (!order) continue;
       if (order.station_id === currentStationId) continue;
       if (order.db_order_id && workingSet.has(order.db_order_id)) continue;
       if (INACTIVE_STATUSES.has(order.order_status ?? "")) continue;
@@ -394,7 +642,7 @@ export function useOtherStationOrders(): OrderProfile[] {
       return bTime - aTime;
     });
     return result;
-  }, [ordersById, currentStationId, workingSetOrderIds]);
+  }, [ordersById, orderIds, currentStationId, workingSetOrderIds]);
 
   return useStableOrderList(filtered);
 }
@@ -407,7 +655,9 @@ export function useOrderTypeCounts(): Record<string, number> {
   const stationOrders = useStationOrders();
   return useMemo(() => {
     // Single-pass counting instead of 1 filter + 2 sub-filters
-    let all = 0, takeaway = 0, delivery = 0;
+    let all = 0,
+      takeaway = 0,
+      delivery = 0;
     for (const o of stationOrders) {
       if (o.check_status === "Closed") continue;
       if (o.order_status === "completed" && o.paid_status === "Paid") continue;
@@ -433,6 +683,7 @@ export interface OrdersFilterState {
 
 export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const currentStation = useOrderStore((s) => s.currentStation);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
@@ -445,6 +696,7 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
       "voided",
       "cancelled",
       "void",
+      "declined",
     ]);
     const dineInTypes = new Set(["Dine In", "dine_in"]);
     const workingSet = new Set(workingSetOrderIds);
@@ -453,7 +705,12 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
     // Optimize: Single pass to build exclusion set
     const stationOrderIds = new Set<string>();
 
-    const allOrders = Object.values(ordersById);
+    // Build from the pre-maintained orderIds array instead of Object.values.
+    const allOrders: OrderProfile[] = [];
+    for (let i = 0; i < orderIds.length; i++) {
+      const o = ordersById[orderIds[i]];
+      if (o) allOrders.push(o);
+    }
 
     // First pass mainly to identify station orders for exclusion
     for (const o of allOrders) {
@@ -533,6 +790,7 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
     return result;
   }, [
     ordersById,
+    orderIds,
     currentStationId,
     currentStation,
     workingSetOrderIds,
@@ -564,49 +822,53 @@ export const useRemoteOrderCount = useOtherStationOrderCount;
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Filtered orders for order line display (non-dine-in, by daysToShow).
+ * Filtered orders for order line display (today, all active with items).
  * Uses useStableOrderList for referential stability when content unchanged.
  */
-export function useOrderLineFilteredOrders(daysToShow: number): OrderProfile[] {
+export function useOrderLineFilteredOrders(): OrderProfile[] {
   const raw = useOrderStore(
     useShallow((state) => {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - daysToShow);
-      cutoffDate.setHours(0, 0, 0, 0);
-      const cutoffTime = cutoffDate.getTime();
+      const now = new Date();
+      const startTime = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+      ).getTime();
+      const endTime = startTime + 86_400_000 - 1;
+
+      const myStationId = state.currentStationId;
+
       const result: OrderProfile[] = [];
+      const seenOrderIds = new Set<string>();
       for (let i = state.orderIds.length - 1; i >= 0; i--) {
         const o = state.ordersById[state.orderIds[i]];
         if (!o) continue;
-        const isOwnStation = o.station_id === state.currentStationId;
-        const isDraft = o.order_status === "draft";
+
+        const openedAt = getOrderTime(o.opened_at);
+        if (openedAt < startTime || openedAt > endTime) continue;
+        if (INACTIVE_STATUSES.has(o.order_status ?? "")) continue;
+        if (!(o.items.length > 0 || (o._broadcastItemCount ?? 0) > 0)) continue;
+
+        // Drafts are station-private. station_id == null lets external/online
+        // drafts (e.g. order_source='online') through.
         if (
-          new Date(o.opened_at || 0).getTime() >= cutoffTime &&
-          o.order_type !== "Dine In" &&
-          o.order_type !== "dine_in" &&
-          o.order_status !== "void" &&
-          o.order_status !== "completed" &&
-          o.check_status !== "Closed" &&
-          o.items.length > 0 &&
-          (
-            // Draft orders: only show own-station ones
-            (isDraft && isOwnStation) ||
-            // Active non-draft orders
-            (!isDraft && (
-              (o.order_status === "preparing" || o.order_status === "sent_to_kitchen") ||
-              (o.paid_status === "Unpaid" || o.paid_status === "Pending" || o.paid_status === "Partial") ||
-              (o.order_status === "ready" && o.paid_status === "Paid")
-            ))
-          )
-        ) {
-          result.push(o);
-        }
+          o.order_status === "draft" &&
+          o.station_id != null &&
+          myStationId != null &&
+          o.station_id !== myStationId
+        )
+          continue;
+
+        const canonicalId = o.db_order_id ?? o.id;
+        if (seenOrderIds.has(canonicalId)) continue;
+        seenOrderIds.add(canonicalId);
+        result.push(o);
       }
-      result.sort((a, b) =>
-        new Date(b.opened_at || 0).getTime() - new Date(a.opened_at || 0).getTime()
+      result.sort(
+        (a, b) => getOrderTime(b.opened_at) - getOrderTime(a.opened_at),
       );
       return result;
-    })
+    }),
   );
   return useStableOrderList(raw);
 }
@@ -620,10 +882,24 @@ export function useOrderLineFilteredOrders(daysToShow: number): OrderProfile[] {
  * With immer middleware, this returns a referentially stable object
  * for orders that haven't been mutated, preventing unnecessary re-renders.
  */
-export function useOrder(orderId: string | null | undefined): OrderProfile | null {
-  return useOrderStore((s) =>
-    orderId ? s.ordersById[orderId] ?? null : null
-  );
+export function useOrder(
+  orderId: string | null | undefined,
+): OrderProfile | null {
+  return useOrderStore((s) => (orderId ? (s.getOrder(orderId) ?? null) : null));
+}
+
+/**
+ * Subscribe to a single item in a local order.
+ * Immer keeps untouched item references stable when sibling items change.
+ */
+export function useOrderItem(
+  orderId: string | null | undefined,
+  itemId: string,
+): CartItem | null {
+  return useOrderStore((s) => {
+    if (!orderId) return null;
+    return s.getOrder(orderId)?.items.find((item) => item.id === itemId) ?? null;
+  });
 }
 
 /**
@@ -652,7 +928,7 @@ export function useOrderByAnyId(
  */
 export function useActiveOrder(): OrderProfile | null {
   return useOrderStore((s) =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId] ?? null : null
+    s.activeOrderId ? (s.ordersById[s.activeOrderId] ?? null) : null,
   );
 }
 
@@ -667,13 +943,15 @@ export function useActiveOrder(): OrderProfile | null {
 /**
  * Returns the active pre-auth payment for an order, if any.
  */
-export function useOrderPreAuth(orderId?: string): OrderProfilePayment | undefined {
+export function useOrderPreAuth(
+  orderId?: string,
+): OrderProfilePayment | undefined {
   return useOrderStore((s) => {
     if (!orderId) return undefined;
     const order = s.ordersById[orderId];
     if (!order?.payments) return undefined;
     return order.payments.find(
-      (p) => p.status === "authorized" && p.isPreAuth && !p.isVoided
+      (p) => p.status === "authorized" && p.isPreAuth && !p.isVoided,
     );
   });
 }
@@ -687,7 +965,7 @@ export function useHasActivePreAuth(orderId?: string): boolean {
     const order = s.ordersById[orderId];
     if (!order?.payments) return false;
     return order.payments.some(
-      (p) => p.status === "authorized" && p.isPreAuth && !p.isVoided
+      (p) => p.status === "authorized" && p.isPreAuth && !p.isVoided,
     );
   });
 }
@@ -699,4 +977,161 @@ export function useIsOwnStationOrder(order: OrderProfile | null): boolean {
     if (!order || !currentStationId) return false;
     return order.station_id === currentStationId;
   }, [order, currentStationId]);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Pending Online Orders (online-orders Kanban "New" column)
+// ═══════════════════════════════════════════════════════════════════════════
+// Incoming online/QR orders awaiting manual Accept/Decline.
+//
+// Keyed on isOnlineOrderSource(order_source) + order_status==='pending' — NOT
+// order_type. QR dine-in orders transform to order_type='takeout' (mapOrderType
+// has no qr_dine_in case), so order_type cannot distinguish them. order_source
+// is derived from the provider by process_online_order ('orderout' for
+// aggregators, 'online_store' for website/QR; legacy rows carry 'online'), so
+// this queue surfaces every pending online order.
+// Auto-accepted aggregator orders are never 'pending', so they won't appear.
+
+export function usePendingOnlineOrders(): OrderProfile[] {
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
+
+  const filtered = useMemo(() => {
+    const result: OrderProfile[] = [];
+    for (let i = 0; i < orderIds.length; i++) {
+      const o = ordersById[orderIds[i]];
+      if (!o) continue;
+      if (!isOnlineOrderSource(o.order_source)) continue;
+      if (o.order_status !== "pending") continue;
+      result.push(o);
+    }
+    // Newest first
+    result.sort((a, b) => getOrderTime(b.opened_at) - getOrderTime(a.opened_at));
+    return result;
+  }, [ordersById, orderIds]);
+
+  return useStableOrderList(filtered);
+}
+
+// Online orders we never show on the Kanban (terminal / dropped).
+// `completed` is intentionally KEPT so it can fill the "Done" column.
+const ONLINE_EXCLUDED_STATUSES = new Set([
+  "declined",
+  "cancelled",
+  "void",
+  "voided",
+  "refunded",
+]);
+
+/**
+ * All active online orders (any non-terminal status), newest first.
+ * The Kanban buckets these into its columns by order_status. Stable reference
+ * via useStableOrderList so unrelated store mutations don't churn the board.
+ */
+export function useOnlineOrders(): OrderProfile[] {
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const orderIds = useOrderStore((s) => s.orderIds);
+
+  const filtered = useMemo(() => {
+    const result: OrderProfile[] = [];
+    for (let i = 0; i < orderIds.length; i++) {
+      const o = ordersById[orderIds[i]];
+      if (!o) continue;
+      if (!isOnlineOrderSource(o.order_source)) continue;
+      if (ONLINE_EXCLUDED_STATUSES.has(o.order_status ?? "")) continue;
+      result.push(o);
+    }
+    result.sort((a, b) => getOrderTime(b.opened_at) - getOrderTime(a.opened_at));
+    return result;
+  }, [ordersById, orderIds]);
+
+  return useStableOrderList(filtered);
+}
+
+/**
+ * Count of pending online orders for the nav/header badge.
+ * Returns a primitive number, so subscribers re-render only when the count
+ * changes — not when any order in the store mutates.
+ */
+export function usePendingOnlineOrderCount(): number {
+  return useOrderStore((s) => {
+    let n = 0;
+    for (let i = 0; i < s.orderIds.length; i++) {
+      const o = s.ordersById[s.orderIds[i]];
+      if (o && isOnlineOrderSource(o.order_source) && o.order_status === "pending")
+        n++;
+    }
+    return n;
+  });
+}
+
+// Statuses that make an online order "active" for the right-edge drawer tab.
+// Positive allowlist (unlike ONLINE_EXCLUDED_STATUSES): `completed` orders
+// stay on the Kanban's Done column but don't keep the edge tab visible.
+const TAB_ACTIVE_ONLINE_STATUSES = new Set([
+  "pending",
+  "accepted",
+  "sent_to_kitchen",
+  "preparing",
+  "ready",
+]);
+
+function isTabActiveOnlineOrder(o: OrderProfile | undefined): o is OrderProfile {
+  return (
+    !!o &&
+    isOnlineOrderSource(o.order_source) &&
+    TAB_ACTIVE_ONLINE_STATUSES.has(o.order_status ?? "")
+  );
+}
+
+/** The stable key used for online-order seen-tracking (matches the Kanban). */
+export function getOnlineOrderKey(o: OrderProfile): string {
+  return o.db_order_id ?? o.id;
+}
+
+/**
+ * Count of active (pending → ready) online orders. Drives edge-tab
+ * visibility. Primitive return — subscribers re-render only on count change.
+ */
+export function useActiveOnlineOrderCount(): number {
+  return useOrderStore((s) => {
+    let n = 0;
+    for (let i = 0; i < s.orderIds.length; i++) {
+      if (isTabActiveOnlineOrder(s.ordersById[s.orderIds[i]])) n++;
+    }
+    return n;
+  });
+}
+
+/**
+ * Count of active online orders NOT yet seen on this station (drawer store's
+ * seen set). Drives the edge-tab badge. Two-store combine: subscribing to the
+ * seen map re-renders on seen writes, and the order-store selector closure
+ * re-evaluates with the fresh map on that render.
+ */
+export function useUnseenOnlineOrderCount(): number {
+  const seen = useOnlineOrderDrawerStore(selectSeenOrderIds);
+  return useOrderStore((s) => {
+    let n = 0;
+    for (let i = 0; i < s.orderIds.length; i++) {
+      const o = s.ordersById[s.orderIds[i]];
+      if (isTabActiveOnlineOrder(o) && !seen[getOnlineOrderKey(o)]) n++;
+    }
+    return n;
+  });
+}
+
+/**
+ * Non-hook snapshot of active online order keys. Used by the edge tab's
+ * press handler to feed openDrawer/toggleDrawer without subscribing the tab
+ * to the full order list.
+ */
+export function getActiveOnlineOrderKeys(): string[] {
+  const s = useOrderStore.getState();
+  const keys: string[] = [];
+  for (let i = 0; i < s.orderIds.length; i++) {
+    const o = s.ordersById[s.orderIds[i]];
+    if (isTabActiveOnlineOrder(o)) keys.push(getOnlineOrderKey(o));
+  }
+  return keys;
 }

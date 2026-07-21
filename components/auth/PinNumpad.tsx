@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { Delete, X } from 'lucide-react-native'
 import React from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
@@ -20,36 +21,42 @@ const PinButton = ({
   value: React.ReactNode
   onPress: () => void
   isAction?: boolean
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.7}
-    style={{
-      width: 90,
-      height: 56,
-      backgroundColor: isAction ? colors.screen : colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}
-  >
-    {typeof value === 'string' ? (
-      <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>
-        {value}
-      </Text>
-    ) : (
-      value
-    )}
-  </TouchableOpacity>
-)
+}) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.6}
+      style={{
+        width: s(80),
+        height: s(64),
+        backgroundColor: isAction ? colors.screen : colors.card,
+        borderWidth: isAction ? 0 : 1,
+        borderColor: colors.border,
+        borderRadius: s(14),
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}
+    >
+      {typeof value === 'string' ? (
+        <Text style={{ fontSize: s(20), fontWeight: '700', color: colors.heading }}>
+          {value}
+        </Text>
+      ) : (
+        value
+      )}
+    </TouchableOpacity>
+  )
+}
 
 const PinNumpad: React.FC<PinNumpadProps> = ({
   onKeyPress,
   showDecimalKey = false,
   onDecimalPress
 }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const numpadLayout = [
     '1',
     '2',
@@ -62,9 +69,9 @@ const PinNumpad: React.FC<PinNumpadProps> = ({
     '9',
     showDecimalKey
       ? '.'
-      : { icon: <X color={colors.muted} size={18} />, action: 'clear' },
+      : { icon: <X color={colors.muted} size={s(18)} />, action: 'clear' },
     '0',
-    { icon: <Delete color={colors.label} size={18} />, action: 'backspace' }
+    { icon: <Delete color={colors.label} size={s(18)} />, action: 'backspace' }
   ]
 
   const rows = [
@@ -75,9 +82,9 @@ const PinNumpad: React.FC<PinNumpadProps> = ({
   ]
 
   return (
-    <View style={{ gap: 10, alignSelf: 'center' }}>
+    <View style={{ gap: s(10), alignSelf: 'center' }}>
       {rows.map((row, rowIndex) => (
-        <View key={rowIndex} style={{ flexDirection: 'row', gap: 10 }}>
+        <View key={rowIndex} style={{ flexDirection: 'row', gap: s(10) }}>
           {row.map((item, colIndex) => {
             const index = rowIndex * 3 + colIndex
             if (typeof item === 'string') {

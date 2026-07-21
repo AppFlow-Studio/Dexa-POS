@@ -1,14 +1,15 @@
 import MenuForm from "@/components/menu/MenuForm";
-import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { useToast } from "@/contexts/ToastContext";
+import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
+import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router, useLocalSearchParams } from "expo-router";
 import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
 import React, { useMemo, useState } from "react";
-import { View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
 const EditMenuScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -19,8 +20,9 @@ const EditMenuScreen: React.FC = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
+  const { isSingleLocation } = useIsSingleLocation();
   const [isSaving, setIsSaving] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const setMenuTab = useMenuManagementSearchStore((s) => s.setActiveTab);
 
   const existing = useMemo(() => menus.find((m) => m.id === id), [id, menus]);
 
@@ -29,7 +31,12 @@ const EditMenuScreen: React.FC = () => {
     existing?.location_id === null || existing?.location_id === undefined;
   const isLocalMenu = existing?.location_id === selectedStore?.id;
 
-  if (existing && (isGlobalMenu || !isLocalMenu)) {
+  // Single-location merchants edit the global menu directly; multi-location
+  // keeps the read-only wall for global menus.
+  if (existing && isGlobalMenu && !isSingleLocation) {
+    return <GlobalItemScreen type="Menu" />
+  }
+  if (existing && !isGlobalMenu && !isLocalMenu) {
     return <GlobalItemScreen type="Menu" />
   }
 
@@ -141,35 +148,39 @@ const EditMenuScreen: React.FC = () => {
     }
   };
 
-  const handleDelete = () => {
-    if (!existing) return;
-    setShowDeleteModal(true);
-  };
-
-  const confirmDelete = async () => {
+  const handleDelete = async () => {
     if (!existing) return;
 
-    // Delete from backend
-    const { error } = await MenuService.deleteMenu(supabase, existing.id);
-    if (error) {
+    try {
+      setIsSaving(true);
+      const { error } = await MenuService.deleteMenu(supabase, existing.id);
+      if (error) {
+        show({
+          title: "Error",
+          message: error.message || "Failed to delete menu.",
+          type: "error",
+        });
+        return;
+      }
+
+      deleteMenu(existing.id);
       show({
-        title: "Error",
-        message: error.message || "Failed to delete menu.",
+        title: "Menu Deleted",
+        message: `Menu "${existing.name}" has been deleted.`,
+        type: "success",
+      });
+      setMenuTab("menus");
+      router.replace("/menu");
+    } catch (error) {
+      console.error(error);
+      show({
+        title: "Delete Error",
+        message: "Failed to delete menu. Please try again.",
         type: "error",
       });
-      setShowDeleteModal(false);
-      return;
+    } finally {
+      setIsSaving(false);
     }
-
-    // Delete from local store
-    deleteMenu(existing.id);
-    show({
-      title: "Menu Deleted",
-      message: `Menu "${existing.name}" has been deleted.`,
-      type: "success",
-    });
-    setShowDeleteModal(false);
-    router.replace({ pathname: "/menu", params: { tab: "menus" } });
   };
 
   if (!existing) {
@@ -195,17 +206,6 @@ const EditMenuScreen: React.FC = () => {
         title="Edit Menu"
         submitButtonLabel="Save Changes"
         onDelete={handleDelete}
-      />
-
-      {/* Delete Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onConfirm={confirmDelete}
-        title="Delete Menu"
-        description={`Are you sure you want to delete '${existing?.name}'?`}
-        confirmText="Delete"
-        variant="destructive"
       />
     </View>
   );

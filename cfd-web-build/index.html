@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <title>CFD Display</title>
+  <style>
+    /* Lock to full-screen, no scroll, dark background while bundle loads. */
+    html, body, #root {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      background: #0a0a0a;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      overscroll-behavior: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    /*
+      react-native-web's AppRegistry.runApplication injects an extra wrapper
+      <div> between #root and our React tree that defaults to height: auto.
+      That makes our top-level <View style={{flex:1}}> collapse to content
+      height — fine for OrderingScreen (lots of content) but disastrous for
+      IdleScreen (mostly absolutely-positioned images, which become 0x0).
+      Force every descendant of #root to fill so flex:1 on our root View
+      actually fills the WebView viewport.
+    */
+    #root { display: flex; flex-direction: column; }
+    #root > div { flex: 1; min-height: 100%; min-width: 100%; display: flex; flex-direction: column; }
+    /*
+      Cross-screen fade is handled inside CFDScreenRouter via Reanimated
+      `useAnimatedStyle` (not layout animations) — see `cfd-entry`'s screen
+      tree. CSS-only fades hit too broadly and cause flicker on inner divs.
+    */
+    /* Hide the native scrollbar that react-native-web sometimes exposes. */
+    *::-webkit-scrollbar { display: none; }
+    .cfd-loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #6b7280;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="cfd-loading" id="cfd-loading">CFD loading…</div>
+  </div>
+  <script>
+    // Forward all console output and uncaught errors to the host RN side so
+    // they show up in `adb logcat | grep CFDWeb`. Without this, errors inside
+    // the WebView's V8 are invisible from the device.
+    (function () {
+      function post(payload) {
+        try {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+          }
+        } catch (_) {}
+      }
+      function fmt(args) {
+        try {
+          return Array.prototype.slice.call(args).map(function (a) {
+            if (a instanceof Error) return a.stack || a.message || String(a);
+            if (typeof a === 'object') {
+              try { return JSON.stringify(a); } catch (_) { return String(a); }
+            }
+            return String(a);
+          }).join(' ');
+        } catch (_) { return ''; }
+      }
+      ['log','info','warn','error','debug'].forEach(function (level) {
+        var orig = console[level];
+        console[level] = function () {
+          post({ type: 'cfd_web_log', level: level, msg: fmt(arguments), ts: Date.now() });
+          if (orig) try { orig.apply(console, arguments); } catch (_) {}
+        };
+      });
+      window.addEventListener('error', function (e) {
+        post({
+          type: 'cfd_web_error',
+          message: String(e.message || e),
+          source: String(e.filename || ''),
+          line: e.lineno,
+          col: e.colno,
+          stack: e.error && e.error.stack ? e.error.stack : null,
+          ts: Date.now()
+        });
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        post({
+          type: 'cfd_web_error',
+          message: 'unhandledrejection: ' + (r && r.message ? r.message : String(r)),
+          stack: r && r.stack ? r.stack : null,
+          ts: Date.now()
+        });
+      });
+      post({ type: 'cfd_web_log', level: 'info', msg: '[cfd-html] booted, ua=' + navigator.userAgent, ts: Date.now() });
+    })();
+  </script>
+  <script src="./cfd.bundle.js" defer></script>
+</body>
+</html>

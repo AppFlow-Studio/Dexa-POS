@@ -1,525 +1,777 @@
-import { useCFD } from '@/contexts/CFDProvider'
-import { round2 } from '@/lib/order-calculator'
-import { colors } from '@/lib/theme'
-import { toastService } from '@/lib/toastService'
-import { PrinterService } from '@/services/printing/PrinterService'
+import { useCFD } from "@/contexts/CFDProvider";
+import { round2 } from "@/lib/order-calculator";
+import { colors } from "@/lib/theme";
+import { toastService } from "@/lib/toastService";
+import { useUiScale } from "@/lib/uiScale";
+import { PrinterService } from "@/services/printing/PrinterService";
 import {
-  useActiveOrder,
-  useActiveOrderTotals
-} from '@/stores/selectors/orderSelectors'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
-import { useOrderStore } from '@/stores/useOrderStore'
-import { usePaymentStore } from '@/stores/usePaymentStore'
-import { ArrowLeft, Banknote, Delete, DollarSign } from 'lucide-react-native'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+    useActiveOrder,
+    useActiveOrderTotals,
+} from "@/stores/selectors/orderSelectors";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentStore } from "@/stores/usePaymentStore";
+import { ArrowLeft, Delete, Printer } from "lucide-react-native";
+import { useEffect, useRef, useState } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
+
+const PRESET_BILLS = [10, 20, 50, 100];
+
 const CashPaymentView = () => {
-  // Refresh order data on mount and realtime reconnection
-  // useRefreshActiveOrder(); -> REMOVED to prevent overwriting local discount state with stale backend data
-
-  const activeOrderId = useOrderStore(s => s.activeOrderId)
-  const orderTotals = useActiveOrderTotals()
-  // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
-  const close = usePaymentStore(s => s.close)
-  const setView = usePaymentStore(s => s.setView)
-  const activeSplitId = usePaymentStore(s => s.activeSplitId)
-  const splits = usePaymentStore(s => s.splits)
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const orderTotals = useActiveOrderTotals();
+  const close = usePaymentStore((s) => s.close);
+  const setView = usePaymentStore((s) => s.setView);
+  const activeSplitId = usePaymentStore((s) => s.activeSplitId);
+  const splits = usePaymentStore((s) => s.splits);
   const handlePaymentCompletion = usePaymentStore(
-    s => s.handlePaymentCompletion
-  )
-  const expandSheetToFull = usePaymentStore(s => s.expandSheetToFull)
+    (s) => s.handlePaymentCompletion,
+  );
+  const expandSheetToFull = usePaymentStore((s) => s.expandSheetToFull);
   const setTransactionProcessing = usePaymentStore(
-    s => s.setTransactionProcessing
-  )
+    (s) => s.setTransactionProcessing,
+  );
 
-  // Expand bottom sheet to full height when entering cash payment view
   useEffect(() => {
-    expandSheetToFull()
-  }, [expandSheetToFull])
+    expandSheetToFull();
+  }, [expandSheetToFull]);
 
-  const [amountTendered, setAmountTendered] = useState('')
-  const [isProcessing, setIsProcessing] = useState(false)
+  const [amountTendered, setAmountTendered] = useState("");
+  const [cashTip, setCashTip] = useState("");
+  const [activeInput, setActiveInput] = useState<"tendered" | "tip">(
+    "tendered",
+  );
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<number | "exact" | null>(
+    null,
+  );
 
-  // Sync isTransactionProcessing with isProcessing
   useEffect(() => {
-    setTransactionProcessing(isProcessing)
-    return () => {
-      setTransactionProcessing(false)
-    }
-  }, [isProcessing, setTransactionProcessing])
+    setTransactionProcessing(isProcessing);
+    return () => setTransactionProcessing(false);
+  }, [isProcessing, setTransactionProcessing]);
 
   const {
     setBaseAmount,
     showPayment,
     showProcessing,
     showApproved,
-    showDeclined
-  } = useCFD()
+    showDeclined,
+  } = useCFD();
 
-  // Get the active order for backend cash_amount_due
-  const activeOrder = useActiveOrder()
+  const activeOrder = useActiveOrder();
 
-  // --- LOGIC: DETERMINE AMOUNT TO PAY (CASH PRICING) ---
-  const activeSplit = splits.find(s => s.id === activeSplitId)
-  // For cash payments, use cash outstanding total (unpaid items at cash prices)
-  // Priority: derived selector cash outstanding > backend cash_amount_due > full cash total
-  const activeOrderOutstandingCash = orderTotals?.cashAmountDue ?? 0
-  const activeOrderTotalCash = orderTotals?.cashTotal ?? 0
+  const activeSplit = splits.find((s) => s.id === activeSplitId);
+  const activeOrderOutstandingCash = orderTotals?.cashAmountDue ?? 0;
+  const activeOrderTotalCash = orderTotals?.cashTotal ?? 0;
   const effectiveOutstandingCash =
     activeOrderOutstandingCash > 0
       ? activeOrderOutstandingCash
       : activeOrder?.cash_amount_due !== undefined &&
-        activeOrder.cash_amount_due >= 0.01
-      ? activeOrder.cash_amount_due
-      : activeOrderTotalCash
-  // console.log("effectiveOutstandingCash", effectiveOutstandingCash);
+          activeOrder.cash_amount_due >= 0.01
+        ? activeOrder.cash_amount_due
+        : activeOrderTotalCash;
 
-  // For split payments, prefer cashAmount (cash pricing) over amount (card pricing)
-  // This ensures cash payments use the correct discounted cash price
   const total = activeSplit
-    ? activeSplit.cashAmount ?? activeSplit.amount
-    : effectiveOutstandingCash
-  // console.log("total", total);
+    ? (activeSplit.cashAmount ?? activeSplit.amount)
+    : effectiveOutstandingCash;
 
-  const roundedTotal = round2(total)
-  const grandTotal = roundedTotal
-  const tendered = round2(parseFloat(amountTendered) || 0)
-  const changeDue = round2(tendered - grandTotal)
-  const isSufficient = tendered >= grandTotal
+  const grandTotal = round2(total);
+  const tipAmount = round2(parseFloat(cashTip) || 0);
+  const totalWithTip = round2(grandTotal + tipAmount);
+  const tendered = round2(parseFloat(amountTendered) || 0);
+  const changeDue = round2(tendered - totalWithTip);
+  const isSufficient = tendered >= totalWithTip;
 
-  // Freeze displayed values once processing starts to prevent flicker
-  const frozenGrandTotal = useRef(grandTotal)
-  const frozenChangeDue = useRef(changeDue)
+  const frozenGrandTotal = useRef(grandTotal);
+  const frozenChangeDue = useRef(changeDue);
+
+  const displayGrandTotal = isProcessing
+    ? frozenGrandTotal.current
+    : totalWithTip;
+  const displayChangeDue = isProcessing ? frozenChangeDue.current : changeDue;
+
   useEffect(() => {
-    if (isProcessing) {
-      frozenGrandTotal.current = grandTotal
-      frozenChangeDue.current = changeDue
-    }
-  }, [isProcessing]) // Intentionally only depend on isProcessing — capture at transition
-  const displayGrandTotal = isProcessing ? frozenGrandTotal.current : grandTotal
-  const displayChangeDue = isProcessing ? frozenChangeDue.current : changeDue
-
-  // Generate smart bill suggestions based on grand total
-  const suggestions = useMemo(() => {
-    const bills = [10, 20, 50, 100]
-    return bills.filter(
-      bill => bill >= grandTotal || bill === 100 || bill === 50
-    )
-  }, [grandTotal])
-
-  const handleSelectAmount = (amount: number) => {
-    setAmountTendered(amount.toString())
-  }
-
-  const handleSelectExact = () => {
-    setAmountTendered(grandTotal.toFixed(2))
-  }
-
-  // Show cash payment on CFD when cash payment opens
-  useEffect(() => {
-    showPayment('cash')
-    return () => {
-      setBaseAmount(null)
-    }
-  }, [setBaseAmount, showPayment, total])
+    showPayment("cash");
+    return () => setBaseAmount(null);
+  }, [setBaseAmount, showPayment, total]);
 
   const handleProcessCashPayment = async () => {
-    setIsProcessing(true)
-    showPayment('cash')
-    showProcessing('cash', 0)
+    // Snapshot display values before toggling processing to avoid a one-frame
+    // flash of stale ref values (e.g. showing -full amount briefly).
+    frozenGrandTotal.current = totalWithTip;
+    frozenChangeDue.current = changeDue;
+    setIsProcessing(true);
+    showPayment("cash");
+    showProcessing("cash", 0);
     try {
-      const amountTenderedNum = parseFloat(amountTendered) || 0
+      // Fire cash drawer immediately — don't wait for payment to complete.
+      // The physical action has no data dependency on payment success.
+      PrinterService.openCashDrawer().catch((err) =>
+        console.warn("[CashPayment] Cash drawer auto-open failed:", err),
+      );
 
+      const amountTenderedNum = parseFloat(amountTendered) || 0;
       await handlePaymentCompletion({
-        method: 'Cash',
-        tipAmount: 0,
+        method: "Cash",
+        tipAmount,
         transactionDetails: {
           amountTendered: amountTenderedNum,
-          isCashPriced: true
-        }
-      })
-      showApproved()
-
-      // Fire-and-forget: auto-open cash drawer after successful payment
-      PrinterService.openCashDrawer().catch(err => {
-        console.warn('[CashPayment] Cash drawer auto-open failed:', err)
-      })
+          isCashPriced: true,
+        },
+      });
+      showApproved();
+      // Do NOT reset isProcessing on success — the view is closing and frozen
+      // totals must remain visible. Resetting would briefly show wrong change due
+      // because handlePaymentCompletion already zeroed the order totals.
     } catch (error) {
-      console.error('[CashPayment] Error processing payment:', error)
-      showDeclined()
+      console.error("[CashPayment] Error processing payment:", error);
+      showDeclined();
       toastService.show({
-        title: 'Payment Failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-        type: 'error',
-        duration: 5000
-      })
-    } finally {
-      setIsProcessing(false)
+        title: "Payment Failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+        type: "error",
+        duration: 5000,
+      });
+      setIsProcessing(false);
     }
-  }
+  };
 
-  const handleBack = () => {
-    setView('payment-method-selection')
-  }
+  const handleBack = () => setView("payment-method-selection");
+
+  const handleOpenDrawer = async () => {
+    try {
+      await PrinterService.openCashDrawer();
+    } catch (err) {
+      console.warn("[CashPayment] Manual drawer open failed:", err);
+    }
+  };
 
   const numpadHandler = (btn: string) => {
-    if (btn === '⌫') {
-      setAmountTendered(prev => (prev.length <= 1 ? '' : prev.slice(0, -1)))
-    } else if (btn === '.') {
-      if (!amountTendered.includes('.'))
-        setAmountTendered(prev => (prev || '0') + '.')
+    const setter = activeInput === "tendered" ? setAmountTendered : setCashTip;
+    if (btn === "⌫") {
+      setter((prev) => (prev.length <= 1 ? "" : prev.slice(0, -1)));
+    } else if (btn === ".") {
+      setter((prev) => {
+        if (prev.includes(".")) return prev;
+        return (prev || "0") + ".";
+      });
     } else {
-      setAmountTendered(prev => {
-        if (!prev && btn === '0') return '0'
-        const [, dec = ''] = prev.split('.')
-        if (prev.includes('.') && dec.length >= 2) return prev
-        return prev + btn
-      })
+      setter((prev) => {
+        if (!prev && btn === "0") return "0";
+        const [, dec = ""] = prev.split(".");
+        if (prev.includes(".") && dec.length >= 2) return prev;
+        return prev + btn;
+      });
     }
-  }
+  };
+
+  const handleSelectExact = () => {
+    setAmountTendered(totalWithTip.toFixed(2));
+    setActiveInput("tendered");
+    setSelectedPreset("exact");
+  };
+
+  const handleSelectPreset = (amount: number) => {
+    setAmountTendered(amount.toString());
+    setActiveInput("tendered");
+    setSelectedPreset(amount);
+  };
+
+  const eligiblePresets =
+    totalWithTip > 100 ? [] : PRESET_BILLS.filter((b) => b > totalWithTip);
+  const presetsRow1 = eligiblePresets.slice(0, 2);
+  const presetsRow2 = eligiblePresets.slice(2);
+
+  // Change calculator rows: bills to break down the change
+  const changeBreakdown = (() => {
+    if (!isSufficient || displayChangeDue <= 0) return null;
+    const bills = [100, 50, 20, 10, 5, 1, 0.25, 0.1, 0.05, 0.01];
+    const result: { label: string; count: number }[] = [];
+    let remaining = Math.round(displayChangeDue * 100);
+    for (const bill of bills) {
+      const billCents = Math.round(bill * 100);
+      const count = Math.floor(remaining / billCents);
+      if (count > 0) {
+        result.push({
+          label:
+            bill >= 1 ? `$${bill.toFixed(0)}` : `${Math.round(bill * 100)}¢`,
+          count,
+        });
+        remaining -= count * billCents;
+      }
+    }
+    return result;
+  })();
+
+  const labelStyle = getLabelStyle(s);
+  const inputStyle = getInputStyle(s);
 
   return (
-    <View
-      style={{ flex: 1, backgroundColor: colors.screen, flexDirection: 'row' }}
-    >
-      {/* LEFT: Amounts summary */}
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
+      {/* ── Header ── */}
       <View
         style={{
-          width: '42%',
-          borderRightWidth: 1,
-          borderRightColor: colors.border,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: s(20),
+          paddingVertical: s(12),
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
           backgroundColor: colors.panel,
-          padding: 20,
-          justifyContent: 'center',
-          gap: 0
         }}
       >
-        {/* Header */}
-        <View
+        <TouchableOpacity
+          onPress={handleBack}
+          disabled={isProcessing}
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 20
+            flexDirection: "row",
+            alignItems: "center",
+            gap: s(5),
+            opacity: isProcessing ? 0.4 : 1,
+            minWidth: s(72),
           }}
         >
+          <ArrowLeft size={s(15)} color={colors.muted} />
+          <Text
+            style={{ color: colors.muted, fontSize: s(13), fontWeight: "600" }}
+          >
+            Back
+          </Text>
+        </TouchableOpacity>
+
+        <Text
+          style={{
+            flex: 1,
+            textAlign: "center",
+            fontSize: s(15),
+            fontWeight: "700",
+            color: colors.heading,
+          }}
+        >
+          Cash Payment
+        </Text>
+
+        <View style={{ minWidth: s(72) }} />
+      </View>
+
+      {/* ── Body ── */}
+      <View style={{ flex: 1, flexDirection: "column" }}>
+        <View style={{ flex: 1, flexDirection: "row" }}>
+          {/* ── LEFT PANEL ── */}
           <View
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: `${colors.success}18`,
-              alignItems: 'center',
-              justifyContent: 'center'
+              width: "44%",
+              borderRightWidth: 1,
+              borderRightColor: colors.border,
+              padding: s(18),
             }}
           >
-            <Banknote size={16} color={colors.success} />
+            <View style={{ gap: s(10) }}>
+              {/* Total Due */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  paddingBottom: s(10),
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.muted,
+                    fontSize: s(12),
+                    fontWeight: "600",
+                  }}
+                >
+                  Total Due
+                </Text>
+                <Text
+                  style={{
+                    fontSize: s(22),
+                    fontWeight: "800",
+                    color: colors.heading,
+                  }}
+                >
+                  ${displayGrandTotal.toFixed(2)}
+                </Text>
+              </View>
+
+              {/* Amount Received */}
+              <View style={{ gap: s(5) }}>
+                <Text style={labelStyle}>Amount Received</Text>
+                <TouchableOpacity
+                  onPress={() => setActiveInput("tendered")}
+                  style={[
+                    inputStyle,
+                    {
+                      borderColor:
+                        activeInput === "tendered"
+                          ? colors.teal
+                          : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: s(16),
+                      fontWeight: "600",
+                    }}
+                  >
+                    $
+                  </Text>
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: s(20),
+                      fontWeight: "700",
+                      color: colors.heading,
+                      marginLeft: s(4),
+                    }}
+                  >
+                    {amountTendered || "0.00"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Cash Tip */}
+              <View style={{ gap: s(5) }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Text style={labelStyle}>Cash Tip (Optional)</Text>
+                  <Text style={{ color: colors.muted, fontSize: s(10) }}>
+                    Goes to server tip-out
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setActiveInput("tip")}
+                  style={[
+                    inputStyle,
+                    {
+                      height: s(42),
+                      borderColor:
+                        activeInput === "tip" ? colors.teal : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: s(15),
+                      fontWeight: "600",
+                    }}
+                  >
+                    $
+                  </Text>
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: s(17),
+                      fontWeight: "600",
+                      color: colors.heading,
+                      marginLeft: s(4),
+                    }}
+                  >
+                    {cashTip || "0.00"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Change Calculator */}
+              <View
+                style={{
+                  backgroundColor: isSufficient
+                    ? `${colors.teal}12`
+                    : `${colors.panel}`,
+                  borderRadius: s(10),
+                  padding: s(14),
+                  borderWidth: 1,
+                  borderColor: isSufficient
+                    ? `${colors.teal}40`
+                    : colors.border,
+                  gap: s(8),
+                  marginTop: s(2),
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      fontWeight: "700",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.8,
+                      color: isSufficient ? colors.teal : colors.muted,
+                    }}
+                  >
+                    {isSufficient ? "Change Due" : "Still Owed"}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: s(24),
+                      fontWeight: "800",
+                      color: isSufficient ? colors.teal : colors.muted,
+                    }}
+                  >
+                    $
+                    {isSufficient
+                      ? displayChangeDue.toFixed(2)
+                      : grandTotal - tendered > 0
+                        ? (grandTotal - tendered).toFixed(2)
+                        : "0.00"}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Give Back section */}
+              {changeBreakdown && changeBreakdown.length > 0 && (
+                <View
+                  style={{
+                    backgroundColor: colors.panel,
+                    borderRadius: s(10),
+                    padding: s(14),
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    gap: s(8),
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      fontWeight: "700",
+                      color: colors.teal,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.8,
+                    }}
+                  >
+                    Give back
+                  </Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: s(6),
+                    }}
+                  >
+                    {changeBreakdown.map(({ label, count }) => (
+                      <View
+                        key={label}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: s(3),
+                          backgroundColor: colors.screen,
+                          borderWidth: 1,
+                          borderColor: `${colors.teal}30`,
+                          borderRadius: s(6),
+                          paddingHorizontal: s(10),
+                          paddingVertical: s(4),
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: colors.teal,
+                            fontWeight: "700",
+                            fontSize: s(12),
+                          }}
+                        >
+                          {count}×
+                        </Text>
+                        <Text
+                          style={{
+                            color: colors.teal,
+                            fontWeight: "600",
+                            fontSize: s(12),
+                          }}
+                        >
+                          {label}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </View>
           </View>
-          <View>
-            <Text
-              style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
-            >
-              Cash Payment
-            </Text>
-            <Text style={{ color: colors.muted, fontSize: 11 }}>
-              {activeSplit
-                ? `For ${activeSplit.customerName}`
-                : 'Enter amount received'}
-            </Text>
-          </View>
-        </View>
 
-        {/* Total Due */}
-        <View
-          style={{
-            backgroundColor: colors.screen,
-            borderRadius: 10,
-            padding: 14,
-            borderWidth: 1,
-            borderColor: colors.border,
-            marginBottom: 10
-          }}
-        >
-          <Text
-            style={{
-              color: colors.muted,
-              fontSize: 10,
-              fontWeight: '700',
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-              marginBottom: 4
-            }}
-          >
-            Total Due
-          </Text>
-          <Text style={{ fontSize: 28, fontWeight: '700', color: colors.teal }}>
-            ${displayGrandTotal.toFixed(2)}
-          </Text>
-        </View>
-
-        {/* Amount Received */}
-        <View
-          style={{
-            backgroundColor: colors.screen,
-            borderRadius: 10,
-            padding: 14,
-            borderWidth: 1,
-            borderColor: colors.border,
-            marginBottom: 10
-          }}
-        >
-          <Text
-            style={{
-              color: colors.muted,
-              fontSize: 10,
-              fontWeight: '700',
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-              marginBottom: 4
-            }}
-          >
-            Amount Received
-          </Text>
-          <Text
-            style={{ fontSize: 22, fontWeight: '700', color: colors.heading }}
-          >
-            ${amountTendered || '0.00'}
-          </Text>
-        </View>
-
-        {/* Change Due */}
-        <View
-          style={{
-            backgroundColor: isSufficient
-              ? `${colors.success}10`
-              : colors.screen,
-            borderRadius: 10,
-            padding: 14,
-            borderWidth: 1,
-            borderColor: isSufficient ? `${colors.success}40` : colors.border
-          }}
-        >
-          <Text
-            style={{
-              color: colors.muted,
-              fontSize: 10,
-              fontWeight: '700',
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-              marginBottom: 4
-            }}
-          >
-            Change Due
-          </Text>
-          <Text
-            style={{
-              fontSize: 22,
-              fontWeight: '700',
-              color: isSufficient ? colors.success : colors.muted
-            }}
-          >
-            ${displayChangeDue > 0 ? displayChangeDue.toFixed(2) : '0.00'}
-          </Text>
-        </View>
-
-        {/* Footer buttons */}
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 20 }}>
-          <TouchableOpacity
-            onPress={handleBack}
-            disabled={isProcessing}
+          {/* ── RIGHT PANEL ── */}
+          <View
             style={{
               flex: 1,
-              paddingVertical: 10,
-              backgroundColor: colors.panel,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.border,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 5,
-              opacity: isProcessing ? 0.5 : 1
+              paddingVertical: s(12),
+              paddingHorizontal: s(16),
+              justifyContent: "space-between",
             }}
           >
-            <ArrowLeft size={14} color={colors.muted} />
-            <Text
-              style={{ color: colors.muted, fontWeight: '600', fontSize: 12 }}
+            {/* Numpad - centered */}
+            <View
+              style={{
+                flex: 1,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
             >
-              Back
+              <View style={{ gap: s(8), alignSelf: "center", width: "80%" }}>
+                {[
+                  ["1", "2", "3"],
+                  ["4", "5", "6"],
+                  ["7", "8", "9"],
+                  [".", "0", "⌫"],
+                ].map((row, i) => (
+                  <View key={i} style={{ flexDirection: "row", gap: s(8) }}>
+                    {row.map((btn) => (
+                      <TouchableOpacity
+                        key={btn}
+                        onPress={() => numpadHandler(btn)}
+                        style={{
+                          flex: 1,
+                          height: s(54),
+                          borderRadius: s(8),
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: colors.panel,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        {btn === "⌫" ? (
+                          <Delete size={s(15)} color={colors.muted} />
+                        ) : (
+                          <Text
+                            style={{
+                              color: colors.heading,
+                              fontSize: s(17),
+                              fontWeight: "600",
+                            }}
+                          >
+                            {btn}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ))}
+
+                {/* Preset row 1: EXACT + $10 + $20 */}
+                <View
+                  style={{ flexDirection: "row", gap: s(8), marginTop: s(32) }}
+                >
+                  <TouchableOpacity
+                    onPress={handleSelectExact}
+                    style={{
+                      flex: 1,
+                      height: s(46),
+                      borderRadius: s(8),
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor:
+                        selectedPreset === "exact" ? colors.teal : colors.panel,
+                      borderWidth: selectedPreset === "exact" ? 0 : 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          selectedPreset === "exact"
+                            ? colors.onSolid
+                            : colors.heading,
+                        fontWeight: "700",
+                        fontSize: s(9),
+                        textTransform: "uppercase",
+                        letterSpacing: 0.4,
+                      }}
+                    >
+                      Exact
+                    </Text>
+                    <Text
+                      style={{
+                        color:
+                          selectedPreset === "exact"
+                            ? colors.onSolid
+                            : colors.heading,
+                        fontWeight: "800",
+                        fontSize: s(11),
+                      }}
+                    >
+                      ${totalWithTip.toFixed(2)}
+                    </Text>
+                  </TouchableOpacity>
+                  {presetsRow1.map((bill) => (
+                    <TouchableOpacity
+                      key={bill}
+                      onPress={() => handleSelectPreset(bill)}
+                      style={{
+                        flex: 1,
+                        height: s(46),
+                        borderRadius: s(8),
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor:
+                          selectedPreset === bill ? colors.teal : colors.panel,
+                        borderWidth: selectedPreset === bill ? 0 : 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            selectedPreset === bill
+                              ? colors.onSolid
+                              : colors.heading,
+                          fontWeight: "700",
+                          fontSize: s(12),
+                        }}
+                      >
+                        ${bill}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Preset row 2: $50 + $100 */}
+                {presetsRow2.length > 0 && (
+                  <View style={{ flexDirection: "row", gap: s(8) }}>
+                    {presetsRow2.map((bill) => (
+                      <TouchableOpacity
+                        key={bill}
+                        onPress={() => handleSelectPreset(bill)}
+                        style={{
+                          flex: 1,
+                          height: s(46),
+                          borderRadius: s(8),
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor:
+                            selectedPreset === bill
+                              ? colors.teal
+                              : colors.panel,
+                          borderWidth: selectedPreset === bill ? 0 : 1,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              selectedPreset === bill
+                                ? colors.onSolid
+                                : colors.heading,
+                            fontWeight: "700",
+                            fontSize: s(12),
+                          }}
+                        >
+                          ${bill}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* ── Bottom Bar ── */}
+        <View
+          style={{
+            flexDirection: "row",
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            padding: s(12),
+            gap: s(10),
+            backgroundColor: colors.panel,
+          }}
+        >
+          <TouchableOpacity
+            onPress={handleOpenDrawer}
+            style={{
+              flex: 1,
+              paddingVertical: s(14),
+              borderRadius: s(9),
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              gap: s(7),
+              backgroundColor: colors.screen,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Printer size={s(15)} color={colors.muted} />
+            <Text
+              style={{
+                color: colors.heading,
+                fontWeight: "600",
+                fontSize: s(13),
+              }}
+            >
+              Open Drawer
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             onPress={handleProcessCashPayment}
             disabled={(!isSufficient && total > 0) || isProcessing}
             style={{
               flex: 2,
-              paddingVertical: 10,
-              borderRadius: 8,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor:
-                (isSufficient || total === 0) && !isProcessing
-                  ? colors.teal
-                  : colors.screen,
-              borderWidth:
-                (isSufficient || total === 0) && !isProcessing ? 0 : 1,
-              borderColor: colors.border
+              paddingVertical: s(14),
+              borderRadius: s(9),
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              gap: s(7),
+              backgroundColor: colors.teal,
+              opacity: (!isSufficient && total > 0) || isProcessing ? 0.35 : 1,
             }}
           >
             <Text
               style={{
-                fontWeight: '700',
-                fontSize: 12,
-                color:
-                  (isSufficient || total === 0) && !isProcessing
-                    ? '#000'
-                    : colors.muted
+                fontWeight: "600",
+                fontSize: s(13),
+                color: colors.onSolid,
               }}
             >
-              {isProcessing
-                ? 'Processing...'
-                : total === 0
-                ? 'Complete Order'
-                : 'Finalize Payment'}
+              {isProcessing ? "Processing..." : "Complete Order"}
             </Text>
+            {!isProcessing && (
+              <Text style={{ color: colors.onSolid, fontSize: s(13) }}>→</Text>
+            )}
           </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* RIGHT: Input + suggestions + numpad */}
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: colors.screen,
-          padding: 16,
-          justifyContent: 'center'
-        }}
-      >
-        {/* Display */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: colors.panel,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 8,
-            paddingHorizontal: 12,
-            height: 42,
-            marginBottom: 10
-          }}
-        >
-          <DollarSign size={14} color={colors.muted} />
-          <Text
-            style={{
-              flex: 1,
-              fontSize: 18,
-              fontWeight: '700',
-              color: colors.heading,
-              marginLeft: 6
-            }}
-          >
-            {amountTendered || '0.00'}
-          </Text>
-          {amountTendered.length > 0 && (
-            <TouchableOpacity onPress={() => setAmountTendered('')}>
-              <Delete size={14} color={colors.muted} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Quick suggestions */}
-        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
-          <TouchableOpacity
-            onPress={handleSelectExact}
-            style={{
-              flex: 1,
-              backgroundColor: `${colors.teal}15`,
-              borderWidth: 1,
-              borderColor: `${colors.teal}40`,
-              paddingVertical: 6,
-              borderRadius: 7,
-              alignItems: 'center'
-            }}
-          >
-            <Text
-              style={{ color: colors.teal, fontWeight: '700', fontSize: 12 }}
-            >
-              Exact
-            </Text>
-          </TouchableOpacity>
-          {suggestions.map(bill => (
-            <TouchableOpacity
-              key={bill}
-              onPress={() => handleSelectAmount(bill)}
-              style={{
-                flex: 1,
-                backgroundColor: colors.panel,
-                borderWidth: 1,
-                borderColor: colors.border,
-                paddingVertical: 6,
-                borderRadius: 7,
-                alignItems: 'center'
-              }}
-            >
-              <Text
-                style={{
-                  color: colors.heading,
-                  fontWeight: '700',
-                  fontSize: 12
-                }}
-              >
-                ${bill}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Numpad */}
-        <View style={{ alignItems: 'center', gap: 6 }}>
-          {[
-            ['1', '2', '3'],
-            ['4', '5', '6'],
-            ['7', '8', '9'],
-            ['.', '0', '⌫']
-          ].map((row, i) => (
-            <View key={i} style={{ flexDirection: 'row', gap: 6 }}>
-              {row.map(btn => (
-                <TouchableOpacity
-                  key={btn}
-                  onPress={() => numpadHandler(btn)}
-                  style={{
-                    width: 82,
-                    height: 50,
-                    borderRadius: 9,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: colors.panel,
-                    borderWidth: 1,
-                    borderColor: colors.border
-                  }}
-                >
-                  {btn === '⌫' ? (
-                    <Delete size={16} color={colors.muted} />
-                  ) : (
-                    <Text
-                      style={{
-                        color: colors.heading,
-                        fontSize: 18,
-                        fontWeight: '600'
-                      }}
-                    >
-                      {btn}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-          ))}
         </View>
       </View>
     </View>
-  )
-}
+  );
+};
 
-export default CashPaymentView
+const getLabelStyle = (s: (n: number) => number) => ({
+  color: colors.muted,
+  fontSize: s(10),
+  fontWeight: "700" as const,
+  textTransform: "uppercase" as const,
+  letterSpacing: 0.8,
+});
+
+const getInputStyle = (s: (n: number) => number) => ({
+  flexDirection: "row" as const,
+  alignItems: "center" as const,
+  backgroundColor: colors.panel,
+  borderRadius: s(8),
+  borderWidth: 1.5,
+  paddingHorizontal: s(12),
+  height: s(48),
+});
+
+export default CashPaymentView;

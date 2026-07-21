@@ -5,13 +5,14 @@
  * Coordinates between the local store and the backend.
  */
 
+import { captureRpcError } from "@/lib/supabase";
 import {
-  DenominationCount,
-  DrawerOperationType,
-  DrawerSession,
-  isDebitOperation,
-  isNoEffectOperation,
-  useCashDrawerStore,
+    DenominationCount,
+    DrawerOperationType,
+    DrawerSession,
+    isDebitOperation,
+    isNoEffectOperation,
+    useCashDrawerStore,
 } from "@/stores/useCashDrawerStore";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
@@ -38,7 +39,7 @@ export const US_DENOMINATIONS: Omit<DenominationCount, "count" | "total">[] = [
 export async function findDrawerForStation(
   supabase: SupabaseClient,
   stationId: string,
-  locationId: string
+  locationId: string,
 ): Promise<{ id: string; name: string } | null> {
   const { data, error } = await supabase
     .from("cash_drawers")
@@ -66,7 +67,7 @@ export async function openDrawerSession(
     openedBy: string; // staff_profile_id
     openingAmount: number;
     openingCountDetails?: DenominationCount[];
-  }
+  },
 ): Promise<{ success: boolean; sessionId?: string; error?: string }> {
   const businessDate = new Date().toISOString().split("T")[0];
 
@@ -129,7 +130,7 @@ export async function closeDrawerSession(
     closingAmount: number;
     closingCountDetails?: DenominationCount[];
     varianceNotes?: string;
-  }
+  },
 ): Promise<{ success: boolean; variance?: number; error?: string }> {
   const store = useCashDrawerStore.getState();
   const expectedCash = store.getRunningBalance();
@@ -162,7 +163,11 @@ export async function closeDrawerSession(
     .eq("id", params.cashDrawerId);
 
   // Update local store
-  store.closeSession(params.closingAmount, params.closingCountDetails, params.closedBy);
+  store.closeSession(
+    params.closingAmount,
+    params.closingCountDetails,
+    params.closedBy,
+  );
 
   return { success: true, variance };
 }
@@ -182,10 +187,11 @@ export async function recordDrawerOperation(
     performedBy: string;
     orderId?: string;
     paymentId?: string;
+    vendorId?: string;
     reason?: string;
     approvedBy?: string;
     receiptPrinted?: boolean;
-  }
+  },
 ): Promise<{ success: boolean; error?: string }> {
   const store = useCashDrawerStore.getState();
   const currentBalance = store.getRunningBalance();
@@ -210,32 +216,56 @@ export async function recordDrawerOperation(
     performedAt,
     orderId: params.orderId,
     paymentId: params.paymentId,
+    vendorId: params.vendorId,
     reason: params.reason,
     approvedBy: params.approvedBy,
     receiptPrinted: params.receiptPrinted,
   });
 
-  // Then persist to backend
-  const { error } = await supabase.from("cash_drawer_operations").insert({
-    id: opId,
-    cash_drawer_id: params.cashDrawerId,
-    session_id: params.sessionId,
-    operation_type: params.operationType,
-    amount: params.amount,
-    performed_by: params.performedBy,
-    performed_at: performedAt,
-    order_id: params.orderId || null,
-    payment_id: params.paymentId || null,
-    balance_after: balanceAfter,
-    reason: params.reason || null,
-    approved_by: params.approvedBy || null,
-  });
+  // Persist to backend via RPC (handles balance calc, session update, and
+  // audit_logs dual-logging for no-sale events atomically)
+  const baseRpcParams = {
+    p_cash_drawer_id: params.cashDrawerId,
+    p_session_id: params.sessionId,
+    p_operation_type: params.operationType,
+    p_amount: params.amount,
+    p_performed_by: params.performedBy,
+    p_order_id: params.orderId || null,
+    p_payment_id: params.paymentId || null,
+    p_reason: params.reason || null,
+    p_approved_by: params.approvedBy || null,
+  };
 
-  if (error) {
-    console.error("[CashDrawer] Failed to record operation, queuing offline:", error);
+  let rpcResult: any = null;
+  let rpcError: any = null;
+
+  ({ data: rpcResult, error: rpcError } = await supabase.rpc(
+    "record_cash_operation",
+    {
+      ...baseRpcParams,
+      p_vendor_id: params.vendorId || null,
+    },
+  ));
+
+  const missingVendorRpcParam =
+    rpcError?.message?.includes("record_cash_operation") &&
+    rpcError?.message?.includes("p_vendor_id");
+
+  if (missingVendorRpcParam) {
+    ({ data: rpcResult, error: rpcError } = await supabase.rpc(
+      "record_cash_operation",
+      baseRpcParams,
+    ));
+  }
+
+  if (rpcError || (rpcResult && !rpcResult.success)) {
+    const errMsg = rpcError?.message || rpcResult?.error || "Unknown error";
+    console.error("[CashDrawer] RPC failed, queuing offline:", errMsg);
+    if (rpcError) captureRpcError("record_cash_operation", rpcError);
     // Queue for offline sync
     try {
-      const { queueOperation } = require("@/services/offlineSyncService") as typeof import("@/services/offlineSyncService");
+      const { queueOperation } =
+        require("@/services/offlineSyncService") as typeof import("@/services/offlineSyncService");
       await queueOperation({
         type: "record_cash_drawer_operation",
         localOrderId: params.orderId || opId, // use opId as fallback key
@@ -249,23 +279,34 @@ export async function recordDrawerOperation(
           performed_at: performedAt,
           order_id: params.orderId || null,
           payment_id: params.paymentId || null,
+          vendor_id: params.vendorId || null,
           balance_after: balanceAfter,
           reason: params.reason || null,
           approved_by: params.approvedBy || null,
         },
       });
     } catch (queueError) {
-      console.error("[CashDrawer] Failed to queue offline operation:", queueError);
+      console.error(
+        "[CashDrawer] Failed to queue offline operation:",
+        queueError,
+      );
     }
-    return { success: false, error: error.message };
+    return { success: false, error: errMsg };
   }
 
-  // Update session expected_cash
-  if (!isNoEffectOperation(params.operationType)) {
-    await supabase
-      .from("cash_drawer_sessions")
-      .update({ expected_cash: balanceAfter })
-      .eq("id", params.sessionId);
+  if (params.vendorId) {
+    const { error: vendorPatchError } = await supabase
+      .from("cash_drawer_operations")
+      .update({ vendor_id: params.vendorId })
+      .eq("session_id", params.sessionId)
+      .eq("operation_type", params.operationType)
+      .eq("performed_by", params.performedBy)
+      .eq("amount", params.amount)
+      .eq("performed_at", performedAt);
+
+    if (vendorPatchError) {
+      console.warn("[CashDrawer] Failed to patch vendor_id:", vendorPatchError);
+    }
   }
 
   return { success: true };
@@ -278,13 +319,16 @@ export async function recordDrawerOperation(
 export async function hydrateDrawerSession(
   supabase: SupabaseClient,
   stationId: string,
-  locationId: string
+  locationId: string,
 ): Promise<boolean> {
   const store = useCashDrawerStore.getState();
 
   // Find drawer for station
   const drawer = await findDrawerForStation(supabase, stationId, locationId);
-  if (!drawer) return false;
+  if (!drawer) {
+    store.clearDrawer();
+    return false;
+  }
 
   store.setDrawer(drawer.id, drawer.name);
 
@@ -298,7 +342,14 @@ export async function hydrateDrawerSession(
     .limit(1)
     .maybeSingle();
 
-  if (!session) return false;
+  if (!session) {
+    useCashDrawerStore.setState((state) => ({
+      ...state,
+      activeSession: null,
+      operations: [],
+    }));
+    return false;
+  }
 
   // Fetch operations for this session
   const { data: ops } = await supabase
@@ -313,7 +364,9 @@ export async function hydrateDrawerSession(
     openedBy: session.opened_by,
     openedAt: session.opened_at,
     openingAmount: Number(session.opening_amount),
-    openingCountDetails: session.opening_count_details as DenominationCount[] | undefined,
+    openingCountDetails: session.opening_count_details as
+      | DenominationCount[]
+      | undefined,
     expectedCash: Number(session.expected_cash || session.opening_amount),
     status: "open",
   };
@@ -331,9 +384,12 @@ export async function hydrateDrawerSession(
         performedAt: op.performed_at,
         orderId: op.order_id,
         paymentId: op.payment_id,
+        vendorId: op.vendor_id || undefined,
         reason: op.reason,
-      }))
+      })),
     );
+  } else {
+    store.setOperations([]);
   }
 
   return true;

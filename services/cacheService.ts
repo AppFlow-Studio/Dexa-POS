@@ -7,10 +7,34 @@
  */
 
 import { queryClient } from "@/contexts/TanstackProvider";
-import { clearCacheData } from "@/lib/storage";
+import {
+    clearCacheData,
+    flushAllPendingWrites,
+    secureStorage,
+    storage,
+    syncStorage,
+} from "@/lib/storage";
+import { previousOrdersOfflineCache } from "@/stores/previousOrdersOfflineCache";
+import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
+import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
+import { useCFDClientStore } from "@/stores/useCFDClientStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useKDSStore } from "@/stores/useKDSStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
+import { useLoyaltyStore } from "@/stores/useLoyaltyStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
+import { usePrinterStore } from "@/stores/usePrinterStore";
+import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
+import { usePtoStore } from "@/stores/usePtoStore";
+import { useRefundFraudGuardStore } from "@/stores/useRefundFraudGuardStore";
+import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { useTipDistributionStore } from "@/stores/useTipDistributionStore";
 
 export interface CacheClearResult {
   success: boolean;
@@ -22,6 +46,83 @@ export interface CacheStats {
   orderCount: number;
   pendingSyncCount: number;
   hasCachedData: boolean;
+}
+
+const APP_SECURE_SESSION_KEYS = [
+  "clerk_was_signed_in",
+  "dexa-employee-storage",
+] as const;
+
+const CLERK_SECURE_KEY_PREFIXES = ["__clerk", "clerk.", "clerk_"] as const;
+
+const SESSION_STORES = [
+  useCashDrawerStore,
+  useCFDBuiltinStore,
+  useCFDClientStore,
+  useEmployeeStore,
+  useFloorPlanStore,
+  useKDSStore,
+  useLocationConfigStore,
+  useLoyaltyStore,
+  useOrderStore,
+  usePaymentTerminalStore,
+  usePrintQueueStore,
+  usePrinterStore,
+  usePtoStore,
+  useRefundFraudGuardStore,
+  useScheduleTemplateStore,
+  useSettingsStore,
+  useStoreSettingsStore,
+  useTableSessionStore,
+  useTimeclockStore,
+  useTipDistributionStore,
+] as const;
+
+function resetStore(store: {
+  setState?: Function;
+  getInitialState?: Function;
+}): void {
+  try {
+    if (!store?.setState || !store?.getInitialState) return;
+    store.setState(store.getInitialState(), true);
+  } catch (error) {
+    console.error("[resetClientSession] Failed to reset store:", error);
+  }
+}
+
+function clearClerkSessionCache(): void {
+  const secureKeys = secureStorage.getAllKeys();
+
+  for (const key of secureKeys) {
+    if (CLERK_SECURE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      secureStorage.remove(key);
+    }
+  }
+}
+
+/**
+ * Hard-reset all client state for a logout or identity switch while preserving
+ * only device identity and other non-session secure values.
+ */
+export async function resetClientSession(): Promise<void> {
+  await queryClient.cancelQueries();
+  queryClient.clear();
+
+  // Flush pending debounced writes so old state cannot land after the wipe.
+  flushAllPendingWrites();
+
+  storage.clearAll();
+  syncStorage.clearAll();
+
+  for (const key of APP_SECURE_SESSION_KEYS) {
+    secureStorage.remove(key);
+  }
+
+  clearClerkSessionCache();
+
+  for (const store of SESSION_STORES) {
+    resetStore(store);
+  }
 }
 
 /**
@@ -42,14 +143,34 @@ export function clearCache(): CacheClearResult {
     errors.push(`Failed to clear MMKV storage: ${error}`);
   }
 
-  // 2. Reset Zustand stores (in-memory state)
+  // 2. Clear module-scoped in-memory caches so stale data from the old session
+  //    cannot leak into the new one.
+  try {
+    // Lazy-import to avoid pulling the full PrinterDriver tree into every module
+    // that imports cacheService.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { clearDriverCache } = require("@/services/printing/DriverFactory");
+    clearDriverCache();
+    clearedKeys.push("driverCache (memory)");
+  } catch (err) {
+    errors.push(`Failed to clear driver cache: ${err}`);
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { invalidateCalculationCache } = require("@/lib/order-calculator");
+    invalidateCalculationCache();
+    clearedKeys.push("calculationCache (memory)");
+  } catch (err) {
+    errors.push(`Failed to clear calculation cache: ${err}`);
+  }
+
+  // 3. Reset Zustand stores (in-memory state)
   try {
     // Reset order store to initial state
     useOrderStore.setState({
       ordersById: {},
       orderIds: [],
       activeOrderId: null,
-      orders: [],
       isOnline: true,
       pendingSyncCount: 0,
       workingSetOrderIds: [],
@@ -110,7 +231,9 @@ export function clearStationData(): void {
 
   queryClient.clear();
 
-  console.log("[clearStationData] Cleared orders, active session, and query cache (kept employees, preserved unsynced)");
+  console.log(
+    "[clearStationData] Cleared orders, active session, and query cache (kept employees, preserved unsynced)",
+  );
 }
 
 /**
@@ -148,7 +271,16 @@ export function clearLocationData(): void {
 
   queryClient.clear();
 
-  console.log("[clearLocationData] Cleared orders, employees, and query cache (preserved unsynced)");
+  // Drop the Previous Orders offline fallback snapshot for this location so a
+  // logout / location switch doesn't leak the prior location's history.
+  const locationId = orderState.currentLocationId;
+  if (locationId) {
+    previousOrdersOfflineCache.clearLocation(locationId);
+  }
+
+  console.log(
+    "[clearLocationData] Cleared orders, employees, and query cache (preserved unsynced)",
+  );
 }
 
 /**

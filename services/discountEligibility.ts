@@ -3,6 +3,7 @@ import {
   getLocalMenuItemDiscounts,
   MenuItemDiscountRecord,
 } from "@/services/discountSync";
+import { round2 } from '@/utils/money';
 
 export type DiscountType = "percentage" | "fixed_amount";
 
@@ -88,7 +89,7 @@ export function calculateDiscountAmount(
   } else {
     amount = Math.min(discount.discount_value, applicableAmount);
   }
-  return Math.round(amount * 100) / 100;
+  return round2(amount ?? 0);
 }
 
 export function checkDiscountEligibility(
@@ -127,7 +128,12 @@ export function checkDiscountEligibility(
   }
 
   const currentDay = currentDate.getDay();
-  if (!discount.applicable_days.includes(currentDay)) {
+  const applicableDays = discount.applicable_days;
+  if (
+    applicableDays != null &&
+    applicableDays.length > 0 &&
+    !applicableDays.map(Number).includes(currentDay)
+  ) {
     return {
       eligible: false,
       reason: "Not valid today",
@@ -171,6 +177,16 @@ export function checkDiscountEligibility(
         calculated_savings: 0,
       };
     }
+  }
+
+  if (discount.requires_manager_approval) {
+    return {
+      eligible: false,
+      reason: "Requires manager approval",
+      discount,
+      applicable_amount: 0,
+      calculated_savings: 0,
+    };
   }
 
   if (discount.max_uses_per_day !== null) {

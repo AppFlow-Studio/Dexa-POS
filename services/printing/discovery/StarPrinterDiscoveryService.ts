@@ -4,6 +4,7 @@
 // Singleton pattern matching starPrinterHealthCheck.ts.
 
 import { AppState, AppStateStatus } from "react-native";
+import { isRecentlyNavigated } from "@/lib/rootNavigation";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { discoverStarPrinters } from "./StarPrinterDiscovery";
 import { useToastStore } from "@/stores/useToastStore";
@@ -35,9 +36,6 @@ async function performDiscoveryRound(): Promise<void> {
   isScanning = true;
 
   try {
-    const discovered = await discoverStarPrinters(SCAN_TIMEOUT_MS);
-    if (discovered.length === 0) return;
-
     const store = usePrinterStore.getState();
     const starPrinters = store.printers.filter(
       (p) => p.printerType === "star_micronics" && p.isActive && p.networkAddress,
@@ -45,14 +43,44 @@ async function performDiscoveryRound(): Promise<void> {
 
     if (starPrinters.length === 0) return;
 
+    // Skip the periodic LAN scan when every known Star printer with a stable
+    // key (MAC or serial) is currently healthy at its stored IP. Discovery is
+    // only useful for DHCP recovery; if nothing is broken, scanning adds
+    // needless TCP traffic that can collide with the Star printer's small TCP
+    // backlog and surface as "device busy" on a peer device.
+    const candidates = starPrinters.filter((p) => {
+      const mac = (p.metadata as Record<string, unknown> | null)?.macAddress;
+      return !!mac || !!p.serialNumber;
+    });
+    const allHealthy =
+      candidates.length > 0 && candidates.every((p) => p.isConnected);
+    if (allHealthy) {
+      return;
+    }
+
+    const discovered = await discoverStarPrinters(SCAN_TIMEOUT_MS);
+    if (discovered.length === 0) return;
+
     for (const printer of starPrinters) {
       const macAddress = (printer.metadata as Record<string, unknown> | null)?.macAddress as string | undefined;
-      if (!macAddress) continue;
+      if (!macAddress && !printer.serialNumber) continue;
 
-      // Find this printer in discovered results by MAC
-      const match = discovered.find(
-        (d) => d.macAddress && d.macAddress.toLowerCase() === macAddress.toLowerCase(),
-      );
+      // MAC wins (LAN-interface identifier the SDK returns directly). Fall
+      // back to serial_number for legacy rows that pre-date MAC capture.
+      const match =
+        (macAddress
+          ? discovered.find(
+              (d) =>
+                d.macAddress &&
+                d.macAddress.toLowerCase() === macAddress.toLowerCase(),
+            )
+          : undefined) ??
+        (printer.serialNumber
+          ? discovered.find(
+              (d) =>
+                d.serialNumber && d.serialNumber === printer.serialNumber,
+            )
+          : undefined);
 
       if (match && match.ipAddress !== printer.networkAddress) {
         console.log(
@@ -64,12 +92,14 @@ async function performDiscoveryRound(): Promise<void> {
           networkAddress: match.ipAddress,
         });
 
-        useToastStore.getState().show({
-          title: "Printer IP Updated",
-          message: `${printer.printerName} moved to ${match.ipAddress}.`,
-          type: "success",
-          duration: 5000,
-        });
+        if (!isRecentlyNavigated(1000)) {
+          useToastStore.getState().show({
+            title: "Printer IP Updated",
+            message: `${printer.printerName} moved to ${match.ipAddress}.`,
+            type: "success",
+            duration: 5000,
+          });
+        }
       }
     }
   } catch (e) {
@@ -103,7 +133,7 @@ function handleAppState(nextState: AppStateStatus): void {
 // ============================================================================
 
 export function startStarPrinterDiscoveryService(): void {
-  if (intervalId || initialTimeoutId) {
+  if (intervalId || initialTimeoutId || appStateSubscription) {
     stopStarPrinterDiscoveryService();
   }
 

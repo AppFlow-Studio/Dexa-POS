@@ -1,6 +1,8 @@
+import { useUiScale } from '@/lib/uiScale'
+import { colors } from '@/lib/theme'
 import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import { Text, View } from 'react-native'
 import Animated, {
   useAnimatedStyle,
@@ -9,6 +11,8 @@ import Animated, {
 } from 'react-native-reanimated'
 
 const PaymentProgressHeader: React.FC = () => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const view = usePaymentStore(s => s.view)
   const activeSplitId = usePaymentStore(s => s.activeSplitId)
   const splits = usePaymentStore(s => s.splits)
@@ -18,7 +22,12 @@ const PaymentProgressHeader: React.FC = () => {
 
   const progressWidth = useSharedValue(0)
 
-  const targetProgress = useMemo(() => {
+  // Wave Cat-B (§C3): freeze the bar at the last value when the view flips
+  // to 'verifying' so it doesn't visually regress (the verifying view isn't
+  // in isExecutionPhase, so the natural calc would drop to 10%).
+  const lastNonVerifyingProgress = useRef<number | null>(null)
+
+  const computedProgress = useMemo(() => {
     // --- 1. DEFINITIVE END STATE ---
     if (view === 'success') return 100
 
@@ -91,10 +100,12 @@ const PaymentProgressHeader: React.FC = () => {
       const moneyRatio = paidAmount / total
 
       let activityBonus = 0
-      // If we haven't paid yet but are on input screen, give visual progress
+      // If we haven't paid yet but are on input screen, give visual progress.
+      // Wave Cat-B: 'verifying' kept here so the bar holds steady when the
+      // view flips to verifying after a deadline rather than dropping back.
       if (
         moneyRatio < 0.01 &&
-        ['card', 'cash', 'manual', 'cardOptions'].includes(view)
+        ['card', 'cash', 'manual', 'cardOptions', 'verifying'].includes(view)
       ) {
         activityBonus = 0.1
       }
@@ -111,6 +122,19 @@ const PaymentProgressHeader: React.FC = () => {
     activeSplitId,
     splits
   ])
+
+  // Track the last non-verifying value so the bar holds steady when view
+  // flips to 'verifying' (would otherwise drop to setup-phase fallback).
+  useEffect(() => {
+    if (view !== 'verifying') {
+      lastNonVerifyingProgress.current = computedProgress
+    }
+  }, [view, computedProgress])
+
+  const targetProgress =
+    view === 'verifying' && lastNonVerifyingProgress.current != null
+      ? lastNonVerifyingProgress.current
+      : computedProgress
 
   // --- LABEL LOGIC ---
   const progressLabel = useMemo(() => {
@@ -152,6 +176,8 @@ const PaymentProgressHeader: React.FC = () => {
         return 'Custom Amounts'
       case 'review':
         return 'Review Order'
+      case 'verifying':
+        return 'Verifying Payment'
       default:
         return 'Processing'
     }
@@ -172,23 +198,62 @@ const PaymentProgressHeader: React.FC = () => {
   }))
 
   return (
-    <View className='w-full px-6 py-3 bg-panel border-b border-border'>
-      <View className='flex-row justify-between items-center mb-2'>
+    <View
+      style={{
+        width: '100%',
+        paddingHorizontal: s(24),
+        paddingVertical: s(12),
+        backgroundColor: colors.panel,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: s(8)
+        }}
+      >
         <Text
-          className='text-gray-400 text-xs font-bold uppercase tracking-widest'
+          style={{
+            color: colors.muted,
+            fontSize: s(11),
+            fontWeight: '700',
+            textTransform: 'uppercase',
+            letterSpacing: 0.8
+          }}
           numberOfLines={1}
         >
           {progressLabel}
         </Text>
-        <Text className='text-teal text-xs font-bold ml-2'>
+        <Text
+          style={{
+            color: colors.teal,
+            fontSize: s(11),
+            fontWeight: 'bold',
+            marginLeft: s(8)
+          }}
+        >
           {Math.round(targetProgress)}%
         </Text>
       </View>
 
-      <View className='h-1.5 w-full bg-surface rounded-full overflow-hidden'>
+      <View
+        style={{
+          height: 6,
+          width: '100%',
+          backgroundColor: colors.muted + '15',
+          borderRadius: s(3),
+          overflow: 'hidden'
+        }}
+      >
         <Animated.View
-          className='h-full bg-teal rounded-full'
-          style={animatedStyle}
+          style={[
+            animatedStyle,
+            { height: '100%', backgroundColor: colors.teal, borderRadius: s(3) }
+          ]}
         />
       </View>
     </View>

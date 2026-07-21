@@ -1,6 +1,7 @@
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { AddOn, CartItem, ItemSize } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Minus, Plus } from "lucide-react-native";
@@ -14,13 +15,17 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 import { Portal as Teleport } from "react-native-teleport";
+import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 
 const ItemCustomizationDialog: React.FC = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const { isOpen, mode, menuItem, cartItem, close } = useCustomizationStore();
   const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
-  const updateItemInActiveOrder = useOrderStore((s) => s.updateItemInActiveOrder);
+  const updateItemInActiveOrder = useOrderStore(
+    (s) => s.updateItemInActiveOrder,
+  );
   const generateCartItemId = useOrderStore((s) => s.generateCartItemId);
   const { show } = useToast();
 
@@ -39,10 +44,12 @@ const ItemCustomizationDialog: React.FC = () => {
       if (itemToLoad) {
         setQuantity(mode === "edit" ? cartItem!.quantity : 1);
         setSelectedSize(
-          mode === "edit" ? cartItem!.customizations.size : menuItem!.sizes?.[0]
+          mode === "edit"
+            ? cartItem!.customizations.size
+            : menuItem!.sizes?.[0],
         );
         setSelectedAddOns(
-          mode === "edit" ? cartItem!.customizations.addOns || [] : []
+          mode === "edit" ? cartItem!.customizations.addOns || [] : [],
         );
         setNotes(mode === "edit" ? cartItem!.customizations.notes || "" : "");
       }
@@ -67,7 +74,7 @@ const ItemCustomizationDialog: React.FC = () => {
     setSelectedAddOns((prev) =>
       prev.some((a) => a.id === addOn.id)
         ? prev.filter((a) => a.id !== addOn.id)
-        : [...prev, addOn]
+        : [...prev, addOn],
     );
   }, []);
 
@@ -90,6 +97,11 @@ const ItemCustomizationDialog: React.FC = () => {
       });
     } else {
       // If in add mode, create a brand new CartItem
+      const unitPrice = menuItem.price;
+      const cashPrice = menuItem.cashPrice ?? menuItem.price;
+      const itemSubtotal = total;
+      const cashSubtotal = cashPrice * quantity;
+
       const newItem: CartItem = {
         id: generateCartItemId(menuItem.id, {
           size: selectedSize,
@@ -101,12 +113,23 @@ const ItemCustomizationDialog: React.FC = () => {
         quantity,
         originalPrice: menuItem.price,
         price: total / quantity, // includes size/add-ons
-        cashPrice: menuItem.effective_cash_price ?? menuItem.price, // Cash base price for proper modifier calculation
+        unitPrice,
+        cashPrice,
+        // Base prices (no modifiers) — required so addItemToBackend sends
+        // correct p_unit_price/p_cash_unit_price to the RPC. Without these,
+        // the server's 4% cash-discount fallback fires.
+        baseCardPrice: menuItem.price,
+        baseCashPrice: cashPrice,
         image: menuItem.image,
         customizations: { size: selectedSize, addOns: selectedAddOns, notes },
         availableDiscount: menuItem.availableDiscount,
         appliedDiscount: null,
         paidQuantity: 0,
+        subtotal: itemSubtotal,
+        cashSubtotal,
+        taxRate: 0,
+        taxAmount: 0,
+        cashTaxAmount: 0,
       };
       addItemToActiveOrder(newItem);
       // show({
@@ -171,7 +194,7 @@ const ItemCustomizationDialog: React.FC = () => {
                     onPress={() => setQuantity((q) => Math.max(1, q - 1))}
                     className="p-2 border border-gray-300 rounded-full bg-white"
                   >
-                    <Minus color={colors.muted} size={20} />
+                    <Minus color={colors.muted} size={s(20)} />
                   </TouchableOpacity>
                   <Text className="text-xl font-bold text-gray-800 w-8 text-center">
                     {quantity}
@@ -181,7 +204,7 @@ const ItemCustomizationDialog: React.FC = () => {
                     onPress={() => setQuantity((q) => q + 1)}
                     className="p-2 bg-primary-400 rounded-full"
                   >
-                    <Plus color={colors.heading} size={20} />
+                    <Plus color={colors.heading} size={s(20)} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -226,7 +249,7 @@ const ItemCustomizationDialog: React.FC = () => {
                   <View className="flex-row flex-wrap gap-2">
                     {menuItem.addOns.map((addOn) => {
                       const isSelected = selectedAddOns.some(
-                        (a) => a.id === addOn.id
+                        (a) => a.id === addOn.id,
                       );
                       return (
                         <TouchableOpacity

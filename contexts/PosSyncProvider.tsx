@@ -1,57 +1,76 @@
-import { useInventorySync } from "@/hooks/pos/useInventorySync";
-import { usePreviousOrdersBootstrap } from "@/hooks/pos/usePreviousOrdersBootstrap";
-import { useOrdersQuery, orderQueryKeys } from "@/hooks/pos/useOrdersQuery";
-import { usePosSync } from "@/hooks/pos/usePosSync";
-import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { queryClient } from "@/contexts/TanstackProvider";
-import { MerchantRole } from "@/lib/types";
+import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
+import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
+import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
+import { usePosSync } from "@/hooks/pos/usePosSync";
+import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
+import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
+import { useOrderReconcile } from "@/hooks/useOrderReconcile";
+import { useStationLoginSync } from "@/hooks/useStationLoginSync";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
+import { getStorageSizeStats } from "@/lib/storage";
+import { initLandiPrinter } from "@/native/LandiPrinter";
+import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
+import { syncEmployees as syncEmployeesService } from "@/services/employeeSyncService";
 import { FloorPlanService } from "@/services/floorPlanService";
 import {
-  initializeOfflineSync,
-  isServiceInitialized,
-  setOfflineSyncSupabaseClient,
-} from "@/services/offlineSyncInit";
-import { setCoursingSupabaseClient } from "@/stores/useCoursingStore";
-import { setSeatingSupabaseClient } from "@/stores/useSeatingStore";
-import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
+    detectAndStoreCapabilities,
+    startHeartbeat,
+    startStarPrinterHealthCheck,
+    startTerminalHealthCheck,
+    stopHeartbeat,
+    stopStarPrinterHealthCheck,
+    stopTerminalHealthCheck,
+} from "@/services/hardware";
+import { initLocationConfigSync } from "@/services/locationConfigSync";
 import {
-  setFloorPlanSupabaseClient,
-  useFloorPlanStore,
+    initializeOfflineSync,
+    isServiceInitialized,
+    setOfflineSyncSupabaseClient,
+} from "@/services/offlineSyncInit";
+import {
+    startStarPrinterDiscoveryService,
+    stopStarPrinterDiscoveryService,
+} from "@/services/printing/discovery/StarPrinterDiscoveryService";
+import { getDriver } from "@/services/printing/DriverFactory";
+import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import {
+    startCastlesUsbAutoConnect,
+    stopCastlesUsbAutoConnect,
+} from "@/services/terminals/castlesUsbAutoConnect";
+import {
+    startTimeclockSyncProcessor,
+    stopTimeclockSyncProcessor,
+} from "@/services/timeclockSyncProcessor";
+import { setCoursingSupabaseClient } from "@/stores/useCoursingStore";
+import {
+    setFloorPlanSupabaseClient,
+    useFloorPlanStore,
 } from "@/stores/useFloorPlanStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
+import { setKDSSupabaseClient } from "@/stores/useKDSStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
-  setOrderStoreSupabaseClient,
-  useOrderStore,
+    setOrderStoreSupabaseClient,
+    useOrderStore,
 } from "@/stores/useOrderStore";
 import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
-import { useSettingsStore, SyncableDiningSettings } from "@/stores/useSettingsStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { initLocationConfigSync } from "@/services/locationConfigSync";
-import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { setKDSSupabaseClient, useKDSStore } from "@/stores/useKDSStore";
-import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
-import {
-  detectAndStoreCapabilities,
-  handleDeviceChangeIfNeeded,
-  ensureBuiltinPrinterProvisioned,
-  startHeartbeat,
-  stopHeartbeat,
-  startTerminalHealthCheck,
-  stopTerminalHealthCheck,
-  startStarPrinterHealthCheck,
-  stopStarPrinterHealthCheck,
-} from "@/services/hardware";
-import {
-  startStarPrinterDiscoveryService,
-  stopStarPrinterDiscoveryService,
-} from "@/services/printing/discovery/StarPrinterDiscoveryService";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
+import { setSeatingSupabaseClient } from "@/stores/useSeatingStore";
+import {
+    SyncableDiningSettings,
+    useSettingsStore,
+} from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
+import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { TaxRate } from "@/types/menu";
+import * as Sentry from "@sentry/react-native";
 import React, { useCallback, useEffect, useRef } from "react";
-import { AppState, AppStateStatus } from "react-native";
+import { AppState, AppStateStatus, InteractionManager } from "react-native";
 
 // Debug server URL - use your machine's local IP (run: ipconfig getifaddr en0)
 // Change this IP to match your machine's IP address
@@ -70,28 +89,30 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     (state) => state.selectedStation,
   );
   const isKDS = selectedStation?.station_type === "kds";
+  const hasCheckedStorageSizeRef = useRef(false);
+  const lastStoreSettingsRefreshRef = useRef<number>(0);
+  const lastEmployeeSyncRefreshRef = useRef<number>(0);
   const supabase = useSupabaseClient();
-  const setEmployees = useEmployeeStore((state) => state.setEmployees);
-  const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
-  // Archive layer: TanStack Query fetches orders and hydrates workspace (skip for KDS)
+  // Archive layer: TanStack Query fetches orders and hydrates workspace (skip for KDS).
+  // stationId is part of the queryKey so the server-side draft filter refetches
+  // when the user switches stations on the same device.
   useOrdersQuery({
     locationId: selectedStore?.id ?? null,
+    stationId: selectedStation?.id ?? null,
     enabled: !!selectedStore?.id && !isKDS,
   });
 
-  usePreviousOrdersBootstrap({
-    locationId: selectedStore?.id ?? null,
-    enabled: Boolean(supabase && selectedStore?.id && !isKDS),
-  });
-
-  // Register Supabase client with order store, floor plan store, coursing store, and offline sync
+  // Register Supabase client with all stores BEFORE bootstrap hooks run,
+  // so store methods have the client available when their effects fire.
   useEffect(() => {
     if (supabase) {
       setOrderStoreSupabaseClient(supabase);
       setFloorPlanSupabaseClient(supabase);
       setCoursingSupabaseClient(supabase);
       setSeatingSupabaseClient(supabase);
+      setCartShapeReconcileSupabaseClient(supabase);
       setOfflineSyncSupabaseClient(supabase);
+      setupConnectionQuality(supabase);
       setWaitlistSupabaseClient(supabase);
       setPreviousOrdersSupabaseClient(supabase);
       setKDSSupabaseClient(supabase);
@@ -117,25 +138,106 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     // };
   }, [supabase]);
 
-  // Device detection, builtin printer provisioning & heartbeat lifecycle
+  useBusinessDayRollover({
+    enabled: Boolean(supabase && selectedStore?.id && !isKDS),
+  });
+
+  // Keep 86/out-of-stock state live with website + other-station changes.
+  // pos_sync is staleTime:Infinity, so without this a website 86 never reaches a
+  // running POS. Surgical snooze-only reconcile (no full menu rebuild). KDS skips.
+  useMenuSnoozeReconcile(isKDS ? undefined : selectedStore?.id);
+
+  // Wave 3.0d-5: combined order reconcile on slow→fast + foreground recovery.
+  // Sequenced: cart-shape push (3.0f-3) → 500ms gap → header pull (3.0d-5).
+  // Each pass is independently flag-gated (EXPO_PUBLIC_CART_SHAPE_RECONCILE
+  // and EXPO_PUBLIC_ORDER_HEADER_RECONCILE). KDS skips both — it doesn't
+  // author or display orders in the order-processing sense.
+  useOrderReconcile({ enabled: !isKDS });
+
+  // Device detection & heartbeat lifecycle
   useEffect(() => {
     if (supabase && selectedStation?.id && selectedStore?.id) {
       detectAndStoreCapabilities(supabase, selectedStation.id)
         .then(async (capabilities) => {
-          // Detect device swaps and migrate stale built-in printers
-          await handleDeviceChangeIfNeeded(supabase, selectedStation.id, selectedStore.id, capabilities);
-
-          // Auto-provision a printer row for built-in printers (no-op if already exists)
-          await ensureBuiltinPrinterProvisioned(
-            supabase,
-            selectedStation.id,
-            selectedStore.id,
-            selectedStore.merchant_id,
-            capabilities,
-          );
-
           // Fetch printers into local store so PrinterService can route jobs
           await usePrinterStore.getState().fetchPrinters(selectedStore.id);
+
+          // Reconcile DB ↔ MMKV per-station receipt printer claim. The DB
+          // (stations.current_receipt_printer_id) is now the source of
+          // truth; useSettingsStore.defaultReceiptPrinterId is kept as a
+          // boot-window cache + safety net while devices roll over.
+          try {
+            const stationId = selectedStation.id;
+            const { data: stationRow } = await supabase
+              .from("stations")
+              .select("current_receipt_printer_id")
+              .eq("id", stationId)
+              .maybeSingle();
+
+            const dbClaim = stationRow?.current_receipt_printer_id ?? null;
+            const mmkvClaim =
+              useSettingsStore.getState().defaultReceiptPrinterId;
+            const setMmkv =
+              useSettingsStore.getState().setDefaultReceiptPrinterId;
+            const printers = usePrinterStore.getState().printers;
+
+            if (dbClaim) {
+              // Mirror DB onto selectedStation + MMKV so PrintRouter's fast
+              // path can read from the cache without an extra fetch.
+              if (selectedStation.current_receipt_printer_id !== dbClaim) {
+                useStoreSettingsStore.getState().setSelectedStation({
+                  ...selectedStation,
+                  current_receipt_printer_id: dbClaim,
+                });
+              }
+              if (mmkvClaim !== dbClaim) setMmkv(dbClaim);
+            } else if (mmkvClaim) {
+              // Legacy MMKV-only claim — promote to DB if the printer still
+              // exists at this location; otherwise clear the stale local id.
+              const stillExists = printers.some(
+                (p) => p.id === mmkvClaim && p.isActive,
+              );
+              if (stillExists) {
+                await usePrinterStore
+                  .getState()
+                  .setStationReceiptPrinter(stationId, mmkvClaim);
+              } else {
+                setMmkv(null);
+              }
+            }
+          } catch (e) {
+            console.warn(
+              "[PosSyncProvider] Receipt printer claim reconciliation failed:",
+              e,
+            );
+          }
+
+          // Pre-warm Landi printer + cashBox so the first cash payment
+          // doesn't pay cold-init cost on the AIDL bus (10-15s delay).
+          // Route through the driver instance so its `connected=true` flag is
+          // set — otherwise the next print/drawer call sees `!isConnected()`
+          // and re-runs initialize() per job.
+          if (capabilities.hasBuiltinPrinter && !isKDS) {
+            const landiPrinter = usePrinterStore
+              .getState()
+              .printers.find(
+                (p) => p.printerType === "builtin_landi" && p.isActive,
+              );
+            const warmUp = landiPrinter
+              ? getDriver(landiPrinter)
+                  .initialize(landiPrinter)
+                  .then(() => true)
+              : initLandiPrinter();
+            warmUp
+              .then((ok) =>
+                console.log(
+                  `[PosSyncProvider] Landi pre-warm ${ok ? "ok" : "skipped"}`,
+                ),
+              )
+              .catch((e) =>
+                console.warn("[PosSyncProvider] Landi pre-warm failed:", e),
+              );
+          }
         })
         .catch((e) =>
           console.warn("[PosSyncProvider] Device detection failed:", e),
@@ -146,7 +248,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     return () => {
       stopHeartbeat();
     };
-  }, [supabase, selectedStation?.id, selectedStore?.id]);
+  }, [supabase, selectedStation?.id, selectedStore?.id, isKDS]);
 
   // Terminal health check lifecycle
   useEffect(() => {
@@ -156,8 +258,36 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
     return () => {
       stopTerminalHealthCheck();
+      // Fire-and-forget graceful disconnect of the Castles singleton when
+      // the effect tears down (station switch, unmount). Prevents a stale
+      // socket from lingering against the previous terminal's host:port.
+      getSharedCastlesService()
+        .gracefulDisconnect()
+        .catch(() => {});
     };
   }, [supabase, selectedStation?.payment_terminal?.id]);
+
+  // Zero-touch Castles USB auto-connect: plug in a USB pin pad (or have it
+  // already attached at app/station load) and the shared singleton connects
+  // automatically. No-op unless the station's terminal is a USB Castles, and
+  // skipped in KDS mode (no POS hardware there).
+  useEffect(() => {
+    const terminal = selectedStation?.payment_terminal;
+    const isUsbCastles =
+      terminal?.terminal_type === "castles" &&
+      terminal?.connection_type === "usb";
+    if (!isKDS && isUsbCastles) {
+      startCastlesUsbAutoConnect();
+    }
+    return () => {
+      stopCastlesUsbAutoConnect();
+    };
+  }, [
+    isKDS,
+    selectedStation?.payment_terminal?.id,
+    selectedStation?.payment_terminal?.terminal_type,
+    selectedStation?.payment_terminal?.connection_type,
+  ]);
 
   // Star printer health check + background discovery lifecycle
   useEffect(() => {
@@ -174,73 +304,39 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // Sync employees from location_members
   const syncEmployees = useCallback(
     async (locationId: string) => {
-      setEmployeeSyncState({ isLoading: true, error: null });
       try {
-        const { data, error } = await supabase
-          .from("location_members")
-          .select(
-            `
-          id,
-          pin_code,
-          pin_plain,
-          role_code,
-          staff_profile_id,
-          staff_profiles (
-            id,
-            first_name,
-            last_name,
-            display_name,
-            avatar_url,
-            email,
-            phone
-          )
-        `,
-          )
-          .eq("location_id", locationId)
-          .eq("is_active", true);
-
-        if (error) throw error;
-
-        // console.log("Employee Sync Data received!");
-        // console.log("Employees count:", data?.length || 0);
-        // console.log("Employees data:", data);
-
-        // Map Supabase data to EmployeeProfile format
-        const mappedEmployees: EmployeeProfile[] = (data || []).map(
-          (row: any) => {
-            const profile = row.staff_profiles;
-            const fullName = `${profile?.first_name || ""} ${
-              profile?.last_name || ""
-            }`.trim();
-
-            return {
-              id: row.id, // location_member id
-              profileId: profile?.id || "",
-              fullName: fullName || "Unknown Staff",
-              displayName: profile?.display_name || fullName || "Unknown",
-              role: row.role_code as MerchantRole,
-              profilePictureUrl: profile?.avatar_url || undefined,
-              pin: row.pin_plain ?? null,
-              email: profile?.email,
-              phone: profile?.phone,
-              shiftStatus: "clocked_out" as const,
-            };
-          },
-        );
-
-        // Update employee store with mapped data
-        setEmployees(mappedEmployees);
-        setEmployeeSyncState({ isLoading: false, error: null });
-      } catch (err: any) {
-        console.error("Employee sync failed:", err);
-        setEmployeeSyncState({
-          isLoading: false,
-          error: err?.message || "Sync failed",
-        });
+        await syncEmployeesService(supabase, locationId);
+      } catch {
+        // Error state already recorded in useEmployeeStore by syncEmployeesService.
       }
     },
-    [supabase, setEmployees, setEmployeeSyncState],
+    [supabase],
   );
+
+  // Staff/PIN resync, gated behind a 5-minute staleness window shared by the
+  // AppState "active" handler and the idle interval fallback below — so a
+  // station left open and foregrounded for a whole shift (never backgrounded)
+  // still picks up backend PIN changes without needing a manual "Sync POS".
+  const refreshEmployeesIfStale = useCallback(() => {
+    const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+    if (!locationId) return;
+    const age = Date.now() - lastEmployeeSyncRefreshRef.current;
+    if (age <= 5 * 60 * 1000) return;
+    lastEmployeeSyncRefreshRef.current = Date.now();
+    console.log(
+      `[PosSyncProvider] Employee/PIN staleness resync firing (age ${Math.round(age / 1000)}s)`,
+    );
+    syncEmployeesService(supabase, locationId).catch(() => {});
+  }, [supabase]);
+
+  // Idle fallback: re-check staleness on an interval independent of AppState
+  // transitions, since a device that never backgrounds/foregrounds (the common
+  // case for a tablet POS left open through a shift) would otherwise never
+  // re-consult the 5-minute window at all.
+  useEffect(() => {
+    const interval = setInterval(refreshEmployeesIfStale, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [refreshEmployeesIfStale]);
 
   // Sync floor plans from backend
   const syncFloorPlans = useCallback(
@@ -266,7 +362,21 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // Load status if we have a floor plan
         if (defaultPlan?.id) {
           await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id);
+          // Await prefetch so all floorplans are cached before we strip
+          // orphaned sessions below.
+          await useFloorPlanStore
+            .getState()
+            .prefetchFloorPlans(
+              (floorPlans || []).map((floorPlan) => floorPlan.id),
+            );
         }
+
+        // Strip sessions for tables that no longer exist in ANY floorplan
+        // (e.g. after a floorplan was deleted). Safe to call now because all
+        // floorplans have been prefetched and cached.
+        const { useTableSessionStore } =
+          await import("@/stores/useTableSessionStore");
+        useTableSessionStore.getState()._stripOrphanedSessions();
 
         // Load waitlist and reservations
         await Promise.all([
@@ -298,6 +408,14 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         }
 
         const taxRates = (data || []) as TaxRate[];
+        if (taxRates.length === 0) {
+          // No error but zero rows — usually RLS silently filtering (stale JWT /
+          // location not in user's set). setTaxRates preserves existing rates
+          // rather than wiping the map and taxing everything at 0%.
+          console.warn(
+            "Tax rates sync returned 0 rows (no error) — preserving existing rates if any",
+          );
+        }
         useStoreSettingsStore.getState().setTaxRates(taxRates);
         // console.log("Tax rates synced:", taxRates.length);
       } catch (err: any) {
@@ -307,24 +425,70 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     [supabase],
   );
 
-  // Sync employees and floor plans when store is selected (parallel)
-  // KDS only needs employees (for PIN verification)
+  // Sync employees when store is selected.
+  // KDS only needs employees (for PIN verification).
+  // Floor plans + tax rates sync lives in the effect further down (the one
+  // that clears stale floor data first) — it used to ALSO run here, which
+  // double-fetched both on every store selection (perf F3 dedupe).
+  // Deferred past interactions so boot syncs don't compete with first paint.
   useEffect(() => {
-    if (selectedStore?.id) {
-      syncEmployees(selectedStore.id).then(() => {
+    if (!selectedStore?.id) return;
+    const storeId = selectedStore.id;
+    const task = InteractionManager.runAfterInteractions(() => {
+      console.log(
+        `[PosSyncProvider] Employee/PIN sync firing (store selection changed): ${storeId}`,
+      );
+      syncEmployees(storeId).then(() => {
         // Hydrate active shifts after employees are loaded (needs employee data for mapping)
         if (!isKDS) {
-          useTimeclockStore
-            .getState()
-            .hydrateActiveShifts(supabase, selectedStore.id);
+          useTimeclockStore.getState().hydrateActiveShifts(supabase, storeId);
         }
       });
-      if (!isKDS) {
-        syncFloorPlans(selectedStore.id);
-        syncTaxRates(selectedStore.id);
+    });
+    return () => task.cancel();
+  }, [selectedStore?.id, isKDS, syncEmployees, supabase]);
+
+  // Run timeclock queue processor at app scope so it is not tied to mounted screens.
+  useEffect(() => {
+    if (supabase && selectedStore?.id && !isKDS) {
+      startTimeclockSyncProcessor(supabase);
+    }
+
+    return () => {
+      stopTimeclockSyncProcessor();
+    };
+  }, [supabase, selectedStore?.id, isKDS]);
+
+  useEffect(() => {
+    if (hasCheckedStorageSizeRef.current) return;
+    hasCheckedStorageSizeRef.current = true;
+
+    const TEN_MB = 10 * 1024 * 1024;
+    const stats = getStorageSizeStats();
+    const buckets = [
+      { name: "general", ...stats.general },
+      { name: "secure", ...stats.secure },
+      { name: "sync", ...stats.sync },
+    ];
+
+    for (const bucket of buckets) {
+      if (bucket.totalBytes > TEN_MB) {
+        Sentry.captureMessage("MMKV bucket size exceeded 10MB", {
+          level: "warning",
+          tags: {
+            source: "storage_monitor",
+            bucket: bucket.name,
+          },
+          extra: {
+            totalBytes: bucket.totalBytes,
+            keyCount: bucket.keyCount,
+            thresholdBytes: TEN_MB,
+          },
+        });
       }
     }
-  }, [selectedStore?.id, isKDS, syncEmployees, syncFloorPlans, syncTaxRates]);
+  }, []);
+
   const setMenuData = useMenuStore((state) => state.setMenuData);
   const setSyncState = useMenuStore((state) => state.setSyncState);
 
@@ -347,9 +511,14 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const standaloneDataRef = useRef(standaloneData);
   standaloneDataRef.current = standaloneData;
 
-  // --- INVENTORY SYNC --- (skip for KDS)
-  const { data: inventoryData } = useInventorySync(isKDS ? null : (selectedStore?.id ?? null));
-  const setInventoryData = useInventoryStore((state) => state.setInventoryData);
+  // --- SERVICE CHARGE RULES SYNC --- (skip for KDS)
+  useServiceChargeRulesSync({
+    merchantId: isKDS ? null : (selectedStore?.merchant_id ?? null),
+    locationId: isKDS ? null : (selectedStore?.id ?? null),
+  });
+
+  // Inventory data is fetched lazily in inventory/_layout.tsx, not at startup.
+  // We still need to register the Supabase client so store methods work when inventory loads.
   const setInventorySupabase = useInventoryStore(
     (state) => state.setSupabaseClient,
   );
@@ -361,43 +530,45 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   // Helper to merge recipes into menu store
-  const applyRecipes = (data: typeof inventoryData) => {
+  const applyRecipes = (
+    data:
+      | {
+          menu_item_ingredients?: Array<{
+            menu_item_id: string;
+            inventory_item_id: string;
+            quantity: number;
+          }>;
+          modifier_group_item_ingredients?: Array<{
+            modifier_group_item_id: string;
+            inventory_item_id: string;
+            quantity: number;
+          }>;
+        }
+      | null
+      | undefined,
+  ) => {
     if (!data) return;
-    if (data.menuRecipes?.length || data.modifierRecipes?.length) {
+    if (
+      data.menu_item_ingredients?.length ||
+      data.modifier_group_item_ingredients?.length
+    ) {
       useMenuStore.getState().mergeRecipeData({
-        menuRecipes: data.menuRecipes.map((r) => ({
+        menuRecipes: (data.menu_item_ingredients ?? []).map((r) => ({
           menu_item_id: r.menu_item_id,
           inventory_item_id: r.inventory_item_id,
-          quantity: r.quantity_used,
+          quantity: r.quantity,
         })),
-        modifierRecipes: data.modifierRecipes.map((r) => ({
-          modifier_group_item_id: r.modifier_group_item_id,
-          inventory_item_id: r.inventory_item_id,
-          quantity: r.quantity_used,
-        })),
+        modifierRecipes: (data.modifier_group_item_ingredients ?? []).map(
+          (r) => ({
+            modifier_group_item_id: r.modifier_group_item_id,
+            inventory_item_id: r.inventory_item_id,
+            quantity: r.quantity,
+          }),
+        ),
       });
     }
   };
 
-  useEffect(() => {
-    if (inventoryData) {
-      setInventoryData({
-        items: inventoryData.inventoryItems,
-        vendors: inventoryData.vendors,
-      });
-
-      // Merge Recipe Data into MenuStore
-      applyRecipes(inventoryData);
-
-      console.log(
-        "✅ Inventory & Recipe data synced:",
-        inventoryData.inventoryItems.length,
-        "items,",
-        inventoryData.menuRecipes?.length || 0,
-        "menu recipes",
-      );
-    }
-  }, [inventoryData]);
   // --- END INVENTORY SYNC ---
 
   // Update menu store when sync data changes
@@ -412,7 +583,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Re-apply recipes if available (since setMenuData might reset them)
-      applyRecipes(inventoryData);
+      applyRecipes(posSyncData);
 
       // Send menu data to debug server in development
       // const DEBUG_MENU_URL = __DEV__
@@ -439,7 +610,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       //     });
       // }
     }
-  }, [posSyncData, setMenuData, selectedStore?.id, inventoryData]);
+  }, [posSyncData, setMenuData, selectedStore?.id]);
 
   // Merge standalone data (categories, items, modifiers, menus including inactive)
   useEffect(() => {
@@ -448,7 +619,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       menuStore.mergeStandaloneData(standaloneData);
 
       // Re-apply recipes if available (since mergeStandaloneData might overwrite items)
-      applyRecipes(inventoryData);
+      applyRecipes(posSyncData);
 
       console.log("✅ Standalone data merged:", {
         categories: standaloneData.categories?.length || 0,
@@ -457,7 +628,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         menus: standaloneData.menus?.length || 0,
       });
     }
-  }, [standaloneData, inventoryData]);
+  }, [standaloneData, posSyncData]);
 
   // Floor plan sync is now handled in the combined useEffect above
 
@@ -487,51 +658,49 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Cleanup previous subscriptions if switching locations
-    // if (realtimeLocationRef.current && realtimeLocationRef.current !== locationId) {
-    //   useFloorPlanStore.getState().cleanup();
-    //   // REMOVED: Cleanup for duplicate order subscription (now handled by useOrdersRealtime hook)
-    //   // useOrderStore.getState().cleanupOrderRealtime();
-    // }
+    if (
+      realtimeLocationRef.current &&
+      realtimeLocationRef.current !== locationId
+    ) {
+      useFloorPlanStore.getState().cleanup();
+    }
 
     realtimeLocationRef.current = locationId;
 
-    // Setup realtime subscriptions for tables/sessions
-    // useFloorPlanStore.getState().setupRealtimeSubscriptions(locationId);
-
-    // REMOVED: Duplicate order realtime subscription (now handled by LocationRealtimeProvider with useOrdersRealtime hook)
-    // useOrderStore.getState().setupOrderRealtimeSubscriptions(locationId);
-
-    // console.log('[PosSyncProvider] Realtime subscriptions enabled for location:', locationId);
-
     // Cleanup function
-    // return () => {
-    //   useFloorPlanStore.getState().cleanup();
-    //   // REMOVED: Cleanup for duplicate order subscription
-    //   // useOrderStore.getState().cleanupOrderRealtime();
-    //   realtimeLocationRef.current = null;
-    // };
+    return () => {
+      useFloorPlanStore.getState().cleanup();
+      realtimeLocationRef.current = null;
+    };
   }, [selectedStore?.id]);
 
+  // Single owner of floor plan + tax rate + receipt template sync (perf F3:
+  // the employee-sync effect above no longer duplicates these fetches).
+  // Deferred past interactions; the three calls run concurrently.
   useEffect(() => {
-    if (selectedStore?.id) {
-      syncEmployees(selectedStore.id);
-
-      if (!isKDS) {
-        // Clear potentially stale floor plan data before fresh sync
+    if (!selectedStore?.id || isKDS) return;
+    const storeId = selectedStore.id;
+    const task = InteractionManager.runAfterInteractions(() => {
+      // Clear stale floor plan data ONLY on a genuine station switch. On a
+      // same-station cold boot, locationId (persisted) already equals storeId,
+      // so we keep the rehydrated geometry + bridged sessions and let
+      // syncFloorPlans reconcile in the background. Blanking tables here on
+      // every boot caused a blank board (and forced the re-fetch that paints
+      // from the session-stripped cache) before fresh data arrived.
+      const fp = useFloorPlanStore.getState();
+      if (fp.locationId && fp.locationId !== storeId) {
         useFloorPlanStore.setState({
           tables: [],
           lastSyncAt: null,
         });
-
-        syncFloorPlans(selectedStore.id);
-        syncTaxRates(selectedStore.id);
-        useReceiptTemplateStore.getState().fetchTemplates(selectedStore.id);
       }
 
-      // Orders are now initialized via useOrdersQuery hook (archive layer)
-      // which auto-fetches when locationId changes
-    }
-  }, [selectedStore?.id, isKDS, syncEmployees, syncFloorPlans, syncTaxRates]);
+      syncFloorPlans(storeId);
+      syncTaxRates(storeId);
+      useReceiptTemplateStore.getState().fetchTemplates(storeId);
+    });
+    return () => task.cancel();
+  }, [selectedStore?.id, isKDS, syncFloorPlans, syncTaxRates]);
 
   // App state listener - reconnect realtime and refresh stale data when app becomes active
   // KDS screen handles its own 120s polling fallback, so skip POS reconnect logic
@@ -540,28 +709,93 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       if (nextState === "active") {
         console.log("[PosSyncProvider] App became active - refreshing data");
 
-        // Refresh location settings for ALL devices (fallback for missed broadcasts)
+        // Refresh location settings for ALL devices (fallback for missed broadcasts).
+        // Gate behind a 5-minute staleness window — fires on every active event
+        // (including brief foreground→background→foreground cycles) otherwise,
+        // which adds a network round-trip on the critical first-tap path.
         const storeSettings = useStoreSettingsStore.getState();
-        storeSettings.refreshSelectedStore(supabase);
+        const settingsAge = Date.now() - lastStoreSettingsRefreshRef.current;
+        if (settingsAge > 5 * 60 * 1000) {
+          lastStoreSettingsRefreshRef.current = Date.now();
+          storeSettings.refreshSelectedStore(supabase);
+        }
+
+        // Refresh staff/PIN data on the same 5-minute staleness window as
+        // store settings — picks up PIN changes made on another device or the
+        // backend without requiring a manual "Sync POS" or re-selecting the store.
+        refreshEmployeesIfStale();
 
         if (!isKDS) {
           const floorPlanStore = useFloorPlanStore.getState();
 
-          // Reconnect realtime if disconnected or reconnecting
-          if (floorPlanStore.realtimeStatus !== "connected") {
-            floorPlanStore.manualReconnect();
-          }
-
-          // Refresh stale floor plan data
+          // Floor realtime (re)connection on foreground is owned by
+          // useFloorRealtime / useRealtimeChannel (AppState-aware). Here we only
+          // converge state via the authoritative snapshot if it's stale.
           floorPlanStore.loadFloorPlanStatusIfStale();
 
-          // Refresh orders when app resumes via query invalidation
+          // Refresh orders when app resumes — only if data is older than staleTime.
+          // useOrderSyncRecovery handles reconnection-triggered refetches separately.
+          // queryKey now includes stationId, so use a prefix-matching cache lookup
+          // (exact:false) instead of getQueryState (which is exact-match).
           if (storeSettings.selectedStore?.id) {
-            queryClient.invalidateQueries({
+            const cached = queryClient.getQueryCache().find({
               queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
+              exact: false,
             });
+            const dataAge = Date.now() - (cached?.state.dataUpdatedAt ?? 0);
+            if (dataAge > 2 * 60 * 1000) {
+              queryClient.invalidateQueries({
+                queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
+              });
+            }
           }
         }
+
+        // Resume the Castles singleton with the current station's terminal
+        // config so the first post-resume payment skips the cold-connect
+        // penalty. Read from the store (not closure) to avoid stale refs.
+        const service = getSharedCastlesService();
+        if (service.isSuspended()) {
+          const terminal =
+            useStoreSettingsStore.getState().selectedStation?.payment_terminal;
+          if (
+            terminal?.id &&
+            terminal?.terminal_type === "castles" &&
+            (terminal.ip_address || terminal.connection_type === "usb")
+          ) {
+            // Resume + pre-warm connection with terminal config
+            service.resume({
+              connectionType:
+                terminal.connection_type === "usb" ? "usb" : "local_socket",
+              host: terminal.ip_address,
+              port: terminal.port ?? CASTLES_DEFAULT_PORT,
+              timeout: 10_000,
+              terminalId: terminal.id,
+            });
+          } else {
+            // Always clear suspended flag — lazy-connect will handle the rest
+            service.resume();
+          }
+        }
+      } else if (nextState === "background") {
+        // Idle GC: reclaim completed-order memory now, while backgrounded and
+        // nobody is waiting on the JS thread — so the app wakes up lean instead
+        // of carrying a shift's worth of archived orders until the next 2-min
+        // prune tick. Deliberately a GC, NOT a purge+resync: blowing away the
+        // working set on idle would force a network re-fetch on the operator's
+        // first tap (the documented ~1hr-idle cold-start lag), trading a quiet
+        // background cost for foreground latency on a busy floor. Skip on KDS
+        // (it owns its own lifecycle and has no POS order workspace).
+        if (!isKDS) {
+          useOrderStore.getState().clearInactiveOrders();
+        }
+
+        // Graceful Castles disconnect: send return2Idle + close the socket so
+        // the terminal cleans up its side. Fire-and-forget — the method is
+        // safe (never throws, never blocks long) but defensively catch.
+        getSharedCastlesService()
+          .suspend()
+          .catch(() => {});
       }
     };
 
@@ -581,18 +815,24 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     const locationId = selectedStore?.id;
     if (!locationId || !supabase) return;
 
-    const myStationId = useStoreSettingsStore.getState().selectedStation?.id ?? null;
-    const cleanup = initLocationConfigSync(supabase, locationId, myStationId);
+    const stationId = selectedStation?.id ?? null;
+    const cleanup = initLocationConfigSync(supabase, locationId, stationId);
 
     // Backward compat: still hydrate dining settings into old store during migration
     if (selectedStore?.public_metadata?.dining_settings) {
-      useSettingsStore.getState().updateDiningSettings(
-        selectedStore.public_metadata.dining_settings as Partial<SyncableDiningSettings>
-      );
+      useSettingsStore
+        .getState()
+        .updateDiningSettings(
+          selectedStore.public_metadata
+            .dining_settings as Partial<SyncableDiningSettings>,
+        );
     }
 
     return cleanup;
-  }, [selectedStore?.id, supabase]);
+  }, [selectedStore?.id, selectedStation?.id, supabase]);
+
+  // Background queue processor for station logins queued during offline sign-in
+  useStationLoginSync();
 
   return <>{children}</>;
 }

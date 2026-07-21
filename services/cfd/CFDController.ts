@@ -98,6 +98,16 @@ export class CFDController {
     return this.serverInfo
   }
 
+  /**
+   * Route a raw JSON message into the same dispatch path used by the
+   * WebSocket transport. Lets non-WS sources (e.g. the on-device CFD
+   * WebView posting via `window.ReactNativeWebView.postMessage`) reuse the
+   * controller's action callbacks without duplicating logic.
+   */
+  public routeClientMessage (raw: string): void {
+    this.handleMessage('webview', raw)
+  }
+
   private handleMessage (clientId: string, raw: string): void {
     try {
       const message: CFDMessage = JSON.parse(raw)
@@ -161,6 +171,9 @@ export class CFDController {
       subtotalCash: this.lastPayload.subtotalCash ?? 0,
       subtotalCard: this.lastPayload.subtotalCard ?? 0,
       discountAmount: this.lastPayload.discountAmount ?? 0,
+      serviceCharge: this.lastPayload.serviceCharge ?? 0,
+      serviceChargeName: this.lastPayload.serviceChargeName ?? null,
+      serviceChargeRate: this.lastPayload.serviceChargeRate ?? null,
       taxAmount: this.lastPayload.taxAmount ?? 0,
       taxCash: this.lastPayload.taxCash ?? 0,
       taxCard: this.lastPayload.taxCard ?? 0,
@@ -180,6 +193,8 @@ export class CFDController {
       carouselImages: this.lastPayload.carouselImages,
       loyaltyPrompt: this.lastPayload.loyaltyPrompt,
       loyaltyResult: this.lastPayload.loyaltyResult,
+      merchantHasLoyalty: this.lastPayload.merchantHasLoyalty ?? false,
+      themeMode: this.lastPayload.themeMode,
       timestamp: Date.now()
     }
 
@@ -215,6 +230,9 @@ export class CFDController {
     subtotalCash: number
     subtotalCard: number
     discountAmount: number
+    serviceCharge: number
+    serviceChargeName: string | null
+    serviceChargeRate: number | null
     taxAmount: number
     taxCash: number
     taxCard: number
@@ -231,6 +249,8 @@ export class CFDController {
     orderingPanelImages?: CFDPayload['orderingPanelImages']
     tipConfig?: CFDPayload['tipConfig']
     loyaltyResult?: CFDPayload['loyaltyResult'] | null
+    merchantHasLoyalty?: boolean
+    themeMode?: 'light' | 'dark'
   }): void {
     const screenState =
       params.screenState || (params.items.length > 0 ? 'ordering' : 'idle')
@@ -372,6 +392,9 @@ export class CFDController {
       subtotalCash: 0,
       subtotalCard: 0,
       discountAmount: 0,
+      serviceCharge: 0,
+      serviceChargeName: null,
+      serviceChargeRate: null,
       taxAmount: 0,
       taxCash: 0,
       taxCard: 0,
@@ -389,6 +412,28 @@ export class CFDController {
       orderingPanelImages: this.lastPayload.orderingPanelImages,
       tipConfig: undefined,
       carouselImages: this.lastPayload.carouselImages,
+      loyaltyPrompt: undefined,
+      loyaltyResult: undefined,
+      timestamp: Date.now()
+    })
+  }
+
+  /**
+   * Clear transient overlays (loyalty prompt/confirmation) and return to the
+   * current order payload instead of briefly broadcasting an empty idle state.
+   */
+  resumeOrderDisplay (): void {
+    const nextScreenState: CFDScreenState =
+      (this.lastPayload.items?.length ?? 0) > 0 ? 'ordering' : 'idle'
+
+    if (nextScreenState === 'idle') {
+      this.showIdle()
+      return
+    }
+
+    this.broadcast({
+      ...(this.lastPayload as CFDPayload),
+      screenState: nextScreenState,
       loyaltyPrompt: undefined,
       loyaltyResult: undefined,
       timestamp: Date.now()

@@ -146,6 +146,13 @@ export function getJournalsForOrder(orderId: string): PaymentJournalEntry[] {
 }
 
 /**
+ * Look up a single journal entry by id. Returns null if not found.
+ */
+export function getJournalById(journalId: string): PaymentJournalEntry | null {
+  return loadJournals().find((j) => j.id === journalId) ?? null;
+}
+
+/**
  * Resolve an incomplete journal manually (operator decided it's handled).
  */
 export function resolveJournalManually(journalId: string): void {

@@ -5,11 +5,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { prefetchMenuItemRemoteImages } from "@/lib/menuImagePrefetch";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
+import {
+  beginMenuModifierPreWarm,
+  isMenuModifierPreWarmCurrent,
+} from "@/lib/menuModifierPreWarmControl";
 import { MenuItemType } from "@/lib/types";
 // import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useMenuVisibilityStore } from "@/stores/useMenuVisibilityStore";
 import {
   isMenuBlockedSync,
   selectCancelAndRemoveDraft,
@@ -19,16 +25,21 @@ import {
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
+import { BlurView } from "expo-blur";
 import { Link } from "expo-router";
 import {
   CheckCircle2,
   ChevronDown,
   Clock,
+  Lock,
   Logs,
   PackagePlus,
   Search,
   Sofa,
   Table,
+  UtensilsCrossed,
 } from "lucide-react-native";
 import React, {
   useCallback,
@@ -38,8 +49,8 @@ import React, {
   useState,
 } from "react";
 import {
-  FlatList,
-  ListRenderItemInfo,
+  ActivityIndicator,
+  InteractionManager,
   Pressable,
   Text,
   TouchableOpacity,
@@ -58,44 +69,108 @@ interface MenuSectionProps {
   isTableOrder?: boolean;
   headerLeft?: React.ReactNode;
   headerBelow?: React.ReactNode;
+  forceOrdersView?: boolean;
+  showPreviousOrdersSection?: boolean;
+  showSearchButton?: boolean;
+  toolbarSearchSlot?: React.ReactNode;
+  showMenuTabButton?: boolean;
+  showOpenItemButton?: boolean;
+  showTablesButton?: boolean;
+  rightToolbarSlot?: React.ReactNode;
+  placeMenuSelectorInMenuRow?: boolean;
 }
 
 // OPTIMIZED: Pre-compiled StyleSheet for spacer (no runtime parsing)
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
+import { useColorScheme } from "@/lib/useColorScheme";
 import { useSearchStore } from "@/stores/searchStore";
-import { StyleSheet } from "react-native";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { StyleSheet, ViewStyle } from "react-native";
 
-const menuSectionStyles = StyleSheet.create({
-  spacer: {
-    width: "23%",
-  },
-  blockingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-    zIndex: 100,
-  },
+type MenuSectionStyles = ReturnType<typeof createMenuSectionStyles>;
+const menuSectionStylesByScale = new Map<string, MenuSectionStyles>();
+
+const createMenuSectionStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale);
+  return StyleSheet.create({
+    spacer: {
+      flex: 1,
+    },
+    // Perf F8 (FlashList): each grid cell is width/numColumns; gutters live on
+    // the cell wrapper (3+3 horizontal between columns, 6 vertical between
+    // rows) since FlashList has no columnWrapperStyle.
+    gridCell: {
+      // FlashList lays each row of `numColumns` cells out in a flex row; flex:1
+      // makes every cell take an equal share of the row width. Static (no onLayout
+      // measurement race that left the first category cramped until a switch).
+      flex: 1,
+      paddingHorizontal: s(3),
+      paddingBottom: s(6),
+    },
+    gridContainer: {
+      flex: 1,
+      marginTop: s(8),
+      // NOTE: backgroundColor is applied inline at the render site, NOT here.
+      // `colors` is a theme Proxy that defaults to dark; StyleSheet.create runs
+      // at module load (before setThemeMode('light')), so a themed color frozen
+      // here would lock to the dark value (#1E2340) and show as a dark rectangle
+      // below short lists. Inline styles read the live (light) value.
+    },
+  });
+};
+
+const getMenuSectionStyles = (scale: number) => {
+  const key = String(scale);
+  const cached = menuSectionStylesByScale.get(key);
+  if (cached) return cached;
+  const next = createMenuSectionStyles(scale);
+  menuSectionStylesByScale.set(key, next);
+  return next;
+};
+const menuSectionStyles = createMenuSectionStyles(1);
+const EMPTY_HIDDEN_MENU_IDS: string[] = [];
+
+const getBlockingOverlayStyle = (overlayColor: string): ViewStyle => ({
+  ...StyleSheet.absoluteFillObject,
+  backgroundColor: overlayColor,
+  zIndex: 100,
 });
 
-// OPTIMIZED: WeakMap cache for image sources to prevent object recreation
-const imageSourceCache = new WeakMap<
-  MenuItemType,
+// OPTIMIZED: Map cache for image sources to prevent object recreation.
+// Keyed by item.id + image hash so cache hits survive store re-renders.
+// Hard-capped to prevent unbounded growth from stale menu items.
+const IMAGE_SOURCE_CACHE_MAX = 500;
+const imageSourceCache = new Map<
+  string,
   ReturnType<typeof getImageSourceInternal> | undefined
 >();
 
 const getImageSourceInternal = (item: MenuItemType) =>
   resolveMenuItemImageSource(item.image);
 
+const getImageSourceCacheKey = (item: MenuItemType) =>
+  `${item.id}:${item.image ?? ""}`;
+
 // Get image source with caching
 const getImageSource = (item: MenuItemType) => {
-  if (imageSourceCache.has(item)) {
-    return imageSourceCache.get(item);
+  const key = getImageSourceCacheKey(item);
+  if (imageSourceCache.has(key)) {
+    return imageSourceCache.get(key);
+  }
+  // Evict oldest entries when at capacity before adding new
+  if (imageSourceCache.size >= IMAGE_SOURCE_CACHE_MAX) {
+    const firstKey = imageSourceCache.keys().next().value;
+    if (firstKey !== undefined) imageSourceCache.delete(firstKey);
   }
   const source = getImageSourceInternal(item);
-  imageSourceCache.set(item, source);
+  imageSourceCache.set(key, source);
   return source;
 };
 
-// OPTIMIZED: Memoized spacer component
+// OPTIMIZED: Memoized spacer component — 20% width matches a real grid cell.
 const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
 SpacerItem.displayName = "SpacerItem";
 
@@ -108,29 +183,131 @@ const MenuBlockingOverlay = React.memo(() => {
   if (!isMenuBlocked && !isMenuBlockedSync()) return null;
   return (
     <Pressable
-      style={menuSectionStyles.blockingOverlay}
+      style={getBlockingOverlayStyle(colors.background + "80")}
       onPress={cancelAndRemoveDraft}
     />
   );
 });
 MenuBlockingOverlay.displayName = "MenuBlockingOverlay";
 
+const SeatingBlockingOverlay = React.memo(
+  ({
+    isVisible,
+    title,
+    message,
+  }: {
+    isVisible: boolean;
+    title: string;
+    message: string;
+  }) => {
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
+    if (!isVisible) return null;
+    return (
+      <Pressable style={getBlockingOverlayStyle("transparent")}>
+        <BlurView
+          intensity={22}
+          tint="dark"
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View
+          style={{
+            ...StyleSheet.absoluteFillObject,
+            backgroundColor: colors.background + "66",
+          }}
+        />
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: s(24),
+          }}
+        >
+          <View
+            style={{
+              alignItems: "center",
+              gap: s(8),
+              paddingHorizontal: s(18),
+              paddingVertical: s(14),
+              borderRadius: s(12),
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.panel + "E6",
+            }}
+          >
+            <ActivityIndicator size="small" color={colors.teal} />
+            <Text
+              style={{
+                color: colors.heading,
+                fontSize: s(15),
+                fontWeight: "700",
+                textAlign: "center",
+              }}
+            >
+              {title}
+            </Text>
+            <Text
+              style={{
+                color: colors.muted,
+                fontSize: s(12),
+                textAlign: "center",
+              }}
+            >
+              {message}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    );
+  },
+);
+SeatingBlockingOverlay.displayName = "SeatingBlockingOverlay";
+
 const MenuSectionContent: React.FC<MenuSectionProps> = ({
   onOrderClosedCheck,
   isTableOrder = false,
   headerLeft,
   headerBelow,
+  forceOrdersView = false,
+  showPreviousOrdersSection = true,
+  showSearchButton = true,
+  toolbarSearchSlot,
+  showMenuTabButton = true,
+  showOpenItemButton = true,
+  showTablesButton = true,
+  rightToolbarSlot,
+  placeMenuSelectorInMenuRow = false,
 }) => {
+  const { colorScheme } = useColorScheme();
+  const uiScale = useUiScale();
+  const sc = (n: number) => Math.round(n * uiScale);
   // State for the active filters
   const menus = useMenuStore((s) => s.menus);
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
   const temporaryActiveMenus = useMenuStore((s) => s.temporaryActiveMenus);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
-  const categories = useMenuStore((s) => s.categories);
   const lastSelectedMenuId = useMenuStore((s) => s.lastSelectedMenuId);
   const setLastSelectedMenuId = useMenuStore((s) => s.setLastSelectedMenuId);
+  const menuNavigationMode = useSettingsStore(
+    (s) => s.posMenuNavigationMode ?? "classic",
+  );
+  const usePopupMenuNavigation = menuNavigationMode === "popup";
 
-  const { requestPinOverride } = usePinOverrideStore();
+  const requestPinOverride = usePinOverrideStore((s) => s.requestPinOverride);
+  const isUnlocked = usePinOverrideStore((s) => s.isUnlocked);
+  const addTemporaryMenuAccess = useMenuStore((s) => s.addTemporaryMenuAccess);
+  const addTemporaryCategoryAccess = useMenuStore(
+    (s) => s.addTemporaryCategoryAccess,
+  );
+  const selectedStoreId = useStoreSettingsStore(
+    (s) => s.selectedStore?.id ?? null,
+  );
+  const hiddenMenuIds = useMenuVisibilityStore(
+    (s) =>
+      (selectedStoreId ? s.hiddenMenuIdsByLocation[selectedStoreId] : null) ??
+      EMPTY_HIDDEN_MENU_IDS,
+  );
 
   // OPTIMIZED: Use computed selector to get only order_type, avoiding re-renders on item changes
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
@@ -139,12 +316,151 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
     return order?.order_type || "takeout";
   });
+  const currentOrderDbId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.db_order_id ?? null;
+  });
+  const currentOrderSessionId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.session_id ?? null;
+  });
+  const currentOrderLocalSessionId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.local_session_id ?? null;
+  });
+  const currentOrderTableId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.service_location_id ?? null;
+  });
+  const isTableSeating = useTableSessionStore((s) => {
+    if (currentOrderType !== "dine_in") return false;
+    const sessionIds = [
+      currentOrderSessionId,
+      currentOrderLocalSessionId,
+    ].filter(Boolean);
+    const orderIds = [activeOrderId].filter(Boolean);
+    if (
+      Object.values(s.sessions).some(
+        (session) =>
+          session.status === "seating" &&
+          (sessionIds.includes(session.id) ||
+            (!!session.order_id && orderIds.includes(session.order_id))),
+      )
+    ) {
+      return true;
+    }
+    return currentOrderTableId
+      ? s.sessions[currentOrderTableId]?.status === "seating"
+      : false;
+  });
+  // Block menu adds until the backend order exists — for ALL order types now.
+  // Dine-in creates at seating; takeout eager-creates on order start. In both
+  // cases the order has no db_order_id until the backend row lands.
+  //
+  // OFFLINE: a backend row can't be created, so the order is created locally and
+  // its create_order op is queued — items legitimately proceed under the local ID
+  // (mirrors the offline carve-out in addItemToActiveOrder). Only block while
+  // ONLINE, otherwise the overlay would stick on "Creating order" forever offline.
+  const { isOnline } = useNetworkStatus();
+  // Also guard against stale/orphaned activeOrderId: if the order object doesn't
+  // exist in ordersById, don't block — BillSection will show "No Active
+  // Order" and the user can start fresh. Checking currentOrderPaidStatus as a
+  // proxy; if it's null and activeOrderId is set, the order doesn't exist.
+  const currentOrderExists = useOrderStore((s) =>
+    s.activeOrderId ? !!s.ordersById[s.activeOrderId] : false,
+  );
+  const isCreatingOrder =
+    isOnline && !!activeOrderId && !currentOrderDbId && currentOrderExists;
+
+  // Timeout + retry for the "Creating order" gate. If the eager-create RPC
+  // failed or was skipped, the order is permanently stuck with no db_order_id
+  // and the menu overlay blocks all interaction — the deadlock described in
+  // order-processing.tsx eager-create comment ("addItemToActiveOrder shows a
+  // toast and returns without triggering creation"). After the timeout elapses,
+  // retry ensureActiveOrderCreated once. If it still doesn't produce a
+  // db_order_id, unblock the menu so the on-demand creation path in
+  // addItemToActiveOrder can fire when the user taps an item.
+  const CREATE_ORDER_TIMEOUT_MS = 8_000;
+  const [creationRetryAt, setCreationRetryAt] = useState<number | null>(null);
+  const creationRetryRef = useRef(false);
+  useEffect(() => {
+    if (!isCreatingOrder) {
+      setCreationRetryAt(null);
+      creationRetryRef.current = false;
+      return;
+    }
+    if (creationRetryAt === null) {
+      setCreationRetryAt(Date.now() + CREATE_ORDER_TIMEOUT_MS);
+      return;
+    }
+    if (Date.now() < creationRetryAt) return;
+    if (creationRetryRef.current) return; // already retried
+    creationRetryRef.current = true;
+    console.log(
+      "[MenuSection] Creating order timed out — retrying ensureActiveOrderCreated",
+    );
+    void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
+    // After the retry, give it another window; if still no db_order_id,
+    // unblock so addItemToActiveOrder's on-demand path can fire.
+    const secondChanceMs = 3_000;
+    const timer = setTimeout(() => {
+      const dbId =
+        useOrderStore.getState().ordersById[activeOrderId]?.db_order_id;
+      if (!dbId) {
+        console.log(
+          "[MenuSection] Second chance expired — unblocking menu (addItemToActiveOrder will handle creation on-demand)",
+        );
+        setCreationRetryAt(0); // sentinel: unblock
+      }
+    }, secondChanceMs);
+    return () => clearTimeout(timer);
+  }, [isCreatingOrder, creationRetryAt, activeOrderId]);
+
+  // Effective gate: blocked while creating (unless we've unblocked after timeout).
+  const effectiveCreatingOrder = isCreatingOrder && creationRetryAt !== 0;
+  // Per-order PIN attribution: block adding items (which is what creates the
+  // backend order row) until the staff who's ringing has been verified. This
+  // closes the timing gap where an order could be created — and attributed —
+  // before the PIN is entered. The PIN prompt itself (OrderPinGate) is rendered
+  // by BillSection; here we only gate adds and surface the right message.
+  const requirePinPerOrder = useStoreSettingsStore((s) => s.requirePinPerOrder);
+  const orderAttributionOrderId = useEmployeeStore(
+    (s) => s.orderAttributionOrderId,
+  );
+  const currentOrderPaidStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.paid_status ?? null;
+  });
+  // Block adds until a PIN was verified for THIS specific order. Order-bound so
+  // a stale verification from another order can't unblock this one. Skips once
+  // the order is created (db_order_id) — seated dine-in / mid-order — and never
+  // on the empty / just-paid state.
+  const isAwaitingOrderPin =
+    requirePinPerOrder &&
+    !!activeOrderId &&
+    orderAttributionOrderId !== activeOrderId &&
+    !currentOrderDbId &&
+    currentOrderPaidStatus !== "Paid";
+  const isMenuAddDisabled =
+    isTableSeating || effectiveCreatingOrder || isAwaitingOrderPin;
+  // Seating takes precedence over "creating" in the label (a dine-in order is
+  // also db_order_id-less while seating, but "Seating in progress" is clearer).
+  const menuDisabledTitle = isTableSeating
+    ? "Seating in progress"
+    : isAwaitingOrderPin
+      ? "Enter PIN to start"
+      : "Creating order";
+  const menuDisabledMessage = isTableSeating
+    ? "Items can be added once the table is seated."
+    : isAwaitingOrderPin
+      ? "Enter your PIN to start this order."
+      : "Items can be added once the order is ready.";
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails,
   );
 
-  const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
-    useOrderTypeDrawerStore();
+  const isOrderTypeDrawerOpen = useOrderTypeDrawerStore((s) => s.isOpen);
+  const closeDrawer = useOrderTypeDrawerStore((s) => s.closeDrawer);
 
   // Tick each minute to refresh availability indicators
   const [availabilityTick, setAvailabilityTick] = useState(0);
@@ -155,17 +471,55 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
   const [activeTab, setActiveTab] = useState("Menu");
 
+  const temporaryActiveMenuSet = useMemo(
+    () => new Set(temporaryActiveMenus),
+    [temporaryActiveMenus],
+  );
+
+  const visibleMenus = useMemo(
+    () => menus.filter((menu) => !hiddenMenuIds.includes(menu.id)),
+    [menus, hiddenMenuIds],
+  );
+
+  const menusById = useMemo(() => {
+    const next = new Map<string, (typeof menus)[number]>();
+    for (const menu of visibleMenus) next.set(menu.id, menu);
+    return next;
+  }, [visibleMenus]);
+
+  const menusByName = useMemo(() => {
+    const next = new Map<string, (typeof menus)[number]>();
+    for (const menu of visibleMenus) next.set(menu.name, menu);
+    return next;
+  }, [visibleMenus]);
+
+  const availableMenus = useMemo(
+    () =>
+      visibleMenus.filter(
+        (menu) =>
+          isMenuAvailableNow(menu.id) || temporaryActiveMenuSet.has(menu.name),
+      ),
+    [visibleMenus, isMenuAvailableNow, temporaryActiveMenuSet],
+  );
+
+  useEffect(() => {
+    if (!showPreviousOrdersSection && activeTab === "Orders") {
+      setActiveTab("Menu");
+    }
+  }, [showPreviousOrdersSection, activeTab]);
+
   // Helper to check if a menu has items (not empty)
   const menuHasItems = (menu: (typeof menus)[0]) => {
     return menu.categories.some((cat) => cat.items && cat.items.length > 0);
   };
 
-  // Helper to find the first menu that is currently available, unlocked, and has items
+  // Helper to find the first menu that is currently available (with items preferred)
   const getFirstAvailableMenuWithItems = () => {
-    return menus.find(
-      (m) =>
-        (isMenuAvailableNow(m.id) || temporaryActiveMenus.includes(m.name)) &&
-        menuHasItems(m),
+    // Prefer a menu that also has items; fall back to any available menu
+    return (
+      availableMenus.find((menu) => menuHasItems(menu)) ??
+      availableMenus[0] ??
+      undefined
     );
   };
 
@@ -173,17 +527,16 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const getPreferredMenu = () => {
     // Priority 1: Check last selected menu
     if (lastSelectedMenuId) {
-      const lastMenu = menus.find((m) => m.id === lastSelectedMenuId);
+      const lastMenu = menusById.get(lastSelectedMenuId);
       if (
         lastMenu &&
         (isMenuAvailableNow(lastMenu.id) ||
-          temporaryActiveMenus.includes(lastMenu.name)) &&
-        menuHasItems(lastMenu)
+          temporaryActiveMenuSet.has(lastMenu.name))
       ) {
         return lastMenu;
       }
     }
-    // Priority 2: First available menu with items
+    // Priority 2: First available menu (with items preferred)
     return getFirstAvailableMenuWithItems() || null;
   };
 
@@ -193,10 +546,24 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     return startMenu ? startMenu.name : null;
   });
 
+  // Derive the active menu object once so MenuControls doesn't need to re-derive it
+  const activeMenu = useMemo(
+    () => (activeMeal ? menusByName.get(activeMeal) : undefined),
+    [activeMeal, menusByName],
+  );
+
   const [activeCategory, setActiveCategory] = useState<string | null>(() => {
     const startMenu = getPreferredMenu();
     return startMenu ? startMenu.categories[0]?.name || "" : null;
   });
+
+  const activeCategoryEntry = useMemo(
+    () =>
+      activeMenu?.categories.find(
+        (category) => category.name === activeCategory,
+      ),
+    [activeMenu, activeCategory],
+  );
 
   const [isMenuDialogOpen, setIsMenuDialogOpen] = useState(false);
 
@@ -206,7 +573,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // Auto-scroll to selected menu when dialog opens
   useEffect(() => {
     if (isMenuDialogOpen && activeMeal) {
-      const selectedIndex = menus.findIndex((m) => m.name === activeMeal);
+      const selectedIndex = visibleMenus.findIndex(
+        (m) => m.name === activeMeal,
+      );
       if (selectedIndex >= 0) {
         // Estimate ~140px per menu item (card height + gap)
         const scrollOffset = selectedIndex * 140;
@@ -220,25 +589,23 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         return () => clearTimeout(timeoutId);
       }
     }
-  }, [isMenuDialogOpen, activeMeal, menus]);
+  }, [isMenuDialogOpen, activeMeal, visibleMenus]);
 
   // Effect to ensure we always have a valid available menu selected
   useEffect(() => {
     // If we have an active selection...
     if (activeMeal) {
-      const currentMenu = menus.find((m) => m.name === activeMeal);
-      // Check if it's still available and has items
+      const currentMenu = activeMeal ? menusByName.get(activeMeal) : undefined;
+      // Keep the current menu as long as it's available — items may still be loading
       if (currentMenu) {
         const isAvailable =
           isMenuAvailableNow(currentMenu.id) ||
-          temporaryActiveMenus.includes(currentMenu.name);
-        const hasItems = menuHasItems(currentMenu);
-        // If it IS available and has items, we are good.
-        if (isAvailable && hasItems) return;
+          temporaryActiveMenuSet.has(currentMenu.name);
+        if (isAvailable) return;
       }
     }
 
-    // If we reached here, either activeMeal is null OR the current selection is unavailable/empty.
+    // If we reached here, either activeMeal is null OR the current selection became unavailable.
     // Try to auto-switch to the next preferred one.
     const nextAvailable = getPreferredMenu();
 
@@ -255,13 +622,18 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         setActiveCategory(null);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeMeal,
     menus,
-    isMenuAvailableNow,
+    // isMenuAvailableNow intentionally omitted: it's a store method whose reference
+    // changes on every store update, causing an infinite loop when included here.
+    // The function itself is stable in behavior — only its JS reference is unstable.
     temporaryActiveMenus,
+    temporaryActiveMenuSet,
     availabilityTick,
     lastSelectedMenuId,
+    menusByName,
   ]);
   // ModifierScreen is now rendered via ModifierScreenOverlay - no subscription needed here
 
@@ -271,15 +643,17 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   const handleTabOrders = useCallback(() => setActiveTab("Orders"), []);
 
   // OPTIMIZED: Stable callback for meal change (avoid inline arrow in JSX)
-  const handleMealChange = useCallback((value: string) => {
-    setActiveMeal(value);
-    const menu = menus.find((m) => m.name === value);
-    setActiveCategory(menu?.categories[0]?.name || "");
-    // Persist selection
-    const menuStore = useMenuStore.getState();
-    const menuObj = menuStore.menus.find((m) => m.name === value);
-    if (menuObj) menuStore.setLastSelectedMenuId(menuObj.id);
-  }, [menus]);
+  const handleMealChange = useCallback(
+    (value: string) => {
+      setActiveTab("Menu");
+      setActiveMeal(value);
+      const menu = menusByName.get(value);
+      setActiveCategory(menu?.categories[0]?.name || "");
+      // Persist selection
+      if (menu) setLastSelectedMenuId(menu.id);
+    },
+    [menusByName, setLastSelectedMenuId],
+  );
 
   const openSearch = useSearchStore((state) => state.openSearch);
 
@@ -291,34 +665,97 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   };
 
   const handleMenuSelect = (menuName: string) => {
-    const menu = menus.find((m) => m.name === menuName);
+    const menu = menusByName.get(menuName);
     if (!menu) return;
 
     const isAvailable =
-      isMenuAvailableNow(menu.id) || temporaryActiveMenus.includes(menu.name);
+      isMenuAvailableNow(menu.id) || temporaryActiveMenuSet.has(menu.name);
 
     if (isAvailable) {
+      setActiveTab("Menu");
       setActiveMeal(menuName);
       setActiveCategory(menu.categories[0]?.name || "");
       setIsMenuDialogOpen(false);
-      // Persist the selection for next launch
+      setLastSelectedMenuId(menu.id);
+    } else if (isUnlocked()) {
+      // Manager session active — bypass PIN and grant directly
+      addTemporaryMenuAccess(menuName);
+      setActiveTab("Menu");
+      setActiveMeal(menuName);
+      setActiveCategory(menu.categories[0]?.name || "");
+      setIsMenuDialogOpen(false);
       setLastSelectedMenuId(menu.id);
     } else {
-      // Request override
       requestPinOverride({ type: "select_menu", payload: { menuName } });
     }
   };
 
+  const handleMenuCategorySelect = useCallback(
+    (menuName: string, categoryName: string) => {
+      const menu = menusByName.get(menuName);
+      if (!menu) return;
+
+      const isAvailable =
+        isMenuAvailableNow(menu.id) || temporaryActiveMenuSet.has(menu.name);
+
+      if (!isAvailable) {
+        if (!isUnlocked()) {
+          requestPinOverride({ type: "select_menu", payload: { menuName } });
+          return;
+        }
+        addTemporaryMenuAccess(menuName);
+      }
+
+      const category = menu.categories.find(
+        (entry) => entry.name === categoryName,
+      );
+      const categoryKey = category?.id ?? categoryName;
+      const isCategoryAvailable =
+        isCategoryAvailableNow(categoryName) &&
+        useMenuStore.getState().isCategoryActiveForMenu(menu.id, categoryKey);
+
+      if (!isCategoryAvailable) {
+        if (!isUnlocked()) {
+          requestPinOverride({
+            type: "select_category",
+            payload: { categoryName },
+          });
+          return;
+        }
+        addTemporaryCategoryAccess(categoryName);
+      }
+
+      setActiveTab("Menu");
+      setActiveMeal(menuName);
+      setActiveCategory(categoryName);
+      setLastSelectedMenuId(menu.id);
+      setIsMenuDialogOpen(false);
+    },
+    [
+      addTemporaryCategoryAccess,
+      addTemporaryMenuAccess,
+      isCategoryAvailableNow,
+      isMenuAvailableNow,
+      isUnlocked,
+      menusByName,
+      requestPinOverride,
+      setLastSelectedMenuId,
+      temporaryActiveMenuSet,
+    ],
+  );
+
   const filteredMenuItems = useMemo(() => {
-    if (!activeCategory || !activeMeal) return [];
-    const currentMenu = menus.find((m) => m.name === activeMeal);
-    const currentCategory = currentMenu?.categories.find(
-      (c) => c.name === activeCategory,
-    );
-    if (!currentCategory?.items) return [];
+    if (!activeCategoryEntry?.items || !activeCategory) return [];
     if (!isCategoryAvailableNow(activeCategory)) return [];
-    return currentCategory.items.filter((item) => item.availability);
-  }, [activeMeal, activeCategory, isCategoryAvailableNow, menus, availabilityTick]);
+    return activeCategoryEntry.items.filter(
+      (item) => item.availability !== false,
+    );
+  }, [
+    activeCategory,
+    activeCategoryEntry,
+    isCategoryAvailableNow,
+    availabilityTick,
+  ]);
   const numColumns = 5;
   const dataWithSpacers = useMemo(() => {
     const items = [...filteredMenuItems];
@@ -341,29 +778,67 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
   // OPTIMIZED: Hoist category lookup OUTSIDE renderItem (runs once, not 100+ times)
   const currentCategoryId = useMemo(() => {
-    if (!activeCategory) return undefined;
-    const { getCategoryByName } = useMenuStore.getState();
-    return getCategoryByName(activeCategory)?.id;
-  }, [activeCategory]);
+    return activeCategoryEntry?.id;
+  }, [activeCategoryEntry]);
 
-  const activeMenuId = useMemo(() => {
-    if (!activeMeal) return undefined;
-    return menus.find((m) => m.name === activeMeal)?.id;
-  }, [activeMeal, menus]);
+  const activeMenuId = activeMenu?.id;
 
-  // Pre-warm modifier data for visible items so first tap is instant (deferred to avoid blocking render)
+  // Pre-warm modifier data for visible items so first tap is instant.
+  // Wave 2: schedule via InteractionManager so the precompute doesn't block
+  // the category-switch frame. Chunk into rAF-paced batches so a single
+  // category change can't burn one long task.
   useEffect(() => {
-    if (!filteredMenuItems.length || !currentCategoryId || !activeMenuId) return;
-    const id = requestAnimationFrame(() => {
-      useModifierSidebarStore.getState().preWarmMany(
-        filteredMenuItems,
-        currentCategoryId,
-        activeMenuId,
+    if (!filteredMenuItems.length || !currentCategoryId || !activeMenuId)
+      return;
+    // Perf F5: warm the WHOLE category, not just the first 6/12 — items past
+    // the old window paid the full modifier-tree computation on tap (latency
+    // cliff at index 12). The rAF-chunked loop below keeps each batch small,
+    // and the cursor runs in list order so above-the-fold items still warm
+    // first. Image prefetch stays capped to the visible window.
+    const itemsToWarm = filteredMenuItems;
+    const visibleItems = filteredMenuItems.slice(0, isTableOrder ? 6 : 12);
+    let cancelled = false;
+    let pendingRaf: number | null = null;
+    let pendingTimeout: ReturnType<typeof setTimeout> | null = null;
+    const generation = beginMenuModifierPreWarm();
+
+    const handle = InteractionManager.runAfterInteractions(() => {
+      if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
+      // Image prefetch is fire-and-forget — kick it off immediately, it
+      // doesn't compete with the JS thread.
+      pendingTimeout = setTimeout(
+        () => {
+          if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
+          prefetchMenuItemRemoteImages(visibleItems);
+
+          // Dine-in favors responsiveness: warm fewer items in smaller chunks.
+          const chunkSize = isTableOrder ? 2 : 5;
+          const store = useModifierSidebarStore.getState();
+          let cursor = 0;
+          const step = () => {
+            if (cancelled || !isMenuModifierPreWarmCurrent(generation)) return;
+            const slice = itemsToWarm.slice(cursor, cursor + chunkSize);
+            if (slice.length === 0) {
+              pendingRaf = null;
+              return;
+            }
+            store.preWarmMany(slice, currentCategoryId, activeMenuId);
+            cursor += chunkSize;
+            pendingRaf = requestAnimationFrame(step);
+          };
+          pendingRaf = requestAnimationFrame(step);
+        },
+        isTableOrder ? 180 : 0,
       );
-      prefetchMenuItemRemoteImages(filteredMenuItems);
     });
-    return () => cancelAnimationFrame(id);
-  }, [filteredMenuItems, currentCategoryId, activeMenuId]);
+
+    return () => {
+      cancelled = true;
+      handle.cancel?.();
+      if (pendingTimeout !== null) clearTimeout(pendingTimeout);
+      if (pendingRaf !== null) cancelAnimationFrame(pendingRaf);
+    };
+  }, [filteredMenuItems, currentCategoryId, activeMenuId, isTableOrder]);
 
   // OPTIMIZED: Memoized keyExtractor to prevent recreation
   // NOTE: All hooks must be called before any early returns
@@ -380,18 +855,39 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
       const imagePriority =
         index < highThrough ? "high" : index < normalThrough ? "normal" : "low";
       return (
-        <MenuItem
-          item={item}
-          imageSource={getImageSource(item)}
-          imagePriority={imagePriority}
-          onOrderClosedCheck={onOrderClosedCheck}
-          categoryId={currentCategoryId}
-          menuId={activeMenuId}
-        />
+        <View style={menuSectionStyles.gridCell}>
+          <MenuItem
+            item={item}
+            imageSource={getImageSource(item)}
+            imagePriority={imagePriority}
+            onOrderClosedCheck={onOrderClosedCheck}
+            categoryId={currentCategoryId}
+            menuId={activeMenuId}
+            disabled={isMenuAddDisabled}
+          />
+        </View>
       );
     },
-    [onOrderClosedCheck, currentCategoryId, activeMenuId, numColumns],
+    [
+      onOrderClosedCheck,
+      currentCategoryId,
+      activeMenuId,
+      numColumns,
+      isMenuAddDisabled,
+    ],
   );
+
+  // FlashList recycles by type — keep spacer cells out of the MenuItem pool.
+  const getItemType = useCallback(
+    (item: MenuItemType) =>
+      (item as any).name === "spacer" ? "spacer" : "item",
+    [],
+  );
+
+  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
+  // Row-height estimate. Image tiles are square at ~1/5 of the grid width;
+  // text-only tiles are a fixed 80 (+6 gridCell paddingBottom).
+  const estimatedItemSize = showMenuImages ? 240 : 86;
 
   const formatTime = (d?: Date | null) =>
     d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
@@ -401,124 +897,330 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   return (
     <>
       <View
-        className={`mt-0 flex-1 bg-background relative overflow-hidden ${isTableOrder ? "rounded-tl-3xl" : ""}`}
+        key={colorScheme}
+        className={`mt-0 flex-1 relative overflow-hidden ${
+          isTableOrder ? "pl-0 pr-2" : "px-2"
+        }`}
+        style={{ backgroundColor: colors.card }}
       >
         {/* Row 1: Header (Order Line) + Toolbar */}
         <View
-          className={`${isTableOrder ? "px-3 py-2" : "px-2 py-2"} flex-row items-center`}
+          className="px-0 flex-row items-center"
+          style={{ paddingVertical: sc(8) }}
         >
           {headerLeft}
           <View
-            className={`flex-1 flex-row justify-end items-center gap-x-2 ${isTableOrder ? "px-3" : ""}`}
+            className={`flex-1 flex-row justify-end items-center gap-x-2 ${
+              isTableOrder ? "px-3" : ""
+            }`}
           >
-            <TouchableOpacity
-              onPress={handleTabMenu}
-              className="flex-row items-center rounded-lg p-3 justify-start"
-              style={{ backgroundColor: activeTab == "Menu" ? `${colors.teal}15` : colors.panel }}
-            >
-              <Table color={activeTab == "Menu" ? colors.teal : colors.label} size={14} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={openSearch}
-              className="flex-row items-center rounded-lg p-3 justify-start"
-              style={{ backgroundColor: colors.panel }}
-            >
-              <Search color={colors.label} size={14} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleTabOpenItem}
-              className="flex-row items-center rounded-lg p-3 justify-start"
-              style={{ backgroundColor: activeTab == "Open Item" ? `${colors.teal}15` : colors.panel }}
-            >
-              <PackagePlus color={activeTab == "Open Item" ? colors.teal : colors.label} size={14} />
-            </TouchableOpacity>
+            {toolbarSearchSlot !== undefined ? (
+              toolbarSearchSlot
+            ) : showSearchButton ? (
+              <TouchableOpacity
+                onPress={openSearch}
+                className="flex-row items-center rounded-lg p-3 justify-start"
+                style={{ backgroundColor: colors.panel }}
+              >
+                <Search color={colors.label} size={sc(14)} />
+              </TouchableOpacity>
+            ) : null}
+            {showMenuTabButton && (
+              <TouchableOpacity
+                onPress={handleTabMenu}
+                className="flex-row items-center rounded-lg p-3 justify-start"
+                style={{
+                  backgroundColor:
+                    activeTab == "Menu" ? `${colors.teal}15` : colors.panel,
+                }}
+              >
+                <Table
+                  color={activeTab == "Menu" ? colors.teal : colors.label}
+                  size={sc(14)}
+                />
+              </TouchableOpacity>
+            )}
+            {showOpenItemButton && (
+              <TouchableOpacity
+                onPress={handleTabOpenItem}
+                className="flex-row items-center rounded-lg p-3 justify-start"
+                style={{
+                  backgroundColor:
+                    activeTab == "Open Item"
+                      ? `${colors.teal}15`
+                      : colors.panel,
+                }}
+              >
+                <PackagePlus
+                  color={activeTab == "Open Item" ? colors.teal : colors.label}
+                  size={sc(14)}
+                />
+              </TouchableOpacity>
+            )}
 
-            {!isTableOrder && (
+            {!isTableOrder && showTablesButton && (
               <Link
                 href="/tables"
                 className="flex-row items-center rounded-lg p-3 justify-start"
                 style={{ backgroundColor: colors.panel }}
               >
-                <Sofa color={colors.label} size={14} />
+                <Sofa color={colors.label} size={sc(14)} />
               </Link>
             )}
 
-            {!isTableOrder && (
+            {!isTableOrder && showPreviousOrdersSection && (
               <TouchableOpacity
                 onPress={handleTabOrders}
                 className="flex-row items-center rounded-lg px-3 py-2.5 justify-start"
-                style={{ backgroundColor: activeTab == "Orders" ? `${colors.teal}15` : colors.panel }}
+                style={{
+                  backgroundColor:
+                    activeTab == "Orders" ? `${colors.teal}15` : colors.panel,
+                }}
               >
-                <Logs color={activeTab == "Orders" ? colors.teal : colors.label} size={14} />
-                <Text style={{ color: activeTab == "Orders" ? colors.teal : colors.muted }} className="ml-2 text-sm">Orders</Text>
+                <Logs
+                  color={activeTab == "Orders" ? colors.teal : colors.label}
+                  size={sc(14)}
+                />
+                <Text
+                  style={{
+                    color: activeTab == "Orders" ? colors.teal : colors.muted,
+                  }}
+                  className="ml-2 text-sm"
+                >
+                  Orders
+                </Text>
               </TouchableOpacity>
             )}
 
+            {rightToolbarSlot}
+
             <Dialog open={isMenuDialogOpen} onOpenChange={setIsMenuDialogOpen}>
-              <DialogTrigger asChild>
-                <TouchableOpacity
-                  className="flex-row items-center rounded-lg px-3 py-2.5 gap-2"
-                  style={{ backgroundColor: colors.panel }}
+              {!placeMenuSelectorInMenuRow && (
+                <DialogTrigger asChild>
+                  <TouchableOpacity
+                    className="flex-row items-center rounded-lg px-3 py-2.5 gap-2"
+                    style={{ backgroundColor: colors.panel }}
+                  >
+                    <UtensilsCrossed color={colors.label} size={sc(13)} />
+                    <Text
+                      style={{
+                        color: colors.heading,
+                        fontSize: sc(13),
+                        fontWeight: "500",
+                      }}
+                    >
+                      {activeMeal || "Select Menu"}
+                    </Text>
+                    <ChevronDown color={colors.label} size={sc(13)} />
+                  </TouchableOpacity>
+                </DialogTrigger>
+              )}
+              <DialogContent
+                className="max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden"
+                style={{
+                  backgroundColor: colors.screen,
+                  borderColor: colors.border,
+                  maxWidth: sc(480),
+                  alignSelf: "center",
+                  width: "90%",
+                }}
+              >
+                <DialogHeader
+                  className="px-6 pt-6 pb-4 border-b border-border"
+                  style={{ borderBottomColor: colors.border }}
                 >
-                  <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "500" }}>
-                    {activeMeal || "Select Menu"}
-                  </Text>
-                  <ChevronDown color={colors.label} size={13} />
-                </TouchableOpacity>
-              </DialogTrigger>
-              <DialogContent className="w-[480px] max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden">
-                <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
                   <DialogTitle>
-                    <Text className="text-lg font-semibold text-white">Menu</Text>
+                    <Text
+                      style={{
+                        fontSize: sc(18),
+                        fontWeight: "600",
+                        color: colors.heading,
+                      }}
+                    >
+                      Menu
+                    </Text>
                   </DialogTitle>
                 </DialogHeader>
                 <ScrollView
                   ref={menuScrollViewRef}
                   className="w-full"
-                  contentContainerStyle={{ padding: 16, gap: 10 }}
+                  contentContainerStyle={{ padding: sc(16), gap: sc(10) }}
                 >
-                  {menus.map((menu) => {
+                  {visibleMenus.map((menu) => {
                     const isAvailable =
                       isMenuAvailableNow(menu.id) ||
-                      temporaryActiveMenus.includes(menu.name);
+                      temporaryActiveMenuSet.has(menu.name);
                     const isScheduled =
                       menu.schedules && menu.schedules.length > 0;
                     const isSelected = activeMeal === menu.name;
+                    const menuCategories = Array.isArray(menu.categories)
+                      ? menu.categories
+                      : [];
 
                     return (
                       <TouchableOpacity
                         key={menu.id}
                         onPress={() => handleMenuSelect(menu.name)}
-                        className={`p-4 rounded-xl border ${
-                          !isAvailable ? "opacity-40" : ""
-                        }`}
+                        className="p-4 rounded-xl border"
                         style={{
-                          backgroundColor: isSelected ? colors.teal + "20" : colors.panel,
-                          borderColor: isSelected ? colors.teal : colors.border,
+                          backgroundColor: !isAvailable
+                            ? colors.panel + "cc"
+                            : colors.panel,
+                          borderColor: isSelected
+                            ? colors.teal + "b0"
+                            : !isAvailable
+                              ? colors.border + "90"
+                              : colors.border,
+                          opacity: !isAvailable ? 0.65 : 1,
+                          shadowColor: "#000000",
+                          shadowOpacity: 0.04,
+                          shadowRadius: 4,
+                          shadowOffset: { width: 0, height: 2 },
+                          elevation: 1,
                         }}
                       >
                         <View className="flex-row justify-between items-center">
-                          <Text className="font-semibold text-base text-white">
+                          <Text
+                            style={{
+                              fontWeight: "600",
+                              fontSize: sc(16),
+                              color: !isAvailable
+                                ? colors.muted
+                                : colors.heading,
+                            }}
+                          >
                             {menu.name}
                           </Text>
                           <View className="flex-row items-center gap-2">
-                            {isScheduled && <Clock size={14} color={colors.label} />}
-                            {isSelected && <CheckCircle2 size={16} color={colors.teal} />}
+                            {isSelected && (
+                              <View
+                                style={{
+                                  paddingHorizontal: sc(7),
+                                  paddingVertical: sc(3),
+                                  borderRadius: 999,
+                                  backgroundColor: colors.teal + "1f",
+                                  borderWidth: 1,
+                                  borderColor: colors.teal + "66",
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    fontSize: sc(10),
+                                    fontWeight: "700",
+                                    color: colors.teal,
+                                  }}
+                                >
+                                  Selected
+                                </Text>
+                              </View>
+                            )}
+                            {isScheduled && !isAvailable && (
+                              <View
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: sc(4),
+                                  backgroundColor: colors.danger + "18",
+                                  borderWidth: 1,
+                                  borderColor: colors.danger + "40",
+                                  paddingHorizontal: sc(7),
+                                  paddingVertical: sc(3),
+                                  borderRadius: sc(6),
+                                }}
+                              >
+                                <Lock size={sc(11)} color={colors.danger} />
+                                <Text
+                                  style={{
+                                    fontSize: sc(10),
+                                    color: colors.danger,
+                                  }}
+                                >
+                                  Schedule
+                                </Text>
+                              </View>
+                            )}
+                            {isScheduled && isAvailable && (
+                              <Clock size={sc(14)} color={colors.label} />
+                            )}
+                            {isSelected ? (
+                              <CheckCircle2 size={sc(16)} color={colors.teal} />
+                            ) : isAvailable ? (
+                              <CheckCircle2
+                                size={sc(16)}
+                                color={colors.success}
+                              />
+                            ) : (
+                              <Lock size={sc(16)} color={colors.muted} />
+                            )}
                           </View>
                         </View>
                         {menu.description ? (
-                          <Text className="text-xs text-gray-400 mt-1">{menu.description}</Text>
+                          <Text
+                            style={{
+                              fontSize: sc(12),
+                              color: colors.muted,
+                              marginTop: sc(4),
+                            }}
+                          >
+                            {menu.description}
+                          </Text>
                         ) : null}
-                        {menu.categories.length > 0 && (
-                          <View className="flex-row flex-wrap gap-1.5 mt-2.5">
-                            {menu.categories.map((category, index) => (
-                              <View
-                                key={index}
-                                className="px-2.5 py-1 rounded-full bg-surface border border-border"
-                              >
-                                <Text className="text-xs text-label">{category.name}</Text>
-                              </View>
-                            ))}
+                        {menuCategories.length > 0 && (
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              flexWrap: "wrap",
+                              gap: sc(6),
+                              marginTop: sc(10),
+                            }}
+                          >
+                            {menuCategories.map((category, index) => {
+                              const categoryLabel =
+                                typeof category === "string"
+                                  ? category
+                                  : category?.name || "Category";
+                              const isSelectedCategory =
+                                isSelected && activeCategory === categoryLabel;
+
+                              return (
+                                <TouchableOpacity
+                                  key={`${categoryLabel}-${index}`}
+                                  onPress={() =>
+                                    handleMenuCategorySelect(
+                                      menu.name,
+                                      categoryLabel,
+                                    )
+                                  }
+                                  style={{
+                                    paddingHorizontal: sc(10),
+                                    paddingVertical: sc(4),
+                                    borderRadius: sc(12),
+                                    backgroundColor: isSelectedCategory
+                                      ? colors.teal + "20"
+                                      : colors.screen,
+                                    borderWidth: 1,
+                                    borderColor: isSelectedCategory
+                                      ? colors.teal + "70"
+                                      : colors.border,
+                                  }}
+                                  activeOpacity={0.78}
+                                >
+                                  <Text
+                                    style={{
+                                      fontSize: sc(12),
+                                      color: isSelectedCategory
+                                        ? colors.teal
+                                        : colors.label,
+                                      fontWeight: isSelectedCategory
+                                        ? "700"
+                                        : "500",
+                                    }}
+                                  >
+                                    {categoryLabel}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
                           </View>
                         )}
                       </TouchableOpacity>
@@ -534,23 +1236,73 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         {headerBelow}
 
         {/* Row 3: Category controls */}
-        {activeTab === "Menu" &&
+        {!forceOrdersView &&
+          activeTab === "Menu" &&
           (activeMeal ? (
-            <View className={`${isTableOrder ? "px-3" : ""} pb-3`}>
+            <View
+              className={isTableOrder ? "px-3" : ""}
+              style={{ paddingBottom: sc(12) }}
+            >
               <MenuControls
                 activeMeal={activeMeal}
+                menuOptions={visibleMenus}
+                showMenuButtons={usePopupMenuNavigation}
                 onMealChange={handleMealChange}
                 activeCategory={activeCategory || ""}
                 onCategoryChange={setActiveCategory}
+                onMenuCategoryChange={handleMenuCategorySelect}
+                rightSlot={
+                  !usePopupMenuNavigation && placeMenuSelectorInMenuRow ? (
+                    <TouchableOpacity
+                      onPress={() => setIsMenuDialogOpen(true)}
+                      className="flex-row items-center rounded-lg px-3 py-2.5 gap-2"
+                      style={{ backgroundColor: colors.panel }}
+                    >
+                      <UtensilsCrossed color={colors.label} size={sc(13)} />
+                      <Text
+                        style={{
+                          color: colors.heading,
+                          fontSize: sc(13),
+                          fontWeight: "500",
+                        }}
+                      >
+                        {activeMeal || "Select Menu"}
+                      </Text>
+                      <ChevronDown color={colors.label} size={sc(13)} />
+                    </TouchableOpacity>
+                  ) : undefined
+                }
               />
             </View>
           ) : (
-            <View className="flex-1 items-center justify-center mt-20">
-              <Clock size={64} color={colors.muted} />
-              <Text className="text-white text-2xl font-bold mt-4">
+            <View
+              style={{
+                flex: 1,
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: sc(80),
+              }}
+            >
+              <Clock size={sc(64)} color={colors.muted} />
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontSize: sc(24),
+                  fontWeight: "bold",
+                  marginTop: sc(16),
+                }}
+              >
                 No Menu Available
               </Text>
-              <Text className="text-gray-400 text-base mt-2 text-center px-10">
+              <Text
+                style={{
+                  color: colors.muted,
+                  fontSize: sc(16),
+                  marginTop: sc(8),
+                  textAlign: "center",
+                  paddingHorizontal: sc(40),
+                }}
+              >
                 There are currently no menus scheduled for this time. Please
                 check back later or select a different order type.
               </Text>
@@ -558,49 +1310,70 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
           ))}
 
         <View className={`flex-1 ${isTableOrder ? "px-3" : ""}`}>
-          
-
-          {activeTab === "Menu" ? (
+          {forceOrdersView ? (
+            <View key={"Orders"} className="flex-1">
+              <PreviousOrdersSection />
+            </View>
+          ) : activeTab === "Menu" ? (
             activeMeal ? (
-              <View key={"Menu"} className={`${isTableOrder ? "px-3" : ""}`}>
-                <FlatList
-                  data={dataWithSpacers}
-                  keyExtractor={keyExtractor}
-                  numColumns={numColumns}
-                  className="mt-2 h-[93%] pb-32"
-                  ItemSeparatorComponent={SpacerItem}
-                  getItemLayout={(_item, index) => {
-                    const ROW_HEIGHT = 80 + 12;
-                    const row = Math.floor(index / numColumns);
-                    return { length: 80, offset: row * ROW_HEIGHT, index };
-                  }}
-                  showsVerticalScrollIndicator={false}
-                  columnWrapperStyle={{
-                    justifyContent: "flex-start",
-                    gap: 6,
-                    marginBottom: 6,
-                  }}
-                  removeClippedSubviews={true}
-                  maxToRenderPerBatch={8}
-                  updateCellsBatchingPeriod={50}
-                  windowSize={4}
-                  initialNumToRender={8}
-                  ListEmptyComponent={
-                    <View className="flex-1 items-center justify-center h-48">
-                      <Text className="text-gray-400 text-lg">
-                        No items match the current filters.
-                      </Text>
-                    </View>
-                  }
-                  renderItem={renderMenuItem}
-                />
+              <View
+                key={"Menu"}
+                className={`flex-1 ${isTableOrder ? "px-3" : ""}`}
+              >
+                {/* Perf F8: FlashList replaces the tuned FlatList — cell
+                    recycling instead of mount/unmount during fling scrolls.
+                    Column gutters moved into renderItem's gridCell wrapper
+                    (no columnWrapperStyle in FlashList); the old batching
+                    props (windowSize etc.) have no FlashList equivalent. */}
+                <View
+                  style={[
+                    menuSectionStyles.gridContainer,
+                    { backgroundColor: colors.card, marginTop: sc(8) },
+                  ]}
+                >
+                  <FlashList
+                    data={dataWithSpacers}
+                    keyExtractor={keyExtractor}
+                    numColumns={numColumns}
+                    estimatedItemSize={estimatedItemSize}
+                    getItemType={getItemType}
+                    disableAutoLayout
+                    drawDistance={500}
+                    contentContainerStyle={{
+                      backgroundColor: colors.card,
+                      paddingBottom: 128,
+                    }}
+                    showsVerticalScrollIndicator={false}
+                    // Re-render visible cells when the add-disabled state flips
+                    // (e.g. first order's db_order_id arrives → isMenuAddDisabled
+                    // false). Without this, dataWithSpacers keeps the same item
+                    // references so FlashList leaves the first category's cells
+                    // grayed out until a category switch rebuilds the data.
+                    extraData={isMenuAddDisabled}
+                    ListEmptyComponent={
+                      <View
+                        style={{
+                          flex: 1,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: sc(192),
+                        }}
+                      >
+                        <Text style={{ color: colors.muted, fontSize: sc(18) }}>
+                          No items match the current filters.
+                        </Text>
+                      </View>
+                    }
+                    renderItem={renderMenuItem}
+                  />
+                </View>
               </View>
             ) : null
           ) : activeTab === "Open Item" ? (
             <View key={"Open Item"} className={"flex-1"}>
               <OpenItemAdder />
             </View>
-          ) : activeTab === "Orders" ? (
+          ) : activeTab === "Orders" && showPreviousOrdersSection ? (
             <View key={"Orders"} className="flex-1">
               <PreviousOrdersSection />
             </View>
@@ -608,6 +1381,11 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         </View>
 
         {/* Blocking overlay isolated — only re-renders when modifier opens */}
+        <SeatingBlockingOverlay
+          isVisible={isMenuAddDisabled}
+          title={menuDisabledTitle}
+          message={menuDisabledMessage}
+        />
         <MenuBlockingOverlay />
 
         {/* ModifierScreenOverlay renders on top when opened - keeps cart visible to cashier */}

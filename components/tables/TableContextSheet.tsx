@@ -1,60 +1,83 @@
-import { useSessionDuration } from '@/hooks/useSessionDuration'
-import { getEffectiveItemStatus } from '@/lib/kitchenStatusUtils'
-import { bottomSheetTheme, colors, TABLE_STATUS_COLORS } from '@/lib/theme'
-import { PrinterService } from '@/services/printing/PrinterService'
-import { useOrderTotals } from '@/stores/selectors/orderSelectors'
-import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
-import { useOrderStore } from '@/stores/useOrderStore'
-import { useReservationStore } from '@/stores/useReservationStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useTableSessionStore } from '@/stores/useTableSessionStore'
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { useSessionDuration } from "@/hooks/useSessionDuration";
+import { getEffectiveItemStatus } from "@/lib/kitchenStatusUtils";
+import { isOrderReadOnly } from "@/lib/orderAccessControl";
+import { bottomSheetTheme, colors, TABLE_STATUS_COLORS } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
+import { PrinterService } from "@/services/printing/PrinterService";
+import { useOrderTotals } from "@/stores/selectors/orderSelectors";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { useReservationStore } from "@/stores/useReservationStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { useToastStore } from "@/stores/useToastStore";
 import {
-  FloorPlanObject,
-  Reservation,
-  TableStatus
-} from '@/types/db-floor-plan-types'
-import { formatCurrency } from '@/utils/currency'
+    FloorPlanObject,
+    Reservation,
+    TableStatus,
+} from "@/types/db-floor-plan-types";
+import { formatCurrency } from "@/utils/currency";
 import {
-  BottomSheetBackdrop,
-  BottomSheetModal,
-  BottomSheetScrollView
-} from '@gorhom/bottom-sheet'
+    BottomSheetBackdrop,
+    BottomSheetModal,
+    BottomSheetScrollView,
+} from "@gorhom/bottom-sheet";
 import {
-  ArrowLeftRight,
-  CalendarClock,
-  ChevronRight,
-  ChevronUp,
-  Clock,
-  DollarSign,
-  LogOut,
-  Printer,
-  Trash2,
-  Unlock,
-  UserCheck,
-  Users,
-  UtensilsCrossed,
-  X
-} from 'lucide-react-native'
-import React, { useCallback, useEffect, useMemo, useRef } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+    ArrowLeftRight,
+    CalendarClock,
+    ChevronRight,
+    Clock,
+    DollarSign,
+    LogOut,
+    Printer,
+    Trash2,
+    Unlock,
+    UserCheck,
+    Users,
+    UtensilsCrossed,
+    X,
+} from "lucide-react-native";
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
+import {
+    ActivityIndicator,
+    Modal,
+    Pressable,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 interface TableContextSheetProps {
-  table: FloorPlanObject | null
-  onClose: () => void
-  onSeatGuests: (table: FloorPlanObject) => void
-  onSeatReservation?: (table: FloorPlanObject, reservation: Reservation) => void
-  onNavigate: (tableId: string) => void
-  onTransferServer?: (tableId: string, sessionId: string) => void
+  table: FloorPlanObject | null;
+  onClose: () => void;
+  onSeatGuests: (table: FloorPlanObject) => void;
+  onSeatReservation?: (
+    table: FloorPlanObject,
+    reservation: Reservation,
+  ) => void;
+  onNavigate: (tableId: string) => void;
+  onTransferServer?: (tableId: string, sessionId: string) => void;
 }
 
 type ActionItem = {
-  label: string
-  icon: React.ReactNode
-  onPress: () => void
-  variant?: 'primary' | 'secondary' | 'danger'
-}
+  label: string;
+  icon: React.ReactNode;
+  onPress: () => void;
+  variant?: "primary" | "secondary" | "danger";
+  disabled?: boolean;
+  disabledMessage?: string;
+  dismissOnPress?: boolean;
+};
 
-function getActionsForStatus (
+function getActionsForStatus(
   status: TableStatus | undefined,
   table: FloorPlanObject,
   onSeatGuests: (t: FloorPlanObject) => void,
@@ -65,161 +88,161 @@ function getActionsForStatus (
   reservation?: Reservation | null,
   onSeatReservation?: (t: FloorPlanObject, r: Reservation) => void,
   onMarkArrived?: (id: string) => void,
-  onCancelReservation?: (id: string) => void
+  onCancelReservation?: (id: string) => void,
 ): ActionItem[] {
-  const actions: ActionItem[] = []
-  const effectiveStatus = status || 'available'
+  const actions: ActionItem[] = [];
+  const effectiveStatus = status || "available";
 
   switch (effectiveStatus) {
-    case 'available':
+    case "available":
       actions.push({
-        label: 'Seat Guests',
+        label: "Seat Guests",
         icon: <Users size={16} color={colors.teal} />,
         onPress: () => onSeatGuests(table),
-        variant: 'primary'
-      })
-      break
+        variant: "primary",
+      });
+      break;
 
-    case 'reserved':
+    case "reserved":
       if (reservation && onSeatReservation) {
         actions.push({
-          label: 'Seat Reservation',
+          label: "Seat Reservation",
           icon: <Users size={16} color={colors.teal} />,
           onPress: () => onSeatReservation(table, reservation),
-          variant: 'primary'
-        })
+          variant: "primary",
+        });
       } else {
         actions.push({
-          label: 'Seat Reservation',
+          label: "Seat Reservation",
           icon: <Users size={16} color={colors.teal} />,
           onPress: () => onSeatGuests(table),
-          variant: 'primary'
-        })
+          variant: "primary",
+        });
       }
-      if (reservation && onMarkArrived && reservation.status !== 'arrived') {
+      if (reservation && onMarkArrived && reservation.status !== "arrived") {
         actions.push({
-          label: 'Mark Arrived',
+          label: "Mark Arrived",
           icon: <UserCheck size={16} color={colors.success} />,
-          onPress: () => onMarkArrived(reservation.id)
-        })
+          onPress: () => onMarkArrived(reservation.id),
+        });
       }
       actions.push({
-        label: 'Seat Walk-In',
+        label: "Seat Walk-In",
         icon: <Users size={16} color={colors.label} />,
-        onPress: () => onSeatGuests(table)
-      })
+        onPress: () => onSeatGuests(table),
+      });
       if (reservation && onCancelReservation) {
         actions.push({
-          label: 'Cancel Reservation',
+          label: "Cancel Reservation",
           icon: <X size={16} color={colors.danger} />,
           onPress: () => onCancelReservation(reservation.id),
-          variant: 'danger'
-        })
+          variant: "danger",
+        });
       }
-      break
+      break;
 
-    case 'seating':
-    case 'seated':
-    case 'ordering':
-    case 'ordered':
-    case 'served':
+    case "seating":
+    case "seated":
+    case "ordering":
+    case "ordered":
+    case "served":
       actions.push({
-        label: 'View Order',
+        label: "View Order",
         icon: <DollarSign size={16} color={colors.teal} />,
         onPress: () => onNavigate(table.id),
-        variant: 'primary'
-      })
-      if (effectiveStatus === 'served' || effectiveStatus === 'ordered') {
-        actions.push({
-          label: 'Present Check',
-          icon: <ChevronUp size={16} color={colors.label} />,
-          onPress: () => updateSessionStatus(table.id, 'check_presented')
-        })
-      }
-      break
+        variant: "primary",
+      });
+      // if (effectiveStatus === 'served' || effectiveStatus === 'ordered') {
+      //   actions.push({
+      //     label: 'Present Check',
+      //     icon: <ChevronUp size={16} color={colors.label} />,
+      //     onPress: () => updateSessionStatus(table.id, 'check_presented')
+      //   })
+      // }
+      break;
 
-    case 'check_presented':
+    case "check_presented":
       actions.push({
-        label: 'View Order',
+        label: "View Order",
         icon: <DollarSign size={16} color={colors.teal} />,
         onPress: () => onNavigate(table.id),
-        variant: 'primary'
-      })
+        variant: "primary",
+      });
       actions.push({
-        label: 'Take Payment',
+        label: "Take Payment",
         icon: <DollarSign size={16} color={colors.label} />,
-        onPress: () => onNavigate(table.id)
-      })
-      break
+        onPress: () => onNavigate(table.id),
+      });
+      break;
 
-    case 'paying':
+    case "paying":
       actions.push({
-        label: 'View Order',
+        label: "View Order",
         icon: <DollarSign size={16} color={colors.teal} />,
         onPress: () => onNavigate(table.id),
-        variant: 'primary'
-      })
-      break
+        variant: "primary",
+      });
+      break;
 
-    case 'paid':
+    case "paid":
       actions.push({
-        label: 'View Order',
+        label: "View Order",
         icon: <DollarSign size={16} color={colors.teal} />,
         onPress: () => onNavigate(table.id),
-        variant: 'primary'
-      })
+        variant: "primary",
+      });
       actions.push({
-        label: 'Close Table',
+        label: "Close Table",
         icon: <LogOut size={16} color={colors.label} />,
-        onPress: () => clearTableSession(table.id)
-      })
-      break
+        onPress: () => clearTableSession(table.id),
+      });
+      break;
 
-    case 'cleaning':
+    case "cleaning":
       actions.push({
-        label: 'Mark Clean',
+        label: "Mark Clean",
         icon: <Trash2 size={16} color={colors.label} />,
-        onPress: () => finishCleaning(table.id)
-      })
-      break
+        onPress: () => finishCleaning(table.id),
+      });
+      break;
 
-    case 'blocked':
-    case 'not_in_service':
+    case "blocked":
+    case "not_in_service":
       actions.push({
-        label: 'Unblock Table',
+        label: "Unblock Table",
         icon: <Unlock size={16} color={colors.label} />,
-        onPress: () => updateSessionStatus(table.id, 'available')
-      })
-      break
+        onPress: () => updateSessionStatus(table.id, "available"),
+      });
+      break;
 
     default:
-      break
+      break;
   }
 
-  return actions
+  return actions;
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  available: 'Available',
-  reserved: 'Reserved',
-  seating: 'Seating',
-  seated: 'Seated',
-  ordering: 'Ordering',
-  ordered: 'Ordered',
-  served: 'Served',
-  check_presented: 'Check Presented',
-  paying: 'Paying',
-  paid: 'Paid',
-  cleaning: 'Cleaning',
-  not_in_service: 'Not in Service',
-  blocked: 'Blocked'
-}
+  available: "Available",
+  reserved: "Reserved",
+  seating: "Seating",
+  seated: "Seated",
+  ordering: "Ordering",
+  ordered: "Ordered",
+  served: "Served",
+  check_presented: "Check Presented",
+  paying: "Paying",
+  paid: "Paid",
+  cleaning: "Cleaning",
+  not_in_service: "Not in Service",
+  blocked: "Blocked",
+};
 
 const KITCHEN_STATUS_COLORS = {
   preparing: colors.warning,
   ready: colors.success,
-  served: colors.info
-} as const
+  served: colors.info,
+} as const;
 
 const TableContextSheet: React.FC<TableContextSheetProps> = ({
   table,
@@ -227,127 +250,423 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   onSeatGuests,
   onSeatReservation,
   onNavigate,
-  onTransferServer
+  onTransferServer,
 }) => {
-  const sheetRef = useRef<BottomSheetModal>(null)
-  const snapPoints = useMemo(() => ['90%'], [])
+  const sheetRef = useRef<BottomSheetModal>(null);
+  const snapPoints = useMemo(() => ["90%"], []);
 
-  const clearTableSession = useFloorPlanStore(s => s.clearTableSession)
-  const finishCleaning = useFloorPlanStore(s => s.finishCleaning)
-  const updateSessionStatus = useFloorPlanStore(s => s.updateSessionStatus)
+  const clearTableSession = useFloorPlanStore((s) => s.clearTableSession);
+  const finishCleaning = useFloorPlanStore((s) => s.finishCleaning);
+  const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
+  const transferSession = useFloorPlanStore((s) => s.transferSession);
+  const refreshTableSessions = useFloorPlanStore((s) => s.refreshTableSessions);
+  const floorTables = useFloorPlanStore((s) => s.tables);
+  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
+  const floorPlanCache = useFloorPlanStore((s) => s.floorPlanCache);
+  const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
+  const sessionsByTableId = useTableSessionStore((s) => s.sessions);
+  const showToast = useToastStore((s) => s.show);
+  const { isOnline } = useNetworkStatus();
+  const [isTransferPickerOpen, setTransferPickerOpen] = useState(false);
+  const [isTransferPickerLoading, setTransferPickerLoading] = useState(false);
+  const [transferSourceTable, setTransferSourceTable] =
+    useState<FloorPlanObject | null>(null);
+  const [transferSourceSessionId, setTransferSourceSessionId] = useState<
+    string | null
+  >(null);
+  const [transferringTableId, setTransferringTableId] = useState<string | null>(
+    null,
+  );
+  const [transferFilterPlanId, setTransferFilterPlanId] = useState<
+    string | null
+  >(null);
+
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   useEffect(() => {
-    if (table) sheetRef.current?.present()
-    else sheetRef.current?.dismiss()
-  }, [table])
+    if (table) sheetRef.current?.present();
+    else sheetRef.current?.dismiss();
+  }, [table]);
 
-  const handleDismiss = useCallback(() => onClose(), [onClose])
+  const handleDismiss = useCallback(() => onClose(), [onClose]);
 
-  const liveSession = useTableSessionStore(s =>
-    table ? s.sessions[table.id] : undefined
-  )
-  const status = (liveSession?.status ?? table?.session?.status) || 'available'
-  const tableColor = TABLE_STATUS_COLORS[status] || colors.teal
+  const liveSession = useTableSessionStore((s) =>
+    table ? s.sessions[table.id] : undefined,
+  );
+  const sessionStoreInitialized = useTableSessionStore((s) => s.isInitialized);
+  // Once isInitialized, useTableSessionStore is authoritative — don't fall
+  // back to the stale table.session prop (the floor plan store can retain
+  // a paid session locally after a Clear that wiped useTableSessionStore,
+  // which surfaces as a stuck-Paid sheet). Matches DraggableTable's pattern.
+  const status =
+    (sessionStoreInitialized
+      ? liveSession?.status
+      : (liveSession?.status ?? table?.session?.status)) || "available";
+  const tableColor = TABLE_STATUS_COLORS[status] || colors.teal;
 
-  const resolvedOrderId = useOrderStore(s => {
-    const oid = liveSession?.order_id
-    if (!oid) return null
-    return s.dbOrderIdIndex[oid] ?? (s.ordersById[oid] ? oid : null)
-  })
-  const order = useOrderStore(s =>
-    resolvedOrderId ? s.ordersById[resolvedOrderId] : null
-  )
-  const totals = useOrderTotals(resolvedOrderId)
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const reservations = useReservationStore(s => s.reservations)
-  const isOccupied = !!order
-  const { minutes: minutesSeated } = useSessionDuration(table?.id ?? '')
+  const resolvedOrderId = useOrderStore((s) => {
+    const oid = liveSession?.order_id;
+    // Treat cleaning as "no live order context" so kitchen summary, items
+    // preview, totals, and server line don't render stale data if a realtime
+    // SYNC briefly restores the old order_id on a cleaning session.
+    if (!oid || status === "cleaning") return null;
+    return s.dbOrderIdIndex[oid] ?? (s.ordersById[oid] ? oid : null);
+  });
+  const order = useOrderStore((s) =>
+    resolvedOrderId ? s.ordersById[resolvedOrderId] : null,
+  );
+  const currentStationId = useOrderStore((s) => s.currentStationId);
+  const totals = useOrderTotals(resolvedOrderId);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const upcomingReservation = useReservationStore((s) =>
+    table ? (s.nextReservationByTableId[table.id] ?? null) : null,
+  );
+  const isOccupied = !!order;
+  const isForeignStationSession = isOrderReadOnly(order, currentStationId);
+  const foreignStationLabel = order?.station_name?.trim() || "another station";
+  const { minutes: minutesSeated } = useSessionDuration(table?.id ?? "");
+
+  const handleMarkArrived = useCallback(async (reservationId: string) => {
+    await useReservationStore.getState().updateStatus(reservationId, "arrived");
+  }, []);
+
+  const handleCancelReservation = useCallback(async (reservationId: string) => {
+    await useReservationStore.getState().cancelReservation(reservationId);
+  }, []);
+
+  // Build a map of floorPlanId → floor plan name for lookup in the picker.
+  const floorPlanNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const fp of floorPlans) {
+      map[fp.id] = fp.name;
+    }
+    return map;
+  }, [floorPlans]);
+
+  // Aggregate tables from ALL floor plans (current + cached), not just the
+  // active floor plan. This lets operators transfer a session to any table
+  // across all floor plans configured for this location.
+  const allFloorPlanTables = useMemo(() => {
+    const seen = new Set<string>();
+    const result: (FloorPlanObject & { _floorPlanId: string })[] = [];
+
+    const addTables = (tables: FloorPlanObject[], floorPlanId: string) => {
+      for (const t of tables) {
+        if (seen.has(t.id)) continue;
+        seen.add(t.id);
+        result.push({ ...t, _floorPlanId: floorPlanId });
+      }
+    };
+
+    // Current active floor plan tables
+    addTables(floorTables, activeFloorPlanId ?? "");
+
+    // Cached floor plans (non-active)
+    for (const [fpId, cache] of Object.entries(floorPlanCache)) {
+      if (fpId === activeFloorPlanId) continue; // already added above
+      if (!cache?.tables?.length) continue;
+      addTables(cache.tables, fpId);
+    }
+
+    return result;
+  }, [floorTables, floorPlanCache, activeFloorPlanId]);
+
+  const availableTransferTables = useMemo(() => {
+    const sourceTable = transferSourceTable ?? table;
+    if (!sourceTable) return [];
+
+    return allFloorPlanTables
+      .filter((candidate) => {
+        if (candidate.id === sourceTable.id) return false;
+        if (candidate.is_active === false || candidate.is_visible === false) {
+          return false;
+        }
+        if (!["table", "booth"].includes(candidate.category)) return false;
+        if (sessionsByTableId[candidate.id]) return false;
+        if (candidate.session) return false;
+        // Floor plan filter pill
+        if (
+          transferFilterPlanId &&
+          candidate._floorPlanId !== transferFilterPlanId
+        )
+          return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const fpA = floorPlanNameById[a._floorPlanId] ?? "";
+        const fpB = floorPlanNameById[b._floorPlanId] ?? "";
+        const fpCmp = fpA.localeCompare(fpB, undefined, { numeric: true });
+        if (fpCmp !== 0) return fpCmp;
+        return a.name.localeCompare(b.name, undefined, { numeric: true });
+      });
+  }, [
+    allFloorPlanTables,
+    sessionsByTableId,
+    table,
+    transferSourceTable,
+    floorPlanNameById,
+    transferFilterPlanId,
+  ]);
+
+  // Unique floor plans that have at least one available transfer target.
+  const transferPlanPills = useMemo(() => {
+    const sourceTable = transferSourceTable ?? table;
+    if (!sourceTable) return [];
+
+    const planIds = new Set<string>();
+    for (const t of allFloorPlanTables) {
+      if (t.id === sourceTable.id) continue;
+      if (t.is_active === false || t.is_visible === false) continue;
+      if (!["table", "booth"].includes(t.category)) continue;
+      if (sessionsByTableId[t.id]) continue;
+      if (t.session) continue;
+      if (t._floorPlanId) planIds.add(t._floorPlanId);
+    }
+
+    return Array.from(planIds)
+      .map((id) => ({ id, name: floorPlanNameById[id] ?? id }))
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true }),
+      );
+  }, [
+    allFloorPlanTables,
+    sessionsByTableId,
+    table,
+    transferSourceTable,
+    floorPlanNameById,
+  ]);
+
+  const handleOpenTransferPicker = useCallback(() => {
+    if (!table || !liveSession?.id) return;
+    if (!isOnline) {
+      showToast({
+        title: "Offline",
+        message:
+          "Table transfer requires a live connection to validate availability.",
+        type: "warning",
+      });
+      return;
+    }
+
+    setTransferSourceTable(table);
+    setTransferSourceSessionId(liveSession.id);
+    setTransferPickerOpen(true);
+    setTransferPickerLoading(true);
+    refreshTableSessions()
+      .catch((error) => {
+        console.error("[TableContextSheet] Refresh before transfer failed", {
+          error,
+          sourceTableId: table?.id ?? null,
+        });
+      })
+      .finally(() => setTransferPickerLoading(false));
+  }, [isOnline, liveSession?.id, refreshTableSessions, showToast, table]);
+
+  const handleTransferTable = useCallback(
+    async (targetTable: FloorPlanObject) => {
+      if (!transferSourceSessionId || !transferSourceTable) return;
+
+      setTransferringTableId(targetTable.id);
+      try {
+        await refreshTableSessions();
+        const targetSession =
+          useTableSessionStore.getState().sessions[targetTable.id];
+        if (targetSession && targetSession.id !== transferSourceSessionId) {
+          showToast({
+            title: "Table Occupied",
+            message: `${targetTable.name} already has an active session.`,
+            type: "warning",
+          });
+          return;
+        }
+
+        await transferSession(transferSourceSessionId, [targetTable.id]);
+        setTransferPickerOpen(false);
+        setTransferSourceTable(null);
+        setTransferSourceSessionId(null);
+        showToast({
+          title: "Table Transferred",
+          message: `${transferSourceTable.name} moved to ${targetTable.name}.`,
+          type: "success",
+        });
+      } catch (error) {
+        console.error("[TableContextSheet] Transfer table failed", {
+          error,
+          sessionId: transferSourceSessionId,
+          sourceTableId: transferSourceTable.id,
+          targetTableId: targetTable.id,
+        });
+        const message =
+          error instanceof Error
+            ? error.message
+            : typeof error === "object" &&
+                error !== null &&
+                "message" in error &&
+                typeof error.message === "string"
+              ? error.message
+              : "Could not transfer table.";
+        showToast({
+          title: "Transfer Failed",
+          message,
+          type: "error",
+        });
+      } finally {
+        setTransferringTableId(null);
+      }
+    },
+    [
+      refreshTableSessions,
+      showToast,
+      transferSession,
+      transferSourceSessionId,
+      transferSourceTable,
+    ],
+  );
+
+  const handleCloseTransferPicker = useCallback(() => {
+    setTransferPickerOpen(false);
+    setTransferPickerLoading(false);
+    setTransferringTableId(null);
+    setTransferSourceTable(null);
+    setTransferSourceSessionId(null);
+    setTransferFilterPlanId(null);
+  }, []);
 
   const kitchenSummary = useMemo(() => {
-    if (!order?.items?.length) return null
-    const counts = { preparing: 0, ready: 0, served: 0 }
+    if (!order?.items?.length) return null;
+    const counts = { preparing: 0, ready: 0, served: 0 };
     for (const item of order.items) {
-      if (item.is_voided) continue
-      const s = getEffectiveItemStatus(item)
-      if (s === 'preparing') counts.preparing++
-      else if (s === 'ready') counts.ready++
-      else if (s === 'served') counts.served++
+      if (item.is_voided) continue;
+      const s = getEffectiveItemStatus(item);
+      if (s === "preparing") counts.preparing++;
+      else if (s === "ready") counts.ready++;
+      else if (s === "served") counts.served++;
     }
-    return counts.preparing || counts.ready || counts.served ? counts : null
-  }, [order?.items])
+    return counts.preparing || counts.ready || counts.served ? counts : null;
+  }, [order?.items]);
 
   const itemsPreview = useMemo(() => {
-    if (!order?.items?.length) return null
-    const nonVoided = order.items.filter(i => !i.is_voided)
-    if (!nonVoided.length) return null
-    return { items: nonVoided.slice(0, 4), remaining: nonVoided.length - 4 }
-  }, [order?.items])
+    if (!order?.items?.length) return null;
+    const nonVoided = order.items.filter((i) => !i.is_voided);
+    if (!nonVoided.length) return null;
+    return { items: nonVoided.slice(0, 4), remaining: nonVoided.length - 4 };
+  }, [order?.items]);
 
   const actions = useMemo(() => {
-    if (!table) return []
+    if (!table) return [];
 
     const baseActions = getActionsForStatus(
       status as TableStatus,
       table,
       onSeatGuests,
       onNavigate,
-      id => clearTableSession(id),
-      id => finishCleaning(id),
+      (id) => clearTableSession(id),
+      (id) => finishCleaning(id),
       (id, s) => updateSessionStatus(id, s),
       upcomingReservation,
       onSeatReservation,
       handleMarkArrived,
-      handleCancelReservation
-    )
+      handleCancelReservation,
+    );
 
     const occupiedForTransfer = new Set([
-      'seated',
-      'seating',
-      'ordering',
-      'ordered',
-      'served',
-      'check_presented'
-    ])
+      "seated",
+      "seating",
+      "ordering",
+      "ordered",
+      "served",
+      "check_presented",
+    ]);
+    if (liveSession?.id && occupiedForTransfer.has(status)) {
+      baseActions.push({
+        label: "Transfer Table",
+        icon: <ArrowLeftRight size={16} color={colors.label} />,
+        onPress: handleOpenTransferPicker,
+        disabled: !isOnline,
+        disabledMessage:
+          "Table transfer requires a live connection to validate availability.",
+      });
+    }
+
     if (
       onTransferServer &&
       liveSession?.id &&
       occupiedForTransfer.has(status)
     ) {
       baseActions.push({
-        label: 'Transfer Server',
-        icon: <ArrowLeftRight size={16} color={colors.label} />,
-        onPress: () => onTransferServer(table.id, liveSession.id)
-      })
+        label: "Transfer Server",
+        icon: <UserCheck size={16} color={colors.label} />,
+        onPress: () => onTransferServer(table.id, liveSession.id),
+      });
     }
 
     if (order && selectedStore) {
-      if (['ordered', 'served', 'check_presented', 'paid'].includes(status)) {
+      if (["ordered", "served", "check_presented", "paid"].includes(status)) {
         baseActions.push({
-          label: 'Print Receipt',
+          label: "Print Receipt",
           icon: <Printer size={16} color={colors.label} />,
-          onPress: () => PrinterService.printReceipt(order, selectedStore)
-        })
+          onPress: () => {
+            // Pre-payment receipts need the projected service charge folded
+            // in. buildReceiptTemplateData recomputes SC from the rule + a
+            // (seatCount → session.party_size) lookup, which misses the
+            // guest_count fallback that useOrderTotals already covers — so
+            // a table seated without per-seat or session.party_size data
+            // would print without SC even though the UI shows it. Override
+            // via the manual-SC field so the print snapshot matches what the
+            // user is looking at on screen.
+            const sc = totals?.serviceCharge ?? 0;
+            const printOrder =
+              sc > 0
+                ? {
+                    ...order,
+                    service_charge: sc,
+                    service_charge_name:
+                      totals?.serviceChargeName ?? order.service_charge_name,
+                    service_charge_rate:
+                      totals?.serviceChargeRate ?? order.service_charge_rate,
+                    service_charge_is_manual: true,
+                  }
+                : order;
+            PrinterService.printReceipt(printOrder, selectedStore);
+          },
+        });
       }
-      if (['seated', 'ordering', 'ordered'].includes(status)) {
+      if (["seated", "ordering", "ordered"].includes(status)) {
         baseActions.push({
-          label: 'Print Kitchen Ticket',
+          label: "Print Kitchen Ticket",
           icon: <UtensilsCrossed size={16} color={colors.label} />,
           onPress: () => {
-            const nonVoidedItems = order.items.filter(i => !i.is_voided)
+            const nonVoidedItems = order.items.filter((i) => !i.is_voided);
             PrinterService.printKitchenTickets(
               order,
               nonVoidedItems,
               selectedStore,
-              { forceGroupBySeat: true }
-            )
-          }
-        })
+              { forceGroupBySeat: true },
+            );
+          },
+        });
       }
     }
 
-    return baseActions
+    if (isForeignStationSession) {
+      return baseActions.map((action) =>
+        action.label === "Close Table"
+          ? {
+              ...action,
+              disabled: true,
+            }
+          : action,
+      );
+    }
+
+    return baseActions;
   }, [
-    table,
+    // Shallow identity checks: only recompute when table identity or session status changes,
+    // not when unrelated table fields (position, shape, etc.) mutate via realtime sync.
+    table?.id,
+    table?.session?.id,
+    table?.session?.status,
     status,
     onSeatGuests,
     onSeatReservation,
@@ -355,559 +674,878 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     clearTableSession,
     finishCleaning,
     updateSessionStatus,
-    order,
-    selectedStore,
-    liveSession,
+    order?.id,
+    order?.order_status,
+    isForeignStationSession,
+    selectedStore?.id,
+    liveSession?.id,
     onTransferServer,
-    upcomingReservation,
+    upcomingReservation?.id,
+    upcomingReservation?.status,
     handleMarkArrived,
-    handleCancelReservation
-  ])
+    handleCancelReservation,
+    handleOpenTransferPicker,
+    isOnline,
+    totals?.serviceCharge,
+    totals?.serviceChargeName,
+    totals?.serviceChargeRate,
+  ]);
 
-  const partySize = liveSession?.party_size ?? table?.session?.party_size
+  const partySize = liveSession?.party_size ?? table?.session?.party_size;
 
-  // Reservation for this table (if any upcoming)
-  const upcomingReservation = useMemo(() => {
-    if (!table) return null
-    const nowMs = Date.now()
-
-    const toEpoch = (r: Reservation) => {
-      const direct = new Date(r.reservation_time).getTime()
-      if (Number.isFinite(direct)) return direct
-      if (r.reservation_date) {
-        const combined = new Date(
-          `${r.reservation_date}T${r.reservation_time}`
-        ).getTime()
-        if (Number.isFinite(combined)) return combined
-      }
-      return null
-    }
-
-    const upcoming = reservations
-      .filter(r => {
-        const epoch = toEpoch(r)
-        return (
-          ['pending', 'confirmed', 'reminded'].includes(r.status) &&
-          (r.assigned_table_ids ?? []).includes(table.id) &&
-          epoch !== null &&
-          epoch > nowMs
-        )
-      })
-      .sort(
-        (a, b) =>
-          (toEpoch(a) ?? Number.MAX_SAFE_INTEGER) -
-          (toEpoch(b) ?? Number.MAX_SAFE_INTEGER)
-      )
-    return upcoming[0] ?? null
-  }, [table, reservations])
-
-  const handleMarkArrived = useCallback(async (reservationId: string) => {
-    await useReservationStore.getState().updateStatus(reservationId, 'arrived')
-  }, [])
-
-  const handleCancelReservation = useCallback(async (reservationId: string) => {
-    await useReservationStore.getState().cancelReservation(reservationId)
-  }, [])
+  // upcomingReservation is now read from the precomputed store map (line 262)
 
   return (
-    <BottomSheetModal
-      ref={sheetRef}
-      snapPoints={snapPoints}
-      enableDynamicSizing={false}
-      onDismiss={handleDismiss}
-      backdropComponent={props => (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          pressBehavior='close'
-        />
-      )}
-      backgroundStyle={bottomSheetTheme.backgroundStyle}
-      handleIndicatorStyle={bottomSheetTheme.handleIndicatorStyle}
-      enablePanDownToClose
-    >
-      <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-        {/* Header */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 20,
-            paddingVertical: 16,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
-            gap: 14
-          }}
-        >
-          {/* Color accent box */}
+    <>
+      <BottomSheetModal
+        ref={sheetRef}
+        snapPoints={snapPoints}
+        enableDynamicSizing={false}
+        onDismiss={handleDismiss}
+        backdropComponent={(props) => (
+          <BottomSheetBackdrop
+            {...props}
+            appearsOnIndex={0}
+            disappearsOnIndex={-1}
+            pressBehavior="close"
+          />
+        )}
+        backgroundStyle={bottomSheetTheme.backgroundStyle}
+        handleIndicatorStyle={bottomSheetTheme.handleIndicatorStyle}
+        enablePanDownToClose
+      >
+        <BottomSheetScrollView contentContainerStyle={{ paddingBottom: s(24) }}>
+          {/* Header */}
           <View
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              backgroundColor: tableColor + '18',
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: s(20),
+              paddingVertical: s(16),
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+              gap: s(14),
+            }}
+          >
+            {/* Color accent box */}
+            <View
+              style={{
+                width: s(32),
+                height: s(32),
+                borderRadius: s(8),
+                backgroundColor: tableColor + "18",
+                borderWidth: 1,
+                borderColor: tableColor + "40",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <View
+                style={{
+                  width: s(7),
+                  height: s(7),
+                  borderRadius: s(4),
+                  backgroundColor: tableColor,
+                }}
+              />
+            </View>
+
+            {/* Name + status */}
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: s(14),
+                  fontWeight: "700",
+                  color: colors.heading,
+                }}
+              >
+                {table?.name}
+              </Text>
+              <Text
+                style={{
+                  fontSize: s(11),
+                  color: tableColor,
+                  fontWeight: "600",
+                  marginTop: s(1),
+                }}
+              >
+                {STATUS_LABELS[status] ?? status}
+              </Text>
+            </View>
+
+            {/* Meta pills */}
+            <View style={{ flexDirection: "row", gap: s(6) }}>
+              {partySize ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(4),
+                    backgroundColor: colors.card,
+                    borderRadius: s(8),
+                    paddingHorizontal: s(8),
+                    paddingVertical: s(4),
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <Users size={s(11)} color={colors.muted} />
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      color: colors.label,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {partySize}
+                  </Text>
+                </View>
+              ) : null}
+              {minutesSeated > 0 ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(4),
+                    backgroundColor: colors.card,
+                    borderRadius: s(8),
+                    paddingHorizontal: s(8),
+                    paddingVertical: s(4),
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <Clock size={s(11)} color={colors.muted} />
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      color: colors.label,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {minutesSeated}m
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Reservation banner — shown when table is reserved OR available with upcoming reservation */}
+          {upcomingReservation && !isOccupied
+            ? (() => {
+                const parsedDirect = new Date(
+                  upcomingReservation.reservation_time,
+                );
+                const parsedCombined = upcomingReservation.reservation_date
+                  ? new Date(
+                      `${upcomingReservation.reservation_date}T${upcomingReservation.reservation_time}`,
+                    )
+                  : null;
+                const resTime = Number.isFinite(parsedDirect.getTime())
+                  ? parsedDirect
+                  : parsedCombined && Number.isFinite(parsedCombined.getTime())
+                    ? parsedCombined
+                    : null;
+
+                const minutesUntil = resTime
+                  ? Math.round((resTime.getTime() - Date.now()) / 60000)
+                  : null;
+                const timeStr = resTime
+                  ? resTime.toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })
+                  : "Time TBD";
+                const isSoon =
+                  minutesUntil !== null &&
+                  minutesUntil <= 60 &&
+                  minutesUntil >= 0;
+
+                return (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(10),
+                      paddingHorizontal: s(16),
+                      paddingVertical: s(10),
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                      backgroundColor: colors.info + "0C",
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: s(30),
+                        height: s(30),
+                        borderRadius: s(8),
+                        backgroundColor: colors.info + "18",
+                        borderWidth: 1,
+                        borderColor: colors.info + "40",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <CalendarClock size={s(14)} color={colors.info} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: "700",
+                          color: colors.info,
+                        }}
+                      >
+                        {upcomingReservation.party_name}
+                        {upcomingReservation.is_vip ? "  ★" : ""}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: s(11),
+                          color: colors.label,
+                          marginTop: s(1),
+                        }}
+                      >
+                        {upcomingReservation.party_size} guests · {timeStr}
+                        {isSoon && minutesUntil !== null
+                          ? `  (${minutesUntil}m)`
+                          : ""}
+                      </Text>
+                      {upcomingReservation.notes ? (
+                        <Text
+                          style={{
+                            fontSize: s(10),
+                            color: colors.muted,
+                            marginTop: s(1),
+                          }}
+                          numberOfLines={1}
+                        >
+                          {upcomingReservation.notes}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View
+                      style={{
+                        paddingHorizontal: s(7),
+                        paddingVertical: s(3),
+                        borderRadius: s(5),
+                        backgroundColor: isSoon
+                          ? colors.warning + "20"
+                          : colors.info + "20",
+                        borderWidth: 1,
+                        borderColor: isSoon
+                          ? colors.warning + "50"
+                          : colors.info + "40",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(10),
+                          fontWeight: "700",
+                          color: isSoon ? colors.warning : colors.info,
+                        }}
+                      >
+                        {isSoon ? "Soon" : "Reserved"}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })()
+            : null}
+
+          {/* Financial summary */}
+          {isOccupied && totals ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: s(16),
+                paddingVertical: s(10),
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                gap: s(8),
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: s(17),
+                  fontWeight: "700",
+                  color: colors.heading,
+                  flex: 1,
+                }}
+              >
+                {formatCurrency(totals.total)}
+              </Text>
+              <Text style={{ fontSize: s(11), color: colors.muted }}>
+                {totals.itemCount} {totals.itemCount === 1 ? "item" : "items"}
+              </Text>
+              {order?.paid_status ? (
+                <View
+                  style={{
+                    paddingHorizontal: s(6),
+                    paddingVertical: s(2),
+                    borderRadius: s(5),
+                    backgroundColor:
+                      order.paid_status === "Paid"
+                        ? colors.success + "20"
+                        : order.paid_status === "Partial"
+                          ? colors.warning + "20"
+                          : colors.danger + "20",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(10),
+                      fontWeight: "700",
+                      color:
+                        order.paid_status === "Paid"
+                          ? colors.success
+                          : order.paid_status === "Partial"
+                            ? colors.warning
+                            : colors.danger,
+                    }}
+                  >
+                    {order.paid_status}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {/* Kitchen status dots */}
+          {isOccupied && kitchenSummary ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: s(12),
+                paddingHorizontal: s(16),
+                paddingVertical: s(8),
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+              }}
+            >
+              {(["preparing", "ready", "served"] as const).map((k) =>
+                kitchenSummary[k] > 0 ? (
+                  <View
+                    key={k}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(5),
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: s(6),
+                        height: s(6),
+                        borderRadius: s(3),
+                        backgroundColor: KITCHEN_STATUS_COLORS[k],
+                      }}
+                    />
+                    <Text style={{ fontSize: s(11), color: colors.label }}>
+                      {kitchenSummary[k]} {k}
+                    </Text>
+                  </View>
+                ) : null,
+              )}
+            </View>
+          ) : null}
+
+          {/* Items preview */}
+          {isOccupied && itemsPreview ? (
+            <View
+              style={{
+                marginHorizontal: s(12),
+                marginTop: s(8),
+                backgroundColor: colors.card,
+                borderRadius: s(8),
+                borderWidth: 1,
+                borderColor: colors.border,
+                overflow: "hidden",
+              }}
+            >
+              {itemsPreview.items.map((item, idx) => {
+                const itemStatus = getEffectiveItemStatus(item);
+                const statusColor =
+                  KITCHEN_STATUS_COLORS[
+                    itemStatus as keyof typeof KITCHEN_STATUS_COLORS
+                  ];
+                const isLast =
+                  idx === itemsPreview.items.length - 1 &&
+                  itemsPreview.remaining <= 0;
+                return (
+                  <View
+                    key={idx}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(6),
+                      borderBottomWidth: isLast ? 0 : 1,
+                      borderBottomColor: colors.border + "50",
+                      gap: s(7),
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: s(5),
+                        height: s(5),
+                        borderRadius: s(3),
+                        backgroundColor: statusColor ?? colors.border,
+                      }}
+                    />
+                    <Text
+                      style={{ fontSize: s(11), color: colors.label, flex: 1 }}
+                      numberOfLines={1}
+                    >
+                      {item.quantity}× {item.name}
+                    </Text>
+                    <Text style={{ fontSize: s(10), color: colors.muted }}>
+                      {formatCurrency(item.price * item.quantity)}
+                    </Text>
+                  </View>
+                );
+              })}
+              {itemsPreview.remaining > 0 && (
+                <View
+                  style={{ paddingHorizontal: s(10), paddingVertical: s(5) }}
+                >
+                  <Text style={{ fontSize: s(10), color: colors.muted }}>
+                    +{itemsPreview.remaining} more
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : null}
+
+          {isForeignStationSession ? (
+            <View
+              style={{
+                marginHorizontal: s(12),
+                marginTop: s(10),
+                paddingHorizontal: s(12),
+                paddingVertical: s(10),
+                borderRadius: s(8),
+                borderWidth: 1,
+                backgroundColor: colors.warning + "12",
+                borderColor: colors.warning + "40",
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: s(11),
+                  fontWeight: "700",
+                  color: colors.warning,
+                }}
+              >
+                Table locked by {foreignStationLabel}
+              </Text>
+              <Text
+                style={{
+                  fontSize: s(10),
+                  color: colors.label,
+                  marginTop: s(2),
+                }}
+              >
+                Close Table is disabled on this station.
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Server */}
+          {order?.server_name ? (
+            <Text
+              style={{
+                fontSize: s(11),
+                color: colors.muted,
+                paddingHorizontal: s(16),
+                marginTop: s(6),
+              }}
+            >
+              Server:{" "}
+              <Text style={{ color: colors.label, fontWeight: "600" }}>
+                {order.server_name}
+              </Text>
+            </Text>
+          ) : null}
+
+          {/* Actions */}
+          <View
+            style={{ paddingHorizontal: s(12), marginTop: s(10), gap: s(5) }}
+          >
+            {actions.map((action, idx) => {
+              const isPrimary = action.variant === "primary";
+              const isDanger = action.variant === "danger";
+              return (
+                <TouchableOpacity
+                  key={idx}
+                  onPress={() => {
+                    if (action.disabled) {
+                      if (action.disabledMessage) {
+                        showToast({
+                          title: "Offline",
+                          message: action.disabledMessage,
+                          type: "warning",
+                        });
+                      }
+                      return;
+                    }
+                    action.onPress();
+                    if (action.dismissOnPress !== false) {
+                      sheetRef.current?.dismiss();
+                    }
+                  }}
+                  disabled={action.disabled}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    borderRadius: s(8),
+                    borderWidth: 1,
+                    backgroundColor: isPrimary
+                      ? colors.teal + "15"
+                      : isDanger
+                        ? colors.danger + "12"
+                        : colors.card,
+                    borderColor: isPrimary
+                      ? colors.teal + "50"
+                      : isDanger
+                        ? colors.danger + "40"
+                        : colors.border,
+                    gap: s(8),
+                    opacity: action.disabled ? 0.45 : 1,
+                  }}
+                >
+                  {action.icon}
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      fontWeight: "600",
+                      flex: 1,
+                      color: isPrimary
+                        ? colors.teal
+                        : isDanger
+                          ? colors.danger
+                          : colors.heading,
+                    }}
+                  >
+                    {action.label}
+                  </Text>
+                  {isPrimary && (
+                    <ChevronRight size={s(12)} color={colors.teal + "80"} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+            {actions.length === 0 && (
+              <Text
+                style={{
+                  fontSize: s(12),
+                  color: colors.muted,
+                  textAlign: "center",
+                  paddingVertical: s(12),
+                }}
+              >
+                No actions available
+              </Text>
+            )}
+          </View>
+        </BottomSheetScrollView>
+      </BottomSheetModal>
+
+      <Modal
+        visible={isTransferPickerOpen}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={handleCloseTransferPicker}
+      >
+        <Pressable
+          onPress={handleCloseTransferPicker}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: s(18),
+          }}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: s(420),
+              maxHeight: "78%",
+              borderRadius: s(8),
               borderWidth: 1,
-              borderColor: tableColor + '40',
-              alignItems: 'center',
-              justifyContent: 'center'
+              borderColor: colors.border,
+              backgroundColor: colors.background,
+              overflow: "hidden",
             }}
           >
             <View
               style={{
-                width: 7,
-                height: 7,
-                borderRadius: 4,
-                backgroundColor: tableColor
-              }}
-            />
-          </View>
-
-          {/* Name + status */}
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
-            >
-              {table?.name}
-            </Text>
-            <Text
-              style={{
-                fontSize: 11,
-                color: tableColor,
-                fontWeight: '600',
-                marginTop: 1
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: s(16),
+                paddingVertical: s(14),
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                gap: s(10),
               }}
             >
-              {STATUS_LABELS[status] ?? status}
-            </Text>
-          </View>
-
-          {/* Meta pills */}
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            {partySize ? (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  backgroundColor: colors.card,
-                  borderRadius: 8,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
-                  borderWidth: 1,
-                  borderColor: colors.border
-                }}
-              >
-                <Users size={11} color={colors.muted} />
+              <ArrowLeftRight size={s(17)} color={colors.teal} />
+              <View style={{ flex: 1 }}>
                 <Text
                   style={{
-                    fontSize: 11,
-                    color: colors.label,
-                    fontWeight: '600'
+                    fontSize: s(14),
+                    fontWeight: "700",
+                    color: colors.heading,
                   }}
                 >
-                  {partySize}
+                  Transfer Table
                 </Text>
-              </View>
-            ) : null}
-            {minutesSeated > 0 ? (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  backgroundColor: colors.card,
-                  borderRadius: 8,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
-                  borderWidth: 1,
-                  borderColor: colors.border
-                }}
-              >
-                <Clock size={11} color={colors.muted} />
                 <Text
                   style={{
-                    fontSize: 11,
-                    color: colors.label,
-                    fontWeight: '600'
+                    fontSize: s(11),
+                    color: colors.muted,
+                    marginTop: s(1),
                   }}
                 >
-                  {minutesSeated}m
+                  Select an available table
                 </Text>
               </View>
-            ) : null}
-          </View>
-        </View>
+              <TouchableOpacity
+                onPress={handleCloseTransferPicker}
+                hitSlop={s(10)}
+              >
+                <X size={s(18)} color={colors.muted} />
+              </TouchableOpacity>
+            </View>
 
-        {/* Reservation banner — shown when table is reserved OR available with upcoming reservation */}
-        {upcomingReservation && !isOccupied
-          ? (() => {
-              const parsedDirect = new Date(
-                upcomingReservation.reservation_time
-              )
-              const parsedCombined = upcomingReservation.reservation_date
-                ? new Date(
-                    `${upcomingReservation.reservation_date}T${upcomingReservation.reservation_time}`
-                  )
-                : null
-              const resTime = Number.isFinite(parsedDirect.getTime())
-                ? parsedDirect
-                : parsedCombined && Number.isFinite(parsedCombined.getTime())
-                ? parsedCombined
-                : null
-
-              const minutesUntil = resTime
-                ? Math.round((resTime.getTime() - Date.now()) / 60000)
-                : null
-              const timeStr = resTime
-                ? resTime.toLocaleTimeString([], {
-                    hour: 'numeric',
-                    minute: '2-digit'
-                  })
-                : 'Time TBD'
-              const isSoon =
-                minutesUntil !== null && minutesUntil <= 60 && minutesUntil >= 0
-
-              return (
+            <ScrollView contentContainerStyle={{ padding: s(10), gap: s(6) }}>
+              {isTransferPickerLoading ? (
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 10,
-                    paddingHorizontal: 16,
-                    paddingVertical: 10,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.border,
-                    backgroundColor: colors.info + '0C'
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingVertical: s(18),
+                    gap: s(8),
                   }}
                 >
-                  <View
+                  <ActivityIndicator size="small" color={colors.teal} />
+                  <Text style={{ fontSize: s(12), color: colors.muted }}>
+                    Checking tables...
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Floor plan filter pills */}
+              {!isTransferPickerLoading && transferPlanPills.length > 1 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{
+                    paddingHorizontal: s(2),
+                    gap: s(6),
+                  }}
+                  style={{ marginBottom: s(2) }}
+                >
+                  <TouchableOpacity
+                    onPress={() => setTransferFilterPlanId(null)}
+                    activeOpacity={0.75}
                     style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: 8,
-                      backgroundColor: colors.info + '18',
+                      paddingHorizontal: s(10),
+                      paddingVertical: s(5),
+                      borderRadius: s(14),
                       borderWidth: 1,
-                      borderColor: colors.info + '40',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0
+                      backgroundColor:
+                        transferFilterPlanId === null
+                          ? colors.teal + "18"
+                          : colors.card,
+                      borderColor:
+                        transferFilterPlanId === null
+                          ? colors.teal + "50"
+                          : colors.border,
                     }}
                   >
-                    <CalendarClock size={14} color={colors.info} />
-                  </View>
-                  <View style={{ flex: 1 }}>
                     <Text
                       style={{
-                        fontSize: 12,
-                        fontWeight: '700',
-                        color: colors.info
+                        fontSize: s(11),
+                        fontWeight: "600",
+                        color:
+                          transferFilterPlanId === null
+                            ? colors.teal
+                            : colors.label,
                       }}
                     >
-                      {upcomingReservation.party_name}
-                      {upcomingReservation.is_vip ? '  ★' : ''}
+                      All
                     </Text>
-                    <Text
+                  </TouchableOpacity>
+                  {transferPlanPills.map((pill) => (
+                    <TouchableOpacity
+                      key={pill.id}
+                      onPress={() =>
+                        setTransferFilterPlanId(
+                          transferFilterPlanId === pill.id ? null : pill.id,
+                        )
+                      }
+                      activeOpacity={0.75}
                       style={{
-                        fontSize: 11,
-                        color: colors.label,
-                        marginTop: 1
+                        paddingHorizontal: s(10),
+                        paddingVertical: s(5),
+                        borderRadius: s(14),
+                        borderWidth: 1,
+                        backgroundColor:
+                          transferFilterPlanId === pill.id
+                            ? colors.teal + "18"
+                            : colors.card,
+                        borderColor:
+                          transferFilterPlanId === pill.id
+                            ? colors.teal + "50"
+                            : colors.border,
                       }}
                     >
-                      {upcomingReservation.party_size} guests · {timeStr}
-                      {isSoon && minutesUntil !== null
-                        ? `  (${minutesUntil}m)`
-                        : ''}
-                    </Text>
-                    {upcomingReservation.notes ? (
                       <Text
                         style={{
-                          fontSize: 10,
-                          color: colors.muted,
-                          marginTop: 1
+                          fontSize: s(11),
+                          fontWeight: "600",
+                          color:
+                            transferFilterPlanId === pill.id
+                              ? colors.teal
+                              : colors.label,
                         }}
-                        numberOfLines={1}
                       >
-                        {upcomingReservation.notes}
+                        {pill.name}
                       </Text>
-                    ) : null}
-                  </View>
-                  <View
-                    style={{
-                      paddingHorizontal: 7,
-                      paddingVertical: 3,
-                      borderRadius: 5,
-                      backgroundColor: isSoon
-                        ? colors.warning + '20'
-                        : colors.info + '20',
-                      borderWidth: 1,
-                      borderColor: isSoon
-                        ? colors.warning + '50'
-                        : colors.info + '40'
-                    }}
-                  >
-                    <Text
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              ) : null}
+
+              {!isTransferPickerLoading &&
+                availableTransferTables.map((targetTable) => {
+                  const isTransferring = transferringTableId === targetTable.id;
+                  const fpName =
+                    transferFilterPlanId === null
+                      ? (floorPlanNameById[
+                          (
+                            targetTable as FloorPlanObject & {
+                              _floorPlanId?: string;
+                            }
+                          )._floorPlanId ?? ""
+                        ] ?? "")
+                      : "";
+                  return (
+                    <TouchableOpacity
+                      key={targetTable.id}
+                      onPress={() => handleTransferTable(targetTable)}
+                      disabled={!!transferringTableId}
+                      activeOpacity={0.75}
                       style={{
-                        fontSize: 10,
-                        fontWeight: '700',
-                        color: isSoon ? colors.warning : colors.info
+                        flexDirection: "row",
+                        alignItems: "center",
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(11),
+                        borderRadius: s(8),
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.card,
+                        gap: s(10),
+                        opacity:
+                          transferringTableId && !isTransferring ? 0.45 : 1,
                       }}
                     >
-                      {isSoon ? 'Soon' : 'Reserved'}
-                    </Text>
-                  </View>
-                </View>
-              )
-            })()
-          : null}
+                      <View
+                        style={{
+                          width: s(30),
+                          height: s(30),
+                          borderRadius: s(8),
+                          backgroundColor: colors.success + "16",
+                          borderWidth: 1,
+                          borderColor: colors.success + "40",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: s(7),
+                            height: s(7),
+                            borderRadius: s(4),
+                            backgroundColor: colors.success,
+                          }}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontSize: s(13),
+                            fontWeight: "700",
+                            color: colors.heading,
+                          }}
+                        >
+                          {targetTable.name}
+                        </Text>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: s(4),
+                          }}
+                        >
+                          {fpName ? (
+                            <Text
+                              style={{
+                                fontSize: s(10),
+                                color: colors.teal,
+                                fontWeight: "600",
+                              }}
+                            >
+                              {fpName}
+                            </Text>
+                          ) : null}
+                          <Text
+                            style={{ fontSize: s(11), color: colors.muted }}
+                          >
+                            {targetTable.capacity
+                              ? `${targetTable.capacity} seats`
+                              : "Available"}
+                          </Text>
+                        </View>
+                      </View>
+                      {isTransferring ? (
+                        <ActivityIndicator size="small" color={colors.teal} />
+                      ) : (
+                        <ChevronRight size={s(14)} color={colors.muted} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
 
-        {/* Financial summary */}
-        {isOccupied && totals ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border,
-              gap: 8
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 17,
-                fontWeight: '700',
-                color: colors.heading,
-                flex: 1
-              }}
-            >
-              {formatCurrency(totals.total)}
-            </Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>
-              {totals.itemCount} {totals.itemCount === 1 ? 'item' : 'items'}
-            </Text>
-            {order?.paid_status ? (
-              <View
-                style={{
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 5,
-                  backgroundColor:
-                    order.paid_status === 'Paid'
-                      ? colors.success + '20'
-                      : order.paid_status === 'Partial'
-                      ? colors.warning + '20'
-                      : colors.danger + '20'
-                }}
-              >
+              {!isTransferPickerLoading &&
+              availableTransferTables.length === 0 ? (
                 <Text
                   style={{
-                    fontSize: 10,
-                    fontWeight: '700',
-                    color:
-                      order.paid_status === 'Paid'
-                        ? colors.success
-                        : order.paid_status === 'Partial'
-                        ? colors.warning
-                        : colors.danger
+                    fontSize: s(12),
+                    color: colors.muted,
+                    textAlign: "center",
+                    paddingVertical: s(18),
                   }}
                 >
-                  {order.paid_status}
+                  No available tables
                 </Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
+              ) : null}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+};
 
-        {/* Kitchen status dots */}
-        {isOccupied && kitchenSummary ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 12,
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border
-            }}
-          >
-            {(['preparing', 'ready', 'served'] as const).map(k =>
-              kitchenSummary[k] > 0 ? (
-                <View
-                  key={k}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-                >
-                  <View
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
-                      backgroundColor: KITCHEN_STATUS_COLORS[k]
-                    }}
-                  />
-                  <Text style={{ fontSize: 11, color: colors.label }}>
-                    {kitchenSummary[k]} {k}
-                  </Text>
-                </View>
-              ) : null
-            )}
-          </View>
-        ) : null}
-
-        {/* Items preview */}
-        {isOccupied && itemsPreview ? (
-          <View
-            style={{
-              marginHorizontal: 12,
-              marginTop: 8,
-              backgroundColor: colors.card,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.border,
-              overflow: 'hidden'
-            }}
-          >
-            {itemsPreview.items.map((item, idx) => {
-              const itemStatus = getEffectiveItemStatus(item)
-              const statusColor =
-                KITCHEN_STATUS_COLORS[
-                  itemStatus as keyof typeof KITCHEN_STATUS_COLORS
-                ]
-              const isLast =
-                idx === itemsPreview.items.length - 1 &&
-                itemsPreview.remaining <= 0
-              return (
-                <View
-                  key={idx}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderBottomWidth: isLast ? 0 : 1,
-                    borderBottomColor: colors.border + '50',
-                    gap: 7
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: 3,
-                      backgroundColor: statusColor ?? colors.border
-                    }}
-                  />
-                  <Text
-                    style={{ fontSize: 11, color: colors.label, flex: 1 }}
-                    numberOfLines={1}
-                  >
-                    {item.quantity}× {item.name}
-                  </Text>
-                  <Text style={{ fontSize: 10, color: colors.muted }}>
-                    {formatCurrency(item.price * item.quantity)}
-                  </Text>
-                </View>
-              )
-            })}
-            {itemsPreview.remaining > 0 && (
-              <View style={{ paddingHorizontal: 10, paddingVertical: 5 }}>
-                <Text style={{ fontSize: 10, color: colors.muted }}>
-                  +{itemsPreview.remaining} more
-                </Text>
-              </View>
-            )}
-          </View>
-        ) : null}
-
-        {/* Server */}
-        {order?.server_name ? (
-          <Text
-            style={{
-              fontSize: 11,
-              color: colors.muted,
-              paddingHorizontal: 16,
-              marginTop: 6
-            }}
-          >
-            Server:{' '}
-            <Text style={{ color: colors.label, fontWeight: '600' }}>
-              {order.server_name}
-            </Text>
-          </Text>
-        ) : null}
-
-        {/* Actions */}
-        <View style={{ paddingHorizontal: 12, marginTop: 10, gap: 5 }}>
-          {actions.map((action, idx) => {
-            const isPrimary = action.variant === 'primary'
-            const isDanger = action.variant === 'danger'
-            return (
-              <TouchableOpacity
-                key={idx}
-                onPress={() => {
-                  action.onPress()
-                  sheetRef.current?.dismiss()
-                }}
-                activeOpacity={0.7}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  backgroundColor: isPrimary
-                    ? colors.teal + '15'
-                    : isDanger
-                    ? colors.danger + '12'
-                    : colors.card,
-                  borderColor: isPrimary
-                    ? colors.teal + '50'
-                    : isDanger
-                    ? colors.danger + '40'
-                    : colors.border,
-                  gap: 8
-                }}
-              >
-                {action.icon}
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: '600',
-                    flex: 1,
-                    color: isPrimary
-                      ? colors.teal
-                      : isDanger
-                      ? colors.danger
-                      : colors.heading
-                  }}
-                >
-                  {action.label}
-                </Text>
-                {isPrimary && (
-                  <ChevronRight size={12} color={colors.teal + '80'} />
-                )}
-              </TouchableOpacity>
-            )
-          })}
-          {actions.length === 0 && (
-            <Text
-              style={{
-                fontSize: 12,
-                color: colors.muted,
-                textAlign: 'center',
-                paddingVertical: 12
-              }}
-            >
-              No actions available
-            </Text>
-          )}
-        </View>
-      </BottomSheetScrollView>
-    </BottomSheetModal>
-  )
-}
-
-export default TableContextSheet
+export default TableContextSheet;

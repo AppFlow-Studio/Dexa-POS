@@ -1,82 +1,160 @@
-import { colors } from "@/lib/theme";
-import { AlertTriangle } from "lucide-react-native";
-import { Modal, Text, TouchableOpacity, View } from "react-native";
+import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
+import { AlertTriangle } from 'lucide-react-native'
+import { Modal, Text, TouchableOpacity, View } from 'react-native'
 
 interface KickedOutModalProps {
-  visible: boolean;
-  kickedBy: string | null;
-  kickReason: string | null;
-  countdown: number;
-  onAcknowledge: () => void;
+  visible: boolean
+  kickedBy: string | null
+  kickReason: string | null
+  countdown: number
+  onAcknowledge: () => void
 }
 
 /**
  * Modal that displays when the user's session is taken over by another device.
  * Shows a countdown before automatic logout.
  */
-export function KickedOutModal({
+export function KickedOutModal ({
   visible,
   kickedBy,
   kickReason,
   countdown,
-  onAcknowledge,
+  onAcknowledge
 }: KickedOutModalProps) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType='fade'
       statusBarTranslucent
     >
-      <View className="flex-1 bg-black/70 items-center justify-center p-6">
-        <View className="bg-card rounded-2xl p-6 w-full max-w-md border-2 border-red-500">
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: s(24)
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: s(16),
+            padding: s(24),
+            width: '100%',
+            maxWidth: s(480),
+            borderWidth: 2,
+            borderColor: colors.danger
+          }}
+        >
           {/* Icon */}
-          <View className="items-center mb-4">
-            <View className="bg-red-500/20 p-4 rounded-full">
-              <AlertTriangle size={48} color={colors.danger} />
+          <View style={{ alignItems: 'center', marginBottom: s(16) }}>
+            <View
+              style={{
+                backgroundColor: colors.danger + '20',
+                padding: s(16),
+                borderRadius: 999
+              }}
+            >
+              <AlertTriangle size={s(48)} color={colors.danger} />
             </View>
           </View>
 
           {/* Title */}
-          <Text className="text-2xl font-bold text-red-400 text-center mb-2">
+          <Text
+            style={{
+              fontSize: s(24),
+              fontWeight: 'bold',
+              color: colors.danger,
+              textAlign: 'center',
+              marginBottom: s(8)
+            }}
+          >
             Session Taken Over
           </Text>
 
           {/* Message */}
-          <Text className="text-lg text-gray-200 text-center mb-4">
+          <Text
+            style={{
+              fontSize: s(16),
+              color: colors.heading,
+              textAlign: 'center',
+              marginBottom: s(16)
+            }}
+          >
             {kickedBy
               ? `${kickedBy} has taken over this station.`
-              : "Another user has taken over this station."}
+              : 'Another user has taken over this station.'}
           </Text>
 
           {kickReason && (
-            <Text className="text-base text-gray-400 text-center mb-4">
+            <Text
+              style={{
+                fontSize: s(14),
+                color: colors.label,
+                textAlign: 'center',
+                marginBottom: s(16)
+              }}
+            >
               Reason: {kickReason}
             </Text>
           )}
 
           {/* Countdown */}
-          <View className="bg-red-500/10 rounded-lg p-4 mb-6">
-            <Text className="text-center text-gray-300">
+          <View
+            style={{
+              backgroundColor: colors.danger + '10',
+              borderRadius: s(8),
+              padding: s(16),
+              marginBottom: s(24)
+            }}
+          >
+            <Text style={{ textAlign: 'center', color: colors.label }}>
               You will be logged out in
             </Text>
-            <Text className="text-4xl font-bold text-red-400 text-center">
+            <Text
+              style={{
+                fontSize: s(36),
+                fontWeight: 'bold',
+                color: colors.danger,
+                textAlign: 'center'
+              }}
+            >
               {countdown}
             </Text>
-            <Text className="text-center text-gray-400 text-sm">seconds</Text>
+            <Text
+              style={{ textAlign: 'center', color: colors.label, fontSize: s(12) }}
+            >
+              seconds
+            </Text>
           </View>
 
           {/* Acknowledge Button */}
           <TouchableOpacity
             onPress={onAcknowledge}
-            className="bg-red-600 py-4 rounded-xl"
+            style={{
+              backgroundColor: colors.danger,
+              paddingVertical: s(12),
+              borderRadius: s(8)
+            }}
           >
-            <Text className="text-white text-lg font-semibold text-center">
+            <Text
+              style={{
+                fontSize: s(16),
+                fontWeight: '600',
+                color: colors.onSolid,
+                textAlign: 'center'
+              }}
+            >
               OK, Log Me Out Now
             </Text>
           </TouchableOpacity>
         </View>
       </View>
     </Modal>
-  );
+  )
 }

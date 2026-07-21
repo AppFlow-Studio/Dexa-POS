@@ -2,11 +2,18 @@
 // Background terminal health monitoring service (singleton pattern)
 
 import { AppState, AppStateStatus } from "react-native";
+import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
-import { probeCastlesTerminal } from "@/services/terminals/castles-service";
+import { probeCastlesTerminal, getSharedCastlesService } from "@/services/terminals/castles-service";
+import { listDevices } from "@/modules/castles-usb";
+
+const CASTLES_VENDOR_ID = 0x0ca6;
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
+import { deferStoreUpdate } from "@/lib/deferredStoreUpdate";
+import { isRecentlyNavigated } from "@/lib/rootNavigation";
 import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useToastStore } from "@/stores/useToastStore";
 import type { StationPaymentTerminal } from "@/types/station";
 
@@ -14,13 +21,15 @@ import type { StationPaymentTerminal } from "@/types/station";
 // SINGLETON STATE
 // ============================================================================
 
-const DEFAULT_HEALTH_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_HEALTH_CHECK_INTERVAL_MS = 90 * 1000; // 90 seconds
 const FAILURE_TOAST_THRESHOLD = 3;
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let appStateSubscription: ReturnType<
   typeof AppState.addEventListener
 > | null = null;
+let netInfoUnsubscribe: (() => void) | null = null;
+let wasConnected = true;
 let currentSupabase: SupabaseClient | null = null;
 let currentTerminalId: string | null = null;
 let currentPaymentTerminal: StationPaymentTerminal | null = null;
@@ -33,6 +42,9 @@ let toastShownForCurrentFailureStreak = false;
 
 async function performHealthCheck(): Promise<void> {
   if (!currentSupabase || !currentTerminalId || !currentPaymentTerminal) return;
+
+  // Don't fight the suspend — probing a closed/closing socket is wasted work.
+  if (getSharedCastlesService().isSuspended()) return;
 
   // Skip if a payment is currently being processed
   const isProcessing = usePaymentTerminalStore.getState().isProcessingPayment;
@@ -52,17 +64,47 @@ async function performCastlesHealthCheck(): Promise<void> {
   const isUsb = currentPaymentTerminal?.connection_type === 'usb';
 
   if (isUsb) {
-    // USB probe: just try to connect via USB transport
-    const result = await probeCastlesTerminal({ connectionType: 'usb' });
-    if (result.online) {
-      handleSuccess();
-    } else {
-      handleFailure(result.error || "USB terminal unreachable");
+    // USB CDC ACM is single-instance per device — opening a probe transport
+    // would steal the serial port from the shared singleton (which is the
+    // one actually used for sales). That caused a flap:
+    //   probe opens → singleton kicked off → next sale reconnects → probe
+    //   opens again → "Terminal Back Online" toast on idle.
+    //
+    // The right test for "is USB Castles plugged in?" is just whether the OS
+    // sees the Castles VID in its USB tree. listDevices() is read-only — it
+    // doesn't open the port, doesn't fight the singleton.
+    //
+    // The "is the terminal app actually responsive?" question is handled
+    // separately by the CastlesService watchdog (every 30s, sends getData
+    // on the already-open singleton port).
+    try {
+      const devices = await listDevices();
+      const found = devices.some((d) => d.vendorId === CASTLES_VENDOR_ID);
+      if (found) {
+        handleSuccess();
+      } else {
+        handleFailure("USB terminal not detected (cable unplugged or terminal powered off)");
+      }
+    } catch (err) {
+      handleFailure(
+        err instanceof Error ? err.message : "USB device enumeration failed",
+      );
     }
     return;
   }
 
-  // TCP/WiFi probe
+  // TCP/WiFi: the shared singleton holds the one TCP session CastlesPay
+  // accepts. If it's already connected, opening a *second* probe socket here
+  // competes with it and can wedge the terminal — the same failure mode we
+  // fixed for USB above. The 30s CastlesService watchdog already verifies
+  // liveness by pinging getData on the open socket, so trust that and skip the
+  // probe. Only probe when the singleton is down, to detect a terminal that
+  // has come back online.
+  if (getSharedCastlesService().isConnected()) {
+    handleSuccess();
+    return;
+  }
+
   const host = currentPaymentTerminal?.ip_address;
   if (!host) {
     handleFailure("Castles terminal IP address not configured");
@@ -109,22 +151,45 @@ async function performDejavooHealthCheck(): Promise<void> {
 }
 
 function handleSuccess(): void {
+  const wasPreviouslyFailing = consecutiveFailures > 0;
   consecutiveFailures = 0;
   toastShownForCurrentFailureStreak = false;
 
-  // Update store with healthy status
+  // Defer store updates to next frame — avoids interrupting in-progress renders
   if (currentTerminalId) {
-    usePaymentTerminalStore.getState().updateTerminalStatus(currentTerminalId, {
-      isConnected: true,
-      lastConnectionStatus: "Online",
-      lastConnectionTest: new Date().toISOString(),
-      consecutiveFailures: 0,
-      lastErrorMessage: null,
+    const tid = currentTerminalId;
+    const ts = new Date().toISOString();
+    deferStoreUpdate(() => {
+      usePaymentTerminalStore.getState().updateTerminalStatus(tid, {
+        isConnected: true,
+        lastConnectionStatus: "Online",
+        lastConnectionTest: ts,
+        consecutiveFailures: 0,
+        lastErrorMessage: null,
+      });
+      syncToStationStore(true);
     });
   }
 
-  // Update database
+  // Update database (async, no store impact)
   updateDatabaseHealth(true, "Online", null);
+
+  // If terminal recovered from a failure streak, pre-warm CastlesService and show toast
+  if (wasPreviouslyFailing) {
+    if (!isRecentlyNavigated(1000)) {
+      useToastStore.getState().show({
+        title: "Terminal Back Online",
+        message: `${currentPaymentTerminal?.terminal_name ?? "Payment terminal"} reconnected.`,
+        type: "success",
+        duration: 5000,
+      });
+    }
+
+    // Pre-warm CastlesService singleton if applicable
+    if (currentPaymentTerminal?.terminal_type === "castles" && currentTerminalId) {
+      preWarmCastlesService();
+    }
+  }
 
   console.log("[TerminalHealthCheck] Terminal online");
 }
@@ -132,18 +197,24 @@ function handleSuccess(): void {
 function handleFailure(errorMessage: string): void {
   consecutiveFailures++;
 
-  // Update store with failure status
+  // Defer store updates to next frame — avoids interrupting in-progress renders
   if (currentTerminalId) {
-    usePaymentTerminalStore.getState().updateTerminalStatus(currentTerminalId, {
-      isConnected: false,
-      lastConnectionStatus: "Offline",
-      lastConnectionTest: new Date().toISOString(),
-      consecutiveFailures,
-      lastErrorMessage: errorMessage,
+    const tid = currentTerminalId;
+    const ts = new Date().toISOString();
+    const failures = consecutiveFailures;
+    deferStoreUpdate(() => {
+      usePaymentTerminalStore.getState().updateTerminalStatus(tid, {
+        isConnected: false,
+        lastConnectionStatus: "Offline",
+        lastConnectionTest: ts,
+        consecutiveFailures: failures,
+        lastErrorMessage: errorMessage,
+      });
+      syncToStationStore(false);
     });
   }
 
-  // Update database
+  // Update database (async, no store impact)
   updateDatabaseHealth(false, "Offline", errorMessage);
 
   console.warn(
@@ -156,12 +227,61 @@ function handleFailure(errorMessage: string): void {
     !toastShownForCurrentFailureStreak
   ) {
     toastShownForCurrentFailureStreak = true;
-    useToastStore.getState().show({
-      title: "Terminal Offline",
-      message: `Payment terminal has been unreachable for ${consecutiveFailures} consecutive checks. Please verify the terminal connection.`,
-      type: "warning",
-      duration: 8000,
+    if (!isRecentlyNavigated(1000)) {
+      useToastStore.getState().show({
+        title: "Terminal Offline",
+        message: `Payment terminal has been unreachable for ${consecutiveFailures} consecutive checks. Please verify the terminal connection.`,
+        type: "warning",
+        duration: 8000,
+      });
+    }
+  }
+}
+
+/**
+ * Sync the health check result to `selectedStation.payment_terminal` in
+ * useStoreSettingsStore so the payment-systems UI reflects live status
+ * without requiring a page reload.
+ */
+function syncToStationStore(isConnected: boolean): void {
+  const storeSettings = useStoreSettingsStore.getState();
+  const station = storeSettings.selectedStation;
+  if (station?.payment_terminal?.id === currentTerminalId) {
+    storeSettings.setSelectedStation({
+      ...station,
+      payment_terminal: {
+        ...station.payment_terminal,
+        is_connected: isConnected,
+        last_connection_status: isConnected ? "Online" : "Offline",
+        last_connection_test_at: new Date().toISOString(),
+      },
     });
+  }
+}
+
+/**
+ * Pre-warm the shared CastlesService singleton after a terminal recovers
+ * from offline so the next payment doesn't need a cold connect.
+ */
+async function preWarmCastlesService(): Promise<void> {
+  if (!currentPaymentTerminal || !currentTerminalId) return;
+  const service = getSharedCastlesService();
+  if (service.isSuspended()) {
+    return; // Don't fight the suspend; resume() will handle it.
+  }
+  const isUsb = currentPaymentTerminal.connection_type === 'usb';
+  try {
+    await service.connect({
+      connectionType: isUsb ? 'usb' : 'local_socket',
+      host: isUsb ? undefined : (currentPaymentTerminal.ip_address ?? undefined),
+      port: isUsb ? undefined : (currentPaymentTerminal.port ?? CASTLES_DEFAULT_PORT),
+      timeout: 10000,
+      terminalId: currentTerminalId,
+    });
+    console.log("[TerminalHealthCheck] CastlesService pre-warmed after recovery");
+  } catch {
+    // Non-fatal — the payment flow will connect on demand
+    console.log("[TerminalHealthCheck] CastlesService pre-warm failed (non-fatal)");
   }
 }
 
@@ -199,7 +319,7 @@ function handleAppState(nextState: AppStateStatus): void {
     if (!intervalId && currentTerminalId) {
       performHealthCheck();
       const intervalMs =
-        (currentPaymentTerminal?.health_check_interval ?? 300) * 1000 ||
+        (currentPaymentTerminal?.health_check_interval ?? 0) * 1000 ||
         DEFAULT_HEALTH_CHECK_INTERVAL_MS;
       intervalId = setInterval(performHealthCheck, intervalMs);
       console.log("[TerminalHealthCheck] Resumed on app active");
@@ -223,8 +343,9 @@ export function startTerminalHealthCheck(
   terminalId: string,
   paymentTerminal: StationPaymentTerminal,
 ): void {
-  // Avoid duplicate starts
-  if (intervalId) {
+  // Avoid duplicate starts — also clean up orphaned listeners from backgrounding
+  // (backgrounding nulls intervalId but leaves appStateSubscription/netInfoUnsubscribe alive)
+  if (intervalId || appStateSubscription || netInfoUnsubscribe) {
     stopTerminalHealthCheck();
   }
 
@@ -236,7 +357,7 @@ export function startTerminalHealthCheck(
 
   // Determine interval from terminal config or use default
   const intervalMs =
-    (paymentTerminal.health_check_interval ?? 300) * 1000 ||
+    (paymentTerminal.health_check_interval ?? 0) * 1000 ||
     DEFAULT_HEALTH_CHECK_INTERVAL_MS;
 
   // Send initial health check immediately
@@ -247,6 +368,19 @@ export function startTerminalHealthCheck(
 
   // Listen for app state changes
   appStateSubscription = AppState.addEventListener("change", handleAppState);
+
+  // Listen for network connectivity changes — trigger immediate health check
+  // when WiFi reconnects so terminals recover in seconds instead of waiting
+  // for the next interval.
+  wasConnected = true;
+  netInfoUnsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
+    const isNow = state.isConnected ?? false;
+    if (!wasConnected && isNow) {
+      console.log("[TerminalHealthCheck] Network reconnected, immediate check");
+      performHealthCheck();
+    }
+    wasConnected = isNow;
+  });
 
   console.log(
     `[TerminalHealthCheck] Started for terminal ${terminalId} (every ${intervalMs / 1000}s)`,
@@ -262,6 +396,11 @@ export function stopTerminalHealthCheck(): void {
   if (appStateSubscription) {
     appStateSubscription.remove();
     appStateSubscription = null;
+  }
+
+  if (netInfoUnsubscribe) {
+    netInfoUnsubscribe();
+    netInfoUnsubscribe = null;
   }
 
   currentSupabase = null;

@@ -1,40 +1,70 @@
-// hooks/useFloorRealtime.ts
-// Real-time updates for floor/table management
+// hooks/realtime/useFloorRealtime.ts
+//
+// Realtime floor/table synchronization — REWORKED to a single authoritative
+// pipeline.
+//
+// Design (one writer, one source of truth):
+//   1. The Supabase Broadcast channel `location:{id}:tables` is treated as a
+//      pure "something changed" SIGNAL. Its payload is never applied to local
+//      state — broadcasts are best-effort, partial, and can arrive out of
+//      order, which is what made the old payload-trusting path drift.
+//   2. The ONLY writer of backend-owned table/session state is the atomic
+//      snapshot RPC behind `loadFloorPlanStatus()` (get_floor_plan_objects_
+//      with_sessions → _patchSessionsFromTables). It reads sessions + junction
+//      membership in one transactional read, so it can never observe a
+//      half-applied transfer/merge.
+//   3. Own-device actions (seatGuests / transferSession / clear / dispatch*)
+//      still patch local state optimistically for instant feel; the snapshot
+//      reconcile that follows simply confirms them.
+//
+// Convergence guarantees (why this reaches "always correct"):
+//   - Every broadcast → debounced reconcile (coalesced bursts).
+//   - Every (re)SUBSCRIBE → immediate forced reconcile, catching up any
+//     messages dropped while the channel was down.
+//   - Heartbeat reconcile while subscribed → bounds staleness even if every
+//     broadcast were silently dropped.
+//   - Fallback poll while the channel is NOT connected → covers offline /
+//     reconnect gaps, and stops the instant broadcasts resume.
 
-import { useCallback, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { useRealtimeChannel } from './useRealtimechannel';
-import { useFloorPlanStore } from '@/stores/useFloorPlanStore';
-import { useTableSessionStore } from '@/stores/useTableSessionStore';
-import { useSupabaseClient } from '@/hooks/useSupabaseClient';
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import type {
-  TableSessionPayload,
-  TableAssignmentPayload,
-  SessionEventPayload,
-  OrderPayload,
-  RealtimeEventType,
-  UseFloorRealtimeOptions,
-  buildChannelTopic,
-} from '@/types/real-time';
+    RealtimeEventType,
+    UseFloorRealtimeOptions,
+} from "@/types/real-time";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useRealtimeChannel } from "./useRealtimechannel";
 
-// Query keys for cache invalidation
-export const floorQueryKeys = {
-  sessions: (locationId: string) => ['floor-sessions', locationId] as const,
-  tableStatuses: (locationId: string) => ['table-statuses', locationId] as const,
-  sessionEvents: (sessionId: string) => ['session-events', sessionId] as const,
-  sessionDetail: (sessionId: string) => ['session-detail', sessionId] as const,
-} as const;
+// Coalesce bursts of broadcasts into a single authoritative reload.
+const RECONCILE_DEBOUNCE_MS = 300;
+// Max-rate ceiling for broadcast-driven reconciles. Under a busy floor the
+// debounce coalesces bursts but NOT a steady trickle (N active tables → a
+// near-continuous stream of session/order broadcasts), which would otherwise
+// fire one reconcile every ~debounce. This trailing throttle bounds the
+// session-refresh rate regardless of broadcast volume; any change that lands
+// inside the cooldown is picked up by the trailing edge. Heartbeat and
+// fallback poll still bound staleness on top of this.
+const RECONCILE_MIN_INTERVAL_MS = 1_500;
+// Perf T1b: skip a broadcast-driven reconcile when an authoritative snapshot
+// just landed (e.g. a floor-plan switch ran loadFloorPlanStatus moments ago).
+// Staleness exposure is the same class the in-flight load dedupe already
+// accepts (a change committed between our snapshot read and the broadcast),
+// and is bounded by the next broadcast/heartbeat. (Re)subscribe catch-up and
+// the fallback poll are deliberately NOT suppressed.
+const JUST_LOADED_SUPPRESS_MS = 1_200;
+// Heartbeat: converge even if every broadcast is dropped.
+// 120s interval with 60s staleness — during idle this halves the periodic
+// activity compared to the old 45s/30s cadence, reducing GC churn from
+// Array.from(listeners) + Immer proxy creation on the tables screen.
+const HEARTBEAT_MS = 120_000;
+const HEARTBEAT_STALE_MS = 60_000;
+// Fallback poll cadence while the channel is disconnected.
+const FALLBACK_POLL_MS = 5_000;
 
 /**
- * Hook for real-time floor/table updates
- *
- * Subscribes to: `location:{locationId}:tables`
- *
- * Events handled:
- * - INSERT/UPDATE/DELETE: Session changes
- * - TABLE_ASSIGNMENT_*: Table assignment changes
- * - SESSION_EVENT: Timeline events (coursing, flags)
- * - SESSION_ORDER_UPDATE: Order updates for dine-in
+ * Subscribes to `location:{locationId}:tables` and keeps the floor plan +
+ * table-session stores converged with the backend via authoritative snapshot
+ * reloads. Broadcasts only trigger reloads; they are never applied directly.
  */
 export function useFloorRealtime({
   locationId,
@@ -43,156 +73,194 @@ export function useFloorRealtime({
   onSessionChange,
   onTableAssignment,
   onSessionEvent,
-  onOrderUpdate,
 }: UseFloorRealtimeOptions) {
-  const queryClient = useQueryClient();
-  const supabase = useSupabaseClient(); // Call at component level (not inside callbacks)
+  const supabase = useSupabaseClient();
 
-  // Events we care about for floor view
+  // All floor-relevant broadcast events. We don't branch on them for state —
+  // any one of them means "the floor changed, go re-read the truth".
   const events: RealtimeEventType[] = useMemo(
     () => [
-      'INSERT',
-      'UPDATE',
-      'DELETE',
-      'TABLE_ASSIGNMENT_INSERT',
-      'TABLE_ASSIGNMENT_UPDATE',
-      'TABLE_ASSIGNMENT_DELETE',
-      'SESSION_EVENT',
-      'SESSION_ORDER_UPDATE',
+      "INSERT",
+      "UPDATE",
+      "DELETE",
+      "TABLE_ASSIGNMENT_INSERT",
+      "TABLE_ASSIGNMENT_UPDATE",
+      "TABLE_ASSIGNMENT_DELETE",
+      "SESSION_EVENT",
     ],
-    []
+    [],
   );
 
-  // Handle incoming messages
+  // ------------------------------------------------------------------
+  // Authoritative reconcile (debounced)
+  // ------------------------------------------------------------------
+  const reconcileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastReconcileAtRef = useRef(0);
+
+  // Full authoritative snapshot (geometry + sessions + junction membership in
+  // one transactional read). Used for catch-up on (re)subscribe and the
+  // disconnected fallback poll, where we may have missed structural changes.
+  const reconcileNow = useCallback(() => {
+    lastReconcileAtRef.current = Date.now();
+    void useFloorPlanStore.getState().loadFloorPlanStatus();
+  }, []);
+
+  // Lightweight session-only refresh for broadcast-driven reconciles. A
+  // session/order/assignment broadcast can never change table GEOMETRY — only
+  // session state — so the full geometry snapshot is wasted work on the hot
+  // path. refreshTableSessions does a single flat getLocationTableStatus query
+  // and reuses cached geometry, then patches the session store the same way.
+  const reconcileSessions = useCallback(() => {
+    lastReconcileAtRef.current = Date.now();
+    const store = useFloorPlanStore.getState();
+    // No tables cached yet (cold open) → fall back to the full load so we have
+    // geometry to merge sessions into.
+    if (store.tables.length > 0 && store.activeFloorPlanId) {
+      void store.refreshTableSessions();
+    } else {
+      void store.loadFloorPlanStatus();
+    }
+  }, []);
+
+  const scheduleReconcile = useCallback(() => {
+    if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
+    const sinceLast = Date.now() - lastReconcileAtRef.current;
+    // Trailing throttle: honor the debounce, but never fire faster than the
+    // min interval even under a steady broadcast stream.
+    const delay = Math.max(
+      RECONCILE_DEBOUNCE_MS,
+      RECONCILE_MIN_INTERVAL_MS - sinceLast,
+    );
+    reconcileTimer.current = setTimeout(() => {
+      reconcileTimer.current = null;
+      const { lastSyncAt } = useFloorPlanStore.getState();
+      const snapshotAgeMs = lastSyncAt
+        ? Date.now() - Date.parse(lastSyncAt)
+        : Number.POSITIVE_INFINITY;
+      if (snapshotAgeMs < JUST_LOADED_SUPPRESS_MS) {
+        if (__DEV__)
+          console.log(
+            `[FloorRealtime] reconcile suppressed — snapshot ${Math.round(snapshotAgeMs)}ms old`,
+          );
+        return;
+      }
+      reconcileSessions();
+    }, delay);
+  }, [reconcileSessions]);
+
+  useEffect(
+    () => () => {
+      if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
+    },
+    [],
+  );
+
+  // ------------------------------------------------------------------
+  // Broadcast handler — signal only
+  // ------------------------------------------------------------------
   const handleMessage = useCallback(
     (event: RealtimeEventType, payload: unknown) => {
-      if (__DEV__) console.log(`[FloorRealtime] Event: ${event}`, payload);
+      if (__DEV__) console.log(`[FloorRealtime] Signal: ${event}`);
 
+      // Single authoritative reconcile for every floor-affecting event.
+      scheduleReconcile();
+
+      // Pass-through callbacks (consumers that want the raw payload, e.g. for
+      // toasts/analytics). State changes still come only from the reconcile.
       switch (event) {
-        case 'INSERT':
-        case 'UPDATE':
-        case 'DELETE': {
-          // Session changes - invalidate queries and call callback
-          const sessionPayload = payload as TableSessionPayload;
-
-          // UPDATE STORE STATE: This ensures UI gets real-time data
-          const store = useFloorPlanStore.getState();
-          store._handleSessionChange(sessionPayload);
-
-          // Propagate to session store so individual events don't lag
-          useTableSessionStore.getState()._handleSessionChange(sessionPayload);
-
-          // Invalidate floor sessions list
-          queryClient.invalidateQueries({
-            queryKey: floorQueryKeys.sessions(locationId),
-          });
-
-          // Invalidate table statuses (for floor plan visual)
-          queryClient.invalidateQueries({
-            queryKey: floorQueryKeys.tableStatuses(locationId),
-          });
-
-          // If we have session ID, also invalidate detail view
-          if (sessionPayload.data?.session?.id) {
-            queryClient.invalidateQueries({
-              queryKey: floorQueryKeys.sessionDetail(sessionPayload.data.session.id),
-            });
-          }
-
-          onSessionChange?.(sessionPayload);
+        case "INSERT":
+        case "UPDATE":
+        case "DELETE":
+          onSessionChange?.(payload as never);
           break;
-        }
-
-        case 'TABLE_ASSIGNMENT_INSERT':
-        case 'TABLE_ASSIGNMENT_UPDATE':
-        case 'TABLE_ASSIGNMENT_DELETE': {
-          const assignmentPayload = payload as TableAssignmentPayload;
-
-          const store = useFloorPlanStore.getState();
-          store._debouncedRefresh();
-
-          queryClient.invalidateQueries({
-            queryKey: floorQueryKeys.sessions(locationId),
-          });
-
-          // Invalidate specific session if available
-          if (assignmentPayload.session_id) {
-            queryClient.invalidateQueries({
-              queryKey: floorQueryKeys.sessionDetail(assignmentPayload.session_id),
-            });
-          }
-
-          onTableAssignment?.(assignmentPayload);
+        case "TABLE_ASSIGNMENT_INSERT":
+        case "TABLE_ASSIGNMENT_UPDATE":
+        case "TABLE_ASSIGNMENT_DELETE":
+          onTableAssignment?.(payload as never);
           break;
-        }
-
-        case 'SESSION_EVENT': {
-          // Timeline event (coursing, flags, etc.)
-          const eventPayload = payload as SessionEventPayload;
-
-          // Invalidate session events timeline
-          queryClient.invalidateQueries({
-            queryKey: floorQueryKeys.sessionEvents(eventPayload.session_id),
-          });
-
-          // Also invalidate session detail for status badge updates
-          queryClient.invalidateQueries({
-            queryKey: floorQueryKeys.sessionDetail(eventPayload.session_id),
-          });
-
-          // If attention or status changed, invalidate floor view
-          if (
-            eventPayload.event_type === 'attention_flagged' ||
-            eventPayload.event_type === 'attention_cleared' ||
-            eventPayload.event_type === 'course_served'
-          ) {
-            queryClient.invalidateQueries({
-              queryKey: floorQueryKeys.sessions(locationId),
-            });
-          }
-
-          onSessionEvent?.(eventPayload);
+        case "SESSION_EVENT":
+          onSessionEvent?.(payload as never);
           break;
-        }
-
-        case 'SESSION_ORDER_UPDATE': {
-          // Order linked to session was updated
-          const orderPayload = payload as OrderPayload;
-
-          // Invalidate floor sessions (order amount may have changed)
-          queryClient.invalidateQueries({
-            queryKey: floorQueryKeys.sessions(locationId),
-          });
-
-          onOrderUpdate?.(orderPayload);
-          break;
-        }
       }
     },
-    [locationId, queryClient, onSessionChange, onTableAssignment, onSessionEvent, onOrderUpdate]
+    [scheduleReconcile, onSessionChange, onTableAssignment, onSessionEvent],
   );
 
   const { status, reconnect, disconnect } = useRealtimeChannel<unknown>({
-    supabaseClient: supabase, // Pass supabase client as prop
+    supabaseClient: supabase,
     topic: `location:${locationId}:tables`,
     events,
     onMessage: handleMessage,
-    enabled: enabled && !!locationId && !!supabase, // Add supabase check
+    enabled: enabled && !!locationId && !!supabase,
     ...(maxReconnectAttempts != null && { maxReconnectAttempts }),
   });
+
+  const isConnected = status.state === "SUBSCRIBED";
+
+  // ------------------------------------------------------------------
+  // Catch-up on (re)subscribe — recover anything dropped while down.
+  // Fires immediately (unthrottled) on every transition into SUBSCRIBED.
+  // ------------------------------------------------------------------
+  const wasConnectedRef = useRef(false);
+  useEffect(() => {
+    if (isConnected && !wasConnectedRef.current) {
+      if (__DEV__)
+        console.log(
+          "[FloorRealtime] (re)SUBSCRIBED — catch-up reconcile (staleness-gated)",
+        );
+      // Staleness-gated catch-up instead of an unconditional full snapshot.
+      // A Clerk JWT refresh during a send tears down + re-subscribes BOTH
+      // channels (clean CLOSED, no heartbeat error), and the old unconditional
+      // reconcileNow() fired a full get_floor_plan_objects (28-object) fetch on
+      // every such reconnect — stacking with the in-flight send and inflating
+      // pos.add_to_cart. After a brief reconnect the snapshot is barely stale,
+      // so this either no-ops (fresh) or runs the lightweight session refresh.
+      // A genuinely long disconnect leaves data stale → still reconciles. The
+      // heartbeat below remains the backstop for structural/geometry drift.
+      void useFloorPlanStore
+        .getState()
+        .loadFloorPlanStatusIfStale(HEARTBEAT_STALE_MS);
+    }
+    wasConnectedRef.current = isConnected;
+  }, [isConnected]);
+
+  // ------------------------------------------------------------------
+  // Heartbeat — converge even if every broadcast is silently dropped.
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    if (!enabled || !isConnected) return;
+    const id = setInterval(() => {
+      void useFloorPlanStore
+        .getState()
+        .loadFloorPlanStatusIfStale(HEARTBEAT_STALE_MS);
+    }, HEARTBEAT_MS);
+    return () => clearInterval(id);
+  }, [enabled, isConnected]);
+
+  // ------------------------------------------------------------------
+  // Fallback poll — only while the channel is NOT connected. Stops the
+  // instant broadcasts resume (replaces the old standalone always-on poller).
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    if (!enabled || isConnected || !locationId) return;
+    reconcileNow(); // cover the mount→SUBSCRIBED gap immediately
+    const id = setInterval(reconcileNow, FALLBACK_POLL_MS);
+    return () => clearInterval(id);
+  }, [enabled, isConnected, locationId, reconcileNow]);
 
   return {
     connectionStatus: status,
     reconnect,
     disconnect,
-    isConnected: status.state === 'SUBSCRIBED',
-    isReconnecting: status.reconnectAttempts > 0 && status.state !== 'SUBSCRIBED',
+    isConnected,
+    isReconnecting:
+      status.reconnectAttempts > 0 && status.state !== "SUBSCRIBED",
   };
 }
 
 /**
- * Hook for real-time session-specific events
- * Use this when viewing a single session's detail/timeline
+ * Realtime for a single session's timeline events (detail view).
+ * Unchanged in spirit: invalidation-free signal that calls back to the caller.
  */
 export function useSessionEventsRealtime({
   sessionId,
@@ -201,39 +269,29 @@ export function useSessionEventsRealtime({
 }: {
   sessionId: string;
   enabled?: boolean;
-  onEvent?: (payload: SessionEventPayload) => void;
+  onEvent?: (payload: unknown) => void;
 }) {
-  const queryClient = useQueryClient();
-  const supabase = useSupabaseClient(); // Call at component level
-
-  const events: RealtimeEventType[] = useMemo(() => ['SESSION_EVENT'], []);
+  const supabase = useSupabaseClient();
+  const events: RealtimeEventType[] = useMemo(() => ["SESSION_EVENT"], []);
 
   const handleMessage = useCallback(
     (_event: RealtimeEventType, payload: unknown) => {
-      const eventPayload = payload as SessionEventPayload;
-
-      // Invalidate session events query
-      queryClient.invalidateQueries({
-        queryKey: floorQueryKeys.sessionEvents(sessionId),
-      });
-
-      onEvent?.(eventPayload);
+      onEvent?.(payload);
     },
-    [sessionId, queryClient, onEvent]
+    [onEvent],
   );
 
-  // Note: This subscribes to session-specific channel for granular updates
   const { status, reconnect } = useRealtimeChannel<unknown>({
-    supabaseClient: supabase, // Pass supabase client as prop
+    supabaseClient: supabase,
     topic: `session:${sessionId}:events`,
     events,
     onMessage: handleMessage,
-    enabled: enabled && !!sessionId && !!supabase, // Add supabase check
+    enabled: enabled && !!sessionId && !!supabase,
   });
 
   return {
     connectionStatus: status,
     reconnect,
-    isConnected: status.state === 'SUBSCRIBED',
+    isConnected: status.state === "SUBSCRIBED",
   };
 }

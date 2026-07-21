@@ -14,19 +14,21 @@ export interface PrintTextFormat {
   inverted?: boolean;
   condensed?: boolean;
   secondColor?: boolean;
+
 }
 
 export type PrintNode =
   | { type: "text"; content: string; align?: PrintAlign; format?: PrintTextFormat }
   | { type: "text_line"; content: string; align?: PrintAlign; format?: PrintTextFormat }
   | {
-      type: "two_column";
-      left: string;
-      right: string;
-      lineWidth: number;
-      format?: PrintTextFormat;
-    }
-  | { type: "divider"; style: "solid" | "dotted" | "double"; lineWidth: number }
+    type: "two_column";
+    left: string;
+    right: string;
+    format?: PrintTextFormat;
+    lineWidth?: number;
+    labelAlign?: "left" | "mid" | "meta";   // ← add this line
+  }
+  | { type: "divider"; style: "solid" | "dotted" | "double"; lineWidth: number; weight?: "bold" }
   | { type: "empty_line" }
   | { type: "feed"; lines: number }
   | { type: "qr_code"; data: string; size?: number }

@@ -1,3 +1,4 @@
+import { useUiScale } from "@/lib/uiScale";
 import { colors } from "@/lib/theme";
 import { AlertTriangle } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -18,6 +19,8 @@ export function PaymentErrorModal({
   countdownSeconds = 5,
   onDismiss,
 }: PaymentErrorModalProps) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const [countdown, setCountdown] = useState(countdownSeconds);
   const progressAnim = useRef(new Animated.Value(1)).current;
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -50,45 +53,45 @@ export function PaymentErrorModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <View style={{ backgroundColor: colors.panel, borderRadius: 16, padding: 20, width: '100%', maxWidth: 360, borderWidth: 1, borderColor: colors.danger + '50' }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center', padding: s(24) }}>
+        <View style={{ backgroundColor: colors.panel, borderRadius: s(16), padding: s(20), width: '100%', maxWidth: 360, borderWidth: 1, borderColor: colors.danger + '50' }}>
           {/* Icon */}
-          <View style={{ alignItems: 'center', marginBottom: 14 }}>
-            <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: colors.danger + '15', alignItems: 'center', justifyContent: 'center' }}>
-              <AlertTriangle size={26} color={colors.danger} />
+          <View style={{ alignItems: 'center', marginBottom: s(14) }}>
+            <View style={{ width: s(52), height: s(52), borderRadius: s(26), backgroundColor: colors.danger + '15', alignItems: 'center', justifyContent: 'center' }}>
+              <AlertTriangle size={s(26)} color={colors.danger} />
             </View>
           </View>
 
           {/* Title */}
-          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.danger, textAlign: 'center', marginBottom: 6 }}>
+          <Text style={{ fontSize: s(15), fontWeight: '700', color: colors.danger, textAlign: 'center', marginBottom: s(6) }}>
             {title}
           </Text>
 
           {/* Message */}
-          <Text style={{ fontSize: 13, color: colors.label, textAlign: 'center', marginBottom: 16, lineHeight: 18 }}>
+          <Text style={{ fontSize: s(13), color: colors.label, textAlign: 'center', marginBottom: s(16), lineHeight: s(18) }}>
             {message}
           </Text>
 
           {/* Progress bar */}
-          <View style={{ backgroundColor: colors.screen, borderRadius: 4, height: 3, marginBottom: 6, overflow: 'hidden' }}>
+          <View style={{ backgroundColor: colors.screen, borderRadius: s(4), height: 3, marginBottom: s(6), overflow: 'hidden' }}>
             <Animated.View
               style={{
                 backgroundColor: colors.danger,
-                height: '100%', borderRadius: 4,
+                height: '100%', borderRadius: s(4),
                 width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
               }}
             />
           </View>
-          <Text style={{ textAlign: 'center', fontSize: 11, color: colors.muted, marginBottom: 14 }}>
+          <Text style={{ textAlign: 'center', fontSize: s(11), color: colors.muted, marginBottom: s(14) }}>
             Auto-dismiss in {countdown}s
           </Text>
 
           {/* Dismiss Button */}
           <TouchableOpacity
             onPress={handleDismiss}
-            style={{ backgroundColor: colors.danger + '20', borderWidth: 1, borderColor: colors.danger + '50', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+            style={{ backgroundColor: colors.danger + '20', borderWidth: 1, borderColor: colors.danger + '50', paddingVertical: s(10), borderRadius: s(8), alignItems: 'center' }}
           >
-            <Text style={{ color: colors.danger, fontWeight: '700', fontSize: 13 }}>Dismiss</Text>
+            <Text style={{ color: colors.danger, fontWeight: '700', fontSize: s(13) }}>Dismiss</Text>
           </TouchableOpacity>
         </View>
       </View>

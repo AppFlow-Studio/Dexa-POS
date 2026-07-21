@@ -1,8 +1,10 @@
-import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
-import React, { useEffect, useRef, useState } from "react";
+import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext.base";
+import { useUiScale } from "@/lib/uiScale";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
+  cancelAnimation,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -12,19 +14,37 @@ import Animated, {
 const ROTATION_MS = 8000;
 const FADE_MS = 700;
 
+function areStringArraysEqual(a: readonly string[], b: readonly string[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 export function IdleScreen() {
   const { branding, carouselImages, latency, connectionStatus } =
     useCFDDisplayData();
+  const uiScale = useUiScale();
+  const styles = useMemo(() => getStylesForScale(uiScale), [uiScale]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [baseUri, setBaseUri] = useState<string | null>(null);
   const [overlayUri, setOverlayUri] = useState<string | null>(null);
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
   const isTransitioningRef = useRef(false);
+  const stableCarouselImagesRef = useRef<string[] | undefined>(undefined);
   const fadeOpacity = useSharedValue(0);
 
+  const currentImages = carouselImages ?? [];
+  const stableImages = stableCarouselImagesRef.current ?? [];
+  if (!areStringArraysEqual(stableImages, currentImages)) {
+    stableCarouselImagesRef.current = carouselImages;
+  }
+  const stableCarouselImages = stableCarouselImagesRef.current;
+
   useEffect(() => {
-    if (!carouselImages || carouselImages.length === 0) {
+    if (!stableCarouselImages || stableCarouselImages.length === 0) {
       setCurrentIndex(0);
       setBaseUri(null);
       setOverlayUri(null);
@@ -34,25 +54,26 @@ export function IdleScreen() {
       return;
     }
 
-    const safeIndex = Math.min(currentIndex, carouselImages.length - 1);
-    const safeUri = carouselImages[safeIndex] ?? null;
+    const safeIndex = Math.min(currentIndex, stableCarouselImages.length - 1);
+    const safeUri = stableCarouselImages[safeIndex] ?? null;
 
     setCurrentIndex(safeIndex);
     setBaseUri((prev) => prev ?? safeUri);
     setOverlayUri(null);
     setPendingIndex(null);
     isTransitioningRef.current = false;
+    cancelAnimation(fadeOpacity);
     fadeOpacity.value = 0;
-  }, [carouselImages]);
+  }, [stableCarouselImages]);
 
   useEffect(() => {
-    if (!carouselImages || carouselImages.length <= 1 || !baseUri) return;
+    if (!stableCarouselImages || stableCarouselImages.length <= 1 || !baseUri) return;
 
     const interval = setInterval(() => {
       if (isTransitioningRef.current) return;
 
-      const nextIndex = (currentIndex + 1) % carouselImages.length;
-      const nextUri = carouselImages[nextIndex];
+      const nextIndex = (currentIndex + 1) % stableCarouselImages.length;
+      const nextUri = stableCarouselImages[nextIndex];
       if (!nextUri || nextUri === baseUri) return;
 
       isTransitioningRef.current = true;
@@ -61,8 +82,11 @@ export function IdleScreen() {
       fadeOpacity.value = 0;
     }, ROTATION_MS);
 
-    return () => clearInterval(interval);
-  }, [baseUri, carouselImages, currentIndex, fadeOpacity]);
+    return () => {
+      clearInterval(interval);
+      cancelAnimation(fadeOpacity);
+    };
+  }, [baseUri, stableCarouselImages, currentIndex, fadeOpacity]);
 
   const completeTransition = (nextIndex: number, nextUri: string) => {
     setBaseUri(nextUri);
@@ -95,7 +119,7 @@ export function IdleScreen() {
     opacity: fadeOpacity.value,
   }));
 
-  const hasImages = !!carouselImages && carouselImages.length > 0;
+  const hasImages = !!stableCarouselImages && stableCarouselImages.length > 0;
 
   return (
     <View style={styles.container}>
@@ -105,6 +129,7 @@ export function IdleScreen() {
             source={{ uri: baseUri }}
             style={[styles.backgroundImage, StyleSheet.absoluteFill]}
             resizeMode="cover"
+            onError={() => console.warn("[IdleScreen] Base image failed:", baseUri)}
           />
 
           {overlayUri ? (
@@ -117,6 +142,13 @@ export function IdleScreen() {
                 style={styles.backgroundImage}
                 resizeMode="cover"
                 onLoad={handleOverlayLoad}
+                onError={() => {
+                  console.warn("[IdleScreen] Overlay image failed:", overlayUri);
+                  setOverlayUri(null);
+                  setPendingIndex(null);
+                  isTransitioningRef.current = false;
+                  fadeOpacity.value = 0;
+                }}
               />
             </Animated.View>
           ) : null}
@@ -147,50 +179,62 @@ export function IdleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000000",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  imageContainer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  backgroundImage: {
-    width: "100%",
-    height: "100%",
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.1)",
-  },
-  textContainer: {
-    alignItems: "center",
-  },
-  welcome: {
-    fontSize: 24,
-    color: "#6b7280",
-    marginBottom: 8,
-  },
-  restaurantName: {
-    fontSize: 48,
-    fontWeight: "700",
-    color: "#ffffff",
-    textAlign: "center",
-  },
-  locationCode: {
-    fontSize: 18,
-    color: "#9ca3af",
-    marginTop: 8,
-  },
-  debug: {
-    position: "absolute",
-    bottom: 20,
-    left: 20,
-  },
-  debugText: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.5)",
-  },
-});
+const createStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale);
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: "#000000",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    imageContainer: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    backgroundImage: {
+      width: "100%",
+      height: "100%",
+    },
+    overlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.1)",
+    },
+    textContainer: {
+      alignItems: "center",
+    },
+    welcome: {
+      fontSize: s(24),
+      color: "#6b7280",
+      marginBottom: s(8),
+    },
+    restaurantName: {
+      fontSize: s(48),
+      fontWeight: "700",
+      color: "#ffffff",
+      textAlign: "center",
+    },
+    locationCode: {
+      fontSize: s(18),
+      color: "#9ca3af",
+      marginTop: s(8),
+    },
+    debug: {
+      position: "absolute",
+      bottom: s(20),
+      left: s(20),
+    },
+    debugText: {
+      fontSize: s(12),
+      color: "rgba(255,255,255,0.5)",
+    },
+  });
+};
+
+const stylesByScale = new Map<number, ReturnType<typeof createStyles>>();
+const getStylesForScale = (scale: number) => {
+  const cached = stylesByScale.get(scale);
+  if (cached) return cached;
+  const next = createStyles(scale);
+  stylesByScale.set(scale, next);
+  return next;
+};

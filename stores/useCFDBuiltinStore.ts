@@ -2,6 +2,13 @@
 // Zustand store for built-in secondary display (ReactRootView on Presentation).
 // POS writes via .getState().update(), secondary display reads reactively.
 // No persistence — ephemeral, reset on app restart.
+//
+// `update()` also mirrors every write to the CFD WebView bridge. The bridge
+// is a no-op when no WebView is registered (legacy ReactSurface mode), so
+// this is free. When the WebView is mounted, every screen-transition site
+// in CFDProvider — even the ones that don't go through the debounced sync
+// effect — automatically reaches the WebView.
+import { pushPayload as pushCFDWebViewPayload } from '@/services/cfd/CFDWebViewBridge'
 import type {
   CFDBranding,
   CFDCartItem,
@@ -25,6 +32,9 @@ interface CFDBuiltinState {
   subtotalCash: number
   subtotalCard: number
   discountAmount: number
+  serviceCharge: number
+  serviceChargeName: string | null
+  serviceChargeRate: number | null
   taxAmount: number
   taxCash: number
   taxCard: number
@@ -45,6 +55,9 @@ interface CFDBuiltinState {
   paymentMethod: 'cash' | 'card' | 'manual' | null
   loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
   loyaltyResult: CFDPayload['loyaltyResult'] | null
+  merchantHasLoyalty: boolean
+  pricingDisplayMode: 'dual' | 'card_only' | 'cash_only'
+  themeMode: 'light' | 'dark'
 
   // Actions
   update: (data: Partial<Omit<CFDBuiltinState, 'update' | 'reset'>>) => void
@@ -65,6 +78,9 @@ const initialState: Omit<CFDBuiltinState, 'update' | 'reset'> = {
   subtotalCash: 0,
   subtotalCard: 0,
   discountAmount: 0,
+  serviceCharge: 0,
+  serviceChargeName: null,
+  serviceChargeRate: null,
   taxAmount: 0,
   taxCash: 0,
   taxCard: 0,
@@ -83,16 +99,31 @@ const initialState: Omit<CFDBuiltinState, 'update' | 'reset'> = {
   carouselImages: [],
   paymentMethod: null,
   loyaltyPrompt: null,
-  loyaltyResult: null
+  loyaltyResult: null,
+  merchantHasLoyalty: false,
+  pricingDisplayMode: 'dual',
+  themeMode: 'dark'
 }
 
-export const useCFDBuiltinStore = create<CFDBuiltinState>()(set => ({
+export const useCFDBuiltinStore = create<CFDBuiltinState>()((set, get) => ({
   ...initialState,
   update: data => {
     if ('loyaltyResult' in data && data.loyaltyResult === null) {
       console.warn('[CFDBuiltinStore] loyaltyResult being set to null')
     }
+    // Skip no-op updates to prevent unnecessary re-renders on the secondary display
+    const current = get()
+    const hasChange = Object.entries(data).some(
+      ([key, value]) => current[key as keyof typeof current] !== value
+    )
+    if (!hasChange) return
     set(data)
+    // Mirror to WebView. Silent no-op if no WebView mounted.
+    try {
+      pushCFDWebViewPayload(data as Record<string, unknown>)
+    } catch (err) {
+      console.error('[CFDBuiltinStore] WebView mirror failed:', err)
+    }
   },
   reset: () => set(initialState)
 }))

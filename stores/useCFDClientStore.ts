@@ -1,51 +1,55 @@
 // stores/useCFDClientStore.ts
 // CFD client-mode Zustand store (when this device acts as a customer-facing display)
-import { mmkvStorage } from '@/lib/storage'
+import { createLazyPersistStorage, flushPendingWrite } from "@/lib/storage";
 import type {
-  CFDPairingData,
-  CFDPayload,
-  CFDScreenState
-} from '@/types/cfd.types'
-import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
+    CFDPairingData,
+    CFDPayload,
+    CFDScreenState,
+} from "@/types/cfd.types";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 interface CFDClientStore {
   // Connection
-  isPaired: boolean
-  connection: CFDPairingData | null
-  connectionStatus: 'disconnected' | 'connecting' | 'connected'
-  latency: number | null
+  isPaired: boolean;
+  connection: CFDPairingData | null;
+  connectionStatus: "disconnected" | "connecting" | "connected";
+  latency: number | null;
 
   // Display state (from POS)
-  screenState: CFDScreenState
-  serverName: string | null
-  customerName: string | null
-  customerPhone: string | null
-  orderNumber: string | null
-  orderType: string | null
-  tableName: string | null
-  guestCount: number | null
-  items: CFDPayload['items']
+  screenState: CFDScreenState;
+  serverName: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  orderNumber: string | null;
+  orderType: string | null;
+  tableName: string | null;
+  guestCount: number | null;
+  items: CFDPayload["items"];
 
   // Totals
-  subtotal: number
-  subtotalCash: number
-  subtotalCard: number
+  subtotal: number;
+  subtotalCash: number;
+  subtotalCard: number;
 
-  discountAmount: number
+  discountAmount: number;
 
-  taxAmount: number
-  taxCash: number
-  taxCard: number
+  serviceCharge: number;
+  serviceChargeName: string | null;
+  serviceChargeRate: number | null;
 
-  tipAmount: number
-  tipPercentage: number | null
+  taxAmount: number;
+  taxCash: number;
+  taxCard: number;
 
-  total: number
-  totalCash: number
-  totalCard: number
+  tipAmount: number;
+  tipPercentage: number | null;
 
-  savingsAmount: number
+  total: number;
+  totalCash: number;
+  totalCard: number;
+
+  savingsAmount: number;
 
   outstandingTotal: number
   amountPaid: number
@@ -56,16 +60,19 @@ interface CFDClientStore {
   carouselImages: string[]
   loyaltyPrompt: CFDPayload['loyaltyPrompt'] | null
   loyaltyResult: CFDPayload['loyaltyResult'] | null
-  paymentMethod: 'cash' | 'card' | null
+  paymentMethod: 'cash' | 'card' | 'manual' | null
+  themeMode: 'light' | 'dark'
+  merchantHasLoyalty: boolean
+  pricingDisplayMode: 'dual' | 'card_only' | 'cash_only'
 
   // Actions
-  setPairing: (data: CFDPairingData) => void
-  clearPairing: () => void
+  setPairing: (data: CFDPairingData) => void;
+  clearPairing: () => void;
   setConnectionStatus: (
-    status: 'disconnected' | 'connecting' | 'connected'
-  ) => void
-  setLatency: (ms: number) => void
-  updateFromPayload: (payload: CFDPayload) => void
+    status: "disconnected" | "connecting" | "connected",
+  ) => void;
+  setLatency: (ms: number) => void;
+  updateFromPayload: (payload: CFDPayload) => void;
 }
 
 export const useCFDClientStore = create<CFDClientStore>()(
@@ -74,10 +81,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
       // Initial state
       isPaired: false,
       connection: null,
-      connectionStatus: 'disconnected',
+      connectionStatus: "disconnected",
       latency: null,
 
-      screenState: 'pairing',
+      screenState: "pairing",
       serverName: null,
       customerName: null,
       customerPhone: null,
@@ -92,6 +99,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
       subtotalCard: 0,
 
       discountAmount: 0,
+
+      serviceCharge: 0,
+      serviceChargeName: null,
+      serviceChargeRate: null,
 
       taxAmount: 0,
       taxCash: 0,
@@ -116,30 +127,40 @@ export const useCFDClientStore = create<CFDClientStore>()(
       loyaltyPrompt: null,
       loyaltyResult: null,
       paymentMethod: null,
+      themeMode: 'dark',
+      merchantHasLoyalty: false,
+      pricingDisplayMode: 'dual',
 
       // Actions
-      setPairing: data =>
+      setPairing: (data) => {
         set({
           isPaired: true,
           connection: data,
-          screenState: 'idle'
-        }),
+          screenState: "idle",
+        });
+        // Flush the debounced persist write immediately so pairing is durable
+        // before we navigate. Prevents losing pairing if the app is killed in
+        // the 300ms window after the QR scan commits.
+        flushPendingWrite("cfd-client-store");
+      },
 
-      clearPairing: () =>
+      clearPairing: () => {
         set({
           isPaired: false,
           connection: null,
-          connectionStatus: 'disconnected',
-          screenState: 'pairing',
+          connectionStatus: "disconnected",
+          screenState: "pairing",
           items: [],
-          branding: null
-        }),
+          branding: null,
+        });
+        flushPendingWrite("cfd-client-store");
+      },
 
-      setConnectionStatus: status => set({ connectionStatus: status }),
+      setConnectionStatus: (status) => set({ connectionStatus: status }),
 
-      setLatency: ms => set({ latency: ms }),
+      setLatency: (ms) => set({ latency: ms }),
 
-      updateFromPayload: payload =>
+      updateFromPayload: (payload) =>
         set({
           screenState: payload.screenState,
           serverName: payload.serverName ?? null,
@@ -156,6 +177,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
           subtotalCard: payload.subtotalCard,
 
           discountAmount: payload.discountAmount,
+
+          serviceCharge: payload.serviceCharge,
+          serviceChargeName: payload.serviceChargeName,
+          serviceChargeRate: payload.serviceChargeRate,
 
           taxAmount: payload.taxAmount,
           taxCash: payload.taxCash,
@@ -180,16 +205,35 @@ export const useCFDClientStore = create<CFDClientStore>()(
           carouselImages: payload.carouselImages ?? get().carouselImages,
           loyaltyPrompt: payload.loyaltyPrompt ?? null,
           loyaltyResult: payload.loyaltyResult ?? null,
-          paymentMethod: payload.paymentMethod ?? null
+          paymentMethod: payload.paymentMethod ?? null,
+          themeMode: payload.themeMode ?? get().themeMode,
+          // Carry forward when payload omits — POS includes this on every
+          // update once cached, but defensive in case of partial payloads.
+          merchantHasLoyalty:
+            payload.merchantHasLoyalty ?? get().merchantHasLoyalty,
+          pricingDisplayMode:
+            payload.pricingDisplayMode ?? get().pricingDisplayMode
         })
     }),
     {
-      name: 'cfd-client-store',
-      storage: createJSONStorage(() => mmkvStorage),
-      partialize: state => ({
+      name: "cfd-client-store",
+      // Lazy persist: defer JSON.stringify into the 300ms debounce window
+      // instead of stringifying on every payment-flow mutation. Note: the
+      // identity skip in lazyDebouncedWrite does NOT fire for this store —
+      // this partialize builds a fresh object literal per call, so the slice
+      // ref always changes (only useOrderStore memoizes its slice; see
+      // stores/orderPersistMemo.ts). flushPendingWrite covers the lazy
+      // writer for durability before navigations/app kill.
+      storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
+      partialize: (state) => ({
         isPaired: state.isPaired,
         connection: state.connection,
-        branding: state.branding
+        branding: state.branding,
+        // Persist so the loyalty CTA gate on the result screen renders
+        // correctly across app restarts and offline boots.
+        merchantHasLoyalty: state.merchantHasLoyalty
       })
     }
   )

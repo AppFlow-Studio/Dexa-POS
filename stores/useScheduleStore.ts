@@ -1,22 +1,23 @@
 import { validatePtoRequest } from "@/lib/rules";
+import { createLazyPersistStorage } from "@/lib/storage";
 import {
-  ApplyMode,
-  ConflictInfo,
-  PTORequest,
-  SchedulePeriod,
-  ScheduleTemplate,
-  Shift,
-  ShiftRequest,
-  WeeklySchedule,
+    ApplyMode,
+    ConflictInfo,
+    PTORequest,
+    SchedulePeriod,
+    ScheduleTemplate,
+    Shift,
+    ShiftRequest,
+    WeeklySchedule,
 } from "@/lib/types";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
-  addDays,
-  areIntervalsOverlapping,
-  format,
-  getDay,
-  parseISO,
-  startOfDay,
+    addDays,
+    areIntervalsOverlapping,
+    format,
+    getDay,
+    parseISO,
+    startOfDay,
 } from "date-fns";
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
@@ -28,6 +29,21 @@ import { useStoreSettingsStore } from "./useStoreSettingsStore";
 // Helper to generate unique IDs
 const generateId = () =>
   Date.now().toString(36) + Math.random().toString(36).substring(2);
+
+// ptoRequests is persisted (MMKV) and append-on-submit / remove-on-cancel only,
+// so without a retention bound it grows for the app's lifetime. Keep the
+// current + prior calendar year of RESOLVED requests; pending requests are
+// always kept (an old-but-unactioned request is still actionable). Mirrors the
+// current-year retention applied to usePtoStore.accrualHistory.
+const PTO_REQUEST_RETENTION_YEARS = 1;
+function prunePtoRequests(requests: PTORequest[]): PTORequest[] {
+  const cutoffYear = new Date().getFullYear() - PTO_REQUEST_RETENTION_YEARS;
+  return requests.filter((r) => {
+    if (r.status === "pending") return true; // never drop unactioned requests
+    const submittedYear = new Date(r.submittedAt).getFullYear();
+    return !Number.isNaN(submittedYear) && submittedYear >= cutoffYear;
+  });
+}
 
 interface ScheduleRequestState {
   schedulePeriods: SchedulePeriod[];
@@ -44,7 +60,7 @@ interface ScheduleRequestState {
   approveSwap: (requestId: string) => void;
   revertSwapApproval: (requestId: string) => void;
   addPTORequest: (
-    request: Omit<PTORequest, "id" | "submittedAt" | "status">
+    request: Omit<PTORequest, "id" | "submittedAt" | "status">,
   ) => void;
 
   // Drop Request Actions
@@ -53,7 +69,7 @@ interface ScheduleRequestState {
   denyDropRequest: (
     requestId: string,
     approverId: string,
-    reason: string
+    reason: string,
   ) => void;
   cancelDropRequest: (requestId: string) => void;
 
@@ -63,87 +79,90 @@ interface ScheduleRequestState {
   denyPTORequest: (
     requestId: string,
     approverId: string,
-    reason: string
+    reason: string,
   ) => void;
   cancelPTORequest: (requestId: string) => void;
   checkPtoConflict: (
     employeeId: string,
     newStartDate: string,
-    newEndDate: string
+    newEndDate: string,
   ) => boolean;
 
   addShift: (
     scheduleId: string,
     scheduleType: "period" | "week",
-    newShift: Omit<Shift, "id">
+    newShift: Omit<Shift, "id">,
   ) => void;
   pickupShift: (shiftId: string, employeeId: string) => void;
   updateShift: (
     scheduleId: string,
     scheduleType: "period" | "week",
-    updatedShift: Partial<Shift> & { id: string }
+    updatedShift: Partial<Shift> & { id: string },
   ) => void;
   deleteShift: (
     scheduleId: string,
     scheduleType: "period" | "week",
-    shiftId: string
+    shiftId: string,
   ) => void;
 
   addWeeklySchedule: (
     newSchedule: Omit<
       WeeklySchedule,
       "id" | "createdAt" | "updatedAt" | "shifts"
-    >
+    >,
   ) => string;
   addSchedulePeriod: (
-    newPeriod: Omit<SchedulePeriod, "id" | "createdAt" | "updatedAt" | "shifts">
+    newPeriod: Omit<
+      SchedulePeriod,
+      "id" | "createdAt" | "updatedAt" | "shifts"
+    >,
   ) => string;
   updateSchedulePeriod: (
     periodId: string,
-    updates: Partial<SchedulePeriod>
+    updates: Partial<SchedulePeriod>,
   ) => void;
   updateWeeklySchedule: (
     scheduleId: string,
-    updates: Partial<WeeklySchedule>
+    updates: Partial<WeeklySchedule>,
   ) => void;
   deleteSchedule: (scheduleId: string, scheduleType: "period" | "week") => void; // Added function signature
   checkDateConflicts: (
     startDate: string,
     endDate: string,
-    excludePeriodId?: string
+    excludePeriodId?: string,
   ) => ConflictInfo;
   checkShiftConflicts: (
     scheduleId: string,
-    scheduleType: "period" | "week"
+    scheduleType: "period" | "week",
   ) => { employeeName: string; date: string }[];
   getDashboardSchedulePeriods: () => SchedulePeriod[];
   getDashboardWeeklySchedules: () => WeeklySchedule[];
   publishSchedule: (
     scheduleId: string,
-    scheduleType: "period" | "week"
+    scheduleType: "period" | "week",
   ) => void;
   findOrCreateDraft: (
     originalScheduleId: string,
-    scheduleType: "period" | "week"
+    scheduleType: "period" | "week",
   ) => string;
   compareSchedules: (
     originalId: string,
-    draftId: string
+    draftId: string,
   ) => { added: number; updated: number; removed: number };
   getSwappableShiftsForPeer: (peerId: string, requesterId: string) => Shift[];
   getCompatiblePeersForSwap: (
-    shiftToOffer: Shift
+    shiftToOffer: Shift,
   ) => { employee: EmployeeProfile; swappableShiftsCount: number }[];
   discardDraft: (draftId: string, scheduleType: "period" | "week") => void;
   applyTemplate: (
     scheduleId: string,
     scheduleType: "period" | "week",
     template: ScheduleTemplate,
-    mode: ApplyMode
+    mode: ApplyMode,
   ) => void;
   getAdvancedConflicts: (
     startDate: string,
-    endDate: string
+    endDate: string,
   ) => {
     type: "overtime" | "minStaffing" | "backToBack" | "doubleBooked";
     details: string;
@@ -188,7 +207,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               ];
               for (const schedule of allSchedules) {
                 const shift = schedule.shifts.find(
-                  (s) => s.id === request.shift.id
+                  (s) => s.id === request.shift.id,
                 );
                 if (shift) {
                   shift.status = "dropped";
@@ -200,7 +219,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             set((state) => {
               if (!myShift.employeeId || !peerShift.employeeId) {
                 console.error(
-                  "Cannot propose a swap for shifts without employees."
+                  "Cannot propose a swap for shifts without employees.",
                 );
                 return;
               }
@@ -234,13 +253,13 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               ];
               for (const schedule of allSchedules) {
                 const myShiftInSchedule = schedule.shifts.find(
-                  (s) => s.id === myShift.id
+                  (s) => s.id === myShift.id,
                 );
                 if (myShiftInSchedule) {
                   myShiftInSchedule.status = "pending-swap";
                 }
                 const peerShiftInSchedule = schedule.shifts.find(
-                  (s) => s.id === peerShift.id
+                  (s) => s.id === peerShift.id,
                 );
                 if (peerShiftInSchedule) {
                   peerShiftInSchedule.status = "pending-swap";
@@ -251,7 +270,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           cancelSwap: (requestId, employeeId) => {
             set((state) => {
               const requestIndex = state.swapRequests.findIndex(
-                (r) => r.id === requestId
+                (r) => r.id === requestId,
               );
               if (requestIndex === -1) {
                 console.error("Swap request not found");
@@ -265,7 +284,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 request.status !== "pending-peer"
               ) {
                 console.error(
-                  "Unauthorized or invalid status to cancel swap request."
+                  "Unauthorized or invalid status to cancel swap request.",
                 );
                 return;
               }
@@ -277,13 +296,13 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               ];
               for (const schedule of allSchedules) {
                 const myShift = schedule.shifts.find(
-                  (s) => s.id === request.myShiftId
+                  (s) => s.id === request.myShiftId,
                 );
                 if (myShift) {
                   myShift.status = "confirmed";
                 }
                 const peerShift = schedule.shifts.find(
-                  (s) => s.id === request.peerShiftId
+                  (s) => s.id === request.peerShiftId,
                 );
                 if (peerShift) {
                   peerShift.status = "confirmed";
@@ -297,7 +316,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           acceptSwap: (requestId, peerId) => {
             set((state) => {
               const request = state.swapRequests.find(
-                (r) => r.id === requestId
+                (r) => r.id === requestId,
               );
               if (!request) {
                 console.error("Swap request not found");
@@ -309,7 +328,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 request.status !== "pending-peer"
               ) {
                 console.error(
-                  "Unauthorized or invalid status to accept swap request."
+                  "Unauthorized or invalid status to accept swap request.",
                 );
                 return;
               }
@@ -328,7 +347,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           denySwap: (requestId, reason) => {
             set((state) => {
               const request = state.swapRequests.find(
-                (r) => r.id === requestId
+                (r) => r.id === requestId,
               );
               if (!request) {
                 console.error("Swap request not found");
@@ -350,13 +369,13 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               ];
               for (const schedule of allSchedules) {
                 const myShift = schedule.shifts.find(
-                  (s) => s.id === request.myShiftId
+                  (s) => s.id === request.myShiftId,
                 );
                 if (myShift) {
                   myShift.status = "confirmed";
                 }
                 const peerShift = schedule.shifts.find(
-                  (s) => s.id === request.peerShiftId
+                  (s) => s.id === request.peerShiftId,
                 );
                 if (peerShift) {
                   peerShift.status = "confirmed";
@@ -396,11 +415,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           approveSwap: (requestId) => {
             set((state) => {
               const request = state.swapRequests.find(
-                (r) => r.id === requestId
+                (r) => r.id === requestId,
               );
               if (!request || request.status !== "pending-manager") {
                 console.error(
-                  "Swap request not found or not in a pending-manager state."
+                  "Swap request not found or not in a pending-manager state.",
                 );
                 return;
               }
@@ -422,7 +441,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               if (myShift && peerShift) {
                 request.revertedMyShift = JSON.parse(JSON.stringify(myShift));
                 request.revertedPeerShift = JSON.parse(
-                  JSON.stringify(peerShift)
+                  JSON.stringify(peerShift),
                 );
 
                 myShift.employeeId = peerId ?? null;
@@ -456,7 +475,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           revertSwapApproval: (requestId) => {
             set((state) => {
               const request = state.swapRequests.find(
-                (r) => r.id === requestId
+                (r) => r.id === requestId,
               );
               if (
                 !request ||
@@ -464,7 +483,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 !request.revertedPeerShift
               ) {
                 console.error(
-                  `Swap request with ID ${requestId} not found or no reverted shifts stored.`
+                  `Swap request with ID ${requestId} not found or no reverted shifts stored.`,
                 );
                 return;
               }
@@ -477,19 +496,19 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               ];
               for (const schedule of allSchedules) {
                 const myShiftIndex = schedule.shifts.findIndex(
-                  (s) => s.id === request.revertedMyShift!.id
+                  (s) => s.id === request.revertedMyShift!.id,
                 );
                 if (myShiftIndex !== -1) {
                   schedule.shifts[myShiftIndex] = JSON.parse(
-                    JSON.stringify(request.revertedMyShift)
+                    JSON.stringify(request.revertedMyShift),
                   );
                 }
                 const peerShiftIndex = schedule.shifts.findIndex(
-                  (s) => s.id === request.revertedPeerShift!.id
+                  (s) => s.id === request.revertedPeerShift!.id,
                 );
                 if (peerShiftIndex !== -1) {
                   schedule.shifts[peerShiftIndex] = JSON.parse(
-                    JSON.stringify(request.revertedPeerShift)
+                    JSON.stringify(request.revertedPeerShift),
                   );
                 }
               }
@@ -512,7 +531,9 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               submittedAt: new Date().toISOString(),
             };
             set((state) => ({
-              ptoRequests: [newRequest, ...state.ptoRequests],
+              // Prune resolved requests outside the retention window so the
+              // persisted list can't grow unbounded across the app lifetime.
+              ptoRequests: prunePtoRequests([newRequest, ...state.ptoRequests]),
             }));
           },
 
@@ -520,7 +541,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           approveDropRequest: (requestId, approverId) => {
             set((state) => {
               const request = state.dropRequests.find(
-                (r) => r.id === requestId
+                (r) => r.id === requestId,
               );
               if (!request) {
                 console.error("Drop request not found");
@@ -537,7 +558,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               ];
               for (const schedule of allSchedules) {
                 const shift = schedule.shifts.find(
-                  (s) => s.id === request.shift.id
+                  (s) => s.id === request.shift.id,
                 );
                 if (shift) {
                   shift.status = "open";
@@ -561,11 +582,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           revertDropRequestApproval: (requestId) => {
             set((state) => {
               const request = state.dropRequests.find(
-                (r) => r.id === requestId
+                (r) => r.id === requestId,
               );
               if (!request || !request.revertedShift) {
                 console.error(
-                  `Drop request with ID ${requestId} not found or no reverted shift stored.`
+                  `Drop request with ID ${requestId} not found or no reverted shift stored.`,
                 );
                 return;
               }
@@ -581,11 +602,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               ];
               for (const schedule of allSchedules) {
                 const shiftIndex = schedule.shifts.findIndex(
-                  (s) => s.id === request.revertedShift!.id
+                  (s) => s.id === request.revertedShift!.id,
                 );
                 if (shiftIndex !== -1) {
                   schedule.shifts[shiftIndex] = JSON.parse(
-                    JSON.stringify(request.revertedShift)
+                    JSON.stringify(request.revertedShift),
                   );
                 }
               }
@@ -604,7 +625,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           denyDropRequest: (requestId, approverId, reason) => {
             set((state) => {
               const request = state.dropRequests.find(
-                (r) => r.id === requestId
+                (r) => r.id === requestId,
               );
               if (request) {
                 request.status = "denied";
@@ -618,7 +639,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 ];
                 for (const schedule of allSchedules) {
                   const shift = schedule.shifts.find(
-                    (s) => s.id === request.shift.id
+                    (s) => s.id === request.shift.id,
                   );
                   if (shift) {
                     shift.status = "confirmed";
@@ -638,7 +659,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           cancelDropRequest: (requestId) => {
             set((state) => {
               const request = state.dropRequests.find(
-                (r) => r.id === requestId && r.status === "pending"
+                (r) => r.id === requestId && r.status === "pending",
               );
               if (!request) return;
 
@@ -649,7 +670,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               ];
               for (const schedule of allSchedules) {
                 const shift = schedule.shifts.find(
-                  (s) => s.id === request.shift.id
+                  (s) => s.id === request.shift.id,
                 );
                 if (shift) {
                   shift.status = "confirmed";
@@ -658,7 +679,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
 
               // Remove the request from the list
               state.dropRequests = state.dropRequests.filter(
-                (r) => r.id !== requestId
+                (r) => r.id !== requestId,
               );
             });
           },
@@ -677,7 +698,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               if (validationErrors.length > 0) {
                 console.error(
                   "PTO Request validation failed:",
-                  validationErrors
+                  validationErrors,
                 );
                 // Optionally, update request status to 'denied' or add a denial reason
                 request.status = "denied";
@@ -750,7 +771,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               const request = state.ptoRequests.find((r) => r.id === requestId);
               if (!request || !request.revertedShifts) {
                 console.error(
-                  `PTO Request with ID ${requestId} not found or no reverted shifts stored.`
+                  `PTO Request with ID ${requestId} not found or no reverted shifts stored.`,
                 );
                 return;
               }
@@ -773,11 +794,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               for (const originalShift of request.revertedShifts) {
                 for (const schedule of allSchedules) {
                   const shiftIndex = schedule.shifts.findIndex(
-                    (s) => s.id === originalShift.id
+                    (s) => s.id === originalShift.id,
                   );
                   if (shiftIndex !== -1) {
                     schedule.shifts[shiftIndex] = JSON.parse(
-                      JSON.stringify(originalShift)
+                      JSON.stringify(originalShift),
                     );
                   }
                 }
@@ -844,11 +865,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   for (const originalShift of request.revertedShifts) {
                     for (const schedule of allSchedules) {
                       const shiftIndex = schedule.shifts.findIndex(
-                        (s) => s.id === originalShift.id
+                        (s) => s.id === originalShift.id,
                       );
                       if (shiftIndex !== -1) {
                         schedule.shifts[shiftIndex] = JSON.parse(
-                          JSON.stringify(originalShift)
+                          JSON.stringify(originalShift),
                         );
                       }
                     }
@@ -858,7 +879,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
 
               // Remove the request from the list
               state.ptoRequests = state.ptoRequests.filter(
-                (r) => r.id !== requestId
+                (r) => r.id !== requestId,
               );
             });
           },
@@ -874,7 +895,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
 
               return areIntervalsOverlapping(
                 { start: newRequestStart, end: newRequestEnd },
-                { start: existingStart, end: existingEnd }
+                { start: existingStart, end: existingEnd },
               );
             });
             return !!conflictingPto;
@@ -887,7 +908,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   ? state.schedulePeriods
                   : state.weeklySchedules;
               const schedule = targetArray.find(
-                (s: SchedulePeriod | WeeklySchedule) => s.id === scheduleId
+                (s: SchedulePeriod | WeeklySchedule) => s.id === scheduleId,
               );
               if (schedule) {
                 schedule.shifts.push({ ...newShift, id: generateId() });
@@ -921,11 +942,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   ? state.schedulePeriods
                   : state.weeklySchedules;
               const schedule = targetArray.find(
-                (s: SchedulePeriod | WeeklySchedule) => s.id === scheduleId
+                (s: SchedulePeriod | WeeklySchedule) => s.id === scheduleId,
               );
               if (schedule) {
                 const shiftIndex = schedule.shifts.findIndex(
-                  (s: Shift) => s.id === updatedShift.id
+                  (s: Shift) => s.id === updatedShift.id,
                 );
                 if (shiftIndex !== -1) {
                   const previousShift = { ...schedule.shifts[shiftIndex] }; // Capture previous state
@@ -947,11 +968,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                       | WeeklySchedule
                     )[]); // Explicitly cast to a union type
               const schedule = targetArray.find(
-                (s: SchedulePeriod | WeeklySchedule) => s.id === scheduleId
+                (s: SchedulePeriod | WeeklySchedule) => s.id === scheduleId,
               );
               if (schedule) {
                 schedule.shifts = schedule.shifts.filter(
-                  (s: Shift) => s.id !== shiftId
+                  (s: Shift) => s.id !== shiftId,
                 );
                 schedule.updatedAt = new Date().toISOString();
               }
@@ -993,7 +1014,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           updateSchedulePeriod: (periodId, updates) => {
             set((state) => {
               const period = state.schedulePeriods.find(
-                (p) => p.id === periodId
+                (p) => p.id === periodId,
               );
               if (period) {
                 Object.assign(period, updates);
@@ -1005,7 +1026,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           updateWeeklySchedule: (scheduleId, updates) => {
             set((state) => {
               const schedule = state.weeklySchedules.find(
-                (s) => s.id === scheduleId
+                (s) => s.id === scheduleId,
               );
               if (schedule) {
                 Object.assign(schedule, updates);
@@ -1022,7 +1043,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   : state.weeklySchedules;
 
               const scheduleToDelete = targetArray.find(
-                (s) => s.id === scheduleId
+                (s) => s.id === scheduleId,
               );
 
               if (!scheduleToDelete) {
@@ -1037,11 +1058,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               ) {
                 if (scheduleType === "period") {
                   state.schedulePeriods = state.schedulePeriods.filter(
-                    (p) => p.id !== scheduleId
+                    (p) => p.id !== scheduleId,
                   );
                 } else {
                   state.weeklySchedules = state.weeklySchedules.filter(
-                    (w) => w.id !== scheduleId
+                    (w) => w.id !== scheduleId,
                   );
                 }
                 return;
@@ -1050,16 +1071,16 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               // Case 3 & 4: If we are deleting an original schedule (active/completed)
               // First, find and delete its draft, if it exists.
               const draftToDelete = targetArray.find(
-                (s) => s.originalScheduleId === scheduleId
+                (s) => s.originalScheduleId === scheduleId,
               );
               if (draftToDelete) {
                 if (scheduleType === "period") {
                   state.schedulePeriods = state.schedulePeriods.filter(
-                    (p) => p.id !== draftToDelete.id
+                    (p) => p.id !== draftToDelete.id,
                   );
                 } else {
                   state.weeklySchedules = state.weeklySchedules.filter(
-                    (w) => w.id !== draftToDelete.id
+                    (w) => w.id !== draftToDelete.id,
                   );
                 }
               }
@@ -1067,11 +1088,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               // Finally, delete the original schedule itself.
               if (scheduleType === "period") {
                 state.schedulePeriods = state.schedulePeriods.filter(
-                  (p) => p.id !== scheduleId
+                  (p) => p.id !== scheduleId,
                 );
               } else {
                 state.weeklySchedules = state.weeklySchedules.filter(
-                  (w) => w.id !== scheduleId
+                  (w) => w.id !== scheduleId,
                 );
               }
             });
@@ -1079,7 +1100,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
 
           checkDateConflicts: (startDate, endDate, excludePeriodId) => {
             const periods = get().schedulePeriods.filter(
-              (p) => p.id !== excludePeriodId
+              (p) => p.id !== excludePeriodId,
             );
             const conflictingPeriods = periods.filter((period) => {
               return areIntervalsOverlapping(
@@ -1087,7 +1108,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 {
                   start: new Date(period.startDate),
                   end: new Date(period.endDate),
-                }
+                },
               );
             });
             return {
@@ -1106,7 +1127,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             const conflicts: { employeeName: string; date: string }[] = [];
 
             const targetSchedule = allSchedules.find(
-              (s) => s.id === scheduleId
+              (s) => s.id === scheduleId,
             );
 
             if (!targetSchedule) {
@@ -1118,7 +1139,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               .filter(
                 (s) =>
                   s.id !== scheduleId &&
-                  s.id !== targetSchedule.originalScheduleId
+                  s.id !== targetSchedule.originalScheduleId,
               )
               .flatMap((s) => s.shifts);
 
@@ -1130,7 +1151,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   targetShift.employeeId !== null
                 ) {
                   const employee = employees.find(
-                    (emp) => emp.id === targetShift.employeeId
+                    (emp) => emp.id === targetShift.employeeId,
                   );
                   if (employee) {
                     conflicts.push({
@@ -1143,7 +1164,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             });
 
             const uniqueConflicts = Array.from(
-              new Set(conflicts.map((c) => `${c.employeeName}-${c.date}`))
+              new Set(conflicts.map((c) => `${c.employeeName}-${c.date}`)),
             ).map((str) => {
               const [employeeName, date] = str.split("-");
               return { employeeName, date };
@@ -1157,9 +1178,9 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             const draftedIds = new Set(
               schedulePeriods
                 .filter(
-                  (p) => p.status === "draft-edit" && p.originalScheduleId
+                  (p) => p.status === "draft-edit" && p.originalScheduleId,
                 )
-                .map((p) => p.originalScheduleId)
+                .map((p) => p.originalScheduleId),
             );
             return schedulePeriods.filter((p) => !draftedIds.has(p.id));
           },
@@ -1169,9 +1190,9 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             const draftedIds = new Set(
               weeklySchedules
                 .filter(
-                  (w) => w.status === "draft-edit" && w.originalScheduleId
+                  (w) => w.status === "draft-edit" && w.originalScheduleId,
                 )
-                .map((w) => w.originalScheduleId)
+                .map((w) => w.originalScheduleId),
             );
             return weeklySchedules.filter((w) => !draftedIds.has(w.id));
           },
@@ -1187,7 +1208,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               if (schedule) {
                 if (schedule.originalScheduleId) {
                   const originalIndex = targetArray.findIndex(
-                    (s) => s.id === schedule.originalScheduleId
+                    (s) => s.id === schedule.originalScheduleId,
                   );
                   if (originalIndex !== -1) {
                     const updatedOriginal = {
@@ -1206,11 +1227,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                     (targetArray as any)[originalIndex] = updatedOriginal;
                     if (scheduleType === "period") {
                       state.schedulePeriods = state.schedulePeriods.filter(
-                        (p) => p.id !== scheduleId
+                        (p) => p.id !== scheduleId,
                       );
                     } else {
                       state.weeklySchedules = state.weeklySchedules.filter(
-                        (w) => w.id !== scheduleId
+                        (w) => w.id !== scheduleId,
                       );
                     }
                   }
@@ -1262,7 +1283,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 ? state.schedulePeriods
                 : state.weeklySchedules;
             const existingDraft = targetArray.find(
-              (s) => s.originalScheduleId === originalScheduleId
+              (s) => s.originalScheduleId === originalScheduleId,
             );
             if (existingDraft) {
               return existingDraft.id;
@@ -1272,7 +1293,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             console.log("scheduleType", scheduleType);
 
             const originalSchedule = targetArray.find(
-              (s) => s.id === originalScheduleId
+              (s) => s.id === originalScheduleId,
             );
             if (!originalSchedule) {
               throw new Error("Original schedule not found");
@@ -1316,24 +1337,24 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             }
 
             const originalShiftIds = new Set(
-              originalSchedule.shifts.map((s) => s.id)
+              originalSchedule.shifts.map((s) => s.id),
             );
             const draftShiftIds = new Set(
-              draftSchedule.shifts.map((s) => s.id)
+              draftSchedule.shifts.map((s) => s.id),
             );
 
             const added = draftSchedule.shifts.filter(
-              (s) => !originalShiftIds.has(s.id)
+              (s) => !originalShiftIds.has(s.id),
             ).length;
             const removed = originalSchedule.shifts.filter(
-              (s) => !draftShiftIds.has(s.id)
+              (s) => !draftShiftIds.has(s.id),
             ).length;
             let updated = 0;
 
             draftSchedule.shifts.forEach((draftShift) => {
               if (originalShiftIds.has(draftShift.id)) {
                 const originalShift = originalSchedule.shifts.find(
-                  (s) => s.id === draftShift.id
+                  (s) => s.id === draftShift.id,
                 );
 
                 // Create copies and remove the property that is expected to be different
@@ -1363,10 +1384,10 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             ];
 
             const requesterShifts = allShifts.filter(
-              (s) => s.employeeId === requesterId
+              (s) => s.employeeId === requesterId,
             );
             const peerShifts = allShifts.filter(
-              (s) => s.employeeId === peerId && s.status === "confirmed"
+              (s) => s.employeeId === peerId && s.status === "confirmed",
             );
 
             return peerShifts.filter((peerShift) => {
@@ -1379,8 +1400,8 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   {
                     start: new Date(requesterShift.startTime),
                     end: new Date(requesterShift.endTime),
-                  }
-                )
+                  },
+                ),
               );
             });
           },
@@ -1396,12 +1417,12 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             ];
 
             const peers = employees.filter(
-              (emp) => emp.id !== shiftToOffer.employeeId
+              (emp) => emp.id !== shiftToOffer.employeeId,
             );
 
             const compatiblePeers = peers.filter((peer) => {
               const peerShifts = allShifts.filter(
-                (s) => s.employeeId === peer.id
+                (s) => s.employeeId === peer.id,
               ) as Shift[];
               return !peerShifts.some((peerShift) =>
                 areIntervalsOverlapping(
@@ -1412,8 +1433,8 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   {
                     start: new Date(peerShift.startTime),
                     end: new Date(peerShift.endTime),
-                  }
-                )
+                  },
+                ),
               );
             });
 
@@ -1421,7 +1442,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               employee: peer,
               swappableShiftsCount: get().getSwappableShiftsForPeer(
                 peer.id,
-                shiftToOffer.employeeId as string
+                shiftToOffer.employeeId as string,
               ).length,
             }));
           },
@@ -1430,11 +1451,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             set((state) => {
               if (scheduleType === "period") {
                 state.schedulePeriods = state.schedulePeriods.filter(
-                  (p) => p.id !== draftId
+                  (p) => p.id !== draftId,
                 );
               } else {
                 state.weeklySchedules = state.weeklySchedules.filter(
-                  (w) => w.id !== draftId
+                  (w) => w.id !== draftId,
                 );
               }
             });
@@ -1454,7 +1475,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               }
 
               const scheduleStartDate = startOfDay(
-                parseISO(schedule.startDate)
+                parseISO(schedule.startDate),
               );
               const scheduleEndDate = startOfDay(parseISO(schedule.endDate));
 
@@ -1506,8 +1527,8 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                           {
                             start: new Date(existingShift.startTime),
                             end: new Date(existingShift.endTime),
-                          }
-                        )
+                          },
+                        ),
                     );
                     if (!hasConflict) {
                       schedule.shifts.push({ ...newShift, id: generateId() });
@@ -1529,7 +1550,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                           {
                             start: new Date(existingShift.startTime),
                             end: new Date(existingShift.endTime),
-                          }
+                          },
                         )
                       ) {
                         shiftsToDelete.add(existingShift.id);
@@ -1538,7 +1559,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   });
 
                   schedule.shifts = schedule.shifts.filter(
-                    (s) => !shiftsToDelete.has(s.id)
+                    (s) => !shiftsToDelete.has(s.id),
                   );
 
                   templateShiftsToApply.forEach((newShift) => {
@@ -1590,7 +1611,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               shifts.sort(
                 (a, b) =>
                   new Date(a.startTime).getTime() -
-                  new Date(b.startTime).getTime()
+                  new Date(b.startTime).getTime(),
               );
 
               let totalHours = 0;
@@ -1612,14 +1633,14 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                     conflictTypes.doubleBooked &&
                     areIntervalsOverlapping(
                       { start, end },
-                      { start: nextStart, end: new Date(next.endTime) }
+                      { start: nextStart, end: new Date(next.endTime) },
                     )
                   ) {
                     conflicts.push({
                       type: "doubleBooked",
                       details: `Overlap between ${format(
                         start,
-                        "HH:mm"
+                        "HH:mm",
                       )} and ${format(nextStart, "HH:mm")}`,
                       shiftIds: [current.id, next.id],
                       date: current.date,
@@ -1635,7 +1656,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                       conflicts.push({
                         type: "backToBack",
                         details: `Only ${restHours.toFixed(
-                          1
+                          1,
                         )} hours rest between shifts`,
                         shiftIds: [current.id, next.id],
                         date: current.date,
@@ -1654,7 +1675,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 conflicts.push({
                   type: "overtime",
                   details: `${employeeName} scheduled for ${totalHours.toFixed(
-                    1
+                    1,
                   )} hours (exceeds 40)`,
                   date: startDate, // Just mark the period start or the first shift's date
                 });
@@ -1667,6 +1688,9 @@ export const useScheduleStore = create<ScheduleRequestState>()(
       }),
       {
         name: "schedule-storage",
+        storage: createLazyPersistStorage(),
+        version: 1,
+        migrate: (persistedState) => persistedState as any,
         partialize: (state) => ({
           schedulePeriods: state.schedulePeriods,
           weeklySchedules: state.weeklySchedules,
@@ -1674,7 +1698,14 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           swapRequests: state.swapRequests,
           ptoRequests: state.ptoRequests,
         }),
-      }
-    )
-  )
+        // Prune on boot so an already-accumulated persisted list gets trimmed
+        // even without a new submission to trigger the in-action prune.
+        onRehydrateStorage: () => (state) => {
+          if (state?.ptoRequests) {
+            state.ptoRequests = prunePtoRequests(state.ptoRequests);
+          }
+        },
+      },
+    ),
+  ),
 );

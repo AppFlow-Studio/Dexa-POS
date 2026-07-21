@@ -1,4 +1,31 @@
+import { derivePaidStatus } from "@/lib/paymentStatus";
 import { OrderProfile, PreviousOrder } from "@/lib/types";
+
+// Refund states are authoritative from the cached label (a separate refund
+// badge below the pill carries refund detail). For non-refund states, derive
+// from live financial fields so cash-paid orders aren't stuck on stale "Partial".
+function derivePreviousOrderPaidStatus(
+  order: PreviousOrder,
+): OrderProfile["paid_status"] {
+  if (order.paymentStatus === "Refunded") return "Refunded";
+  if (order.paymentStatus === "Partially Refunded") return "Partial";
+
+  const derived = derivePaidStatus({
+    paid_status:
+      order.paymentStatus === "Paid"
+        ? "Paid"
+        : order.paymentStatus === "Unpaid"
+          ? "Unpaid"
+          : "Partial",
+    amount_due: order.amount_due,
+    cash_amount_due: order.cash_amount_due,
+    amount_paid: order.amount_paid,
+    payments: order.payments,
+    total_amount: order.total,
+  });
+
+  return derived ?? "Partial";
+}
 
 /**
  * Maps a PreviousOrder to OrderProfile shape so existing components
@@ -21,12 +48,7 @@ export function previousOrderToOrderProfile(
           : "pending",
     check_status: order.checkStatus || "Opened",
     order_type: order.type,
-    paid_status:
-      order.paymentStatus === "Paid"
-        ? "Paid"
-        : order.paymentStatus === "Unpaid"
-          ? "Unpaid"
-          : "Partial",
+    paid_status: derivePreviousOrderPaidStatus(order),
     items: order.items,
     opened_at: order.opened_at || null,
     closed_at: order.closed_at || undefined,
@@ -36,6 +58,9 @@ export function previousOrderToOrderProfile(
     amount_paid: order.amount_paid,
     amount_due: order.amount_due,
     cash_amount_due: order.cash_amount_due,
+    service_charge: order.service_charge ?? 0,
+    service_charge_name: order.service_charge_name ?? null,
+    service_charge_rate: order.service_charge_rate ?? null,
     customer_name: order.customer,
     server_name: order.server,
     payments: order.payments,
@@ -44,6 +69,7 @@ export function previousOrderToOrderProfile(
     order_refund_items: order.order_refund_items,
     station_id: order.station_id,
     _sourceStationName: order.station_name,
+    created_by_staff_profile_id: order.created_by_staff_profile_id ?? null,
   };
 }
 
@@ -85,6 +111,12 @@ export function computeOrderTotals(order: PreviousOrder) {
     cashSubtotal,
     cashTaxAmount,
     cashDiscountAmount,
+    // Service charge snapshot — passed through unchanged so the historical
+    // receipt shows the same SC line (label + rate + amount) the customer
+    // paid at the time of capture, even after rule edits.
+    serviceCharge: order.service_charge ?? 0,
+    serviceChargeName: order.service_charge_name ?? "Service Charge",
+    serviceChargeRate: order.service_charge_rate ?? null,
     total: order.total,
     totalPaid,
     totalRefunded,

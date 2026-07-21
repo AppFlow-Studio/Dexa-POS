@@ -1,4 +1,5 @@
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { ArrowLeft, ArrowRight } from 'lucide-react-native'
 import React from 'react'
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
@@ -33,26 +34,28 @@ export default function EodWizardLayout ({
   onContinueWithIssues,
   children
 }: React.PropsWithChildren<EodWizardLayoutProps>) {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   return (
     <View
       style={{
         flex: 1,
-        borderRadius: 20,
+        borderRadius: s(20),
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.panel,
-        padding: 12,
-        gap: 10
+        padding: s(12),
+        gap: s(10)
       }}
     >
       <View
         style={{
-          borderRadius: 16,
+          borderRadius: s(16),
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.card,
-          padding: 14,
-          gap: 10
+          padding: s(14),
+          gap: s(10)
         }}
       >
         <View
@@ -60,13 +63,13 @@ export default function EodWizardLayout ({
             flexDirection: 'row',
             alignItems: 'flex-start',
             justifyContent: 'space-between',
-            gap: 12
+            gap: s(12)
           }}
         >
-          <View style={{ flex: 1, gap: 6, paddingRight: 12 }}>
+          <View style={{ flex: 1, gap: s(6), paddingRight: s(12) }}>
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 fontWeight: '700',
                 color: colors.teal,
                 textTransform: 'uppercase',
@@ -77,23 +80,23 @@ export default function EodWizardLayout ({
             </Text>
             <Text
               style={{
-                fontSize: 17,
+                fontSize: s(17),
                 fontWeight: '800',
                 color: colors.heading,
-                lineHeight: 21
+                lineHeight: s(21)
               }}
             >
               {title}
             </Text>
-            <Text style={{ fontSize: 12, color: colors.label, lineHeight: 17 }}>
+            <Text style={{ fontSize: s(12), color: colors.label, lineHeight: s(17) }}>
               {subtitle}
             </Text>
           </View>
           <View
             style={{
-              minWidth: 52,
-              height: 52,
-              borderRadius: 16,
+              minWidth: s(52),
+              height: s(52),
+              borderRadius: s(16),
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: colors.teal + '12',
@@ -103,7 +106,7 @@ export default function EodWizardLayout ({
           >
             <Text
               style={{
-                fontSize: 10,
+                fontSize: s(10),
                 fontWeight: '700',
                 color: colors.teal,
                 textTransform: 'uppercase'
@@ -113,10 +116,10 @@ export default function EodWizardLayout ({
             </Text>
             <Text
               style={{
-                fontSize: 18,
+                fontSize: s(18),
                 fontWeight: '800',
                 color: colors.heading,
-                lineHeight: 20
+                lineHeight: s(20)
               }}
             >
               {currentStep + 1}
@@ -126,7 +129,7 @@ export default function EodWizardLayout ({
 
         <View
           style={{
-            height: 8,
+            height: s(8),
             borderRadius: 999,
             backgroundColor: colors.border,
             overflow: 'hidden'
@@ -150,20 +153,20 @@ export default function EodWizardLayout ({
 
       <View
         style={{
-          gap: 10,
+          gap: s(10),
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          paddingTop: 10
+          paddingTop: s(10)
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
           <TouchableOpacity
             onPress={onBack}
             disabled={!canGoBack}
             style={{
               flex: 1,
-              minHeight: 44,
-              borderRadius: 12,
+              minHeight: s(44),
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
@@ -173,11 +176,11 @@ export default function EodWizardLayout ({
             }}
           >
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}
             >
-              <ArrowLeft size={14} color={colors.label} />
+              <ArrowLeft size={s(14)} color={colors.label} />
               <Text
-                style={{ fontWeight: '700', fontSize: 12, color: colors.label }}
+                style={{ fontWeight: '700', fontSize: s(12), color: colors.label }}
               >
                 Back
               </Text>
@@ -188,8 +191,8 @@ export default function EodWizardLayout ({
             disabled={!canGoNext || isNextLoading}
             style={{
               flex: 2,
-              minHeight: 44,
-              borderRadius: 12,
+              minHeight: s(44),
+              borderRadius: s(12),
               backgroundColor: canGoNext ? colors.teal : colors.teal + '66',
               alignItems: 'center',
               justifyContent: 'center',
@@ -200,18 +203,18 @@ export default function EodWizardLayout ({
               <ActivityIndicator color={colors.onSolid} />
             ) : (
               <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}
               >
                 <Text
                   style={{
                     fontWeight: '800',
-                    fontSize: 12,
+                    fontSize: s(12),
                     color: colors.onSolid
                   }}
                 >
                   {nextLabel}
                 </Text>
-                <ArrowRight size={14} color={colors.onSolid} />
+                <ArrowRight size={s(14)} color={colors.onSolid} />
               </View>
             )}
           </TouchableOpacity>
@@ -220,8 +223,8 @@ export default function EodWizardLayout ({
           <TouchableOpacity
             onPress={onContinueWithIssues}
             style={{
-              minHeight: 44,
-              borderRadius: 14,
+              minHeight: s(44),
+              borderRadius: s(14),
               borderWidth: 1,
               borderColor: colors.warning + '50',
               backgroundColor: colors.warning + '15',
@@ -231,7 +234,7 @@ export default function EodWizardLayout ({
           >
             <Text
               style={{
-                fontSize: 12.5,
+                fontSize: s(12.5),
                 fontWeight: '700',
                 color: colors.warning
               }}

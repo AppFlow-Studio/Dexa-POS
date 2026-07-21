@@ -24,16 +24,23 @@
  * Mock react-native-mmkv (used by your stores)
  * MMKV is a native module - it won't work in Jest's Node environment
  */
-jest.mock("react-native-mmkv", () => ({
-  MMKV: jest.fn().mockImplementation(() => ({
+jest.mock("react-native-mmkv", () => {
+  const createInstance = () => ({
     getString: jest.fn(),
+    getBoolean: jest.fn(),
+    getNumber: jest.fn(),
     set: jest.fn(),
     delete: jest.fn(),
+    remove: jest.fn(),
     contains: jest.fn(),
     getAllKeys: jest.fn(() => []),
     clearAll: jest.fn(),
-  })),
-}));
+  });
+  return {
+    MMKV: jest.fn().mockImplementation(createInstance),
+    createMMKV: jest.fn().mockImplementation(createInstance),
+  };
+});
 
 /**
  * Mock expo-secure-store
@@ -130,6 +137,26 @@ jest.mock("react-native-reanimated", () => {
   Reanimated.default.call = () => {};
   return Reanimated;
 });
+
+/**
+ * Mock @sentry/react-native
+ * Native bridge unavailable in Jest; we just want the API surface.
+ */
+jest.mock("@sentry/react-native", () => ({
+  init: jest.fn(),
+  addBreadcrumb: jest.fn(),
+  captureException: jest.fn(),
+  captureMessage: jest.fn(),
+  setContext: jest.fn(),
+  setTag: jest.fn(),
+  setUser: jest.fn(),
+  reactNavigationIntegration: jest.fn(() => ({})),
+  metrics: {
+    distribution: jest.fn(),
+    gauge: jest.fn(),
+    increment: jest.fn(),
+  },
+}));
 
 // ============================================================================
 // GLOBAL TEST UTILITIES

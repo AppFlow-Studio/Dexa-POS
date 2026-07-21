@@ -1,0 +1,181 @@
+// ============================================================
+// Pending Finalize Journal
+// File: services/pendingFinalize.ts
+// ============================================================
+// When the Castles terminal successfully closes its batch but our
+// finalize_castles_settlement RPC fails (network drop, deadline,
+// merchant-scope error, transient DB issue), the batch is left in
+// 'pending' status on our side while the terminal has already
+// reconciled. We persist the raw Castles response so the user can
+// replay finalize from the BatchoutPanel without re-talking to the
+// terminal.
+//
+// Storage: MMKV `storage` (device-local fallback) + Supabase table
+// `pending_finalize_journal` (server mirror, merchant-scoped RLS).
+// On list, the server is authoritative — any device for the same
+// merchant can drive the retry. MMKV-only entries (server write
+// failed) still surface as a fallback.
+
+import { storage } from "@/lib/storage";
+import { SupabaseClient } from "@supabase/supabase-js";
+
+const KEY_PREFIX = "pending_finalize:";
+
+export interface PendingFinalizeEntry {
+  batchUuid: string;
+  merchantId: string;
+  terminalId: string;
+  castlesResponse: any;
+  savedAt: string; // ISO
+}
+
+function key(batchUuid: string): string {
+  return `${KEY_PREFIX}${batchUuid}`;
+}
+
+function writeMmkv(entry: PendingFinalizeEntry): void {
+  storage.set(key(entry.batchUuid), JSON.stringify(entry));
+}
+
+function removeMmkv(batchUuid: string): void {
+  storage.remove(key(batchUuid));
+}
+
+function readAllMmkv(): PendingFinalizeEntry[] {
+  const out: PendingFinalizeEntry[] = [];
+  for (const k of storage.getAllKeys()) {
+    if (!k.startsWith(KEY_PREFIX)) continue;
+    const raw = storage.getString(k);
+    if (!raw) continue;
+    try {
+      out.push(JSON.parse(raw) as PendingFinalizeEntry);
+    } catch {
+      storage.remove(k);
+    }
+  }
+  return out;
+}
+
+export async function addPendingFinalize(
+  entry: PendingFinalizeEntry,
+  supabase?: SupabaseClient,
+): Promise<void> {
+  writeMmkv(entry);
+  if (!supabase) return;
+  const { error } = await supabase
+    .from("pending_finalize_journal")
+    .upsert(
+      {
+        batch_uuid: entry.batchUuid,
+        merchant_id: entry.merchantId,
+        terminal_id: entry.terminalId,
+        castles_response: entry.castlesResponse,
+        saved_at: entry.savedAt,
+      },
+      { onConflict: "batch_uuid" },
+    );
+  if (error) {
+    console.warn(
+      "[pendingFinalize] server upsert failed (kept in MMKV):",
+      error.message,
+    );
+  }
+}
+
+export async function removePendingFinalize(
+  batchUuid: string,
+  supabase?: SupabaseClient,
+): Promise<void> {
+  removeMmkv(batchUuid);
+  if (!supabase) return;
+  const { error } = await supabase
+    .from("pending_finalize_journal")
+    .delete()
+    .eq("batch_uuid", batchUuid);
+  if (error) {
+    console.warn(
+      "[pendingFinalize] server delete failed:",
+      error.message,
+    );
+  }
+}
+
+export async function listPendingFinalizes(
+  supabase?: SupabaseClient,
+): Promise<PendingFinalizeEntry[]> {
+  const mmkvEntries = readAllMmkv();
+
+  if (!supabase) {
+    return mmkvEntries.sort((a, b) => a.savedAt.localeCompare(b.savedAt));
+  }
+
+  const { data, error } = await supabase
+    .from("pending_finalize_journal")
+    .select("batch_uuid, merchant_id, terminal_id, castles_response, saved_at")
+    .order("saved_at", { ascending: true });
+
+  if (error) {
+    console.warn(
+      "[pendingFinalize] server list failed (falling back to MMKV):",
+      error.message,
+    );
+    return mmkvEntries.sort((a, b) => a.savedAt.localeCompare(b.savedAt));
+  }
+
+  const serverEntries: PendingFinalizeEntry[] = (data ?? []).map((r: any) => ({
+    batchUuid: r.batch_uuid,
+    merchantId: r.merchant_id,
+    terminalId: r.terminal_id,
+    castlesResponse: r.castles_response,
+    savedAt: r.saved_at,
+  }));
+
+  const byUuid = new Map<string, PendingFinalizeEntry>();
+  // Server is authoritative; MMKV-only entries (failed upsert) fill gaps.
+  for (const e of mmkvEntries) byUuid.set(e.batchUuid, e);
+  for (const e of serverEntries) byUuid.set(e.batchUuid, e);
+
+  return Array.from(byUuid.values()).sort((a, b) =>
+    a.savedAt.localeCompare(b.savedAt),
+  );
+}
+
+export interface RetryFinalizeOutput {
+  success: boolean;
+  status?: string;
+  shouldRetry: boolean;
+  error?: string;
+}
+
+export async function retryPendingFinalize(
+  supabase: SupabaseClient,
+  entry: PendingFinalizeEntry,
+): Promise<RetryFinalizeOutput> {
+  const { data, error } = await supabase.rpc("finalize_castles_settlement", {
+    p_batch_uuid: entry.batchUuid,
+    p_merchant_id: entry.merchantId,
+    p_castles_response: entry.castlesResponse,
+  });
+
+  if (error) {
+    // The 'already settled' guard means a previous retry actually
+    // succeeded but we never cleared the journal. Treat as success
+    // and clear so we stop showing it.
+    if (typeof error.message === "string" && error.message.includes("already settled")) {
+      await removePendingFinalize(entry.batchUuid, supabase);
+      return { success: true, status: "settled", shouldRetry: false };
+    }
+    return {
+      success: false,
+      shouldRetry: true,
+      error: error.message ?? "Retry failed",
+    };
+  }
+
+  await removePendingFinalize(entry.batchUuid, supabase);
+  return {
+    success: Boolean(data?.success),
+    status: data?.status,
+    shouldRetry: Boolean(data?.should_retry),
+  };
+}

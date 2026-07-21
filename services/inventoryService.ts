@@ -108,17 +108,15 @@ export const InventoryService = {
   async upsertVendor(
     supabase: SupabaseClient,
     vendor: Omit<Vendor, "id"> & { id?: string },
-    merchantId: string
+    _merchantId: string,
+    locationId: string
   ) {
     const { data, error } = await supabase.rpc("app_upsert_vendor", {
-      p_id: vendor.id || null,
-      p_merchant_id: merchantId,
+      p_vendor_id: vendor.id || null,
+      p_location_id: locationId,
       p_name: vendor.name,
-      p_contact_name: vendor.contactName,
       p_email: vendor.email,
       p_phone: vendor.phone,
-      p_address: vendor.address,
-      p_website: vendor.website,
     });
 
     if (error) throw error;

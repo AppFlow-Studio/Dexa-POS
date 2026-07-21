@@ -1,13 +1,24 @@
+import {
+    derivePaymentRefundState,
+    getCashPricedOrderTotal,
+    usesCashPricing,
+} from "@/lib/paymentStatus";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
+import { formatAddress } from "@/utils/addressUtils";
 import {
-  Banknote,
-  Clock,
-  CreditCard,
-  DollarSign,
-  Play,
-  Printer,
-  RotateCcw,
+    Banknote,
+    Clock,
+    CreditCard,
+    DollarSign,
+    Mail,
+    MapPin,
+    Phone,
+    Play,
+    Printer,
+    RotateCcw,
+    User,
 } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -29,11 +40,35 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
   onRefund,
   onContinue,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
   const paymentSummary = useMemo(() => {
+    const isCashPricing = usesCashPricing(order.payments);
+    const serviceCharge = order.service_charge ?? 0;
+
+    // Subtotal in the displayed pricing (cash when paid-by-cash, else card).
     const subtotal = order.items.reduce((sum, item) => {
+      if (isCashPricing) {
+        return (
+          sum +
+          (item.cashSubtotal ?? item.subtotal ?? item.price * item.quantity)
+        );
+      }
       return sum + (item.subtotal ?? item.price * item.quantity);
     }, 0);
-    const tax = order.total_tax ?? 0;
+
+    // Grand total in the displayed pricing — server-authoritative, so it
+    // already includes the service charge AND the SC tax (when taxable).
+    const total = getCashPricedOrderTotal(order) ?? order.total_amount ?? 0;
+
+    // Tax shown = total − subtotal − SC. Deriving it from the (authoritative)
+    // total guarantees the breakdown reconciles (Subtotal + Tax + SC = Total)
+    // AND that the SC tax is included, instead of summing only per-item tax
+    // (which omits SC tax and previously showed $0 / an unbalanced breakdown).
+    const taxRaw = total - subtotal - serviceCharge;
+    const tax = taxRaw > 0.005 ? taxRaw : 0;
+
     const tip = (order.payments || [])
       .filter((p) => !p.isVoided)
       .reduce((sum, p) => sum + (p.tip_amount || 0), 0);
@@ -41,10 +76,48 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
       (sum, p) => sum + (p.refundedAmount ?? 0),
       0,
     );
-    const total = order.total_amount ?? 0;
-    const net = total - refund;
+    const netRaw = total - refund;
+    const net = Math.abs(netRaw) < 0.005 ? 0 : netRaw;
 
-    const activePayments = (order.payments || []).filter((p) => !p.isVoided);
+    // Alternate-pricing total for the "Cash price" note (shown on card/unpaid
+    // breakdowns). Prefer the server cash total (authoritative; already reflects
+    // whether SC was taxed). Only when it's absent do we reconstruct it from the
+    // per-item cash fields + SC + (SC tax IFF the SC is flagged taxable).
+    const cashItemsSubtotal = order.items.reduce(
+      (sum, item) =>
+        sum + (item.cashSubtotal ?? item.subtotal ?? item.price * item.quantity),
+      0,
+    );
+    const cashItemsTax = order.items.reduce(
+      (sum, item) => sum + (item.cashTaxAmount ?? item.taxAmount ?? 0),
+      0,
+    );
+    // Effective blended tax rate the order actually used = itemTax / itemTaxable.
+    // Applied to SC only when service_charge_is_taxable is true, so a non-taxable
+    // SC adds no tax in the fallback (matches the calculator + server behaviour).
+    const cardTaxable = order.items.reduce(
+      (sum, item) => sum + (item.subtotal ?? item.price * item.quantity),
+      0,
+    );
+    const cardItemsTax = order.items.reduce(
+      (sum, item) => sum + (item.taxAmount ?? 0),
+      0,
+    );
+    const effectiveTaxRate = cardTaxable > 0 ? cardItemsTax / cardTaxable : 0;
+    const scTax =
+      order.service_charge_is_taxable === true
+        ? serviceCharge * effectiveTaxRate
+        : 0;
+    const cashTotal =
+      (order.total_cash_amount ?? 0) > 0
+        ? (order.total_cash_amount as number)
+        : cashItemsSubtotal + cashItemsTax + serviceCharge + scTax;
+    const cashSavings = total - cashTotal;
+    const showCashPrice = !isCashPricing && cashSavings > 0.005;
+
+    const activePayments = (order.payments || []).filter(
+      (p) => !p.isPreAuth && (!p.isVoided || (p.refundedAmount ?? 0) > 0),
+    );
     let paymentMethodLabel = "";
     let isCashPayment = false;
     if (activePayments.length > 0) {
@@ -54,16 +127,27 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
         isCashPayment = true;
       } else {
         const brand = p.cardBrand || "Card";
-        paymentMethodLabel = p.last4
-          ? `${brand} ending in ${p.last4}`
-          : brand;
+        paymentMethodLabel = p.last4 ? `${brand} ending in ${p.last4}` : brand;
       }
       if (activePayments.length > 1) {
         paymentMethodLabel += ` +${activePayments.length - 1} more`;
       }
     }
 
-    return { subtotal, tax, tip, refund, net, paymentMethodLabel, isCashPayment };
+    return {
+      subtotal,
+      tax,
+      serviceCharge,
+      tip,
+      refund,
+      net,
+      cashTotal,
+      cashSavings,
+      showCashPrice,
+      paymentMethodLabel,
+      isCashPayment,
+      isCashPricing,
+    };
   }, [order]);
 
   const hasCardPayments = useMemo(() => {
@@ -72,23 +156,142 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
     );
   }, [order.payments]);
 
+  const canRefund = useMemo(
+    () =>
+      !!onRefund && !derivePaymentRefundState(order.payments).isFullyRefunded,
+    [onRefund, order.payments],
+  );
+
+  const customerName = order.customer_name?.trim();
+  const customerPhone = order.customer_phone?.trim();
+  const customerEmail = order.customer_email?.trim();
+  const deliveryAddress = formatAddress(order.delivery_address).trim();
+  const hasCustomerInfo = !!(
+    customerName ||
+    customerPhone ||
+    customerEmail ||
+    deliveryAddress
+  );
+
   return (
     <View
       className="border-t px-4 py-3"
-      style={{ backgroundColor: colors.teal + "05", borderTopColor: colors.border, borderLeftWidth: 4, borderLeftColor: colors.teal }}
+      style={{
+        backgroundColor: colors.card,
+        borderTopColor: colors.border,
+        borderLeftWidth: s(4),
+        borderLeftColor: colors.teal,
+      }}
     >
-      <View className="flex-row gap-6">
-        {/* Column 1: Items (~50%) */}
-        <View style={{ flex: 5 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
-            <View style={{ width: 3, height: 16, backgroundColor: colors.teal, borderRadius: 1.5 }} />
+      {hasCustomerInfo && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: s(12),
+            marginBottom: s(10),
+            paddingBottom: s(10),
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }}
+        >
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}
+          >
+            <View
+              style={{
+                width: s(3),
+                height: s(16),
+                backgroundColor: colors.teal,
+                borderRadius: s(1.5),
+              }}
+            />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.teal,
                 textTransform: "uppercase",
-                letterSpacing: 0.5,
+                letterSpacing: s(0.5),
+              }}
+            >
+              Customer
+            </Text>
+          </View>
+          {customerName ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: s(6),
+                paddingHorizontal: s(10),
+                paddingVertical: s(5),
+                borderRadius: s(8),
+                backgroundColor: colors.teal + "18",
+                borderWidth: 1,
+                borderColor: colors.teal + "40",
+              }}
+            >
+              <User color={colors.teal} size={s(14)} />
+              <Text
+                style={{
+                  fontSize: s(13),
+                  fontWeight: "700",
+                  color: colors.teal,
+                }}
+                numberOfLines={1}
+              >
+                {customerName}
+              </Text>
+            </View>
+          ) : null}
+          {customerPhone ? (
+            <CustomerChip
+              icon={<Phone color={colors.label} size={12} />}
+              text={customerPhone}
+            />
+          ) : null}
+          {customerEmail ? (
+            <CustomerChip
+              icon={<Mail color={colors.label} size={12} />}
+              text={customerEmail}
+            />
+          ) : null}
+          {deliveryAddress ? (
+            <CustomerChip
+              icon={<MapPin color={colors.label} size={12} />}
+              text={deliveryAddress}
+            />
+          ) : null}
+        </View>
+      )}
+      <View className="flex-row" style={{ gap: s(6) }}>
+        {/* Column 1: Items (~50%) */}
+        <View style={{ flex: 5 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: s(6),
+              marginBottom: s(8),
+            }}
+          >
+            <View
+              style={{
+                width: s(3),
+                height: s(16),
+                backgroundColor: colors.teal,
+                borderRadius: s(1.5),
+              }}
+            />
+            <Text
+              style={{
+                fontSize: s(11),
+                fontWeight: "700",
+                color: colors.teal,
+                textTransform: "uppercase",
+                letterSpacing: s(0.5),
               }}
             >
               Items
@@ -97,22 +300,34 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
           {order.items.slice(0, 3).map((item, idx) => (
             <View
               key={item.id || idx}
-              className="flex-row justify-between mb-0.5"
+              className="flex-row justify-between"
+              style={{ marginBottom: s(2) }}
             >
               <Text
-                style={{ fontSize: 13, color: colors.label, flex: 1, marginRight: 8 }}
+                style={{
+                  fontSize: s(13),
+                  color: colors.label,
+                  flex: 1,
+                  marginRight: s(8),
+                }}
                 numberOfLines={1}
               >
                 {item.quantity > 1 ? `${item.quantity}x ` : "1x "}
                 {item.name}
               </Text>
-              <Text style={{ fontSize: 13, color: colors.label }}>
-                ${(item.subtotal ?? item.price * item.quantity).toFixed(2)}
+              <Text style={{ fontSize: s(13), color: colors.label }}>
+                $
+                {(paymentSummary.isCashPricing
+                  ? (item.cashSubtotal ??
+                    item.subtotal ??
+                    item.price * item.quantity)
+                  : (item.subtotal ?? item.price * item.quantity)
+                ).toFixed(2)}
               </Text>
             </View>
           ))}
           {order.items.length > 3 && (
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
+            <Text style={{ fontSize: s(12), color: colors.muted, marginTop: s(4) }}>
               ...and {order.items.length - 3} more items
             </Text>
           )}
@@ -123,15 +338,29 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
 
         {/* Column 2: Payment (~28%) */}
         <View style={{ flex: 2.8 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
-            <View style={{ width: 3, height: 16, backgroundColor: colors.teal, borderRadius: 1.5 }} />
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: s(6),
+              marginBottom: s(8),
+            }}
+          >
+            <View
+              style={{
+                width: s(3),
+                height: s(16),
+                backgroundColor: colors.teal,
+                borderRadius: s(1.5),
+              }}
+            />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.teal,
                 textTransform: "uppercase",
-                letterSpacing: 0.5,
+                letterSpacing: s(0.5),
               }}
             >
               Payment
@@ -139,6 +368,12 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
           </View>
           <PaymentLine label="Subtotal" amount={paymentSummary.subtotal} />
           <PaymentLine label="Tax" amount={paymentSummary.tax} />
+          {paymentSummary.serviceCharge > 0 && (
+            <PaymentLine
+              label={order.service_charge_name || "Service Charge"}
+              amount={paymentSummary.serviceCharge}
+            />
+          )}
           {paymentSummary.tip > 0 && (
             <PaymentLine
               label="Tip"
@@ -153,21 +388,43 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
               colorValue={colors.danger}
             />
           )}
-          <View className="border-t border-border my-1.5" />
-          <View className="flex-row justify-between mb-0.5">
-            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Net Total</Text>
-            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+          <View className="border-t border-border" style={{ marginVertical: s(6) }} />
+          <View className="flex-row justify-between" style={{ marginBottom: s(2) }}>
+            <Text
+              style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
+            >
+              Net Total
+            </Text>
+            <Text
+              style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
+            >
               ${paymentSummary.net.toFixed(2)}
             </Text>
           </View>
+          {paymentSummary.showCashPrice ? (
+            <View
+              className="flex-row justify-between"
+              style={{ marginTop: s(2) }}
+            >
+              <Text style={{ fontSize: s(11), color: colors.muted }}>
+                Cash price
+              </Text>
+              <Text style={{ fontSize: s(11), color: colors.muted }}>
+                ${paymentSummary.cashTotal.toFixed(2)} (save $
+                {paymentSummary.cashSavings.toFixed(2)})
+              </Text>
+            </View>
+          ) : null}
           {paymentSummary.paymentMethodLabel ? (
-            <View className="flex-row items-center gap-2 mt-3">
+            <View className="flex-row items-center" style={{ gap: s(2), marginTop: s(3) }}>
               {paymentSummary.isCashPayment ? (
-                <Banknote color={colors.teal} size={14} />
+                <Banknote color={colors.teal} size={s(14)} />
               ) : (
-                <CreditCard color={colors.teal} size={14} />
+                <CreditCard color={colors.teal} size={s(14)} />
               )}
-              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
+              <Text
+                style={{ fontSize: s(12), fontWeight: "700", color: colors.teal }}
+              >
                 {paymentSummary.paymentMethodLabel}
               </Text>
             </View>
@@ -179,48 +436,62 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
 
         {/* Column 3: Actions (~22%) */}
         <View style={{ flex: 2.2 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
-            <View style={{ width: 3, height: 16, backgroundColor: colors.teal, borderRadius: 1.5 }} />
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: s(6),
+              marginBottom: s(8),
+            }}
+          >
+            <View
+              style={{
+                width: s(3),
+                height: s(16),
+                backgroundColor: colors.teal,
+                borderRadius: s(1.5),
+              }}
+            />
             <Text
               style={{
-                fontSize: 11,
+                fontSize: s(11),
                 fontWeight: "700",
                 color: colors.teal,
                 textTransform: "uppercase",
-                letterSpacing: 0.5,
+                letterSpacing: s(0.5),
               }}
             >
               Actions
             </Text>
           </View>
-          <View className="gap-2">
+          <View style={{ gap: s(2) }}>
             {onContinue && (
               <QuickActionButton
-                icon={<Play color={colors.teal} size={14} />}
+                icon={<Play color={colors.teal} size={s(14)} />}
                 label="Continue Order"
                 onPress={() => onContinue(order)}
               />
             )}
             <QuickActionButton
-              icon={<Printer color={colors.teal} size={14} />}
+              icon={<Printer color={colors.teal} size={s(14)} />}
               label="Print Receipt"
               onPress={() => onPrint(order)}
             />
             <QuickActionButton
-              icon={<Clock color={colors.teal} size={14} />}
+              icon={<Clock color={colors.teal} size={s(14)} />}
               label="View Timeline"
               onPress={() => onViewTimeline(order)}
             />
             {hasCardPayments && (
               <QuickActionButton
-                icon={<DollarSign color={colors.teal} size={14} />}
+                icon={<DollarSign color={colors.teal} size={s(14)} />}
                 label="Adjust Tip"
                 onPress={() => onTipAdjust(order)}
               />
             )}
-            {onRefund && (
+            {canRefund && onRefund && (
               <QuickActionButton
-                icon={<RotateCcw color={colors.teal} size={14} />}
+                icon={<RotateCcw color={colors.teal} size={s(14)} />}
                 label="Process Refund"
                 onPress={() => onRefund(order)}
               />
@@ -228,6 +499,38 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
           </View>
         </View>
       </View>
+    </View>
+  );
+};
+
+const CustomerChip = ({
+  icon,
+  text,
+}: {
+  icon: React.ReactNode;
+  text: string;
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: s(5),
+        paddingHorizontal: s(8),
+        paddingVertical: s(4),
+        borderRadius: s(6),
+        backgroundColor: colors.muted + "12",
+      }}
+    >
+      {icon}
+      <Text
+        style={{ fontSize: s(12), fontWeight: "500", color: colors.label }}
+        numberOfLines={1}
+      >
+        {text}
+      </Text>
     </View>
   );
 };
@@ -242,16 +545,32 @@ const PaymentLine = ({
   amount: number;
   colorValue?: string;
   bold?: boolean;
-}) => (
-  <View className="flex-row justify-between mb-0.5">
-    <Text style={{ fontSize: 12, fontWeight: bold ? "700" : "400", color: bold ? colors.heading : colors.label }}>
-      {label}
-    </Text>
-    <Text style={{ fontSize: 12, fontWeight: bold ? "700" : "400", color: bold ? colors.heading : (colorValue || colors.label) }}>
-      {amount < 0 ? "-" : ""}${Math.abs(amount).toFixed(2)}
-    </Text>
-  </View>
-);
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return (
+    <View className="flex-row justify-between" style={{ marginBottom: s(2) }}>
+      <Text
+        style={{
+          fontSize: s(12),
+          fontWeight: bold ? "700" : "400",
+          color: bold ? colors.heading : colors.label,
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{
+          fontSize: s(12),
+          fontWeight: bold ? "700" : "400",
+          color: bold ? colors.heading : colorValue || colors.label,
+        }}
+      >
+        {amount < 0 ? "-" : ""}${Math.abs(amount).toFixed(2)}
+      </Text>
+    </View>
+  );
+};
 
 const QuickActionButton = ({
   icon,
@@ -261,26 +580,32 @@ const QuickActionButton = ({
   icon: React.ReactNode;
   label: string;
   onPress: () => void;
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.8}
-    style={{
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-      borderRadius: 8,
-      paddingHorizontal: 10,
-      paddingVertical: 9,
-      backgroundColor: colors.teal + "20",
-      borderWidth: 1.5,
-      borderColor: colors.teal + "40",
-    }}
-  >
-    {icon}
-    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>{label}</Text>
-  </TouchableOpacity>
-);
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: s(6),
+        borderRadius: s(8),
+        paddingHorizontal: s(10),
+        paddingVertical: s(9),
+        backgroundColor: colors.teal + "20",
+        borderWidth: 1,
+        borderColor: colors.teal + "40",
+      }}
+    >
+      {icon}
+      <Text style={{ fontSize: s(11), fontWeight: "700", color: colors.teal }}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+};
 
 export default React.memo(ExpandedOrderPanel);

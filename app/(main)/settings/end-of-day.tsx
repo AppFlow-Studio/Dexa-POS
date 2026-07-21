@@ -21,6 +21,7 @@ import ConfirmationModal from '@/components/settings/reset-application/Confirmat
 import TipDistributionWizard from '@/components/tip-distribution/TipDistributionWizard'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import {
   bulkCloseOpenOrders,
   fetchDailySummary,
@@ -28,11 +29,13 @@ import {
   runChecklistValidations
 } from '@/services/endOfDayService'
 import { EOD_STEPS, useEndOfDayStore } from '@/stores/useEndOfDayStore'
+import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { Printer, RotateCcw } from 'lucide-react-native'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 
 /** Steps 0..7 are EOD_STEPS; step 8 is the final summary. */
@@ -44,6 +47,8 @@ const WIZARD_LAST = EOD_STEPS.length - 1
 const WIZARD_COUNT = WIZARD_LAST - WIZARD_FIRST + 1
 
 export default function EndOfDayScreen () {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const supabase = useSupabaseClient()
   const router = useRouter()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
@@ -72,6 +77,9 @@ export default function EndOfDayScreen () {
   const completionOverrideReason = useEndOfDayStore(
     s => s.completionOverrideReason
   )
+  const employees = useEmployeeStore(s => s.employees)
+  const activeEmployeeId = useEmployeeStore(s => s.activeEmployeeId)
+  const timeclockSessions = useTimeclockStore(s => s.sessions)
 
   // ── Store selectors (open orders for floor step) ─────────────────────
   const openOrders = useEndOfDayStore(s => s.openOrders)
@@ -110,7 +118,14 @@ export default function EndOfDayScreen () {
 
   // ── Deep-link callbacks ──────────────────────────────────────────────
   const onSafeNavigate = useCallback(
-    (route: string) => {
+    (
+      route:
+        | string
+        | {
+          pathname: string
+          params?: Record<string, string>
+        }
+    ) => {
       try {
         router.push(route as any)
       } catch (error) {
@@ -127,9 +142,38 @@ export default function EndOfDayScreen () {
     () => onSafeNavigate('/(main)/previous-orders'),
     [onSafeNavigate]
   )
+  const unresolvedReviewEmployeeIds = useMemo(() => {
+    const knownEmployeeIds = new Set(employees.map(employee => employee.id))
+    return Object.keys(timeclockSessions).filter(
+      employeeId =>
+        employeeId !== activeEmployeeId && knownEmployeeIds.has(employeeId)
+    )
+  }, [activeEmployeeId, employees, timeclockSessions])
+  const unresolvedReviewStaffProfileIds = useMemo(
+    () =>
+      employees
+        .filter(employee => unresolvedReviewEmployeeIds.includes(employee.id))
+        .map(employee => employee.profileId)
+        .filter(Boolean),
+    [employees, unresolvedReviewEmployeeIds]
+  )
+  const timeclockReviewHref = useMemo(() => {
+    if (unresolvedReviewEmployeeIds.length === 0) {
+      return '/(profiles-and-timeclock)/timeclock'
+    }
+
+    return {
+      pathname: '/(profiles-and-timeclock)/timeclock',
+      params: {
+        reviewMode: 'unresolved',
+        focusEmployeeIds: unresolvedReviewEmployeeIds.join(','),
+        focusStaffProfileIds: unresolvedReviewStaffProfileIds.join(',')
+      }
+    }
+  }, [unresolvedReviewEmployeeIds, unresolvedReviewStaffProfileIds])
   const onOpenTimeclock = useCallback(
-    () => onSafeNavigate('/(profiles-and-timeclock)/timeclock'),
-    [onSafeNavigate]
+    () => onSafeNavigate(timeclockReviewHref as any),
+    [onSafeNavigate, timeclockReviewHref]
   )
   const onGoToSettlement = useCallback(
     () => onSafeNavigate('/(main)/settings/end-of-day/settlement'),
@@ -305,7 +349,7 @@ export default function EndOfDayScreen () {
     return (
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.screen }}
-        contentContainerStyle={{ padding: 20 }}
+        contentContainerStyle={{ padding: s(20) }}
       >
         <EodIntroScreen
           locationName={locationName}
@@ -348,7 +392,7 @@ export default function EndOfDayScreen () {
     return (
       <ScrollView
         style={{ flex: 1, backgroundColor: colors.screen }}
-        contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: s(20), paddingBottom: s(40) }}
       >
         <EodSummaryScreen
           checklist={checklist}
@@ -357,7 +401,7 @@ export default function EndOfDayScreen () {
         />
 
         {/* Action buttons */}
-        <View style={{ marginTop: 20, gap: 10 }}>
+        <View style={{ marginTop: s(20), gap: s(10) }}>
           <TouchableOpacity
             onPress={handleFinalize}
             disabled={!canCompleteFinal}
@@ -365,14 +409,14 @@ export default function EndOfDayScreen () {
               backgroundColor: canCompleteFinal
                 ? colors.teal
                 : colors.teal + '66',
-              paddingVertical: 10,
-              borderRadius: 9,
+              paddingVertical: s(10),
+              borderRadius: s(9),
               alignItems: 'center',
               opacity: canCompleteFinal ? 1 : 0.5
             }}
           >
             <Text
-              style={{ fontSize: 12, fontWeight: '700', color: colors.onSolid }}
+              style={{ fontSize: s(12), fontWeight: '700', color: colors.onSolid }}
             >
               Complete Close Out
             </Text>
@@ -383,17 +427,17 @@ export default function EndOfDayScreen () {
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.card,
-              paddingVertical: 10,
-              borderRadius: 9,
+              paddingVertical: s(10),
+              borderRadius: s(9),
               alignItems: 'center',
               flexDirection: 'row',
               justifyContent: 'center',
-              gap: 8
+              gap: s(8)
             }}
           >
-            <Printer size={14} color={colors.label} />
+            <Printer size={s(14)} color={colors.label} />
             <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.label }}
+              style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}
             >
               Print EOD Report
             </Text>
@@ -402,15 +446,15 @@ export default function EndOfDayScreen () {
           <TouchableOpacity
             onPress={handleBack}
             style={{
-              paddingVertical: 8,
+              paddingVertical: s(8),
               alignItems: 'center'
             }}
           >
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: s(6) }}
             >
-              <RotateCcw size={13} color={colors.label} />
-              <Text style={{ fontSize: 12, color: colors.label }}>
+              <RotateCcw size={s(13)} color={colors.label} />
+              <Text style={{ fontSize: s(12), color: colors.label }}>
                 Back to Report
               </Text>
             </View>
@@ -474,6 +518,7 @@ export default function EndOfDayScreen () {
         return (
           <EodStepCash
             checklist={checklist}
+            drawerBreakdown={dailySummary?.drawerBreakdown}
             onOpenCashDrawer={onOpenCashDrawer}
             onRefresh={handleRefresh}
           />
@@ -520,7 +565,7 @@ export default function EndOfDayScreen () {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 12 }}>
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: s(12) }}>
       <EodWizardLayout
         title={stepDef?.title ?? ''}
         subtitle={stepDef?.subtitle ?? ''}
@@ -536,7 +581,7 @@ export default function EndOfDayScreen () {
       >
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 16 }}
+          contentContainerStyle={{ paddingBottom: s(16) }}
           showsVerticalScrollIndicator={false}
         >
           {renderStepContent()}

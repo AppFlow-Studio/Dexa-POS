@@ -10,58 +10,91 @@
 // never raw sockets. See castles-transport.types.ts.
 // ============================================================
 
+import { updateRefundJournal } from "@/services/refundJournal";
+import { useTerminalConnectionStore } from "@/stores/useTerminalConnectionStore";
+import {
+    CastlesEmptyResponseError,
+    CastlesWedgedError,
+    getCastlesConnectionSupervisor,
+} from "./castlesConnectionSupervisor";
 import type {
-  CastlesConnectionConfig,
-  CastlesGetDataRequest,
-  CastlesGetDataResponse,
-  CastlesGetDataResult,
-  CastlesRefundRequest,
-  CastlesRefundResult,
-  CastlesReturn2IdleRequest,
-  CastlesSaleRequest,
-  CastlesSaleResult,
-  CastlesSettlementHostInfo,
-  CastlesSettlementHostResult,
-  CastlesSettlementRawResponse,
-  CastlesSettlementRequest,
-  CastlesSettlementResult,
-  CastlesTipAdjustRequest,
-  CastlesTipAdjustResult,
-  CastlesVoidRequest,
-  CastlesVoidResult,
-  CastlesPreAuthRequest,
-  CastlesPreAuthResult,
-  CastlesAuthIncrementalRequest,
-  CastlesAuthIncrementalResult,
-  CastlesAuthCompleteRequest,
-  CastlesAuthCompleteResult,
+    CastlesAuthCompleteRequest,
+    CastlesAuthCompleteResult,
+    CastlesAuthIncrementalRequest,
+    CastlesAuthIncrementalResult,
+    CastlesConnectionConfig,
+    CastlesGetDataRequest,
+    CastlesGetDataResponse,
+    CastlesGetDataResult,
+    CastlesPreAuthRequest,
+    CastlesPreAuthResult,
+    CastlesRefundRequest,
+    CastlesRefundResult,
+    CastlesReturn2IdleRequest,
+    CastlesSaleRequest,
+    CastlesSaleResult,
+    CastlesSettlementHostInfo,
+    CastlesSettlementHostResult,
+    CastlesSettlementRawResponse,
+    CastlesSettlementRequest,
+    CastlesSettlementResult,
+    CastlesTipAdjustRequest,
+    CastlesTipAdjustResult,
+    CastlesVoidRequest,
+    CastlesVoidResult,
 } from "@/types/castles";
 import {
-  CASTLES_CONNECT_MAX_RETRIES,
-  CASTLES_CONNECT_RETRY_DELAY_MS,
-  CASTLES_CONNECT_TIMEOUT_MS,
-  CASTLES_GET_DATA_TIMEOUT_MS,
-  CASTLES_RETURN2IDLE_TIMEOUT_MS,
-  CASTLES_SETTLEMENT_TIMEOUT_MS,
-  CASTLES_SOCKET_TIMEOUT_MS,
-  CASTLES_SUCCESS_CODE,
+    CASTLES_CONNECT_MAX_RETRIES,
+    CASTLES_CONNECT_RETRY_DELAY_MS,
+    CASTLES_CONNECT_TIMEOUT_MS,
+    CASTLES_GET_DATA_TIMEOUT_MS,
+    CASTLES_RETURN2IDLE_TIMEOUT_MS,
+    CASTLES_SETTLEMENT_TIMEOUT_MS,
+    CASTLES_SOCKET_TIMEOUT_MS,
+    CASTLES_SUCCESS_CODE,
 } from "@/types/castles";
-import { Mutex } from "async-mutex";
-import type { ICastlesTransport, CastlesTransportConfig } from "./castles-transport.types";
-import { createCastlesTransport } from "./castles-transport-factory";
+import * as Sentry from "@sentry/react-native";
+import { E_TIMEOUT, Mutex, withTimeout } from "async-mutex";
 import {
-  type CastlesRawResponse,
-  buildCastlesTerminalResponse,
-  parseCastlesReturnCode,
+    type CastlesRawResponse,
+    buildCastlesTerminalResponse,
+    parseCastlesReturnCode,
 } from "./castles-response-mapper";
+import { createCastlesTransport } from "./castles-transport-factory";
+import type {
+    CastlesTransportConfig,
+    ICastlesTransport,
+} from "./castles-transport.types";
 
 export type CastlesStatusCallback = (notification: {
   txnStatus?: string;
   txnStatusMessage?: string;
 }) => void;
 
-/** Max seconds without data before connection is considered stale */
-const STALE_CONNECTION_THRESHOLD_S = 60;
+/**
+ * Max seconds without data before connection is considered stale.
+ * Lowered from 60s → 15s so a WiFi hiccup of 5–30s triggers half-open
+ * detection on the next sale instead of letting the singleton queue a
+ * command onto a dead socket.
+ */
+const STALE_CONNECTION_THRESHOLD_S = 15;
+
+/**
+ * Connect-time getData handshake timeout. On a healthy terminal getData
+ * responds in <500ms. We use a tight 3s here so the wedge signature (no
+ * bytes ever come back) is detected within ~3s on the first attempt
+ * instead of burning the full live-transaction socket timeout (which
+ * stays at CASTLES_SOCKET_TIMEOUT_MS for actual sales).
+ */
+const CASTLES_HANDSHAKE_TIMEOUT_MS = 3_000;
+
+// Upper bound on how long connect() will wait to ACQUIRE the command mutex
+// (not how long the connect itself runs once acquired). If a prior operation is
+// wedged and never releases the lock, connect() rejects with a clear error
+// instead of queueing forever — the upstream cause of the "infinite testing
+// spinner". 60s comfortably exceeds the longest legitimate hold (a card-present
+// sale) while still guaranteeing the caller is never starved indefinitely.
+const CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS = 60_000;
 
 /** Errors matching these patterns are connection-level (retriable) */
 function isConnectionError(err: unknown): boolean {
@@ -74,6 +107,84 @@ function isConnectionError(err: unknown): boolean {
     msg.includes("Connection timed out") ||
     msg.includes("not open")
   );
+}
+
+/**
+ * Broader classifier for "the terminal link is dead / wedged" — i.e. the next
+ * command on this terminal will almost certainly fail too. This is a SUPERSET
+ * of isConnectionError that also covers the symptoms seen in the S1-0002 USB
+ * refund crash that isConnectionError intentionally does NOT match:
+ *   - "USB get_status request failed" (native usb-serial GET_STATUS probe died)
+ *   - "Response timed out ..." (terminal hung mid-transaction)
+ *   - "controlTransfer failed" (native CDC-ACM DTR/RTS failure)
+ *   - "Reconnect failed" / "command queue is busy" (wedge + mutex starvation)
+ *   - CastlesEmptyResponseError / CastlesWedgedError (app-layer wedge)
+ *
+ * Used by the refund-by-item loop to STOP firing further refunds into a
+ * terminal that just died, instead of compounding onto a dead device. It is
+ * deliberately NOT wired into _withRetry's auto-reconnect (that would risk
+ * re-sending a payment/refund); it is a read-only "should I keep going?" gate.
+ */
+export function isTerminalTransportDead(err: unknown): boolean {
+  if (
+    err instanceof CastlesEmptyResponseError ||
+    err instanceof CastlesWedgedError
+  ) {
+    return true;
+  }
+  if (isConnectionError(err)) return true;
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes("get_status request failed") ||
+    msg.includes("response timed out") ||
+    msg.includes("controltransfer failed") ||
+    msg.includes("reconnect failed") ||
+    msg.includes("command queue is busy") ||
+    msg.includes("transport closed") ||
+    msg.includes("port is not open")
+  );
+}
+
+/**
+ * Discriminated reason for probeCastlesTerminal outcomes. Lets the banner
+ * render specific recovery copy instead of dumping the raw error string.
+ */
+export type CastlesProbeReason =
+  | "online"
+  | "tcp_timeout"
+  | "tcp_refused"
+  | "tcp_unreachable"
+  | "no_ip_configured"
+  | "usb_disconnected"
+  | "terminal_unresponsive"
+  | "possible_dhcp_drift"
+  | "unknown";
+
+export interface CastlesProbeResult {
+  online: boolean;
+  reason: CastlesProbeReason;
+  /** Raw error message (kept for logs/Sentry) */
+  error?: string;
+}
+
+/** Classify a TCP-layer connect error from its message. */
+function classifyTcpError(err: unknown): CastlesProbeReason {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  if (msg.includes("connection timed out") || msg.includes("etimedout")) {
+    return "tcp_timeout";
+  }
+  if (msg.includes("econnrefused") || msg.includes("refused")) {
+    return "tcp_refused";
+  }
+  if (
+    msg.includes("ehostunreach") ||
+    msg.includes("enetunreach") ||
+    msg.includes("no route to host") ||
+    msg.includes("network is unreachable")
+  ) {
+    return "tcp_unreachable";
+  }
+  return "unknown";
 }
 
 export class CastlesService {
@@ -90,6 +201,9 @@ export class CastlesService {
   private _watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private _watchdogConsecutiveFailures = 0;
 
+  // ── Suspend state ──
+  private _suspended = false;
+
   // ============================================================
   // CONNECTION
   // ============================================================
@@ -103,7 +217,50 @@ export class CastlesService {
    * each other's transport.
    */
   async connect(config: CastlesConnectionConfig): Promise<void> {
-    return this._mutex.runExclusive(() => this._connectInner(config));
+    // An explicit connect() call is always foreground-initiated (JS doesn't
+    // execute while the app is fully backgrounded on iOS / Android), so a
+    // lingering _suspended flag here just blocks user intent. Clear it
+    // implicitly instead of throwing — the original throw forced 14+ call
+    // sites to gate on isSuspended() / resume(), which one-off bugs slip
+    // through (e.g., the USB setup wizard on a fresh launch where the
+    // AppState foreground handler hadn't fired yet).
+    if (this._suspended) {
+      console.log("[CastlesService] connect: auto-clearing _suspended flag");
+      this._suspended = false;
+    }
+    // Bound the *acquisition* of the command mutex so a wedged prior operation
+    // (e.g. a hung command that never released the lock) can't starve this
+    // connect forever. Once acquired, _connectInner runs to completion with its
+    // own per-step timeouts. E_TIMEOUT surfaces as a clear, actionable error;
+    // callers (the test flow) then force-recover via suspend()/resume().
+    try {
+      await withTimeout(
+        this._mutex,
+        CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS,
+      ).runExclusive(() => this._connectInner(config));
+    } catch (e) {
+      if (e === E_TIMEOUT) {
+        throw new Error(
+          "Castles command queue is busy — a previous operation appears stuck. Reset the connection and try again.",
+        );
+      }
+      throw e;
+    }
+    // Start the heartbeat watchdog for TCP connections so half-open sockets
+    // are detected proactively (every 30s) instead of waiting for the next
+    // sale to time out. USB doesn't suffer from half-open sockets, so we
+    // skip the watchdog there to avoid unnecessary command queue traffic.
+    const isTcp =
+      (config.connectionType ?? "local_socket") === "local_socket";
+    if (isTcp) {
+      this.startWatchdog();
+      // We just verified the connection (return2Idle + getData handshake in
+      // _connectInner). Publish quality so the header pill clears.
+      useTerminalConnectionStore.getState().setQuality("ok");
+    } else {
+      this.stopWatchdog();
+      useTerminalConnectionStore.getState().reset();
+    }
   }
 
   private async _connectInner(config: CastlesConnectionConfig): Promise<void> {
@@ -136,42 +293,82 @@ export class CastlesService {
     this.config = config;
     let lastError: Error | null = null;
 
-    for (let attempt = 1; attempt <= CASTLES_CONNECT_MAX_RETRIES; attempt++) {
+    // Cold connect (background auto-connect after a plug/power-cycle) uses the
+    // SAME escalated retry loop as a manual Test — the escalation (attempts 2+
+    // send return2Idle 3× with gaps, "the in-app equivalent of toggling WiFi on
+    // the terminal") is exactly what wakes a freshly-replugged, just-booted
+    // terminal; a single light attempt does not. coldConnect's ONLY difference
+    // is that a boot-window empty buffer is NOT treated as a firmware wedge
+    // (see the CastlesEmptyResponseError handling below) so it retries quietly
+    // instead of popping the power-cycle modal.
+    const maxAttempts = CASTLES_CONNECT_MAX_RETRIES;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      // Escalation: attempts 2+ assume the terminal is in a stuck app-layer
+      // state (the empty-buffer / response-timeout symptom). One return2Idle
+      // and a fresh socket weren't enough — we send return2Idle multiple
+      // times with gaps so the terminal's UI stack can unwind a stuck modal
+      // or a half-processed transaction state. This is the in-app equivalent
+      // of toggling WiFi on the terminal.
+      const isEscalated = attempt >= 2;
+
+      this._emitConnectProgress(
+        attempt === 1
+          ? "Connecting to terminal…"
+          : `Reconnecting (attempt ${attempt} of ${maxAttempts})…`,
+      );
+
       try {
         this._createTransport(config);
         await this.transport!.connect();
 
         if (this._postConnectDelayMs > 0) {
-          console.log(`[CastlesService] Post-connect delay: ${this._postConnectDelayMs}ms`);
+          console.log(
+            `[CastlesService] Post-connect delay: ${this._postConnectDelayMs}ms`,
+          );
           await this._delay(this._postConnectDelayMs);
         }
 
         // Clear any stuck state from previous session
         if (!this._skipReturn2Idle) {
-          try {
-            await this._sendAndReceive<Record<string, unknown>>(
-              { txnPosTxnId: "000000", txnType: "return2Idle" },
-              3000,
-            );
-            console.log(
-              "[CastlesService] return2Idle accepted — terminal was stuck",
-            );
-          } catch {
-            console.log(
-              "[CastlesService] return2Idle no response — terminal was idle (OK)",
-            );
+          this._emitConnectProgress("Waking terminal…");
+          const idleSends = isEscalated ? 3 : 1;
+          const idleTimeoutMs = isEscalated ? 4_000 : 3_000;
+          for (let i = 0; i < idleSends; i++) {
+            try {
+              await this._sendAndReceive<Record<string, unknown>>(
+                { txnPosTxnId: "000000", txnType: "return2Idle" },
+                idleTimeoutMs,
+              );
+              console.log(
+                `[CastlesService] return2Idle #${i + 1}/${idleSends} accepted${isEscalated ? " (escalated recovery)" : ""}`,
+              );
+              // Got a response — terminal is awake, no need to keep pushing.
+              break;
+            } catch {
+              console.log(
+                `[CastlesService] return2Idle #${i + 1}/${idleSends} no response (terminal may be idle, or stuck — continuing)`,
+              );
+            }
+            if (i < idleSends - 1) await this._delay(1_000);
           }
 
           await this._delay(500);
         } else {
-          console.log("[CastlesService] Skipping return2Idle (diagnostic override)");
+          console.log(
+            "[CastlesService] Skipping return2Idle (diagnostic override)",
+          );
         }
 
-        // Verify CastlesPay is responsive
+        // Verify CastlesPay is responsive. Use the tight handshake timeout
+        // so the wedge signature is detected fast — on a healthy terminal
+        // getData responds in <500ms, and on a wedged one no amount of
+        // waiting helps.
+        this._emitConnectProgress("Verifying terminal…");
         try {
           await this._sendAndReceive<Record<string, unknown>>(
             { txnPosTxnId: "000000", txnType: "getData" },
-            CASTLES_GET_DATA_TIMEOUT_MS,
+            CASTLES_HANDSHAKE_TIMEOUT_MS,
           );
         } catch (handshakeErr) {
           console.warn(
@@ -187,29 +384,77 @@ export class CastlesService {
         console.log(
           `[CastlesService] Connected + verified: ${config.host}:${config.port} (attempt ${attempt})`,
         );
+        this._emitConnectProgress(null);
+        // Defensive: clear any lingering wedge state if we ended up here
+        // through a probe-driven recovery rather than the supervisor's own
+        // probe loop. Cheap no-op when not wedged.
+        getCastlesConnectionSupervisor().notifySuccess();
         return;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         console.warn(
-          `[CastlesService] Attempt ${attempt}/${CASTLES_CONNECT_MAX_RETRIES} failed:`,
+          `[CastlesService] Attempt ${attempt}/${maxAttempts} failed:`,
           lastError.message,
         );
+        // NOTE: react-native-tcp-socket does NOT expose setLinger, so this is
+        // a graceful FIN close — not an RST. The terminal-side TCP stack may
+        // hold its half-open in CLOSE_WAIT for a while. We can't avoid that
+        // without patching the native module.
         this._disconnectInner();
 
-        if (attempt < CASTLES_CONNECT_MAX_RETRIES) {
-          const delay = Math.min(
-            CASTLES_CONNECT_RETRY_DELAY_MS * Math.pow(2, attempt - 1),
-            10_000,
+        // Wedge signature detected: TCP up, write resolved, but 0 bytes ever
+        // came back. No amount of retrying will help — CastlesPay isn't
+        // reading from any socket. Notify the supervisor so it owns the
+        // recovery via background probe loop, and throw a typed error so
+        // callers (testConnection / processSale / etc.) can render the
+        // power-cycle modal instead of a cryptic timeout string.
+        //
+        // EXCEPTION — cold connect: a freshly plugged/power-cycled terminal
+        // also returns 0 bytes while CastlesPay is still booting (~5-10s).
+        // That's indistinguishable from a wedge here, so on the background
+        // auto-connect path we DON'T flip to "wedged" (which would pop the
+        // power-cycle modal and hand off to the slow 15s probe loop). We let
+        // it surface as a plain failure and the coordinator's retry ladder
+        // tries again once the app is up.
+        if (err instanceof CastlesEmptyResponseError && !config.coldConnect) {
+          this._emitConnectProgress(null);
+          getCastlesConnectionSupervisor().notifyEmptyBuffer({
+            connectionType: config.connectionType ?? "local_socket",
+            host: config.host,
+            port: config.port,
+          });
+          throw new CastlesWedgedError(
+            `Castles terminal appears wedged (no response on attempt ${attempt}). Power-cycle required.`,
           );
+        }
+
+        if (attempt < maxAttempts) {
+          // Give the terminal at least 3s before reconnecting so CastlesPay
+          // has some chance to time out its own session state internally.
+          // This is best-effort — the app-layer freeze symptom (empty buffer
+          // on every command) can't be cured by a longer pause if CastlesPay
+          // has stopped reading from the socket entirely.
+          const baseDelay = CASTLES_CONNECT_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+          const minRecoveryDelay = 3_000;
+          const delay = Math.min(Math.max(baseDelay, minRecoveryDelay), 10_000);
           console.log(`[CastlesService] Retrying in ${delay}ms...`);
           await this._delay(delay);
         }
       }
     }
 
-    throw new Error(
-      `[CastlesService] Failed to connect after ${CASTLES_CONNECT_MAX_RETRIES} attempts: ${lastError?.message}`,
+    this._emitConnectProgress(null);
+    const connectErr = new Error(
+      `[CastlesService] Failed to connect after ${maxAttempts} attempts: ${lastError?.message}`,
     );
+    Sentry.captureException(connectErr, {
+      tags: {
+        terminal_ip: config.host,
+        terminal_port: String(config.port ?? 8080),
+        source: "castles_connect",
+      },
+    });
+    throw connectErr;
   }
 
   /** Disconnect and clean up the transport (no mutex). */
@@ -225,6 +470,9 @@ export class CastlesService {
   disconnect(): void {
     this.stopWatchdog();
     this._disconnectInner();
+    // Reset quality so the header pill doesn't keep showing 'lost' after
+    // an intentional disconnect (station switch, app background).
+    useTerminalConnectionStore.getState().reset();
   }
 
   /**
@@ -233,7 +481,9 @@ export class CastlesService {
    */
   private async _gracefulDisconnectInner(): Promise<void> {
     if (this.transport?.isOpen) {
-      console.log("[CastlesService] Graceful disconnect: sending return2Idle before close...");
+      console.log(
+        "[CastlesService] Graceful disconnect: sending return2Idle before close...",
+      );
       try {
         const payload = JSON.stringify({
           txnPosTxnId: "000000",
@@ -253,19 +503,105 @@ export class CastlesService {
   async gracefulDisconnect(): Promise<void> {
     this.stopWatchdog();
     await this._gracefulDisconnectInner();
+    useTerminalConnectionStore.getState().reset();
   }
 
   isConnected(): boolean {
     return this.transport?.isOpen ?? false;
   }
 
+  isSuspended(): boolean {
+    return this._suspended;
+  }
+
+  /**
+   * Put the service into a "suspended" state.
+   *
+   * Always tears down the transport, regardless of mutex state. If a command
+   * is in flight, the tear-down causes the native socket to emit 'close', which
+   * fires our onClose listeners in _sendAndReceive and cleanly rejects the
+   * in-flight promise with a "Transport closed" error. The mutex releases
+   * naturally when the in-flight runExclusive callback returns.
+   *
+   * Previously, suspend() bailed early when _mutex.isLocked() — leaving a dead
+   * socket open while the in-flight command waited for a 60+ second timeout.
+   * That was the upstream amplifier for the "retry loop crashes on stale socket"
+   * bug (castles-transport-tcp.ts disconnect() race).
+   *
+   * Safe to call from an AppState listener — never throws, never blocks long.
+   */
+  async suspend(): Promise<void> {
+    if (this._suspended) return;
+    this._suspended = true;
+    this.stopWatchdog();
+
+    // Tear down the transport directly, without acquiring the mutex.
+    // Any in-flight _sendAndReceive will receive a close event and reject.
+    if (this.transport) {
+      try {
+        this.transport.disconnect();
+      } catch (e) {
+        console.warn(
+          "[CastlesService] suspend: disconnect failed (non-fatal)",
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+      this.transport = null;
+    }
+
+    console.log("[CastlesService] suspended");
+  }
+
+  /**
+   * Exit the "suspended" state and optionally pre-warm a new connection.
+   * - Clears the flag so lazy-reconnect from command path is allowed again.
+   * - If `config` is provided, fire-and-forget a connect() attempt to put the
+   *   socket back online before the first user action (invisible latency).
+   */
+  resume(config?: CastlesConnectionConfig): void {
+    if (!this._suspended) return;
+    this._suspended = false;
+    const cfg = config ?? this.config;
+    if (!cfg) return;
+    // Fire-and-forget pre-warm; failure is non-fatal (lazy path will retry).
+    this.connect(cfg).catch((e) => {
+      console.warn(
+        "[CastlesService] resume pre-warm failed (non-fatal):",
+        e instanceof Error ? e.message : String(e),
+      );
+    });
+  }
+
   setOnStatusNotification(callback: CastlesStatusCallback | null): void {
     this._onStatusNotification = callback;
   }
 
+  /**
+   * Publish a human-readable connect sub-step ("Connecting to terminal…",
+   * "Waking terminal…", "Verifying terminal…", "Reconnecting…") to the terminal
+   * connection store so progress UIs (Test Connection button, payment sheet,
+   * USB setup wizard) can show what's happening instead of an opaque spinner.
+   * Pass null to clear when the attempt settles. Never throws into connect.
+   */
+  private _emitConnectProgress(phase: string | null): void {
+    try {
+      useTerminalConnectionStore.getState().setConnectActivity(phase);
+    } catch {
+      /* never let a progress write break the connect path */
+    }
+  }
+
+  getOnStatusNotification(): CastlesStatusCallback | null {
+    return this._onStatusNotification;
+  }
+
   // ── Tuning setters ──
-  setSkipReturn2Idle(skip: boolean): void { this._skipReturn2Idle = skip; }
-  setPostConnectDelay(ms: number): void { this._postConnectDelayMs = ms; }
+  setSkipReturn2Idle(skip: boolean): void {
+    this._skipReturn2Idle = skip;
+  }
+  setPostConnectDelay(ms: number): void {
+    this._postConnectDelayMs = ms;
+  }
 
   // ============================================================
   // TCP DIAGNOSTICS
@@ -331,15 +667,12 @@ export class CastlesService {
       };
     }
 
-    addLog(
-      `No response after 8s. Buffer: "${result.data || "(empty)"}"`,
-    );
+    addLog(`No response after 8s. Buffer: "${result.data || "(empty)"}"`);
     addLog("Terminal accepted TCP but did not respond to getData");
     return {
       tcpConnected: true,
       dataReceived: false,
-      error:
-        "Terminal accepted TCP connection but did not respond",
+      error: "Terminal accepted TCP connection but did not respond",
       log,
     };
   }
@@ -418,13 +751,63 @@ export class CastlesService {
   // SALE
   // ============================================================
 
+  /**
+   * Belt-and-suspenders guard against a stale frame leaking past
+   * `_sendAndReceive`'s correlation skip (e.g. a response with no `txnType`
+   * or `txnPosTxnId` field at all). Returns an error string on mismatch,
+   * `undefined` on a clean response.
+   */
+  private _checkResponseCorrelation(
+    raw: { txnType?: string; txnPosTxnId?: string },
+    expectedTxnType: string,
+    expectedRefId: string,
+  ): string | undefined {
+    if (raw.txnType && raw.txnType !== expectedTxnType) {
+      return `Response correlation mismatch: expected txnType "${expectedTxnType}", got "${raw.txnType}"`;
+    }
+    if (raw.txnPosTxnId && raw.txnPosTxnId !== expectedRefId) {
+      return `Response correlation mismatch: expected refId "${expectedRefId}", got "${raw.txnPosTxnId}"`;
+    }
+    return undefined;
+  }
+
+  /**
+   * Acquire the command mutex with a bounded wait, then run `fn` exclusively.
+   *
+   * Transaction entry points (sale/void/refund/tip-adjust/settlement) previously
+   * used a BARE `_mutex.runExclusive`, so if a prior command wedged and held the
+   * lock for the full in-flight socket timeout (CASTLES_SOCKET_TIMEOUT_MS=120s),
+   * every other terminal command queued behind it for up to 2 minutes — the
+   * "whole system / card machine froze" symptom in the S1-0002 USB refund crash.
+   *
+   * Bounding the ACQUIRE (mirrors connect() at CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS)
+   * makes a concurrent command fail fast with a clear, classifiable error instead
+   * of freezing. It does NOT shorten the in-flight command itself (that keeps its
+   * own per-command timeout, so legitimate card-present refunds aren't aborted).
+   * The "command queue is busy" message is matched by isTerminalTransportDead so
+   * the refund loop treats it as a stop signal, and does NOT match isConnectionError
+   * so _withRetry will not auto-reconnect/re-send on it.
+   */
+  private _runTxnExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    return withTimeout(this._mutex, CASTLES_MUTEX_ACQUIRE_TIMEOUT_MS)
+      .runExclusive(fn)
+      .catch((e) => {
+        if (e === E_TIMEOUT) {
+          throw new Error(
+            "Castles command queue is busy — a previous operation appears stuck. Reset the connection and try again.",
+          );
+        }
+        throw e;
+      });
+  }
+
   async processSale(params: {
     amount: number;
     tipAmount?: number;
     referenceId: string;
   }): Promise<CastlesSaleResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -441,27 +824,47 @@ export class CastlesService {
             timeout,
           );
 
+          const correlationErr = this._checkResponseCorrelation(
+            raw,
+            "sale",
+            params.referenceId,
+          );
+          if (correlationErr) {
+            console.error("[CastlesService] processSale:", correlationErr);
+            await this._forceReturn2Idle();
+            return { success: false, error: correlationErr };
+          }
+
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
           const errorMsg = isApproved
             ? undefined
             : raw.txnStatusMessage ||
               parseCastlesReturnCode(raw.txnReturnCode).message;
 
-          console.log('[CastlesService] processSale response:', {
-            txnRrn: raw.txnRrn, txnRRN: raw.txnRRN, txnStan: raw.txnStan,
-            txnPosTxnId: raw.txnPosTxnId, txnReturnCode: raw.txnReturnCode,
+          console.log("[CastlesService] processSale response:", {
+            txnRrn: raw.txnRrn,
+            txnRRN: raw.txnRRN,
+            txnStan: raw.txnStan,
+            txnPosTxnId: raw.txnPosTxnId,
+            txnReturnCode: raw.txnReturnCode,
           });
 
-          await this._tryReturn2Idle();
+          // Defer return2Idle — don't block the payment result for up to 8s
+          // The terminal will dismiss its result screen asynchronously
+          this._deferReturn2Idle();
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error("[CastlesService] processSale error:", message);
+          // Error path: force return2Idle synchronously (reconnect + reset)
           await this._forceReturn2Idle();
           return {
             success: false,
@@ -482,7 +885,7 @@ export class CastlesService {
     referenceId: string;
   }): Promise<CastlesTipAdjustResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -499,10 +902,24 @@ export class CastlesService {
             timeout,
           );
 
-          console.log('[CastlesService] tipAdjust response:', {
-            txnRrn: raw.txnRrn, txnRRN: raw.txnRRN, txnStan: raw.txnStan,
-            txnPosTxnId: raw.txnPosTxnId, txnReturnCode: raw.txnReturnCode,
+          console.log("[CastlesService] tipAdjust response:", {
+            txnRrn: raw.txnRrn,
+            txnRRN: raw.txnRRN,
+            txnStan: raw.txnStan,
+            txnPosTxnId: raw.txnPosTxnId,
+            txnReturnCode: raw.txnReturnCode,
           });
+
+          const correlationErr = this._checkResponseCorrelation(
+            raw,
+            "tipAdjustment",
+            params.referenceId,
+          );
+          if (correlationErr) {
+            console.error("[CastlesService] tipAdjust:", correlationErr);
+            await this._forceReturn2Idle();
+            return { success: false, error: correlationErr };
+          }
 
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
           const errorMsg = isApproved
@@ -514,7 +931,10 @@ export class CastlesService {
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
@@ -535,13 +955,17 @@ export class CastlesService {
     rrn?: string;
     stan?: string;
     referenceId: string;
+    journalId?: string;
   }): Promise<CastlesVoidResult> {
     if (!params.rrn && !params.stan) {
-      return { success: false, error: "At least one of rrn or stan is required for void" };
+      return {
+        success: false,
+        error: "At least one of rrn or stan is required for void",
+      };
     }
 
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -552,16 +976,38 @@ export class CastlesService {
             ...(params.stan ? { txnStan: params.stan } : {}),
           };
 
+          // Wave R-3: write-ahead before TCP send (TCP-in-flight durability)
+          if (params.journalId) {
+            updateRefundJournal(params.journalId, {
+              status: "initiated",
+              terminalTxnId: params.rrn ?? params.stan,
+            });
+          }
+
           const timeout = this.config?.timeout ?? CASTLES_SOCKET_TIMEOUT_MS;
           const raw = await this._sendAndReceive<CastlesRawResponse>(
             request as unknown as Record<string, unknown>,
             timeout,
           );
 
-          console.log('[CastlesService] processVoid response:', {
-            txnRrn: raw.txnRrn, txnRRN: raw.txnRRN, txnStan: raw.txnStan,
-            txnPosTxnId: raw.txnPosTxnId, txnReturnCode: raw.txnReturnCode,
+          console.log("[CastlesService] processVoid response:", {
+            txnRrn: raw.txnRrn,
+            txnRRN: raw.txnRRN,
+            txnStan: raw.txnStan,
+            txnPosTxnId: raw.txnPosTxnId,
+            txnReturnCode: raw.txnReturnCode,
           });
+
+          const correlationErr = this._checkResponseCorrelation(
+            raw,
+            "void",
+            params.referenceId,
+          );
+          if (correlationErr) {
+            console.error("[CastlesService] processVoid:", correlationErr);
+            await this._forceReturn2Idle();
+            return { success: false, error: correlationErr };
+          }
 
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
           const errorMsg = isApproved
@@ -569,11 +1015,23 @@ export class CastlesService {
             : raw.txnStatusMessage ||
               parseCastlesReturnCode(raw.txnReturnCode).message;
 
+          // Wave R-3: advance journal to terminal_approved on success
+          if (params.journalId && isApproved) {
+            updateRefundJournal(params.journalId, {
+              status: "terminal_approved",
+              terminalTxnId:
+                raw.txnRrn ?? raw.txnRRN ?? params.rrn ?? params.stan,
+            });
+          }
+
           await this._tryReturn2Idle();
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
@@ -593,9 +1051,10 @@ export class CastlesService {
   async processRefund(params: {
     amount: number;
     referenceId: string;
+    journalId?: string;
   }): Promise<CastlesRefundResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -605,11 +1064,30 @@ export class CastlesService {
             txnAmtTrans: params.amount.toFixed(2),
           };
 
+          // Wave R-3: write-ahead before TCP send
+          if (params.journalId) {
+            updateRefundJournal(params.journalId, {
+              status: "initiated",
+              terminalTxnId: params.referenceId,
+            });
+          }
+
           const timeout = this.config?.timeout ?? CASTLES_SOCKET_TIMEOUT_MS;
           const raw = await this._sendAndReceive<CastlesRawResponse>(
             request as unknown as Record<string, unknown>,
             timeout,
           );
+
+          const correlationErr = this._checkResponseCorrelation(
+            raw,
+            "refund",
+            params.referenceId,
+          );
+          if (correlationErr) {
+            console.error("[CastlesService] processRefund:", correlationErr);
+            await this._forceReturn2Idle();
+            return { success: false, error: correlationErr };
+          }
 
           const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
           const errorMsg = isApproved
@@ -617,11 +1095,22 @@ export class CastlesService {
             : raw.txnStatusMessage ||
               parseCastlesReturnCode(raw.txnReturnCode).message;
 
+          // Wave R-3: advance journal to terminal_approved on success
+          if (params.journalId && isApproved) {
+            updateRefundJournal(params.journalId, {
+              status: "terminal_approved",
+              terminalTxnId: raw.txnRrn ?? raw.txnRRN ?? params.referenceId,
+            });
+          }
+
           await this._tryReturn2Idle();
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
@@ -651,7 +1140,7 @@ export class CastlesService {
     referenceId: string;
   }): Promise<CastlesSettlementResult> {
     // No _withRetry — settlement is not idempotent
-    return this._mutex.runExclusive(async () => {
+    return this._runTxnExclusive(async () => {
       await this._ensureConnected();
 
       try {
@@ -665,13 +1154,30 @@ export class CastlesService {
           CASTLES_SETTLEMENT_TIMEOUT_MS,
         );
 
+        const correlationErr = this._checkResponseCorrelation(
+          raw,
+          "settlement",
+          params.referenceId,
+        );
+        if (correlationErr) {
+          console.error("[CastlesService] processSettlement:", correlationErr);
+          await this._forceReturn2Idle();
+          return {
+            success: false,
+            partialSuccess: false,
+            hosts: [],
+            error: correlationErr,
+          };
+        }
+
         // Parse per-host results
         const hosts = (raw.txnSettleInfo ?? []).map(parseSettlementHostResult);
 
         // Determine overall success
         const topLevelOk = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
         const anyHostSucceeded = hosts.some((h) => h.success);
-        const allHostsSucceeded = hosts.length > 0 && hosts.every((h) => h.success);
+        const allHostsSucceeded =
+          hosts.length > 0 && hosts.every((h) => h.success);
 
         const success = topLevelOk || allHostsSucceeded;
         const partialSuccess = !success && anyHostSucceeded;
@@ -707,7 +1213,7 @@ export class CastlesService {
     referenceId: string;
   }): Promise<CastlesPreAuthResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -733,7 +1239,10 @@ export class CastlesService {
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
@@ -760,11 +1269,14 @@ export class CastlesService {
     stan?: string;
   }): Promise<CastlesAuthIncrementalResult> {
     if (!params.rrn && !params.stan) {
-      return { success: false, error: "At least one of rrn or stan is required for incremental auth" };
+      return {
+        success: false,
+        error: "At least one of rrn or stan is required for incremental auth",
+      };
     }
 
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -792,12 +1304,18 @@ export class CastlesService {
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          console.error("[CastlesService] processAuthIncremental error:", message);
+          console.error(
+            "[CastlesService] processAuthIncremental error:",
+            message,
+          );
           await this._forceReturn2Idle();
           return {
             success: false,
@@ -819,11 +1337,14 @@ export class CastlesService {
     stan?: string;
   }): Promise<CastlesAuthCompleteResult> {
     if (!params.rrn && !params.stan) {
-      return { success: false, error: "At least one of rrn or stan is required for auth complete" };
+      return {
+        success: false,
+        error: "At least one of rrn or stan is required for auth complete",
+      };
     }
 
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -851,7 +1372,10 @@ export class CastlesService {
           return {
             success: isApproved,
             raw,
-            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            terminalResponse: buildCastlesTerminalResponse(
+              raw,
+              this.config?.terminalId,
+            ),
             error: errorMsg,
           };
         } catch (err) {
@@ -873,7 +1397,7 @@ export class CastlesService {
 
   async getTerminalData(referenceId: string): Promise<CastlesGetDataResult> {
     return this._withRetry(async () => {
-      return this._mutex.runExclusive(async () => {
+      return this._runTxnExclusive(async () => {
         await this._ensureConnected();
 
         try {
@@ -914,6 +1438,24 @@ export class CastlesService {
   // ============================================================
   // TERMINAL RECOVERY
   // ============================================================
+
+  /**
+   * Schedule return2Idle to run AFTER the current mutex-exclusive block releases.
+   * This avoids blocking the caller (e.g. processSale) for up to 8s while the
+   * terminal dismisses its result screen. The deferred call re-acquires the mutex
+   * so it won't conflict with subsequent commands.
+   */
+  private _deferReturn2Idle(): void {
+    queueMicrotask(() => {
+      this._mutex
+        .runExclusive(async () => {
+          await this._tryReturn2Idle();
+        })
+        .catch((err) => {
+          console.warn("[CastlesService] Deferred return2Idle failed:", err);
+        });
+    });
+  }
 
   /**
    * Send return2Idle on the EXISTING transport (situation 1 per spec §3.8).
@@ -958,11 +1500,23 @@ export class CastlesService {
    */
   private async _forceReturn2Idle(): Promise<boolean> {
     if (!this.config) return false;
+    if (this._suspended) {
+      console.log("[CastlesService] _forceReturn2Idle: suspended — skipping");
+      return false;
+    }
 
     const config = this.config;
-    console.log("[CastlesService] Force return2Idle: closing transport and reconnecting...");
+    console.log(
+      "[CastlesService] Force return2Idle: closing transport and reconnecting...",
+    );
 
     this._disconnectInner();
+    // Let the native executor drain any pending Runnable from the disconnect
+    // before we reconnect. 250ms (bumped from 50ms) gives Android's native
+    // socket teardown enough time even under load — 50ms was racy on lower-end
+    // tablets and could cause the reconnect to land on a partially-destroyed
+    // socket.
+    await this._delay(250);
 
     try {
       this._createTransport(config);
@@ -1004,6 +1558,37 @@ export class CastlesService {
     return this._mutex.runExclusive(() => this._tryReturn2Idle(true));
   }
 
+  /**
+   * Escalated pre-flight reset: 3× return2Idle with 1s gaps inside the
+   * mutex. Mirrors the attempt-2+ recovery in `_connectInner` but runs
+   * unconditionally — used before non-idempotent commands (settlement)
+   * where we can't afford a "first tap quirky, second tap works" flow.
+   * Individual return2Idle failures are fine (terminal may already be
+   * idle); the goal is just to nudge the UI off any lingering result
+   * screen.
+   */
+  async escalatedReset(): Promise<void> {
+    await this._mutex.runExclusive(async () => {
+      await this._ensureConnected();
+      for (let i = 0; i < 3; i++) {
+        try {
+          await this._sendAndReceive<Record<string, unknown>>(
+            { txnPosTxnId: "000000", txnType: "return2Idle" },
+            4_000,
+          );
+          console.log(
+            `[CastlesService] escalatedReset return2Idle #${i + 1}/3 accepted`,
+          );
+        } catch {
+          console.log(
+            `[CastlesService] escalatedReset return2Idle #${i + 1}/3 no response (continuing)`,
+          );
+        }
+        if (i < 2) await this._delay(1_000);
+      }
+    });
+  }
+
   isLocked(): boolean {
     return this._mutex.isLocked();
   }
@@ -1022,8 +1607,12 @@ export class CastlesService {
     this._watchdogConsecutiveFailures = 0;
 
     this._watchdogTimer = setInterval(async () => {
+      if (this._suspended) return;
       if (!this.transport?.isOpen || !this.config) return;
       if (this._mutex.isLocked()) return;
+      // While wedged the supervisor owns recovery via its own probe loop.
+      // Skip ticks here so the two don't race each other into the store.
+      if (useTerminalConnectionStore.getState().quality === 'wedged') return;
 
       try {
         await this._mutex.runExclusive(async () => {
@@ -1033,6 +1622,7 @@ export class CastlesService {
             5_000,
           );
           this._watchdogConsecutiveFailures = 0;
+          useTerminalConnectionStore.getState().setQuality("ok");
         });
       } catch {
         this._watchdogConsecutiveFailures++;
@@ -1040,11 +1630,20 @@ export class CastlesService {
           `[CastlesService] Watchdog ping failed (${this._watchdogConsecutiveFailures}/2)`,
         );
 
+        useTerminalConnectionStore
+          .getState()
+          .setQuality(this._watchdogConsecutiveFailures >= 2 ? "lost" : "degraded");
+
         if (this._watchdogConsecutiveFailures >= 2 && this.config) {
-          console.log("[CastlesService] Watchdog: reconnecting after consecutive failures...");
+          console.log(
+            "[CastlesService] Watchdog: reconnecting after consecutive failures...",
+          );
           try {
-            await this._mutex.runExclusive(() => this._connectInner(this.config!));
+            await this._mutex.runExclusive(() =>
+              this._connectInner(this.config!),
+            );
             this._watchdogConsecutiveFailures = 0;
+            useTerminalConnectionStore.getState().setQuality("ok");
           } catch (reconErr) {
             console.error(
               "[CastlesService] Watchdog reconnect failed:",
@@ -1055,7 +1654,9 @@ export class CastlesService {
       }
     }, intervalMs);
 
-    console.log(`[CastlesService] Watchdog started (interval: ${intervalMs}ms)`);
+    console.log(
+      `[CastlesService] Watchdog started (interval: ${intervalMs}ms)`,
+    );
   }
 
   stopWatchdog(): void {
@@ -1096,13 +1697,18 @@ export class CastlesService {
    *    - If ping fails → reconnect
    */
   private async _ensureConnected(): Promise<void> {
+    if (this._suspended) {
+      throw new Error("Transport is not open — service suspended");
+    }
     if (!this.config) {
       throw new Error("Not connected to terminal — call connect() first");
     }
 
     // Transport is definitely dead — reconnect
     if (!this.transport?.isOpen) {
-      console.log("[CastlesService] _ensureConnected: transport closed, reconnecting...");
+      console.log(
+        "[CastlesService] _ensureConnected: transport closed, reconnecting...",
+      );
       await this._connectInner(this.config);
       return;
     }
@@ -1120,7 +1726,9 @@ export class CastlesService {
           5_000,
         );
       } catch {
-        console.warn("[CastlesService] _ensureConnected: probe failed, reconnecting...");
+        console.warn(
+          "[CastlesService] _ensureConnected: probe failed, reconnecting...",
+        );
         await this._connectInner(this.config);
       }
     }
@@ -1135,10 +1743,34 @@ export class CastlesService {
   ): Promise<T> {
     const first = await fn();
 
-    if (!first.success && first.error && isConnectionError(first.error) && this.config) {
-      console.log("[CastlesService] Connection error detected, retrying after reconnect...");
+    if (
+      !first.success &&
+      first.error &&
+      isConnectionError(first.error) &&
+      this.config
+    ) {
+      if (this._suspended) {
+        return first; // don't attempt reconnect; caller gets the original failure
+      }
+      console.log(
+        "[CastlesService] Connection error detected, retrying after reconnect...",
+      );
+      // A connection error during a real sale is a strong "lost" signal
+      // even if the watchdog hasn't fired yet.
+      useTerminalConnectionStore.getState().setQuality("lost");
       try {
-        await this._mutex.runExclusive(() => this._connectInner(this.config!));
+        await this._mutex.runExclusive(async () => {
+          // Force a fresh socket before reconnect — the previous transport may
+          // be half-open (TCP CLOSE_WAIT after WiFi drop). _connectInner does
+          // call _createTransport which disconnects, but doing it explicitly
+          // here makes the cleanup deterministic and gives the native executor
+          // time to drain before we open a new socket.
+          this._disconnectInner();
+          await this._delay(250);
+          await this._connectInner(this.config!);
+        });
+        // Reconnect succeeded → quality recovers.
+        useTerminalConnectionStore.getState().setQuality("ok");
       } catch (reconErr) {
         return {
           ...first,
@@ -1158,6 +1790,13 @@ export class CastlesService {
    * the unframed TCP stream. Handles partial JSON, multiple objects
    * per chunk, and interleaved status notifications.
    *
+   * **Response correlation:** mismatched `txnType` or `txnPosTxnId` frames
+   * are skipped, not resolved. Without this, a stale frame left in the TCP
+   * stream from a prior `return2Idle` / `getData` (both use `txnPosTxnId:
+   * "000000"`, both return `txnReturnCode: "00000000"` on success) could
+   * be parsed as the answer to the current sale and silently mark a
+   * cancelled transaction as captured. See incident ORD-20260603-S1-0013.
+   *
    * Write is awaited — rejects immediately if write fails.
    */
   private _sendAndReceive<T>(
@@ -1172,6 +1811,13 @@ export class CastlesService {
 
       const transport = this.transport;
 
+      const expectedTxnType =
+        typeof request.txnType === "string" ? request.txnType : undefined;
+      const expectedRefId =
+        typeof request.txnPosTxnId === "string"
+          ? request.txnPosTxnId
+          : undefined;
+
       // ── Stream parser state ──
       let buffer = "";
       let depth = 0;
@@ -1184,6 +1830,15 @@ export class CastlesService {
         if (!settled) {
           settled = true;
           cleanup();
+          // Distinguish the wedge signature (0 bytes received) from generic
+          // timeouts. Empty buffer at timeout = CastlesPay isn't reading from
+          // the socket at all → throw the typed subclass so the connect
+          // retry loop can short-circuit and notify the supervisor instead
+          // of burning all 3 retries on the same dead listener.
+          if (buffer.length === 0) {
+            reject(new CastlesEmptyResponseError(timeoutMs));
+            return;
+          }
           const preview =
             buffer.length > 200 ? buffer.slice(0, 200) + "..." : buffer;
           reject(
@@ -1228,6 +1883,36 @@ export class CastlesService {
           return;
         }
 
+        const actualTxnType =
+          typeof parsed.txnType === "string" ? parsed.txnType : undefined;
+        const actualRefId =
+          typeof parsed.txnPosTxnId === "string"
+            ? parsed.txnPosTxnId
+            : undefined;
+
+        const txnTypeMismatch =
+          expectedTxnType !== undefined &&
+          actualTxnType !== undefined &&
+          actualTxnType !== expectedTxnType;
+        const refIdMismatch =
+          expectedRefId !== undefined &&
+          actualRefId !== undefined &&
+          actualRefId !== expectedRefId;
+
+        if (txnTypeMismatch || refIdMismatch) {
+          console.warn(
+            "[CastlesService][CORRELATION-MISMATCH] Discarding stale frame:",
+            {
+              expectedTxnType,
+              expectedRefId,
+              actualTxnType,
+              actualRefId,
+              actualReturnCode: parsed.txnReturnCode,
+            },
+          );
+          return;
+        }
+
         settled = true;
         cleanup();
         resolve(parsed as T);
@@ -1238,7 +1923,7 @@ export class CastlesService {
 
         console.log(
           `[CastlesService] Chunk (${chunk.length} bytes):`,
-          chunk.slice(0, 200),
+          chunk,
         );
 
         for (let i = 0; i < chunk.length; i++) {
@@ -1377,7 +2062,10 @@ function buildSettlementErrorMessage(
   const failedHosts = hosts.filter((h) => !h.success);
   if (failedHosts.length > 0) {
     const details = failedHosts
-      .map((h) => `${h.acquirerName}: ${h.hostMessage || parseCastlesReturnCode(h.returnCode).message}`)
+      .map(
+        (h) =>
+          `${h.acquirerName}: ${h.hostMessage || parseCastlesReturnCode(h.returnCode).message}`,
+      )
       .join("; ");
     return `Settlement failed for: ${details}`;
   }
@@ -1389,30 +2077,129 @@ function buildSettlementErrorMessage(
 // STANDALONE TCP PROBE (health check — no CastlesService instance)
 // ============================================================
 
+/** Default handshake timeout for the probe's getData (W2.1). */
+const PROBE_HANDSHAKE_TIMEOUT_MS = 3_000;
+
 /**
- * Lightweight TCP reachability probe for health checks.
- * Creates an ephemeral transport (connect → immediate disconnect),
- * independent of the CastlesService class instance.
- * Never throws — always resolves { online, error? }.
+ * Reachability + responsiveness probe.
+ *
+ * - TCP connect (or USB open) within `timeoutMs`
+ * - Send a `getData` JSON, accept ANY response chunk within
+ *   `PROBE_HANDSHAKE_TIMEOUT_MS` as proof the payment app is responsive.
+ *   (We deliberately do NOT parse the response — getting any bytes back
+ *   already disambiguates "TCP up, app frozen" from "fully alive".)
+ *
+ * Never throws — always resolves a CastlesProbeResult with a discriminated
+ * `reason` so callers/UI can render specific recovery copy.
+ *
+ * Independent of the CastlesService class instance, so the probe never
+ * interferes with a held singleton mutex or an in-flight sale.
  */
 export async function probeCastlesTerminal(
   config: CastlesTransportConfig,
   timeoutMs = 5000,
-): Promise<{ online: boolean; error?: string }> {
+): Promise<CastlesProbeResult> {
+  if (config.connectionType === "local_socket" && !config.host) {
+    return {
+      online: false,
+      reason: "no_ip_configured",
+      error: "TCP transport requires a host address",
+    };
+  }
+
+  let transport: ICastlesTransport | null = null;
   try {
-    const transport = createCastlesTransport({
+    transport = createCastlesTransport({
       ...config,
       connectTimeoutMs: timeoutMs,
     });
     await transport.connect();
-    transport.disconnect();
-    return { online: true };
   } catch (err) {
-    return {
-      online: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
+    if (transport) {
+      try { transport.disconnect(); } catch { /* ignore */ }
+    }
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const reason =
+      config.connectionType === "usb"
+        ? "usb_disconnected"
+        : classifyTcpError(err);
+    return { online: false, reason, error: errorMessage };
   }
+
+  // Transport is up. Now verify the payment app is responsive by sending a
+  // getData and waiting for any bytes back. A frozen CastlesPay app will
+  // accept the TCP connection (kernel-level) but never emit a response.
+  const responsive = await _probeHandshake(transport, PROBE_HANDSHAKE_TIMEOUT_MS);
+  try { transport.disconnect(); } catch { /* ignore */ }
+
+  if (responsive.ok) {
+    return { online: true, reason: "online" };
+  }
+  return {
+    online: false,
+    reason: "terminal_unresponsive",
+    error: responsive.error,
+  };
+}
+
+/**
+ * Send a getData JSON and wait for any data chunk back. We don't parse —
+ * the goal is to prove the CastlesPay app is alive, not to read fields.
+ */
+function _probeHandshake(
+  transport: ICastlesTransport,
+  timeoutMs: number,
+): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const onData = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ ok: true });
+    };
+    const onError = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ ok: false, error: err.message });
+    };
+    const onClose = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ ok: false, error: "Transport closed before response" });
+    };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ ok: false, error: `Handshake timed out after ${timeoutMs}ms` });
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      try { transport.offData(onData); } catch { /* ignore */ }
+      try { transport.offError(onError); } catch { /* ignore */ }
+      try { transport.offClose(onClose); } catch { /* ignore */ }
+    };
+
+    transport.onData(onData);
+    transport.onError(onError);
+    transport.onClose(onClose);
+
+    const request = JSON.stringify({ txnPosTxnId: "000000", txnType: "getData" });
+    transport.write(request).catch((err: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  });
 }
 
 // ============================================================
@@ -1431,4 +2218,16 @@ export function getSharedCastlesService(): CastlesService {
     _sharedInstance = new CastlesService();
   }
   return _sharedInstance;
+}
+
+// Clean up TCP socket on Metro fast refresh to prevent stale connections
+// that leave the Castles terminal stuck on the old socket.
+if (__DEV__ && (module as any).hot) {
+  (module as any).hot.dispose(() => {
+    if (_sharedInstance) {
+      console.log("[CastlesService] Hot refresh: tearing down TCP socket");
+      _sharedInstance.disconnect();
+      _sharedInstance = null;
+    }
+  });
 }

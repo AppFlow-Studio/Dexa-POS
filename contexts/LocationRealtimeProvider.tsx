@@ -105,7 +105,6 @@ export function LocationRealtimeProvider({
     onSessionChange: callbacks?.onSessionChange,
     onTableAssignment: callbacks?.onTableAssignment,
     onSessionEvent: callbacks?.onSessionEvent,
-    onOrderUpdate: callbacks?.onOrderChange,
   });
 
   // Waitlist realtime subscription
@@ -126,7 +125,7 @@ export function LocationRealtimeProvider({
 
   // Reconnect all channels
   const reconnectAll = useCallback(() => {
-    console.log('[LocationRealtime] Reconnecting all channels...');
+    if (__DEV__) console.log('[LocationRealtime] Reconnecting all channels...');
     floorRealtime.reconnect();
     // waitlistRealtime.reconnect();
     ordersRealtime.reconnect();
@@ -134,7 +133,7 @@ export function LocationRealtimeProvider({
 
   // Disconnect all channels
   const disconnectAll = useCallback(() => {
-    console.log('[LocationRealtime] Disconnecting all channels...');
+    if (__DEV__) console.log('[LocationRealtime] Disconnecting all channels...');
     floorRealtime.disconnect();
     // waitlistRealtime.disconnect();
     ordersRealtime.disconnect();

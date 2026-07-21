@@ -5,9 +5,9 @@
  * Works with cash_drawers, cash_drawer_sessions, and cash_drawer_operations tables.
  */
 
-import { mmkvStorage } from "@/lib/storage";
+import { createLazyPersistStorage } from "@/lib/storage";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 
 // ============================================================================
@@ -41,6 +41,7 @@ export interface DrawerOperation {
   performedAt: string; // ISO timestamp
   orderId?: string;
   paymentId?: string;
+  vendorId?: string;
   reason?: string;
   approvedBy?: string; // staff_profile_id of manager who approved
   receiptPrinted?: boolean;
@@ -60,8 +61,17 @@ export interface DrawerSession {
 }
 
 // Operation type categorization helpers
-const DEBIT_TYPES: DrawerOperationType[] = ["cash_refund", "pay_out", "cash_drop", "tip_out"];
-const NO_EFFECT_TYPES: DrawerOperationType[] = ["no_sale", "opening_count", "closing_count"];
+const DEBIT_TYPES: DrawerOperationType[] = [
+  "cash_refund",
+  "pay_out",
+  "cash_drop",
+  "tip_out",
+];
+const NO_EFFECT_TYPES: DrawerOperationType[] = [
+  "no_sale",
+  "opening_count",
+  "closing_count",
+];
 
 export function isDebitOperation(type: DrawerOperationType): boolean {
   return DEBIT_TYPES.includes(type);
@@ -91,7 +101,11 @@ interface CashDrawerState {
   // Actions
   setDrawer: (drawerId: string, drawerName: string) => void;
   openSession: (session: DrawerSession) => void;
-  closeSession: (closingAmount: number, closingCountDetails?: DenominationCount[], closedBy?: string) => void;
+  closeSession: (
+    closingAmount: number,
+    closingCountDetails?: DenominationCount[],
+    closedBy?: string,
+  ) => void;
   recordOperation: (op: Omit<DrawerOperation, "balanceAfter">) => void;
   setOperations: (ops: DrawerOperation[]) => void;
   clearDrawer: () => void;
@@ -100,6 +114,7 @@ interface CashDrawerState {
   // Computed
   getRunningBalance: () => number;
   getVariance: (closingAmount: number) => number;
+  getNoSaleCount: () => number;
 }
 
 // ============================================================================
@@ -127,7 +142,11 @@ export const useCashDrawerStore = create<CashDrawerState>()(
         });
       },
 
-      closeSession: (_closingAmount: number, _closingCountDetails?: DenominationCount[], _closedBy?: string) => {
+      closeSession: (
+        _closingAmount: number,
+        _closingCountDetails?: DenominationCount[],
+        _closedBy?: string,
+      ) => {
         set((state) => {
           if (state.activeSession) {
             state.activeSession.status = "closed";
@@ -139,11 +158,18 @@ export const useCashDrawerStore = create<CashDrawerState>()(
         const currentBalance = get().getRunningBalance();
         // no_sale, opening_count, closing_count have no balance effect
         if (isNoEffectOperation(op.operationType)) {
-          const fullOp: DrawerOperation = { ...op, balanceAfter: currentBalance };
-          set((state) => { state.operations.push(fullOp); });
+          const fullOp: DrawerOperation = {
+            ...op,
+            balanceAfter: currentBalance,
+          };
+          set((state) => {
+            state.operations.push(fullOp);
+          });
           return;
         }
-        const effectiveAmount = isDebitOperation(op.operationType) ? -Math.abs(op.amount) : Math.abs(op.amount);
+        const effectiveAmount = isDebitOperation(op.operationType)
+          ? -Math.abs(op.amount)
+          : Math.abs(op.amount);
         const balanceAfter = currentBalance + effectiveAmount;
 
         const fullOp: DrawerOperation = {
@@ -184,7 +210,9 @@ export const useCashDrawerStore = create<CashDrawerState>()(
         let balance = activeSession.openingAmount;
         for (const op of operations) {
           if (isNoEffectOperation(op.operationType)) continue;
-          balance += isDebitOperation(op.operationType) ? -Math.abs(op.amount) : Math.abs(op.amount);
+          balance += isDebitOperation(op.operationType)
+            ? -Math.abs(op.amount)
+            : Math.abs(op.amount);
         }
         return balance;
       },
@@ -193,10 +221,17 @@ export const useCashDrawerStore = create<CashDrawerState>()(
         const expected = get().getRunningBalance();
         return closingAmount - expected;
       },
+
+      getNoSaleCount: () => {
+        return get().operations.filter((op) => op.operationType === "no_sale")
+          .length;
+      },
     })),
     {
       name: "dexa-pos-cash-drawer",
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createLazyPersistStorage(),
+      version: 1,
+      migrate: (persistedState) => persistedState as any,
       partialize: (state) => ({
         activeSession: state.activeSession,
         drawerId: state.drawerId,
@@ -204,6 +239,6 @@ export const useCashDrawerStore = create<CashDrawerState>()(
         // Persist operations so they survive app restart during an open session
         operations: state.operations,
       }),
-    }
-  )
+    },
+  ),
 );

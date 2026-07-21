@@ -3,6 +3,7 @@ import {
   StarDeviceDiscoveryManager,
   StarPrinter,
   StarPrinterModel,
+  StarIO10InUseError,
   InterfaceType,
 } from "react-native-star-io10";
 import {
@@ -201,6 +202,17 @@ export async function probeStarPrinterByIp(
     } catch (e: any) {
       // Clean up on failure
       await closeAndDispose(printer);
+
+      // Reachable but held by a peer device. The manual add-by-IP flow can
+      // surface this as the yellow IN_USE state instead of misleading the
+      // user with "Could not connect".
+      if (e instanceof StarIO10InUseError) {
+        const inUseErr = new Error(
+          `Printer at ${ipAddress} is reachable but currently in use by another device.`,
+        );
+        (inUseErr as any).code = "IN_USE";
+        throw inUseErr;
+      }
 
       // Re-throw with descriptive message if not already descriptive
       if (e.message?.includes("Printer found")) {

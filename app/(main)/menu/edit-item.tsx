@@ -1,208 +1,308 @@
-import ItemForm from "@/components/menu/ItemForm";
-import { useToast } from "@/contexts/ToastContext";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { MenuItemType } from "@/lib/types";
-import { MenuService } from "@/services/menuService";
-import { useMenuStore } from "@/stores/useMenuStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
-import React, { useState } from "react";
-import { View } from "react-native";
+import { GlobalItemScreen } from '@/components/menu/GlobalItemScreen'
+import ItemForm from '@/components/menu/ItemForm'
+import { useToast } from '@/contexts/ToastContext'
+import { useIsSingleLocation } from '@/hooks/pos/useIsSingleLocation'
+import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { MenuItemType } from '@/lib/types'
+import { MenuService } from '@/services/menuService'
+import { useMenuStore } from '@/stores/useMenuStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useAuth } from '@clerk/clerk-expo'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import React, { useState } from 'react'
+import { Text, TouchableOpacity, View } from 'react-native'
 
 const EditMenuItemScreen: React.FC = () => {
-  const { itemId } = useLocalSearchParams<{ itemId: string }>();
-  const menuItems = useMenuStore((s) => s.menuItems);
-  const updateMenuItem = useMenuStore((s) => s.updateMenuItem);
-  const categories = useMenuStore((s) => s.categories);
-  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
-  const supabase = useSupabaseClient();
-  const { show } = useToast();
-  const router = useRouter();
-  const [isSaving, setIsSaving] = useState(false);
+  const { itemId } = useLocalSearchParams<{ itemId: string }>()
+  const menuItems = useMenuStore(s => s.menuItems)
+  const updateMenuItem = useMenuStore(s => s.updateMenuItem)
+  const categories = useMenuStore(s => s.categories)
+  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const supabase = useSupabaseClient()
+  const { getToken } = useAuth()
+  const { show } = useToast()
+  const router = useRouter()
+  const { isSingleLocation } = useIsSingleLocation()
+  const [isSaving, setIsSaving] = useState(false)
 
-  const itemToEdit = menuItems.find((item) => item.id === itemId);
+  const itemToEdit = menuItems.find(item => item.id === itemId)
 
   if (!itemToEdit) {
     return (
-      <View className="flex-1 bg-panel items-center justify-center">
-        <Text className="text-xl text-white mb-4">Item not found</Text>
+      <View className='flex-1 bg-panel items-center justify-center'>
+        <Text className='text-xl text-white mb-4'>Item not found</Text>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="bg-blue-600 px-4 py-2 rounded-lg"
+          className='bg-blue-600 px-4 py-2 rounded-lg'
         >
-          <Text className="text-lg text-white font-medium">Go Back</Text>
+          <Text className='text-lg text-white font-medium'>Go Back</Text>
         </TouchableOpacity>
       </View>
-    );
+    )
   }
 
   // Check if this is a global item (not local to this store)
   const isGlobalItem =
-    itemToEdit.location_id === null || itemToEdit.location_id === undefined;
-  const isLocalItem = itemToEdit.location_id === selectedStore?.id;
+    itemToEdit.location_id === null || itemToEdit.location_id === undefined
+  const isLocalItem = itemToEdit.location_id === selectedStore?.id
 
-  if (isGlobalItem || !isLocalItem) {
-    return <GlobalItemScreen type="Item" />
+  // Single-location merchants edit the global core directly (their menu IS the
+  // global menu). Multi-location merchants keep the read-only wall for global
+  // items — they adjust price/availability via per-location overrides instead.
+  if (isGlobalItem && !isSingleLocation) {
+    return <GlobalItemScreen type='Item' />
+  }
+  if (!isGlobalItem && !isLocalItem) {
+    return <GlobalItemScreen type='Item' />
   }
 
   const handleSubmit = async (
-    data: Omit<MenuItemType, "id">
+    data: Omit<MenuItemType, 'id'>
   ): Promise<boolean> => {
-    setIsSaving(true);
+    setIsSaving(true)
     try {
+      // Upload image to CDN if a new image was picked (base64 string)
+      let imageUrl = data.image
+      if (data.image && !data.image.startsWith('http')) {
+        try {
+          imageUrl = await MenuService.uploadMenuImage(supabase, {
+            merchantId: selectedStore!.merchant_id,
+            base64: data.image,
+            getToken
+          })
+        } catch (uploadErr) {
+          console.error('Image upload failed:', uploadErr)
+          show({
+            title: 'Image Upload Failed',
+            message: 'Could not upload image. Item will be saved without it.',
+            type: 'error'
+          })
+          imageUrl = itemToEdit.image // keep existing image on failure
+        }
+      }
+
       // Update in backend first
       const { error } = await MenuService.updateMenuItem(supabase, itemId, {
         name: data.name,
         description: data.description,
         price: data.price,
         cashPrice: data.cashPrice,
-        image: data.image,
-        mealTypes: data.meal as ("Lunch" | "Dinner" | "Brunch" | "Specials")[],
+        image: imageUrl ?? null,
+        mealTypes: data.meal as ('Lunch' | 'Dinner' | 'Brunch' | 'Specials')[],
         allergens: data.allergens,
         availability: data.availability,
         stockTrackingMode: data.stockTrackingMode,
-        cardBgColor: data.cardBgColor,
-      });
+        cardBgColor: data.cardBgColor
+      })
 
       if (error) {
-        console.error("Failed to update menu item:", error);
+        console.error('Failed to update menu item:', error)
         show({
-          title: "Error",
-          message: error.message || "Failed to update item. Please try again.",
-          type: "error",
-        });
-        return false;
+          title: 'Error',
+          message: error.message || 'Failed to update item. Please try again.',
+          type: 'error'
+        })
+        return false
       }
 
       // Sync category changes to backend
       const isValidUUID = (id: string) => {
         const uuidRegex =
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-        return uuidRegex.test(id);
-      };
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        return uuidRegex.test(id)
+      }
 
       const oldCategories = Array.isArray(itemToEdit.category)
         ? itemToEdit.category
         : itemToEdit.category
         ? [itemToEdit.category]
-        : [];
+        : []
       const newCategories = Array.isArray(data.category)
         ? data.category
         : data.category
         ? [data.category]
-        : [];
+        : []
 
       // Find categories to add and remove
       const categoriesToAdd = newCategories.filter(
-        (c) => !oldCategories.includes(c)
-      );
+        c => !oldCategories.includes(c)
+      )
       const categoriesToRemove = oldCategories.filter(
-        (c) => !newCategories.includes(c)
-      );
+        c => !newCategories.includes(c)
+      )
 
       // Add to new categories
       for (const categoryName of categoriesToAdd) {
-        const category = categories.find((c) => c.name === categoryName);
+        const category = categories.find(c => c.name === categoryName)
         if (category?.id && isValidUUID(category.id) && selectedStore) {
           await MenuService.addItemToCategory(supabase, {
             categoryId: category.id,
             menuItemId: itemId,
-            merchantId: selectedStore.merchant_id,
-          });
+            merchantId: selectedStore.merchant_id
+          })
         }
       }
 
       // Remove from old categories
       for (const categoryName of categoriesToRemove) {
-        const category = categories.find((c) => c.name === categoryName);
+        const category = categories.find(c => c.name === categoryName)
         if (category?.id && isValidUUID(category.id)) {
           await MenuService.removeItemFromCategory(
             supabase,
             category.id,
             itemId
-          );
+          )
+        }
+      }
+
+      // Sync modifier group changes to backend
+      const oldModifierIds = itemToEdit.modifierGroupIds ?? []
+      const newModifierIds = data.modifierGroupIds ?? []
+      const modifiersToAdd = newModifierIds.filter(
+        id => !oldModifierIds.includes(id)
+      )
+      const modifiersToRemove = oldModifierIds.filter(
+        id => !newModifierIds.includes(id)
+      )
+
+      for (const modifierGroupId of modifiersToAdd) {
+        if (selectedStore) {
+          await MenuService.assignModifierToItem(supabase, {
+            menuItemId: itemId,
+            modifierGroupId,
+            merchantId: selectedStore.merchant_id,
+            displayOrder: newModifierIds.indexOf(modifierGroupId)
+          })
+        }
+      }
+      for (const modifierGroupId of modifiersToRemove) {
+        await MenuService.removeModifierFromItem(
+          supabase,
+          itemId,
+          modifierGroupId
+        )
+      }
+
+      if (newModifierIds.length > 0) {
+        const reorderResult = await MenuService.reorderMenuItemModifierGroups(
+          supabase,
+          itemId,
+          newModifierIds.map((modifierGroupId, index) => ({
+            modifierGroupId,
+            displayOrder: index
+          }))
+        )
+
+        if (!reorderResult.success) {
+          show({
+            title: 'Error',
+            message:
+              reorderResult.error?.message ||
+              'Failed to save modifier order. Please try again.',
+            type: 'error'
+          })
+          return false
         }
       }
 
       // 4. Save Recipe Ingredients (New)
       if (data.recipe) {
         // Always upsert if present (even if empty, it might mean clearing ingredients)
-        await MenuService.upsertMenuItemRecipe(
+        const recipeResult = await MenuService.upsertMenuItemRecipe(
           supabase,
           itemId,
-          data.recipe.map((r) => ({
+          selectedStore?.id,
+          data.recipe.map(r => ({
             inventoryItemId: r.inventoryItemId,
-            quantity: r.quantity,
+            quantity: r.quantity
           }))
-        );
+        )
+
+        if (!recipeResult.success) {
+          console.error('Failed to save menu item recipe:', recipeResult.error)
+          show({
+            title: 'Recipe Save Failed',
+            message:
+              recipeResult.error?.message ||
+              'The item was updated, but its recipe items were not saved.',
+            type: 'error'
+          })
+          return false
+        }
+
+        if (selectedStore?.id) {
+          const { queryClient } = require('@/contexts/TanstackProvider') as typeof import('@/contexts/TanstackProvider')
+          await queryClient.invalidateQueries({
+            queryKey: ['pos_sync', selectedStore.id]
+          })
+        }
       }
 
       // Update local store for immediate UI feedback
-      updateMenuItem(itemId, data);
+      updateMenuItem(itemId, data)
       show({
-        title: "Item Updated",
+        title: 'Item Updated',
         message: `Successfully updated "${data.name}".`,
-        type: "success",
-      });
-      return true;
+        type: 'success'
+      })
+      return true
     } catch (error) {
-      console.error(error);
+      console.error(error)
       show({
-        title: "Save Error",
-        message: "Failed to update the menu item. Please try again.",
-        type: "error",
-      });
-      return false;
+        title: 'Save Error',
+        message: 'Failed to update the menu item. Please try again.',
+        type: 'error'
+      })
+      return false
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
+  }
 
   const handleDelete = async () => {
     try {
-      setIsSaving(true);
-      const { error } = await MenuService.deleteMenuItem(supabase, itemId);
+      setIsSaving(true)
+      const { error } = await MenuService.deleteMenuItem(supabase, itemId)
 
       if (error) {
         show({
-          title: "Error",
-          message: error.message || "Failed to delete item. Please try again.",
-          type: "error",
-        });
-        return;
+          title: 'Error',
+          message: error.message || 'Failed to delete item. Please try again.',
+          type: 'error'
+        })
+        return
       }
 
       show({
-        title: "Item Deleted",
+        title: 'Item Deleted',
         message: `Successfully deleted "${itemToEdit.name}".`,
-        type: "success",
-      });
-      router.back();
+        type: 'success'
+      })
+      router.back()
     } catch (error) {
-      console.error(error);
+      console.error(error)
       show({
-        title: "Delete Error",
-        message: "Failed to delete the menu item. Please try again.",
-        type: "error",
-      });
+        title: 'Delete Error',
+        message: 'Failed to delete the menu item. Please try again.',
+        type: 'error'
+      })
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
+  }
 
   return (
-    <View className="flex-1 bg-panel">
+    <View className='flex-1 bg-panel'>
       <ItemForm
         initialData={itemToEdit}
         onSubmit={handleSubmit}
         isSaving={isSaving}
-        title="Edit Menu Item"
-        submitButtonLabel="Save Changes"
+        title='Edit Menu Item'
+        submitButtonLabel='Save Changes'
         onDelete={handleDelete}
       />
     </View>
-  );
-};
+  )
+}
 
-export default EditMenuItemScreen;
+export default EditMenuItemScreen

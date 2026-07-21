@@ -5,7 +5,7 @@ import {
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import React, { memo, useEffect, useState } from "react";
-import { Dimensions, StyleSheet, View } from "react-native";
+import { Dimensions, Keyboard, Platform, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -49,6 +49,7 @@ const AttachedModifierPanel: React.FC = () => {
 
   // Track if panel has ever been shown (for lazy content loading)
   const [hasBeenShown, setHasBeenShown] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
   // Animation values (Reanimated shared values) - START in hidden position (off-screen right)
   const translateX = useSharedValue(PANEL_WIDTH + PANEL_RIGHT_OFFSET);
@@ -90,11 +91,34 @@ const AttachedModifierPanel: React.FC = () => {
     }
   }, [shouldShowAttached, hasBeenShown]);
 
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardInset(event.endCoordinates?.height ?? 0);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardInset(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
   // ALWAYS RENDER - visibility controlled by animation values
   // pointerEvents controls touch interaction
   return (
     <Animated.View
-      style={[styles.container, panelAnimatedStyle]}
+      style={[
+        styles.container,
+        panelAnimatedStyle,
+        keyboardInset > 0 ? { bottom: keyboardInset + 12 } : null,
+      ]}
       pointerEvents={shouldShowAttached ? "auto" : "none"}
     >
       {/* Main panel content - only render ModifierScreen if panel has been shown */}

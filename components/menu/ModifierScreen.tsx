@@ -1,39 +1,63 @@
-import { useToast } from '@/contexts/ToastContext'
-import { colors } from '@/lib/theme'
-import { CartItem, ModifierCategory } from '@/lib/types'
-import { OrderService } from '@/services/orderService'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
-import { useMenuStore } from '@/stores/useMenuStore'
-import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
+import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { colors } from "@/lib/theme";
+import { CartItem, ModifierCategory } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
+import { OrderService } from "@/services/orderService";
+import { useMenuStore } from "@/stores/useMenuStore";
 import {
-  getOrderStoreSupabaseClient,
-  useOrderStore
-} from '@/stores/useOrderStore'
-import { useSeatingStore } from '@/stores/useSeatingStore'
+  getLastModifierOpenStartedAt,
+  useModifierSidebarStore,
+} from "@/stores/useModifierSidebarStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { useSeatingStore } from "@/stores/useSeatingStore";
 
-import OptimizedListImage from '@/components/ui/OptimizedListImage'
-import { resolveMenuItemImageSource } from '@/lib/menuItemImageSource'
-import { useSettingsStore } from '@/stores/useSettingsStore'
-import { ArrowLeft, Check, Minus, Plus, X } from 'lucide-react-native'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import OptimizedListImage from "@/components/ui/OptimizedListImage";
+import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
+import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  InteractionManager,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
-  View
-} from 'react-native'
-import { useImmerReducer } from 'use-immer'
-import { useShallow } from 'zustand/react/shallow'
+  View,
+} from "react-native";
+import { useImmerReducer } from "use-immer";
+import { useShallow } from "zustand/react/shallow";
 
 interface ModifierSelection {
   [categoryId: string]: {
-    [optionId: string]: boolean | 'no'
-  }
+    [optionId: string]: boolean | "no";
+  };
 }
+
+interface CustomModifier {
+  id: string;
+  name: string;
+  price: number;
+}
+
+const CUSTOM_MODIFIER_CATEGORY_ID = "custom-modifiers";
+const CUSTOM_MODIFIER_CATEGORY_NAME = "Custom";
+
+const generateCustomModifierId = () =>
+  `custom_mod_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const MODIFIER_PRICE_DELTA_COLOR = "#15803D";
+
+const nowMs = () =>
+  typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
 
 // ============================================================================
 // MEMOIZED SUB-COMPONENTS
@@ -49,41 +73,41 @@ const CategoryTab = memo(
     category,
     isActive,
     hasSelection,
-    onPress
+    onPress,
   }: {
-    category: ModifierCategory
-    isActive: boolean
-    hasSelection: boolean
-    onPress: (categoryId: string) => void
+    category: ModifierCategory;
+    isActive: boolean;
+    hasSelection: boolean;
+    onPress: (categoryId: string) => void;
   }) => (
     <TouchableOpacity
       onPressIn={() => onPress(category.id)}
-      className='flex-row items-center gap-x-1 px-3 py-1.5 rounded-full border'
+      className="flex-row items-center gap-x-1 px-3 py-1.5 rounded-full border"
       style={
         isActive
           ? { backgroundColor: colors.teal, borderColor: colors.teal }
           : hasSelection
-          ? { backgroundColor: colors.teal + '22', borderColor: colors.teal }
-          : { backgroundColor: 'transparent', borderColor: colors.border }
+            ? { backgroundColor: colors.teal + "22", borderColor: colors.teal }
+            : { backgroundColor: "transparent", borderColor: colors.border }
       }
     >
       <Text
-        className='text-xs font-semibold'
+        className="text-xs font-semibold"
         style={{
           color: isActive
             ? colors.onSolid
             : hasSelection
-            ? colors.teal
-            : colors.label
+              ? colors.teal
+              : colors.label,
         }}
       >
         {category.name}
       </Text>
       {hasSelection && (
         <View
-          className='w-4 h-4 rounded-full items-center justify-center'
+          className="w-4 h-4 rounded-full items-center justify-center"
           style={{
-            backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : colors.teal
+            backgroundColor: isActive ? "rgba(255,255,255,0.25)" : colors.teal,
           }}
         >
           <Check
@@ -94,8 +118,8 @@ const CategoryTab = memo(
         </View>
       )}
     </TouchableOpacity>
-  )
-)
+  ),
+);
 
 /**
  * Modifier option card — clean rectangular card in a responsive grid.
@@ -110,43 +134,49 @@ const ModifierOption = memo(
     isUnavailable,
     isReadOnly,
     onToggle,
-    onLongPress
+    onLongPress,
   }: {
-    option: any
-    categoryId: string
-    isSelected: boolean
-    isNo: boolean
-    isUnavailable: boolean
-    isReadOnly: boolean
-    onToggle: (categoryId: string, optionId: string) => void
-    onLongPress: (categoryId: string, optionId: string) => void
+    option: any;
+    categoryId: string;
+    isSelected: boolean;
+    isNo: boolean;
+    isUnavailable: boolean;
+    isReadOnly: boolean;
+    onToggle: (categoryId: string, optionId: string) => void;
+    onLongPress: (categoryId: string, optionId: string) => void;
   }) => (
     <TouchableOpacity
       disabled={isReadOnly || isUnavailable}
       onPressIn={() => onToggle(categoryId, option.id)}
       onLongPress={() => onLongPress(categoryId, option.id)}
       delayLongPress={400}
-      className='flex-1 min-w-[110px] max-w-[180px] rounded-lg border py-3 px-2.5 items-center justify-center'
-      style={
+      className="rounded-lg border py-2 px-2 items-center justify-center"
+      style={[
+        {
+          flexBasis: "18%",
+          flexGrow: 0,
+          flexShrink: 0,
+          minHeight: 52,
+        },
         isNo
           ? {
-              backgroundColor: colors.danger + '20',
-              borderColor: colors.danger
+              backgroundColor: colors.danger + "20",
+              borderColor: colors.danger,
             }
           : isSelected
-          ? { backgroundColor: colors.teal + '20', borderColor: colors.teal }
-          : isUnavailable
-          ? {
-              backgroundColor: colors.panel,
-              borderColor: colors.border,
-              opacity: 0.45
-            }
-          : { backgroundColor: colors.card, borderColor: colors.border }
-      }
+            ? { backgroundColor: colors.teal + "20", borderColor: colors.teal }
+            : isUnavailable
+              ? {
+                  backgroundColor: colors.panel,
+                  borderColor: colors.border,
+                  opacity: 0.45,
+                }
+              : { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
     >
       {isNo && (
         <View
-          className='absolute top-1.5 right-1.5 w-4 h-4 rounded-full items-center justify-center'
+          className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full items-center justify-center"
           style={{ backgroundColor: colors.danger }}
         >
           <X color={colors.onSolid} size={9} strokeWidth={3} />
@@ -154,7 +184,7 @@ const ModifierOption = memo(
       )}
       {isSelected && !isNo && (
         <View
-          className='absolute top-1.5 right-1.5 w-4 h-4 rounded-full items-center justify-center'
+          className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full items-center justify-center"
           style={{ backgroundColor: colors.teal }}
         >
           <Check color={colors.onSolid} size={9} strokeWidth={3} />
@@ -162,16 +192,16 @@ const ModifierOption = memo(
       )}
       <Text
         className={`text-xs font-semibold text-center ${
-          isUnavailable ? 'line-through' : ''
-        } ${isNo ? 'line-through' : ''}`}
+          isUnavailable ? "line-through" : ""
+        } ${isNo ? "line-through" : ""}`}
         style={{
           color: isUnavailable
             ? colors.muted
             : isNo
-            ? colors.danger
-            : isSelected
-            ? colors.teal
-            : colors.heading
+              ? colors.danger
+              : isSelected
+                ? colors.teal
+                : colors.heading,
         }}
       >
         {isNo ? `NO ${option.name}` : option.name}
@@ -179,15 +209,15 @@ const ModifierOption = memo(
       </Text>
       {!isNo && option.price > 0 && (
         <Text
-          className='text-[10px] text-center mt-0.5'
-          style={{ color: colors.warning }}
+          className="text-base text-center mt-0.5"
+          style={{ color: MODIFIER_PRICE_DELTA_COLOR }}
         >
           +${option.price.toFixed(2)}
         </Text>
       )}
     </TouchableOpacity>
-  )
-)
+  ),
+);
 
 /**
  * Isolated Notes Input to prevent the main ModifierScreen from re-rendering
@@ -197,237 +227,405 @@ const NotesInput = memo(
   ({
     initialValue,
     isReadOnly,
-    onChange
+    onChange,
+    onFocus,
   }: {
-    initialValue: string
-    isReadOnly: boolean
-    onChange: (text: string) => void
+    initialValue: string;
+    isReadOnly: boolean;
+    onChange: (text: string) => void;
+    onFocus?: () => void;
   }) => {
-    const [localValue, setLocalValue] = useState(initialValue)
+    const [localValue, setLocalValue] = useState(initialValue);
+    const latestValueRef = useRef(initialValue);
+    const hasUserTypedRef = useRef(false);
 
-    // Sync if initialValue changes from outside
+    // Sync if initialValue changes from outside, but ONLY if the user hasn't
+    // typed yet (e.g. opening a different item). Once the user has started
+    // typing, the parent re-render that updated state.notes via the debounce
+    // MUST NOT clobber localValue — that's what causes the "eating characters"
+    // bug when the 220ms debounce fires while the user is mid-typing.
     useEffect(() => {
-      setLocalValue(initialValue)
-    }, [initialValue])
+      if (hasUserTypedRef.current) return;
+      setLocalValue(initialValue);
+      latestValueRef.current = initialValue;
+    }, [initialValue]);
+
+    useEffect(() => {
+      const timeoutId = setTimeout(() => {
+        onChange(latestValueRef.current);
+      }, 220);
+      return () => clearTimeout(timeoutId);
+    }, [localValue, onChange]);
 
     return (
       <View>
-        <View className='flex-row items-center justify-between pt-3 mb-2'>
+        <View className="flex-row items-center justify-between pt-3 mb-2">
           <Text
-            className='text-sm font-semibold'
+            className="text-sm font-semibold"
             style={{ color: colors.heading }}
           >
             Special Instructions
           </Text>
-          <Text className='text-xs' style={{ color: colors.label }}>
+          <Text className="text-xs" style={{ color: colors.label }}>
             {localValue.length}/80
           </Text>
         </View>
         <View
-          className='rounded-lg overflow-hidden border'
+          className="rounded-lg overflow-hidden border"
           style={{
             borderColor: colors.border,
-            backgroundColor: colors.inset
+            backgroundColor: colors.inset,
           }}
         >
           <TextInput
             editable={!isReadOnly}
             value={localValue}
             onChangeText={(text) => {
-              setLocalValue(text)
-              onChange(text)
+              hasUserTypedRef.current = true;
+              latestValueRef.current = text;
+              setLocalValue(text);
             }}
-            onBlur={() => onChange(localValue)}
-            placeholder='No onions, extra sauce...'
+            onBlur={() => onChange(latestValueRef.current)}
+            onFocus={onFocus}
+            placeholder="No onions, extra sauce..."
             numberOfLines={1}
             maxLength={80}
-            className='px-3 py-2 text-sm min-h-[52px]'
+            className="px-3 py-2 text-sm min-h-[52px]"
             style={{ color: colors.heading }}
             placeholderTextColor={colors.muted}
           />
         </View>
       </View>
-    )
-  }
-)
+    );
+  },
+);
 
 // ============================================================================
 // REDUCER
 // ============================================================================
 
 type State = {
-  quantity: number
-  modifierSelections: ModifierSelection
-  selectionCounts: Record<string, number>
-  notes: string
-  activeCategory: string | null
-  isQuantityModalOpen: boolean
-  quantityInput: string
-  isSeatPickerOpen: boolean
-}
+  quantity: number;
+  modifierSelections: ModifierSelection;
+  selectionCounts: Record<string, number>;
+  notes: string;
+  isToGo: boolean;
+  activeCategory: string | null;
+  isQuantityModalOpen: boolean;
+  quantityInput: string;
+  isSeatPickerOpen: boolean;
+  customModifiers: CustomModifier[];
+  isCustomModifierModalOpen: boolean;
+  customModifierNameInput: string;
+  customModifierPriceInput: string;
+};
 
 type Action =
-  | { type: 'SET_QUANTITY'; payload: number }
-  | { type: 'SET_MODIFIER_SELECTIONS'; payload: ModifierSelection }
-  | { type: 'SET_NOTES'; payload: string }
-  | { type: 'SET_ACTIVE_CATEGORY'; payload: string | null }
-  | { type: 'OPEN_QUANTITY_MODAL'; payload: string }
-  | { type: 'CLOSE_QUANTITY_MODAL' }
-  | { type: 'SET_QUANTITY_INPUT'; payload: string }
-  | { type: 'INITIALIZE'; payload: Partial<State> }
-  | { type: 'TOGGLE_SEAT_PICKER' }
+  | { type: "SET_QUANTITY"; payload: number }
+  | { type: "SET_MODIFIER_SELECTIONS"; payload: ModifierSelection }
+  | { type: "SET_NOTES"; payload: string }
+  | { type: "SET_TOGO"; payload: boolean }
+  | { type: "SET_ACTIVE_CATEGORY"; payload: string | null }
+  | { type: "OPEN_QUANTITY_MODAL"; payload: string }
+  | { type: "CLOSE_QUANTITY_MODAL" }
+  | { type: "SET_QUANTITY_INPUT"; payload: string }
+  | { type: "INITIALIZE"; payload: Partial<State> }
+  | { type: "TOGGLE_SEAT_PICKER" }
   | {
-      type: 'TOGGLE_MODIFIER'
+      type: "TOGGLE_MODIFIER";
       payload: {
-        categoryId: string
-        optionId: string
-        category: ModifierCategory
-      }
+        categoryId: string;
+        optionId: string;
+        category: ModifierCategory;
+      };
     }
   | {
-      type: 'TOGGLE_NO_MODIFIER'
+      type: "TOGGLE_NO_MODIFIER";
       payload: {
-        categoryId: string
-        optionId: string
-        category: ModifierCategory
-      }
+        categoryId: string;
+        optionId: string;
+        category: ModifierCategory;
+      };
     }
+  | { type: "OPEN_CUSTOM_MODIFIER_MODAL" }
+  | { type: "CLOSE_CUSTOM_MODIFIER_MODAL" }
+  | { type: "SET_CUSTOM_MODIFIER_NAME"; payload: string }
+  | { type: "SET_CUSTOM_MODIFIER_PRICE"; payload: string }
+  | {
+      type: "ADD_CUSTOM_MODIFIER";
+      payload: { name: string; price: number };
+    }
+  | { type: "REMOVE_CUSTOM_MODIFIER"; payload: string };
 
 const computeSelectionCounts = (
-  selections: ModifierSelection
+  selections: ModifierSelection,
 ): Record<string, number> => {
-  const counts: Record<string, number> = {}
+  const counts: Record<string, number> = {};
   for (const catId in selections) {
-    let count = 0
-    const catSelections = selections[catId]
+    let count = 0;
+    const catSelections = selections[catId];
     for (const key in catSelections) {
-      if (catSelections[key] === true || catSelections[key] === 'no') count++
+      if (catSelections[key] === true || catSelections[key] === "no") count++;
     }
-    counts[catId] = count
+    counts[catId] = count;
   }
-  return counts
-}
+  return counts;
+};
 
 const immerReducer = (state: State, action: Action): void => {
   switch (action.type) {
-    case 'SET_QUANTITY':
-      state.quantity = action.payload
-      return
-    case 'SET_MODIFIER_SELECTIONS':
-      state.modifierSelections = action.payload
-      state.selectionCounts = computeSelectionCounts(action.payload)
-      return
-    case 'SET_NOTES':
-      state.notes = action.payload
-      return
-    case 'SET_ACTIVE_CATEGORY':
-      state.activeCategory = action.payload
-      return
-    case 'OPEN_QUANTITY_MODAL':
-      state.isQuantityModalOpen = true
-      state.quantityInput = action.payload
-      return
-    case 'CLOSE_QUANTITY_MODAL':
-      state.isQuantityModalOpen = false
-      state.quantityInput = ''
-      return
-    case 'SET_QUANTITY_INPUT':
-      state.quantityInput = action.payload
-      return
-    case 'INITIALIZE':
-      Object.assign(state, action.payload)
+    case "SET_QUANTITY":
+      state.quantity = action.payload;
+      return;
+    case "SET_MODIFIER_SELECTIONS":
+      state.modifierSelections = action.payload;
+      state.selectionCounts = computeSelectionCounts(action.payload);
+      return;
+    case "SET_NOTES":
+      state.notes = action.payload;
+      return;
+    case "SET_TOGO":
+      state.isToGo = action.payload;
+      return;
+    case "SET_ACTIVE_CATEGORY":
+      state.activeCategory = action.payload;
+      return;
+    case "OPEN_QUANTITY_MODAL":
+      state.isQuantityModalOpen = true;
+      state.quantityInput = action.payload;
+      return;
+    case "CLOSE_QUANTITY_MODAL":
+      state.isQuantityModalOpen = false;
+      state.quantityInput = "";
+      return;
+    case "SET_QUANTITY_INPUT":
+      state.quantityInput = action.payload;
+      return;
+    case "INITIALIZE":
+      Object.assign(state, action.payload);
       if (action.payload.modifierSelections) {
         state.selectionCounts = computeSelectionCounts(
-          action.payload.modifierSelections
-        )
+          action.payload.modifierSelections,
+        );
       }
-      return
-    case 'TOGGLE_SEAT_PICKER':
-      state.isSeatPickerOpen = !state.isSeatPickerOpen
-      return
-    case 'TOGGLE_MODIFIER': {
-      const { categoryId, optionId, category } = action.payload
+      return;
+    case "TOGGLE_SEAT_PICKER":
+      state.isSeatPickerOpen = !state.isSeatPickerOpen;
+      return;
+    case "TOGGLE_MODIFIER": {
+      const { categoryId, optionId, category } = action.payload;
       if (!state.modifierSelections[categoryId]) {
-        state.modifierSelections[categoryId] = {}
+        state.modifierSelections[categoryId] = {};
       }
-      const currentCount = state.selectionCounts[categoryId] ?? 0
-      const currentVal = state.modifierSelections[categoryId][optionId]
+      const currentCount = state.selectionCounts[categoryId] ?? 0;
+      const currentVal = state.modifierSelections[categoryId][optionId];
       // Tapping a "NO" modifier deselects it entirely
-      if (currentVal === 'no') {
-        state.modifierSelections[categoryId][optionId] = false
-        state.selectionCounts[categoryId] = currentCount - 1
-        return
+      if (currentVal === "no") {
+        state.modifierSelections[categoryId][optionId] = false;
+        state.selectionCounts[categoryId] = currentCount - 1;
+        return;
       }
-      if (category.selectionType === 'single') {
-        const wasSelected = !!currentVal
-        Object.keys(state.modifierSelections[categoryId]).forEach(key => {
-          state.modifierSelections[categoryId][key] = false
-        })
-        state.modifierSelections[categoryId][optionId] = !wasSelected
-        state.selectionCounts[categoryId] = wasSelected ? 0 : 1
+      if (category.selectionType === "single") {
+        const wasSelected = !!currentVal;
+        Object.keys(state.modifierSelections[categoryId]).forEach((key) => {
+          state.modifierSelections[categoryId][key] = false;
+        });
+        state.modifierSelections[categoryId][optionId] = !wasSelected;
+        state.selectionCounts[categoryId] = wasSelected ? 0 : 1;
       } else {
-        const isCurrentlySelected = currentVal
+        const isCurrentlySelected = currentVal;
         if (
           !isCurrentlySelected &&
           category.maxSelections &&
           currentCount >= category.maxSelections
         ) {
-          return
+          return;
         }
-        state.modifierSelections[categoryId][optionId] = !isCurrentlySelected
+        state.modifierSelections[categoryId][optionId] = !isCurrentlySelected;
         state.selectionCounts[categoryId] = isCurrentlySelected
           ? currentCount - 1
-          : currentCount + 1
+          : currentCount + 1;
       }
-      return
+      return;
     }
-    case 'TOGGLE_NO_MODIFIER': {
-      const { categoryId, optionId, category } = action.payload
+    case "TOGGLE_NO_MODIFIER": {
+      const { categoryId, optionId, category } = action.payload;
       if (!state.modifierSelections[categoryId]) {
-        state.modifierSelections[categoryId] = {}
+        state.modifierSelections[categoryId] = {};
       }
-      const currentCount = state.selectionCounts[categoryId] ?? 0
-      const currentVal = state.modifierSelections[categoryId][optionId]
-      if (currentVal === 'no') {
+      const currentCount = state.selectionCounts[categoryId] ?? 0;
+      const currentVal = state.modifierSelections[categoryId][optionId];
+      if (currentVal === "no") {
         // Already NO → deselect
-        state.modifierSelections[categoryId][optionId] = false
-        state.selectionCounts[categoryId] = currentCount - 1
+        state.modifierSelections[categoryId][optionId] = false;
+        state.selectionCounts[categoryId] = currentCount - 1;
       } else {
         // Unselected or true → set to NO
-        if (category.selectionType === 'single') {
+        if (category.selectionType === "single") {
           // Clear other selections first
-          Object.keys(state.modifierSelections[categoryId]).forEach(key => {
-            state.modifierSelections[categoryId][key] = false
-          })
-          state.modifierSelections[categoryId][optionId] = 'no'
-          state.selectionCounts[categoryId] = 1
+          Object.keys(state.modifierSelections[categoryId]).forEach((key) => {
+            state.modifierSelections[categoryId][key] = false;
+          });
+          state.modifierSelections[categoryId][optionId] = "no";
+          state.selectionCounts[categoryId] = 1;
         } else {
-          const wasSelected = currentVal === true
+          const wasSelected = currentVal === true;
           if (
             !wasSelected &&
             category.maxSelections &&
             currentCount >= category.maxSelections
           ) {
-            return
+            return;
           }
-          state.modifierSelections[categoryId][optionId] = 'no'
+          state.modifierSelections[categoryId][optionId] = "no";
           state.selectionCounts[categoryId] = wasSelected
             ? currentCount
-            : currentCount + 1
+            : currentCount + 1;
         }
       }
-      return
+      return;
     }
+    case "OPEN_CUSTOM_MODIFIER_MODAL":
+      state.isCustomModifierModalOpen = true;
+      state.customModifierNameInput = "";
+      state.customModifierPriceInput = "";
+      return;
+    case "CLOSE_CUSTOM_MODIFIER_MODAL":
+      state.isCustomModifierModalOpen = false;
+      state.customModifierNameInput = "";
+      state.customModifierPriceInput = "";
+      return;
+    case "SET_CUSTOM_MODIFIER_NAME":
+      state.customModifierNameInput = action.payload;
+      return;
+    case "SET_CUSTOM_MODIFIER_PRICE":
+      state.customModifierPriceInput = action.payload;
+      return;
+    case "ADD_CUSTOM_MODIFIER":
+      state.customModifiers.push({
+        id: generateCustomModifierId(),
+        name: action.payload.name,
+        price: action.payload.price,
+      });
+      return;
+    case "REMOVE_CUSTOM_MODIFIER":
+      state.customModifiers = state.customModifiers.filter(
+        (m) => m.id !== action.payload,
+      );
+      return;
   }
-}
+};
+
+const extractCustomModifiers = (
+  cartItem: CartItem | null | undefined,
+): CustomModifier[] => {
+  // Match either the canonical sentinel (locally-saved item) or the fallback
+  // shape produced by orderTransformers.ts when realtime broadcasts arrive
+  // with NULL modifier_group_id / modifier_item_id — there the categoryId
+  // collapses to the group name ("Custom").
+  const group = cartItem?.customizations?.modifiers?.find(
+    (m) =>
+      m.categoryId === CUSTOM_MODIFIER_CATEGORY_ID ||
+      m.categoryName === CUSTOM_MODIFIER_CATEGORY_NAME,
+  );
+  if (!group) return [];
+  return group.options.map((opt) => ({
+    id: opt.id,
+    name: opt.name,
+    price: opt.price ?? 0,
+  }));
+};
+
+// ============================================================================
+// SEAT PILL — Wave 4.5
+// ============================================================================
+// Memoized so flipping `seatOverride` only re-renders the two affected pills
+// (old selected + new selected) instead of the entire Array.from(...).map(...)
+// block on every tap. Inline styles are computed inside the memo'd child, so
+// React.memo's shallow compare on (seat, isSelected) is the only comparison
+// needed.
+
+const SEAT_PILL_BASE = {
+  paddingHorizontal: 14,
+  paddingVertical: 6,
+  borderRadius: 16,
+  borderWidth: 1,
+} as const;
+
+const SeatPill = memo(function SeatPill({
+  seat,
+  label,
+  isSelected,
+  onSelect,
+}: {
+  seat: number | null;
+  label: string;
+  isSelected: boolean;
+  onSelect: (seat: number | null) => void;
+}) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const handlePress = useCallback(() => onSelect(seat), [seat, onSelect]);
+  return (
+    <TouchableOpacity
+      onPressIn={handlePress}
+      style={{
+        ...SEAT_PILL_BASE,
+        backgroundColor: isSelected ? colors.teal + "20" : "transparent",
+        borderColor: isSelected ? colors.teal : colors.border,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: s(12),
+          fontWeight: "600",
+          color: isSelected ? colors.teal : colors.label,
+        }}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+});
+
+// Persist a per-item TO GO change to the backend when it actually changed and
+// the item has a synced backend row. Fire-and-forget: the caller has already
+// set the local flag; OrderService.toggleToGoOnItems marks the toggle pending
+// so an in-flight broadcast re-fetch won't clobber the optimistic value, and a
+// later re-fetch reconciles the server state. If the item has no db id yet, the
+// add-time reconcile in useOrderStore.addItemToBackend fires the toggle once the
+// id lands, so the change is never lost. Shared by the normal-item AND open-item
+// save branches so they can't drift — that drift is exactly how open items ended
+// up showing [TO GO] locally while is_to_go stayed false on the server.
+const persistToGoIfChanged = (
+  client: Parameters<typeof OrderService.toggleToGoOnItems>[0] | null,
+  dbItemId: string | undefined | null,
+  prevIsToGo: boolean | undefined,
+  nextIsToGo: boolean,
+) => {
+  if (Boolean(prevIsToGo) === Boolean(nextIsToGo)) return;
+  if (!dbItemId || !client) return;
+  OrderService.toggleToGoOnItems(client, [dbItemId], nextIsToGo).catch(() => {
+    // Fire-and-forget: local flag is persisted; a later broadcast re-fetch
+    // reconciles the server state.
+  });
+};
 
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
-const ModifierScreen = () => {
+interface ModifierScreenContentProps {
+  keepMountedDuringClose?: boolean;
+}
+
+const ModifierScreenContent = ({
+  keepMountedDuringClose = false,
+}: ModifierScreenContentProps) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const store = useModifierSidebarStore(
-    useShallow(s => ({
+    useShallow((s) => ({
       isOpen: s.isOpen,
       mode: s.mode,
       menuItem: s.menuItem,
@@ -444,9 +642,11 @@ const ModifierScreen = () => {
       precomputedActiveCategory: s.activeModifierCategory,
       close: s.close,
       seatOverride: s.seatOverride,
-      setSeatOverride: s.setSeatOverride
-    }))
-  )
+      setSeatOverride: s.setSeatOverride,
+      seatCount: s.seatCount,
+      showSeatPicker: s.showSeatPicker,
+    })),
+  );
 
   const {
     isOpen,
@@ -465,306 +665,447 @@ const ModifierScreen = () => {
     precomputedActiveCategory,
     close,
     seatOverride,
-    setSeatOverride
-  } = store
+    setSeatOverride,
+    seatCount,
+    showSeatPicker,
+  } = store;
+  const shouldPaintScreen = isOpen || keepMountedDuringClose;
 
-  const showMenuImages = useSettingsStore(s => s.showMenuImages)
-
-  // Per-seat ordering context
-  const enablePerSeatOrdering = useLocationConfigStore(
-    s => s.config.dining.enablePerSeatOrdering
-  )
-  const { activeOrderId: seatOrderId } = useOrderStore(
-    useShallow(s => ({ activeOrderId: s.activeOrderId }))
-  )
-  const activeOrderForSeat = seatOrderId
-    ? useOrderStore.getState().ordersById[seatOrderId]
-    : null
-  const isTableOrder = !!activeOrderForSeat?.service_location_id
-  const seatCount =
-    isTableOrder && seatOrderId
-      ? useSeatingStore.getState().getSeatCount(seatOrderId)
-      : 0
-  const showSeatPicker = enablePerSeatOrdering && isTableOrder && seatCount > 0
+  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
 
   const addItemToActiveOrder = useCallback(
     (item: any) => useOrderStore.getState().addItemToActiveOrder(item),
-    []
-  )
+    [],
+  );
   const updateItemInActiveOrder = useCallback(
     (item: any) => useOrderStore.getState().updateItemInActiveOrder(item),
-    []
-  )
+    [],
+  );
   const removeItemFromActiveOrder = useCallback(
     (itemId: string, voidReason?: string) =>
       useOrderStore.getState().removeItemFromActiveOrder(itemId, voidReason),
-    []
-  )
+    [],
+  );
   const removeDraftItem = useCallback(
     (draftItemId: string) =>
       useOrderStore.getState().removeDraftItem(draftItemId),
-    []
-  )
+    [],
+  );
   const removeDraftItems = useCallback(
     (menuItemId: string) =>
       useOrderStore.getState().removeDraftItems(menuItemId),
-    []
-  )
+    [],
+  );
   const generateCartItemId = useCallback(
     (menuItemId: string, customizations: any, isDraft?: boolean) =>
       useOrderStore
         .getState()
         .generateCartItemId(menuItemId, customizations, isDraft),
-    []
-  )
+    [],
+  );
   const getMenuItemById = useCallback(
     (id: string) => useMenuStore.getState().getMenuItemById(id),
-    []
-  )
+    [],
+  );
 
-  const { show } = useToast()
+  const { show } = useToast();
+  const supabase = useSupabaseClient();
+  // Latest-ref so the []-dep handleSave callback can reach the current client
+  // without capturing it in its closure.
+  const supabaseRef = useRef(supabase);
+  supabaseRef.current = supabase;
 
   const [state, dispatch] = useImmerReducer<State, Action, void>(
     immerReducer,
     undefined as void,
     (): State => {
-      const selections = storeInitialSelections ?? {}
+      const selections = storeInitialSelections ?? {};
       return {
         quantity: cartItem?.quantity ?? 1,
-        notes: cartItem?.customizations?.notes ?? '',
+        notes: cartItem?.customizations?.notes ?? "",
+        isToGo: cartItem?.is_to_go ?? false,
         modifierSelections: selections,
         selectionCounts: computeSelectionCounts(selections),
         activeCategory: precomputedActiveCategory ?? null,
         isQuantityModalOpen: false,
-        quantityInput: '',
-        isSeatPickerOpen: false
-      }
-    }
-  )
+        quantityInput: "",
+        // Auto-open seat picker for dine-in (table) orders so the server can
+        // tap a seat without first expanding the header pill.
+        isSeatPickerOpen: showSeatPicker,
+        customModifiers: extractCustomModifiers(cartItem),
+        isCustomModifierModalOpen: false,
+        customModifierNameInput: "",
+        customModifierPriceInput: "",
+      };
+    },
+  );
 
-  const lastDraftMenuItemIdRef = useRef<string | null>(null)
-  const actionHandledRef = useRef(false)
-  const draftItemIdRef = useRef<string | null>(null)
-  const [visibleOptionCount, setVisibleOptionCount] = useState(16)
-  const [showSecondarySections, setShowSecondarySections] = useState(false)
+  const lastDraftMenuItemIdRef = useRef<string | null>(null);
+  const actionHandledRef = useRef(false);
+  const draftItemIdRef = useRef<string | null>(null);
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  // Tracks whether the user has touched the modifier-screen qty stepper this
+  // session. When false, external cart-side qty changes (e.g. swipe-right
+  // increments on the cart row while modifier is open) sync into state.quantity
+  // so a subsequent save doesn't clobber the cart's latest qty with the
+  // modifier screen's stale opened-at value. When true, the modifier's qty
+  // wins. Reset on session change (new item or new cart entry).
+  const userTouchedQtyRef = useRef(false);
+  const [visibleOptionCount, setVisibleOptionCount] = useState(8);
+  const [showSecondarySections, setShowSecondarySections] = useState(false);
+  const [hasInteractedSinceOpen, setHasInteractedSinceOpen] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const deferSecondarySectionsAggressively = Platform.OS === "android";
 
   // When the store opens a new item session (different item or cart entry),
   // reinitialize local reducer state without unmounting the component.
   const sessionId = isOpen
-    ? `${precomputedForItemId ?? ''}_${cartItem?.id ?? ''}_${mode}`
-    : null
-  const prevSessionRef = useRef<string | null>(null)
+    ? `${precomputedForItemId ?? ""}_${cartItem?.id ?? ""}_${mode}`
+    : null;
+  const prevSessionRef = useRef<string | null>(null);
+  const shouldShowSeatPicker =
+    showSeatPicker &&
+    (state.isSeatPickerOpen || sessionId !== prevSessionRef.current);
 
   useEffect(() => {
-    if (!sessionId || sessionId === prevSessionRef.current) return
-    prevSessionRef.current = sessionId
-    actionHandledRef.current = false
-    draftItemIdRef.current = null
-    lastDraftMenuItemIdRef.current = null
-    const selections = storeInitialSelections ?? {}
+    if (!sessionId) {
+      prevSessionRef.current = null;
+      return;
+    }
+    if (sessionId === prevSessionRef.current) return;
+    prevSessionRef.current = sessionId;
+    if (__DEV__) {
+      const openStartedAt = getLastModifierOpenStartedAt();
+      if (openStartedAt > 0) {
+        orderStoreDiagnosticLog(
+          `[perf][modifier] session ready in ${Math.round(
+            nowMs() - openStartedAt,
+          )}ms`,
+          { sessionId },
+        );
+      }
+    }
+    actionHandledRef.current = false;
+    draftItemIdRef.current = null;
+    lastDraftMenuItemIdRef.current = null;
+    userTouchedQtyRef.current = false;
+    const selections = storeInitialSelections ?? {};
     dispatch({
-      type: 'INITIALIZE',
+      type: "INITIALIZE",
       payload: {
         quantity: cartItem?.quantity ?? 1,
-        notes: cartItem?.customizations?.notes ?? '',
+        notes: cartItem?.customizations?.notes ?? "",
+        isToGo: cartItem?.is_to_go ?? false,
         modifierSelections: selections,
         activeCategory: precomputedActiveCategory ?? null,
         isQuantityModalOpen: false,
-        quantityInput: '',
-        isSeatPickerOpen: false
-      }
-    })
+        quantityInput: "",
+        // Auto-open seat picker for dine-in (table) orders so the server can
+        // tap a seat without first expanding the header pill.
+        isSeatPickerOpen: showSeatPicker,
+        customModifiers: extractCustomModifiers(cartItem),
+        isCustomModifierModalOpen: false,
+        customModifierNameInput: "",
+        customModifierPriceInput: "",
+      },
+    });
 
-    // Render the first batch immediately, then expand to full options next tick.
-    setVisibleOptionCount(16)
-    setShowSecondarySections(false)
-    const optionTimer = setTimeout(
-      () => setVisibleOptionCount(Number.MAX_SAFE_INTEGER),
-      0
-    )
-    const secondaryTimer = setTimeout(() => setShowSecondarySections(true), 0)
-    return () => {
-      clearTimeout(optionTimer)
-      clearTimeout(secondaryTimer)
-    }
+    // Render the first batch immediately. React 19 auto-batches these
+    // sync setStates with the dispatch above into a single render.
+    // showModifierOptions stays `true` across session changes so the new
+    // item's options paint on the first frame instead of after a defer.
+    setVisibleOptionCount(8);
+    setHasInteractedSinceOpen(false);
+    setShowSecondarySections(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId])
+  }, [sessionId]);
 
-  const isReadOnly = mode === 'view'
+  // Sync external qty mutations into the modifier screen state. Without this,
+  // swiping the cart row to increment qty while the modifier screen is open
+  // leaves state.quantity stale at the modifier-open value; saving would then
+  // overwrite the cart's latest qty with the stale modifier value. Skipped
+  // when the user has actively touched the modifier qty stepper this session
+  // — in that case the modifier's intent wins. Reset by the session-init
+  // effect above when the user opens a different item.
+  useEffect(() => {
+    if (!sessionId) return;
+    if (userTouchedQtyRef.current) return;
+    const externalQty = cartItem?.quantity;
+    if (externalQty == null) return;
+    const { state: currentState } = latestStateRef.current;
+    if (currentState.quantity === externalQty) return;
+    dispatch({ type: "SET_QUANTITY", payload: externalQty });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, cartItem?.quantity]);
+
+  useEffect(() => {
+    if (!isOpen || showSecondarySections) return;
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let revealHandle: { cancel: () => void } | null = null;
+
+    const scheduleReveal = () => {
+      revealHandle = InteractionManager.runAfterInteractions(() => {
+        if (cancelled) return;
+        setShowSecondarySections(true);
+      });
+    };
+
+    if (!deferSecondarySectionsAggressively || hasInteractedSinceOpen) {
+      scheduleReveal();
+    } else {
+      // Brief Android-only defer so image/allergens don't compete with the
+      // open animation. Was 900ms; lowered now that preWarm + faster slide
+      // cover the cost. Keep the "show on first interaction" path above.
+      timeoutId = setTimeout(scheduleReveal, 80);
+    }
+
+    return () => {
+      cancelled = true;
+      revealHandle?.cancel();
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    };
+  }, [
+    deferSecondarySectionsAggressively,
+    hasInteractedSinceOpen,
+    isOpen,
+    showSecondarySections,
+  ]);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardInset(event.endCoordinates?.height ?? 0);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardInset(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  const handleNotesFocus = useCallback(() => {
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
+
+  const isReadOnly = mode === "view";
   const currentItem =
-    mode === 'edit' || (mode === 'fullscreen' && cartItem) ? cartItem : menuItem
+    mode === "edit" || (mode === "fullscreen" && cartItem)
+      ? cartItem
+      : menuItem;
 
   const getCurrentItemPrice = useCallback(
     (item: any) => {
-      if (!item) return 0
-      if (precomputedItemPrice > 0) return precomputedItemPrice
-      return item.price || 0
+      if (!item) return 0;
+      if (precomputedItemPrice > 0) return precomputedItemPrice;
+      return item.price || 0;
     },
-    [precomputedItemPrice]
-  )
+    [precomputedItemPrice],
+  );
 
   const getCurrentItemCashPrice = useCallback(
     (item: any) => {
-      if (!item) return 0
-      const itemId = item.id || item.menuItemId
+      if (!item) return 0;
+      const itemId = item.id || item.menuItemId;
       if (precomputedCashPrice > 0 && precomputedForItemId === itemId)
-        return precomputedCashPrice
+        return precomputedCashPrice;
       if (item.cashPrice !== undefined && item.cashPrice !== null)
-        return item.cashPrice
+        return item.cashPrice;
       if (item.originalPrice !== undefined && item.originalPrice !== null)
-        return item.originalPrice
+        return item.originalPrice;
       if (item.menuItemId && getMenuItemById) {
-        const baseItem = getMenuItemById(item.menuItemId)
+        const baseItem = getMenuItemById(item.menuItemId);
         if (baseItem?.cashPrice !== undefined && baseItem.cashPrice !== null)
-          return baseItem.cashPrice
+          return baseItem.cashPrice;
       }
-      return item.price || 0
+      return item.price || 0;
     },
-    [getMenuItemById, precomputedCashPrice, precomputedForItemId]
-  )
+    [getMenuItemById, precomputedCashPrice, precomputedForItemId],
+  );
 
   const baseMenuItem = useMemo(
     () => menuItem || (cartItem ? getMenuItemById(cartItem.menuItemId) : null),
-    [menuItem, cartItem, getMenuItemById]
-  )
+    [menuItem, cartItem, getMenuItemById],
+  );
 
   const resolvedImageSource = useMemo(
     () =>
-      showMenuImages && isOpen
+      showMenuImages && shouldPaintScreen
         ? resolveMenuItemImageSource(currentItem?.image)
         : undefined,
-    [showMenuImages, isOpen, currentItem?.image]
-  )
+    [showMenuImages, shouldPaintScreen, currentItem?.image],
+  );
 
   type MenuItemWithModifiers = typeof baseMenuItem & {
-    modifiers: ModifierCategory[]
-  }
+    modifiers: ModifierCategory[];
+  };
   const menuItemForModifiersRef = useRef<{
-    item: any
-    mods: any
-    result: MenuItemWithModifiers
-  } | null>(null)
+    item: any;
+    mods: any;
+    result: MenuItemWithModifiers;
+  } | null>(null);
 
   const menuItemForModifiers = useMemo((): MenuItemWithModifiers | null => {
-    if (!isOpen) return null
-    if (!baseMenuItem) return null
+    if (!shouldPaintScreen) return null;
+    if (!baseMenuItem) return null;
     if (precomputedModifiers) {
-      const cached = menuItemForModifiersRef.current
+      const cached = menuItemForModifiersRef.current;
       if (
         cached &&
         cached.item === baseMenuItem &&
         cached.mods === precomputedModifiers
       )
-        return cached.result
+        return cached.result;
       const result = {
         ...baseMenuItem,
-        modifiers: precomputedModifiers
-      } as MenuItemWithModifiers
+        modifiers: precomputedModifiers,
+      } as MenuItemWithModifiers;
       menuItemForModifiersRef.current = {
         item: baseMenuItem,
         mods: precomputedModifiers,
-        result
-      }
-      return result
+        result,
+      };
+      return result;
     }
-    if (!baseMenuItem.modifierGroupIds) return null
-    const allGroups = useMenuStore.getState().modifierGroups
-    const modifiers = baseMenuItem.modifierGroupIds
-      .map((id: string) =>
-        allGroups.find((mg: ModifierCategory) => mg.id === id)
-      )
-      .filter((mg): mg is ModifierCategory => !!mg)
-    return { ...baseMenuItem, modifiers } as MenuItemWithModifiers
-  }, [isOpen, baseMenuItem, precomputedModifiers])
+    if (!baseMenuItem.modifierGroupIds) return null;
+    const modifiers = useMenuStore
+      .getState()
+      .getModifierGroupsByIds(baseMenuItem.modifierGroupIds);
+    return { ...baseMenuItem, modifiers } as MenuItemWithModifiers;
+  }, [shouldPaintScreen, baseMenuItem, precomputedModifiers]);
 
   const { modifierCategoriesById, optionsById } = useMemo(() => {
-    const emptyCategories = new Map<string, ModifierCategory>()
+    const emptyCategories = new Map<string, ModifierCategory>();
     const emptyOptions = new Map<
       string,
       { option: any; categoryId: string; categoryName: string }
-    >()
-    if (!isOpen)
+    >();
+    if (!shouldPaintScreen)
       return {
         modifierCategoriesById: emptyCategories,
-        optionsById: emptyOptions
-      }
+        optionsById: emptyOptions,
+      };
     if (precomputedCategoriesById && precomputedOptionsById) {
       return {
         modifierCategoriesById: precomputedCategoriesById,
-        optionsById: precomputedOptionsById
-      }
+        optionsById: precomputedOptionsById,
+      };
     }
-    menuItemForModifiers?.modifiers?.forEach(category => {
-      emptyCategories.set(category.id, category)
-      category.options.forEach(option => {
+    menuItemForModifiers?.modifiers?.forEach((category) => {
+      emptyCategories.set(category.id, category);
+      category.options.forEach((option) => {
         emptyOptions.set(option.id, {
           option,
           categoryId: category.id,
-          categoryName: category.name
-        })
-      })
-    })
+          categoryName: category.name,
+        });
+      });
+    });
     return {
       modifierCategoriesById: emptyCategories,
-      optionsById: emptyOptions
-    }
+      optionsById: emptyOptions,
+    };
   }, [
-    isOpen,
+    shouldPaintScreen,
     precomputedCategoriesById,
     precomputedOptionsById,
-    menuItemForModifiers?.modifiers
-  ])
+    menuItemForModifiers?.modifiers,
+  ]);
 
   const total = useMemo(() => {
-    if (!isOpen || !currentItem) return 0
-    let baseTotal = getCurrentItemPrice(currentItem)
-    Object.values(state.modifierSelections).forEach(categorySelections => {
+    if (!shouldPaintScreen || !currentItem) return 0;
+    let baseTotal = getCurrentItemPrice(currentItem);
+    Object.values(state.modifierSelections).forEach((categorySelections) => {
       Object.entries(categorySelections).forEach(([optionId, isSelected]) => {
-        if (isSelected && isSelected !== 'no') {
-          const optionData = optionsById.get(optionId)
-          if (optionData) baseTotal += optionData.option.price
+        if (isSelected && isSelected !== "no") {
+          const optionData = optionsById.get(optionId);
+          if (optionData) baseTotal += optionData.option.price;
         }
-      })
-    })
-    return baseTotal * state.quantity
+      });
+    });
+    for (const m of state.customModifiers) {
+      baseTotal += m.price;
+    }
+    return baseTotal * state.quantity;
   }, [
-    isOpen,
+    shouldPaintScreen,
     state.quantity,
     state.modifierSelections,
+    state.customModifiers,
     currentItem,
     optionsById,
-    getCurrentItemPrice
-  ])
+    getCurrentItemPrice,
+  ]);
 
   useEffect(() => {
-    if (!isOpen || !currentItem || mode === 'edit' || cartItem) return
-    const stableDraftId = `draft_${currentItem.id}`
-    const storeDraftId = useModifierSidebarStore.getState().draftCreatedId
+    if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
+    const stableDraftId = `draft_${currentItem.id}`;
+    const storeDraftId = useModifierSidebarStore.getState().draftCreatedId;
     if (storeDraftId) {
-      draftItemIdRef.current = storeDraftId
-      lastDraftMenuItemIdRef.current = currentItem.id
-      return
+      draftItemIdRef.current = storeDraftId;
+      lastDraftMenuItemIdRef.current = currentItem.id;
+      return;
     }
-    const { activeOrderId, ordersById } = useOrderStore.getState()
-    const activeOrder = activeOrderId ? ordersById[activeOrderId] : null
-    const existingDraft = activeOrder?.items.find(i => i.id === stableDraftId)
+    const { activeOrderId, ordersById } = useOrderStore.getState();
+    const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
+    const existingDraft = activeOrder?.items.find(
+      (i) => i.id === stableDraftId,
+    );
     if (existingDraft) {
-      draftItemIdRef.current = existingDraft.id
-      lastDraftMenuItemIdRef.current = currentItem.id
-      return
+      draftItemIdRef.current = existingDraft.id;
+      lastDraftMenuItemIdRef.current = currentItem.id;
+      return;
     }
-    const existingItem = activeOrder?.items.find(i => {
-      if (i.menuItemId !== currentItem.id) return false
+    const existingItem = activeOrder?.items.find((i) => {
+      if (i.menuItemId !== currentItem.id) return false;
       const hasModifiers =
-        i.customizations.modifiers && i.customizations.modifiers.length > 0
+        i.customizations.modifiers && i.customizations.modifiers.length > 0;
       const hasNotes =
-        i.customizations.notes && i.customizations.notes.trim() !== ''
-      const hasSent = i.kitchen_status === 'sent'
-      return !hasModifiers && !hasNotes && !hasSent
-    })
-    if (!existingItem) {
-      const itemPrice = getCurrentItemPrice(currentItem)
-      const cashPrice = getCurrentItemCashPrice(currentItem)
+        i.customizations.notes && i.customizations.notes.trim() !== "";
+      const hasSent = i.kitchen_status === "sent";
+      return !hasModifiers && !hasNotes && !hasSent;
+    });
+    if (existingItem) return;
+
+    // Defer the draft cart-write past the rapid-DONE window. If the user
+    // confirms or cancels within ~220ms, the timer is cleared and we never
+    // pay for a placeholder cart write that would just trigger re-renders.
+    // Mirrors the store-side deferral in useModifierSidebarStore.open().
+    const expectedItemId = currentItem.id;
+    const timer = setTimeout(() => {
+      const store = useModifierSidebarStore.getState();
+      if (
+        !store.isOpen ||
+        store.cartItem ||
+        store.menuItem?.id !== expectedItemId
+      ) {
+        return;
+      }
+      // Re-fetch latest active-order snapshot — another flow may have added
+      // an identical unsent item while we were waiting.
+      const latest = useOrderStore.getState();
+      const latestOrder = latest.activeOrderId
+        ? latest.ordersById[latest.activeOrderId]
+        : null;
+      const dupe = latestOrder?.items.find(
+        (i) => i.id === stableDraftId || i.menuItemId === expectedItemId,
+      );
+      if (dupe) {
+        if (dupe.isDraft) draftItemIdRef.current = dupe.id;
+        return;
+      }
+      const itemPrice = getCurrentItemPrice(currentItem);
+      const cashPrice = getCurrentItemCashPrice(currentItem);
       const draftItem = {
         id: stableDraftId,
         menuItemId: currentItem.id,
@@ -777,56 +1118,58 @@ const ModifierScreen = () => {
         image: currentItem.image,
         isDraft: true,
         seatNumber: seatOverride ?? undefined,
-        customizations: { modifiers: [], notes: '' },
+        customizations: { modifiers: [], notes: "" },
         availableDiscount: currentItem.availableDiscount,
         appliedDiscount: null,
         paidQuantity: 0,
         addedFromCategoryId: categoryId || null,
-        addedFromMenuId: menuId || null
-      }
-      addItemToActiveOrder(draftItem)
-      draftItemIdRef.current = draftItem.id
-      lastDraftMenuItemIdRef.current = currentItem.id
-    }
-  }, [isOpen, currentItem?.id, mode, cartItem, seatOverride])
+        addedFromMenuId: menuId || null,
+      };
+      addItemToActiveOrder(draftItem);
+      draftItemIdRef.current = draftItem.id;
+      lastDraftMenuItemIdRef.current = currentItem.id;
+    }, 220);
 
-  const sessionKeyRef = useRef<string>('closed')
+    return () => clearTimeout(timer);
+  }, [isOpen, currentItem?.id, mode, cartItem, seatOverride]);
+
+  const sessionKeyRef = useRef<string>("closed");
   sessionKeyRef.current = !isOpen
-    ? 'closed'
-    : `${cartItem?.id ?? ''}_${menuItem?.id ?? ''}_${mode}`
+    ? "closed"
+    : `${cartItem?.id ?? ""}_${menuItem?.id ?? ""}_${mode}`;
 
   useEffect(() => {
     return () => {
       if (!actionHandledRef.current && draftItemIdRef.current) {
-        removeDraftItem(draftItemIdRef.current)
-        draftItemIdRef.current = null
+        removeDraftItem(draftItemIdRef.current);
+        draftItemIdRef.current = null;
       }
-      const store = useModifierSidebarStore.getState()
+      const store = useModifierSidebarStore.getState();
       const currentSessionKey = !store.isOpen
-        ? 'closed'
-        : `${store.cartItem?.id ?? ''}_${store.menuItem?.id ?? ''}_${
+        ? "closed"
+        : `${store.cartItem?.id ?? ""}_${store.menuItem?.id ?? ""}_${
             store.mode
-          }`
+          }`;
       if (
-        sessionKeyRef.current !== 'closed' &&
+        sessionKeyRef.current !== "closed" &&
         sessionKeyRef.current === currentSessionKey
       ) {
-        store.close()
+        store.close();
       }
-    }
-  }, [])
+    };
+  }, []);
 
   useEffect(() => {
-    const previousDraftMenuItemId = lastDraftMenuItemIdRef.current
-    if (!previousDraftMenuItemId) return
-    const switchedToEditExisting = mode === 'edit' && !!cartItem
+    const previousDraftMenuItemId = lastDraftMenuItemIdRef.current;
+    if (!previousDraftMenuItemId) return;
+    const switchedToEditExisting = mode === "edit" && !!cartItem;
     const switchedToDifferentMenuItem =
-      !!menuItem && menuItem.id !== previousDraftMenuItemId
+      !!menuItem && menuItem.id !== previousDraftMenuItemId;
     if (switchedToEditExisting || switchedToDifferentMenuItem) {
-      removeDraftItems(previousDraftMenuItemId)
-      lastDraftMenuItemIdRef.current = null
+      removeDraftItems(previousDraftMenuItemId);
+      lastDraftMenuItemIdRef.current = null;
     }
-  }, [mode, cartItem, menuItem])
+  }, [mode, cartItem, menuItem]);
 
   const latestStateRef = useRef({
     state,
@@ -844,8 +1187,8 @@ const ModifierScreen = () => {
     close,
     show,
     showSeatPicker,
-    seatOverride
-  })
+    seatOverride,
+  });
 
   latestStateRef.current = {
     state,
@@ -863,77 +1206,118 @@ const ModifierScreen = () => {
     close,
     show,
     showSeatPicker,
-    seatOverride
-  }
+    seatOverride,
+  };
 
   const handleModifierToggle = useCallback(
     (catId: string, optionId: string) => {
-      const { isReadOnly, modifierCategoriesById } = latestStateRef.current
-      if (isReadOnly) return
-      const category = modifierCategoriesById.get(catId)
-      if (!category) return
+      const { isReadOnly, modifierCategoriesById } = latestStateRef.current;
+      if (isReadOnly) return;
+      const category = modifierCategoriesById.get(catId);
+      if (!category) return;
       dispatch({
-        type: 'TOGGLE_MODIFIER',
-        payload: { categoryId: catId, optionId, category }
-      })
+        type: "TOGGLE_MODIFIER",
+        payload: { categoryId: catId, optionId, category },
+      });
     },
-    []
-  )
+    [],
+  );
 
   const handleNoModifierToggle = useCallback(
     (catId: string, optionId: string) => {
-      const { isReadOnly, modifierCategoriesById } = latestStateRef.current
-      if (isReadOnly) return
-      const category = modifierCategoriesById.get(catId)
-      if (!category) return
+      const { isReadOnly, modifierCategoriesById } = latestStateRef.current;
+      if (isReadOnly) return;
+      const category = modifierCategoriesById.get(catId);
+      if (!category) return;
       dispatch({
-        type: 'TOGGLE_NO_MODIFIER',
-        payload: { categoryId: catId, optionId, category }
-      })
+        type: "TOGGLE_NO_MODIFIER",
+        payload: { categoryId: catId, optionId, category },
+      });
     },
-    []
-  )
+    [],
+  );
 
   const handleQuantityPress = useCallback(() => {
-    const { isReadOnly, state } = latestStateRef.current
-    if (isReadOnly) return
+    const { isReadOnly, state } = latestStateRef.current;
+    if (isReadOnly) return;
     dispatch({
-      type: 'OPEN_QUANTITY_MODAL',
-      payload: state.quantity.toString()
-    })
-  }, [])
+      type: "OPEN_QUANTITY_MODAL",
+      payload: state.quantity.toString(),
+    });
+  }, []);
 
   const handleQuantitySubmit = useCallback(() => {
-    const { state } = latestStateRef.current
-    const newQuantity = parseInt(state.quantityInput, 10)
-    if (newQuantity && newQuantity > 0)
-      dispatch({ type: 'SET_QUANTITY', payload: newQuantity })
-    dispatch({ type: 'CLOSE_QUANTITY_MODAL' })
-  }, [])
+    const { state } = latestStateRef.current;
+    const newQuantity = parseInt(state.quantityInput, 10);
+    if (newQuantity && newQuantity > 0) {
+      userTouchedQtyRef.current = true;
+      dispatch({ type: "SET_QUANTITY", payload: newQuantity });
+    }
+    dispatch({ type: "CLOSE_QUANTITY_MODAL" });
+  }, []);
 
   const handleQuantityCancel = useCallback(() => {
-    dispatch({ type: 'CLOSE_QUANTITY_MODAL' })
-  }, [])
+    dispatch({ type: "CLOSE_QUANTITY_MODAL" });
+  }, []);
 
   const handleCategoryTabPress = useCallback((categoryId: string) => {
-    dispatch({ type: 'SET_ACTIVE_CATEGORY', payload: categoryId })
-  }, [])
+    dispatch({ type: "SET_ACTIVE_CATEGORY", payload: categoryId });
+  }, []);
+
+  const handleNotesChange = useCallback((text: string) => {
+    dispatch({ type: "SET_NOTES", payload: text });
+  }, []);
 
   const handleQuantityDecrement = useCallback(() => {
-    const { state: currentState } = latestStateRef.current
+    const { state: currentState } = latestStateRef.current;
+    userTouchedQtyRef.current = true;
     dispatch({
-      type: 'SET_QUANTITY',
-      payload: Math.max(1, currentState.quantity - 1)
-    })
-  }, [])
+      type: "SET_QUANTITY",
+      payload: Math.max(1, currentState.quantity - 1),
+    });
+  }, []);
 
   const handleQuantityIncrement = useCallback(() => {
-    const { state: currentState } = latestStateRef.current
-    dispatch({ type: 'SET_QUANTITY', payload: currentState.quantity + 1 })
-  }, [])
+    const { state: currentState } = latestStateRef.current;
+    userTouchedQtyRef.current = true;
+    dispatch({ type: "SET_QUANTITY", payload: currentState.quantity + 1 });
+  }, []);
+
+  const handleInitialInteraction = useCallback(() => {
+    setHasInteractedSinceOpen((prev) => (prev ? prev : true));
+  }, []);
+
+  const handleOpenCustomModifierModal = useCallback(() => {
+    const { isReadOnly } = latestStateRef.current;
+    if (isReadOnly) return;
+    dispatch({ type: "OPEN_CUSTOM_MODIFIER_MODAL" });
+  }, []);
+
+  const handleCloseCustomModifierModal = useCallback(() => {
+    dispatch({ type: "CLOSE_CUSTOM_MODIFIER_MODAL" });
+  }, []);
+
+  const handleConfirmCustomModifier = useCallback(() => {
+    const { state: currentState } = latestStateRef.current;
+    const name = currentState.customModifierNameInput.trim();
+    if (!name) return;
+    const parsed = parseFloat(currentState.customModifierPriceInput);
+    const price =
+      Number.isFinite(parsed) && parsed > 0
+        ? Math.round(parsed * 100) / 100
+        : 0;
+    dispatch({ type: "ADD_CUSTOM_MODIFIER", payload: { name, price } });
+    dispatch({ type: "CLOSE_CUSTOM_MODIFIER_MODAL" });
+  }, []);
+
+  const handleRemoveCustomModifier = useCallback((id: string) => {
+    const { isReadOnly } = latestStateRef.current;
+    if (isReadOnly) return;
+    dispatch({ type: "REMOVE_CUSTOM_MODIFIER", payload: id });
+  }, []);
 
   const handleSave = useCallback(() => {
-    actionHandledRef.current = true
+    actionHandledRef.current = true;
     const {
       state: currentState,
       total: currentTotal,
@@ -949,187 +1333,95 @@ const ModifierScreen = () => {
       close: closeModal,
       show: showToast,
       showSeatPicker: shouldApplySeat,
-      seatOverride: seatVal
-    } = latestStateRef.current
+      seatOverride: seatVal,
+    } = latestStateRef.current;
 
-    const baseItem = currentMenuItem || modifiersItem
+    const baseItem = currentMenuItem || modifiersItem;
     const isOpenItem =
       currentCartItem?.is_open_item === true ||
-      currentCartItem?.menuItemId?.startsWith('open_item_') ||
-      currentCartItem?.customizations?.notes === 'Open Item'
+      currentCartItem?.menuItemId?.startsWith("open_item_") ||
+      currentCartItem?.customizations?.notes === "Open Item";
 
-    if (!baseItem && !isOpenItem) return
+    if (!baseItem && !isOpenItem) return;
 
-    if (
-      isOpenItem &&
-      (currentMode === 'edit' || currentMode === 'fullscreen') &&
-      currentCartItem
-    ) {
-      const updatedOpenItem = {
-        ...currentCartItem,
-        quantity: currentState.quantity,
-        unitPrice:
-          currentCartItem.unitPrice ||
-          currentCartItem.price ||
-          currentTotal / currentState.quantity,
-        baseCardPrice:
-          currentCartItem.baseCardPrice ||
-          currentCartItem.price ||
-          currentTotal / currentState.quantity,
-        customizations: {
-          ...currentCartItem.customizations,
-          notes: currentState.notes || 'Open Item'
-        },
-        isDraft: false
-      }
-      updateItemInActiveOrder(updatedOpenItem)
-
-      // Apply seat override for open items
-      if (shouldApplySeat && currentCartItem) {
-        const ordId = useOrderStore.getState().activeOrderId
-        if (ordId) {
-          useSeatingStore
-            .getState()
-            .setItemSeat(
-              ordId,
-              currentCartItem.id,
-              seatVal,
-              currentCartItem.db_order_item_id,
-              true
-            )
-        }
-      }
-
-      // Sync open item changes to backend
-      if (currentCartItem.db_order_item_id) {
-        const client = getOrderStoreSupabaseClient()
-        if (client) {
-          const params: Record<string, any> = {
-            p_order_item_id: currentCartItem.db_order_item_id
-          }
-          if (currentState.quantity !== currentCartItem.quantity) {
-            params.p_quantity = currentState.quantity
-          }
-          if (
-            currentState.notes &&
-            currentState.notes !== currentCartItem.customizations?.notes
-          ) {
-            params.p_special_instructions = currentState.notes
-          }
-          if (shouldApplySeat && seatVal !== undefined) {
-            params.p_seat_number = seatVal
-          }
-          if (Object.keys(params).length > 1) {
-            OrderService.updateOpenItem(client, params as any).catch(err => {
-              console.error(
-                '[ModifierScreen] Failed to sync open item update:',
-                err
-              )
-            })
-          }
-        }
-      }
-
-      showToast({
-        title: 'Item Updated',
-        message: `${currentCartItem.name} quantity updated to ${currentState.quantity}.`,
-        type: 'success'
-      })
-      closeModal()
-      return
-    }
-
-    if (!baseItem) return
-    const storeState = useModifierSidebarStore.getState()
-    const baseItemId =
-      baseItem.id ||
-      ('menuItemId' in (item || {})
-        ? (item as CartItem)?.menuItemId
-        : undefined)
-    let safeCashPrice: number | null = null
-
-    if (storeState.precomputedForItemId !== baseItemId) {
-      const freshMenuItem = baseItem.id
-        ? useMenuStore.getState().getMenuItemById(baseItem.id)
-        : null
-      safeCashPrice =
-        freshMenuItem?.cashPrice ?? baseItem.cashPrice ?? baseItem.price
-    }
-
+    // Validate required selections BEFORE closing — a failed validation must
+    // keep the modal open so the user can fix it.
     if (modifiersItem?.modifiers && modifiersItem.modifiers.length > 0) {
-      const hasRequiredSelections = modifiersItem.modifiers.every(category => {
-        if (category.type === 'required')
-          return (currentState.selectionCounts[category.id] ?? 0) > 0
-        return true
-      })
+      const hasRequiredSelections = modifiersItem.modifiers.every(
+        (category) => {
+          if (category.type === "required")
+            return (currentState.selectionCounts[category.id] ?? 0) > 0;
+          return true;
+        },
+      );
       if (!hasRequiredSelections) {
         showToast({
-          title: 'Missing Selections',
-          message: 'Please select all required options before proceeding.',
-          type: 'error'
-        })
-        return
+          title: "Missing Selections",
+          message: "Please select all required options before proceeding.",
+          type: "error",
+        });
+        return;
       }
     }
 
-    const resolvedCashPrice = safeCashPrice ?? getCurrentItemCashPrice(baseItem)
-    closeModal()
+    // Close the modal immediately so the slide-out animation isn't blocked by
+    // the (potentially expensive) cart mutation below. setTimeout(0) (not
+    // runAfterInteractions) so this doesn't get batched with unrelated
+    // pending interaction handles from this screen's reveal/grow effects —
+    // that batching was delaying the cart write past the next item's open().
+    closeModal();
 
-    queueMicrotask(() => {
-      const selectedModifiers = modifiersItem?.modifiers
-        ? Object.entries(currentState.modifierSelections)
-            .map(([cId, selections]) => {
-              const category = categoriesMap.get(cId)
-              const selectedOptions = Object.entries(selections)
-                .filter(([_, val]) => val === true || val === 'no')
-                .map(([optionId, val]) => {
-                  const optionData = optsMap.get(optionId)
-                  return {
-                    id: optionId,
-                    name: optionData?.option.name || '',
-                    price: val === 'no' ? 0 : optionData?.option.price || 0,
-                    isNo: val === 'no' ? true : undefined
-                  }
-                })
-              return {
-                categoryId: cId,
-                categoryName: category?.name || '',
-                options: selectedOptions
-              }
-            })
-            .filter(mod => mod.options.length > 0)
-        : []
-
-      const finalCustomizations = {
-        modifiers: selectedModifiers,
-        notes: currentState.notes
-      }
-
+    setTimeout(() => {
       if (
-        currentMode === 'edit' ||
-        (currentMode === 'fullscreen' && currentCartItem)
+        isOpenItem &&
+        (currentMode === "edit" || currentMode === "fullscreen") &&
+        currentCartItem
       ) {
-        if (!currentCartItem) return
-        const updatedItem = {
-          ...currentCartItem,
-          quantity: currentState.quantity,
-          price: currentTotal / Math.max(1, currentState.quantity),
-          customizations: finalCustomizations,
-          isDraft: false,
-          seatNumber:
-            shouldApplySeat && seatVal !== undefined
-              ? seatVal
-              : currentCartItem.seatNumber,
-          subtotal: undefined,
-          cashSubtotal: undefined,
-          taxAmount: undefined,
-          cashTaxAmount: undefined
-        }
-        updateItemInActiveOrder(updatedItem)
+        // Re-read the LIVE store item so we resolve a fresh db_order_item_id —
+        // the sheet snapshot can predate the backend sync (same reason as the
+        // regular-item branch below) — and so we don't write a stale null id back.
+        const liveStoreItem = useOrderStore
+          .getState()
+          .ordersById[
+            useOrderStore.getState().activeOrderId ?? ""
+          ]?.items.find((i) => i.id === currentCartItem.id);
+        const resolvedDbItemId =
+          liveStoreItem?.db_order_item_id ?? currentCartItem.db_order_item_id;
 
-        // Ensure manual sync matches the updated seat
-        if (shouldApplySeat) {
-          const ordId = useOrderStore.getState().activeOrderId
+        const updatedOpenItem = {
+          ...currentCartItem,
+          db_order_item_id: resolvedDbItemId,
+          quantity: currentState.quantity,
+          unitPrice:
+            currentCartItem.unitPrice ||
+            currentCartItem.price ||
+            currentTotal / currentState.quantity,
+          baseCardPrice:
+            currentCartItem.baseCardPrice ||
+            currentCartItem.price ||
+            currentTotal / currentState.quantity,
+          customizations: {
+            ...currentCartItem.customizations,
+            notes: currentState.notes || "Open Item",
+          },
+          isDraft: false,
+          is_to_go: currentState.isToGo,
+        };
+        updateItemInActiveOrder(updatedOpenItem);
+
+        // Persist the per-item TO GO flag (mirrors the regular-item branch). If
+        // the item has no db id yet, addItemToBackend's reconcile fires the toggle
+        // when the id lands, so the change is never lost.
+        persistToGoIfChanged(
+          supabaseRef.current,
+          resolvedDbItemId,
+          currentCartItem.is_to_go,
+          currentState.isToGo,
+        );
+
+        // Apply seat override for open items
+        if (shouldApplySeat && currentCartItem) {
+          const ordId = useOrderStore.getState().activeOrderId;
           if (ordId) {
             useSeatingStore
               .getState()
@@ -1138,23 +1430,171 @@ const ModifierScreen = () => {
                 currentCartItem.id,
                 seatVal,
                 currentCartItem.db_order_item_id,
-                true
-              )
+                true,
+              );
+          }
+        }
+
+        // Backend sync is already handled above: updateItemInActiveOrder syncs
+        // quantity + instructions (each deadline-wrapped via
+        // updateOrderItemQuantity / updateOrderItem with toUpdateItemKey, and
+        // queued on failure — useOrderStore.ts ~8243-8367), and setItemSeat syncs
+        // the seat. The previous raw OrderService.updateOpenItem call here was a
+        // REDUNDANT second sync of the same edit (keyless update_order_item_v2,
+        // no deadline, fire-and-forget) — it double-wrote on good WiFi and hung
+        // 30s+ on bad WiFi with no recovery. Removed: the path above is the
+        // single, deadline-wrapped, offline-queue-backed writer.
+
+        showToast({
+          title: "Item Updated",
+          message: `${currentCartItem.name} quantity updated to ${currentState.quantity}.`,
+          type: "success",
+        });
+        return;
+      }
+
+      if (!baseItem) return;
+      const storeState = useModifierSidebarStore.getState();
+      const baseItemId =
+        baseItem.id ||
+        ("menuItemId" in (item || {})
+          ? (item as CartItem)?.menuItemId
+          : undefined);
+      let safeCashPrice: number | null = null;
+
+      if (storeState.precomputedForItemId !== baseItemId) {
+        const freshMenuItem = baseItem.id
+          ? useMenuStore.getState().getMenuItemById(baseItem.id)
+          : null;
+        safeCashPrice =
+          freshMenuItem?.cashPrice ?? baseItem.cashPrice ?? baseItem.price;
+      }
+
+      const resolvedCashPrice =
+        safeCashPrice ?? getCurrentItemCashPrice(baseItem);
+
+      const selectedModifiers = modifiersItem?.modifiers
+        ? Object.entries(currentState.modifierSelections)
+            .map(([cId, selections]) => {
+              const category = categoriesMap.get(cId);
+              const selectedOptions = Object.entries(selections)
+                .filter(([_, val]) => val === true || val === "no")
+                .map(([optionId, val]) => {
+                  const optionData = optsMap.get(optionId);
+                  return {
+                    id: optionId,
+                    name: optionData?.option.name || "",
+                    price: val === "no" ? 0 : optionData?.option.price || 0,
+                    isNo: val === "no" ? true : undefined,
+                  };
+                });
+              return {
+                categoryId: cId,
+                categoryName: category?.name || "",
+                options: selectedOptions,
+              };
+            })
+            .filter((mod) => mod.options.length > 0)
+        : [];
+
+      if (currentState.customModifiers.length > 0) {
+        selectedModifiers.push({
+          categoryId: CUSTOM_MODIFIER_CATEGORY_ID,
+          categoryName: CUSTOM_MODIFIER_CATEGORY_NAME,
+          options: currentState.customModifiers.map((m) => ({
+            id: m.id,
+            name: m.name,
+            price: m.price,
+            isNo: undefined,
+          })),
+        });
+      }
+
+      const finalCustomizations = {
+        modifiers: selectedModifiers,
+        notes: currentState.notes,
+      };
+
+      if (
+        currentMode === "edit" ||
+        (currentMode === "fullscreen" && currentCartItem)
+      ) {
+        if (!currentCartItem) {
+          return;
+        }
+        // The modifier's cartItem is a snapshot captured when the sheet opened;
+        // for a freshly-added item it can predate the backend sync and therefore
+        // lack db_order_item_id even though the item has since synced. Re-read the
+        // LIVE order-store item so we (a) don't wipe the linked db_order_item_id by
+        // writing the stale snapshot back, and (b) can actually persist the TO GO
+        // change instead of silently dropping it (the bug where an item shows
+        // [TO GO] locally but is_to_go stays false on the server).
+        const liveStoreItem = useOrderStore
+          .getState()
+          .ordersById[
+            useOrderStore.getState().activeOrderId ?? ""
+          ]?.items.find((i) => i.id === currentCartItem.id);
+        const resolvedDbItemId =
+          liveStoreItem?.db_order_item_id ?? currentCartItem.db_order_item_id;
+
+        const updatedItem = {
+          ...currentCartItem,
+          db_order_item_id: resolvedDbItemId,
+          quantity: currentState.quantity,
+          price: currentTotal / Math.max(1, currentState.quantity),
+          customizations: finalCustomizations,
+          isDraft: false,
+          is_to_go: currentState.isToGo,
+          seatNumber:
+            shouldApplySeat && seatVal !== undefined
+              ? seatVal
+              : currentCartItem.seatNumber,
+          subtotal: undefined,
+          cashSubtotal: undefined,
+          taxAmount: undefined,
+          cashTaxAmount: undefined,
+        };
+        updateItemInActiveOrder(updatedItem);
+
+        // Persist the per-item TO GO flag whenever it changed and the item has a
+        // backend row (resolved fresh above). If it still has no db id (truly not
+        // synced yet), addItemToBackend's reconcile fires the toggle when the id
+        // lands, so the change is never lost.
+        persistToGoIfChanged(
+          supabaseRef.current,
+          resolvedDbItemId,
+          currentCartItem.is_to_go,
+          currentState.isToGo,
+        );
+
+        // Ensure manual sync matches the updated seat
+        if (shouldApplySeat) {
+          const ordId = useOrderStore.getState().activeOrderId;
+          if (ordId) {
+            useSeatingStore
+              .getState()
+              .setItemSeat(
+                ordId,
+                currentCartItem.id,
+                seatVal,
+                currentCartItem.db_order_item_id,
+                true,
+              );
 
             // Sync back to global active seat so subsequent items pick it up
-            useSeatingStore.getState().setActiveSeat(ordId, seatVal)
+            useSeatingStore.getState().setActiveSeat(ordId, seatVal);
           }
         }
         showToast({
-          title: 'Item Updated',
+          title: "Item Updated",
           message: `Your changes to ${item?.name} have been saved.`,
-          type: 'success'
-        })
+          type: "success",
+        });
       } else {
-        const itemCashPrice = resolvedCashPrice
+        const itemCashPrice = resolvedCashPrice;
         const categoryName = catId
           ? useMenuStore.getState().getCategoryById(catId)?.name
-          : undefined
+          : undefined;
         const newItem = {
           id: generateCartItemId(baseItem.id, finalCustomizations),
           menuItemId: baseItem.id,
@@ -1170,120 +1610,229 @@ const ModifierScreen = () => {
           appliedDiscount: null,
           paidQuantity: 0,
           isDraft: false,
+          is_to_go: currentState.isToGo,
           seatNumber:
             shouldApplySeat && seatVal !== undefined ? seatVal : undefined,
           addedFromCategoryId: catId || null,
           addedFromMenuId: mId || null,
           category_name: categoryName || undefined,
           baseCardPrice: baseItem.price,
-          baseCashPrice: baseItem.cashPrice ?? baseItem.price
-        }
-        addItemToActiveOrder(newItem)
+          baseCashPrice: baseItem.cashPrice ?? baseItem.price,
+        };
+        addItemToActiveOrder(newItem);
         // Apply seat override synchronously so useTableSeating's effect skips this item
         if (shouldApplySeat) {
-          const ordId = useOrderStore.getState().activeOrderId
+          const ordId = useOrderStore.getState().activeOrderId;
           if (ordId) {
             useSeatingStore
               .getState()
-              .setItemSeat(ordId, newItem.id, seatVal, undefined, true)
+              .setItemSeat(ordId, newItem.id, seatVal, undefined, true);
 
             // Sync back to global active seat so subsequent items pick it up
-            useSeatingStore.getState().setActiveSeat(ordId, seatVal)
+            useSeatingStore.getState().setActiveSeat(ordId, seatVal);
           }
         }
       }
-    })
-  }, [])
+    }, 0);
+  }, []);
 
   const handleCancel = useCallback(() => {
-    actionHandledRef.current = true
+    actionHandledRef.current = true;
     const {
       mode: currentMode,
       cartItem: cart,
       currentItem: item,
-      close: closeModal
-    } = latestStateRef.current
+      close: closeModal,
+    } = latestStateRef.current;
+    closeModal();
     if (
-      currentMode !== 'edit' &&
-      !(currentMode === 'fullscreen' && cart) &&
+      currentMode !== "edit" &&
+      !(currentMode === "fullscreen" && cart) &&
       !cart &&
       item
     ) {
-      removeDraftItems(item.id)
-      lastDraftMenuItemIdRef.current = null
+      const draftItemId = item.id;
+      lastDraftMenuItemIdRef.current = null;
+      // setTimeout(0), not runAfterInteractions — same reasoning as
+      // handleSave: avoids batching with this screen's pending reveal/grow
+      // handles which could delay cleanup past the next item's open().
+      setTimeout(() => {
+        removeDraftItems(draftItemId);
+      }, 0);
     }
-    closeModal()
-  }, [])
+  }, []);
 
   // ============================================================================
   // RENDER
   // ============================================================================
 
+  // IMPORTANT: These must be ABOVE early returns so hook count stays stable.
+  const currentCategory = state.activeCategory
+    ? (modifierCategoriesById.get(state.activeCategory) ?? null)
+    : null;
+
+  const visibleOptions = useMemo(() => {
+    if (!currentCategory) return [] as ModifierCategory["options"];
+    return currentCategory.options.slice(0, visibleOptionCount);
+  }, [currentCategory, visibleOptionCount]);
+
+  const visibleOptionRows = useMemo(() => {
+    const rows: ModifierCategory["options"][] = [];
+    for (let index = 0; index < visibleOptions.length; index += 5) {
+      rows.push(visibleOptions.slice(index, index + 5));
+    }
+    return rows;
+  }, [visibleOptions]);
+
+  // Progressively reveal options in chunks instead of mounting all options in one frame.
+  useEffect(() => {
+    if (!isOpen || !currentCategory) return;
+    const totalOptions = currentCategory.options.length;
+    if (visibleOptionCount >= totalOptions) return;
+    const chunkSize = Math.max(12, Math.ceil(totalOptions / 4));
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const growHandle = InteractionManager.runAfterInteractions(() => {
+      timeoutId = setTimeout(() => {
+        if (cancelled) return;
+        setVisibleOptionCount((prev) =>
+          Math.min(totalOptions, prev + chunkSize),
+        );
+      }, 24);
+    });
+
+    return () => {
+      cancelled = true;
+      growHandle.cancel();
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    };
+  }, [
+    isOpen,
+    currentCategory?.id,
+    currentCategory?.options.length,
+    visibleOptionCount,
+  ]);
+
+  const hasModifiers = !!(
+    menuItemForModifiers?.modifiers && menuItemForModifiers.modifiers.length > 0
+  );
+
   if (
-    cartItem?.kitchen_status === 'sent' ||
-    cartItem?.kitchen_status === 'preparing' ||
-    cartItem?.kitchen_status === 'ready' ||
-    cartItem?.kitchen_status === 'served'
+    cartItem?.kitchen_status === "sent" ||
+    cartItem?.kitchen_status === "preparing" ||
+    cartItem?.kitchen_status === "ready" ||
+    cartItem?.kitchen_status === "served"
   ) {
     return (
-      <View className='flex-1' style={{ backgroundColor: colors.screen }}>
+      <View className="flex-1" style={{ backgroundColor: colors.screen }}>
         {/* Header */}
         <View
-          className='flex-row items-center px-4 py-3 border-b'
+          className="flex-row items-center px-4 py-3 border-b"
           style={{ borderColor: colors.border }}
         >
           <TouchableOpacity
             onPressIn={close}
-            className='flex-row items-center gap-1.5'
+            className="flex-row items-center gap-1.5"
           >
-            <ArrowLeft color={colors.label} size={16} />
+            <ArrowLeft color={colors.label} size={s(16)} />
             <Text
-              className='text-sm font-medium'
+              className="text-sm font-medium"
               style={{ color: colors.label }}
             >
               Back to Bill
             </Text>
           </TouchableOpacity>
         </View>
-        <View className='flex-1 items-center justify-center p-5'>
+        <View className="flex-1 items-center justify-center p-5">
           <Text
-            className='text-lg font-bold text-center mb-1.5'
+            className="text-lg font-bold text-center mb-1.5"
             style={{ color: colors.heading }}
           >
             Item Already Sent
           </Text>
           <Text
-            className='text-sm text-center mb-4'
+            className="text-sm text-center mb-4"
             style={{ color: colors.label }}
           >
-            This item has been sent to the kitchen and cannot be modified.
+            This item is in the kitchen. Prep is locked, but you can still mark
+            it to-go.
           </Text>
           <View
-            className='rounded-xl p-3 w-full border flex-row items-center gap-3'
+            className="rounded-xl p-3 w-full border flex-row items-center gap-3"
             style={{
               backgroundColor: colors.panel,
-              borderColor: colors.border
+              borderColor: colors.border,
             }}
           >
-            <View className='flex-1'>
+            <View className="flex-1">
               <Text
-                className='text-sm font-semibold'
+                className="text-sm font-semibold"
                 style={{ color: colors.heading }}
               >
                 {cartItem.name}
               </Text>
-              <Text className='text-xs mt-0.5' style={{ color: colors.label }}>
+              <Text className="text-xs mt-0.5" style={{ color: colors.label }}>
                 Qty: {cartItem.quantity}
               </Text>
             </View>
           </View>
+
+          {/* TO GO — still editable after the item has been sent. Persists via
+              toggle_to_go_order_items, which bumps the order so the KDS re-fetches
+              and shows/hides the TO GO pill. */}
+          <View
+            className="rounded-xl p-3 mt-3 w-full border flex-row items-center justify-between"
+            style={{
+              backgroundColor: colors.panel,
+              borderColor: colors.border,
+            }}
+          >
+            <View className="flex-1 pr-3">
+              <Text
+                className="text-sm font-semibold"
+                style={{ color: colors.heading }}
+              >
+                TO GO
+              </Text>
+              <Text className="text-xs mt-0.5" style={{ color: colors.muted }}>
+                Package this item to-go
+              </Text>
+            </View>
+            <Switch
+              // Drive the Switch from fast local reducer state, NOT the frozen
+              // useModifierSidebarStore snapshot — `cartItem` is captured when
+              // the sheet opens and never updates, so binding `value` to it made
+              // the thumb animate forward then snap back (the "jolt") because the
+              // controlled value re-read the stale snapshot. state.isToGo flips
+              // instantly on dispatch. Mirrors the not-yet-sent toggle below.
+              value={state.isToGo}
+              onValueChange={(v) => {
+                dispatch({ type: "SET_TOGO", payload: v });
+                updateItemInActiveOrder({ ...cartItem, is_to_go: v });
+                if (cartItem.db_order_item_id && supabaseRef.current) {
+                  OrderService.toggleToGoOnItems(
+                    supabaseRef.current,
+                    [cartItem.db_order_item_id],
+                    v,
+                  ).catch(() => {
+                    // Fire-and-forget: local flag is set; a later broadcast
+                    // re-fetch reconciles the server state.
+                  });
+                }
+              }}
+              trackColor={{ false: colors.border, true: colors.teal }}
+              thumbColor={colors.onSolid}
+            />
+          </View>
+
           <TouchableOpacity
             onPressIn={close}
-            className='mt-4 px-6 py-2.5 rounded-full'
+            className="mt-4 px-6 py-2.5 rounded-full"
             style={{ backgroundColor: colors.teal }}
           >
             <Text
-              className='text-sm font-semibold'
+              className="text-sm font-semibold"
               style={{ color: colors.onSolid }}
             >
               Back to Bill
@@ -1291,89 +1840,81 @@ const ModifierScreen = () => {
           </TouchableOpacity>
         </View>
       </View>
-    )
+    );
   }
 
-  if (!isOpen) return null
+  if (!shouldPaintScreen) return null;
 
   if (!currentItem) {
     return (
       <View
-        className='flex-1 items-center justify-center'
+        className="flex-1 items-center justify-center"
         style={{ backgroundColor: colors.screen }}
       >
         <Text style={{ color: colors.label }}>Loading item...</Text>
       </View>
-    )
+    );
   }
-
-  const currentCategory = state.activeCategory
-    ? modifierCategoriesById.get(state.activeCategory) ?? null
-    : null
-
-  const visibleOptions = useMemo(() => {
-    if (!currentCategory) return [] as ModifierCategory['options']
-    return currentCategory.options.slice(0, visibleOptionCount)
-  }, [currentCategory, visibleOptionCount])
-
-  const hasModifiers = !!(
-    menuItemForModifiers?.modifiers && menuItemForModifiers.modifiers.length > 0
-  )
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className='flex-1'
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1"
       style={{ backgroundColor: colors.screen }}
+      onTouchStart={handleInitialInteraction}
     >
       {/* ── Top Bar ─────────────────────────────────────────────────────── */}
       <View
-        className='flex-row items-center justify-between px-4 py-2.5 border-b'
+        className="flex-row items-center justify-between px-4 py-2.5 border-b"
         style={{ borderColor: colors.border }}
       >
         <TouchableOpacity
           onPressIn={handleCancel}
-          className='flex-row items-center gap-1.5'
+          className="flex-row items-center gap-1.5"
         >
-          <ArrowLeft color={colors.label} size={16} />
-          <Text className='text-sm font-medium' style={{ color: colors.label }}>
-            {mode === 'edit' || (mode === 'fullscreen' && cartItem)
-              ? 'Bill'
-              : 'Menu'}
+          <ArrowLeft color={colors.label} size={s(16)} />
+          <Text className="text-sm font-medium" style={{ color: colors.label }}>
+            {mode === "edit" || (mode === "fullscreen" && cartItem)
+              ? "Bill"
+              : "Menu"}
           </Text>
         </TouchableOpacity>
 
-        <View className='flex-row items-center gap-2'>
+        <View className="flex-row items-center gap-2">
           {showSeatPicker && (
             <TouchableOpacity
-              onPressIn={() => dispatch({ type: 'TOGGLE_SEAT_PICKER' })}
+              onPressIn={() => dispatch({ type: "TOGGLE_SEAT_PICKER" })}
               style={{
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: 12,
-                backgroundColor: colors.teal + '20',
+                paddingHorizontal: s(10),
+                paddingVertical: s(4),
+                borderRadius: s(12),
+                backgroundColor: colors.teal + "20",
                 borderWidth: 1,
-                borderColor: colors.teal + '50'
+                borderColor: colors.teal + "50",
               }}
             >
               <Text
-                style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}
+                style={{
+                  fontSize: s(11),
+                  fontWeight: "600",
+                  color: colors.teal,
+                }}
               >
-                {seatOverride === null ? 'Shared' : `Seat ${seatOverride}`}
+                {seatOverride === null ? "Shared" : `Seat ${seatOverride}`}
               </Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity onPressIn={handleCancel} className='p-1.5'>
-            <X color={colors.label} size={16} />
+          <TouchableOpacity onPressIn={handleCancel} className="p-1.5">
+            <X color={colors.label} size={s(16)} />
           </TouchableOpacity>
           <TouchableOpacity
             onPressIn={handleSave}
-            className='flex-row items-center gap-1.5 px-4 py-2 rounded-full'
+            className="flex-row items-center gap-1.5 px-4 py-2 rounded-full"
             style={{ backgroundColor: colors.teal }}
           >
-            <Check color={colors.onSolid} size={13} strokeWidth={2.5} />
+            <Check color={colors.onSolid} size={s(13)} strokeWidth={2.5} />
             <Text
-              className='text-sm font-semibold'
+              className="text-sm font-semibold"
               style={{ color: colors.onSolid }}
             >
               Done · ${total.toFixed(2)}
@@ -1382,22 +1923,44 @@ const ModifierScreen = () => {
         </View>
       </View>
 
-      <ScrollView className='flex-1' showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollViewRef}
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{
+          paddingBottom: keyboardInset > 0 ? keyboardInset + 24 : 24,
+        }}
+      >
         {/* ── Item Header ─────────────────────────────────────────────────── */}
         <View
-          className='flex-row items-center gap-3 px-4 py-3 border-b'
+          className="flex-row items-center gap-3 px-4 py-3 border-b"
           style={{ borderColor: colors.border }}
         >
-          {showSecondarySections && showMenuImages && resolvedImageSource ? (
-            <OptimizedListImage
-              source={resolvedImageSource}
-              style={{ width: 48, height: 48, borderRadius: 8 }}
-              contentFit='cover'
-            />
+          {showMenuImages ? (
+            <View
+              style={{
+                width: s(48),
+                height: s(48),
+                borderRadius: s(8),
+                overflow: "hidden",
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            >
+              {showSecondarySections && resolvedImageSource ? (
+                <OptimizedListImage
+                  source={resolvedImageSource}
+                  style={{ width: s(48), height: s(48) }}
+                  contentFit="cover"
+                />
+              ) : null}
+            </View>
           ) : null}
-          <View className='flex-1'>
+          <View className="flex-1">
             <Text
-              className='text-base font-bold'
+              className="text-base font-bold"
               style={{ color: colors.heading }}
               numberOfLines={1}
             >
@@ -1405,7 +1968,7 @@ const ModifierScreen = () => {
             </Text>
             {menuItemForModifiers?.description ? (
               <Text
-                className='text-xs mt-0.5'
+                className="text-xs mt-0.5"
                 style={{ color: colors.label }}
                 numberOfLines={1}
               >
@@ -1414,7 +1977,7 @@ const ModifierScreen = () => {
             ) : null}
           </View>
           <Text
-            className='text-base font-bold'
+            className="text-base font-bold"
             style={{ color: colors.heading }}
           >
             ${getCurrentItemPrice(currentItem).toFixed(2)}
@@ -1422,13 +1985,13 @@ const ModifierScreen = () => {
         </View>
 
         {/* ── Seat Picker ──────────────────────────────────────────────────── */}
-        {showSecondarySections && state.isSeatPickerOpen && showSeatPicker && (
+        {shouldShowSeatPicker && (
           <View
-            className='px-4 py-3 border-t'
+            className="px-4 py-3 border-t"
             style={{ borderColor: colors.border }}
           >
             <Text
-              className='text-sm font-semibold mb-2'
+              className="text-sm font-semibold mb-2"
               style={{ color: colors.heading }}
             >
               Assign to Seat
@@ -1436,80 +1999,46 @@ const ModifierScreen = () => {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 6 }}
+              contentContainerStyle={{ gap: s(6) }}
             >
-              <TouchableOpacity
-                onPressIn={() => setSeatOverride(null)}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 6,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  backgroundColor:
-                    seatOverride === null ? colors.teal + '20' : 'transparent',
-                  borderColor:
-                    seatOverride === null ? colors.teal : colors.border
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: '600',
-                    color: seatOverride === null ? colors.teal : colors.label
-                  }}
-                >
-                  Shared
-                </Text>
-              </TouchableOpacity>
-              {Array.from({ length: seatCount }, (_, i) => i + 1).map(seat => (
-                <TouchableOpacity
-                  key={seat}
-                  onPressIn={() => setSeatOverride(seat)}
-                  style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 6,
-                    borderRadius: 16,
-                    borderWidth: 1,
-                    backgroundColor:
-                      seatOverride === seat
-                        ? colors.teal + '20'
-                        : 'transparent',
-                    borderColor:
-                      seatOverride === seat ? colors.teal : colors.border
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: '600',
-                      color: seatOverride === seat ? colors.teal : colors.label
-                    }}
-                  >
-                    Seat {seat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              <SeatPill
+                seat={null}
+                label="Shared"
+                isSelected={seatOverride === null}
+                onSelect={setSeatOverride}
+              />
+              {Array.from({ length: seatCount }, (_, i) => i + 1).map(
+                (seat) => (
+                  <SeatPill
+                    key={seat}
+                    seat={seat}
+                    label={`Seat ${seat}`}
+                    isSelected={seatOverride === seat}
+                    onSelect={setSeatOverride}
+                  />
+                ),
+              )}
             </ScrollView>
           </View>
         )}
 
         {/* ── Category Pill Tabs ──────────────────────────────────────────── */}
-        {hasModifiers && (
-          <View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{
-                paddingHorizontal: 16,
-                paddingVertical: 10,
-                gap: 6
-              }}
-              style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
-            >
-              {menuItemForModifiers!.modifiers.map(category => {
+        <View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingHorizontal: s(16),
+              paddingVertical: s(10),
+              gap: s(6),
+            }}
+            style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
+          >
+            {hasModifiers &&
+              menuItemForModifiers!.modifiers.map((category) => {
                 const hasSelection =
-                  (state.selectionCounts[category.id] ?? 0) > 0
-                const isActive = state.activeCategory === category.id
+                  (state.selectionCounts[category.id] ?? 0) > 0;
+                const isActive = state.activeCategory === category.id;
                 return (
                   <CategoryTab
                     key={category.id}
@@ -1518,111 +2047,201 @@ const ModifierScreen = () => {
                     hasSelection={hasSelection}
                     onPress={handleCategoryTabPress}
                   />
-                )
+                );
               })}
-            </ScrollView>
+            {!isReadOnly && (
+              <TouchableOpacity
+                onPressIn={handleOpenCustomModifierModal}
+                className="flex-row items-center gap-x-1 px-3 py-1.5 rounded-full border"
+                style={{
+                  backgroundColor: "transparent",
+                  borderColor: colors.teal,
+                  borderStyle: "dashed",
+                }}
+              >
+                <Plus color={colors.teal} size={s(11)} strokeWidth={3} />
+                <Text
+                  className="text-xs font-semibold"
+                  style={{ color: colors.teal }}
+                >
+                  Custom Modifier
+                </Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
 
-            {/* ── Active Category Options ──────────────────────────────── */}
-            {currentCategory && (
-              <View className='px-4 pt-3 pb-2'>
-                {/* Sub-header row */}
-                <View className='flex-row items-center justify-between mb-3'>
+          {/* ── Active Category Options ──────────────────────────────── */}
+          {currentCategory && (
+            <View className="px-4 pt-3 pb-2">
+              {/* Sub-header row */}
+              <View className="flex-row items-center justify-between mb-3">
+                <Text
+                  className="text-sm font-bold"
+                  style={{ color: colors.heading }}
+                >
+                  {currentCategory.name}
+                </Text>
+                <View className="flex-row items-center gap-1.5">
                   <Text
-                    className='text-sm font-bold'
-                    style={{ color: colors.heading }}
+                    className="text-xs font-semibold"
+                    style={{
+                      color:
+                        currentCategory.type === "required"
+                          ? colors.warning
+                          : colors.label,
+                    }}
                   >
-                    {currentCategory.name}
+                    {currentCategory.type === "required"
+                      ? "Required"
+                      : "Optional"}
                   </Text>
-                  <View className='flex-row items-center gap-1.5'>
-                    <Text
-                      className='text-xs font-semibold'
-                      style={{
-                        color:
-                          currentCategory.type === 'required'
-                            ? colors.warning
-                            : colors.label
-                      }}
-                    >
-                      {currentCategory.type === 'required'
-                        ? 'Required'
-                        : 'Optional'}
-                    </Text>
-                    <Text className='text-xs' style={{ color: colors.muted }}>
-                      ·
-                    </Text>
-                    <Text className='text-xs' style={{ color: colors.label }}>
-                      {currentCategory.selectionType === 'single'
-                        ? 'Single Select'
-                        : currentCategory.maxSelections
+                  <Text className="text-xs" style={{ color: colors.muted }}>
+                    ·
+                  </Text>
+                  <Text className="text-xs" style={{ color: colors.label }}>
+                    {currentCategory.selectionType === "single"
+                      ? "Single Select"
+                      : currentCategory.maxSelections
                         ? `Up to ${currentCategory.maxSelections}`
-                        : 'Multi Select'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Options grid */}
-                <View className='flex-row flex-wrap gap-2'>
-                  {visibleOptions.map(
-                    (option: ModifierCategory['options'][number]) => {
-                      const selVal =
-                        state.modifierSelections[currentCategory.id]?.[
-                          option.id
-                        ]
-                      const isSelected = selVal === true || selVal === 'no'
-                      const isNo = selVal === 'no'
-                      const isUnavailable = option.isAvailable === false
-                      return (
-                        <ModifierOption
-                          key={option.id}
-                          option={option}
-                          categoryId={currentCategory.id}
-                          isSelected={isSelected}
-                          isNo={isNo}
-                          isUnavailable={isUnavailable}
-                          isReadOnly={isReadOnly}
-                          onToggle={handleModifierToggle}
-                          onLongPress={handleNoModifierToggle}
-                        />
-                      )
-                    }
-                  )}
+                        : "Multi Select"}
+                  </Text>
                 </View>
               </View>
-            )}
+
+              {/* Options grid */}
+              <View style={{ maxHeight: 320 }}>
+                <ScrollView
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={visibleOptions.length > 9}
+                  contentContainerStyle={{
+                    paddingBottom: s(2),
+                  }}
+                >
+                  {visibleOptionRows.map((row, rowIndex) => (
+                    <View
+                      key={`modifier-row-${rowIndex}`}
+                      style={{
+                        flexDirection: "row",
+                        gap: s(8),
+                        justifyContent: "flex-start",
+                        marginBottom: s(8),
+                      }}
+                    >
+                      {row.map((option) => {
+                        const selVal =
+                          state.modifierSelections[currentCategory.id]?.[
+                            option.id
+                          ];
+                        const isSelected = selVal === true || selVal === "no";
+                        const isNo = selVal === "no";
+                        const isUnavailable = option.isAvailable === false;
+
+                        return (
+                          <ModifierOption
+                            key={option.id}
+                            option={option}
+                            categoryId={currentCategory.id}
+                            isSelected={isSelected}
+                            isNo={isNo}
+                            isUnavailable={isUnavailable}
+                            isReadOnly={isReadOnly}
+                            onToggle={handleModifierToggle}
+                            onLongPress={handleNoModifierToggle}
+                          />
+                        );
+                      })}
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* ── Custom Modifiers ─────────────────────────────────────────────── */}
+        {state.customModifiers.length > 0 && (
+          <View
+            className="px-4 py-3 border-t"
+            style={{ borderColor: colors.border }}
+          >
+            <Text
+              className="text-sm font-semibold mb-2"
+              style={{ color: colors.heading }}
+            >
+              Custom Modifiers
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {state.customModifiers.map((mod) => (
+                <View
+                  key={mod.id}
+                  className="flex-row items-center gap-x-1.5 pl-3 pr-1.5 py-1 rounded-full border"
+                  style={{
+                    backgroundColor: colors.teal + "20",
+                    borderColor: colors.teal,
+                  }}
+                >
+                  <View className="flex-row items-center gap-x-1.5">
+                    <Text
+                      className="text-xs font-semibold"
+                      style={{ color: colors.teal }}
+                    >
+                      {mod.name}
+                    </Text>
+                    {mod.price > 0 ? (
+                      <Text
+                        className="text-base font-semibold"
+                        style={{ color: MODIFIER_PRICE_DELTA_COLOR }}
+                      >
+                        +${mod.price.toFixed(2)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {!isReadOnly && (
+                    <TouchableOpacity
+                      onPressIn={() => handleRemoveCustomModifier(mod.id)}
+                      className="w-5 h-5 rounded-full items-center justify-center"
+                      style={{ backgroundColor: colors.teal }}
+                    >
+                      <X color={colors.onSolid} size={s(10)} strokeWidth={3} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </View>
           </View>
         )}
 
         {/* ── Quantity ─────────────────────────────────────────────────────── */}
         <View
-          className='px-4 py-3 border-t flex-col items-center justify-between'
+          className="px-4 py-3 border-t flex-col items-center justify-between"
           style={{ borderColor: colors.border }}
         >
-          <View className='flex-row justify-between items-center w-[100%]'>
+          <View className="flex-row justify-between items-center w-[100%]">
             <Text
-              className='text-sm font-semibold'
+              className="text-sm font-semibold"
               style={{ color: colors.heading }}
             >
               Quantity
             </Text>
-            <View className='flex-row items-center gap-3'>
+            <View className="flex-row items-center gap-3">
               <TouchableOpacity
                 disabled={isReadOnly}
                 onPressIn={handleQuantityDecrement}
-                className='w-8 h-8 rounded-full items-center justify-center'
+                className="w-8 h-8 rounded-full items-center justify-center"
                 style={{
                   backgroundColor: colors.panel,
                   borderWidth: 1,
-                  borderColor: colors.border
+                  borderColor: colors.border,
                 }}
               >
-                <Minus color={colors.heading} size={14} />
+                <Minus color={colors.heading} size={s(14)} />
               </TouchableOpacity>
               <TouchableOpacity
                 disabled={isReadOnly}
                 onPressIn={handleQuantityPress}
               >
                 <Text
-                  className='text-xl font-bold w-8 text-center'
+                  className="text-xl font-bold w-8 text-center"
                   style={{ color: colors.heading }}
                 >
                   {state.quantity}
@@ -1631,24 +2250,50 @@ const ModifierScreen = () => {
               <TouchableOpacity
                 disabled={isReadOnly}
                 onPressIn={handleQuantityIncrement}
-                className='w-8 h-8 rounded-full items-center justify-center'
+                className="w-8 h-8 rounded-full items-center justify-center"
                 style={{ backgroundColor: colors.teal }}
               >
-                <Plus color={colors.onSolid} size={14} />
+                <Plus color={colors.onSolid} size={s(14)} />
               </TouchableOpacity>
             </View>
           </View>
         </View>
 
+        {/* ── TO GO ────────────────────────────────────────────────────────── */}
+        <View
+          className="px-4 py-3 border-t flex-row items-center justify-between"
+          style={{ borderColor: colors.border }}
+        >
+          <View className="flex-1 pr-3">
+            <Text
+              className="text-sm font-semibold"
+              style={{ color: colors.heading }}
+            >
+              TO GO
+            </Text>
+            <Text className="text-xs mt-0.5" style={{ color: colors.muted }}>
+              Package this item to-go
+            </Text>
+          </View>
+          <Switch
+            value={state.isToGo}
+            disabled={isReadOnly}
+            onValueChange={(v) => dispatch({ type: "SET_TOGO", payload: v })}
+            trackColor={{ false: colors.border, true: colors.teal }}
+            thumbColor={colors.onSolid}
+          />
+        </View>
+
         {/* ── Special Instructions ─────────────────────────────────────────── */}
         <View
-          className='px-4 pb-3 border-t'
+          className="px-4 pb-3 border-t"
           style={{ borderColor: colors.border }}
         >
           <NotesInput
             initialValue={state.notes}
             isReadOnly={isReadOnly}
-            onChange={text => dispatch({ type: 'SET_NOTES', payload: text })}
+            onChange={handleNotesChange}
+            onFocus={handleNotesFocus}
           />
         </View>
 
@@ -1657,27 +2302,27 @@ const ModifierScreen = () => {
           menuItemForModifiers?.allergens &&
           menuItemForModifiers.allergens.length > 0 && (
             <View
-              className='px-4 pb-3 border-t'
+              className="px-4 pb-3 border-t"
               style={{ borderColor: colors.border }}
             >
               <Text
-                className='text-sm font-semibold mt-3 mb-2'
+                className="text-sm font-semibold mt-3 mb-2"
                 style={{ color: colors.heading }}
               >
                 Allergens
               </Text>
-              <View className='flex-row flex-wrap gap-1.5'>
-                {menuItemForModifiers.allergens.map(allergen => (
+              <View className="flex-row flex-wrap gap-1.5">
+                {menuItemForModifiers.allergens.map((allergen) => (
                   <View
                     key={allergen}
-                    className='px-2.5 py-1 rounded-full'
+                    className="px-2.5 py-1 rounded-full"
                     style={{
-                      backgroundColor: colors.danger + '20',
+                      backgroundColor: colors.danger + "20",
                       borderWidth: 1,
-                      borderColor: colors.danger + '30'
+                      borderColor: colors.danger + "30",
                     }}
                   >
-                    <Text className='text-xs' style={{ color: colors.danger }}>
+                    <Text className="text-xs" style={{ color: colors.danger }}>
                       {allergen}
                     </Text>
                   </View>
@@ -1691,48 +2336,48 @@ const ModifierScreen = () => {
       <Modal
         visible={state.isQuantityModalOpen}
         transparent
-        animationType='fade'
+        animationType="fade"
         onRequestClose={handleQuantityCancel}
       >
         <View
-          className='flex-1 justify-center items-center'
-          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+          className="flex-1 justify-center items-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
         >
           <View
-            className='rounded-2xl p-5 w-72 border'
+            className="rounded-2xl p-5 w-72 border"
             style={{
               backgroundColor: colors.panel,
-              borderColor: colors.border
+              borderColor: colors.border,
             }}
           >
             <Text
-              className='text-lg font-semibold mb-4 text-center'
+              className="text-lg font-semibold mb-4 text-center"
               style={{ color: colors.heading }}
             >
               Enter Quantity
             </Text>
             <TextInput
               value={state.quantityInput}
-              onChangeText={text =>
-                dispatch({ type: 'SET_QUANTITY_INPUT', payload: text })
+              onChangeText={(text) =>
+                dispatch({ type: "SET_QUANTITY_INPUT", payload: text })
               }
-              keyboardType='numeric'
+              keyboardType="numeric"
               autoFocus
-              className='rounded-xl text-2xl font-bold text-center h-14 mb-5 border'
+              className="rounded-xl text-2xl font-bold text-center h-14 mb-5 border"
               style={{
                 color: colors.heading,
                 backgroundColor: colors.inset,
-                borderColor: colors.border
+                borderColor: colors.border,
               }}
             />
-            <View className='flex-row gap-3'>
+            <View className="flex-row gap-3">
               <TouchableOpacity
                 onPressIn={handleQuantityCancel}
-                className='flex-1 py-3 rounded-xl items-center border'
+                className="flex-1 py-3 rounded-xl items-center border"
                 style={{ borderColor: colors.border }}
               >
                 <Text
-                  className='text-base font-semibold'
+                  className="text-base font-semibold"
                   style={{ color: colors.label }}
                 >
                   Cancel
@@ -1740,11 +2385,11 @@ const ModifierScreen = () => {
               </TouchableOpacity>
               <TouchableOpacity
                 onPressIn={handleQuantitySubmit}
-                className='flex-1 py-3 rounded-xl items-center'
+                className="flex-1 py-3 rounded-xl items-center"
                 style={{ backgroundColor: colors.teal }}
               >
                 <Text
-                  className='text-base font-semibold'
+                  className="text-base font-semibold"
                   style={{ color: colors.onSolid }}
                 >
                   Set
@@ -1754,8 +2399,145 @@ const ModifierScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* ── Custom Modifier Modal ───────────────────────────────────────── */}
+      <Modal
+        visible={state.isCustomModifierModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseCustomModifierModal}
+      >
+        <View
+          className="flex-1 justify-center items-center px-6"
+          style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+        >
+          <View
+            className="rounded-2xl p-5 w-96 max-w-full border"
+            style={{
+              backgroundColor: colors.panel,
+              borderColor: colors.border,
+            }}
+          >
+            <View className="flex-row items-center justify-between mb-4">
+              <Text
+                className="text-lg font-semibold"
+                style={{ color: colors.heading }}
+              >
+                Add Custom Modifier
+              </Text>
+              <TouchableOpacity
+                onPressIn={handleCloseCustomModifierModal}
+                className="w-7 h-7 rounded-full items-center justify-center"
+                style={{
+                  backgroundColor: colors.panel,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <X color={colors.label} size={s(14)} />
+              </TouchableOpacity>
+            </View>
+
+            <Text
+              className="text-xs font-semibold mb-1.5"
+              style={{ color: colors.label }}
+            >
+              Name
+            </Text>
+            <TextInput
+              value={state.customModifierNameInput}
+              onChangeText={(text) =>
+                dispatch({
+                  type: "SET_CUSTOM_MODIFIER_NAME",
+                  payload: text,
+                })
+              }
+              autoFocus
+              maxLength={40}
+              placeholder="e.g. Extra Avocado"
+              placeholderTextColor={colors.muted}
+              className="rounded-xl text-base text-left h-12 px-3 mb-3 border"
+              style={{
+                color: colors.heading,
+                backgroundColor: colors.inset,
+                borderColor: colors.border,
+              }}
+            />
+
+            <Text
+              className="text-xs font-semibold mb-1.5"
+              style={{ color: colors.label }}
+            >
+              Price (optional)
+            </Text>
+            <TextInput
+              value={state.customModifierPriceInput}
+              onChangeText={(text) =>
+                dispatch({
+                  type: "SET_CUSTOM_MODIFIER_PRICE",
+                  payload: text,
+                })
+              }
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              placeholderTextColor={colors.muted}
+              className="rounded-xl text-base text-left h-12 px-3 mb-5 border"
+              style={{
+                color: colors.heading,
+                backgroundColor: colors.inset,
+                borderColor: colors.border,
+              }}
+            />
+
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                onPressIn={handleCloseCustomModifierModal}
+                className="flex-1 py-3 rounded-xl items-center border"
+                style={{ borderColor: colors.border }}
+              >
+                <Text
+                  className="text-base font-semibold"
+                  style={{ color: colors.label }}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPressIn={handleConfirmCustomModifier}
+                disabled={state.customModifierNameInput.trim().length === 0}
+                className="flex-1 py-3 rounded-xl items-center"
+                style={{
+                  backgroundColor:
+                    state.customModifierNameInput.trim().length === 0
+                      ? colors.teal + "60"
+                      : colors.teal,
+                }}
+              >
+                <Text
+                  className="text-base font-semibold"
+                  style={{ color: colors.onSolid }}
+                >
+                  Add
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
-  )
+  );
+};
+
+interface ModifierScreenProps {
+  keepMountedDuringClose?: boolean;
 }
 
-export default ModifierScreen
+const ModifierScreen = ({
+  keepMountedDuringClose = false,
+}: ModifierScreenProps) => {
+  return (
+    <ModifierScreenContent keepMountedDuringClose={keepMountedDuringClose} />
+  );
+};
+
+export default memo(ModifierScreen);

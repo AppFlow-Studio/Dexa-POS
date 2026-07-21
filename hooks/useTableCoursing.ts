@@ -11,9 +11,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled = true) {
   const orderId = activeOrder?.id;
 
-  // Granular selectors: short-circuit when disabled to skip subscription overhead
-  const orderCoursing = useCoursingStore(
-    (s) => enabled ? s.byOrderId[orderId || ""] : undefined,
+  // Wave 4.1: granular field subscriptions. Was a single fat selector returning
+  // the entire OrderCoursing object — any mutation (syncing flag, dbIdToCourseMap,
+  // lastSyncAt, etc.) bumped the reference and re-rendered every consumer of
+  // this hook. Now each downstream value subscribes to the exact slice it needs.
+  const courses = useCoursingStore(
+    (s) => (enabled ? s.byOrderId[orderId || ""]?.courses : undefined),
+  );
+  const itemCourseMap = useCoursingStore(
+    (s) => (enabled ? s.byOrderId[orderId || ""]?.itemCourseMap : undefined),
+  );
+  const workingCourse = useCoursingStore(
+    (s) => (enabled ? s.byOrderId[orderId || ""]?.workingCourse : undefined),
   );
   const initializeForOrder = useCoursingStore((s) => s.initializeForOrder);
   const loadFromServer = useCoursingStore((s) => s.loadFromServer);
@@ -25,6 +34,8 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
   const unmarkCourseSent = useCoursingStore((s) => s.unmarkCourseSent);
   const markCourseServed = useCoursingStore((s) => s.markCourseServed);
   const finalizeCurrentCourse = useCoursingStore((s) => s.finalizeCurrentCourse);
+  const createNextCourse = useCoursingStore((s) => s.createNextCourse);
+  const removeCourse = useCoursingStore((s) => s.removeCourse);
 
   const [coursingInitialized, setCoursingInitialized] = useState(false);
   const prevItemIdsRef = useRef<string[]>([]);
@@ -49,6 +60,15 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
     initializeForOrder(orderId, activeOrder?.db_order_id);
 
     if (!activeOrder?.db_order_id) {
+      setCoursingInitialized(true);
+      return;
+    }
+
+    // Skip server load if data was fetched recently (e.g., user re-tapped same table).
+    // 10s threshold: short enough to catch updates from other stations,
+    // long enough to avoid redundant RPCs on back-to-back opens.
+    const existing = useCoursingStore.getState().byOrderId[orderId];
+    if (existing?.lastSyncAt && Date.now() - existing.lastSyncAt.getTime() < 10_000) {
       setCoursingInitialized(true);
       return;
     }
@@ -155,13 +175,23 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
             course = state?.workingCourse ?? 1;
           }
 
+          // Skip the backend RPC when: the target course is already fired
+          // (can't edit it) OR the server already has this item mapped to
+          // the same course (no-op RPC wastes a round-trip and adds race
+          // surface against ensure_course_exists on bulk re-sync).
           const courseStatus = state?.courses?.[course]?.status;
+          const existingDbCourse =
+            state?.dbIdToCourseMap?.[item.db_order_item_id];
+          const alreadyMatches = existingDbCourse === course;
+          const skipBackendSync =
+            alreadyMatches || !!(courseStatus && courseStatus !== "open");
+
           setItemCourse(
             orderId,
             item.id,
             course,
             item.db_order_item_id,
-            !!(courseStatus && courseStatus !== "open"),
+            skipBackendSync,
           );
           syncedDbItemsRef.current.add(item.db_order_item_id);
         }
@@ -174,23 +204,30 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, itemIds, dbItemIdsHash, coursingInitialized]);
 
-  const currentCourse = orderCoursing?.workingCourse ?? 1;
+  const currentCourse = workingCourse ?? 1;
 
-  const sentCourses = useMemo(() => {
+  // Single pass over `courses` builds both maps — saves one O(k) walk per
+  // coursing mutation that triggers this hook.
+  const { sentCourses, courseSentAtMap } = useMemo(() => {
     const sentMap: Record<number, boolean> = {};
-    if (orderCoursing?.courses) {
-      Object.entries(orderCoursing.courses).forEach(([num, info]) => {
-        sentMap[Number(num)] = info.status !== "open";
-      });
+    const firedAtMap: Record<number, number> = {};
+    if (courses) {
+      for (const num in courses) {
+        const info = courses[num as unknown as number];
+        const key = Number(num);
+        sentMap[key] = info.status !== "open";
+        if (info.firedAt) {
+          firedAtMap[key] = new Date(info.firedAt).getTime();
+        }
+      }
     }
-    return sentMap;
-  }, [orderCoursing?.courses]);
-
-  const itemCourseMap = orderCoursing?.itemCourseMap;
+    return { sentCourses: sentMap, courseSentAtMap: firedAtMap };
+  }, [courses]);
 
   return {
     currentCourse,
     sentCourses,
+    courseSentAtMap,
     itemCourseMap,
     coursingInitialized,
     setCurrentCourse,
@@ -200,6 +237,8 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined, enabled 
     markCourseServed,
     getForOrder,
     finalizeCurrentCourse,
+    createNextCourse,
+    removeCourse,
     setItemCourse,
   };
 }

@@ -16,7 +16,6 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
   CheckCircle2,
   Clock,
-  Package,
   PauseCircle,
   PlayCircle,
   Utensils
@@ -65,28 +64,30 @@ const TIMELINE_COLORS_HEX = [
 
 // Timeline bar across 24h
 const MenuTimeline = ({ menus }: { menus: any[] }) => {
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
   const TOTAL_MINUTES = 24 * 60
   return (
-    <View style={{ marginBottom: 8 }}>
+    <View style={{ marginBottom: s(8) }}>
       <View
         style={{
           flexDirection: 'row',
           justifyContent: 'space-between',
-          marginBottom: 4,
-          paddingHorizontal: 2
+          marginBottom: s(4),
+          paddingHorizontal: s(2)
         }}
       >
-        <Text style={{ fontSize: 11, color: colors.muted }}>6 AM</Text>
-        <Text style={{ fontSize: 11, color: colors.muted }}>12 PM</Text>
-        <Text style={{ fontSize: 11, color: colors.muted }}>6 PM</Text>
-        <Text style={{ fontSize: 11, color: colors.muted }}>12 AM</Text>
+        <Text style={{ fontSize: s(11), color: colors.muted }}>6 AM</Text>
+        <Text style={{ fontSize: s(11), color: colors.muted }}>12 PM</Text>
+        <Text style={{ fontSize: s(11), color: colors.muted }}>6 PM</Text>
+        <Text style={{ fontSize: s(11), color: colors.muted }}>12 AM</Text>
       </View>
       <View
         style={{
-          height: 28,
+          height: s(28),
           width: '100%',
           backgroundColor: colors.border,
-          borderRadius: 8,
+          borderRadius: s(8),
           overflow: 'hidden',
           position: 'relative'
         }}
@@ -119,7 +120,7 @@ const MenuTimeline = ({ menus }: { menus: any[] }) => {
               <Text
                 numberOfLines={1}
                 style={{
-                  fontSize: 9,
+                  fontSize: s(9),
                   fontWeight: '700',
                   color: colors.onSolid
                 }}
@@ -134,11 +135,14 @@ const MenuTimeline = ({ menus }: { menus: any[] }) => {
   )
 }
 
+import { useUiScale } from '@/lib/uiScale'
 import { useRouter } from 'expo-router'
 
 const OnlineOrderingScreen = () => {
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   // Store Connection
   const onlineOrderingEnabled = useStoreSettingsStore(
@@ -196,46 +200,46 @@ const OnlineOrderingScreen = () => {
       style={{
         flex: 1,
         backgroundColor: colors.screen,
-        paddingHorizontal: 14,
-        paddingVertical: 10
+        paddingHorizontal: s(14),
+        paddingVertical: s(10)
       }}
     >
-      <View style={{ marginBottom: 10 }}>
+      <View style={{ marginBottom: s(10) }}>
         <Text
-          style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
         >
           Online Ordering
         </Text>
-        <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
+        <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
           Manage orders, workflows, and scheduling.
         </Text>
       </View>
 
       <View
-        style={{ height: 1, backgroundColor: colors.border, marginBottom: 10 }}
+        style={{ height: 1, backgroundColor: colors.border, marginBottom: s(10) }}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + s(80) }}
       >
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: s(10) }}>
           {/* 1. Order Status Control */}
           <View
             style={{
               backgroundColor: colors.panel,
-              borderRadius: 12,
+              borderRadius: s(12),
               borderWidth: 1,
               borderColor: colors.border,
-              padding: 12
+              padding: s(12)
             }}
           >
             <Text
               style={{
-                fontSize: 13,
+                fontSize: s(13),
                 fontWeight: '700',
                 color: colors.heading,
-                marginBottom: 10
+                marginBottom: s(10)
               }}
             >
               Order Status Control
@@ -247,24 +251,24 @@ const OnlineOrderingScreen = () => {
               }
               style={{
                 width: '100%',
-                height: 48,
+                height: s(48),
                 backgroundColor: buttonColor + '20',
-                borderRadius: 10,
+                borderRadius: s(10),
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 10,
+                gap: s(10),
                 borderWidth: 1,
                 borderColor: buttonColor + '50'
               }}
             >
               {React.createElement(buttonIcon, {
-                size: 20,
+                size: s(20),
                 color: buttonColor
               })}
               <Text
                 style={{
-                  fontSize: 13,
+                  fontSize: s(13),
                   fontWeight: '700',
                   color: buttonColor,
                   letterSpacing: 0.8
@@ -276,10 +280,10 @@ const OnlineOrderingScreen = () => {
 
             {/* Pause Reason (when disabled) */}
             {isOrdersPaused && (
-              <View style={{ gap: 8, marginTop: 12 }}>
+              <View style={{ gap: s(8), marginTop: s(12) }}>
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     color: colors.label,
                     fontWeight: '500'
                   }}
@@ -331,7 +335,7 @@ const OnlineOrderingScreen = () => {
                 </Select>
 
                 {/* Base prep time when disabled */}
-                <View style={{ marginTop: 8, gap: 10 }}>
+                <View style={{ marginTop: s(8), gap: s(10) }}>
                   <View
                     style={{
                       flexDirection: 'row',
@@ -339,12 +343,12 @@ const OnlineOrderingScreen = () => {
                       alignItems: 'center'
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: colors.label }}>
+                    <Text style={{ fontSize: s(12), color: colors.label }}>
                       Base Prep Time Quote
                     </Text>
                     <Text
                       style={{
-                        fontSize: 15,
+                        fontSize: s(15),
                         fontWeight: '700',
                         color: colors.teal
                       }}
@@ -359,7 +363,7 @@ const OnlineOrderingScreen = () => {
                     max={60}
                     step={5}
                   />
-                  <Text style={{ fontSize: 11, color: colors.muted }}>
+                  <Text style={{ fontSize: s(11), color: colors.muted }}>
                     Customers will see this as the estimated wait time while
                     orders are paused.
                   </Text>
@@ -375,8 +379,8 @@ const OnlineOrderingScreen = () => {
               <View
                 style={{
                   backgroundColor: colors.panel,
-                  padding: 12,
-                  borderRadius: 12,
+                  padding: s(12),
+                  borderRadius: s(12),
                   borderWidth: 1,
                   borderColor: colors.border,
                   flexDirection: 'row',
@@ -387,10 +391,10 @@ const OnlineOrderingScreen = () => {
                 <View style={{ alignItems: 'center', flex: 1 }}>
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       color: colors.label,
                       textTransform: 'uppercase',
-                      marginBottom: 4,
+                      marginBottom: s(4),
                       letterSpacing: 0.6
                     }}
                   >
@@ -398,7 +402,7 @@ const OnlineOrderingScreen = () => {
                   </Text>
                   <Text
                     style={{
-                      fontSize: 18,
+                      fontSize: s(18),
                       fontWeight: '700',
                       color: colors.heading
                     }}
@@ -409,17 +413,17 @@ const OnlineOrderingScreen = () => {
                 <View
                   style={{
                     width: 1,
-                    height: 32,
+                    height: s(32),
                     backgroundColor: colors.border
                   }}
                 />
                 <View style={{ alignItems: 'center', flex: 1 }}>
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       color: colors.label,
                       textTransform: 'uppercase',
-                      marginBottom: 4,
+                      marginBottom: s(4),
                       letterSpacing: 0.6
                     }}
                   >
@@ -427,7 +431,7 @@ const OnlineOrderingScreen = () => {
                   </Text>
                   <Text
                     style={{
-                      fontSize: 18,
+                      fontSize: s(18),
                       fontWeight: '700',
                       color: colors.heading
                     }}
@@ -438,17 +442,17 @@ const OnlineOrderingScreen = () => {
                 <View
                   style={{
                     width: 1,
-                    height: 32,
+                    height: s(32),
                     backgroundColor: colors.border
                   }}
                 />
                 <View style={{ alignItems: 'center', flex: 1 }}>
                   <Text
                     style={{
-                      fontSize: 10,
+                      fontSize: s(10),
                       color: colors.label,
                       textTransform: 'uppercase',
-                      marginBottom: 4,
+                      marginBottom: s(4),
                       letterSpacing: 0.6
                     }}
                   >
@@ -456,7 +460,7 @@ const OnlineOrderingScreen = () => {
                   </Text>
                   <Text
                     style={{
-                      fontSize: 18,
+                      fontSize: s(18),
                       fontWeight: '700',
                       color: colors.teal
                     }}
@@ -470,42 +474,42 @@ const OnlineOrderingScreen = () => {
               <View
                 style={{
                   backgroundColor: colors.panel,
-                  borderRadius: 12,
+                  borderRadius: s(12),
                   borderWidth: 1,
                   borderColor: colors.border,
-                  padding: 12
+                  padding: s(12)
                 }}
               >
                 <View
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 10,
-                    marginBottom: 14
+                    gap: s(10),
+                    marginBottom: s(14)
                   }}
                 >
                   <View
                     style={{
-                      width: 32,
-                      height: 32,
+                      width: s(32),
+                      height: s(32),
                       backgroundColor: colors.teal + '15',
-                      borderRadius: 8,
+                      borderRadius: s(8),
                       alignItems: 'center',
                       justifyContent: 'center'
                     }}
                   >
-                    <Clock color={colors.teal} size={16} />
+                    <Clock color={colors.teal} size={s(16)} />
                   </View>
                   <View
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 8
+                      gap: s(8)
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '700',
                         color: colors.heading
                       }}
@@ -515,16 +519,16 @@ const OnlineOrderingScreen = () => {
                     <View
                       style={{
                         backgroundColor: colors.teal + '20',
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        borderRadius: 20,
+                        paddingHorizontal: s(6),
+                        paddingVertical: s(2),
+                        borderRadius: s(20),
                         borderWidth: 1,
                         borderColor: colors.teal + '50'
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 9,
+                          fontSize: s(9),
                           color: colors.teal,
                           fontWeight: '700'
                         }}
@@ -540,10 +544,10 @@ const OnlineOrderingScreen = () => {
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    marginBottom: 14
+                    marginBottom: s(14)
                   }}
                 >
-                  <Text style={{ fontSize: 13, color: colors.heading }}>
+                  <Text style={{ fontSize: s(13), color: colors.heading }}>
                     Show Dynamic Prep Times
                   </Text>
                   <Switch
@@ -556,8 +560,8 @@ const OnlineOrderingScreen = () => {
 
                 <View
                   style={{
-                    gap: 10,
-                    marginBottom: dynamicPrepTimeEnabled ? 14 : 0
+                    gap: s(10),
+                    marginBottom: dynamicPrepTimeEnabled ? s(14) : 0
                   }}
                 >
                   <View
@@ -566,12 +570,12 @@ const OnlineOrderingScreen = () => {
                       justifyContent: 'space-between'
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: colors.label }}>
+                    <Text style={{ fontSize: s(12), color: colors.label }}>
                       Base Prep Time
                     </Text>
                     <Text
                       style={{
-                        fontSize: 15,
+                        fontSize: s(15),
                         fontWeight: '700',
                         color: colors.teal
                       }}
@@ -593,29 +597,29 @@ const OnlineOrderingScreen = () => {
                     <View
                       style={{
                         backgroundColor: colors.screen,
-                        padding: 14,
-                        borderRadius: 10,
+                        padding: s(14),
+                        borderRadius: s(10),
                         alignItems: 'center',
                         justifyContent: 'center',
-                        marginBottom: 14,
+                        marginBottom: s(14),
                         borderWidth: 1,
                         borderColor: colors.border
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.muted,
                           textTransform: 'uppercase',
                           letterSpacing: 1.5,
-                          marginBottom: 4
+                          marginBottom: s(4)
                         }}
                       >
                         Current Quoted Time
                       </Text>
                       <Text
                         style={{
-                          fontSize: 34,
+                          fontSize: s(34),
                           fontWeight: '800',
                           color: colors.teal
                         }}
@@ -624,19 +628,19 @@ const OnlineOrderingScreen = () => {
                       </Text>
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.label,
-                          marginTop: 4
+                          marginTop: s(4)
                         }}
                       >
                         Updated just now
                       </Text>
                     </View>
 
-                    <View style={{ gap: 10, marginBottom: 14 }}>
+                    <View style={{ gap: s(10), marginBottom: s(14) }}>
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: s(12),
                           fontWeight: '700',
                           color: colors.heading
                         }}
@@ -660,7 +664,7 @@ const OnlineOrderingScreen = () => {
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            gap: 10
+                            gap: s(10)
                           }}
                         >
                           <Checkbox
@@ -668,9 +672,17 @@ const OnlineOrderingScreen = () => {
                             onCheckedChange={v =>
                               updatePrepAdjustment(item.key as any, v)
                             }
-                            className='border-gray-500 data-[state=checked]:bg-teal-600 data-[state=checked]:border-teal-600'
+                            className='border-gray-500'
+                            style={{
+                              backgroundColor: item.checked
+                                ? colors.teal
+                                : 'transparent',
+                              borderColor: item.checked
+                                ? colors.teal
+                                : undefined
+                            }}
                           />
-                          <Text style={{ fontSize: 12, color: colors.label }}>
+                          <Text style={{ fontSize: s(12), color: colors.label }}>
                             {item.label}
                           </Text>
                         </View>
@@ -681,27 +693,27 @@ const OnlineOrderingScreen = () => {
                     <View
                       style={{
                         backgroundColor: colors.teal + '10',
-                        padding: 14,
-                        borderRadius: 10,
+                        padding: s(14),
+                        borderRadius: s(10),
                         borderWidth: 1,
                         borderColor: colors.teal + '30'
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: s(12),
                           fontWeight: '700',
                           color: colors.teal,
-                          marginBottom: 8
+                          marginBottom: s(8)
                         }}
                       >
                         Current Factors (KDS Live):
                       </Text>
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.label,
-                          marginBottom: 4
+                          marginBottom: s(4)
                         }}
                       >
                         • Kitchen Load: {liveKitchenOrderCount} orders
@@ -712,9 +724,9 @@ const OnlineOrderingScreen = () => {
                       </Text>
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.label,
-                          marginBottom: 8
+                          marginBottom: s(8)
                         }}
                       >
                         • Peak Hours (5–8 PM):
@@ -728,12 +740,12 @@ const OnlineOrderingScreen = () => {
                         style={{
                           height: 1,
                           backgroundColor: colors.teal + '30',
-                          marginBottom: 8
+                          marginBottom: s(8)
                         }}
                       />
                       <Text
                         style={{
-                          fontSize: 13,
+                          fontSize: s(13),
                           fontWeight: '700',
                           color: colors.heading
                         }}
@@ -750,42 +762,42 @@ const OnlineOrderingScreen = () => {
               <View
                 style={{
                   backgroundColor: colors.panel,
-                  borderRadius: 12,
+                  borderRadius: s(12),
                   borderWidth: 1,
                   borderColor: colors.border,
-                  padding: 12
+                  padding: s(12)
                 }}
               >
                 <View
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 10,
-                    marginBottom: 14
+                    gap: s(10),
+                    marginBottom: s(14)
                   }}
                 >
                   <View
                     style={{
-                      width: 32,
-                      height: 32,
+                      width: s(32),
+                      height: s(32),
                       backgroundColor: colors.teal + '15',
-                      borderRadius: 8,
+                      borderRadius: s(8),
                       alignItems: 'center',
                       justifyContent: 'center'
                     }}
                   >
-                    <Utensils color={colors.teal} size={16} />
+                    <Utensils color={colors.teal} size={s(16)} />
                   </View>
                   <View
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 8
+                      gap: s(8)
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: s(13),
                         fontWeight: '700',
                         color: colors.heading
                       }}
@@ -795,16 +807,16 @@ const OnlineOrderingScreen = () => {
                     <View
                       style={{
                         backgroundColor: colors.teal + '20',
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        borderRadius: 20,
+                        paddingHorizontal: s(6),
+                        paddingVertical: s(2),
+                        borderRadius: s(20),
                         borderWidth: 1,
                         borderColor: colors.teal + '50'
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 9,
+                          fontSize: s(9),
                           color: colors.teal,
                           fontWeight: '700'
                         }}
@@ -828,21 +840,21 @@ const OnlineOrderingScreen = () => {
                     <View
                       style={{
                         backgroundColor: colors.teal + '10',
-                        padding: 10,
-                        borderRadius: 8,
+                        padding: s(10),
+                        borderRadius: s(8),
                         flexDirection: 'row',
                         alignItems: 'center',
-                        gap: 8,
+                        gap: s(8),
                         borderWidth: 1,
                         borderColor: colors.teal + '20',
-                        marginBottom: 14
+                        marginBottom: s(14)
                       }}
                     >
                       <View
                         style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 4,
+                          width: s(8),
+                          height: s(8),
+                          borderRadius: s(4),
                           backgroundColor: activeMenu
                             ? colors.teal
                             : colors.muted
@@ -850,7 +862,7 @@ const OnlineOrderingScreen = () => {
                       />
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: s(12),
                           fontWeight: '700',
                           color: activeMenu ? colors.teal : colors.muted
                         }}
@@ -863,7 +875,7 @@ const OnlineOrderingScreen = () => {
                 })()}
 
                 {/* Per-menu schedule cards */}
-                <View style={{ gap: 8 }}>
+                <View style={{ gap: s(8) }}>
                   {menus.map((menu, i) => {
                     const isActiveNow = useMenuStore
                       .getState()
@@ -879,7 +891,7 @@ const OnlineOrderingScreen = () => {
                         key={menu.id}
                         style={{
                           backgroundColor: colors.screen,
-                          borderRadius: 10,
+                          borderRadius: s(10),
                           borderWidth: 1,
                           borderColor: colors.border,
                           overflow: 'hidden'
@@ -891,8 +903,8 @@ const OnlineOrderingScreen = () => {
                             flexDirection: 'row',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(10),
                             borderBottomWidth: 1,
                             borderBottomColor: colors.border
                           }}
@@ -901,20 +913,20 @@ const OnlineOrderingScreen = () => {
                             style={{
                               flexDirection: 'row',
                               alignItems: 'center',
-                              gap: 8
+                              gap: s(8)
                             }}
                           >
                             <View
                               style={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: 5,
+                                width: s(10),
+                                height: s(10),
+                                borderRadius: s(5),
                                 backgroundColor: dotColor
                               }}
                             />
                             <Text
                               style={{
-                                fontSize: 13,
+                                fontSize: s(13),
                                 fontWeight: '600',
                                 color: colors.heading
                               }}
@@ -927,19 +939,19 @@ const OnlineOrderingScreen = () => {
                               style={{
                                 flexDirection: 'row',
                                 alignItems: 'center',
-                                gap: 5,
+                                gap: s(5),
                                 backgroundColor: colors.teal + '20',
-                                paddingHorizontal: 8,
-                                paddingVertical: 3,
-                                borderRadius: 20,
+                                paddingHorizontal: s(8),
+                                paddingVertical: s(3),
+                                borderRadius: s(20),
                                 borderWidth: 1,
                                 borderColor: colors.teal + '50'
                               }}
                             >
-                              <CheckCircle2 size={11} color={colors.teal} />
+                              <CheckCircle2 size={s(11)} color={colors.teal} />
                               <Text
                                 style={{
-                                  fontSize: 11,
+                                  fontSize: s(11),
                                   color: colors.teal,
                                   fontWeight: '500'
                                 }}
@@ -948,7 +960,7 @@ const OnlineOrderingScreen = () => {
                               </Text>
                             </View>
                           ) : (
-                            <Text style={{ fontSize: 11, color: colors.muted }}>
+                            <Text style={{ fontSize: s(11), color: colors.muted }}>
                               Inactive
                             </Text>
                           )}
@@ -958,13 +970,13 @@ const OnlineOrderingScreen = () => {
                         {activeSchedules.length === 0 ? (
                           <View
                             style={{
-                              paddingHorizontal: 12,
-                              paddingVertical: 10
+                              paddingHorizontal: s(12),
+                              paddingVertical: s(10)
                             }}
                           >
                             <Text
                               style={{
-                                fontSize: 12,
+                                fontSize: s(12),
                                 color: colors.muted,
                                 fontStyle: 'italic'
                               }}
@@ -977,8 +989,8 @@ const OnlineOrderingScreen = () => {
                             <View
                               key={s.id}
                               style={{
-                                paddingHorizontal: 12,
-                                paddingVertical: 10,
+                                paddingHorizontal: s(12),
+                                paddingVertical: s(10),
                                 borderBottomWidth: 1,
                                 borderBottomColor: colors.border + '80',
                                 flexDirection: 'row',
@@ -990,9 +1002,9 @@ const OnlineOrderingScreen = () => {
                                 style={{
                                   flexDirection: 'row',
                                   flexWrap: 'wrap',
-                                  gap: 4,
+                                  gap: s(4),
                                   flex: 1,
-                                  marginRight: 12
+                                  marginRight: s(12)
                                 }}
                               >
                                 {(s.days || []).map((day: string) => (
@@ -1002,14 +1014,14 @@ const OnlineOrderingScreen = () => {
                                       backgroundColor: colors.teal + '10',
                                       borderWidth: 1,
                                       borderColor: colors.teal + '30',
-                                      paddingHorizontal: 6,
-                                      paddingVertical: 2,
-                                      borderRadius: 4
+                                      paddingHorizontal: s(6),
+                                      paddingVertical: s(2),
+                                      borderRadius: s(4)
                                     }}
                                   >
                                     <Text
                                       style={{
-                                        fontSize: 11,
+                                        fontSize: s(11),
                                         color: colors.teal
                                       }}
                                     >
@@ -1022,12 +1034,12 @@ const OnlineOrderingScreen = () => {
                                 style={{
                                   flexDirection: 'row',
                                   alignItems: 'center',
-                                  gap: 4
+                                  gap: s(4)
                                 }}
                               >
-                                <Clock size={11} color={colors.muted} />
+                                <Clock size={s(11)} color={colors.muted} />
                                 <Text
-                                  style={{ fontSize: 12, color: colors.label }}
+                                  style={{ fontSize: s(12), color: colors.label }}
                                 >
                                   {formatScheduleTime(s.startTime)} –{' '}
                                   {formatScheduleTime(s.endTime)}
@@ -1050,17 +1062,17 @@ const OnlineOrderingScreen = () => {
                   }
                   style={{
                     backgroundColor: 'transparent',
-                    paddingVertical: 12,
-                    borderRadius: 8,
+                    paddingVertical: s(12),
+                    borderRadius: s(8),
                     borderWidth: 1,
                     borderColor: colors.border,
                     alignItems: 'center',
-                    marginTop: 12
+                    marginTop: s(12)
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: '700',
                       color: colors.label
                     }}
@@ -1072,7 +1084,7 @@ const OnlineOrderingScreen = () => {
             </>
           )}
 
-          <View style={{ height: 10 }} />
+          <View style={{ height: s(10) }} />
         </View>
       </ScrollView>
     </View>

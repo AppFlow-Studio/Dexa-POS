@@ -1,24 +1,55 @@
 import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
-import { toastService } from "@/lib/toastService";
-import { CartItem, OrderPaymentTransactionDetails, SplitPaymentPath } from "@/lib/types";
+import { calculateEvenSplitSpread } from "@/lib/order-calculator";
+import { isOrderReadOnly } from "@/lib/orderAccessControl";
+import { payableQuantity } from "@/lib/payableQuantity";
+import { startInteraction } from "@/lib/perf";
 import {
-  getFailedPayments,
-  getPendingPaymentsCount,
-  OfflineOperation,
-  retryFailedOperation,
+    findLatestReusableEmptyDraftId,
+    getRefreshedReusableDraftNumbers,
+} from "@/lib/reusableEmptyDraft";
+import { toastService } from "@/lib/toastService";
+import {
+    CartItem,
+    OrderPaymentTransactionDetails,
+    SplitPaymentPath,
+} from "@/lib/types";
+import {
+    getFailedPayments,
+    getPendingPaymentsCount,
+    OfflineOperation,
+    retryFailedOperation,
 } from "@/services/offlineSyncService";
 import { OrderService } from "@/services/orderService";
 import { trackCashPaymentInDrawer } from "@/services/paymentService";
+import { finalizeDineInPaymentClear } from "@/services/tables/finalizeDineInPaymentClear";
 import { useConflictStore } from "@/stores/useConflictStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
+import { calculateCustomSplitCashAmount } from "@/utils/custom-split-amounts";
+import { aggregateTaxByCategory } from "@/utils/money";
 import { create } from "zustand";
 import {
-  calculateItemEffectiveCashPrice,
-  getOrderStoreSupabaseClient,
-  useOrderStore,
+    calculateItemEffectiveCashPrice,
+    getOrderStoreSupabaseClient,
+    round2,
+    useOrderStore,
 } from "./useOrderStore";
 type PaymentMethod = "Card" | "Cash" | "Split";
+
+// Payment ids that have already triggered an auto-printed per-payment receipt.
+// Guards both auto-print call sites (split portion + standard settlement) against
+// a double-entry of handlePaymentCompletion enqueuing a duplicate receipt
+// (double-tap / retry race — the print queue itself does not dedupe).
+const autoPrintedPaymentIds = new Set<string>();
+/** Returns true the first time a payment id is seen; false on repeats. */
+const claimAutoPrint = (paymentId: string): boolean => {
+  if (autoPrintedPaymentIds.has(paymentId)) return false;
+  autoPrintedPaymentIds.add(paymentId);
+  return true;
+};
+
 export type PaymentView =
   | "review"
   | "cash"
@@ -34,7 +65,8 @@ export type PaymentView =
   | "split-custom-amount"
   | "split-payment-success"
   | "pay-for-items"
-  | "pre-auth"; // Pre-authorization (open/increase/close tab)
+  | "pre-auth" // Pre-authorization (open/increase/close tab)
+  | "verifying"; // Wave Cat-B: deadline/40001 outcome — recovery flow active
 
 export interface Split {
   id: string;
@@ -68,12 +100,70 @@ const paymentViewToStepMap: Record<PaymentView, number> = {
   "split-custom-amount": 2,
   "pay-for-items": 2, // NEW: Split review step
   "pre-auth": 2, // Pre-auth step
+  verifying: 2, // Wave Cat-B: same step rank as card/manual — keeps progress bar stable
   "split-payment-success": 3,
   review: 3,
   success: 4,
 };
 
 const totalSteps = 4;
+
+/**
+ * Structural slice of a PaymentJournalEntry sufficient for openForVerification.
+ * Defined locally rather than imported to avoid pulling paymentJournal's
+ * uuid / storage deps into a leaner store consumer.
+ */
+export interface PaymentJournalEntryLike {
+  id: string;
+  orderId: string;
+  dbOrderId?: string;
+  amount: number;
+  tipAmount?: number;
+  paymentMethod?: string;
+  idempotencyKey: string;
+  terminalTxnId?: string;
+  splitGroupId?: string;
+  status?:
+    | "initiated"
+    | "terminal_approved"
+    | "completed"
+    | "failed"
+    | "resolved_manually";
+}
+
+/**
+ * Wave Cat-B: payment verification slot. Populated when an in-flight payment
+ * RPC times out (DEADLINE_EXCEEDED) or hits 40001 idempotency_in_flight, OR
+ * when the relaunch hook detects a journal stuck in 'terminal_approved'.
+ * The verifying overlay (Wave 7) drives Mark Complete / gated Try Again.
+ */
+export interface PaymentVerificationState {
+  journalId: string;
+  idempotencyKey: string;
+  orderDbId: string | null;
+  amountCents: number;
+  tipCents?: number;
+  paymentMethod?: string;
+  terminalTxnId?: string;
+  createdAt?: string;
+  splitPortionIndex?: number;
+  startedAt: number;
+  /**
+   * Discriminator for the recovery flow:
+   * - `deadline_exceeded` / `idempotency_in_flight`: Wave 2 in-session verifying;
+   *   server may have committed → poll check_recent_payment.
+   * - `crash_recovery`: Gap 1 relaunch from `terminal_approved` journal;
+   *   terminal returned, RPC interrupted → same poll flow as above.
+   * - `tcp_inflight_crash`: this gap. Relaunch from `initiated` journal;
+   *   TCP call interrupted, terminal may or may not have committed →
+   *   manual operator reconciliation (no server poll helps).
+   */
+  reason:
+    | "deadline_exceeded"
+    | "idempotency_in_flight"
+    | "crash_recovery"
+    | "tcp_inflight_crash";
+}
 
 interface PaymentState {
   paymentMethod: PaymentMethod | null;
@@ -85,6 +175,10 @@ interface PaymentState {
   activeSplitId: string | null;
   splitSourceView: PaymentView | null; // FIXED: Added this missing property
   completedPaymentInfo: CompletedPaymentInfo | null; // Snapshot of payment info for success view
+  // Wave Cat-B: payment-recovery slot
+  verification: PaymentVerificationState | null;
+  setVerification: (v: PaymentVerificationState | null) => void;
+  clearVerification: () => void;
   progress: {
     currentStep: number;
     totalSteps: number;
@@ -98,7 +192,20 @@ interface PaymentState {
     tableId?: string | null,
     initialView?: PaymentView,
   ) => void;
+  /**
+   * Wave Cat-B (Gap 1): surface the verifying-recovery flow without going
+   * through the fresh-payment open() path. Bypasses the closed-check guard
+   * (the matched payment may have already closed the order) and skips
+   * paymentMethod/splits init since this isn't a new payment.
+   */
+  openForVerification: (journal: PaymentJournalEntryLike) => void;
   close: () => void;
+  // User-cancel of an in-progress (split) payment. Rolls back optimistic,
+  // never-backend-confirmed payments on the active order, routes through the
+  // formal reopen so the order reads `partial` from the backend, then closes.
+  // Use this — not close() — whenever the user abandons the sheet with captured
+  // portions, so no phantom residual survives.
+  cancelInProgressPayment: () => void;
   setView: (view: PaymentView) => void;
   setActiveTableId: (tableId: string | null) => void;
   clearActiveTableId: () => void;
@@ -134,18 +241,26 @@ interface PaymentState {
   // rrn: result.helpers?.getRRN(),
   startSplitPaymentFlow: (source: PaymentView) => void;
   handlePaymentCompletion: ({
-    method, 
-    tipAmount, 
-    transactionDetails, 
+    method,
+    tipAmount,
+    transactionDetails,
     dejavooTransaction,
     amountOverride,
-} : { 
-  method: string, 
-  tipAmount?: number, 
-  transactionDetails?: OrderPaymentTransactionDetails, 
-  dejavooTransaction?: DejavooSaleTransactionResponse,
-  amountOverride?: number 
-}) => Promise<void>;
+  }: {
+    method: string;
+    tipAmount?: number;
+    transactionDetails?: OrderPaymentTransactionDetails;
+    dejavooTransaction?: DejavooSaleTransactionResponse;
+    amountOverride?: number;
+  }) => Promise<void>;
+  /** Internal: real completion body, wrapped by handlePaymentCompletion's perf span. */
+  _handlePaymentCompletionImpl: (args: {
+    method: string;
+    tipAmount?: number;
+    transactionDetails?: OrderPaymentTransactionDetails;
+    dejavooTransaction?: DejavooSaleTransactionResponse;
+    amountOverride?: number;
+  }) => Promise<void>;
   moveToNextSplit: () => void;
   processManualCardPayment(details: {
     cardBrand: string;
@@ -165,8 +280,8 @@ interface PaymentState {
   markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
   splitEvenly: (
     numberOfPeople: number,
-    amountPerPerson: number,
-    cashAmountPerPerson?: number,
+    cardTotal: number,
+    cashTotal?: number,
   ) => void; // New action for evenly splitting with dual pricing
   resetSplits: () => void; // Action to clear splits when going back
   handleSuccessClose: () => void; // Action to run Done logic when success view is closed
@@ -184,9 +299,9 @@ interface PaymentState {
   isPaymentQueued: boolean; // True if current payment was queued for offline sync
 
   // Pre-auth state
-  preAuthMode: 'open' | 'capture' | 'increment' | null;
+  preAuthMode: "open" | "capture" | "increment" | null;
   preAuthPaymentId: string | null;
-  setPreAuthMode: (mode: 'open' | 'capture' | 'increment' | null) => void;
+  setPreAuthMode: (mode: "open" | "capture" | "increment" | null) => void;
   setPreAuthPaymentId: (id: string | null) => void;
 
   // Transaction processing state (prevents sheet dismissal during active transactions)
@@ -215,6 +330,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   activeSplitId: null,
   splitSourceView: null, // Initialized here
   completedPaymentInfo: null, // Initialized here
+  verification: null, // Wave Cat-B: payment-recovery slot
+  setVerification: (v) => set({ verification: v }),
+  clearVerification: () => set({ verification: null }),
   progress: { currentStep: 1, totalSteps: totalSteps },
   // Offline payment state
   pendingPaymentsCount: 0,
@@ -234,12 +352,61 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   lockExpiresAt: null,
   isLocking: false,
 
+  openForVerification: (journal) => {
+    // Bypass closed-check guard: the matched server payment may have already
+    // closed the order, in which case verification recovery still needs to run.
+    //
+    // Reason mapping derives from journal status:
+    //   - 'initiated'        → 'tcp_inflight_crash' (TCP call interrupted; no server poll helps)
+    //   - 'terminal_approved' → 'crash_recovery'   (terminal returned; server may have committed)
+    //   - any other (defensive) → 'crash_recovery'
+    const reason: PaymentVerificationState["reason"] =
+      journal.status === "initiated" ? "tcp_inflight_crash" : "crash_recovery";
+
+    set({
+      isOpen: true,
+      paymentMethod: null,
+      view: "verifying",
+      activeTableId: null,
+      isDirty: false,
+      splits: [],
+      activeSplitId: null,
+      splitSourceView: null,
+      progress: {
+        currentStep: paymentViewToStepMap.verifying,
+        totalSteps,
+      },
+      verification: {
+        journalId: journal.id,
+        idempotencyKey: journal.idempotencyKey,
+        orderDbId: journal.dbOrderId ?? null,
+        amountCents: Math.round(journal.amount * 100),
+        tipCents:
+          journal.tipAmount != null
+            ? Math.round(journal.tipAmount * 100)
+            : undefined,
+        paymentMethod: journal.paymentMethod,
+        terminalTxnId: journal.terminalTxnId,
+        startedAt: Date.now(),
+        reason,
+      },
+    });
+  },
+
   open: (method, tableId, initialView) => {
     // Block payments for closed orders
     const orderState = useOrderStore.getState();
     const activeOrder = orderState.activeOrderId
       ? orderState.ordersById[orderState.activeOrderId]
       : null;
+    if (isOrderReadOnly(activeOrder, orderState.currentStationId)) {
+      toastService.show({
+        title: "Payment Blocked",
+        message: `This order is owned by ${activeOrder?.station_name?.trim() || "another station"}. Switch stations to continue.`,
+        type: "error",
+      });
+      return;
+    }
     if (activeOrder?.check_status === "Closed") {
       toastService.show({
         title: "Check Closed",
@@ -247,6 +414,18 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         type: "warning",
       });
       return;
+    }
+
+    // Perf Phase 0: tap → payment sheet state committed + painted
+    const perfPay = startInteraction("pos.open_payment", {
+      method: String(method),
+      view: initialView || "payment-method-selection",
+    });
+
+    // Flush any pending totals recompute so the sheet reads fresh totals on
+    // its first frame. No-op when nothing is queued.
+    if (orderState.activeOrderId) {
+      orderState._ensureTotalsFresh(orderState.activeOrderId);
     }
 
     // OPTIMIZED: Update state BEFORE animation for instant UI response
@@ -266,9 +445,68 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         totalSteps: totalSteps,
       },
     });
+    perfPay.endAfterPaint();
   },
 
   close: () => {
+    get().resetPaymentState();
+    set({ isOpen: false });
+  },
+
+  cancelInProgressPayment: () => {
+    const orderState = useOrderStore.getState();
+    const activeOrderId = orderState.activeOrderId;
+
+    if (activeOrderId) {
+      const order = orderState.ordersById[activeOrderId];
+
+      // Determine whether ANY payment has been confirmed by the backend.
+      // A payment with db_payment_id is real money — must use voidAllPayments
+      // to reverse it (which calls void_payment RPC). If ALL payments are
+      // still pending (optimistic, never synced), we can silently discard them
+      // locally without touching the backend.
+      const hasConfirmedPayment = (order?.payments ?? []).some(
+        (p) =>
+          !p.isVoided &&
+          !p.isPreAuth &&
+          (!!p.db_payment_id || p.sync_status !== "pending"),
+      );
+
+      if (hasConfirmedPayment) {
+        // Abandon the WHOLE split. voidAllPayments fires void_payment on every
+        // backend-confirmed portion (reversing the real charge) AND removes any
+        // never-synced locals, restores paidQuantity, and clears the split lock.
+        // This is what makes Discard wipe an already-charged first portion — a
+        // plain local rollback can't, since that portion is real money on the
+        // server. Fire-and-forget: the sheet closes immediately; voidAllPayments
+        // rolls itself back and toasts if any RPC fails.
+        //
+        // After voidAllPayments completes (or fails), always do a backend sync
+        // to converge local state. Even if voidAllPayments succeeds, the
+        // broadcast race could leave local state with stale optimistic values.
+        // If it fails (e.g. _checkCartEditable blocks), the sync still recovers.
+        void orderState.voidAllPayments(activeOrderId).finally(() => {
+          // Always sync from backend after void attempt. This converges local
+          // state whether voids succeeded or failed:
+          // - Success: backend already has correct totals; sync refreshes them
+          // - Failure: backend may have diverged; sync pulls authoritative state
+          void orderState
+            .syncOrderFromBackendComplete(activeOrderId, { force: true })
+            .catch(() => {});
+        });
+      } else {
+        // No captured portion yet — just drop optimistic, never-confirmed
+        // payments and defer amount_due to the backend.
+        const rolledBack = orderState.discardUnsyncedPayments(activeOrderId);
+        if (rolledBack) {
+          void orderState
+            .syncOrderFromBackendComplete(activeOrderId, { force: true })
+            .catch(() => {});
+        }
+      }
+    }
+
+    // Tear down the sheet UI.
     get().resetPaymentState();
     set({ isOpen: false });
   },
@@ -304,29 +542,110 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       progress: { currentStep: 1, totalSteps: totalSteps },
       isPaymentQueued: false,
       isTransactionProcessing: false,
+      // Wave Cat-B: drop any active verification slot so reopening the sheet
+      // doesn't leave the operator stranded in verifying view. The journal
+      // entry stays in MMKV, so the next app launch will re-surface it.
+      verification: null,
     });
   },
 
-  // Called when success view is dismissed by dragging down
+  // Called when success view is dismissed (X button, drag-down, etc.).
+  // Mirrors PaymentSuccessView.handleDone for dine-in so that closing the
+  // sheet — by any means — runs the same auto-clear flow as the explicit
+  // Finalize Payment button. If the clear is ineligible (setting off, sibling
+  // checks still due, no session), the helper is a no-op and the active
+  // (paid) order is preserved so the operator can interact with it.
   handleSuccessClose: () => {
-    const { activeOrderId, ordersById, startNewOrder, setActiveOrder } =
-      useOrderStore.getState();
+    const {
+      activeOrderId,
+      ordersById,
+      orderIds,
+      startNewOrder,
+      setActiveOrder,
+    } = useOrderStore.getState();
+
+    // Per-order PIN attribution: the order is now fully paid/closed. Drop the
+    // verified staff so the NEXT order re-opens the PIN gate. Held through
+    // payment so the order AND its payment were credited to the same person.
+    useEmployeeStore.getState().clearOrderAttributionStaff();
 
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
-    // Use order's service_location_id instead of cleared activeTableId
-    // This prevents race condition where close() clears activeTableId before sheet animation completes
-    const tableId = activeOrder?.service_location_id;
+    // Prefer payment store's activeTableId — it's captured at sheet open and
+    // stays set until close() runs, so it survives `auto_on_payment` archiving
+    // (which queueMicrotasks `archiveOrder` and nulls out activeOrderId before
+    // the operator can tap dismiss, especially on multi-check where the last
+    // check is archived). Fall back to the active order's service_location_id.
+    const tableId = get().activeTableId || activeOrder?.service_location_id;
 
-    // For dine-in orders on a table, just close (table keeps the paid order)
-    if (activeOrder?.order_type === "dine_in" && tableId) {
+    // If a table is associated, this was a dine-in payment. Try the auto-clear
+    // (per Auto-Clear Table on Payment setting). If ineligible (setting off,
+    // siblings due, no session), preserve the legacy "just close, keep the
+    // paid order" behavior. If it ran, fall through to the fresh-draft path so
+    // BillSection / order-processing isn't left pointing at the archived order;
+    // TableOrderView's session-disappeared effect handles the /tables nav.
+    const dineInCleared = tableId
+      ? finalizeDineInPaymentClear({ tableId }).cleared
+      : false;
+    if (tableId && !dineInCleared) {
       get().close();
       return;
     }
 
-    // For quick service / takeout, start a new order immediately
+    // Setting: when auto-create is OFF, don't auto-start the next order after
+    // payment — leave the screen empty until the operator explicitly starts one.
+    if (!useStoreSettingsStore.getState().autoCreateOrder) {
+      get().close();
+      return;
+    }
+
+    // For quick service / takeout (or a dine-in clear that just ran),
+    // start a new order immediately.
     setTimeout(() => {
+      const reusableEmptyDraftId = findLatestReusableEmptyDraftId(
+        ordersById,
+        orderIds,
+        activeOrderId,
+        useStoreSettingsStore.getState().selectedStation?.id ?? null,
+      );
+
+      if (reusableEmptyDraftId) {
+        const selectedStore = useStoreSettingsStore.getState().selectedStore;
+        const stationNumber =
+          useStoreSettingsStore.getState().selectedStation?.station_number ??
+          null;
+
+        useOrderStore.setState((state) => {
+          const draft = state.ordersById[reusableEmptyDraftId];
+          if (!draft) return;
+          // After a dine-in auto-clear, reset stale dine-in fields so the
+          // bill shows as a clean new order on the order-processing screen.
+          if (dineInCleared) {
+            draft.order_type = "takeout";
+            draft.service_location_id = null;
+            draft.session_id = undefined;
+            draft.local_session_id = undefined;
+          }
+          if (selectedStore) {
+            const refreshedNumbers = getRefreshedReusableDraftNumbers({
+              draftId: reusableEmptyDraftId,
+              ordersById,
+              orderIds,
+              locationId: selectedStore.id,
+              stationNumber,
+            });
+            if (refreshedNumbers) {
+              draft.order_number = refreshedNumbers.orderNumber;
+              draft.display_number = refreshedNumbers.displayNumber;
+            }
+          }
+        });
+
+        setActiveOrder(reusableEmptyDraftId);
+        return;
+      }
+
       const newOrder = startNewOrder();
       setActiveOrder(newOrder.id);
     }, 100);
@@ -387,7 +706,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
   unassignItemFromSplit: (splitId, itemId) => {
     set((state) => {
-      let updatedSplits = state.splits.map((s) => {
+      const updatedSplits = state.splits.map((s) => {
         if (s.id !== splitId) return s;
 
         const existingItemIndex = s.items.findIndex((i) => i.id === itemId);
@@ -409,27 +728,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }
       });
 
-      // Auto-remove empty guests (but keep at least one guest)
-      if (updatedSplits.length > 1) {
-        updatedSplits = updatedSplits.filter(
-          (s) =>
-            s.items.length > 0 ||
-            updatedSplits.filter((sp) => sp.items.length > 0).length === 0,
-        );
-      }
-
-      // If active split was removed, switch to first available
-      const currentActiveSplitId = state.activeSplitId;
-      const activeStillExists = updatedSplits.some(
-        (s) => s.id === currentActiveSplitId,
-      );
-      const newActiveSplitId = activeStillExists
-        ? currentActiveSplitId
-        : updatedSplits[0]?.id || null;
-
       return {
         splits: updatedSplits,
-        activeSplitId: newActiveSplitId,
         isDirty: true,
       };
     });
@@ -453,15 +753,29 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }));
   },
 
-  splitEvenly: (numberOfPeople, amountPerPerson, cashAmountPerPerson) => {
+  splitEvenly: (numberOfPeople, cardTotal, cashTotal) => {
+    // Use a largest-remainder spread so portions sum EXACTLY to the total and
+    // differ by at most one cent. This prevents the lost-cent / displayed-vs-
+    // charged divergence raw float division (total / N) produced, AND avoids
+    // the multiple-$0-portion artifact of flooring + dumping the remainder on
+    // the last guest.
+    const cardAmounts = calculateEvenSplitSpread(
+      cardTotal,
+      numberOfPeople,
+    ).amounts;
+    const cashAmounts =
+      cashTotal !== undefined
+        ? calculateEvenSplitSpread(cashTotal, numberOfPeople).amounts
+        : undefined;
+
     const newSplits: Split[] = [];
     for (let i = 0; i < numberOfPeople; i++) {
       newSplits.push({
         id: `split_${Date.now()}_${i}`,
         customerName: `Guest ${i + 1}`,
         items: [],
-        amount: amountPerPerson, // Card pricing (default)
-        cashAmount: cashAmountPerPerson, // Cash pricing for dual-price compliance
+        amount: cardAmounts[i], // Card pricing (default)
+        cashAmount: cashAmounts?.[i], // Cash pricing for dual-price compliance
         status: "pending",
       });
     }
@@ -498,7 +812,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     const { splits } = get();
 
     // Get order and tax rates for tax calculation
-    const { activeOrderId, ordersById } = useOrderStore.getState();
+    const {
+      activeOrderId,
+      ordersById,
+      activeOrderOutstandingTotal,
+      activeOrderOutstandingCash,
+    } = useOrderStore.getState();
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
     const taxRatesMap =
@@ -511,102 +830,86 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       (item) => !item.is_voided,
     );
 
-    // Card pricing subtotal
-    const orderSubtotal = masterItems.reduce(
-      (acc, item) => acc + item.price * item.quantity,
-      0,
+    const originalItemsMap = new Map(
+      masterItems.map((item) => [item.id, item]),
     );
-
-    // Cash pricing subtotal - uses calculateItemEffectiveCashPrice to include modifiers and add-ons
-    const orderCashSubtotal = masterItems.reduce(
-      (acc, item) =>
-        acc + calculateItemEffectiveCashPrice(item) * item.quantity,
-      0,
-    );
-
-    const itemDiscountsTotal = masterItems.reduce((acc, item) => {
-      if (item.appliedDiscount) {
-        return (
-          acc + item.originalPrice * item.appliedDiscount.value * item.quantity
-        );
-      }
-      return acc;
-    }, 0);
-    const subtotalAfterItemDiscounts = orderSubtotal - itemDiscountsTotal;
-    let checkDiscountAmount = 0;
-    if (activeOrder?.checkDiscount) {
-      checkDiscountAmount =
-        subtotalAfterItemDiscounts * activeOrder.checkDiscount.value;
-    }
-    const orderDiscountAmount = itemDiscountsTotal + checkDiscountAmount;
 
     // Helper function to calculate tax for split items using CARD pricing
     const calculateSplitCardAmount = (items: typeof masterItems): number => {
       let subtotal = 0;
-      let tax = 0;
+      const taxLines: Array<{
+        netSubtotal: number;
+        taxCategory?: string | null;
+        isTaxExempt?: boolean;
+      }> = [];
 
       for (const item of items) {
-        const itemSubtotal = item.price * item.quantity;
+        const originalItem = originalItemsMap.get(item.id);
+        const originalQuantity = originalItem?.quantity ?? item.quantity;
+        const discountAmount =
+          originalQuantity > 0
+            ? round2(
+                ((originalItem?.discount_amount ?? 0) * item.quantity) /
+                  originalQuantity,
+              )
+            : 0;
+        const itemSubtotal = round2(
+          item.price * item.quantity - discountAmount,
+        );
         subtotal += itemSubtotal;
-
-        // Skip tax-exempt items
-        if (item.is_tax_exempt) continue;
-
-        // Get the tax rate for this item's category (default to "standard" if not set)
-        const taxCategory = item.tax_category || "standard";
-        const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-        const taxRateDecimal = taxRatePercent / 100;
-
-        // Apply proportional discount to this item
-        const itemDiscountProportion =
-          orderSubtotal > 0 ? itemSubtotal / orderSubtotal : 0;
-        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
-        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
-
-        // Calculate tax for this item
-        tax += itemTaxableAmount * taxRateDecimal;
+        taxLines.push({
+          netSubtotal: itemSubtotal,
+          taxCategory: item.tax_category,
+          isTaxExempt: item.is_tax_exempt,
+        });
       }
 
-      // Round to 2 decimal places
-      return Math.round((subtotal + tax) * 100) / 100;
+      // v6: aggregate tax per rate group (round once per group), matching the
+      // server's calculation for this item subset. Not per-item rounding.
+      const tax = aggregateTaxByCategory(taxLines, taxRatesMap);
+      return round2(subtotal + tax);
     };
 
     // Helper function to calculate tax for split items using CASH pricing
     // Uses calculateItemEffectiveCashPrice to include modifiers and add-ons
     const calculateSplitCashAmount = (items: typeof masterItems): number => {
       let subtotal = 0;
-      let tax = 0;
+      const taxLines: Array<{
+        netSubtotal: number;
+        taxCategory?: string | null;
+        isTaxExempt?: boolean;
+      }> = [];
 
       for (const item of items) {
+        const originalItem = originalItemsMap.get(item.id);
+        const originalQuantity = originalItem?.quantity ?? item.quantity;
         // Use the full effective cash price including modifiers and add-ons
         const itemCashPrice = calculateItemEffectiveCashPrice(item);
-        const itemSubtotal = itemCashPrice * item.quantity;
+        const discountAmount =
+          originalQuantity > 0
+            ? round2(
+                ((originalItem?.discount_cash_amount ?? 0) * item.quantity) /
+                  originalQuantity,
+              )
+            : 0;
+        const itemSubtotal = round2(
+          itemCashPrice * item.quantity - discountAmount,
+        );
         subtotal += itemSubtotal;
-
-        // Skip tax-exempt items
-        if (item.is_tax_exempt) continue;
-
-        // Get the tax rate for this item's category (default to "standard" if not set)
-        const taxCategory = item.tax_category || "standard";
-        const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-        const taxRateDecimal = taxRatePercent / 100;
-
-        // Apply proportional discount to this item (based on cash subtotal)
-        const itemDiscountProportion =
-          orderCashSubtotal > 0 ? itemSubtotal / orderCashSubtotal : 0;
-        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
-        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
-
-        // Calculate tax for this item
-        tax += itemTaxableAmount * taxRateDecimal;
+        taxLines.push({
+          netSubtotal: itemSubtotal,
+          taxCategory: item.tax_category,
+          isTaxExempt: item.is_tax_exempt,
+        });
       }
 
-      // Round to 2 decimal places
-      return Math.round((subtotal + tax) * 100) / 100;
+      // v6: aggregate tax per rate group on the cash base (round once per group).
+      const tax = aggregateTaxByCategory(taxLines, taxRatesMap);
+      return round2(subtotal + tax);
     };
 
     // 1. Recalculate amounts if needed (Split by Item logic - now includes tax for both card and cash)
-    const updatedSplits = splits.map((split) => {
+    let updatedSplits = splits.map((split) => {
       // If we have items but 0 amount, calculate price from items (with tax) for both card and cash
       if (split.items.length > 0 && split.amount === 0) {
         const cardAmount = calculateSplitCardAmount(split.items);
@@ -615,6 +918,66 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       }
       return split;
     });
+
+    if (source === "split-by-item") {
+      const itemSplitIndexes = updatedSplits
+        .map((split, index) => (split.items.length > 0 ? index : -1))
+        .filter((index) => index >= 0);
+      const itemsOnlyCardTotal = itemSplitIndexes.reduce(
+        (sum, index) => sum + updatedSplits[index].amount,
+        0,
+      );
+      const itemsOnlyCashTotal = itemSplitIndexes.reduce(
+        (sum, index) => sum + (updatedSplits[index].cashAmount ?? 0),
+        0,
+      );
+      const cardRemainder = Math.max(
+        0,
+        activeOrderOutstandingTotal - itemsOnlyCardTotal,
+      );
+      const cashRemainder = Math.max(
+        0,
+        activeOrderOutstandingCash - itemsOnlyCashTotal,
+      );
+      let distributedCardRemainder = 0;
+      let distributedCashRemainder = 0;
+
+      // Single items-ratio (card items+tax share) applied to BOTH the card
+      // and the cash SC residual. Keeps cash ≤ card per-split when the
+      // order has a cash discount; the previous design used separate
+      // card-/cash-share ratios, which inverted that inequality at the
+      // per-split level (Bug 2 from 2026-05-30 trace).
+      updatedSplits = updatedSplits.map((split, index) => {
+        if (!itemSplitIndexes.includes(index)) return split;
+        const isLast = index === itemSplitIndexes[itemSplitIndexes.length - 1];
+        const splitRatio =
+          itemsOnlyCardTotal > 0 ? split.amount / itemsOnlyCardTotal : 0;
+        const cardShare = isLast
+          ? round2(cardRemainder - distributedCardRemainder)
+          : round2(cardRemainder * splitRatio);
+        const cashShare = isLast
+          ? round2(cashRemainder - distributedCashRemainder)
+          : round2(cashRemainder * splitRatio);
+        distributedCardRemainder = round2(distributedCardRemainder + cardShare);
+        distributedCashRemainder = round2(distributedCashRemainder + cashShare);
+        return {
+          ...split,
+          amount: round2(split.amount + cardShare),
+          cashAmount: round2((split.cashAmount ?? 0) + cashShare),
+        };
+      });
+    }
+
+    if (source === "split-custom-amount") {
+      updatedSplits = updatedSplits.map((split) => ({
+        ...split,
+        cashAmount: calculateCustomSplitCashAmount(
+          split.amount,
+          activeOrderOutstandingTotal,
+          activeOrderOutstandingCash,
+        ),
+      }));
+    }
 
     set({ splits: updatedSplits });
 
@@ -632,9 +995,39 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
   },
 
-  handlePaymentCompletion: async (
-    { method, tipAmount, transactionDetails, amountOverride, dejavooTransaction }: { method: string, tipAmount?: number, transactionDetails?: OrderPaymentTransactionDetails, amountOverride?: number, dejavooTransaction?: DejavooSaleTransactionResponse }
-  ) => {
+  handlePaymentCompletion: async (args: {
+    method: string;
+    tipAmount?: number;
+    transactionDetails?: OrderPaymentTransactionDetails;
+    amountOverride?: number;
+    dejavooTransaction?: DejavooSaleTransactionResponse;
+  }) => {
+    // Wave-0 telemetry (Audit C #1): the awaited completion window between
+    // the confirm tap and the success-view swap (3x totals + Immer + journal
+    // for cash). Lands in Sentry AND the local ring via the perf.ts tap.
+    const perfHandle = startInteraction("pos.payment.completion", {
+      method: args.method,
+    });
+    try {
+      return await get()._handlePaymentCompletionImpl(args);
+    } finally {
+      perfHandle.endAfterPaint();
+    }
+  },
+
+  _handlePaymentCompletionImpl: async ({
+    method,
+    tipAmount,
+    transactionDetails,
+    amountOverride,
+    dejavooTransaction,
+  }: {
+    method: string;
+    tipAmount?: number;
+    transactionDetails?: OrderPaymentTransactionDetails;
+    amountOverride?: number;
+    dejavooTransaction?: DejavooSaleTransactionResponse;
+  }) => {
     const { activeSplitId, splits, splitSourceView, close } = get();
     const { activeOrderId, addPaymentToOrder } = useOrderStore.getState();
 
@@ -657,22 +1050,21 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         splitSourceView === "split-by-item" ||
         splitSourceView === "pay-for-items";
       if (isPerItemPayment && currentSplit.items.length > 0) {
-        itemAllocations = currentSplit.items
-          .map((item) => {
-            // Calculate per-item amount: unit price * quantity
-            // Use cash price when paying with cash, otherwise card price
-            const unitPrice = isCashPayment
-              ? (item.cashPrice ?? item.price ?? item.unitPrice ?? 0)
-              : (item.price ?? item.unitPrice ?? 0);
-            const amount = Math.round(unitPrice * item.quantity * 100) / 100;
-            return {
-              // Use local item.id as fallback for offline items without db_order_item_id.
-              // The offline sync handler resolves local IDs to backend UUIDs via resolveItemId().
-              itemId: item.db_order_item_id || item.id,
-              quantity: item.quantity, // Use the quantity from the split (may be partial)
-              amount: amount,
-            };
-          });
+        itemAllocations = currentSplit.items.map((item) => {
+          // Calculate per-item amount: unit price * quantity
+          // Use cash price when paying with cash, otherwise card price
+          const unitPrice = isCashPayment
+            ? (item.cashPrice ?? item.price ?? item.unitPrice ?? 0)
+            : (item.price ?? item.unitPrice ?? 0);
+          const amount = round2(unitPrice * item.quantity);
+          return {
+            // Use local item.id as fallback for offline items without db_order_item_id.
+            // The offline sync handler resolves local IDs to backend UUIDs via resolveItemId().
+            itemId: item.db_order_item_id || item.id,
+            quantity: item.quantity, // Use the quantity from the split (may be partial)
+            amount: amount,
+          };
+        });
 
         // Only use itemAllocations if we actually have valid allocations
         if (itemAllocations.length === 0) {
@@ -700,13 +1092,23 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Before payment: send items to kitchen if order is still in draft/pending
       // Must happen BEFORE addPaymentToOrder so items are still kitchen_status "new"
       // and sendNewItemsToKitchenForOrder actually executes (updates DB via update_order_status RPC)
-      const prePaymentOrder = useOrderStore.getState().ordersById[activeOrderId];
+      const prePaymentOrder =
+        useOrderStore.getState().ordersById[activeOrderId];
       if (
         prePaymentOrder &&
-        (prePaymentOrder.order_status === "draft" || prePaymentOrder.order_status === "pending")
+        (prePaymentOrder.order_status === "draft" ||
+          prePaymentOrder.order_status === "pending")
       ) {
-        await useOrderStore.getState().sendNewItemsToKitchenForOrder(activeOrderId);
+        useOrderStore.getState().sendNewItemsToKitchenForOrder(activeOrderId);
       }
+
+      // Snapshot existing payment ids so we can identify the one this call
+      // appends (for per-portion auto-print after success).
+      const prePaymentPaymentIds = new Set(
+        (
+          useOrderStore.getState().ordersById[activeOrderId]?.payments ?? []
+        ).map((p) => p.id),
+      );
 
       // Await payment and check for success
       // Only pass splitCount/splitPortionIndex for EVEN split payments
@@ -719,17 +1121,58 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         transactionDetails: detailsWithSplitLabel,
         dejavooTransaction,
         itemAllocations, // Pass item allocations with quantities for per-item payment tracking
-        forceCardPricing: splitSourceView === "split-custom-amount", // Custom amounts always use card pricing
+        forceCardPricing: false,
+        // Even and custom splits are amount-based. A valid portion can be
+        // smaller than the next whole item, especially after a discount.
+        forceExplicitAmount:
+          splitSourceView === "split-custom-amount" ||
+          splitSourceView === "split-evenly",
         // Only pass split count/index for even splits - NOT for per-item or custom-amount payments
         // Per-item payments use itemAllocations to track what was paid
         // Custom-amount payments use p_amount through the FULL/PARTIAL SQL path
         ...(isPerItemPayment || splitSourceView === "split-custom-amount"
           ? {}
-          : {
-              splitCount: splits.length,
-              splitPortionIndex:
-                splits.findIndex((s) => s.id === activeSplitId) + 1,
-            }),
+          : (() => {
+              // split_portion_index is UNIQUE per (order_id, …) for the whole
+              // order lifetime, but the in-memory `splits` array is rebuilt
+              // from scratch each time the sheet is reopened (e.g. "close and
+              // keep changes" then resume). Using the bare array position would
+              // restart indices at 1 and collide with an already-paid portion
+              // (duplicate key on idx_order_payments_split_portion). Offset by
+              // the count of portions already captured so every portion gets a
+              // globally-unique, monotonic index. split_count and the index
+              // share the SAME `paidBeforeSession` baseline (below) so the index
+              // always lands inside 1..split_count — anchoring only one of them
+              // to the live `paidPortions` pushed the 2nd portion's index to 3
+              // on a 2-way split and the RPC rejected it (P0001 "Invalid split
+              // portion index: 3 (must be 1-2)").
+              const paidPortions = (
+                useOrderStore.getState().ordersById[activeOrderId]?.payments ??
+                []
+              ).filter(
+                (p) => !p.isVoided && p.splitInfo?.portionIndex != null,
+              ).length;
+              const positionInSession = splits.findIndex(
+                (s) => s.id === activeSplitId,
+              );
+              // split_count MUST be stable across every portion of one logical
+              // split so the RPC's last-portion test counts them together.
+              // `paidPortions` is read live and increments as this session's
+              // own portions get captured, so `paidPortions + splits.length`
+              // drifted upward portion-to-portion (2-way split recorded as
+              // split_count 2 then 3). Portions then no longer shared a
+              // split_count, the RPC's `split_count = p_split_count` filter
+              // splintered them, portions_remaining never hit 0, and the order
+              // stuck at `partial` (previously masked by v15's tiny-total dust
+              // fallback, which v16 removed). Subtract this session's already-
+              // captured portions to recover the count of portions paid BEFORE
+              // this session — a value that doesn't move during the session.
+              const paidBeforeSession = paidPortions - positionInSession;
+              return {
+                splitCount: paidBeforeSession + splits.length,
+                splitPortionIndex: paidBeforeSession + positionInSession + 1,
+              };
+            })()),
       });
 
       // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)
@@ -757,7 +1200,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
                 .update({ split_payment_path: splitSourceView })
                 .eq("id", dbOrderId)
                 .then(({ error }) => {
-                  if (error) console.warn("[PaymentStore] Failed to persist split_payment_path:", error.message);
+                  if (error)
+                    console.warn(
+                      "[PaymentStore] Failed to persist split_payment_path:",
+                      error.message,
+                    );
                 });
             }
           }
@@ -767,11 +1214,16 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Track cash payment in drawer (fire-and-forget)
       if (isCashPayment) {
         try {
-          const staffProfileId = useEmployeeStore.getState().loggedInEmployee?.profileId || "";
+          const staffProfileId =
+            useEmployeeStore.getState().loggedInEmployee?.profileId || "";
           const order = useOrderStore.getState().getOrder(activeOrderId);
           const dbOrderId = order?.db_order_id ?? activeOrderId;
           trackCashPaymentInDrawer(
-            { amount_charged: paymentAmount, payment_id: "", change_given: 0 } as any,
+            {
+              amount_charged: paymentAmount,
+              payment_id: "",
+              change_given: 0,
+            } as any,
             dbOrderId,
             staffProfileId,
           );
@@ -788,6 +1240,41 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const nextPending = updatedSplits.find((s) => s.status === "pending");
 
       set({ splits: updatedSplits });
+
+      // Auto-print this portion's receipt (supplements the combined receipt).
+      // Fires for every portion including the last, so each payer gets a copy.
+      try {
+        const { autoPrintSplitReceipts } =
+          useLocationConfigStore.getState().config.printing;
+        if (autoPrintSplitReceipts) {
+          const selectedStore = useStoreSettingsStore.getState().selectedStore;
+          const afterOrder = useOrderStore.getState().ordersById[activeOrderId];
+          const justPaid = (afterOrder?.payments ?? []).find(
+            (p) => !prePaymentPaymentIds.has(p.id),
+          );
+          if (
+            selectedStore &&
+            afterOrder &&
+            justPaid &&
+            claimAutoPrint(justPaid.id)
+          ) {
+            const { PrinterService } =
+              require("@/services/printing/PrinterService") as typeof import("@/services/printing/PrinterService");
+            PrinterService.printSplitPaymentReceipt(
+              afterOrder,
+              justPaid,
+              selectedStore,
+            ).catch((e: unknown) =>
+              console.warn(
+                "[PaymentStore] split receipt auto-print failed:",
+                e,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        console.warn("[PaymentStore] split receipt auto-print error:", e);
+      }
 
       if (nextPending) {
         set({ view: "split-payment-success" });
@@ -810,9 +1297,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         // Emit order:paid event ONLY if order is actually fully paid
         // Custom amount splits may not cover the full bill
         // ================================================================
+        // Guard: a stale `amount_due === 0` left over from a prior
+        // payment-then-refund cycle is not enough on its own. We also require
+        // local payment evidence (sum minus refunds > 0) so an empty/refunded
+        // payments[] can never be misread as "paid".
         const isOrderFullyPaid =
           finalOrder?.paid_status === "Paid" ||
-          (finalOrder?.amount_due !== undefined && finalOrder.amount_due <= 0.01);
+          (finalOrder?.amount_due !== undefined &&
+            finalOrder.amount_due <= 0.01 &&
+            paymentsTotal > 0);
 
         if (isOrderFullyPaid) {
           const eventPayload: OrderPaidEvent = {
@@ -871,10 +1364,36 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // and sendNewItemsToKitchenForOrder actually finds items to send to KDS
       if (
         currentOrder &&
-        (currentOrder.order_status === "draft" || currentOrder.order_status === "pending")
+        (currentOrder.order_status === "draft" ||
+          currentOrder.order_status === "pending")
       ) {
         sendNewItemsToKitchenForOrder(activeOrderId);
       }
+
+      // Build itemAllocations covering all currently-unpaid units so addPaymentToOrder
+      // routes through its allocation branch instead of the gross-unit-price FIFO fallback,
+      // which can't cover discounted orders where amount < gross unit price.
+      const orderForAllocations =
+        useOrderStore.getState().ordersById[activeOrderId] ?? currentOrder;
+      const itemAllocations = (orderForAllocations?.items ?? [])
+        .filter((item) => !item.is_voided)
+        .map((item) => {
+          const unpaidQty = payableQuantity(item);
+          if (unpaidQty <= 0) return null;
+          return {
+            itemId: item.db_order_item_id || item.id,
+            quantity: unpaidQty,
+          };
+        })
+        .filter((a): a is { itemId: string; quantity: number } => a !== null);
+
+      // Snapshot existing payment ids so we can identify the one this call appends,
+      // enabling the per-payment settlement receipt (mirrors the split branch).
+      const prePaymentPaymentIds = new Set(
+        (
+          useOrderStore.getState().ordersById[activeOrderId]?.payments ?? []
+        ).map((p) => p.id),
+      );
 
       // Now add the payment — this synchronously marks items kitchen_status "sent"
       const paymentSuccess = await addPaymentToOrder({
@@ -884,6 +1403,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         tipAmount,
         transactionDetails: detailsWithCashFlag,
         dejavooTransaction,
+        itemAllocations,
       });
 
       // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)
@@ -895,11 +1415,16 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Track cash payment in drawer (fire-and-forget)
       if (isCashPayment) {
         try {
-          const staffProfileId = useEmployeeStore.getState().loggedInEmployee?.profileId || "";
+          const staffProfileId =
+            useEmployeeStore.getState().loggedInEmployee?.profileId || "";
           const order = useOrderStore.getState().getOrder(activeOrderId);
           const dbOrderId = order?.db_order_id ?? activeOrderId;
           trackCashPaymentInDrawer(
-            { amount_charged: paymentAmount, payment_id: "", change_given: 0 } as any,
+            {
+              amount_charged: paymentAmount,
+              payment_id: "",
+              change_given: 0,
+            } as any,
             dbOrderId,
             staffProfileId,
           );
@@ -923,6 +1448,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Subscribers handle: archiving takeout orders, updating table status,
       // analytics, inventory deduction, etc.
       // Kitchen send is fire-and-forget inline (parallelized with payment RPC).
+      // Standard flow pays the entire outstanding amount, so emission is
+      // unconditional here. The split-payment branch above has its own
+      // fully-paid guard for partial splits. The eventSubscribers.ts:Table
+      // handler also guards against re-dispatching FULL_PAYMENT when the
+      // session is already paid.
       const orderPaymentsTotal = (finalOrder?.payments || []).reduce(
         (sum, p) => sum + (p.amount || 0) - (p.refundedAmount || 0),
         0,
@@ -941,10 +1471,50 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
       eventBus.emit("order:paid", eventPayload);
 
+      // Settlement receipt (non-split "partial → pay the rest"): when this payment
+      // settles the balance of a split-flow order through the STANDARD branch, the
+      // combined receipt is suppressed in PaymentSuccessView (split_payment_path +
+      // autoPrintSplitReceipts). Print a per-payment receipt for THIS payment so the
+      // guest gets one — the same call the split route uses. Gated on the SAME
+      // condition as the combined-receipt suppression, so the two are complementary
+      // (no double, no gap). Keyed off the recorded payment, not "order fully paid".
+      // Persisted totals only (printSplitPaymentReceipt does not recompute).
+      try {
+        const { autoPrintSplitReceipts } =
+          useLocationConfigStore.getState().config.printing;
+        const afterOrder = useOrderStore.getState().ordersById[activeOrderId];
+        if (autoPrintSplitReceipts && afterOrder?.split_payment_path) {
+          const selectedStore =
+            useStoreSettingsStore.getState().selectedStore;
+          const justPaid = (afterOrder.payments ?? []).find(
+            (p) => !prePaymentPaymentIds.has(p.id),
+          );
+          if (selectedStore && justPaid && claimAutoPrint(justPaid.id)) {
+            const { PrinterService } =
+              require("@/services/printing/PrinterService") as typeof import("@/services/printing/PrinterService");
+            PrinterService.printSplitPaymentReceipt(
+              afterOrder,
+              justPaid,
+              selectedStore,
+            ).catch((e: unknown) =>
+              console.warn(
+                "[PaymentStore] settlement receipt auto-print failed:",
+                e,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "[PaymentStore] settlement receipt auto-print error:",
+          e,
+        );
+      }
+
       set({
         completedPaymentInfo: {
-          totalPaid: paymentAmount,   // exactly what was charged this payment
-          totalTips: tipAmount || 0,  // exactly this payment's tip
+          totalPaid: paymentAmount, // exactly what was charged this payment
+          totalTips: tipAmount || 0, // exactly this payment's tip
           paymentMethod: method,
           transactionId: activeOrderId,
         },

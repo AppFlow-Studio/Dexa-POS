@@ -3,11 +3,11 @@ import { useKDSStore } from '@/stores/useKDSStore'
 import { useEffect, useRef } from 'react'
 import { AppState, AppStateStatus } from 'react-native'
 
-const TICK_INTERVAL_MS = 30_000 // 30 seconds
+const TICK_INTERVAL_MS = 1000 // 1 second
 
 /**
  * Single global timer that drives all KDS card time displays.
- * Increments timerTick every 10s; pauses when app is backgrounded.
+ * Increments timerTick every second; pauses when app is backgrounded.
  */
 export function useKDSTimer () {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -51,19 +51,30 @@ export function useKDSTimer () {
 /**
  * Returns a stable bucketed elapsed string that only changes
  * at minute boundaries, preventing unnecessary re-renders.
+ * Displays as MM:SS (minutes:seconds).
+ * If doneTimeEpoch is provided, calculates elapsed time from start to completion (frozen).
  * @param startTimeEpoch — milliseconds since epoch (0 = unknown)
+ * @param doneTimeEpoch — optional completion time; if provided, timer is frozen at this value
  */
-export function getBucketedElapsed (startTimeEpoch: number): string {
-  if (startTimeEpoch === 0) return 'Now'
-  const diffMs = Date.now() - startTimeEpoch
-  const diffMins = Math.floor(diffMs / 60000)
+export function getBucketedElapsed (
+  startTimeEpoch: number,
+  doneTimeEpoch?: number,
+  nowEpoch: number = Date.now()
+): string {
+  if (startTimeEpoch === 0) return '0:00'
 
-  if (diffMins < 1) return 'Now'
-  if (diffMins < 60) return `${diffMins}m`
-  const hours = Math.floor(diffMins / 60)
-  const mins = diffMins % 60
-  if (mins === 0) return `${hours}h`
-  return `${hours}h${mins}m`
+  const currentTime = doneTimeEpoch || nowEpoch
+  const diffMs = currentTime - startTimeEpoch
+  // Clamp at zero: when the server-issued start time (fire_time /
+  // sent_to_kitchen_at) is ahead of this device's clock — clock skew between the
+  // tablet and Supabase, common right after a ticket is sent — diffMs is negative
+  // and the raw formatter renders garbage like "-13:-51". A negative "time since
+  // sent" is never meaningful, so floor it to 0:00 until the clock catches up.
+  const totalSeconds = Math.max(0, Math.floor(diffMs / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
 export interface UrgencyThresholds {
@@ -82,10 +93,11 @@ const DEFAULT_THRESHOLDS: UrgencyThresholds = { yellow: 5, orange: 10, red: 15 }
  */
 export function getUrgencyLevel (
   startTimeEpoch: number,
-  thresholds: UrgencyThresholds = DEFAULT_THRESHOLDS
+  thresholds: UrgencyThresholds = DEFAULT_THRESHOLDS,
+  nowEpoch: number = Date.now()
 ): number {
   if (startTimeEpoch === 0) return 0
-  const diffMins = Math.floor((Date.now() - startTimeEpoch) / 60000)
+  const diffMins = Math.floor((nowEpoch - startTimeEpoch) / 60000)
   if (diffMins >= thresholds.red) return 3
   if (diffMins >= thresholds.orange) return 2
   if (diffMins >= thresholds.yellow) return 1

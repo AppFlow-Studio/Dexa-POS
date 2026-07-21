@@ -84,11 +84,11 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+apply from: new File(["node", "--print", "require.resolve('@sentry/react-native/package.json')"].execute().text.trim(), "../sentry.gradle")
 android {
-    ndkVersion rootProject.ext.ndkVersion
-
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
+    ndkVersion "27.1.12297006"                                                         
 
     namespace 'com.temurappflowstudios.dexapos'
     defaultConfig {
@@ -96,7 +96,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0.2"
+        versionName "2.1.6"
     }
     signingConfigs {
         debug {
@@ -113,7 +113,13 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // For EAS "unsigned*" profiles, skip the debug-keystore fallback so the
+            // artifact is a TRULY unsigned APK to be signed with the prod key downstream.
+            // EAS-credentialed builds inject their own signing via eas-build.gradle, so
+            // real signed builds are unaffected.
+            if (!(System.getenv("EAS_BUILD_PROFILE") ?: "").contains("unsigned")) {
+                signingConfig signingConfigs.debug
+            }
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"

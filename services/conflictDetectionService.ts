@@ -13,6 +13,17 @@ import {
   generateConflictId,
 } from '@/types/conflict-resolution';
 
+// Feature flag — when on, suppress non-critical, non-payment conflicts on
+// locally-clean orders to a 'silent' severity (ring flashes, no toast). Default
+// on in dev/staging so we bake the new behavior; default off in prod for one
+// release cycle. Set EXPO_PUBLIC_SILENCE_REMOTE_EDIT_TOASTS=1 or =0 to override.
+const SILENCE_REMOTE_EDIT_TOASTS: boolean =
+  process.env.EXPO_PUBLIC_SILENCE_REMOTE_EDIT_TOASTS === '1'
+    ? true
+    : process.env.EXPO_PUBLIC_SILENCE_REMOTE_EDIT_TOASTS === '0'
+    ? false
+    : typeof __DEV__ !== 'undefined' && __DEV__;
+
 // ============================================================================
 // MAIN CONFLICT DETECTION
 // ============================================================================
@@ -20,6 +31,13 @@ import {
 /**
  * Detects if there's a conflict between local order state and incoming server state.
  * Returns null if no conflict, or ConflictInfo if conflict detected.
+ *
+ * Smart payment-safe gate (B.1): a real conflict requires both that the server
+ * changed something AND that this device has local pending changes that could
+ * be clobbered. Without local pending, a server update is just an update — we
+ * still record it for audit (severity='silent') so the UI ring flashes and
+ * support has a trail, but no toast fires. Payment / critical conflicts always
+ * pass through unconditionally so the cashier never silently double-tenders.
  */
 export function detectConflict(
   localOrder: OrderProfile,
@@ -55,7 +73,25 @@ export function detectConflict(
 
   // Categorize the conflict
   const conflictType = categorizeConflict(serverChanges, itemConflicts, options);
-  const severity = determineSeverity(conflictType, options);
+  let severity = determineSeverity(conflictType, options);
+
+  // Payment-safe smart gate. If we're locally clean AND the server change
+  // doesn't touch payment, downgrade to 'silent' so callers can record but
+  // skip the toast. wasPaymentProcessed is the explicit safety bypass — if a
+  // tender landed remotely, we never silence it, even if conflictType
+  // mis-categorizes (defense in depth around the original plan's hard bug).
+  const isPaymentTouching =
+    conflictType === 'payment' ||
+    severity === 'critical' ||
+    wasPaymentProcessed(localOrder, serverOrder);
+
+  if (
+    SILENCE_REMOTE_EDIT_TOASTS &&
+    !isPaymentTouching &&
+    !hasLocalPendingChanges(localOrder)
+  ) {
+    severity = 'silent';
+  }
 
   // Build conflict info
   const conflict: ConflictInfo = {
@@ -74,8 +110,10 @@ export function detectConflict(
     detectedAt: new Date().toISOString(),
     autoResolved: severity !== 'critical',
   };
-  
-  console.log('[ConflictDetected]', conflict)
+
+  if (severity !== 'silent') {
+    console.log('[ConflictDetected]', conflict)
+  }
 
   return conflict;
 }
@@ -92,21 +130,54 @@ export function getOrderVersion(order: OrderProfile & { sync_version?: number })
 }
 
 /**
- * Check if local order has pending changes that haven't been synced
+ * Check if local order has pending changes that haven't been synced.
+ *
+ * A "real conflict" requires this device to have something at risk of being
+ * clobbered. The set of pending categories must mirror everything the cashier
+ * can mutate locally before the next sync round-trip lands.
  */
 export function hasLocalPendingChanges(order: OrderProfile): boolean {
-  // Check if any items have pending sync status
-  if (order.items?.some(item => (item as any).sync_status === 'pending')) {
+  // Items mid-sync (sync_status flipped by mutation slices) ----------------
+  if (order.items?.some(item => item.sync_status === 'pending')) {
     return true;
   }
 
-  // Check order-level sync status
+  // Items not yet known to backend (no db_order_item_id) -------------------
+  if (order.items?.some(item => !item.db_order_item_id)) {
+    return true;
+  }
+
+  // Order-level dirty flag (covers customer-info edits + other order-shape
+  // changes that flow through the sync pipeline) ---------------------------
   if (order.sync_status === 'pending') {
     return true;
   }
 
-  // Check for unsent items (new items not yet synced)
-  if (order.items?.some(item => !item.db_order_item_id)) {
+  // Discounts: applied but not confirmed by backend. Mirrors the items
+  // logic — sync_status='pending' OR no order_discount_id (server hasn't
+  // assigned an ID yet). order.applied_discounts is the new path; legacy
+  // `checkDiscount` exists too but doesn't carry sync state, so we ignore it
+  // here (it gets coerced into applied_discounts on save).
+  if (
+    order.applied_discounts?.some(
+      d => d.sync_status === 'pending' || !d.order_discount_id,
+    )
+  ) {
+    return true;
+  }
+
+  // Pre-auth payments: an authorized-but-not-captured pre-auth means we hold
+  // a real lock on the customer's card; a remote tender on the same order is
+  // a real conflict the cashier needs to know about.
+  if (
+    order.payments?.some(
+      p =>
+        p.status === 'authorized' &&
+        p.isPreAuth === true &&
+        !p.isVoided &&
+        p.sync_status !== 'synced',
+    )
+  ) {
     return true;
   }
 
@@ -148,17 +219,8 @@ function detectServerChanges(
 ): ConflictChange[] {
   const changes: ConflictChange[] = [];
 
-  // Check total amount changes
-  if (
-    serverOrder.total_amount !== undefined &&
-    localOrder.total_amount !== serverOrder.total_amount
-  ) {
-    changes.push({
-      field: 'total_amount',
-      previousValue: localOrder.total_amount,
-      newValue: serverOrder.total_amount,
-    });
-  }
+  // Skip derived fields (total_amount, total_discount) — these auto-recalculate
+  // when items change and cause false-positive conflicts on discounted orders.
 
   // Check paid amount changes (indicates payment processed)
   if (
@@ -193,18 +255,6 @@ function detectServerChanges(
       field: 'paid_status',
       previousValue: localOrder.paid_status,
       newValue: serverOrder.paid_status,
-    });
-  }
-
-  // Check discount changes
-  if (
-    serverOrder.total_discount !== undefined &&
-    localOrder.total_discount !== serverOrder.total_discount
-  ) {
-    changes.push({
-      field: 'total_discount',
-      previousValue: localOrder.total_discount,
-      newValue: serverOrder.total_discount,
     });
   }
 
