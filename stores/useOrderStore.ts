@@ -3010,11 +3010,13 @@ const syncPaymentToBackend = async (
       //                            pay-for-items client paths already scale
       //                            items+tax up by the proportional SC share).
       "process_payment_v12",
-      // v16 — split-payment fully-paid requires ALL portions captured (drops
-      // v15's `balance <= 0.02` dust fallback that flipped a tiny split to paid
-      // after the first portion). MUST match orderService.processPayment, which
-      // also calls v16 — this is the direct (non-OrderService) payment path.
-      "process_payment_v16",
+      // v17 — forks v16 byte-identical + a valor_transaction branch that funnels
+      // Valor's nested card fields (cardLast4/rrn/approvalCode/entryMode) into the
+      // order_payments columns and stamps terminal_type='valor'. Without it the
+      // client called v16 (no valor arm) so Valor payments persisted with null
+      // last4/rrn/auth and a 'dejavoo' label. MUST match
+      // orderService.processPayment, which also calls v17.
+      "process_payment_v17",
       {
         p_order_id: order.db_order_id,
         p_payment_method: paymentMethod,
@@ -4312,6 +4314,8 @@ function mergeTransactionDetails(
       broadcast.castlesTransaction ?? local.castlesTransaction,
     dejavooTransaction:
       broadcast.dejavooTransaction ?? local.dejavooTransaction,
+    valorTransaction:
+      broadcast.valorTransaction ?? local.valorTransaction,
   };
 }
 
@@ -16808,6 +16812,10 @@ export const useOrderStore = create<OrderState>()(
                       Record<string, any> | undefined;
                     const dejavooTxn = terminalResp?.dejavoo_transaction as
                       Record<string, any> | undefined;
+                    // Valor stores its blob in processor_response (not
+                    // terminal_response): { terminal_vendor, valor_transaction }.
+                    const valorTxn = (payment.processor_response as any)
+                      ?.valor_transaction as Record<string, any> | undefined;
 
                     return {
                       // Core identifiers
@@ -16947,10 +16955,12 @@ export const useOrderStore = create<OrderState>()(
                         cardType:
                           payment.card_type ??
                           castlesTxn?.cardType ??
+                          valorTxn?.cardType ??
                           dejavooTxn?.CardType,
                         last4:
                           payment.card_last_four ??
                           castlesTxn?.cardLast4 ??
+                          valorTxn?.cardLast4 ??
                           dejavooTxn?.Last4,
                         transactionId: payment.transaction_id,
                         amountTendered: payment.amount_tendered,
@@ -16961,15 +16971,28 @@ export const useOrderStore = create<OrderState>()(
                         dejavooTransaction:
                           payment.processor_response?.dejavoo_transaction,
                         // Additional terminal fields
-                        rrn: payment.rrn,
+                        rrn: payment.rrn ?? valorTxn?.rrn,
                         batchNumber:
-                          payment.batch_number || payment.dejavoo_batch_number,
+                          payment.batch_number ||
+                          payment.dejavoo_batch_number ||
+                          valorTxn?.batchNumber,
                         invoiceNumber: payment.dejavoo_invoice_number,
                         entryMode:
                           payment.processor_response?.dejavoo_transaction
-                            ?.entryMode ?? castlesTxn?.entryMode,
+                            ?.entryMode ??
+                          castlesTxn?.entryMode ??
+                          valorTxn?.entryMode,
                         referenceId: payment.reference_number,
                         castlesTransaction: castlesTxn,
+                        // Full Valor blob for the detail sheet (reads
+                        // valorTransaction.valor_transaction.*). Only set for
+                        // actual Valor payments so Dejavoo/NMI processor_response
+                        // blobs don't get misread as card data.
+                        valorTransaction:
+                          (payment.processor_response as any)
+                            ?.terminal_vendor === "valor"
+                            ? payment.processor_response
+                            : undefined,
                       },
 
                       // Pre-auth fields (hydrate from backend so pre-auth state survives refresh)

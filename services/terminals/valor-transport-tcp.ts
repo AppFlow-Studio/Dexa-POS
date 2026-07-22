@@ -104,6 +104,19 @@ export class ValorTcpTransport implements ITerminalTransport {
             if (this._currentSocket !== socket) return;
             this._lastDataReceivedAt = Date.now();
             const chunk = typeof data === "string" ? data : data.toString("utf8");
+            // TEMP DIAGNOSTIC (Valor connect debugging): log exactly what the
+            // terminal sends, with control bytes made visible (STX=\x02, ETX=\x03).
+            // Remove once the connection issue is resolved.
+            try {
+              const visible = chunk
+                .replace(/\x02/g, "<STX>")
+                .replace(/\x03/g, "<ETX>")
+                .replace(/\r/g, "<CR>")
+                .replace(/\n/g, "<LF>");
+              console.log(
+                `[ValorTcpTransport] RAW RX (${chunk.length}B): ${visible}`,
+              );
+            } catch { /* best-effort */ }
             for (const cb of [...this._dataCallbacks]) {
               try { cb(chunk); } catch { /* ignore callback errors */ }
             }

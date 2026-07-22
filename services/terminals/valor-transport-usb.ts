@@ -6,9 +6,12 @@
 // all serial devices and its events are unfiltered — the vendor filter is
 // JS-side). Only the device-selection filter + baud differ from Castles.
 //
-// ⚠️ GATED (Wave 8): VALOR_USB_VENDOR_ID / product-name strings are placeholders
-// until Valor provides the terminal's USB vendorId, productId(s), productName,
-// and CDC baud rate. Until then the JS filter will not match a real device.
+// The Valor VP terminal enumerates as a Qualcomm "Android Diag" CDC serial
+// device — USB vendor id 0x1E0E (Qualcomm). The device_filter.xml declares the
+// same VID (decimal 7694) so Android grants persistent USB permission and
+// delivers USB_DEVICE_ATTACHED for zero-touch auto-connect. NOTE: 0x1E0E is a
+// shared Qualcomm VID, so in a multi-device setup prefer the product-name hints
+// below to disambiguate. Requires a native rebuild after changing the filter.
 // ============================================================
 
 import * as Sentry from "@sentry/react-native";
@@ -27,8 +30,8 @@ import {
 import type { ITerminalTransport } from "./valor-transport.types";
 import { VALOR_USB_BAUD_RATE } from "@/types/valor";
 
-/** TODO(valor-usb): replace with Valor's real USB vendor ID once provided. */
-export const VALOR_USB_VENDOR_ID = 0x0000;
+/** Valor VP terminal USB vendor id — 0x1E0E (Qualcomm "Android Diag" CDC). */
+export const VALOR_USB_VENDOR_ID = 0x1e0e;
 /** Product-name substrings to match a Valor terminal as a fallback. */
 const VALOR_PRODUCT_HINTS = ["VALOR", "VP500", "VP100"];
 

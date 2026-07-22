@@ -83,6 +83,14 @@ interface SendOpts {
   sendTrailingAck?: boolean;
   /** Called with the STAN captured at S2 (before card presentation). */
   onStan?: (stan: string) => void;
+  /**
+   * Resolve on the ACK itself instead of waiting for a "final" frame. Real VP
+   * terminals answer the TRAN_MODE 96 health/test ping with ONLY an ACK
+   * ({"STATE":"0","MSG":"ACK"}) and no follow-up data frame, so the query would
+   * otherwise wait for a final that never arrives and time out. Used only by
+   * terminalQuery — transaction commands still require the real final frame.
+   */
+  resolveOnAck?: boolean;
 }
 
 export class ValorService {
@@ -263,7 +271,13 @@ export class ValorService {
         return this._sendOnTransport(
           this._transport!,
           { TRAN_MODE: VALOR_TRAN_MODE.TERMINAL_QUERY },
-          { finalTimeout: VALOR_TERMINAL_QUERY_TIMEOUT_MS, requireAck: false, correlate: false },
+          {
+            finalTimeout: VALOR_TERMINAL_QUERY_TIMEOUT_MS,
+            requireAck: false,
+            correlate: false,
+            // VP terminals answer 96 with only an ACK — treat that as the result.
+            resolveOnAck: true,
+          },
         );
       });
       if (String(final.STATE ?? "0") === VALOR_SUCCESS_STATE || final.SERIAL_NO) {
@@ -527,6 +541,12 @@ export class ValorService {
           const kind = classifyValorFrame(frame);
           if (kind === "ack") {
             sawAck = true;
+            // For the health/test ping the ACK is the whole response — the
+            // terminal sends no final frame — so resolve on it directly.
+            if (opts.resolveOnAck) {
+              done(() => resolve(frame));
+              return;
+            }
             continue;
           }
           if (kind === "payload_received") {
@@ -561,6 +581,13 @@ export class ValorService {
         }
       };
       const onClose = () => {
+        // TEMP DIAGNOSTIC (Valor connect debugging): sawAck=false means the
+        // terminal closed WITHOUT sending any ACK/payload/final frame — i.e. it
+        // accepted the socket, received our request, and hung up silently.
+        // Remove once resolved.
+        console.warn(
+          `[ValorService] onClose before final — sawAck=${sawAck}, stan=${stan ?? "none"}`,
+        );
         done(() =>
           reject(
             new ValorCommandError(
@@ -579,7 +606,16 @@ export class ValorService {
       transport.onClose(onClose);
       transport.onError(onError);
 
-      transport.write(encodeValorFrame(body)).catch((err: Error) => {
+      // TEMP DIAGNOSTIC (Valor connect debugging): log the exact frame we send,
+      // with control bytes visible. Remove once resolved.
+      const _framed = encodeValorFrame(body);
+      try {
+        console.log(
+          `[ValorService] RAW TX (${_framed.length}B): ` +
+            _framed.replace(/\x02/g, "<STX>").replace(/\x03/g, "<ETX>"),
+        );
+      } catch { /* best-effort */ }
+      transport.write(_framed).catch((err: Error) => {
         done(() => reject(new ValorCommandError(`Write failed: ${err.message}`, "connect", null)));
       });
     });

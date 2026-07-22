@@ -5460,10 +5460,21 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         const castlesTx = (castlesRaw?.castles_transaction ?? castlesRaw) as
           | Record<string, string>
           | undefined;
-        const cardBrand = payment.cardBrand || txDetails?.cardType;
-        const last4 = payment.last4 || txDetails?.cardLast4;
+        // Valor: same dual-shape handling as Castles — full
+        // buildValorTerminalResponse (same-session) vs inner valor_transaction
+        // (reloaded from the persisted processor_response).
+        const valorRaw = payment.transactionDetails?.valorTransaction as
+          | Record<string, any>
+          | undefined;
+        const valorTx = (valorRaw?.valor_transaction ?? valorRaw) as
+          | Record<string, string>
+          | undefined;
+        const cardBrand =
+          payment.cardBrand || txDetails?.cardType || valorTx?.cardType;
+        const last4 =
+          payment.last4 || txDetails?.cardLast4 || valorTx?.cardLast4;
         const cardInfo =
-          payment.method === "Card" || txDetails || castlesTx
+          payment.method === "Card" || txDetails || castlesTx || valorTx
             ? {
                 brand: cardBrand,
                 last4,
@@ -5471,19 +5482,25 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   ? String(txDetails.entryMode)
                   : castlesTx?.entryMode
                     ? String(castlesTx.entryMode)
-                    : undefined,
+                    : valorTx?.entryMode
+                      ? String(valorTx.entryMode)
+                      : undefined,
                 authCode: txDetails?.authCode
                   ? String(txDetails.authCode)
                   : castlesTx?.approvalCode
                     ? String(castlesTx.approvalCode)
-                    : undefined,
+                    : valorTx?.approvalCode
+                      ? String(valorTx.approvalCode)
+                      : undefined,
                 rrn: txDetails?.rrn
                   ? String(txDetails.rrn)
                   : castlesTx?.rrn
                     ? String(castlesTx.rrn)
-                    : payment.transactionDetails?.rrn
-                      ? String(payment.transactionDetails.rrn)
-                      : undefined,
+                    : valorTx?.rrn
+                      ? String(valorTx.rrn)
+                      : payment.transactionDetails?.rrn
+                        ? String(payment.transactionDetails.rrn)
+                        : undefined,
                 transactionNumber: txDetails?.transactionNumber
                   ? String(txDetails.transactionNumber)
                   : undefined,

@@ -306,5 +306,5 @@ export const VALOR_STATUS_TIMEOUT_MS = 15_000;
 export const VALOR_TEST_DEADLINE_MS = 30_000;
 export const VALOR_TEST_OP_NAME = "_probe_valor_test";
 
-/** USB CDC serial baud (assumed same as Castles Saturn1000; confirm with Valor). */
-export const VALOR_USB_BAUD_RATE = 115_200;
+/** USB CDC serial baud — 9600 per Valor's USB semi-integration guide. */
+export const VALOR_USB_BAUD_RATE = 9600;

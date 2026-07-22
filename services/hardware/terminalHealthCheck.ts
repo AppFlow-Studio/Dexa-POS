@@ -7,6 +7,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { probeCastlesTerminal, getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getSharedValorService } from "@/services/terminals/valor-service";
+import { VALOR_USB_VENDOR_ID } from "@/services/terminals/valor-transport-usb";
 import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from "@/types/valor";
 import { listDevices } from "@/modules/castles-usb";
 
@@ -81,9 +82,22 @@ async function performValorHealthCheck(): Promise<void> {
   }
 
   if (isUsb) {
-    // USB probing lands in Wave 8 (needs the Valor VID). Until the singleton is
-    // up we can't confirm liveness without opening the port, so report offline.
-    handleFailure("Valor USB terminal not connected");
+    // USB (Qualcomm CDC, VID 0x1E0E): read-only presence check via listDevices —
+    // don't open the port (that would steal it from the shared singleton used for
+    // sales). Same approach as the Castles USB health check above.
+    try {
+      const devices = await listDevices();
+      const found = devices.some((d) => d.vendorId === VALOR_USB_VENDOR_ID);
+      if (found) {
+        handleSuccess();
+      } else {
+        handleFailure("USB terminal not detected (cable unplugged or terminal powered off)");
+      }
+    } catch (err) {
+      handleFailure(
+        err instanceof Error ? err.message : "USB device enumeration failed",
+      );
+    }
     return;
   }
 

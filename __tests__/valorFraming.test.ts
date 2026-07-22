@@ -12,12 +12,11 @@ import {
 import { VALOR_STX, VALOR_ETX } from "@/types/valor";
 
 describe("encodeValorFrame", () => {
-  it("wraps the JSON body in STX/ETX", () => {
+  it("encodes the body as bare JSON (no STX/ETX — real VP terminals reject framing)", () => {
     const framed = encodeValorFrame({ TRAN_MODE: "1", TRAN_CODE: "1", AMOUNT: "1500" });
-    expect(framed.startsWith(VALOR_STX)).toBe(true);
-    expect(framed.endsWith(VALOR_ETX)).toBe(true);
-    const inner = framed.slice(1, -1);
-    expect(JSON.parse(inner)).toEqual({ TRAN_MODE: "1", TRAN_CODE: "1", AMOUNT: "1500" });
+    expect(framed.startsWith(VALOR_STX)).toBe(false);
+    expect(framed.endsWith(VALOR_ETX)).toBe(false);
+    expect(JSON.parse(framed)).toEqual({ TRAN_MODE: "1", TRAN_CODE: "1", AMOUNT: "1500" });
   });
 });
 
@@ -74,6 +73,38 @@ describe("ValorFrameReader", () => {
     const out = r.push(VALOR_STX + "not json" + VALOR_ETX + frame({ MSG: "ACK", STATE: "0" }));
     expect(out).toHaveLength(1);
     expect(out[0].MSG).toBe("ACK");
+  });
+
+  // Real VP terminals reply with BARE JSON (no STX/ETX). These lock in that the
+  // brace-depth reader handles the actual on-wire response shape.
+  it("reads a bare JSON response with no STX/ETX framing", () => {
+    const r = new ValorFrameReader();
+    const out = r.push('{"STATE":"0","MSG":"ACK"}');
+    expect(out).toHaveLength(1);
+    expect(out[0].MSG).toBe("ACK");
+  });
+
+  it("reassembles a bare (unframed) object split across two chunks", () => {
+    const r = new ValorFrameReader();
+    expect(r.push('{"STATE":"0","STAN_NO":"12')).toHaveLength(0);
+    const out = r.push('3456","MSG":"Payload Request Received"}');
+    expect(out).toHaveLength(1);
+    expect(out[0].STAN_NO).toBe("123456");
+  });
+
+  it("emits multiple concatenated bare objects in one read", () => {
+    const r = new ValorFrameReader();
+    const out = r.push('{"MSG":"ACK","STATE":"0"}{"MSG":"APPROVED","STATE":"0","TRAN_NO":"20"}');
+    expect(out).toHaveLength(2);
+    expect(out[0].MSG).toBe("ACK");
+    expect(out[1].TRAN_NO).toBe("20");
+  });
+
+  it("does not miscount braces that appear inside string values", () => {
+    const r = new ValorFrameReader();
+    const out = r.push('{"MSG":"ACK","NOTE":"weird } brace { inside"}');
+    expect(out).toHaveLength(1);
+    expect(out[0].NOTE).toBe("weird } brace { inside");
   });
 });
 

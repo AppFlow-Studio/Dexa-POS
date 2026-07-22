@@ -93,8 +93,30 @@ export function buildValorTerminalResponse(
     );
   }
 
+  const cardLast4 = extractLast4(maskedPan);
+  const cardType = normalizeCardType(cardBrand);
+  const entryType = normalizeEntryMode(entryMode);
+  const approvalCode = raw.CODE ?? "";
+  const rrn = raw.RRN ?? "";
+
   return {
     terminal_vendor: "valor",
+    // Top-level flattened fields the process_payment RPC persists into the
+    // order_payments columns (terminal_type, card_last_four, card_type,
+    // authorization_code, rrn, entry_type…) — the SAME keys Castles/Dejavoo
+    // emit. Without these, Valor card data lived only in the nested
+    // valor_transaction blob, so every hydration path that reads the flat
+    // columns showed a bare "Card". Keep in sync with valor_transaction below.
+    terminal_type: "valor",
+    card_last_four: cardLast4,
+    card_type: cardType,
+    authorization_code: approvalCode,
+    auth_code: approvalCode,
+    rrn,
+    entry_type: entryType,
+    transaction_id: raw.TXN_ID ?? raw.REQ_TXN_ID ?? "",
+    transaction_number: String(tranNo ?? ""),
+    batch_number: raw.BATCH_NO ?? "",
     valor_transaction: {
       transactionType: raw.TRAN_METHOD,
       cardKind: raw.TRAN_TYPE,
@@ -107,11 +129,11 @@ export function buildValorTerminalResponse(
       /** System Trace Audit Number — TRAN_MODE 90 recovery key (NOT a reversal ref). */
       stanNo: raw.STAN_NO ?? raw.STAN_ID ?? "",
       resultCode: raw.STATE,
-      approvalCode: raw.CODE ?? "",
-      rrn: raw.RRN ?? "",
-      cardLast4: extractLast4(maskedPan),
-      cardType: normalizeCardType(cardBrand),
-      entryMode: normalizeEntryMode(entryMode),
+      approvalCode,
+      rrn,
+      cardLast4,
+      cardType,
+      entryMode: entryType,
       issuer: raw.ISSUER ?? "",
       cardAID: raw.AID ?? "",
       expiryDate: raw.EXPIRY_DATE ?? "",

@@ -32,13 +32,13 @@ export interface StationPaymentTerminal {
     | "valor";
   terminal_model: string | null;
   is_connected: boolean;
-  /** Castles / Valor terminal IP address (Valor default port 5000) */
+  /** Castles/Valor terminal IP address */
   ip_address?: string;
-  /** Castles terminal port (default 8080) / Valor transaction port (default 5000) */
+  /** Castles terminal port (default 8080) / Valor port (default 5000) */
   port?: number;
-  /** Valor cancel port (default 5001) — cancel-before-card is sent on this second socket */
+  /** Valor cancel-before-card port (default 5001) */
   cancel_port?: number;
-  /** Valor Electronic Payment Interface id (merchant/device identifier) */
+  /** Valor EPI (merchant/device identifier) */
   epi?: string;
   /** Hardware serial number printed on the device */
   serial_number?: string | null;

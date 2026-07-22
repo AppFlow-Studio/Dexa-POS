@@ -222,3 +222,24 @@ describe("ValorService stale-frame correlation guard", () => {
     warn.mockRestore();
   });
 });
+
+describe("ValorService.terminalQuery — real terminal (ACK-only)", () => {
+  it("resolves success when the terminal answers 96 with ONLY an ACK", async () => {
+    // Real VP terminals reply to TRAN_MODE 96 with just {"STATE":"0","MSG":"ACK"}
+    // and no data frame. resolveOnAck must treat that as a successful ping
+    // instead of waiting for a final frame that never comes.
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+    };
+    mockTransportImpl.current = () => scripted;
+
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.terminalQuery();
+
+    expect(res.success).toBe(true);
+    // No SERIAL_NO/APP_VERSION in an ACK-only reply — that's expected.
+    expect(res.data?.serialNumber).toBeUndefined();
+  });
+});

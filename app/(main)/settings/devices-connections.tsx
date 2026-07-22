@@ -3167,12 +3167,15 @@ const DevicesConnectionsScreen = ({
                             >
                               {currentTerminal.terminal_type === 'castles'
                                 ? 'CASTLES'
-                                : 'DEJAVOO'}
+                                : currentTerminal.terminal_type === 'valor'
+                                  ? 'VALOR'
+                                  : 'DEJAVOO'}
                             </Text>
                           </View>
                         </View>
                         <View style={{ marginTop: s(4), gap: s(2) }}>
-                          {currentTerminal.terminal_type === 'castles' ? (
+                          {currentTerminal.terminal_type === 'castles' ||
+                          currentTerminal.terminal_type === 'valor' ? (
                             <>
                               <View
                                 style={{
@@ -3200,10 +3203,40 @@ const DevicesConnectionsScreen = ({
                                 >
                                   {currentTerminal.ip_address ?? '—'}
                                   {currentTerminal.ip_address
-                                    ? `:${currentTerminal.port || 8080}`
+                                    ? `:${currentTerminal.port || (currentTerminal.terminal_type === 'valor' ? 5000 : 8080)}`
                                     : ''}
                                 </Text>
                               </View>
+                              {currentTerminal.terminal_type === 'valor' &&
+                                currentTerminal.epi && (
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        color: colors.muted,
+                                        fontSize: s(9),
+                                        fontWeight: '600',
+                                        width: s(36)
+                                      }}
+                                    >
+                                      EPI:
+                                    </Text>
+                                    <Text
+                                      style={{
+                                        color: colors.heading,
+                                        fontSize: s(9),
+                                        fontFamily: 'monospace'
+                                      }}
+                                      selectable
+                                    >
+                                      {currentTerminal.epi}
+                                    </Text>
+                                  </View>
+                                )}
                               <View
                                 style={{
                                   flexDirection: 'row',
