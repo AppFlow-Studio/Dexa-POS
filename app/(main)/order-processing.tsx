@@ -3,6 +3,7 @@ import DiscountBottomSheet from "@/components/bill/DiscountBottomSheet";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import { ServiceChargeOverrideSheet } from "@/components/bill/ServiceChargeOverrideSheet";
 import CashDrawerSheet from "@/components/cash-drawer/CashDrawerSheet";
+import QrCallWaiterBell from "@/components/qr/QrCallWaiterBell";
 import NoSaleModal from "@/components/cash-drawer/NoSaleModal";
 import MenuSection from "@/components/menu/MenuSection";
 import OpenItemAdder from "@/components/menu/OpenItemAdder";
@@ -1346,6 +1347,7 @@ const OrderProcessing = () => {
               }
               rightToolbarSlot={
                 <View className="flex-row items-center gap-2">
+                  <QrCallWaiterBell />
                   <TouchableOpacity
                     onPress={() => {
                       setIsInlinePreviousOrdersOpen(false);

@@ -1,4 +1,5 @@
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
+import QrCallWaiterBell from "@/components/qr/QrCallWaiterBell";
 import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
@@ -3504,6 +3505,10 @@ const KitchenDisplayScreen = () => {
                 color={refreshing ? colors.teal : colors.label}
               />
             </TouchableOpacity>
+
+            {/* QR guest call-server bell — chrome, only renders at ≥1 open
+                alert. Blue identity, never the T-18 overdue red. */}
+            <QrCallWaiterBell />
 
             {/* Settings Button — opens the real app Settings page,
                 gated behind a manager PIN (see handlePinConfirm). */}

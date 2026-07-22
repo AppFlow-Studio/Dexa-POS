@@ -485,6 +485,50 @@ export const PrinterService = {
   },
 
   /**
+   * Print a QR table tent on the receipt printer.
+   * qrData must be the full guest URL (buildQrTableUrl output).
+   */
+  async printTableQr (data: {
+    tableLabel: string
+    storeName: string
+    qrData: string
+    locationId: string
+  }): Promise<boolean> {
+    const printer = getReceiptPrinter(data.locationId)
+    if (!printer) {
+      console.warn('[PrinterService] No receipt printer for table QR tent')
+      return false
+    }
+    const doc: PrintDocument = {
+      nodes: [
+        { type: 'empty_line' },
+        {
+          type: 'text_line',
+          content: data.tableLabel,
+          align: 'center',
+          format: { bold: true, doubleHeight: true, doubleWidth: true }
+        },
+        { type: 'empty_line' },
+        { type: 'qr_code', data: data.qrData, size: 8 },
+        { type: 'empty_line' },
+        {
+          type: 'text_line',
+          content: 'Scan to order',
+          align: 'center',
+          format: { bold: true }
+        },
+        { type: 'text_line', content: data.storeName, align: 'center' },
+        { type: 'feed', lines: 2 },
+        { type: 'cut' }
+      ]
+    }
+    const job = createDocumentJob(printer.id, doc, 'receipt', 'normal')
+    usePrintQueueStore.getState().enqueue(job)
+    this.ensureProcessing()
+    return true
+  },
+
+  /**
    * Print a Void Order receipt on the receipt printer (customer-facing).
    */
   async printVoidOrderReceipt (

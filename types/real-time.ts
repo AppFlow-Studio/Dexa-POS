@@ -19,6 +19,8 @@ export type RealtimeEventType =
   | 'INSERT'
   | 'UPDATE'
   | 'DELETE'
+  // QR guest alerts (call-server bell) ride the orders channel
+  | 'qr_guest_alert_changed'
   // Table-specific Events (location:*:tables channel)
   | 'TABLE_ASSIGNMENT_INSERT'
   | 'TABLE_ASSIGNMENT_UPDATE'

@@ -5,6 +5,10 @@ import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getOrderPaymentsQueryOptions, orderPaymentsQueryKey } from '@/hooks/orders/useOrderPayments'
 import { isOnlineOrderSource } from '@/lib/orderSource'
 import {
+  useQrGuestAlertsStore,
+  type QrGuestAlertBroadcast
+} from '@/stores/useQrGuestAlertsStore'
+import {
   KEY_RT_HANDLER_MS,
   KEY_RT_MSG,
   KEY_RT_PAYLOAD_BYTES_SAMPLED
@@ -362,7 +366,7 @@ export function useOrdersRealtime ({
   const queryClient = useQueryClient()
 
   const events: RealtimeEventType[] = useMemo(
-    () => ['INSERT', 'UPDATE', 'DELETE'],
+    () => ['INSERT', 'UPDATE', 'DELETE', 'qr_guest_alert_changed'],
     []
   )
 
@@ -391,6 +395,16 @@ export function useOrdersRealtime ({
           orderId: (payload as any)?.data?.order?.id,
           operation: (payload as any)?.operation
         })
+
+      // QR guest "call server" alerts ride this channel — route straight to
+      // the alert store (bell chrome), never into order handling.
+      if (event === 'qr_guest_alert_changed') {
+        useQrGuestAlertsStore
+          .getState()
+          .applyBroadcast(payload as QrGuestAlertBroadcast)
+        recordSpan(KEY_RT_HANDLER_MS, performance.now() - handlerStart)
+        return
+      }
 
       if (event === 'INSERT' || event === 'UPDATE' || event === 'DELETE') {
         const broadcastPayload = payload as OrderBroadcastPayload

@@ -1,3 +1,4 @@
+import TableQrSheet from "@/components/qr/TableQrSheet";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useSessionDuration } from "@/hooks/useSessionDuration";
 import { getEffectiveItemStatus } from "@/lib/kitchenStatusUtils";
@@ -31,6 +32,7 @@ import {
     DollarSign,
     LogOut,
     Printer,
+    QrCode,
     Trash2,
     Unlock,
     UserCheck,
@@ -280,6 +282,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const [transferFilterPlanId, setTransferFilterPlanId] = useState<
     string | null
   >(null);
+  const [qrSheetTable, setQrSheetTable] = useState<FloorPlanObject | null>(
+    null,
+  );
 
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
@@ -647,6 +652,17 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
           },
         });
       }
+    }
+
+    // QR table ordering management — table chrome, independent of session
+    // status (a QR order is "an order with a label", never a seated party).
+    if (["table", "booth"].includes(table.category as string)) {
+      baseActions.push({
+        label: "QR Code",
+        icon: <QrCode size={16} color="#0C4FD1" />,
+        onPress: () => setQrSheetTable(table),
+        dismissOnPress: false,
+      });
     }
 
     if (isForeignStationSession) {
@@ -1544,6 +1560,16 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* QR table ordering management */}
+      <TableQrSheet
+        visible={!!qrSheetTable}
+        floorPlanObjectId={qrSheetTable?.id ?? ""}
+        tableLabel={
+          qrSheetTable?.label_override?.trim() || qrSheetTable?.name || "Table"
+        }
+        onClose={() => setQrSheetTable(null)}
+      />
     </>
   );
 };

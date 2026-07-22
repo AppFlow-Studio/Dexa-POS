@@ -1084,4 +1084,128 @@ export class FloorPlanService {
     const success = !error && Array.isArray(data) && data.length > 0;
     return { data: { success }, error };
   }
+
+  // --- QR TABLE ORDERING ---
+
+  /**
+   * Generate/reprint/regenerate the QR code for a table.
+   * Server RPC: no regenerate + active code => action 'reprint_existing' (same token);
+   * regenerate=true => rotates (token_version bump, old rows deactivated with rotated_at).
+   */
+  static async generateTableQrCode(
+    client: SupabaseClient,
+    params: { floorPlanObjectId: string; regenerate?: boolean },
+  ): Promise<{ data: TableQrCodeResult | null; error: any }> {
+    const { data, error } = await client.rpc("generate_table_qr_code", {
+      p_floor_plan_object_id: params.floorPlanObjectId,
+      p_regenerate: params.regenerate === true,
+    });
+    if (error) return { data: null, error };
+    const result = data as TableQrCodeResult;
+    if (!result?.success) {
+      return { data: null, error: { message: result?.error || "QR generation failed" } };
+    }
+    return { data: result, error: null };
+  }
+
+  /** Read the current active QR code row for a table (drives Print vs Reprint / On-Off state). */
+  static async getActiveTableQrCode(
+    client: SupabaseClient,
+    floorPlanObjectId: string,
+  ): Promise<{ data: ActiveTableQrCode | null; error: any }> {
+    const { data, error } = await client
+      .from("table_qr_codes")
+      .select("id, token, token_version, is_active, scan_count, last_scanned_at, table_label")
+      .eq("floor_plan_object_id", floorPlanObjectId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return { data: (data as ActiveTableQrCode | null) ?? null, error };
+  }
+
+  /**
+   * Revoke (turn off) the active QR code for a table.
+   * Mirrors the dashboard's revokeTableQrCode: is_active=false + rotated_at.
+   * Re-enabling requires generateTableQrCode (new token — printed tent must be reprinted).
+   */
+  static async revokeTableQrCode(
+    client: SupabaseClient,
+    floorPlanObjectId: string,
+  ): Promise<{ data: { success: boolean } | null; error: any }> {
+    const { data: activeCode, error: readError } = await client
+      .from("table_qr_codes")
+      .select("id")
+      .eq("floor_plan_object_id", floorPlanObjectId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (readError) return { data: null, error: readError };
+    if (!activeCode?.id) {
+      return { data: null, error: { message: "No active QR code to revoke" } };
+    }
+
+    const { error } = await client
+      .from("table_qr_codes")
+      .update({ is_active: false, rotated_at: new Date().toISOString() })
+      .eq("id", activeCode.id);
+    if (error) return { data: null, error };
+    return { data: { success: true }, error: null };
+  }
+
+  /** Read the online store config gate fields needed before printing a QR tent. */
+  static async getQrStoreConfig(
+    client: SupabaseClient,
+    locationId: string,
+  ): Promise<{ data: QrStoreConfig | null; error: any }> {
+    const { data, error } = await client
+      .from("online_store_config")
+      .select(
+        "id, store_name, slug, custom_domain, is_active, accepts_dine_in, qr_kill_switch",
+      )
+      .eq("location_id", locationId)
+      .maybeSingle();
+    return { data: (data as QrStoreConfig | null) ?? null, error };
+  }
+}
+
+export interface TableQrCodeResult {
+  success: boolean;
+  error?: string;
+  action?: "reprint_existing" | "generated" | "regenerated";
+  id?: string;
+  merchant_id?: string;
+  location_id?: string;
+  floor_plan_object_id?: string;
+  table_label?: string;
+  token?: string;
+  token_version?: number;
+  is_active?: boolean;
+  scan_count?: number;
+  last_scanned_at?: string | null;
+  created_at?: string;
+  section_id?: string | null;
+  zone_name?: string | null;
+  capacity?: number | null;
+}
+
+export interface ActiveTableQrCode {
+  id: string;
+  token: string;
+  token_version: number;
+  is_active: boolean;
+  scan_count: number;
+  last_scanned_at: string | null;
+  table_label: string | null;
+}
+
+export interface QrStoreConfig {
+  id: string;
+  store_name: string | null;
+  slug: string | null;
+  custom_domain: string | null;
+  is_active: boolean | null;
+  accepts_dine_in: boolean | null;
+  qr_kill_switch: boolean | null;
 }
