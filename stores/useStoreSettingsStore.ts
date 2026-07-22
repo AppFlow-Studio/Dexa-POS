@@ -3,6 +3,7 @@ import { toastService } from "@/lib/toastService";
 import { PosBillingAccessStatus } from "@/lib/posAccessControl";
 import { TaxRate, TaxRatesMap } from "@/types/menu";
 import { SelectedStation } from "@/types/station";
+import * as Sentry from "@sentry/react-native";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -535,6 +536,25 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
 
       // Tax rates action
       setTaxRates: (rates: TaxRate[]) => {
+        // Guard against a successful-but-empty fetch (e.g. RLS silently filtering
+        // every row when the JWT is stale or the location isn't in the user's set)
+        // wiping a known-good tax map. An empty result must NEVER overwrite existing
+        // rates — otherwise every item silently taxes at 0% (order-calculator falls
+        // back to `?? 0`). See plan: can-we-investigate-a-partitioned-curry.md.
+        const existing = get().taxRates;
+        if (rates.length === 0 && existing.length > 0) {
+          const locationId = get().selectedStore?.id;
+          console.warn(
+            `[taxRates] Ignoring empty tax_rates result — preserving ${existing.length} existing rate(s). locationId=${locationId}`,
+          );
+          Sentry.captureMessage("Empty tax_rates result preserved (not wiped)", {
+            level: "warning",
+            tags: { area: "tax_rates" },
+            extra: { locationId, existingRateCount: existing.length },
+          });
+          return;
+        }
+
         // Build a map for quick lookup: { "standard": 8.875, "alcohol": 12.0 }
         const taxRatesMap: TaxRatesMap = {};
         for (const rate of rates) {

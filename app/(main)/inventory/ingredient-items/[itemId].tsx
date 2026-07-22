@@ -1,5 +1,6 @@
 import { bottomSheetTheme, colors } from "@/lib/theme";
 import { InventoryItem } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
@@ -49,23 +50,24 @@ interface InventoryTransaction {
   reference?: string;
 }
 
-const inputStyle = (editable: boolean) => ({
-  backgroundColor: editable ? colors.screen : colors.card,
-  borderWidth: 1,
-  borderColor: editable ? colors.border : "transparent",
-  borderRadius: 6,
-  color: editable ? colors.heading : colors.label,
-  fontSize: 12,
-  paddingHorizontal: 8,
-});
+const makeInputStyle =
+  (s: (n: number) => number) => (editable: boolean) => ({
+    backgroundColor: editable ? colors.screen : colors.card,
+    borderWidth: 1,
+    borderColor: editable ? colors.border : "transparent",
+    borderRadius: s(6),
+    color: editable ? colors.heading : colors.label,
+    fontSize: s(12),
+    paddingHorizontal: s(8),
+  });
 
-const fieldLabel = {
-  fontSize: 9,
+const makeFieldLabel = (s: (n: number) => number) => ({
+  fontSize: s(9),
   fontWeight: "600" as const,
   color: colors.muted,
   textTransform: "uppercase" as const,
   letterSpacing: 0.3,
-};
+});
 
 const transactionMeta = (
   type: string,
@@ -123,6 +125,10 @@ const ADD_REASON_OPTIONS = [
 ];
 
 const IngredientItemScreen = () => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const inputStyle = useMemo(() => makeInputStyle(s), [uiScale]);
+  const fieldLabel = useMemo(() => makeFieldLabel(s), [uiScale]);
   const { itemId } = useLocalSearchParams();
   const router = useRouter();
   const { inventoryItems, updateInventoryItem, vendors } = useInventoryStore();
@@ -388,7 +394,7 @@ const IngredientItemScreen = () => {
           backgroundColor: colors.screen,
         }}
       >
-        <Text style={{ fontSize: 13, color: colors.muted }}>
+        <Text style={{ fontSize: s(13), color: colors.muted }}>
           Item not found
         </Text>
       </View>
@@ -414,8 +420,8 @@ const IngredientItemScreen = () => {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            paddingHorizontal: 10,
-            paddingVertical: 8,
+            paddingHorizontal: s(10),
+            paddingVertical: s(8),
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
             backgroundColor: colors.panel,
@@ -423,18 +429,18 @@ const IngredientItemScreen = () => {
         >
           <TouchableOpacity
             onPress={() => router.back()}
-            style={{ padding: 4 }}
+            style={{ padding: s(4) }}
           >
-            <ArrowLeft size={14} color={colors.teal} />
+            <ArrowLeft size={s(14)} color={colors.teal} />
           </TouchableOpacity>
           <Text
             numberOfLines={1}
             style={{
-              fontSize: 13,
+              fontSize: s(13),
               fontWeight: "600",
               color: colors.heading,
               flex: 1,
-              marginHorizontal: 8,
+              marginHorizontal: s(8),
             }}
           >
             {item.name}
@@ -442,8 +448,8 @@ const IngredientItemScreen = () => {
           <TouchableOpacity
             onPress={isEditing ? handleSave : () => setIsEditing(true)}
             style={{
-              paddingHorizontal: 10,
-              paddingVertical: 5,
+              paddingHorizontal: s(10),
+              paddingVertical: s(5),
               backgroundColor: isEditing
                 ? colors.success + "20"
                 : colors.teal + "20",
@@ -451,20 +457,20 @@ const IngredientItemScreen = () => {
               borderColor: isEditing
                 ? colors.success + "50"
                 : colors.teal + "50",
-              borderRadius: 6,
+              borderRadius: s(6),
             }}
           >
             {isEditing ? (
-              <Save size={12} color={colors.success} />
+              <Save size={s(12)} color={colors.success} />
             ) : (
-              <Edit size={12} color={colors.teal} />
+              <Edit size={s(12)} color={colors.teal} />
             )}
           </TouchableOpacity>
         </View>
 
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 8, gap: 6 }}
+          contentContainerStyle={{ padding: s(8), gap: s(6) }}
         >
           {/* Overview Card */}
           <View
@@ -472,8 +478,8 @@ const IngredientItemScreen = () => {
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 10,
-              padding: 10,
+              borderRadius: s(10),
+              padding: s(10),
             }}
           >
             <View
@@ -481,12 +487,12 @@ const IngredientItemScreen = () => {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                marginBottom: 8,
+                marginBottom: s(8),
               }}
             >
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   fontWeight: "600",
                   color: colors.heading,
                 }}
@@ -495,12 +501,12 @@ const IngredientItemScreen = () => {
               </Text>
               {isLowStock ? (
                 <View
-                  style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: s(3) }}
                 >
-                  <AlertTriangle size={11} color={colors.danger} />
+                  <AlertTriangle size={s(11)} color={colors.danger} />
                   <Text
                     style={{
-                      fontSize: 9,
+                      fontSize: s(9),
                       color: colors.danger,
                       fontWeight: "600",
                     }}
@@ -510,12 +516,12 @@ const IngredientItemScreen = () => {
                 </View>
               ) : (
                 <View
-                  style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: s(3) }}
                 >
-                  <CheckCircle size={11} color={colors.success} />
+                  <CheckCircle size={s(11)} color={colors.success} />
                   <Text
                     style={{
-                      fontSize: 9,
+                      fontSize: s(9),
                       color: colors.success,
                       fontWeight: "600",
                     }}
@@ -525,7 +531,7 @@ const IngredientItemScreen = () => {
                 </View>
               )}
             </View>
-            <View style={{ gap: 6 }}>
+            <View style={{ gap: s(6) }}>
               {[
                 {
                   label: "Stock",
@@ -562,12 +568,12 @@ const IngredientItemScreen = () => {
                     alignItems: "center",
                   }}
                 >
-                  <Text style={{ fontSize: 11, color: colors.label }}>
+                  <Text style={{ fontSize: s(11), color: colors.label }}>
                     {row.label}
                   </Text>
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: s(11),
                       fontWeight: "600",
                       color: (row as any).accent || colors.heading,
                     }}
@@ -580,7 +586,7 @@ const IngredientItemScreen = () => {
           </View>
 
           {/* Quick Actions */}
-          <View style={{ flexDirection: "row", gap: 6 }}>
+          <View style={{ flexDirection: "row", gap: s(6) }}>
             <TouchableOpacity
               onPress={() => setIsLogUsageModalOpen(true)}
               style={{
@@ -588,18 +594,18 @@ const IngredientItemScreen = () => {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 4,
-                paddingVertical: 6,
+                gap: s(4),
+                paddingVertical: s(6),
                 backgroundColor: colors.danger + "15",
                 borderWidth: 1,
                 borderColor: colors.danger + "30",
-                borderRadius: 8,
+                borderRadius: s(8),
               }}
             >
-              <Minus size={12} color={colors.danger} />
+              <Minus size={s(12)} color={colors.danger} />
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: "600",
                   color: colors.danger,
                 }}
@@ -614,18 +620,18 @@ const IngredientItemScreen = () => {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 4,
-                paddingVertical: 6,
+                gap: s(4),
+                paddingVertical: s(6),
                 backgroundColor: colors.success + "15",
                 borderWidth: 1,
                 borderColor: colors.success + "30",
-                borderRadius: 8,
+                borderRadius: s(8),
               }}
             >
-              <Plus size={12} color={colors.success} />
+              <Plus size={s(12)} color={colors.success} />
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: "600",
                   color: colors.success,
                 }}
@@ -640,17 +646,17 @@ const IngredientItemScreen = () => {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 4,
-                paddingVertical: 6,
+                gap: s(4),
+                paddingVertical: s(6),
                 backgroundColor: "transparent",
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 8,
+                borderRadius: s(8),
               }}
             >
-              <History size={12} color={colors.label} />
+              <History size={s(12)} color={colors.label} />
               <Text
-                style={{ fontSize: 11, fontWeight: "600", color: colors.label }}
+                style={{ fontSize: s(11), fontWeight: "600", color: colors.label }}
               >
                 History
               </Text>
@@ -663,8 +669,8 @@ const IngredientItemScreen = () => {
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 10,
-              padding: 10,
+              borderRadius: s(10),
+              padding: s(10),
             }}
           >
             <View
@@ -672,27 +678,27 @@ const IngredientItemScreen = () => {
                 flexDirection: "row",
                 justifyContent: "space-between",
                 alignItems: "center",
-                marginBottom: 8,
+                marginBottom: s(8),
               }}
             >
               <Text
-                style={{ fontSize: 11, fontWeight: "600", color: colors.muted }}
+                style={{ fontSize: s(11), fontWeight: "600", color: colors.muted }}
               >
                 Details
               </Text>
               {isEditing && (
                 <TouchableOpacity
                   onPress={() => setIsEditing(false)}
-                  style={{ padding: 3 }}
+                  style={{ padding: s(3) }}
                 >
-                  <X size={11} color={colors.muted} />
+                  <X size={s(11)} color={colors.muted} />
                 </TouchableOpacity>
               )}
             </View>
 
             {/* Stock Tracking Mode */}
-            <View style={{ marginBottom: 8 }}>
-              <View style={{ flexDirection: "row", gap: 4 }}>
+            <View style={{ marginBottom: s(8) }}>
+              <View style={{ flexDirection: "row", gap: s(4) }}>
                 {(["in_stock", "out_of_stock", "quantity"] as const).map(
                   (mode) => {
                     const isActive = editStockTrackingMode === mode;
@@ -709,9 +715,9 @@ const IngredientItemScreen = () => {
                         onPress={() => setEditStockTrackingMode(mode)}
                         style={{
                           flex: 1,
-                          paddingVertical: 5,
+                          paddingVertical: s(5),
                           alignItems: "center",
-                          borderRadius: 6,
+                          borderRadius: s(6),
                           borderWidth: 1,
                           backgroundColor: isActive
                             ? colors.teal + "20"
@@ -723,7 +729,7 @@ const IngredientItemScreen = () => {
                       >
                         <Text
                           style={{
-                            fontSize: 10,
+                            fontSize: s(10),
                             fontWeight: "600",
                             color: isActive ? colors.teal : colors.label,
                           }}
@@ -738,54 +744,54 @@ const IngredientItemScreen = () => {
             </View>
 
             {/* Fields 2-col */}
-            <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
+            <View style={{ flexDirection: "row", gap: s(6), marginBottom: s(6) }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ ...fieldLabel, marginBottom: 3 }}>Name</Text>
+                <Text style={{ ...fieldLabel, marginBottom: s(3) }}>Name</Text>
                 <TextInput
                   value={editForm.name}
                   onChangeText={(t) => setEditForm((p) => ({ ...p, name: t }))}
                   editable={isEditing}
-                  style={{ ...inputStyle(isEditing), height: 32 }}
+                  style={{ ...inputStyle(isEditing), height: s(32) }}
                   placeholder="Item name"
                   placeholderTextColor={colors.muted}
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ ...fieldLabel, marginBottom: 3 }}>Category</Text>
+                <Text style={{ ...fieldLabel, marginBottom: s(3) }}>Category</Text>
                 <TextInput
                   value={editForm.category}
                   onChangeText={(t) =>
                     setEditForm((p) => ({ ...p, category: t }))
                   }
                   editable={isEditing}
-                  style={{ ...inputStyle(isEditing), height: 32 }}
+                  style={{ ...inputStyle(isEditing), height: s(32) }}
                   placeholder="Produce"
                   placeholderTextColor={colors.muted}
                 />
               </View>
             </View>
-            <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
+            <View style={{ flexDirection: "row", gap: s(6), marginBottom: s(6) }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ ...fieldLabel, marginBottom: 3 }}>Unit</Text>
+                <Text style={{ ...fieldLabel, marginBottom: s(3) }}>Unit</Text>
                 <TextInput
                   value={editForm.unitOfMeasure}
                   onChangeText={(t) =>
                     setEditForm((p) => ({ ...p, unitOfMeasure: t }))
                   }
                   editable={isEditing}
-                  style={{ ...inputStyle(isEditing), height: 32 }}
+                  style={{ ...inputStyle(isEditing), height: s(32) }}
                   placeholder="kg, pcs"
                   placeholderTextColor={colors.muted}
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ ...fieldLabel, marginBottom: 3 }}>Cost</Text>
+                <Text style={{ ...fieldLabel, marginBottom: s(3) }}>Cost</Text>
                 <TextInput
                   value={editForm.cost}
                   onChangeText={(t) => setEditForm((p) => ({ ...p, cost: t }))}
                   editable={isEditing}
                   keyboardType="numeric"
-                  style={{ ...inputStyle(isEditing), height: 32 }}
+                  style={{ ...inputStyle(isEditing), height: s(32) }}
                   placeholder="0.00"
                   placeholderTextColor={colors.muted}
                 />
@@ -793,9 +799,9 @@ const IngredientItemScreen = () => {
             </View>
 
             {editStockTrackingMode === "quantity" && (
-              <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
+              <View style={{ flexDirection: "row", gap: s(6), marginBottom: s(6) }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ ...fieldLabel, marginBottom: 3 }}>Qty</Text>
+                  <Text style={{ ...fieldLabel, marginBottom: s(3) }}>Qty</Text>
                   <TextInput
                     value={editForm.stockQuantity}
                     onChangeText={(t) =>
@@ -806,13 +812,13 @@ const IngredientItemScreen = () => {
                     }
                     editable={isEditing}
                     keyboardType="numeric"
-                    style={{ ...inputStyle(isEditing), height: 32 }}
+                    style={{ ...inputStyle(isEditing), height: s(32) }}
                     placeholder="0"
                     placeholderTextColor={colors.muted}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ ...fieldLabel, marginBottom: 3 }}>
+                  <Text style={{ ...fieldLabel, marginBottom: s(3) }}>
                     Reorder
                   </Text>
                   <TextInput
@@ -825,7 +831,7 @@ const IngredientItemScreen = () => {
                     }
                     editable={isEditing}
                     keyboardType="numeric"
-                    style={{ ...inputStyle(isEditing), height: 32 }}
+                    style={{ ...inputStyle(isEditing), height: s(32) }}
                     placeholder="0"
                     placeholderTextColor={colors.muted}
                   />
@@ -834,12 +840,12 @@ const IngredientItemScreen = () => {
             )}
 
             <View>
-              <Text style={{ ...fieldLabel, marginBottom: 3 }}>SKU</Text>
+              <Text style={{ ...fieldLabel, marginBottom: s(3) }}>SKU</Text>
               <TextInput
                 value={editForm.sku}
                 onChangeText={(t) => setEditForm((p) => ({ ...p, sku: t }))}
                 editable={isEditing}
-                style={{ ...inputStyle(isEditing), height: 32 }}
+                style={{ ...inputStyle(isEditing), height: s(32) }}
                 placeholder="SKU or barcode"
                 placeholderTextColor={colors.muted}
               />
@@ -865,35 +871,35 @@ const IngredientItemScreen = () => {
               backgroundColor: "rgba(0,0,0,0.6)",
               justifyContent: "center",
               alignItems: "center",
-              paddingHorizontal: 16,
+              paddingHorizontal: s(16),
             }}
           >
             <View
               style={{
                 backgroundColor: colors.panel,
-                borderRadius: 12,
-                padding: 14,
+                borderRadius: s(12),
+                padding: s(14),
                 width: "100%",
                 maxWidth: 480,
               }}
             >
               <Text
                 style={{
-                  fontSize: 14,
+                  fontSize: s(14),
                   fontWeight: "700",
                   color: colors.heading,
-                  marginBottom: 2,
+                  marginBottom: s(2),
                 }}
               >
                 Log Usage
               </Text>
               <Text
-                style={{ fontSize: 12, color: colors.label, marginBottom: 12 }}
+                style={{ fontSize: s(12), color: colors.label, marginBottom: s(12) }}
               >
                 {item.name}
               </Text>
 
-              <View style={{ marginBottom: 10 }}>
+              <View style={{ marginBottom: s(10) }}>
                 <Text style={fieldLabel}>Quantity Used</Text>
                 <TextInput
                   value={logUsageForm.quantityUsed}
@@ -907,9 +913,9 @@ const IngredientItemScreen = () => {
                 />
               </View>
 
-              <View style={{ marginBottom: 10 }}>
+              <View style={{ marginBottom: s(10) }}>
                 <Text style={fieldLabel}>Reason</Text>
-                <View style={{ gap: 4 }}>
+                <View style={{ gap: s(4) }}>
                   {REASON_OPTIONS.map((opt) => {
                     const isActive = logUsageForm.reason === opt.key;
                     return (
@@ -919,9 +925,9 @@ const IngredientItemScreen = () => {
                           setLogUsageForm((p) => ({ ...p, reason: opt.key }))
                         }
                         style={{
-                          paddingHorizontal: 12,
-                          paddingVertical: 8,
-                          borderRadius: 8,
+                          paddingHorizontal: s(12),
+                          paddingVertical: s(8),
+                          borderRadius: s(8),
                           borderWidth: 1,
                           backgroundColor: isActive
                             ? colors.teal + "20"
@@ -933,7 +939,7 @@ const IngredientItemScreen = () => {
                       >
                         <Text
                           style={{
-                            fontSize: 13,
+                            fontSize: s(13),
                             color: isActive ? colors.teal : colors.label,
                             fontWeight: isActive ? "600" : "400",
                           }}
@@ -952,12 +958,12 @@ const IngredientItemScreen = () => {
                     }
                     placeholder="Describe the reason..."
                     placeholderTextColor={colors.muted}
-                    style={{ ...inputStyle(true), marginTop: 8 }}
+                    style={{ ...inputStyle(true), marginTop: s(8) }}
                   />
                 )}
               </View>
 
-              <View style={{ marginBottom: 12 }}>
+              <View style={{ marginBottom: s(12) }}>
                 <Text style={fieldLabel}>Notes (Optional)</Text>
                 <TextInput
                   value={logUsageForm.notes}
@@ -970,8 +976,8 @@ const IngredientItemScreen = () => {
                   numberOfLines={2}
                   style={{
                     ...inputStyle(true),
-                    height: 60,
-                    paddingTop: 8,
+                    height: s(60),
+                    paddingTop: s(8),
                     textAlignVertical: "top",
                   }}
                 />
@@ -983,33 +989,33 @@ const IngredientItemScreen = () => {
                     backgroundColor: colors.danger + "15",
                     borderWidth: 1,
                     borderColor: colors.danger + "30",
-                    borderRadius: 8,
-                    padding: 10,
-                    marginBottom: 10,
+                    borderRadius: s(8),
+                    padding: s(10),
+                    marginBottom: s(10),
                   }}
                 >
-                  <Text style={{ fontSize: 12, color: colors.danger }}>
+                  <Text style={{ fontSize: s(12), color: colors.danger }}>
                     {showError.title}
                   </Text>
                 </View>
               )}
 
-              <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ flexDirection: "row", gap: s(8) }}>
                 <TouchableOpacity
                   onPress={() => setIsLogUsageModalOpen(false)}
                   style={{
                     flex: 1,
-                    paddingVertical: 8,
+                    paddingVertical: s(8),
                     backgroundColor: "transparent",
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     alignItems: "center",
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: "600",
                       color: colors.label,
                     }}
@@ -1021,17 +1027,17 @@ const IngredientItemScreen = () => {
                   onPress={handleLogUsage}
                   style={{
                     flex: 1,
-                    paddingVertical: 8,
+                    paddingVertical: s(8),
                     backgroundColor: colors.danger + "20",
                     borderWidth: 1,
                     borderColor: colors.danger + "30",
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     alignItems: "center",
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: s(13),
                       fontWeight: "600",
                       color: colors.danger,
                     }}

@@ -1,5 +1,6 @@
 import MenuForm from "@/components/menu/MenuForm";
 import { useToast } from "@/contexts/ToastContext";
+import { useIsSingleLocation } from "@/hooks/pos/useIsSingleLocation";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
@@ -19,6 +20,7 @@ const EditMenuScreen: React.FC = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
+  const { isSingleLocation } = useIsSingleLocation();
   const [isSaving, setIsSaving] = useState(false);
   const setMenuTab = useMenuManagementSearchStore((s) => s.setActiveTab);
 
@@ -29,7 +31,12 @@ const EditMenuScreen: React.FC = () => {
     existing?.location_id === null || existing?.location_id === undefined;
   const isLocalMenu = existing?.location_id === selectedStore?.id;
 
-  if (existing && (isGlobalMenu || !isLocalMenu)) {
+  // Single-location merchants edit the global menu directly; multi-location
+  // keeps the read-only wall for global menus.
+  if (existing && isGlobalMenu && !isSingleLocation) {
+    return <GlobalItemScreen type="Menu" />
+  }
+  if (existing && !isGlobalMenu && !isLocalMenu) {
     return <GlobalItemScreen type="Menu" />
   }
 

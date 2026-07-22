@@ -1,6 +1,7 @@
 // components/cfd-client/LoyaltyPromptScreen.tsx
 import { useCFDDisplayField } from "@/contexts/CFDDisplayDataContext.base";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { Delete, Gift } from "lucide-react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -44,153 +45,168 @@ function formatEnteredPhone(digits: string): string {
 // (lightStyles / darkStyles) and select between them in the render path
 // with a ternary — the reference per theme stays stable that way too.
 // ---------------------------------------------------------------------------
-const createStyles = () => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.screen,
-  },
-  body: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 24,
-    paddingTop: 14,
-    paddingBottom: 6,
-  },
-  iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.tealMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headline: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: colors.heading,
-    textAlign: "center",
-    letterSpacing: -0.2,
-  },
-  phoneCard: {
-    width: 300,
-    backgroundColor: colors.screen,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    alignItems: "center",
-  },
-  phoneText: {
-    fontSize: 24,
-    fontWeight: "600",
-    color: colors.heading,
-    letterSpacing: 0.5,
-  },
-  keypad: {
-    width: 300,
-    gap: 4,
-  },
-  numpadRow: {
-    flexDirection: "row",
-    gap: 4,
-  },
-  numKey: {
-    flex: 1,
-    height: 42,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  numKeyAction: {
-    backgroundColor: colors.screen,
-  },
-  numKeyText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.heading,
-  },
-  numKeySmall: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: colors.label,
-  },
-  footerInner: {
-    flexDirection: "row",
-    gap: 10,
-    width: 300,
-    marginTop: 12,
-  },
-  skipBtn: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-  },
-  skipBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.label,
-  },
-  continueBtn: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: 10,
-    backgroundColor: colors.teal,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  continueBtnDisabled: {
-    opacity: 0.42,
-  },
-  continueBtnText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: colors.onSolid,
-  },
-  submittingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  submittingCard: {
-    width: "100%",
-    maxWidth: 360,
-    backgroundColor: colors.panel,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingVertical: 28,
-    paddingHorizontal: 24,
-    alignItems: "center",
-    gap: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-  submittingText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.heading,
-    letterSpacing: 0.2,
-    textAlign: "center",
-  },
-  submittingSubtext: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: colors.label,
-    textAlign: "center",
-  },
-});
+// StyleSheet keyed by scale (see getStylesForScale below) — the object
+// reference stays stable across re-renders at the same scale, preserving
+// the React.memo behavior on Keypad/KeyButton described above.
+const createStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale);
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.screen,
+    },
+    body: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: s(8),
+      paddingHorizontal: s(24),
+      paddingTop: s(14),
+      paddingBottom: s(6),
+    },
+    iconCircle: {
+      width: s(40),
+      height: s(40),
+      borderRadius: s(20),
+      backgroundColor: colors.tealMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    headline: {
+      fontSize: s(22),
+      fontWeight: "700",
+      color: colors.heading,
+      textAlign: "center",
+      letterSpacing: -0.2,
+    },
+    phoneCard: {
+      width: s(300),
+      backgroundColor: colors.screen,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: s(12),
+      paddingVertical: s(6),
+      paddingHorizontal: s(12),
+      alignItems: "center",
+    },
+    phoneText: {
+      fontSize: s(24),
+      fontWeight: "600",
+      color: colors.heading,
+      letterSpacing: 0.5,
+    },
+    keypad: {
+      width: s(300),
+      gap: s(4),
+    },
+    numpadRow: {
+      flexDirection: "row",
+      gap: s(4),
+    },
+    numKey: {
+      flex: 1,
+      height: s(42),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    numKeyAction: {
+      backgroundColor: colors.screen,
+    },
+    numKeyText: {
+      fontSize: s(18),
+      fontWeight: "700",
+      color: colors.heading,
+    },
+    numKeySmall: {
+      fontSize: s(12),
+      fontWeight: "700",
+      color: colors.label,
+    },
+    footerInner: {
+      flexDirection: "row",
+      gap: s(10),
+      width: s(300),
+      marginTop: s(12),
+    },
+    skipBtn: {
+      flex: 1,
+      minHeight: s(40),
+      borderRadius: s(10),
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "transparent",
+    },
+    skipBtnText: {
+      fontSize: s(14),
+      fontWeight: "600",
+      color: colors.label,
+    },
+    continueBtn: {
+      flex: 1,
+      minHeight: s(40),
+      borderRadius: s(10),
+      backgroundColor: colors.teal,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    continueBtnDisabled: {
+      opacity: 0.42,
+    },
+    continueBtnText: {
+      fontSize: s(14),
+      fontWeight: "700",
+      color: colors.onSolid,
+    },
+    submittingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.45)",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: s(24),
+    },
+    submittingCard: {
+      width: "100%",
+      maxWidth: s(360),
+      backgroundColor: colors.panel,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: s(16),
+      paddingVertical: s(28),
+      paddingHorizontal: s(24),
+      alignItems: "center",
+      gap: s(14),
+      shadowColor: "#000",
+      shadowOpacity: 0.25,
+      shadowRadius: s(18),
+      shadowOffset: { width: 0, height: s(6) },
+      elevation: 6,
+    },
+    submittingText: {
+      fontSize: s(18),
+      fontWeight: "700",
+      color: colors.heading,
+      letterSpacing: 0.2,
+      textAlign: "center",
+    },
+    submittingSubtext: {
+      fontSize: s(13),
+      fontWeight: "500",
+      color: colors.label,
+      textAlign: "center",
+    },
+  });
+};
+
+const stylesByScale = new Map<number, ReturnType<typeof createStyles>>();
+const getStylesForScale = (scale: number) => {
+  const cached = stylesByScale.get(scale);
+  if (cached) return cached;
+  const next = createStyles(scale);
+  stylesByScale.set(scale, next);
+  return next;
+};
 
 type LoyaltyPromptStyles = ReturnType<typeof createStyles>;
 
@@ -261,12 +277,13 @@ const KeyButton = memo(function KeyButton({
 interface KeypadProps {
   onPress: (key: string) => void;
   styles: LoyaltyPromptStyles;
+  uiScale: number;
 }
 
 // Keypad no longer receives `styles` as a prop — it references the module-
 // level constant directly. This removes the last prop that could change
 // between renders and keeps React.memo's shallow-equal check trivially fast.
-const Keypad = memo(function Keypad({ onPress, styles }: KeypadProps) {
+const Keypad = memo(function Keypad({ onPress, styles, uiScale }: KeypadProps) {
   return (
     <View style={styles.keypad}>
       {[
@@ -300,7 +317,7 @@ const Keypad = memo(function Keypad({ onPress, styles }: KeypadProps) {
           digit="backspace"
           isAction
           onPress={onPress}
-          iconSlot={<Delete size={16} color={colors.heading} />}
+          iconSlot={<Delete size={Math.round(16 * uiScale)} color={colors.heading} />}
           styles={styles}
         />
       </View>
@@ -323,7 +340,8 @@ export function LoyaltyPromptScreen({
   // component re-renders and picks up the new `colors` values if the theme
   // actually changes while the screen is visible.
   const themeMode = useCFDDisplayField("themeMode");
-  const styles = useMemo(() => createStyles(), [themeMode]);
+  const uiScale = useUiScale();
+  const styles = useMemo(() => getStylesForScale(uiScale), [themeMode, uiScale]);
 
   // ---------------------------------------------------------------------------
   // Phone digits — stored in a ref to avoid triggering a React render on
@@ -434,7 +452,7 @@ export function LoyaltyPromptScreen({
           shaves a non-trivial first-mount cost on the WebView. */}
       <View style={styles.body}>
         <View style={styles.iconCircle}>
-          <Gift size={24} color={colors.teal} strokeWidth={2.2} />
+          <Gift size={Math.round(24 * uiScale)} color={colors.teal} strokeWidth={2.2} />
         </View>
 
         <Text style={styles.headline}>Enter your phone number</Text>
@@ -448,7 +466,7 @@ export function LoyaltyPromptScreen({
 
         {/* Keypad only receives a stable callback — never re-renders after
             first mount thanks to React.memo + [] deps on handleKey. */}
-        <Keypad onPress={handleKey} styles={styles} />
+        <Keypad onPress={handleKey} styles={styles} uiScale={uiScale} />
 
         <View style={styles.footerInner}>
           <TouchableOpacity

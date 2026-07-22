@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet from "@gorhom/bottom-sheet";
@@ -21,6 +22,8 @@ const RecipeManager: React.FC<RecipeManagerProps> = ({
   const { inventoryItems } = useInventoryStore();
   const sheetRef = useRef<BottomSheet>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   // Local state for exact string input of quantities (to allow decimals like "0." while typing)
   const [localQuantities, setLocalQuantities] = useState<
@@ -91,7 +94,7 @@ const RecipeManager: React.FC<RecipeManagerProps> = ({
       {recipe.length === 0 ? (
         <View className="bg-screen rounded-2xl p-8 items-center border border-gray-800 border-dashed">
           <View className="w-16 h-16 bg-gray-800 rounded-full items-center justify-center mb-4">
-            <ChefHat size={32} color="#4B5563" />
+            <ChefHat size={s(32)} color="#4B5563" />
           </View>
           <Text className="text-gray-400 text-center mb-2 text-lg font-medium">
             No ingredients added
@@ -107,7 +110,7 @@ const RecipeManager: React.FC<RecipeManagerProps> = ({
               }}
               className="bg-blue-600 px-6 py-3 rounded-xl flex-row items-center"
             >
-              <Plus color="white" size={20} />
+              <Plus color="white" size={s(20)} />
               <Text className="text-white ml-2 font-bold text-base">
                 Add Ingredient
               </Text>
@@ -183,7 +186,7 @@ const RecipeManager: React.FC<RecipeManagerProps> = ({
                       onPress={() => removeItem(index)}
                       className="bg-red-900/10 border border-red-900/30 p-3 rounded-xl"
                     >
-                      <Trash2 color={colors.danger} size={20} />
+                      <Trash2 color={colors.danger} size={s(20)} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -199,7 +202,7 @@ const RecipeManager: React.FC<RecipeManagerProps> = ({
               }}
               className="bg-screen border-2 border-dashed border-gray-800 rounded-2xl p-4 items-center flex-row justify-center"
             >
-              <Plus color="#4B5563" size={20} />
+              <Plus color="#4B5563" size={s(20)} />
               <Text className="text-gray-500 ml-2 font-bold text-base">
                 Add Another Ingredient
               </Text>

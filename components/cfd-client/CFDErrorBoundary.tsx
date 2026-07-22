@@ -5,6 +5,7 @@
 // white screen that requires an app reset.
 
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
 import { router } from "expo-router";
 import { AlertTriangle } from "lucide-react-native";
@@ -18,6 +19,80 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+}
+
+// Function wrapper so the class boundary can use the useUiScale() hook —
+// class components can't call hooks directly.
+function CFDErrorBoundaryFallback({
+  message,
+  onReset,
+}: {
+  message: string;
+  onReset: () => void;
+}) {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.screen,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: s(24),
+        gap: s(16),
+      }}
+    >
+      <View
+        style={{
+          width: s(64),
+          height: s(64),
+          borderRadius: s(14),
+          backgroundColor: colors.danger + "15",
+          borderWidth: 1,
+          borderColor: colors.danger + "30",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <AlertTriangle size={s(32)} color={colors.danger} />
+      </View>
+
+      <View style={{ alignItems: "center", gap: s(6), maxWidth: s(360) }}>
+        <Text
+          style={{ fontSize: s(18), fontWeight: "700", color: colors.heading }}
+        >
+          CFD Display Error
+        </Text>
+        <Text
+          style={{
+            fontSize: s(13),
+            color: colors.label,
+            textAlign: "center",
+          }}
+        >
+          {message}
+        </Text>
+      </View>
+
+      <Pressable
+        onPress={onReset}
+        style={{
+          backgroundColor: colors.teal + "20",
+          borderWidth: 1,
+          borderColor: colors.teal + "50",
+          paddingVertical: s(10),
+          paddingHorizontal: s(16),
+          borderRadius: s(8),
+        }}
+      >
+        <Text style={{ fontSize: s(13), fontWeight: "600", color: colors.teal }}>
+          Reset CFD Pairing
+        </Text>
+      </Pressable>
+    </View>
+  );
 }
 
 export class CFDErrorBoundary extends React.Component<Props, State> {
@@ -53,64 +128,7 @@ export class CFDErrorBoundary extends React.Component<Props, State> {
       this.state.error?.message ?? "Something went wrong in the CFD display.";
 
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: colors.screen,
-          alignItems: "center",
-          justifyContent: "center",
-          paddingHorizontal: 24,
-          gap: 16,
-        }}
-      >
-        <View
-          style={{
-            width: 64,
-            height: 64,
-            borderRadius: 14,
-            backgroundColor: colors.danger + "15",
-            borderWidth: 1,
-            borderColor: colors.danger + "30",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <AlertTriangle size={32} color={colors.danger} />
-        </View>
-
-        <View style={{ alignItems: "center", gap: 6, maxWidth: 360 }}>
-          <Text
-            style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}
-          >
-            CFD Display Error
-          </Text>
-          <Text
-            style={{
-              fontSize: 13,
-              color: colors.label,
-              textAlign: "center",
-            }}
-          >
-            {message}
-          </Text>
-        </View>
-
-        <Pressable
-          onPress={this.handleReset}
-          style={{
-            backgroundColor: colors.teal + "20",
-            borderWidth: 1,
-            borderColor: colors.teal + "50",
-            paddingVertical: 10,
-            paddingHorizontal: 16,
-            borderRadius: 8,
-          }}
-        >
-          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
-            Reset CFD Pairing
-          </Text>
-        </Pressable>
-      </View>
+      <CFDErrorBoundaryFallback message={message} onReset={this.handleReset} />
     );
   }
 }

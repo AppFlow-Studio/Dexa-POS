@@ -1,5 +1,6 @@
 import { colors } from "@/lib/theme";
 import { Schedule } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { Clock, Plus, Trash2 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -11,6 +12,8 @@ export const TimeField: React.FC<{
   value: string;
   onChange: (next: string) => void;
 }> = ({ value, onChange }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const [hours, minutes] = useMemo(() => {
     if (!value) return [0, 0];
     const d = new Date(value);
@@ -96,6 +99,8 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({
   onAddPress,
   onEditPress,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const schedules = value ?? [];
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -121,7 +126,7 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({
         >
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center gap-1.5">
-              <Clock size={16} color={colors.label} />
+              <Clock size={s(16)} color={colors.label} />
               <Text className="text-white font-semibold text-xl">
                 {rule.name || `Rule ${idx + 1}`}
               </Text>
@@ -133,7 +138,7 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({
               }}
               className="p-1.5 bg-red-900/30 border border-red-500 rounded-lg"
             >
-              <Trash2 size={18} color={colors.danger} />
+              <Trash2 size={s(18)} color={colors.danger} />
             </TouchableOpacity>
           </View>
           <Text className="text-base text-gray-400 mt-1.5">
@@ -155,7 +160,7 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({
         onPress={onAddPress}
         className="flex-row items-center gap-2 px-4 py-3 rounded-lg bg-blue-600 self-start"
       >
-        <Plus size={18} color="#FFFFFF" />
+        <Plus size={s(18)} color="#FFFFFF" />
         <Text className="text-white font-bold text-lg">Add Schedule Rule</Text>
       </TouchableOpacity>
     </View>

@@ -1,24 +1,25 @@
 import { colors } from "@/lib/theme";
 import { POLineItem, PurchaseOrder } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import {
-  AlertTriangle,
-  CircleCheckBig,
-  Edit3,
-  Search,
-  Trash2,
-  X,
+    AlertTriangle,
+    CircleCheckBig,
+    Edit3,
+    Search,
+    Trash2,
+    X,
 } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 type ItemLite = {
@@ -46,6 +47,8 @@ const VendorCreatePOModule = ({
   resolveItemName,
   openSignal,
 }: Props) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
   const [isChooserOpen, setIsChooserOpen] = useState(false);
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
 

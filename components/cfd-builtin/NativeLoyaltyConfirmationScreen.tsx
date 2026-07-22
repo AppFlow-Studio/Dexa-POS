@@ -1,5 +1,6 @@
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext.base";
 import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { Check, Gift } from "lucide-react-native";
 import { useMemo } from "react";
 import { StyleSheet } from "react-native";
@@ -17,66 +18,66 @@ export function NativeLoyaltyConfirmationScreen() {
   const hasProgramResults = programs.length > 0;
   const customerName = loyaltyResult?.customerName;
   const hasUnlockedReward = programs.some((p) => p.rewardUnlocked);
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        container: {
-          flex: 1,
-          backgroundColor: colors.screen,
-          alignItems: "center",
-          justifyContent: "center",
-          paddingHorizontal: 18,
-        },
-        iconCircle: {
-          width: 84,
-          height: 84,
-          borderRadius: 42,
-          backgroundColor: colors.teal,
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: 16,
-        },
-        contentGroup: {
-          width: "100%",
-          alignItems: "center",
-        },
-        titleSvg: {
-          width: "100%",
-          maxWidth: 340,
-          height: 52,
-        },
-        subtitleSvg: {
-          width: "100%",
-          maxWidth: 340,
-          height: 42,
-          marginTop: 4,
-        },
-        customerSvg: {
-          width: "100%",
-          maxWidth: 340,
-          height: 38,
-          marginTop: 4,
-        },
-        rewardBanner: {
-          marginTop: 14,
-          minHeight: 42,
-          paddingHorizontal: 12,
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: colors.border,
-          backgroundColor: colors.card,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 6,
-        },
-        rewardSvg: {
-          width: 210,
-          height: 34,
-        },
-      }),
-    [themeMode],
-  );
+  const uiScale = useUiScale();
+  const styles = useMemo(() => {
+    const s = (n: number) => Math.round(n * uiScale);
+    return StyleSheet.create({
+      container: {
+        flex: 1,
+        backgroundColor: colors.screen,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: s(18),
+      },
+      iconCircle: {
+        width: s(84),
+        height: s(84),
+        borderRadius: s(42),
+        backgroundColor: colors.teal,
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: s(16),
+      },
+      contentGroup: {
+        width: "100%",
+        alignItems: "center",
+      },
+      titleSvg: {
+        width: "100%",
+        maxWidth: s(340),
+        height: s(52),
+      },
+      subtitleSvg: {
+        width: "100%",
+        maxWidth: s(340),
+        height: s(42),
+        marginTop: s(4),
+      },
+      customerSvg: {
+        width: "100%",
+        maxWidth: s(340),
+        height: s(38),
+        marginTop: s(4),
+      },
+      rewardBanner: {
+        marginTop: s(14),
+        minHeight: s(42),
+        paddingHorizontal: s(12),
+        borderRadius: s(12),
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.card,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: s(6),
+      },
+      rewardSvg: {
+        width: s(210),
+        height: s(34),
+      },
+    });
+  }, [themeMode, uiScale]);
 
   return (
     <Animated.View entering={FadeIn.duration(220)} style={styles.container}>
@@ -84,7 +85,7 @@ export function NativeLoyaltyConfirmationScreen() {
         entering={ZoomIn.duration(260).springify().damping(18).stiffness(180)}
         style={styles.iconCircle}
       >
-        <Check size={44} color={colors.screen} strokeWidth={3} />
+        <Check size={Math.round(44 * uiScale)} color={colors.screen} strokeWidth={3} />
       </Animated.View>
 
       <Animated.View
@@ -146,7 +147,7 @@ export function NativeLoyaltyConfirmationScreen() {
           entering={FadeInDown.duration(260).delay(220)}
           style={styles.rewardBanner}
         >
-          <Gift size={18} color={colors.teal} />
+          <Gift size={Math.round(18 * uiScale)} color={colors.teal} />
           <Svg style={styles.rewardSvg} viewBox="0 0 210 34">
             <SvgText
               x="105"

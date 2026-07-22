@@ -1,6 +1,8 @@
 // src/components/cfd/CFDPairingQR.tsx
 import { useCFD } from "@/hooks/useCFD";
+import { useUiScale } from "@/lib/uiScale";
 import { X } from "lucide-react-native";
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import QRCode from "react-native-qrcode-svg"; // npm install react-native-qrcode-svg react-native-svg
 
@@ -11,6 +13,10 @@ interface CFDPairingQRProps {
 export function CFDPairingQR({ onClose }: CFDPairingQRProps) {
   const { serverStatus, isServerReady, isConnected, pairingData, clientCount } =
     useCFD();
+  const uiScale = useUiScale();
+  const styles = useMemo(() => createStyles(uiScale), [uiScale]);
+  const qrSize = Math.round(200 * uiScale);
+  const closeIconSize = Math.round(24 * uiScale);
   // Quick checks
   if (serverStatus === "disabled") {
     // No station selected - CFD not available
@@ -47,7 +53,7 @@ export function CFDPairingQR({ onClose }: CFDPairingQRProps) {
     <View style={styles.container}>
       {onClose && (
         <Pressable onPress={onClose} style={styles.closeButton}>
-          <X size={24} color="#9ca3af" />
+          <X size={closeIconSize} color="#9ca3af" />
         </Pressable>
       )}
 
@@ -56,7 +62,7 @@ export function CFDPairingQR({ onClose }: CFDPairingQRProps) {
       <View style={styles.qrContainer}>
         <QRCode
           value={qrValue}
-          size={200}
+          size={qrSize}
           backgroundColor="#1f1f1f"
           color="#ffffff"
         />
@@ -91,81 +97,84 @@ export function CFDPairingQR({ onClose }: CFDPairingQRProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: "#0a0a0a",
-    borderRadius: 16,
-    padding: 24,
-    alignItems: "center",
-    minWidth: 300,
-  },
-  closeButton: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    padding: 8,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#ffffff",
-    marginBottom: 24,
-  },
-  qrContainer: {
-    padding: 16,
-    backgroundColor: "#1f1f1f",
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  instructions: {
-    fontSize: 14,
-    color: "#9ca3af",
-    textAlign: "center",
-    marginBottom: 24,
-  },
-  manualSection: {
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  manualLabel: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginBottom: 8,
-  },
-  manualInfo: {
-    backgroundColor: "#1f1f1f",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  manualValue: {
-    fontSize: 16,
-    color: "#ffffff",
-    fontFamily: "monospace",
-  },
-  statusSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#6b7280",
-  },
-  statusDotConnected: {
-    backgroundColor: "#10b981",
-  },
-  statusText: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  statusTextConnected: {
-    color: "#10b981",
-  },
-  errorText: {
-    color: "#ef4444",
-    fontSize: 14,
-  },
-});
+const createStyles = (scale: number) => {
+  const s = (n: number) => Math.round(n * scale);
+  return StyleSheet.create({
+    container: {
+      backgroundColor: "#0a0a0a",
+      borderRadius: s(16),
+      padding: s(24),
+      alignItems: "center",
+      minWidth: s(300),
+    },
+    closeButton: {
+      position: "absolute",
+      top: s(12),
+      right: s(12),
+      padding: s(8),
+    },
+    title: {
+      fontSize: s(20),
+      fontWeight: "600",
+      color: "#ffffff",
+      marginBottom: s(24),
+    },
+    qrContainer: {
+      padding: s(16),
+      backgroundColor: "#1f1f1f",
+      borderRadius: s(12),
+      marginBottom: s(16),
+    },
+    instructions: {
+      fontSize: s(14),
+      color: "#9ca3af",
+      textAlign: "center",
+      marginBottom: s(24),
+    },
+    manualSection: {
+      alignItems: "center",
+      marginBottom: s(24),
+    },
+    manualLabel: {
+      fontSize: s(12),
+      color: "#6b7280",
+      marginBottom: s(8),
+    },
+    manualInfo: {
+      backgroundColor: "#1f1f1f",
+      paddingHorizontal: s(16),
+      paddingVertical: s(8),
+      borderRadius: s(8),
+    },
+    manualValue: {
+      fontSize: s(16),
+      color: "#ffffff",
+      fontFamily: "monospace",
+    },
+    statusSection: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: s(8),
+    },
+    statusDot: {
+      width: s(8),
+      height: s(8),
+      borderRadius: s(4),
+      backgroundColor: "#6b7280",
+    },
+    statusDotConnected: {
+      backgroundColor: "#10b981",
+    },
+    statusText: {
+      fontSize: s(14),
+      color: "#6b7280",
+    },
+    statusTextConnected: {
+      color: "#10b981",
+    },
+    errorText: {
+      color: "#ef4444",
+      fontSize: s(14),
+    },
+  });
+};

@@ -1,24 +1,25 @@
 import {
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { colors } from "@/lib/theme";
 import { Vendor } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
 import React, { useEffect, useState } from "react";
 import {
-    Keyboard,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from "react-native";
 
 interface VendorFormModalProps {
@@ -28,32 +29,36 @@ interface VendorFormModalProps {
   initialData?: Vendor | null;
 }
 
-const inputStyle = {
-  backgroundColor: colors.background,
-  borderWidth: 1,
-  borderColor: colors.border,
-  borderRadius: 8,
-  color: colors.heading,
-  fontSize: 14,
-  height: 40,
-  paddingHorizontal: 12,
-};
-
-const fieldLabel = {
-  fontSize: 11,
-  fontWeight: "600" as const,
-  color: colors.muted,
-  textTransform: "uppercase" as const,
-  letterSpacing: 0.5,
-  marginBottom: 6,
-};
-
 const VendorFormModal: React.FC<VendorFormModalProps> = ({
   isOpen,
   onClose,
   onSave,
   initialData,
 }) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
+  const inputStyle = {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: s(8),
+    color: colors.heading,
+    fontSize: s(14),
+    height: s(40),
+    paddingHorizontal: s(12),
+    textAlignVertical: "center" as const,
+    paddingVertical: 0,
+  };
+
+  const fieldLabel = {
+    fontSize: s(11),
+    fontWeight: "600" as const,
+    color: colors.muted,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.5,
+    marginBottom: s(6),
+  };
   const [name, setName] = useState("");
   const [contactName, setContactName] = useState("");
   const [email, setEmail] = useState("");
@@ -171,7 +176,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
             <DialogHeader>
               <DialogTitle
                 style={{
-                  fontSize: 15,
+                  fontSize: s(15),
                   fontWeight: "700",
                   color: colors.heading,
                 }}
@@ -180,9 +185,9 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
               </DialogTitle>
             </DialogHeader>
 
-            <View style={{ paddingVertical: 14, gap: 10 }}>
+            <View style={{ paddingVertical: s(14), gap: s(10) }}>
               {/* Row 1: Name + Contact */}
-              <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flexDirection: "row", gap: s(10) }}>
                 <View style={{ flex: 1 }}>
                   <Text style={fieldLabel}>Vendor Name *</Text>
                   <TextInput

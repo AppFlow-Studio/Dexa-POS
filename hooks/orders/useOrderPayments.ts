@@ -132,7 +132,6 @@ export const getOrderPaymentsQueryOptions = (
           return_number,
           return_reason,
           initiated_at,
-          created_at,
           amount_tendered,
           change_given,
           is_cash_priced,
@@ -164,7 +163,7 @@ export const getOrderPaymentsQueryOptions = (
         `
       )
       .eq('order_id', orderId)
-      .order('created_at', { ascending: true })
+      .order('initiated_at', { ascending: true })
 
     if (error) throw error
     return (data as OrderPaymentRow[] | null) ?? []

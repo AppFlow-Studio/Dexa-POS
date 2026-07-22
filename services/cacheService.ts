@@ -16,6 +16,7 @@ import {
 } from "@/lib/storage";
 import { previousOrdersOfflineCache } from "@/stores/previousOrdersOfflineCache";
 import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
+import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -56,6 +57,7 @@ const CLERK_SECURE_KEY_PREFIXES = ["__clerk", "clerk.", "clerk_"] as const;
 
 const SESSION_STORES = [
   useCashDrawerStore,
+  useCFDBuiltinStore,
   useCFDClientStore,
   useEmployeeStore,
   useFloorPlanStore,

@@ -1054,3 +1054,72 @@ describe("Scenario 18: Aggregate-per-rate-group tax (v6)", () => {
     expect(result.outstanding_total).toBe(4.96); // 4.56 + 0.40
   });
 });
+
+// ============================================================================
+// SCENARIO 19: Per-item refund keeps card & cash amount_due reconcilable
+// ============================================================================
+
+describe("Scenario 19: Per-item refund dual pricing", () => {
+  it("single cash-paid item refunded → card and cash reconcile at the item's own prices", () => {
+    const mocha = createMockItem({
+      id: "mocha",
+      price: 6.25,
+      baseCardPrice: 6.25,
+      baseCashPrice: 6.0,
+      quantity: 1,
+      paidQuantity: 1,
+      refundedQuantity: 1,
+    });
+    const result = calculateOrderTotals({
+      items: [mocha],
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+      payments: [
+        { amount: 6.53, isCashPriced: true, cashSavings: 0.27, refundedAmount: 6.53 },
+      ],
+    } as any);
+    expect(result.outstanding_total).toBe(6.8); // 6.25 + 8.875% tax
+    expect(result.cash_outstanding_total).toBe(6.53); // 6.00 + 8.875% tax
+    // Reconcilable: differ only by the item's own card/cash spread.
+    expect(
+      +(result.outstanding_total - result.cash_outstanding_total).toFixed(2),
+    ).toBe(0.27);
+  });
+
+  it("varying-spread order, refund the low-spread item → both bases track that item, not a card-sized bump (the reported bug)", () => {
+    // Mocha 4% spread (6.25/6.00) + Wings 60% spread (30/12); one cash payment
+    // covering both; refund the Mocha. Pre-fix this diverged (card 13.15 / cash 12.88).
+    const mocha = createMockItem({ id: "mocha", price: 6.25, baseCardPrice: 6.25, baseCashPrice: 6.0, quantity: 1, paidQuantity: 1, refundedQuantity: 1 });
+    const wings = createMockItem({ id: "wings", price: 30.0, baseCardPrice: 30.0, baseCashPrice: 12.0, quantity: 1, paidQuantity: 1, refundedQuantity: 0 });
+    const cashTotal = 18.0 * 1.08875; // 19.60
+    const cardTotal = 36.25 * 1.08875; // 39.47
+    const result = calculateOrderTotals({
+      items: [mocha, wings],
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+      payments: [
+        {
+          amount: +cashTotal.toFixed(2),
+          isCashPriced: true,
+          cashSavings: +(cardTotal - cashTotal).toFixed(2),
+          refundedAmount: 6.53,
+        },
+      ],
+    } as any);
+    expect(result.outstanding_total).toBe(6.8);
+    expect(result.cash_outstanding_total).toBe(6.53);
+  });
+
+  it("custom-amount (non-item) refund still applies the payment-level residual on both bases (gate inert without item refunds)", () => {
+    const item = createMockItem({ price: 10.0, paidQuantity: 1 });
+    const result = calculateOrderTotals({
+      items: [item],
+      checkDiscount: null,
+      taxRatesMap: defaultTaxRates,
+      payments: [{ amount: 10.89, refundedAmount: 3.0 }],
+    } as any);
+    // hasItemRefunds=false → customRefundBalance reconciles the $3 gap on both bases.
+    expect(result.outstanding_total).toBe(3);
+    expect(result.cash_outstanding_total).toBe(3);
+  });
+});

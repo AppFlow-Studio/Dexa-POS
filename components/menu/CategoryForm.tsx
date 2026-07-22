@@ -10,6 +10,7 @@ import {
   type MenuItemPlaceholderIconKey
 } from '@/lib/menuItemPlaceholderIcon'
 import { bottomSheetTheme, colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { Category, MenuItemType, Schedule } from '@/lib/types'
 import { useMenuStore } from '@/stores/useMenuStore'
 import BottomSheet, {
@@ -70,9 +71,11 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
   submitButtonLabel,
   onDelete
 }) => {
-  const allItems = useMenuStore(s => s.menuItems)
-  const addCustomPricing = useMenuStore(s => s.addCustomPricing)
-  const deleteCustomPricing = useMenuStore(s => s.deleteCustomPricing)
+  const allItems = useMenuStore(store => store.menuItems)
+  const addCustomPricing = useMenuStore(store => store.addCustomPricing)
+  const deleteCustomPricing = useMenuStore(store => store.deleteCustomPricing)
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   const [name, setName] = useState(initialData?.name || '')
   const [isActive, setIsActive] = useState(initialData?.isActive ?? true)
@@ -233,33 +236,33 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          paddingHorizontal: 16,
-          paddingVertical: 12,
+          paddingHorizontal: s(16),
+          paddingVertical: s(12),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
           backgroundColor: colors.panel
         }}
       >
         <Text
-          style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
         >
           {title}
         </Text>
 
-        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', gap: s(10), alignItems: 'center' }}>
           <TouchableOpacity
             onPress={() => router.back()}
             style={{
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 8,
+              paddingHorizontal: s(12),
+              paddingVertical: s(6),
+              borderRadius: s(8),
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border
             }}
           >
             <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.label }}
+              style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}
             >
               Cancel
             </Text>
@@ -268,15 +271,15 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             <TouchableOpacity
               onPress={() => setShowDeleteDialog(true)}
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 8,
+                paddingHorizontal: s(12),
+                paddingVertical: s(6),
+                borderRadius: s(8),
                 backgroundColor: colors.danger + '15',
                 borderWidth: 1,
                 borderColor: colors.danger + '30'
               }}
             >
-              <Trash2 size={14} color={colors.danger} />
+              <Trash2 size={s(14)} color={colors.danger} />
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -285,10 +288,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 6,
-              paddingHorizontal: 14,
-              paddingVertical: 6,
-              borderRadius: 8,
+              gap: s(6),
+              paddingHorizontal: s(14),
+              paddingVertical: s(6),
+              borderRadius: s(8),
               backgroundColor: colors.teal,
               opacity: isSaving ? 0.7 : 1
             }}
@@ -296,10 +299,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             {isSaving ? (
               <ActivityIndicator size='small' color={colors.onSolid} />
             ) : (
-              <Check size={14} color={colors.onSolid} />
+              <Check size={s(14)} color={colors.onSolid} />
             )}
             <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.onSolid }}
+              style={{ fontSize: s(12), fontWeight: '600', color: colors.onSolid }}
             >
               {isSaving ? 'Saving...' : submitButtonLabel}
             </Text>
@@ -315,23 +318,23 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           {/* Left: Form */}
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 16, gap: 16 }}
+            contentContainerStyle={{ padding: s(16), gap: s(16) }}
             showsVerticalScrollIndicator={false}
           >
             {/* Basic Info */}
             <View
               style={{
                 backgroundColor: colors.card + 'cc',
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: colors.border,
-                padding: 14,
-                gap: 12
+                padding: s(14),
+                gap: s(12)
               }}
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '600',
                   color: colors.muted,
                   textTransform: 'uppercase',
@@ -341,10 +344,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                 Basic Info
               </Text>
 
-              <View style={{ gap: 6 }}>
+              <View style={{ gap: s(6) }}>
                 <Text
                   style={{
-                    fontSize: 12,
+                    fontSize: s(12),
                     fontWeight: '600',
                     color: colors.label
                   }}
@@ -357,10 +360,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    fontSize: 13,
+                    borderRadius: s(8),
+                    paddingHorizontal: s(12),
+                    paddingVertical: s(10),
+                    fontSize: s(13),
                     color: colors.heading
                   }}
                   value={name}
@@ -375,10 +378,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             <View
               style={{
                 backgroundColor: colors.card + 'cc',
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: colors.border,
-                padding: 14
+                padding: s(14)
               }}
             >
               <View
@@ -390,7 +393,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
               >
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '600',
                     color: colors.muted,
                     textTransform: 'uppercase',
@@ -402,21 +405,21 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                 <TouchableOpacity
                   onPress={() => setIsActive(!isActive)}
                   style={{
-                    width: 44,
-                    height: 24,
-                    borderRadius: 12,
+                    width: s(44),
+                    height: s(24),
+                    borderRadius: s(12),
                     backgroundColor: isActive ? colors.teal : colors.card,
                     borderWidth: 1,
                     borderColor: isActive ? colors.teal : colors.border,
                     justifyContent: 'center',
-                    paddingHorizontal: 2
+                    paddingHorizontal: s(2)
                   }}
                 >
                   <View
                     style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 10,
+                      width: s(20),
+                      height: s(20),
+                      borderRadius: s(10),
                       backgroundColor: colors.onSolid,
                       alignSelf: isActive ? 'flex-end' : 'flex-start'
                     }}
@@ -429,16 +432,16 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             <View
               style={{
                 backgroundColor: colors.card + 'cc',
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: colors.border,
-                padding: 14,
-                gap: 12
+                padding: s(14),
+                gap: s(12)
               }}
             >
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   fontWeight: '600',
                   color: colors.muted,
                   textTransform: 'uppercase',
@@ -460,16 +463,16 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
               <View
                 style={{
                   backgroundColor: colors.card + 'cc',
-                  borderRadius: 12,
+                  borderRadius: s(12),
                   borderWidth: 1,
                   borderColor: colors.border,
-                  padding: 14,
-                  gap: 10
+                  padding: s(14),
+                  gap: s(10)
                 }}
               >
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '600',
                     color: colors.muted,
                     textTransform: 'uppercase',
@@ -479,7 +482,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                   Selected · {selectedItemIds.length}
                 </Text>
                 <View
-                  style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}
+                  style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(6) }}
                 >
                   {selectedItemIds.map(itemId => {
                     const item = allItems.find(i => i.id === itemId)
@@ -492,15 +495,15 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                           backgroundColor: colors.teal + '15',
                           borderWidth: 1,
                           borderColor: colors.teal + '40',
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                          borderRadius: 20,
-                          gap: 6
+                          paddingHorizontal: s(8),
+                          paddingVertical: s(4),
+                          borderRadius: s(20),
+                          gap: s(6)
                         }}
                       >
                         <Text
                           style={{
-                            fontSize: 11,
+                            fontSize: s(11),
                             fontWeight: '600',
                             color: colors.teal
                           }}
@@ -508,7 +511,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                           {item.name}
                         </Text>
                         <TouchableOpacity onPress={() => toggleItem(item)}>
-                          <X size={11} color={colors.teal} />
+                          <X size={s(11)} color={colors.teal} />
                         </TouchableOpacity>
                       </View>
                     ) : null
@@ -521,11 +524,11 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             <View
               style={{
                 backgroundColor: colors.card + 'cc',
-                borderRadius: 12,
+                borderRadius: s(12),
                 borderWidth: 1,
                 borderColor: colors.border,
-                padding: 14,
-                gap: 12
+                padding: s(14),
+                gap: s(12)
               }}
             >
               <View
@@ -537,7 +540,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
               >
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '600',
                     color: colors.muted,
                     textTransform: 'uppercase',
@@ -551,17 +554,17 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 5,
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    borderRadius: 8,
+                    gap: s(5),
+                    paddingHorizontal: s(10),
+                    paddingVertical: s(5),
+                    borderRadius: s(8),
                     backgroundColor: colors.panel,
                     borderWidth: 1,
                     borderColor: colors.border
                   }}
                 >
-                  <Search size={12} color={colors.label} />
-                  <Text style={{ fontSize: 11, color: colors.label }}>
+                  <Search size={s(12)} color={colors.label} />
+                  <Text style={{ fontSize: s(11), color: colors.label }}>
                     Search
                   </Text>
                 </TouchableOpacity>
@@ -571,22 +574,22 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                 <View
                   style={{
                     backgroundColor: colors.panel,
-                    borderRadius: 8,
+                    borderRadius: s(8),
                     borderWidth: 1,
                     borderColor: colors.border,
-                    padding: 20,
+                    padding: s(20),
                     alignItems: 'center',
-                    gap: 8
+                    gap: s(8)
                   }}
                 >
-                  <Utensils size={20} color={colors.muted} />
-                  <Text style={{ fontSize: 12, color: colors.muted }}>
+                  <Utensils size={s(20)} color={colors.muted} />
+                  <Text style={{ fontSize: s(12), color: colors.muted }}>
                     No menu items found.
                   </Text>
                 </View>
               ) : (
                 <View
-                  style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+                  style={{ flexDirection: 'row', flexWrap: 'wrap', gap: s(8) }}
                 >
                   {allItems.map(item => {
                     const isSelected = selectedItemIds.includes(item.id)
@@ -620,11 +623,11 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                         key={item.id}
                         onPress={() => toggleItem(item)}
                         style={{
-                          width: 140,
+                          width: s(140),
                           backgroundColor: isSelected
                             ? colors.teal + '08'
                             : colors.panel,
-                          borderRadius: 10,
+                          borderRadius: s(10),
                           borderWidth: 1,
                           borderColor: isSelected
                             ? colors.teal + '40'
@@ -634,7 +637,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                       >
                         {/* Thumbnail */}
                         <View
-                          style={{ height: 72, backgroundColor: colors.screen }}
+                          style={{ height: s(72), backgroundColor: colors.screen }}
                         >
                           {imgSrc ? (
                             <Image
@@ -651,7 +654,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                               }}
                             >
                               <PlaceholderIcon
-                                size={20}
+                                size={s(20)}
                                 color={colors.muted}
                                 strokeWidth={2}
                               />
@@ -662,26 +665,26 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                             <View
                               style={{
                                 position: 'absolute',
-                                top: 5,
-                                right: 5,
-                                width: 18,
-                                height: 18,
-                                borderRadius: 9,
+                                top: s(5),
+                                right: s(5),
+                                width: s(18),
+                                height: s(18),
+                                borderRadius: s(9),
                                 backgroundColor: colors.teal,
                                 alignItems: 'center',
                                 justifyContent: 'center'
                               }}
                             >
-                              <Check size={11} color={colors.onSolid} />
+                              <Check size={s(11)} color={colors.onSolid} />
                             </View>
                           )}
                         </View>
 
                         {/* Info */}
-                        <View style={{ padding: 8, gap: 3 }}>
+                        <View style={{ padding: s(8), gap: s(3) }}>
                           <Text
                             style={{
-                              fontSize: 11,
+                              fontSize: s(11),
                               fontWeight: '600',
                               color: colors.heading
                             }}
@@ -693,12 +696,12 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                             style={{
                               flexDirection: 'row',
                               alignItems: 'center',
-                              gap: 4
+                              gap: s(4)
                             }}
                           >
                             <Text
                               style={{
-                                fontSize: 11,
+                                fontSize: s(11),
                                 fontWeight: '600',
                                 color:
                                   activeCustomPrice !== null
@@ -711,7 +714,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                             {activeCustomPrice !== null && (
                               <Text
                                 style={{
-                                  fontSize: 10,
+                                  fontSize: s(10),
                                   color: colors.muted,
                                   textDecorationLine: 'line-through'
                                 }}
@@ -723,7 +726,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
 
                           {/* Custom pricing controls — only when selected */}
                           {isSelected && (
-                            <View style={{ marginTop: 2 }}>
+                            <View style={{ marginTop: s(2) }}>
                               {activeCustomPrice !== null ? (
                                 <TouchableOpacity
                                   onPress={() =>
@@ -735,20 +738,20 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                                   style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
-                                    gap: 3,
+                                    gap: s(3),
                                     alignSelf: 'flex-start',
                                     backgroundColor: colors.danger + '15',
                                     borderWidth: 1,
                                     borderColor: colors.danger + '30',
-                                    paddingHorizontal: 6,
-                                    paddingVertical: 2,
-                                    borderRadius: 6
+                                    paddingHorizontal: s(6),
+                                    paddingVertical: s(2),
+                                    borderRadius: s(6)
                                   }}
                                 >
-                                  <X size={10} color={colors.danger} />
+                                  <X size={s(10)} color={colors.danger} />
                                   <Text
                                     style={{
-                                      fontSize: 10,
+                                      fontSize: s(10),
                                       color: colors.danger
                                     }}
                                   >
@@ -756,12 +759,12 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                                   </Text>
                                 </TouchableOpacity>
                               ) : newPricing?.itemId === item.id ? (
-                                <View style={{ gap: 4 }}>
+                                <View style={{ gap: s(4) }}>
                                   <View
                                     style={{
                                       flexDirection: 'row',
                                       alignItems: 'center',
-                                      gap: 4
+                                      gap: s(4)
                                     }}
                                   >
                                     <TouchableOpacity
@@ -776,9 +779,9 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                                           ).toFixed(2)
                                         )
                                       }}
-                                      style={{ padding: 3 }}
+                                      style={{ padding: s(3) }}
                                     >
-                                      <Minus size={11} color={colors.label} />
+                                      <Minus size={s(11)} color={colors.label} />
                                     </TouchableOpacity>
                                     <TextInput
                                       autoFocus={false}
@@ -787,10 +790,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                                         backgroundColor: colors.screen,
                                         borderWidth: 1,
                                         borderColor: colors.border,
-                                        borderRadius: 6,
-                                        paddingHorizontal: 6,
-                                        paddingVertical: 3,
-                                        fontSize: 11,
+                                        borderRadius: s(6),
+                                        paddingHorizontal: s(6),
+                                        paddingVertical: s(3),
+                                        fontSize: s(11),
                                         color: colors.heading,
                                         textAlign: 'center'
                                       }}
@@ -807,13 +810,13 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                                           (isNaN(c) ? 0 : c + 0.25).toFixed(2)
                                         )
                                       }}
-                                      style={{ padding: 3 }}
+                                      style={{ padding: s(3) }}
                                     >
-                                      <Plus size={11} color={colors.label} />
+                                      <Plus size={s(11)} color={colors.label} />
                                     </TouchableOpacity>
                                   </View>
                                   <View
-                                    style={{ flexDirection: 'row', gap: 4 }}
+                                    style={{ flexDirection: 'row', gap: s(4) }}
                                   >
                                     <TouchableOpacity
                                       onPress={handleCommitCustomPricing}
@@ -822,14 +825,14 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                                         backgroundColor: colors.success + '20',
                                         borderWidth: 1,
                                         borderColor: colors.success + '50',
-                                        borderRadius: 6,
-                                        paddingVertical: 3,
+                                        borderRadius: s(6),
+                                        paddingVertical: s(3),
                                         alignItems: 'center'
                                       }}
                                     >
                                       <Text
                                         style={{
-                                          fontSize: 10,
+                                          fontSize: s(10),
                                           fontWeight: '600',
                                           color: colors.success
                                         }}
@@ -844,14 +847,14 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                                         backgroundColor: colors.card,
                                         borderWidth: 1,
                                         borderColor: colors.border,
-                                        borderRadius: 6,
-                                        paddingVertical: 3,
+                                        borderRadius: s(6),
+                                        paddingVertical: s(3),
                                         alignItems: 'center'
                                       }}
                                     >
                                       <Text
                                         style={{
-                                          fontSize: 10,
+                                          fontSize: s(10),
                                           color: colors.label
                                         }}
                                       >
@@ -868,23 +871,23 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                                   style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
-                                    gap: 3,
+                                    gap: s(3),
                                     alignSelf: 'flex-start',
                                     backgroundColor: colors.warning + '15',
                                     borderWidth: 1,
                                     borderColor: colors.warning + '30',
-                                    paddingHorizontal: 6,
-                                    paddingVertical: 2,
-                                    borderRadius: 6
+                                    paddingHorizontal: s(6),
+                                    paddingVertical: s(2),
+                                    borderRadius: s(6)
                                   }}
                                 >
                                   <DollarSign
-                                    size={10}
+                                    size={s(10)}
                                     color={colors.warning}
                                   />
                                   <Text
                                     style={{
-                                      fontSize: 10,
+                                      fontSize: s(10),
                                       color: colors.warning
                                     }}
                                   >
@@ -906,27 +909,27 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           {/* Right: Summary Panel */}
           <View
             style={{
-              width: 300,
-              borderLeftWidth: 1,
+              width: s(300),
+              borderLeftWidth: s(1),
               borderLeftColor: colors.border,
               backgroundColor: colors.card,
-              padding: 16,
-              gap: 16,
+              padding: s(16),
+              gap: s(16),
               overflow: 'hidden'
             }}
           >
             <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: s(13), fontWeight: '700', color: colors.heading }}
             >
               Summary
             </Text>
 
             {/* Category Name */}
             {name.trim() && (
-              <View style={{ gap: 8 }}>
+              <View style={{ gap: s(8) }}>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     fontWeight: '600',
                     color: colors.muted,
                     textTransform: 'uppercase',
@@ -937,7 +940,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                 </Text>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: '600',
                     color: colors.heading
                   }}
@@ -951,11 +954,11 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             <View style={{ height: 1, backgroundColor: colors.border }} />
 
             {/* Stats */}
-            <View style={{ gap: 12 }}>
-              <View style={{ gap: 4 }}>
+            <View style={{ gap: s(12) }}>
+              <View style={{ gap: s(4) }}>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.muted,
                     fontWeight: '500'
                   }}
@@ -964,7 +967,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                 </Text>
                 <Text
                   style={{
-                    fontSize: 16,
+                    fontSize: s(16),
                     fontWeight: '700',
                     color: colors.heading
                   }}
@@ -973,10 +976,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                 </Text>
               </View>
 
-              <View style={{ gap: 4 }}>
+              <View style={{ gap: s(4) }}>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.muted,
                     fontWeight: '500'
                   }}
@@ -985,7 +988,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                 </Text>
                 <Text
                   style={{
-                    fontSize: 16,
+                    fontSize: s(16),
                     fontWeight: '700',
                     color: colors.teal
                   }}
@@ -994,10 +997,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                 </Text>
               </View>
 
-              <View style={{ gap: 4 }}>
+              <View style={{ gap: s(4) }}>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.muted,
                     fontWeight: '500'
                   }}
@@ -1006,7 +1009,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                 </Text>
                 <Text
                   style={{
-                    fontSize: 16,
+                    fontSize: s(16),
                     fontWeight: '700',
                     color: colors.label
                   }}
@@ -1018,10 +1021,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
 
             {/* Availability Status */}
             {name.trim() && (
-              <View style={{ gap: 4 }}>
+              <View style={{ gap: s(4) }}>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: s(11),
                     color: colors.muted,
                     fontWeight: '500'
                   }}
@@ -1030,7 +1033,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                 </Text>
                 <Text
                   style={{
-                    fontSize: 13,
+                    fontSize: s(13),
                     fontWeight: '600',
                     color: isActive ? colors.teal : colors.danger
                   }}
@@ -1073,14 +1076,14 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 14,
-            paddingVertical: 14,
+            paddingHorizontal: s(14),
+            paddingVertical: s(14),
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
-            gap: 10
+            gap: s(10)
           }}
         >
-          <Search size={14} color={colors.muted} />
+          <Search size={s(14)} color={colors.muted} />
           <BottomSheetTextInput
             value={quickSearchQuery}
             onChangeText={setQuickSearchQuery}
@@ -1088,15 +1091,15 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             placeholderTextColor={colors.muted}
             style={{
               flex: 1,
-              height: 40,
-              fontSize: 13,
+              height: s(40),
+              fontSize: s(13),
               color: colors.heading,
-              paddingVertical: 8
+              paddingVertical: s(8)
             }}
           />
           {quickSearchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setQuickSearchQuery('')}>
-              <X size={13} color={colors.muted} />
+              <X size={s(13)} color={colors.muted} />
             </TouchableOpacity>
           )}
         </View>
@@ -1105,7 +1108,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           data={filteredItems}
           keyExtractor={item => item.id}
           contentContainerStyle={{
-            paddingHorizontal: 14,
+            paddingHorizontal: s(14),
             paddingTop: 8,
             paddingBottom: 32
           }}
@@ -1132,25 +1135,25 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                     : colors.card,
                   borderWidth: 1,
                   borderColor: isSelected ? colors.teal + '40' : colors.border,
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 8,
-                  marginBottom: 6
+                  borderRadius: s(8),
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(8),
+                  marginBottom: s(6)
                 }}
               >
                 <View
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 10,
+                    gap: s(10),
                     flex: 1
                   }}
                 >
                   <View
                     style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: 6,
+                      width: s(34),
+                      height: s(34),
+                      borderRadius: s(6),
                       borderWidth: 1,
                       borderColor: colors.border,
                       overflow: 'hidden'
@@ -1172,7 +1175,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                         }}
                       >
                         <PlaceholderIcon
-                          size={13}
+                          size={s(13)}
                           color={colors.muted}
                           strokeWidth={2}
                         />
@@ -1182,7 +1185,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                   <View style={{ flex: 1 }}>
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: s(12),
                         fontWeight: '500',
                         color: colors.heading
                       }}
@@ -1190,16 +1193,16 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                     >
                       {item.name}
                     </Text>
-                    <Text style={{ fontSize: 11, color: colors.label }}>
+                    <Text style={{ fontSize: s(11), color: colors.label }}>
                       ${item.price.toFixed(2)}
                     </Text>
                   </View>
                 </View>
                 <View
                   style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 10,
+                    width: s(20),
+                    height: s(20),
+                    borderRadius: s(10),
                     borderWidth: 2,
                     borderColor: isSelected ? colors.teal : colors.border,
                     backgroundColor: isSelected ? colors.teal : 'transparent',
@@ -1207,7 +1210,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                     justifyContent: 'center'
                   }}
                 >
-                  {isSelected && <Check size={11} color={colors.onSolid} />}
+                  {isSelected && <Check size={s(11)} color={colors.onSolid} />}
                 </View>
               </TouchableOpacity>
             )
