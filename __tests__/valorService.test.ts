@@ -148,12 +148,15 @@ class ScriptedTransport implements ITerminalTransport {
   private _close: ((h: boolean) => void)[] = [];
   /** Test supplies the reply choreography for each written request. */
   onWrite: (body: any, emit: (frame: string) => void) => void = () => {};
+  /** Raw bytes handed to write() — lets tests assert on-wire framing. */
+  raws: string[] = [];
 
   get isOpen() { return this._open; }
   secondsSinceLastData() { return 0; }
   connect() { this._open = true; return Promise.resolve(); }
   disconnect() { this._open = false; }
   write(data: string) {
+    this.raws.push(data);
     let body: any = null;
     let inner = data;
     const s = inner.lastIndexOf(VALOR_STX);
@@ -220,6 +223,42 @@ describe("ValorService stale-frame correlation guard", () => {
     expect(res.stan).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("missing STAN_NO"));
     warn.mockRestore();
+  });
+});
+
+describe("ValorService request framing by transport", () => {
+  const saleReplies = (_body: any, emit: (f: string) => void) => {
+    emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+    emit(encodeValorFrame({ STATE: "0", STAN_NO: "1", MSG: "Payload Request Received" }));
+    emit(encodeValorFrame({ STATE: "0", RRN: "1", TRAN_NO: "1", MASKED_PAN: "4111 **** **** 1111" }));
+  };
+
+  it("wraps the request in STX/ETX over USB (serial needs delimiters)", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = saleReplies;
+    mockTransportImpl.current = () => scripted;
+
+    const svc = newService();
+    await svc.connect({ ...CONFIG, connectionType: "usb" });
+    await svc.processSale({ amount: 1715, referenceId: "000001" });
+
+    const req = scripted.raws[0];
+    expect(req.startsWith(VALOR_STX)).toBe(true);
+    expect(req.endsWith(VALOR_ETX)).toBe(true);
+  });
+
+  it("sends BARE JSON over TCP (the VP terminal rejects framed TCP requests)", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = saleReplies;
+    mockTransportImpl.current = () => scripted;
+
+    const svc = newService();
+    await svc.connect({ ...CONFIG, connectionType: "local_socket" });
+    await svc.processSale({ amount: 1715, referenceId: "000002" });
+
+    const req = scripted.raws[0];
+    expect(req.startsWith(VALOR_STX)).toBe(false);
+    expect(req.startsWith("{")).toBe(true);
   });
 });
 
