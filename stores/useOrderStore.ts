@@ -5,6 +5,7 @@ import {
 } from "@/lib/kitchenStatusUtils";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import { payableQuantity } from "@/lib/payableQuantity";
+import { isNothingLeftToCollect } from "@/lib/paymentGuards";
 import { startInteraction } from "@/lib/perf";
 import { orderStoreDiagnosticLog } from "@/lib/performanceDiagnostics";
 import {
@@ -11749,25 +11750,17 @@ export const useOrderStore = create<OrderState>()(
                 ? Math.max(storedOutstanding, computedOutstanding)
                 : computedOutstanding;
 
-            // A legitimate final even-split portion can be a sub-cent remainder
-            // (e.g. $0.05 split 3 ways → last portion is $0.03 but a $0.02 total
-            // can leave $0.01 owing). In that case outstanding == the portion we
-            // are about to collect, so this is NOT "already paid" — let it through.
-            // We only treat it as a true final portion when the explicit amount
-            // still covers what's owed.
-            const isFinalSplitPortion =
-              splitCount !== undefined &&
-              splitPortionIndex !== undefined &&
-              splitPortionIndex === splitCount;
-            const collectsRemaining =
-              forceExplicitAmount &&
-              amount > 0 &&
-              amount >= outstandingBeforePayment - 0.001;
-
-            if (
-              outstandingBeforePayment <= 0.01 &&
-              !(isFinalSplitPortion && collectsRemaining)
-            ) {
+            // Reject a payment only when there is genuinely nothing left to
+            // collect. Sub-cent dust (< $0.005) is "already paid", but a real 1¢
+            // balance is money the guest still owes and must be collectable — a
+            // $0.01 order, or a tiny final split remainder (e.g. $0.05 split 3
+            // ways leaves $0.01). The old <= $0.01 guard rejected legitimate 1¢
+            // checkouts because its escape only fired for explicit split
+            // portions; the by-item / full-pay paths don't set
+            // forceExplicitAmount, so a $0.01 charge falsely read as "paid".
+            // (Regressed once — 90f0ed1e reverted 40dee0fd — so the predicate
+            // now lives in lib/paymentGuards.ts with a unit test.)
+            if (isNothingLeftToCollect(outstandingBeforePayment, amount)) {
               toastService.show({
                 title: "Already Paid",
                 message: "No unpaid items remaining on this order.",
