@@ -581,13 +581,6 @@ export class ValorService {
         }
       };
       const onClose = () => {
-        // TEMP DIAGNOSTIC (Valor connect debugging): sawAck=false means the
-        // terminal closed WITHOUT sending any ACK/payload/final frame — i.e. it
-        // accepted the socket, received our request, and hung up silently.
-        // Remove once resolved.
-        console.warn(
-          `[ValorService] onClose before final — sawAck=${sawAck}, stan=${stan ?? "none"}`,
-        );
         done(() =>
           reject(
             new ValorCommandError(
@@ -606,16 +599,7 @@ export class ValorService {
       transport.onClose(onClose);
       transport.onError(onError);
 
-      // TEMP DIAGNOSTIC (Valor connect debugging): log the exact frame we send,
-      // with control bytes visible. Remove once resolved.
-      const _framed = encodeValorFrame(body);
-      try {
-        console.log(
-          `[ValorService] RAW TX (${_framed.length}B): ` +
-            _framed.replace(/\x02/g, "<STX>").replace(/\x03/g, "<ETX>"),
-        );
-      } catch { /* best-effort */ }
-      transport.write(_framed).catch((err: Error) => {
+      transport.write(encodeValorFrame(body)).catch((err: Error) => {
         done(() => reject(new ValorCommandError(`Write failed: ${err.message}`, "connect", null)));
       });
     });
