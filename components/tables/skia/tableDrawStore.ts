@@ -22,7 +22,7 @@ export interface TableTextLine {
 }
 
 export interface TableBadge {
-  kind: "server" | "reservation" | "tab";
+  kind: "server" | "reservation" | "tab" | "qr_alert";
   text: string;
   /** fill / stroke / text colors already resolved */
   bg: string;

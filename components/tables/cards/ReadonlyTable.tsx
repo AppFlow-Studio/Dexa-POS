@@ -108,7 +108,10 @@ const ReadonlyTable: React.FC<
           />
         </View>
         <PulsingBorder
-          active={newAttention}
+          // Pulse while the guest's call-server alert is open too — visual
+          // chrome only; we never write session.needs_attention for QR
+          // (QR must not touch dining state). Clears when resolved.
+          active={newAttention || hasQrAlert}
           width={effectiveWidth}
           height={effectiveHeight}
         />

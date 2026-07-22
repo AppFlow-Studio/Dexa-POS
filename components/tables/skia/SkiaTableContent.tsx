@@ -74,15 +74,16 @@ const SkiaTableContent: React.FC<{
       );
     }
 
-    // Pill badges (reservation bottom-right, tab bottom-left).
+    // Pill badges (reservation bottom-right, tab bottom-left, QR alert top-left).
     const isTab = b.kind === "tab";
+    const isQrAlert = b.kind === "qr_alert";
     const font = getTableFont(isTab ? 7 : 8, isTab ? "700" : "800");
     const tw = font ? measureWidth(font, b.text) : 0;
     const padH = isTab ? 4 : 5;
     const bw = tw + padH * 2;
     const bh = isTab ? 14 : 16;
-    const bx = isTab ? 4 : width - 4 - bw;
-    const by = height - 4 - bh;
+    const bx = isTab || isQrAlert ? 4 : width - 4 - bw;
+    const by = isQrAlert ? 4 : height - 4 - bh;
     return (
       <Group key={`b${i}`}>
         <RoundedRect x={bx} y={by} width={bw} height={bh} r={6} color={b.bg} />

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from "react";
 
 import { useTableCardData } from "@/components/tables/cards/useTableCardData";
+import { useQrGuestAlertsStore } from "@/stores/useQrGuestAlertsStore";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
 import { colors } from "@/lib/theme";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
@@ -25,6 +26,14 @@ const TableDataPublisher: React.FC<{ table: FloorPlanObject }> = ({
 }) => {
   const shapeDef = TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
   const data = useTableCardData(table, true, false, undefined, shapeDef);
+
+  // QR guest "call server" indicator — visual chrome only, keyed by the
+  // table's label matching an open alert. Never writes session state.
+  const qrTableLabel =
+    (table as { label_override?: string }).label_override?.trim() || table.name;
+  const hasQrAlert = useQrGuestAlertsStore(
+    (s) => !!qrTableLabel && s.alerts.some((a) => a.tableLabel === qrTableLabel),
+  );
 
   const setData = useTableDrawStore((s) => s.setData);
 
@@ -145,6 +154,15 @@ const TableDataPublisher: React.FC<{ table: FloorPlanObject }> = ({
         fg: badgeColor,
       });
     }
+    if (hasQrAlert) {
+      badges.push({
+        kind: "qr_alert",
+        text: "CALL",
+        bg: "#0C4FD1",
+        border: "#FFFFFF",
+        fg: "#FFFFFF",
+      });
+    }
     if (activeTabAmount != null) {
       badges.push({
         kind: "tab",
@@ -164,7 +182,7 @@ const TableDataPublisher: React.FC<{ table: FloorPlanObject }> = ({
       height: effectiveHeight,
       color: tableColor,
       darkMode: isDarkColorScheme,
-      attention: newAttention,
+      attention: newAttention || hasQrAlert,
       lines,
       badges,
     };
@@ -194,6 +212,7 @@ const TableDataPublisher: React.FC<{ table: FloorPlanObject }> = ({
     activeTabAmount,
     effectiveOrder,
     liveSession?.order_id,
+    hasQrAlert,
   ]);
 
   useEffect(() => {
