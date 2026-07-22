@@ -729,7 +729,22 @@ const DevicesConnectionsScreen = ({
             cancelPort,
             epi: registerForm.epi
           })
+          // Don't persist a terminal we can't reach. A failed pre-test would
+          // otherwise leave a dead row that resolves as the station's active
+          // terminal and knocks the real terminal offline.
+          if (!preTest.success) {
+            throw new Error(
+              preTest.error ||
+                'Could not connect to the Valor terminal. Check the IP, port, and that Valor Connect is enabled on the terminal, then try again.'
+            )
+          }
           discoveredSN = preTest.serialNumber
+        } else {
+          // No pre-test possible (USB is gated until the Valor VID lands), so we
+          // cannot confirm the terminal is reachable — refuse to register.
+          throw new Error(
+            'A reachable IP address is required to register a Valor terminal over TCP.'
+          )
         }
 
         // Store the IP in BOTH local_ip_address (surfaced as ip_address by the
@@ -762,6 +777,16 @@ const DevicesConnectionsScreen = ({
           .single()
         if (termErr) throw termErr
         newTerminalId = terminalRow.id
+        // Deactivate other terminals at this station — otherwise the station
+        // keeps >1 is_active=true row and the station RPC resolves the active
+        // terminal ambiguously, flip-flopping the health-check target.
+        await supabase
+          .from('payment_terminals')
+          .update({ is_active: false })
+          .eq('station_id', selectedStation.id)
+          .eq('is_active', true)
+          .neq('id', newTerminalId)
+        await loadTerminals(selectedStore.id)
         if (newTerminalId) {
           setActiveTerminal(newTerminalId)
           setSelectedStation({
@@ -1946,6 +1971,17 @@ const DevicesConnectionsScreen = ({
                     {registerFormType === 'castles' && (
                       <Image
                         source={require('@/assets/images/castles.jpg')}
+                        style={{
+                          width: s(36),
+                          height: s(36),
+                          borderRadius: s(6)
+                        }}
+                        resizeMode='cover'
+                      />
+                    )}
+                    {registerFormType === 'valor' && (
+                      <Image
+                        source={require('@/assets/images/valorlogo.jpg')}
                         style={{
                           width: s(36),
                           height: s(36),
