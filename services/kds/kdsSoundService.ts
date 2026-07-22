@@ -63,6 +63,27 @@ function normalizeSource(orderSource: string | null): ConfigKey {
   return "default";
 }
 
+// ─── Active-instance registry ─────────────────────────────────────
+// The layout owns the KDSSoundService lifecycle, but event-driven code
+// (e.g. the QR guest-alert store) needs to ring without a ref. The layout
+// registers its live instance here; play helpers below no-op when absent.
+let activeInstance: KDSSoundService | null = null;
+
+export function registerSoundService(
+  service: KDSSoundService | null,
+  previous?: KDSSoundService | null,
+): void {
+  // Unregister only clears if the caller's instance is still the active one,
+  // so a KDS-screen unmount doesn't clobber the layout's registration.
+  if (service === null && previous && activeInstance !== previous) return;
+  activeInstance = service;
+}
+
+/** Ring the "bell" preset for a QR guest call-server alert. */
+export function playQrGuestAlertSound(): void {
+  activeInstance?.playPreview("bell");
+}
+
 // ─── Service ──────────────────────────────────────────────────────
 class KDSSoundService {
   private players = new Map<Exclude<SoundPreset, "none">, AudioPlayer>();

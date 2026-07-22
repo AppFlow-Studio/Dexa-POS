@@ -16,14 +16,14 @@ interface NotificationPanelProps {
 const FILTERS = [
   { key: "all", label: "All" },
   { key: "unread", label: "Unread" },
-  { key: "schedule", label: "Schedule" },
+  { key: "read", label: "Read" },
 ] as const;
 
 const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
-  const { notifications, markAllAsRead, markAsRead, deleteNotification } = useNotificationStore();
+  const { notifications, markAllAsRead, markAsRead, deleteNotification, clearAllForEmployee } = useNotificationStore();
   const { schedulePeriods, weeklySchedules, swapRequests } = useScheduleStore();
   const { loggedInEmployee } = useEmployeeStore();
-  const [filter, setFilter] = useState<"all" | "unread" | "schedule">("all");
+  const [filter, setFilter] = useState<"all" | "unread" | "read">("all");
 
   const employeeNotifications = useMemo(() => {
     if (!loggedInEmployee) return [];
@@ -32,9 +32,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
 
   const filteredNotifications = useMemo(() => {
     if (filter === "unread") return employeeNotifications.filter((n) => !n.isRead);
-    if (filter === "schedule") return employeeNotifications.filter((n) =>
-      ["schedule_published", "shift_assigned", "shift_updated", "swap_approved"].includes(n.type)
-    );
+    if (filter === "read") return employeeNotifications.filter((n) => n.isRead);
     return employeeNotifications;
   }, [employeeNotifications, filter]);
 
@@ -107,9 +105,16 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
               </View>
             )}
           </View>
-          <TouchableOpacity onPress={() => loggedInEmployee && markAllAsRead(loggedInEmployee.id)}>
-            <Text style={{ fontSize: 12, color: colors.teal, fontWeight: '600' }}>Mark all read</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+            <TouchableOpacity onPress={() => loggedInEmployee && markAllAsRead(loggedInEmployee.id)}>
+              <Text style={{ fontSize: 12, color: colors.teal, fontWeight: '600' }}>Mark all read</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => loggedInEmployee && clearAllForEmployee(loggedInEmployee.id)}
+            >
+              <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600' }}>Clear</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Filter pills */}
@@ -139,7 +144,10 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
         sections={notificationSections}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <TouchableOpacity onPress={() => handleNotificationPress(item)}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => handleNotificationPress(item)}
+          >
             <NotificationItem notification={item} onDelete={deleteNotification} />
           </TouchableOpacity>
         )}

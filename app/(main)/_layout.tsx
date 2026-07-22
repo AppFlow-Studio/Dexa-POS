@@ -21,7 +21,7 @@ import { isOnlineOrderSource } from '@/lib/orderSource'
 import { colors, spinnerColor } from '@/lib/theme'
 import { useColorScheme } from '@/lib/useColorScheme'
 import { hydrateDrawerSession } from '@/services/cashDrawerService'
-import KDSSoundService from '@/services/kds/kdsSoundService'
+import KDSSoundService, { registerSoundService } from '@/services/kds/kdsSoundService'
 import { useKDSStore } from '@/stores/useKDSStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useMenuManagementSearchStore } from '@/stores/useMenuManagementSearchStore'
@@ -147,8 +147,10 @@ export default function MainLayout () {
     if (isKDS) return
     const service = new KDSSoundService()
     soundServiceRef.current = service
+    registerSoundService(service)
     service.init()
     return () => {
+      registerSoundService(null, service)
       service.dispose()
       soundServiceRef.current = null
     }

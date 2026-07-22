@@ -1,5 +1,19 @@
 import { Notification } from "@/lib/types";
+import { createMMKV } from "react-native-mmkv";
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+
+const notificationStorage = createMMKV({ id: "dexa-pos-notifications" });
+
+const mmkvStorage = {
+  getItem: (name: string) => notificationStorage.getString(name) ?? null,
+  setItem: (name: string, value: string) => notificationStorage.set(name, value),
+  removeItem: (name: string) => notificationStorage.delete(name),
+};
+
+// Prune persisted notifications older than this on rehydrate — a week-old
+// shift reminder is noise, and it keeps the persisted blob bounded.
+const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Hard cap on retained notifications. This store is NOT persisted, but
 // addNotification is called from many event-driven paths (schedule events,
@@ -23,11 +37,15 @@ interface NotificationState {
     type?: string;
     payload?: Record<string, any>;
   }) => void;
-  deleteNotification: (id: string) => void; // New action for swipe-to-delete
+  deleteNotification: (id: string) => void;
+  /** Clear every notification for an employee (the panel's Clear button). */
+  clearAllForEmployee: (employeeId: string) => void;
   getUnreadCountForEmployee: (employeeId: string) => number;
 }
 
-export const useNotificationStore = create<NotificationState>((set, get) => ({
+export const useNotificationStore = create<NotificationState>()(
+  persist(
+    (set, get) => ({
   notifications: [],
 
   addNotification: (notificationData) => {
@@ -83,9 +101,34 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     }));
   },
 
+  clearAllForEmployee: (employeeId) => {
+    set((state) => ({
+      // Keep unresolved guest requests — those clear via Resolve only, so the
+      // inbox never hides a live call-server alert.
+      notifications: state.notifications.filter(
+        (n) => n.employeeId !== employeeId || n.type === "qr_call_server"
+      ),
+    }));
+  },
+
   getUnreadCountForEmployee: (employeeId) => {
     return get().notifications.filter(
       (n) => n.employeeId === employeeId && !n.isRead
     ).length;
   },
-}));
+    }),
+    {
+      name: "notification-store",
+      storage: createJSONStorage(() => mmkvStorage),
+      // Drop stale entries on rehydrate so restarts don't resurrect a
+      // week-old inbox.
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        const cutoff = Date.now() - MAX_AGE_MS;
+        state.notifications = state.notifications.filter(
+          (n) => new Date(n.timestamp).getTime() >= cutoff
+        );
+      },
+    }
+  )
+);

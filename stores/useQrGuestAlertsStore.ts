@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
+import { playQrGuestAlertSound } from "@/services/kds/kdsSoundService";
 import { useEmployeeStore } from "./useEmployeeStore";
 import { useNotificationStore } from "./useNotificationStore";
 
@@ -131,7 +132,20 @@ export const useQrGuestAlertsStore = create<QrGuestAlertsState>((set, get) => ({
       onlineOrderSessionId: row.online_order_session_id ?? null,
     }));
     set({ alerts, openCount: alerts.length });
-    // Mirror open alerts into the dock notification sheet on cold start.
+    // Mirror open alerts into the dock notification sheet on cold start, and
+    // drop persisted mirrors for alerts that were resolved while the app was
+    // closed (the notification store persists across restarts).
+    const openIds = new Set(alerts.map((a) => a.id));
+    const notifStore = useNotificationStore.getState();
+    for (const n of notifStore.notifications) {
+      if (
+        n.type === "qr_call_server" &&
+        n.payload?.alertId &&
+        !openIds.has(n.payload.alertId as string)
+      ) {
+        unmirrorNotification(n.payload.alertId as string);
+      }
+    }
     for (const a of alerts) mirrorNotification(a, true);
   },
 
@@ -158,6 +172,8 @@ export const useQrGuestAlertsStore = create<QrGuestAlertsState>((set, get) => ({
           ? alerts.map((a) => (a.id === payload.alert_id ? updated : a))
           : [...alerts, updated];
       mirrorNotification(updated);
+      // Ring only for genuinely-new alerts (not refreshes of an existing one).
+      if (idx < 0) playQrGuestAlertSound();
     }
     set({
       alerts: next,

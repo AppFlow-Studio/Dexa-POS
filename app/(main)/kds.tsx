@@ -18,6 +18,7 @@ import { useUiScale } from "@/lib/uiScale";
 import { clearStationData } from "@/services/cacheService";
 import KDSSoundService, {
     DEFAULT_SOUND_CONFIG,
+    registerSoundService,
 } from "@/services/kds/kdsSoundService";
 import { refreshLocationConfig } from "@/services/locationConfigSync";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -2673,6 +2674,7 @@ const KitchenDisplayScreen = () => {
   useEffect(() => {
     const service = new KDSSoundService();
     soundServiceRef.current = service;
+    registerSoundService(service);
     service.init();
 
     setOnNewOrderCallback((orderSource) => {
@@ -2682,6 +2684,7 @@ const KitchenDisplayScreen = () => {
 
     return () => {
       setOnNewOrderCallback(null);
+      registerSoundService(null, service);
       service.dispose();
       soundServiceRef.current = null;
     };
