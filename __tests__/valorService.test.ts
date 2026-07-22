@@ -226,40 +226,31 @@ describe("ValorService stale-frame correlation guard", () => {
   });
 });
 
-describe("ValorService request framing by transport", () => {
+describe("ValorService request framing", () => {
+  // The VP terminal rejects STX/ETX-framed requests on BOTH TCP and USB, so
+  // requests are always bare JSON regardless of connection type.
   const saleReplies = (_body: any, emit: (f: string) => void) => {
     emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
     emit(encodeValorFrame({ STATE: "0", STAN_NO: "1", MSG: "Payload Request Received" }));
     emit(encodeValorFrame({ STATE: "0", RRN: "1", TRAN_NO: "1", MASKED_PAN: "4111 **** **** 1111" }));
   };
 
-  it("wraps the request in STX/ETX over USB (serial needs delimiters)", async () => {
-    const scripted = new ScriptedTransport();
-    scripted.onWrite = saleReplies;
-    mockTransportImpl.current = () => scripted;
+  it.each(["usb", "local_socket"] as const)(
+    "sends bare JSON (no STX/ETX) over %s",
+    async (connectionType) => {
+      const scripted = new ScriptedTransport();
+      scripted.onWrite = saleReplies;
+      mockTransportImpl.current = () => scripted;
 
-    const svc = newService();
-    await svc.connect({ ...CONFIG, connectionType: "usb" });
-    await svc.processSale({ amount: 1715, referenceId: "000001" });
+      const svc = newService();
+      await svc.connect({ ...CONFIG, connectionType });
+      await svc.processSale({ amount: 1715, referenceId: "000001" });
 
-    const req = scripted.raws[0];
-    expect(req.startsWith(VALOR_STX)).toBe(true);
-    expect(req.endsWith(VALOR_ETX)).toBe(true);
-  });
-
-  it("sends BARE JSON over TCP (the VP terminal rejects framed TCP requests)", async () => {
-    const scripted = new ScriptedTransport();
-    scripted.onWrite = saleReplies;
-    mockTransportImpl.current = () => scripted;
-
-    const svc = newService();
-    await svc.connect({ ...CONFIG, connectionType: "local_socket" });
-    await svc.processSale({ amount: 1715, referenceId: "000002" });
-
-    const req = scripted.raws[0];
-    expect(req.startsWith(VALOR_STX)).toBe(false);
-    expect(req.startsWith("{")).toBe(true);
-  });
+      const req = scripted.raws[0];
+      expect(req.startsWith(VALOR_STX)).toBe(false);
+      expect(req.startsWith("{")).toBe(true);
+    },
+  );
 });
 
 describe("ValorService.terminalQuery — real terminal (ACK-only)", () => {

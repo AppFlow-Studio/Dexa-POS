@@ -42,8 +42,6 @@ import {
   VALOR_CANCEL_TIMEOUT_MS,
   VALOR_STATUS_TIMEOUT_MS,
   VALOR_CONNECT_TIMEOUT_MS,
-  VALOR_STX,
-  VALOR_ETX,
   type ValorConnectionConfig,
   type ValorRawResponse,
   type ValorRequestBody,
@@ -496,15 +494,10 @@ export class ValorService {
     const correlate = opts.correlate ?? true;
     const reader = new ValorFrameReader();
 
-    // Framing differs by transport. Over TCP the VP terminal wants BARE JSON
-    // (framed requests are ACK'd but never start the txn). Over USB CDC serial
-    // there are no packet boundaries, so the terminal needs STX/ETX delimiters
-    // to know where a message ends (per Valor's USB semi-integration guide) —
-    // otherwise it ACKs the bytes but the txn dispatcher never fires. Responses
-    // are read the same way regardless (ValorFrameReader ignores STX/ETX).
-    const isUsb = this._config?.connectionType === "usb";
-    const toWire = (b: ValorRequestBody): string =>
-      isUsb ? VALOR_STX + encodeValorFrame(b) + VALOR_ETX : encodeValorFrame(b);
+    // Requests are BARE JSON on every transport. The VP terminal rejects
+    // STX/ETX-framed requests over BOTH TCP (ACK'd but txn never starts) and USB
+    // (no ACK at all). Responses are read the same way regardless
+    // (ValorFrameReader ignores STX/ETX if present).
 
     return new Promise<ValorRawResponse>((resolve, reject) => {
       let stan: string | null = null;
@@ -592,7 +585,7 @@ export class ValorService {
           const captured = stan;
           if (opts.sendTrailingAck) {
             transport
-              .write(toWire({ STATE: "0", MSG: "ACK" }))
+              .write(encodeValorFrame({ STATE: "0", MSG: "ACK" }))
               .catch(() => { /* best-effort trailing ACK */ });
           }
           done(() => resolve(frame));
@@ -619,7 +612,7 @@ export class ValorService {
       transport.onError(onError);
 
       // TEMP DIAGNOSTIC (Valor USB bring-up): log exactly what goes on the wire.
-      const _wire = toWire(body);
+      const _wire = encodeValorFrame(body);
       try {
         console.log(
           `[ValorService] RAW TX (${_wire.length}B): ` +
