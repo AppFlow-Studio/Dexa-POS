@@ -733,7 +733,13 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
                     backgroundColor: colors.screen,
                   }}
                 >
-                  <Text style={{ color: colors.heading, fontWeight: "600" }}>
+                  <Text
+                    style={{
+                      color: colors.heading,
+                      fontWeight: "600",
+                      fontSize: s(14),
+                    }}
+                  >
                     Cancel
                   </Text>
                 </TouchableOpacity>
@@ -752,7 +758,13 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
                     alignItems: "center",
                   }}
                 >
-                  <Text style={{ color: colors.onSolid, fontWeight: "700" }}>
+                  <Text
+                    style={{
+                      color: colors.onSolid,
+                      fontWeight: "700",
+                      fontSize: s(14),
+                    }}
+                  >
                     {confirm.cta}
                   </Text>
                 </TouchableOpacity>

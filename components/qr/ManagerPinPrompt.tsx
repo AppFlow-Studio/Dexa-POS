@@ -8,6 +8,7 @@
 
 import { colors } from "@/lib/theme";
 import type { MerchantRole } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { Delete, Lock, X } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
@@ -27,6 +28,8 @@ const MANAGER_ROLES: MerchantRole[] = [
 
 const PIN_LENGTH = 4;
 
+type Scale = (n: number) => number;
+
 interface ManagerPinPromptProps {
   visible: boolean;
   title?: string;
@@ -38,9 +41,11 @@ interface ManagerPinPromptProps {
 const PinDots = ({
   length,
   shake,
+  s,
 }: {
   length: number;
   shake: Animated.SharedValue<number>;
+  s: Scale;
 }) => {
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shake.value }],
@@ -51,9 +56,9 @@ const PinDots = ({
       style={[
         {
           flexDirection: "row",
-          gap: 18,
+          gap: s(18),
           justifyContent: "center",
-          marginBottom: 28,
+          marginBottom: s(28),
         },
         animStyle,
       ]}
@@ -62,8 +67,8 @@ const PinDots = ({
         <View
           key={i}
           style={{
-            width: i < length ? 18 : 14,
-            height: i < length ? 18 : 14,
+            width: i < length ? s(18) : s(14),
+            height: i < length ? s(18) : s(14),
             borderRadius: 999,
             backgroundColor: i < length ? colors.teal : colors.border,
             alignSelf: "center",
@@ -78,18 +83,20 @@ const KeyButton = ({
   label,
   onPress,
   variant = "digit",
+  s,
 }: {
   label: React.ReactNode;
   onPress: () => void;
   variant?: "digit" | "action";
+  s: Scale;
 }) => (
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={0.6}
     style={{
-      width: 80,
-      height: 64,
-      borderRadius: 14,
+      width: s(80),
+      height: s(64),
+      borderRadius: s(14),
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: variant === "digit" ? colors.card : colors.screen,
@@ -98,7 +105,9 @@ const KeyButton = ({
     }}
   >
     {typeof label === "string" ? (
-      <Text style={{ fontSize: 22, fontWeight: "600", color: colors.heading }}>
+      <Text
+        style={{ fontSize: s(22), fontWeight: "600", color: colors.heading }}
+      >
         {label}
       </Text>
     ) : (
@@ -114,6 +123,8 @@ const ManagerPinPrompt: React.FC<ManagerPinPromptProps> = ({
   onApproved,
   onCancel,
 }) => {
+  const uiScale = useUiScale();
+  const s: Scale = (n) => Math.round(n * uiScale);
   const [pin, setPin] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const shakeX = useSharedValue(0);
@@ -190,45 +201,50 @@ const ManagerPinPrompt: React.FC<ManagerPinPromptProps> = ({
         <Pressable
           onPress={() => {}}
           style={{
-            width: 360,
+            width: s(360),
             backgroundColor: colors.panel,
-            borderRadius: 20,
+            borderRadius: s(20),
             borderWidth: 1,
             borderColor: colors.border,
             overflow: "hidden",
           }}
         >
-          <View style={{ padding: 24, alignItems: "center" }}>
+          <View style={{ padding: s(24), alignItems: "center" }}>
             <TouchableOpacity
               onPress={onCancel}
-              style={{ position: "absolute", top: 14, right: 14, padding: 4 }}
+              style={{
+                position: "absolute",
+                top: s(14),
+                right: s(14),
+                padding: s(4),
+              }}
             >
-              <X size={18} color={colors.muted} />
+              <X size={s(18)} color={colors.muted} />
             </TouchableOpacity>
 
             <View
               style={{
-                width: 52,
-                height: 52,
-                borderRadius: 14,
+                width: s(52),
+                height: s(52),
+                borderRadius: s(14),
                 backgroundColor: colors.screen,
                 borderWidth: 1,
                 borderColor: colors.border,
                 alignItems: "center",
                 justifyContent: "center",
-                marginBottom: 12,
+                marginBottom: s(12),
               }}
             >
-              <Lock size={24} color={colors.heading} />
+              <Lock size={s(24)} color={colors.heading} />
             </View>
 
             <Text
               style={{
-                fontSize: 15,
+                fontSize: s(15),
                 fontWeight: "700",
                 color: colors.heading,
                 textAlign: "center",
-                marginBottom: 4,
+                marginBottom: s(4),
               }}
             >
               {title}
@@ -236,60 +252,67 @@ const ManagerPinPrompt: React.FC<ManagerPinPromptProps> = ({
             {subtitle ? (
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: s(12),
                   color: colors.label,
                   textAlign: "center",
-                  marginBottom: 20,
-                  paddingHorizontal: 12,
+                  marginBottom: s(20),
+                  paddingHorizontal: s(12),
                 }}
               >
                 {subtitle}
               </Text>
             ) : (
-              <View style={{ height: 12 }} />
+              <View style={{ height: s(12) }} />
             )}
 
-            <PinDots length={pin.length} shake={shakeX} />
+            <PinDots length={pin.length} shake={shakeX} s={s} />
 
             {errorMsg && (
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: s(11),
                   color: colors.danger,
                   textAlign: "center",
-                  marginBottom: 12,
-                  marginTop: -16,
+                  marginBottom: s(12),
+                  marginTop: -s(16),
                 }}
               >
                 {errorMsg}
               </Text>
             )}
 
-            <View style={{ gap: 10 }}>
+            <View style={{ gap: s(10) }}>
               {rows.map((row, ri) => (
-                <View key={ri} style={{ flexDirection: "row", gap: 10 }}>
+                <View key={ri} style={{ flexDirection: "row", gap: s(10) }}>
                   {row.map((d) => (
-                    <KeyButton key={d} label={d} onPress={() => handleKey(d)} />
+                    <KeyButton
+                      key={d}
+                      label={d}
+                      onPress={() => handleKey(d)}
+                      s={s}
+                    />
                   ))}
                 </View>
               ))}
-              <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flexDirection: "row", gap: s(10) }}>
                 <KeyButton
                   variant="action"
-                  label={<X size={18} color={colors.muted} />}
+                  label={<X size={s(18)} color={colors.muted} />}
                   onPress={() => {
                     setPin("");
                     setErrorMsg(null);
                   }}
+                  s={s}
                 />
-                <KeyButton label="0" onPress={() => handleKey("0")} />
+                <KeyButton label="0" onPress={() => handleKey("0")} s={s} />
                 <KeyButton
                   variant="action"
-                  label={<Delete size={18} color={colors.label} />}
+                  label={<Delete size={s(18)} color={colors.label} />}
                   onPress={() => {
                     setPin((p) => p.slice(0, -1));
                     setErrorMsg(null);
                   }}
+                  s={s}
                 />
               </View>
             </View>
