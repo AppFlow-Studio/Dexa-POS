@@ -1,199 +1,357 @@
-import { Checkbox } from '@/components/ui/checkbox'
-import CustomSlider from '@/components/ui/custom-slider'
+/**
+ * Settings → Online Ordering (POS).
+ *
+ * Real operational controls for this location's online store — reads and
+ * writes `online_store_config` directly (same table the website dashboard
+ * manages; RLS: online_store_config_merchant_write). Server-side enforcement
+ * is authoritative, so a saved change takes effect on the guest's next
+ * request.
+ *
+ * Scope: day-to-day operations only (status, channels, order handling,
+ * QR kill switch). Identity, branding, hours, SEO, payments, and tipping stay
+ * on the merchant dashboard / HQ.
+ */
+
+import ManagerPinPrompt from "@/components/qr/ManagerPinPrompt";
+import { Switch } from "@/components/ui/switch";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { colors } from '@/lib/theme'
-import { useKDSStore } from '@/stores/useKDSStore'
-import { useMenuStore } from '@/stores/useMenuStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+  OnlineStoreConfigService,
+  PosOnlineStoreSettings,
+  PosOnlineStoreSettingsPatch,
+} from "@/services/onlineStoreConfigService";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useToastStore } from "@/stores/useToastStore";
+import { buildStoreUrl } from "@/utils/qrTableUrl";
 import {
+  AlertTriangle,
+  Bike,
   CheckCircle2,
-  Clock,
+  CloudOff,
+  Globe,
+  Minus,
   PauseCircle,
-  PlayCircle,
-  Utensils
-} from 'lucide-react-native'
-import React, { useMemo } from 'react'
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+  Plus,
+  QrCode,
+  RefreshCcw,
+  ShoppingBag,
+  Timer,
+  Zap,
+} from "lucide-react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// Helper to get local minutes from ISO or HH:MM:SS time string
-const getMinutesFromTime = (time: string) => {
-  if (time.includes('T')) {
-    const d = new Date(time)
-    return d.getHours() * 60 + d.getMinutes()
-  }
-  const [h, m] = time.split(':').map(Number)
-  return h * 60 + (m || 0)
-}
+type Scale = (n: number) => number;
 
-const formatScheduleTime = (time: string) => {
-  const mins = getMinutesFromTime(time)
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  const period = h >= 12 ? 'PM' : 'AM'
-  const displayH = h % 12 === 0 ? 12 : h % 12
-  return `${displayH}:${m.toString().padStart(2, '0')} ${period}`
-}
+const Section: React.FC<{
+  title: string;
+  sub?: string;
+  s: Scale;
+  children: React.ReactNode;
+}> = ({ title, sub, s, children }) => (
+  <View
+    style={{
+      backgroundColor: colors.panel,
+      borderRadius: s(14),
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: s(14),
+    }}
+  >
+    <Text style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}>
+      {title}
+    </Text>
+    {sub ? (
+      <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(2) }}>
+        {sub}
+      </Text>
+    ) : null}
+    <View style={{ marginTop: s(12), gap: s(10) }}>{children}</View>
+  </View>
+);
 
-const DAY_ABBR: Record<string, string> = {
-  Monday: 'Mon',
-  Tuesday: 'Tue',
-  Wednesday: 'Wed',
-  Thursday: 'Thu',
-  Friday: 'Fri',
-  Saturday: 'Sat',
-  Sunday: 'Sun'
-}
+const ToggleRow: React.FC<{
+  icon: React.ReactNode;
+  iconBg: string;
+  label: string;
+  sub?: string;
+  value: boolean;
+  saving: boolean;
+  anySaving: boolean;
+  onChange: (v: boolean) => void;
+  s: Scale;
+}> = ({ icon, iconBg, label, sub, value, saving, anySaving, onChange, s }) => (
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      gap: s(12),
+      paddingVertical: s(10),
+      paddingHorizontal: s(12),
+      borderRadius: s(12),
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    }}
+  >
+    <View
+      style={{
+        width: s(36),
+        height: s(36),
+        borderRadius: s(11),
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: iconBg,
+      }}
+    >
+      {icon}
+    </View>
+    <View style={{ flex: 1 }}>
+      <Text
+        style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
+      >
+        {label}
+      </Text>
+      {sub ? (
+        <Text style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }}>
+          {sub}
+        </Text>
+      ) : null}
+    </View>
+    {saving ? (
+      <ActivityIndicator size="small" color={colors.teal} />
+    ) : (
+      <Switch checked={value} onCheckedChange={onChange} disabled={anySaving} />
+    )}
+  </View>
+);
 
-const TIMELINE_COLORS_HEX = [
-  '#2DD4BF',
-  '#14B8A6',
-  '#06B6D4',
-  '#0891B2',
-  '#0F766E',
-  '#22D3EE'
-]
+const Stepper: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  sub?: string;
+  value: number;
+  suffix: string;
+  step: number;
+  min: number;
+  saving: boolean;
+  anySaving: boolean;
+  onCommit: (v: number) => void;
+  formatValue?: (v: number) => string;
+  s: Scale;
+}> = ({
+  icon,
+  label,
+  sub,
+  value,
+  suffix,
+  step,
+  min,
+  saving,
+  anySaving,
+  onCommit,
+  formatValue,
+  s,
+}) => {
+  // Local draft so rapid +/- taps batch into one save on settle. While a
+  // settle timer is pending (user still tapping), ignore server echoes so the
+  // draft isn't clobbered mid-adjustment.
+  const [draft, setDraft] = useState(value);
+  const settleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const adjustingRef = useRef(false);
+  useEffect(() => {
+    if (!adjustingRef.current) setDraft(value);
+  }, [value]);
 
-// Timeline bar across 24h
-const MenuTimeline = ({ menus }: { menus: any[] }) => {
-  const uiScale = useUiScale()
-  const s = (n: number) => Math.round(n * uiScale)
-  const TOTAL_MINUTES = 24 * 60
+  const bump = (delta: number) => {
+    const next = Math.max(min, draft + delta);
+    setDraft(next);
+    adjustingRef.current = true;
+    if (settleRef.current) clearTimeout(settleRef.current);
+    settleRef.current = setTimeout(() => {
+      adjustingRef.current = false;
+      onCommit(next);
+    }, 1000);
+  };
+
   return (
-    <View style={{ marginBottom: s(8) }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: s(12),
+        paddingVertical: s(10),
+        paddingHorizontal: s(12),
+        borderRadius: s(12),
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.card,
+      }}
+    >
       <View
         style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          marginBottom: s(4),
-          paddingHorizontal: s(2)
+          width: s(36),
+          height: s(36),
+          borderRadius: s(11),
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.teal + "1A",
         }}
       >
-        <Text style={{ fontSize: s(11), color: colors.muted }}>6 AM</Text>
-        <Text style={{ fontSize: s(11), color: colors.muted }}>12 PM</Text>
-        <Text style={{ fontSize: s(11), color: colors.muted }}>6 PM</Text>
-        <Text style={{ fontSize: s(11), color: colors.muted }}>12 AM</Text>
+        {icon}
       </View>
-      <View
-        style={{
-          height: s(28),
-          width: '100%',
-          backgroundColor: colors.border,
-          borderRadius: s(8),
-          overflow: 'hidden',
-          position: 'relative'
-        }}
-      >
-        {menus.map((menu, index) => {
-          const schedule = menu.schedules?.find((s: any) => s.isActive)
-          if (!schedule) return null
-          const startMinutes = getMinutesFromTime(schedule.startTime)
-          let endMinutes = getMinutesFromTime(schedule.endTime)
-          if (endMinutes < startMinutes) endMinutes = TOTAL_MINUTES
-          const widthPercent =
-            ((endMinutes - startMinutes) / TOTAL_MINUTES) * 100
-          const leftPercent = (startMinutes / TOTAL_MINUTES) * 100
-          const c = TIMELINE_COLORS_HEX[index % TIMELINE_COLORS_HEX.length]
-          return (
-            <View
-              key={menu.id}
-              style={{
-                position: 'absolute',
-                height: '100%',
-                left: `${leftPercent}%` as any,
-                width: `${widthPercent}%` as any,
-                backgroundColor: c,
-                borderRightWidth: 1,
-                borderRightColor: colors.screen + '99',
-                justifyContent: 'center',
-                paddingHorizontal: 4
-              }}
-            >
-              <Text
-                numberOfLines={1}
-                style={{
-                  fontSize: s(9),
-                  fontWeight: '700',
-                  color: colors.onSolid
-                }}
-              >
-                {menu.name}
-              </Text>
-            </View>
-          )
-        })}
+      <View style={{ flex: 1 }}>
+        <Text
+          style={{ fontSize: s(13), fontWeight: "700", color: colors.heading }}
+        >
+          {label}
+        </Text>
+        {sub ? (
+          <Text
+            style={{ fontSize: s(11), color: colors.muted, marginTop: s(1) }}
+          >
+            {sub}
+          </Text>
+        ) : null}
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: s(8) }}>
+        <TouchableOpacity
+          onPress={() => bump(-step)}
+          disabled={draft <= min}
+          style={{
+            width: s(30),
+            height: s(30),
+            borderRadius: s(9),
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: colors.screen,
+            borderWidth: 1,
+            borderColor: colors.border,
+            opacity: draft <= min ? 0.4 : 1,
+          }}
+        >
+          <Minus size={s(14)} color={colors.heading} />
+        </TouchableOpacity>
+        <View
+          style={{
+            minWidth: s(64),
+            alignItems: "center",
+            flexDirection: "row",
+            justifyContent: "center",
+            gap: s(5),
+          }}
+        >
+          <Text
+            style={{
+              fontSize: s(14),
+              fontWeight: "800",
+              color: colors.heading,
+            }}
+          >
+            {formatValue ? formatValue(draft) : draft}
+            {suffix ? ` ${suffix}` : ""}
+          </Text>
+          {saving ? (
+            <ActivityIndicator size="small" color={colors.teal} />
+          ) : null}
+        </View>
+        <TouchableOpacity
+          onPress={() => bump(step)}
+          style={{
+            width: s(30),
+            height: s(30),
+            borderRadius: s(9),
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: colors.screen,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Plus size={s(14)} color={colors.heading} />
+        </TouchableOpacity>
       </View>
     </View>
-  )
-}
+  );
+};
 
-import { useUiScale } from '@/lib/uiScale'
-import { useRouter } from 'expo-router'
+const OnlineOrderingSettings: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  const uiScale = useUiScale();
+  const s: Scale = (n) => Math.round(n * uiScale);
+  const client = useSupabaseClient();
+  const locationId = useStoreSettingsStore(
+    (st) => st.selectedStore?.id ?? null,
+  );
+  const showToast = useToastStore((st) => st.show);
 
-const OnlineOrderingScreen = () => {
-  const router = useRouter()
-  const insets = useSafeAreaInsets()
-  const uiScale = useUiScale()
-  const s = (n: number) => Math.round(n * uiScale)
+  const [settings, setSettings] = useState<PosOnlineStoreSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [killSwitchPinOpen, setKillSwitchPinOpen] = useState(false);
 
-  // Store Connection
-  const onlineOrderingEnabled = useStoreSettingsStore(
-    s => s.onlineOrderingEnabled
-  )
-  const updateField = useStoreSettingsStore(s => s.updateField)
-  const onlinePauseReason = useStoreSettingsStore(s => s.onlinePauseReason)
-  const dynamicPrepTimeEnabled = useStoreSettingsStore(
-    s => s.dynamicPrepTimeEnabled
-  )
-  const basePrepTime = useStoreSettingsStore(s => s.basePrepTime)
-  const prepTimeAdjustments = useStoreSettingsStore(s => s.prepTimeAdjustments)
-  const updatePrepAdjustment = useStoreSettingsStore(
-    s => s.updatePrepAdjustment
-  )
+  const load = useCallback(async () => {
+    if (!locationId || !client) return;
+    setLoading(true);
+    setLoadError(null);
+    const { data, error } = await OnlineStoreConfigService.get(
+      client,
+      locationId,
+    );
+    if (error) setLoadError(error.message ?? "Failed to load settings");
+    else setSettings(data);
+    setLoading(false);
+  }, [client, locationId]);
 
-  const { menus } = useMenuStore()
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  // KDS live data
-  const kdsTicketsByStatus = useKDSStore(s => s.ticketsByStatus)
-  const liveKitchenOrderCount =
-    (kdsTicketsByStatus.pending?.length ?? 0) +
-    (kdsTicketsByStatus.cooking?.length ?? 0)
-
-  // Calculated Prep Time Logic
-  const currentPrepTime = useMemo(() => {
-    let time = basePrepTime
-    if (dynamicPrepTimeEnabled) {
-      if (prepTimeAdjustments.kitchenLoad && liveKitchenOrderCount >= 25)
-        time += 10
-      if (prepTimeAdjustments.peakHours) {
-        const hour = new Date().getHours()
-        if (hour >= 17 && hour < 20) time += 5
+  /** Optimistic patch with rollback on failure. */
+  const patch = useCallback(
+    async (key: string, changes: PosOnlineStoreSettingsPatch) => {
+      if (!settings || !client) return;
+      const prev = settings;
+      setSettings({ ...settings, ...changes });
+      setSavingKey(key);
+      const { data, error } = await OnlineStoreConfigService.update(
+        client,
+        settings.id,
+        changes,
+      );
+      setSavingKey(null);
+      if (error || !data) {
+        setSettings(prev);
+        showToast({
+          title: "Save failed",
+          message: error?.message ?? "Could not update the online store",
+          type: "error",
+        });
+        return;
       }
-    }
-    return time
-  }, [
-    basePrepTime,
-    dynamicPrepTimeEnabled,
-    prepTimeAdjustments,
-    liveKitchenOrderCount
-  ])
+      setSettings(data);
+    },
+    [client, settings, showToast],
+  );
 
-  const isOrdersPaused = !onlineOrderingEnabled
-  const buttonColor = isOrdersPaused ? colors.danger : colors.teal
-  const buttonIcon = isOrdersPaused ? PauseCircle : PlayCircle
-  const buttonText = isOrdersPaused ? 'ORDERS PAUSED' : 'ACCEPTING ORDERS'
+  const storeUrl = settings
+    ? buildStoreUrl({
+        slug: settings.slug,
+        customDomain: settings.customDomain,
+      })
+    : "";
 
-  const menusWithSchedules = menus.filter(
-    m => m.schedules && m.schedules.length > 0
-  )
+  const anySaving = savingKey !== null;
 
   return (
     <View
@@ -201,894 +359,311 @@ const OnlineOrderingScreen = () => {
         flex: 1,
         backgroundColor: colors.screen,
         paddingHorizontal: s(14),
-        paddingVertical: s(10)
+        paddingVertical: s(10),
       }}
     >
-      <View style={{ marginBottom: s(10) }}>
-        <Text
-          style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
+      {/* Header */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginBottom: s(10),
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              fontSize: s(15),
+              fontWeight: "700",
+              color: colors.heading,
+            }}
+          >
+            Online Ordering
+          </Text>
+          <Text
+            style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}
+          >
+            Live storefront controls for this location.
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={load}
+          disabled={loading}
+          style={{
+            padding: s(9),
+            borderRadius: s(10),
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.panel,
+          }}
         >
-          Online Ordering
-        </Text>
-        <Text style={{ fontSize: s(11), color: colors.label, marginTop: s(1) }}>
-          Manage orders, workflows, and scheduling.
-        </Text>
+          <RefreshCcw size={s(14)} color={colors.label} />
+        </TouchableOpacity>
       </View>
 
       <View
-        style={{ height: 1, backgroundColor: colors.border, marginBottom: s(10) }}
+        style={{
+          height: 1,
+          backgroundColor: colors.border,
+          marginBottom: s(10),
+        }}
       />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + s(80) }}
-      >
-        <View style={{ gap: s(10) }}>
-          {/* 1. Order Status Control */}
-          <View
+      {loading ? (
+        <ActivityIndicator color={colors.teal} style={{ marginTop: s(60) }} />
+      ) : loadError ? (
+        <View style={{ alignItems: "center", marginTop: s(60), gap: s(10) }}>
+          <AlertTriangle size={s(28)} color={colors.warning} />
+          <Text style={{ color: colors.label, fontSize: s(13) }}>
+            {loadError}
+          </Text>
+          <TouchableOpacity
+            onPress={load}
             style={{
-              backgroundColor: colors.panel,
-              borderRadius: s(12),
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: s(12)
+              paddingHorizontal: s(16),
+              paddingVertical: s(10),
+              borderRadius: s(10),
+              backgroundColor: colors.teal,
             }}
           >
-            <Text
-              style={{
-                fontSize: s(13),
-                fontWeight: '700',
-                color: colors.heading,
-                marginBottom: s(10)
-              }}
-            >
-              Order Status Control
+            <Text style={{ color: colors.onSolid, fontWeight: "700" }}>
+              Retry
             </Text>
-
-            <TouchableOpacity
-              onPress={() =>
-                updateField('onlineOrderingEnabled', !onlineOrderingEnabled)
-              }
-              style={{
-                width: '100%',
-                height: s(48),
-                backgroundColor: buttonColor + '20',
-                borderRadius: s(10),
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: s(10),
-                borderWidth: 1,
-                borderColor: buttonColor + '50'
-              }}
+          </TouchableOpacity>
+        </View>
+      ) : !settings ? (
+        <View
+          style={{
+            alignItems: "center",
+            marginTop: s(60),
+            gap: s(10),
+            paddingHorizontal: s(30),
+          }}
+        >
+          <CloudOff size={s(30)} color={colors.muted} />
+          <Text
+            style={{
+              color: colors.heading,
+              fontSize: s(14),
+              fontWeight: "700",
+            }}
+          >
+            No online store yet
+          </Text>
+          <Text
+            style={{
+              color: colors.muted,
+              fontSize: s(12),
+              textAlign: "center",
+            }}
+          >
+            Online-store setup for this location has not been completed. Request
+            setup from the merchant dashboard.
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: insets.bottom + s(80) }}
+        >
+          <View style={{ gap: s(10) }}>
+            {/* 1. Store status */}
+            <Section
+              title="Store Status"
+              sub={storeUrl ? storeUrl.replace(/^https?:\/\//, "") : undefined}
+              s={s}
             >
-              {React.createElement(buttonIcon, {
-                size: s(20),
-                color: buttonColor
-              })}
-              <Text
+              <TouchableOpacity
+                onPress={() =>
+                  patch("isActive", { isActive: !settings.isActive })
+                }
+                disabled={anySaving}
                 style={{
-                  fontSize: s(13),
-                  fontWeight: '700',
-                  color: buttonColor,
-                  letterSpacing: 0.8
-                }}
-              >
-                {buttonText}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Pause Reason (when disabled) */}
-            {isOrdersPaused && (
-              <View style={{ gap: s(8), marginTop: s(12) }}>
-                <Text
-                  style={{
-                    fontSize: s(12),
-                    color: colors.label,
-                    fontWeight: '500'
-                  }}
-                >
-                  Pause Reason
-                </Text>
-                <Select
-                  value={{
-                    value: onlinePauseReason || '',
-                    label: onlinePauseReason || 'Select Reason'
-                  }}
-                  onValueChange={opt =>
-                    updateField('onlinePauseReason', opt?.value || null)
-                  }
-                >
-                  <SelectTrigger
-                    style={{
-                      backgroundColor: colors.screen,
-                      borderColor: colors.border
-                    }}
-                  >
-                    <SelectValue
-                      placeholder='Select a reason...'
-                      className='text-white'
-                    />
-                  </SelectTrigger>
-                  <SelectContent
-                    style={{
-                      backgroundColor: colors.screen,
-                      borderColor: colors.border
-                    }}
-                  >
-                    <SelectGroup>
-                      <SelectItem
-                        label='Kitchen at Capacity'
-                        value='Kitchen at Capacity'
-                      />
-                      <SelectItem
-                        label='Staff Shortage'
-                        value='Staff Shortage'
-                      />
-                      <SelectItem
-                        label='Emergency Maintenance'
-                        value='Emergency Maintenance'
-                      />
-                      <SelectItem label='Closing Early' value='Closing Early' />
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-
-                {/* Base prep time when disabled */}
-                <View style={{ marginTop: s(8), gap: s(10) }}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}
-                  >
-                    <Text style={{ fontSize: s(12), color: colors.label }}>
-                      Base Prep Time Quote
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: s(15),
-                        fontWeight: '700',
-                        color: colors.teal
-                      }}
-                    >
-                      {basePrepTime} min
-                    </Text>
-                  </View>
-                  <CustomSlider
-                    value={basePrepTime}
-                    onValueChange={val => updateField('basePrepTime', val)}
-                    min={5}
-                    max={60}
-                    step={5}
-                  />
-                  <Text style={{ fontSize: s(11), color: colors.muted }}>
-                    Customers will see this as the estimated wait time while
-                    orders are paused.
-                  </Text>
-                </View>
-              </View>
-            )}
-          </View>
-
-          {/* Only show the rest when online ordering is enabled */}
-          {onlineOrderingEnabled && (
-            <>
-              {/* Stats row */}
-              <View
-                style={{
-                  backgroundColor: colors.panel,
-                  padding: s(12),
+                  height: s(52),
                   borderRadius: s(12),
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: s(10),
+                  backgroundColor: settings.isActive
+                    ? colors.success + "18"
+                    : colors.danger + "14",
                   borderWidth: 1,
-                  borderColor: colors.border,
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
+                  borderColor: settings.isActive
+                    ? colors.success + "45"
+                    : colors.danger + "40",
                 }}
               >
-                <View style={{ alignItems: 'center', flex: 1 }}>
-                  <Text
-                    style={{
-                      fontSize: s(10),
-                      color: colors.label,
-                      textTransform: 'uppercase',
-                      marginBottom: s(4),
-                      letterSpacing: 0.6
-                    }}
-                  >
-                    Orders Today
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: s(18),
-                      fontWeight: '700',
-                      color: colors.heading
-                    }}
-                  >
-                    142
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    width: 1,
-                    height: s(32),
-                    backgroundColor: colors.border
-                  }}
-                />
-                <View style={{ alignItems: 'center', flex: 1 }}>
-                  <Text
-                    style={{
-                      fontSize: s(10),
-                      color: colors.label,
-                      textTransform: 'uppercase',
-                      marginBottom: s(4),
-                      letterSpacing: 0.6
-                    }}
-                  >
-                    Avg Prep Time
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: s(18),
-                      fontWeight: '700',
-                      color: colors.heading
-                    }}
-                  >
-                    28m
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    width: 1,
-                    height: s(32),
-                    backgroundColor: colors.border
-                  }}
-                />
-                <View style={{ alignItems: 'center', flex: 1 }}>
-                  <Text
-                    style={{
-                      fontSize: s(10),
-                      color: colors.label,
-                      textTransform: 'uppercase',
-                      marginBottom: s(4),
-                      letterSpacing: 0.6
-                    }}
-                  >
-                    KDS Active
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: s(18),
-                      fontWeight: '700',
-                      color: colors.teal
-                    }}
-                  >
-                    {liveKitchenOrderCount}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Dynamic Prep Times */}
-              <View
-                style={{
-                  backgroundColor: colors.panel,
-                  borderRadius: s(12),
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  padding: s(12)
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: s(10),
-                    marginBottom: s(14)
-                  }}
-                >
-                  <View
-                    style={{
-                      width: s(32),
-                      height: s(32),
-                      backgroundColor: colors.teal + '15',
-                      borderRadius: s(8),
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <Clock color={colors.teal} size={s(16)} />
-                  </View>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: s(8)
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: s(13),
-                        fontWeight: '700',
-                        color: colors.heading
-                      }}
-                    >
-                      Dynamic Prep Times
-                    </Text>
-                    <View
-                      style={{
-                        backgroundColor: colors.teal + '20',
-                        paddingHorizontal: s(6),
-                        paddingVertical: s(2),
-                        borderRadius: s(20),
-                        borderWidth: 1,
-                        borderColor: colors.teal + '50'
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: s(9),
-                          color: colors.teal,
-                          fontWeight: '700'
-                        }}
-                      >
-                        REAL-TIME
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: s(14)
-                  }}
-                >
-                  <Text style={{ fontSize: s(13), color: colors.heading }}>
-                    Show Dynamic Prep Times
-                  </Text>
-                  <Switch
-                    checked={dynamicPrepTimeEnabled}
-                    onCheckedChange={val =>
-                      updateField('dynamicPrepTimeEnabled', val)
-                    }
+                {savingKey === "isActive" ? (
+                  <ActivityIndicator
+                    color={settings.isActive ? colors.success : colors.danger}
                   />
-                </View>
-
-                <View
-                  style={{
-                    gap: s(10),
-                    marginBottom: dynamicPrepTimeEnabled ? s(14) : 0
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between'
-                    }}
-                  >
-                    <Text style={{ fontSize: s(12), color: colors.label }}>
-                      Base Prep Time
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: s(15),
-                        fontWeight: '700',
-                        color: colors.teal
-                      }}
-                    >
-                      {basePrepTime} min
-                    </Text>
-                  </View>
-                  <CustomSlider
-                    value={basePrepTime}
-                    onValueChange={val => updateField('basePrepTime', val)}
-                    min={5}
-                    max={60}
-                    step={5}
-                  />
-                </View>
-
-                {dynamicPrepTimeEnabled && (
+                ) : settings.isActive ? (
                   <>
-                    <View
+                    <CheckCircle2 size={s(18)} color={colors.success} />
+                    <Text
                       style={{
-                        backgroundColor: colors.screen,
-                        padding: s(14),
-                        borderRadius: s(10),
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginBottom: s(14),
-                        borderWidth: 1,
-                        borderColor: colors.border
+                        color: colors.success,
+                        fontWeight: "800",
+                        fontSize: s(14),
                       }}
                     >
-                      <Text
-                        style={{
-                          fontSize: s(11),
-                          color: colors.muted,
-                          textTransform: 'uppercase',
-                          letterSpacing: 1.5,
-                          marginBottom: s(4)
-                        }}
-                      >
-                        Current Quoted Time
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: s(34),
-                          fontWeight: '800',
-                          color: colors.teal
-                        }}
-                      >
-                        {currentPrepTime} min
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: s(11),
-                          color: colors.label,
-                          marginTop: s(4)
-                        }}
-                      >
-                        Updated just now
-                      </Text>
-                    </View>
-
-                    <View style={{ gap: s(10), marginBottom: s(14) }}>
-                      <Text
-                        style={{
-                          fontSize: s(12),
-                          fontWeight: '700',
-                          color: colors.heading
-                        }}
-                      >
-                        Auto-Adjustments:
-                      </Text>
-                      {[
-                        {
-                          key: 'kitchenLoad',
-                          label: `Add 10 min when kitchen has 25+ orders (now: ${liveKitchenOrderCount})`,
-                          checked: prepTimeAdjustments.kitchenLoad
-                        },
-                        {
-                          key: 'peakHours',
-                          label: 'Add 5 min during peak hours (5–8 PM)',
-                          checked: prepTimeAdjustments.peakHours
-                        }
-                      ].map(item => (
-                        <View
-                          key={item.key}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: s(10)
-                          }}
-                        >
-                          <Checkbox
-                            checked={item.checked}
-                            onCheckedChange={v =>
-                              updatePrepAdjustment(item.key as any, v)
-                            }
-                            className='border-gray-500'
-                            style={{
-                              backgroundColor: item.checked
-                                ? colors.teal
-                                : 'transparent',
-                              borderColor: item.checked
-                                ? colors.teal
-                                : undefined
-                            }}
-                          />
-                          <Text style={{ fontSize: s(12), color: colors.label }}>
-                            {item.label}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-
-                    {/* KDS Factors block */}
-                    <View
+                      Store is ONLINE — tap to take offline
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <PauseCircle size={s(18)} color={colors.danger} />
+                    <Text
                       style={{
-                        backgroundColor: colors.teal + '10',
-                        padding: s(14),
-                        borderRadius: s(10),
-                        borderWidth: 1,
-                        borderColor: colors.teal + '30'
+                        color: colors.danger,
+                        fontWeight: "800",
+                        fontSize: s(14),
                       }}
                     >
-                      <Text
-                        style={{
-                          fontSize: s(12),
-                          fontWeight: '700',
-                          color: colors.teal,
-                          marginBottom: s(8)
-                        }}
-                      >
-                        Current Factors (KDS Live):
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: s(11),
-                          color: colors.label,
-                          marginBottom: s(4)
-                        }}
-                      >
-                        • Kitchen Load: {liveKitchenOrderCount} orders
-                        {prepTimeAdjustments.kitchenLoad &&
-                        liveKitchenOrderCount >= 25
-                          ? ' (+10 min)'
-                          : ' (no adjustment)'}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: s(11),
-                          color: colors.label,
-                          marginBottom: s(8)
-                        }}
-                      >
-                        • Peak Hours (5–8 PM):
-                        {prepTimeAdjustments.peakHours &&
-                        new Date().getHours() >= 17 &&
-                        new Date().getHours() < 20
-                          ? ' Active (+5 min)'
-                          : ' Not active'}
-                      </Text>
-                      <View
-                        style={{
-                          height: 1,
-                          backgroundColor: colors.teal + '30',
-                          marginBottom: s(8)
-                        }}
-                      />
-                      <Text
-                        style={{
-                          fontSize: s(13),
-                          fontWeight: '700',
-                          color: colors.heading
-                        }}
-                      >
-                        Total: {basePrepTime} + {currentPrepTime - basePrepTime}{' '}
-                        = {currentPrepTime} min
-                      </Text>
-                    </View>
+                      Store is OFFLINE — tap to go online
+                    </Text>
                   </>
                 )}
-              </View>
+              </TouchableOpacity>
+            </Section>
 
-              {/* Time-Based Menus */}
-              <View
-                style={{
-                  backgroundColor: colors.panel,
-                  borderRadius: s(12),
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  padding: s(12)
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: s(10),
-                    marginBottom: s(14)
-                  }}
-                >
-                  <View
-                    style={{
-                      width: s(32),
-                      height: s(32),
-                      backgroundColor: colors.teal + '15',
-                      borderRadius: s(8),
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <Utensils color={colors.teal} size={s(16)} />
-                  </View>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: s(8)
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: s(13),
-                        fontWeight: '700',
-                        color: colors.heading
-                      }}
-                    >
-                      Time-Based Menus
-                    </Text>
-                    <View
-                      style={{
-                        backgroundColor: colors.teal + '20',
-                        paddingHorizontal: s(6),
-                        paddingVertical: s(2),
-                        borderRadius: s(20),
-                        borderWidth: 1,
-                        borderColor: colors.teal + '50'
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: s(9),
-                          color: colors.teal,
-                          fontWeight: '700'
-                        }}
-                      >
-                        SMART MENUS
-                      </Text>
-                    </View>
-                  </View>
-                </View>
+            {/* 2. Order channels */}
+            <Section
+              title="Order Channels"
+              sub="Which ways guests can order from the storefront."
+              s={s}
+            >
+              <ToggleRow
+                icon={<ShoppingBag size={s(16)} color={colors.teal} />}
+                iconBg={colors.teal + "1A"}
+                label="Pickup"
+                sub="Guests order ahead and collect in store"
+                value={settings.acceptsPickup}
+                saving={savingKey === "acceptsPickup"}
+                anySaving={anySaving}
+                onChange={(v) => patch("acceptsPickup", { acceptsPickup: v })}
+                s={s}
+              />
+              <ToggleRow
+                icon={<Bike size={s(16)} color={colors.teal} />}
+                iconBg={colors.teal + "1A"}
+                label="Delivery"
+                sub="Orders delivered to the guest"
+                value={settings.acceptsDelivery}
+                saving={savingKey === "acceptsDelivery"}
+                anySaving={anySaving}
+                onChange={(v) =>
+                  patch("acceptsDelivery", { acceptsDelivery: v })
+                }
+                s={s}
+              />
+              <ToggleRow
+                icon={<QrCode size={s(16)} color={colors.teal} />}
+                iconBg={colors.teal + "1A"}
+                label="QR Dine-In"
+                sub="At-table ordering via printed QR tents"
+                value={settings.acceptsDineIn}
+                saving={savingKey === "acceptsDineIn"}
+                anySaving={anySaving}
+                onChange={(v) => patch("acceptsDineIn", { acceptsDineIn: v })}
+                s={s}
+              />
+            </Section>
 
-                {menusWithSchedules.length > 0 && (
-                  <MenuTimeline menus={menusWithSchedules} />
-                )}
+            {/* 3. Order handling */}
+            <Section
+              title="Order Handling"
+              sub="How incoming online orders are processed."
+              s={s}
+            >
+              <ToggleRow
+                icon={<Zap size={s(16)} color={colors.warning} />}
+                iconBg={colors.warning + "1A"}
+                label="Auto-accept orders"
+                sub="Off = new orders wait for Accept/Decline on the POS"
+                value={settings.autoAcceptOrders}
+                saving={savingKey === "autoAcceptOrders"}
+                anySaving={anySaving}
+                onChange={(v) =>
+                  patch("autoAcceptOrders", { autoAcceptOrders: v })
+                }
+                s={s}
+              />
+              <Stepper
+                icon={<Timer size={s(16)} color={colors.teal} />}
+                label="Prep lead time"
+                sub="Quoted to guests as the estimated wait"
+                value={settings.estimatedPrepMinutes}
+                suffix="min"
+                step={5}
+                min={0}
+                saving={savingKey === "estimatedPrepMinutes"}
+                anySaving={anySaving}
+                onCommit={(v) =>
+                  patch("estimatedPrepMinutes", { estimatedPrepMinutes: v })
+                }
+                s={s}
+              />
+              <Stepper
+                icon={<Globe size={s(16)} color={colors.teal} />}
+                label="Minimum order"
+                sub="Carts below this cannot check out"
+                value={settings.minOrder}
+                suffix=""
+                step={1}
+                min={0}
+                saving={savingKey === "minOrder"}
+                anySaving={anySaving}
+                onCommit={(v) => patch("minOrder", { minOrder: v })}
+                formatValue={(v) => `$${v.toFixed(0)}`}
+                s={s}
+              />
+            </Section>
 
-                {/* Active menu indicator */}
-                {(() => {
-                  const activeMenu = menus.find(m =>
-                    useMenuStore.getState().isMenuAvailableNow(m.id)
-                  )
-                  return (
-                    <View
-                      style={{
-                        backgroundColor: colors.teal + '10',
-                        padding: s(10),
-                        borderRadius: s(8),
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: s(8),
-                        borderWidth: 1,
-                        borderColor: colors.teal + '20',
-                        marginBottom: s(14)
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: s(8),
-                          height: s(8),
-                          borderRadius: s(4),
-                          backgroundColor: activeMenu
-                            ? colors.teal
-                            : colors.muted
-                        }}
-                      />
-                      <Text
-                        style={{
-                          fontSize: s(12),
-                          fontWeight: '700',
-                          color: activeMenu ? colors.teal : colors.muted
-                        }}
-                      >
-                        Active Now:{' '}
-                        {activeMenu ? `"${activeMenu.name}"` : 'None'}
-                      </Text>
-                    </View>
-                  )
-                })()}
+            {/* 4. Emergency */}
+            <Section
+              title="Emergency"
+              sub="Manager only. Use when QR ordering must stop immediately."
+              s={s}
+            >
+              <ToggleRow
+                icon={<AlertTriangle size={s(16)} color={colors.danger} />}
+                iconBg={colors.danger + "14"}
+                label="QR kill switch"
+                sub={
+                  settings.qrKillSwitch
+                    ? "ACTIVE — all QR tents are rejected right now"
+                    : "All printed tents stop working while active"
+                }
+                value={settings.qrKillSwitch}
+                saving={savingKey === "qrKillSwitch"}
+                anySaving={anySaving}
+                onChange={() => setKillSwitchPinOpen(true)}
+                s={s}
+              />
+            </Section>
+          </View>
+        </ScrollView>
+      )}
 
-                {/* Per-menu schedule cards */}
-                <View style={{ gap: s(8) }}>
-                  {menus.map((menu, i) => {
-                    const isActiveNow = useMenuStore
-                      .getState()
-                      .isMenuAvailableNow(menu.id)
-                    const activeSchedules = (menu.schedules || []).filter(
-                      (s: any) => s.isActive
-                    )
-                    const dotColor =
-                      TIMELINE_COLORS_HEX[i % TIMELINE_COLORS_HEX.length]
-
-                    return (
-                      <View
-                        key={menu.id}
-                        style={{
-                          backgroundColor: colors.screen,
-                          borderRadius: s(10),
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          overflow: 'hidden'
-                        }}
-                      >
-                        {/* Menu header */}
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            paddingHorizontal: s(12),
-                            paddingVertical: s(10),
-                            borderBottomWidth: 1,
-                            borderBottomColor: colors.border
-                          }}
-                        >
-                          <View
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: s(8)
-                            }}
-                          >
-                            <View
-                              style={{
-                                width: s(10),
-                                height: s(10),
-                                borderRadius: s(5),
-                                backgroundColor: dotColor
-                              }}
-                            />
-                            <Text
-                              style={{
-                                fontSize: s(13),
-                                fontWeight: '600',
-                                color: colors.heading
-                              }}
-                            >
-                              {menu.name}
-                            </Text>
-                          </View>
-                          {isActiveNow ? (
-                            <View
-                              style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                gap: s(5),
-                                backgroundColor: colors.teal + '20',
-                                paddingHorizontal: s(8),
-                                paddingVertical: s(3),
-                                borderRadius: s(20),
-                                borderWidth: 1,
-                                borderColor: colors.teal + '50'
-                              }}
-                            >
-                              <CheckCircle2 size={s(11)} color={colors.teal} />
-                              <Text
-                                style={{
-                                  fontSize: s(11),
-                                  color: colors.teal,
-                                  fontWeight: '500'
-                                }}
-                              >
-                                Active Now
-                              </Text>
-                            </View>
-                          ) : (
-                            <Text style={{ fontSize: s(11), color: colors.muted }}>
-                              Inactive
-                            </Text>
-                          )}
-                        </View>
-
-                        {/* Schedules */}
-                        {activeSchedules.length === 0 ? (
-                          <View
-                            style={{
-                              paddingHorizontal: s(12),
-                              paddingVertical: s(10)
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: s(12),
-                                color: colors.muted,
-                                fontStyle: 'italic'
-                              }}
-                            >
-                              No schedule — always available
-                            </Text>
-                          </View>
-                        ) : (
-                          activeSchedules.map((s: any) => (
-                            <View
-                              key={s.id}
-                              style={{
-                                paddingHorizontal: s(12),
-                                paddingVertical: s(10),
-                                borderBottomWidth: 1,
-                                borderBottomColor: colors.border + '80',
-                                flexDirection: 'row',
-                                alignItems: 'flex-start',
-                                justifyContent: 'space-between'
-                              }}
-                            >
-                              <View
-                                style={{
-                                  flexDirection: 'row',
-                                  flexWrap: 'wrap',
-                                  gap: s(4),
-                                  flex: 1,
-                                  marginRight: s(12)
-                                }}
-                              >
-                                {(s.days || []).map((day: string) => (
-                                  <View
-                                    key={day}
-                                    style={{
-                                      backgroundColor: colors.teal + '10',
-                                      borderWidth: 1,
-                                      borderColor: colors.teal + '30',
-                                      paddingHorizontal: s(6),
-                                      paddingVertical: s(2),
-                                      borderRadius: s(4)
-                                    }}
-                                  >
-                                    <Text
-                                      style={{
-                                        fontSize: s(11),
-                                        color: colors.teal
-                                      }}
-                                    >
-                                      {DAY_ABBR[day] ?? day}
-                                    </Text>
-                                  </View>
-                                ))}
-                              </View>
-                              <View
-                                style={{
-                                  flexDirection: 'row',
-                                  alignItems: 'center',
-                                  gap: s(4)
-                                }}
-                              >
-                                <Clock size={s(11)} color={colors.muted} />
-                                <Text
-                                  style={{ fontSize: s(12), color: colors.label }}
-                                >
-                                  {formatScheduleTime(s.startTime)} –{' '}
-                                  {formatScheduleTime(s.endTime)}
-                                </Text>
-                              </View>
-                            </View>
-                          ))
-                        )}
-                      </View>
-                    )
-                  })}
-                </View>
-
-                <TouchableOpacity
-                  onPress={() =>
-                    router.push({
-                      pathname: '/(main)/menu',
-                      params: { returnTo: '/settings/online-ordering' }
-                    })
-                  }
-                  style={{
-                    backgroundColor: 'transparent',
-                    paddingVertical: s(12),
-                    borderRadius: s(8),
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    alignItems: 'center',
-                    marginTop: s(12)
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: s(13),
-                      fontWeight: '700',
-                      color: colors.label
-                    }}
-                  >
-                    Edit Menu Schedules
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-
-          <View style={{ height: s(10) }} />
-        </View>
-      </ScrollView>
+      <ManagerPinPrompt
+        visible={killSwitchPinOpen}
+        subtitle={
+          settings?.qrKillSwitch
+            ? "Deactivate the QR kill switch"
+            : "Activate the QR kill switch — all printed tents stop working"
+        }
+        onApproved={() => {
+          setKillSwitchPinOpen(false);
+          if (settings) {
+            patch("qrKillSwitch", { qrKillSwitch: !settings.qrKillSwitch });
+          }
+        }}
+        onCancel={() => setKillSwitchPinOpen(false)}
+      />
     </View>
-  )
-}
+  );
+};
 
-export default OnlineOrderingScreen
+export default OnlineOrderingSettings;
