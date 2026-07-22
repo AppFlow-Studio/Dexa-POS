@@ -12,11 +12,15 @@ export const QR_ROOT_DOMAIN = "dexaposai.com";
  * URL for a dev server pointed at staging Supabase), guest URLs are built in
  * the path form `{base}/sites/{slug}/t/{token}` instead of the production
  * subdomain form — the site's proxy only rewrites subdomains, the /sites path
- * route works everywhere. Leave unset in production builds.
+ * route works everywhere.
+ *
+ * __DEV__-gated: release builds ALWAYS use the production subdomain form,
+ * even if the env var leaks into the build — a printed tent must never point
+ * at a dev machine.
  */
-const QR_STORE_BASE_URL_OVERRIDE = (
-  process.env.EXPO_PUBLIC_QR_STORE_BASE_URL || ""
-).trim();
+const QR_STORE_BASE_URL_OVERRIDE = __DEV__
+  ? (process.env.EXPO_PUBLIC_QR_STORE_BASE_URL || "").trim()
+  : "";
 
 function normalizeBaseUrl(input: string): string {
   return input.replace(/\/+$/, "");
