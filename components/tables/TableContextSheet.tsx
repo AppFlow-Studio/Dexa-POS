@@ -659,7 +659,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     if (["table", "booth"].includes(table.category as string)) {
       baseActions.push({
         label: "QR Code",
-        icon: <QrCode size={16} color="#0C4FD1" />,
+        icon: <QrCode size={16} color={colors.label} />,
         onPress: () => setQrSheetTable(table),
         dismissOnPress: false,
       });

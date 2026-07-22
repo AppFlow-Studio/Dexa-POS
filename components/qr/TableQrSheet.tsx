@@ -1,11 +1,11 @@
 /**
  * TableQrSheet — POS-side QR table ordering management for a single table.
  *
- * Opened from TableContextSheet's "QR Code" action. Provides:
+ * Opened from TableContextSheet's "QR Code" action. Two-pane layout:
+ * live QR preview on the left (the exact guest URL), actions on the right:
  *  - Print / Reprint (same token when an active code exists)
  *  - Regenerate (manager PIN gated; rotates token, old tent stops working)
  *  - QR On/Off for this table (manager PIN gated; Off = revoke, On = new code)
- *  - Preview (on-screen QR of the exact guest URL)
  *
  * Backend contract: generate_table_qr_code RPC + table_qr_codes reads.
  * Never touches table sessions — QR is "an order with a label".
@@ -24,12 +24,13 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useToastStore } from "@/stores/useToastStore";
 import { buildQrTableUrl } from "@/utils/qrTableUrl";
 import {
+  AlertTriangle,
   Ban,
-  CheckCircle2,
-  Eye,
+  Power,
   Printer,
   QrCode,
   RefreshCcw,
+  ScanLine,
   X,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
@@ -43,8 +44,6 @@ import {
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import ManagerPinPrompt from "./ManagerPinPrompt";
-
-export const QR_BRAND_BLUE = "#0C4FD1";
 
 interface TableQrSheetProps {
   visible: boolean;
@@ -72,7 +71,6 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
   const [activeCode, setActiveCode] = useState<ActiveTableQrCode | null>(null);
   const [storeConfig, setStoreConfig] = useState<QrStoreConfig | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmKind, setConfirmKind] = useState<ConfirmKind>(null);
   const [pinFor, setPinFor] = useState<ConfirmKind>(null);
 
@@ -86,16 +84,17 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
       FloorPlanService.getActiveTableQrCode(client, floorPlanObjectId),
       FloorPlanService.getQrStoreConfig(client, locationId),
     ]);
-    if (codeRes.error) setLoadError(codeRes.error.message ?? "Failed to load QR state");
+    if (codeRes.error)
+      setLoadError(codeRes.error.message ?? "Failed to load QR state");
     else setActiveCode(codeRes.data);
-    if (cfgRes.error) setLoadError(cfgRes.error.message ?? "Failed to load store config");
+    if (cfgRes.error)
+      setLoadError(cfgRes.error.message ?? "Failed to load store config");
     else setStoreConfig(cfgRes.data);
     setLoading(false);
   }, [client, floorPlanObjectId, locationId]);
 
   useEffect(() => {
     if (visible) {
-      setPreviewOpen(false);
       setConfirmKind(null);
       setPinFor(null);
       load();
@@ -133,7 +132,11 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
         token,
       });
       if (!qrUrl) {
-        showToast({ title: "QR Error", message: "Could not build the guest URL for this QR code.", type: "error" });
+        showToast({
+          title: "QR Error",
+          message: "Could not build the guest URL for this QR code.",
+          type: "error",
+        });
         return false;
       }
       const printed = await PrinterService.printTableQr({
@@ -143,11 +146,20 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
         locationId,
       });
       if (printed) {
-        showToast({ title: "Printing", message: `QR tent queued to print for ${tableLabel}`, type: "success" });
+        showToast({
+          title: "Printing",
+          message: `QR tent queued to print for ${tableLabel}`,
+          type: "success",
+        });
       } else {
-        // The code is already saved server-side — offer the on-screen fallback.
-        showToast({ title: "Printer Offline", message: "No receipt printer available — showing on-screen QR instead.", type: "warning" });
-        setPreviewOpen(true);
+        // The code is already saved server-side; the on-screen QR in this
+        // sheet doubles as the fallback — guests can scan it directly.
+        showToast({
+          title: "Printer Offline",
+          message:
+            "No receipt printer available — guests can scan the QR on screen.",
+          type: "warning",
+        });
       }
       return printed;
     },
@@ -162,7 +174,11 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
         { floorPlanObjectId, regenerate: false },
       );
       if (error || !data?.token) {
-        showToast({ title: "QR Error", message: error?.message ?? "Failed to generate QR code", type: "error" });
+        showToast({
+          title: "QR Error",
+          message: error?.message ?? "Failed to generate QR code",
+          type: "error",
+        });
         return;
       }
       await load();
@@ -180,11 +196,19 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
         { floorPlanObjectId, regenerate: true },
       );
       if (error || !data?.token) {
-        showToast({ title: "QR Error", message: error?.message ?? "Failed to regenerate QR code", type: "error" });
+        showToast({
+          title: "QR Error",
+          message: error?.message ?? "Failed to regenerate QR code",
+          type: "error",
+        });
         return;
       }
       await load();
-      showToast({ title: "QR Regenerated", message: `The old printed code for ${tableLabel} no longer works.`, type: "success" });
+      showToast({
+        title: "QR Regenerated",
+        message: `The old printed code for ${tableLabel} no longer works.`,
+        type: "success",
+      });
       await printTent(data.token);
     } finally {
       setBusy(null);
@@ -199,11 +223,19 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
         floorPlanObjectId,
       );
       if (error) {
-        showToast({ title: "QR Error", message: error?.message ?? "Failed to turn off QR", type: "error" });
+        showToast({
+          title: "QR Error",
+          message: error?.message ?? "Failed to turn off QR",
+          type: "error",
+        });
         return;
       }
       await load();
-      showToast({ title: "QR Off", message: `QR ordering turned off for ${tableLabel} — the printed tent no longer works.`, type: "success" });
+      showToast({
+        title: "QR Off",
+        message: `QR ordering turned off for ${tableLabel} — the printed tent no longer works.`,
+        type: "success",
+      });
     } finally {
       setBusy(null);
     }
@@ -218,11 +250,19 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
         { floorPlanObjectId, regenerate: false },
       );
       if (error || !data?.token) {
-        showToast({ title: "QR Error", message: error?.message ?? "Failed to turn on QR", type: "error" });
+        showToast({
+          title: "QR Error",
+          message: error?.message ?? "Failed to turn on QR",
+          type: "error",
+        });
         return;
       }
       await load();
-      showToast({ title: "QR On", message: `QR ordering turned on for ${tableLabel}`, type: "success" });
+      showToast({
+        title: "QR On",
+        message: `QR ordering turned on for ${tableLabel}`,
+        type: "success",
+      });
       await printTent(data.token);
     } finally {
       setBusy(null);
@@ -253,12 +293,15 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
     },
   };
 
-  const requestGated = (kind: Exclude<ConfirmKind, null>) => setConfirmKind(kind);
+  const requestGated = (kind: Exclude<ConfirmKind, null>) =>
+    setConfirmKind(kind);
 
   const hasActive = !!activeCode;
+  const confirm = confirmKind ? confirmCopy[confirmKind] : null;
 
   const ActionRow = ({
     icon,
+    iconBg,
     label,
     sub,
     onPress,
@@ -267,6 +310,7 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
     busyKey,
   }: {
     icon: React.ReactNode;
+    iconBg: string;
     label: string;
     sub?: string;
     onPress: () => void;
@@ -277,45 +321,57 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled || busy !== null}
+      activeOpacity={0.7}
       style={{
         flexDirection: "row",
         alignItems: "center",
         gap: s(12),
-        paddingVertical: s(14),
-        paddingHorizontal: s(16),
-        borderRadius: s(12),
+        paddingVertical: s(12),
+        paddingHorizontal: s(14),
+        borderRadius: s(14),
         borderWidth: 1,
-        borderColor: danger ? colors.danger : colors.border,
+        borderColor: danger ? colors.danger + "40" : colors.border,
         opacity: disabled ? 0.45 : 1,
         marginBottom: s(10),
         backgroundColor: colors.card,
       }}
     >
-      {busy === busyKey ? (
-        <ActivityIndicator size="small" color={QR_BRAND_BLUE} />
-      ) : (
-        icon
-      )}
+      <View
+        style={{
+          width: s(38),
+          height: s(38),
+          borderRadius: s(12),
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: iconBg,
+        }}
+      >
+        {busy === busyKey ? (
+          <ActivityIndicator size="small" color={colors.teal} />
+        ) : (
+          icon
+        )}
+      </View>
       <View style={{ flex: 1 }}>
         <Text
           style={{
             color: danger ? colors.danger : colors.heading,
-            fontWeight: "600",
-            fontSize: s(15),
+            fontWeight: "700",
+            fontSize: s(14),
           }}
         >
           {label}
         </Text>
         {sub ? (
-          <Text style={{ color: colors.label, fontSize: s(12), marginTop: s(2) }}>
+          <Text
+            style={{ color: colors.label, fontSize: s(11), marginTop: s(2) }}
+          >
             {sub}
           </Text>
         ) : null}
       </View>
     </TouchableOpacity>
   );
-
-  const confirm = confirmKind ? confirmCopy[confirmKind] : null;
 
   return (
     <Modal
@@ -328,7 +384,7 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
         onPress={onClose}
         style={{
           flex: 1,
-          backgroundColor: "rgba(0,0,0,0.5)",
+          backgroundColor: "rgba(0,0,0,0.55)",
           justifyContent: "center",
           alignItems: "center",
         }}
@@ -336,11 +392,13 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
         <Pressable
           onPress={() => {}}
           style={{
-            width: s(440),
-            maxWidth: "92%",
-            backgroundColor: colors.background,
-            borderRadius: s(16),
-            padding: s(20),
+            width: s(640),
+            maxWidth: "94%",
+            backgroundColor: colors.panel,
+            borderRadius: s(20),
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: "hidden",
           }}
         >
           {/* Header */}
@@ -348,124 +406,281 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
             style={{
               flexDirection: "row",
               alignItems: "center",
-              marginBottom: s(16),
               gap: s(10),
+              paddingHorizontal: s(18),
+              paddingVertical: s(14),
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
             }}
           >
-            <QrCode size={s(20)} color={QR_BRAND_BLUE} />
-            <Text
+            <View
               style={{
-                flex: 1,
-                color: colors.heading,
-                fontSize: s(17),
-                fontWeight: "700",
+                width: s(34),
+                height: s(34),
+                borderRadius: s(11),
+                backgroundColor: colors.teal + "1A",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              QR Ordering — {tableLabel}
-            </Text>
-            <TouchableOpacity onPress={onClose} hitSlop={10}>
-              <X size={s(20)} color={colors.label} />
-            </TouchableOpacity>
-          </View>
+              <QrCode size={s(18)} color={colors.teal} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontSize: s(16),
+                  fontWeight: "700",
+                }}
+              >
+                QR Ordering
+              </Text>
+              <Text style={{ color: colors.muted, fontSize: s(12) }}>
+                Table {tableLabel}
+              </Text>
+            </View>
 
-          {loading ? (
-            <ActivityIndicator color={QR_BRAND_BLUE} style={{ marginVertical: s(30) }} />
-          ) : loadError ? (
-            <Text style={{ color: colors.danger, marginBottom: s(12) }}>
-              {loadError}
-            </Text>
-          ) : (
-            <>
-              {/* Status line */}
+            {/* Status chip */}
+            {!loading && !loadError ? (
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: s(8),
-                  marginBottom: s(14),
+                  gap: s(6),
+                  paddingHorizontal: s(10),
+                  paddingVertical: s(5),
+                  borderRadius: s(20),
+                  backgroundColor: hasActive
+                    ? colors.success + "1A"
+                    : colors.muted + "1A",
                 }}
               >
-                {hasActive ? (
-                  <CheckCircle2 size={s(15)} color={colors.success} />
-                ) : (
-                  <Ban size={s(15)} color={colors.label} />
-                )}
-                <Text style={{ color: colors.label, fontSize: s(13) }}>
-                  {hasActive
-                    ? `QR is ON · code v${activeCode?.token_version} · ${activeCode?.scan_count ?? 0} scans`
-                    : "QR is OFF for this table — no active code"}
-                </Text>
-              </View>
-
-              {storeGateReason ? (
+                <View
+                  style={{
+                    width: s(7),
+                    height: s(7),
+                    borderRadius: s(4),
+                    backgroundColor: hasActive ? colors.success : colors.muted,
+                  }}
+                />
                 <Text
                   style={{
-                    color: colors.warning,
-                    fontSize: s(13),
-                    marginBottom: s(12),
+                    fontSize: s(11),
+                    fontWeight: "700",
+                    color: hasActive ? colors.success : colors.muted,
                   }}
                 >
-                  {storeGateReason}
+                  {hasActive ? "ACTIVE" : "OFF"}
                 </Text>
-              ) : null}
+              </View>
+            ) : null}
 
-              <ActionRow
-                icon={<Printer size={s(18)} color={QR_BRAND_BLUE} />}
-                label={hasActive ? "Reprint QR Tent" : "Print QR Tent"}
-                sub={
-                  hasActive
-                    ? "Prints the same code already in use"
-                    : "Creates this table's QR code and prints it"
-                }
-                onPress={handlePrintOrReprint}
-                disabled={!!storeGateReason}
-                busyKey="print"
-              />
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={10}
+              style={{
+                width: s(30),
+                height: s(30),
+                borderRadius: s(15),
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: colors.screen,
+              }}
+            >
+              <X size={s(15)} color={colors.label} />
+            </TouchableOpacity>
+          </View>
 
-              {hasActive ? (
-                <ActionRow
-                  icon={<Eye size={s(18)} color={colors.label} />}
-                  label="Preview"
-                  sub="Show the guest QR on screen"
-                  onPress={() => setPreviewOpen(true)}
-                  disabled={!activeQrUrl}
-                />
-              ) : null}
-
-              {hasActive ? (
-                <ActionRow
-                  icon={<RefreshCcw size={s(18)} color={colors.warning} />}
-                  label="Regenerate QR Code"
-                  sub="Manager only — old printed tent stops working"
-                  onPress={() => requestGated("regenerate")}
-                  disabled={!!storeGateReason}
-                  busyKey="regenerate"
-                />
-              ) : null}
-
-              <ActionRow
-                icon={
-                  hasActive ? (
-                    <Ban size={s(18)} color={colors.danger} />
+          {loading ? (
+            <ActivityIndicator
+              color={colors.teal}
+              style={{ marginVertical: s(60) }}
+            />
+          ) : loadError ? (
+            <View style={{ padding: s(20) }}>
+              <Text style={{ color: colors.danger }}>{loadError}</Text>
+            </View>
+          ) : (
+            <View style={{ flexDirection: "row" }}>
+              {/* Left pane — live QR preview */}
+              <View
+                style={{
+                  width: s(250),
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: s(20),
+                  borderRightWidth: 1,
+                  borderRightColor: colors.border,
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: "#ffffff",
+                    borderRadius: s(16),
+                    padding: s(16),
+                    alignItems: "center",
+                    gap: s(8),
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: s(18),
+                      fontWeight: "800",
+                      color: "#111",
+                    }}
+                  >
+                    {tableLabel}
+                  </Text>
+                  {hasActive && activeQrUrl ? (
+                    <QRCode value={activeQrUrl} size={s(150)} />
                   ) : (
-                    <QrCode size={s(18)} color={colors.success} />
-                  )
-                }
-                label={hasActive ? "Turn Off QR (this table)" : "Turn On QR (this table)"}
-                sub="Manager only"
-                onPress={() => requestGated(hasActive ? "turn_off" : "turn_on")}
-                disabled={!hasActive && !!storeGateReason}
-                danger={hasActive}
-                busyKey={hasActive ? "off" : "on"}
-              />
-            </>
+                    <View
+                      style={{
+                        width: s(150),
+                        height: s(150),
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: "#F3F4F6",
+                        borderRadius: s(10),
+                      }}
+                    >
+                      <Ban size={s(36)} color="#9CA3AF" />
+                      <Text
+                        style={{
+                          color: "#6B7280",
+                          fontSize: s(11),
+                          marginTop: s(8),
+                          fontWeight: "600",
+                        }}
+                      >
+                        QR is off
+                      </Text>
+                    </View>
+                  )}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(5),
+                    }}
+                  >
+                    <ScanLine size={s(12)} color="#374151" />
+                    <Text
+                      style={{
+                        fontSize: s(11),
+                        fontWeight: "700",
+                        color: "#374151",
+                      }}
+                    >
+                      Scan to order
+                    </Text>
+                  </View>
+                </View>
+
+                {hasActive ? (
+                  <Text
+                    style={{
+                      color: colors.muted,
+                      fontSize: s(11),
+                      marginTop: s(12),
+                    }}
+                  >
+                    v{activeCode?.token_version} · {activeCode?.scan_count ?? 0}{" "}
+                    scans
+                  </Text>
+                ) : null}
+              </View>
+
+              {/* Right pane — actions */}
+              <View style={{ flex: 1, padding: s(16) }}>
+                {storeGateReason ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: s(8),
+                      padding: s(10),
+                      borderRadius: s(10),
+                      backgroundColor: colors.warning + "14",
+                      borderWidth: 1,
+                      borderColor: colors.warning + "35",
+                      marginBottom: s(12),
+                    }}
+                  >
+                    <AlertTriangle size={s(14)} color={colors.warning} />
+                    <Text
+                      style={{
+                        color: colors.warning,
+                        fontSize: s(11),
+                        flex: 1,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {storeGateReason}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <ActionRow
+                  icon={<Printer size={s(17)} color={colors.teal} />}
+                  iconBg={colors.teal + "1A"}
+                  label={hasActive ? "Reprint QR Tent" : "Print QR Tent"}
+                  sub={
+                    hasActive
+                      ? "Prints the same code already in use"
+                      : "Creates this table's QR code and prints it"
+                  }
+                  onPress={handlePrintOrReprint}
+                  disabled={!!storeGateReason}
+                  busyKey="print"
+                />
+
+                {hasActive ? (
+                  <ActionRow
+                    icon={<RefreshCcw size={s(17)} color={colors.warning} />}
+                    iconBg={colors.warning + "1A"}
+                    label="Regenerate QR Code"
+                    sub="Manager only — old printed tent stops working"
+                    onPress={() => requestGated("regenerate")}
+                    disabled={!!storeGateReason}
+                    busyKey="regenerate"
+                  />
+                ) : null}
+
+                <ActionRow
+                  icon={
+                    <Power
+                      size={s(17)}
+                      color={hasActive ? colors.danger : colors.success}
+                    />
+                  }
+                  iconBg={
+                    hasActive ? colors.danger + "14" : colors.success + "1A"
+                  }
+                  label={hasActive ? "Turn Off QR" : "Turn On QR"}
+                  sub={
+                    hasActive
+                      ? "Manager only — printed tent stops working"
+                      : "Manager only — prints a new tent"
+                  }
+                  onPress={() => requestGated(hasActive ? "turn_off" : "turn_on")}
+                  disabled={!hasActive && !!storeGateReason}
+                  danger={hasActive}
+                  busyKey={hasActive ? "off" : "on"}
+                />
+              </View>
+            </View>
           )}
         </Pressable>
       </Pressable>
 
       {/* Confirm dialog for gated actions */}
       {confirm ? (
-        <Modal transparent animationType="fade" onRequestClose={() => setConfirmKind(null)}>
+        <Modal
+          transparent
+          animationType="fade"
+          onRequestClose={() => setConfirmKind(null)}
+        >
           <View
             style={{
               flex: 1,
@@ -478,8 +693,10 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
               style={{
                 width: s(380),
                 maxWidth: "88%",
-                backgroundColor: colors.background,
-                borderRadius: s(14),
+                backgroundColor: colors.panel,
+                borderRadius: s(16),
+                borderWidth: 1,
+                borderColor: colors.border,
                 padding: s(20),
               }}
             >
@@ -493,7 +710,14 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
               >
                 {confirm.title}
               </Text>
-              <Text style={{ color: colors.label, fontSize: s(13), marginBottom: s(18) }}>
+              <Text
+                style={{
+                  color: colors.label,
+                  fontSize: s(13),
+                  marginBottom: s(18),
+                  lineHeight: s(19),
+                }}
+              >
                 {confirm.body}
               </Text>
               <View style={{ flexDirection: "row", gap: s(10) }}>
@@ -502,13 +726,16 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
                   style={{
                     flex: 1,
                     paddingVertical: s(12),
-                    borderRadius: s(10),
+                    borderRadius: s(12),
                     borderWidth: 1,
                     borderColor: colors.border,
                     alignItems: "center",
+                    backgroundColor: colors.screen,
                   }}
                 >
-                  <Text style={{ color: colors.heading, fontWeight: "600" }}>Cancel</Text>
+                  <Text style={{ color: colors.heading, fontWeight: "600" }}>
+                    Cancel
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
@@ -519,13 +746,15 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
                   style={{
                     flex: 1,
                     paddingVertical: s(12),
-                    borderRadius: s(10),
+                    borderRadius: s(12),
                     backgroundColor:
-                      confirmKind === "turn_off" ? colors.danger : QR_BRAND_BLUE,
+                      confirmKind === "turn_off" ? colors.danger : colors.teal,
                     alignItems: "center",
                   }}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "700" }}>{confirm.cta}</Text>
+                  <Text style={{ color: colors.onSolid, fontWeight: "700" }}>
+                    {confirm.cta}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -550,50 +779,6 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
         }}
         onCancel={() => setPinFor(null)}
       />
-
-      {/* On-screen preview / printer-offline fallback */}
-      <Modal
-        visible={previewOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPreviewOpen(false)}
-      >
-        <Pressable
-          onPress={() => setPreviewOpen(false)}
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.6)",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <Pressable
-            onPress={() => {}}
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: s(16),
-              padding: s(24),
-              alignItems: "center",
-              gap: s(14),
-            }}
-          >
-            <Text style={{ fontSize: s(20), fontWeight: "800", color: "#111" }}>
-              {tableLabel}
-            </Text>
-            {activeQrUrl ? (
-              <QRCode value={activeQrUrl} size={s(220)} />
-            ) : (
-              <Text style={{ color: "#666" }}>No active QR code</Text>
-            )}
-            <Text style={{ fontSize: s(14), fontWeight: "600", color: "#111" }}>
-              Scan to order
-            </Text>
-            <Text style={{ fontSize: s(12), color: "#666" }}>
-              {storeConfig?.store_name || selectedStore?.name || ""}
-            </Text>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </Modal>
   );
 };
