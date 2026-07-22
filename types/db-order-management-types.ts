@@ -185,6 +185,7 @@ export interface CreateOrderParams {
   p_device_id: string | null;
   p_created_by_staff_id: string | null;
   p_station_id: string | null;
+  p_order_source: "pos" | "kiosk";
 }
 
 export interface AddOrderItemParams {

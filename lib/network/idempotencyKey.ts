@@ -216,9 +216,15 @@ export function getOrCreateIdempotencyKey (sig: IdempotencyOpSignature): string 
 //   - p_tip_refund_amount: apply_refund_to_payment_v3 platform-fee delta
 const V_NEXT_ONLY_PARAMS = ['p_station_id', 'p_tip_refund_amount'] as const
 
-function _stripVNextOnly<P extends Record<string, any>> (params: P): P {
+function _stripVNextOnly<P extends Record<string, any>> (
+  params: P,
+  rpc?: IdempotentRpc
+): P {
   let copy: any = null
   for (const k of V_NEXT_ONLY_PARAMS) {
+    // create_order_v2 already accepts p_station_id, and kiosk channel tagging
+    // relies on the server resolving self_service stations at insert time.
+    if (rpc === 'create_order' && k === 'p_station_id') continue
     if (k in params) {
       if (!copy) copy = { ...params }
       delete copy[k]
@@ -236,7 +242,7 @@ export function withIdempotency<P extends Record<string, any>> (
 ): { name: string; params: P & { p_idempotency_key?: string } } {
   if (!isIdempotentEnabled(rpc)) {
     // Strip v-next-only params so v1 doesn't 400 on "function does not exist"
-    return { name: v1Name, params: _stripVNextOnly(params) }
+    return { name: v1Name, params: _stripVNextOnly(params, rpc) }
   }
   const p_idempotency_key =
     keyOverride ?? getOrCreateIdempotencyKey({ op: rpc })

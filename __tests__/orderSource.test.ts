@@ -5,7 +5,13 @@
  * silently hides every new online order (Kanban + right-edge drawer regression,
  * 2026-07). Unit-tests the predicate + source-asserts the load-bearing wiring.
  */
-import { isOnlineOrderSource, ONLINE_ORDER_SOURCES } from "@/lib/orderSource";
+import {
+  CANONICAL_ORDER_SOURCES,
+  isKioskOrderSource,
+  isOnlineOrderSource,
+  normalizeOrderSourceChannel,
+  ONLINE_ORDER_SOURCES,
+} from "@/lib/orderSource";
 import fs from "fs";
 import path from "path";
 
@@ -20,6 +26,7 @@ describe("isOnlineOrderSource", () => {
 
   it("rejects POS-originated and absent sources", () => {
     expect(isOnlineOrderSource("pos")).toBe(false);
+    expect(isOnlineOrderSource("kiosk")).toBe(false);
     expect(isOnlineOrderSource("in_store")).toBe(false);
     expect(isOnlineOrderSource("phone")).toBe(false);
     expect(isOnlineOrderSource("")).toBe(false);
@@ -33,6 +40,28 @@ describe("isOnlineOrderSource", () => {
       "orderout",
       "online_store",
     ]);
+    expect([...CANONICAL_ORDER_SOURCES]).toEqual([
+      "pos",
+      "kiosk",
+      "online_store",
+      "orderout",
+    ]);
+  });
+
+  it("normalizes legacy source values into the canonical reporting channels", () => {
+    expect(normalizeOrderSourceChannel("kiosk")).toBe("kiosk");
+    expect(normalizeOrderSourceChannel("online")).toBe("online_store");
+    expect(normalizeOrderSourceChannel("online_store")).toBe("online_store");
+    expect(normalizeOrderSourceChannel("orderout")).toBe("orderout");
+    expect(normalizeOrderSourceChannel("in_store")).toBe("pos");
+    expect(normalizeOrderSourceChannel("phone")).toBe("pos");
+    expect(normalizeOrderSourceChannel(null)).toBe("pos");
+  });
+
+  it("recognizes kiosk as its own channel, not online", () => {
+    expect(isKioskOrderSource("kiosk")).toBe(true);
+    expect(isKioskOrderSource("online_store")).toBe(false);
+    expect(isKioskOrderSource("pos")).toBe(false);
   });
 });
 

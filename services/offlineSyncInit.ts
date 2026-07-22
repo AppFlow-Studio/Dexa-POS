@@ -306,6 +306,7 @@ async function reconcileLostOrderCreations(): Promise<number> {
           p_created_by_staff_id: getKioskSafeCreatorStaffId(),
           p_station_id:
             useStoreSettingsStore.getState().selectedStation?.id || null,
+          p_order_source: order.order_source === "kiosk" ? "kiosk" : "pos",
         },
       },
       localOrderId: orderId,
@@ -1788,6 +1789,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               useEmployeeStore.getState().loggedInEmployee?.profileId || null,
             p_station_id:
               useStoreSettingsStore.getState().selectedStation?.id || null,
+            p_order_source:
+              localOrder?.order_source === "kiosk" ? "kiosk" : "pos",
           };
           console.warn(
             `[OfflineSync:create_order] Missing createOrderParams for ${localOrderId}; rebuilt fallback params`,
@@ -1880,27 +1883,6 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                 orderData.order_number || orderData.display_number
               }`,
             );
-
-            // Self-service (kiosk) — set order_source on the backend row so
-            // KDS tickets reflect the correct origin.
-            const orderStore = _getOrderStore();
-            const currentStation = orderStore.getState().currentStation;
-            if (
-              currentStation?.station_type === "self_service" &&
-              _supabaseClient
-            ) {
-              try {
-                await _supabaseClient
-                  .from("orders")
-                  .update({ order_source: "kiosk" })
-                  .eq("id", backendId);
-              } catch (e) {
-                console.warn(
-                  "[OfflineSync:create_order] Failed to sync kiosk order_source:",
-                  e,
-                );
-              }
-            }
 
             // Invalidate orders query so hydrateWorkspace picks up the server version
             const locationId = createOrderParams.p_location_id;

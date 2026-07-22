@@ -1222,6 +1222,7 @@ const ensureOrderCreated = async (
       p_created_by_staff_id: getKioskSafeCreatorStaffId(),
       p_station_id:
         useStoreSettingsStore.getState().selectedStation?.id || null,
+      p_order_source: order.order_source === "kiosk" ? "kiosk" : "pos",
     };
 
     if (__DEV__) {
@@ -1361,6 +1362,7 @@ const ensureOrderCreated = async (
         p_created_by_staff_id: getKioskSafeCreatorStaffId(),
         p_station_id:
           useStoreSettingsStore.getState().selectedStation?.id || null,
+        p_order_source: order.order_source === "kiosk" ? "kiosk" : "pos",
       };
 
       if (__DEV__) {
@@ -1489,22 +1491,6 @@ const ensureOrderCreated = async (
             } catch (e) {
               console.warn(
                 "[ensureOrderCreated] Failed to sync pre-set customer_id:",
-                e,
-              );
-            }
-          }
-
-          // Self-service (kiosk) — set order_source on the backend row so KDS
-          // tickets and order-source filtering reflect the correct origin.
-          if (order.order_source === "kiosk" && supabase) {
-            try {
-              await supabase
-                .from("orders")
-                .update({ order_source: "kiosk" })
-                .eq("id", backendId);
-            } catch (e) {
-              console.warn(
-                "[ensureOrderCreated] Failed to sync kiosk order_source:",
                 e,
               );
             }
