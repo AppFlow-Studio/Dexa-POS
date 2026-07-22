@@ -665,6 +665,41 @@ const CardPaymentView = () => {
               amountOverride: totalToPay,
             });
 
+            // Backfill the terminal serial from the sale response. Valor's
+            // TRAN_MODE 96 query returns no serial, so a completed sale is the
+            // only place we learn it. Fire-and-forget; also mirror it into the
+            // in-memory station so the settings card updates without a reload.
+            const saleSerial = valorTx?.hardwareSerial;
+            const valorTerminalId = selectedStation?.payment_terminal?.id;
+            if (
+              saleSerial &&
+              valorTerminalId &&
+              selectedStation?.payment_terminal?.serial_number !== saleSerial
+            ) {
+              void supabase
+                .from("payment_terminals")
+                .update({ serial_number: saleSerial })
+                .eq("id", valorTerminalId)
+                .then(
+                  () => {
+                    const s = useStoreSettingsStore.getState();
+                    const station = s.selectedStation;
+                    if (station?.payment_terminal?.id === valorTerminalId) {
+                      s.setSelectedStation({
+                        ...station,
+                        payment_terminal: {
+                          ...station.payment_terminal,
+                          serial_number: saleSerial,
+                        },
+                      });
+                    }
+                  },
+                  () => {
+                    /* non-fatal: serial backfill is best-effort */
+                  },
+                );
+            }
+
             const captured = {
               referenceId,
               rrn: result.rrn,

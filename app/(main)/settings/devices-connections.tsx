@@ -739,11 +739,16 @@ const DevicesConnectionsScreen = ({
             )
           }
           discoveredSN = preTest.serialNumber
+        } else if (registerForm.connectionType === 'usb') {
+          // USB: no TCP pre-test. The terminal enumerates as a Qualcomm CDC
+          // device (VID 0x1E0E) and connects via the USB auto-connect
+          // coordinator once plugged in; the health check verifies liveness.
+          // The serial isn't available from a query — it backfills from the
+          // first sale's response (hardwareSerial).
         } else {
-          // No pre-test possible (USB is gated until the Valor VID lands), so we
-          // cannot confirm the terminal is reachable — refuse to register.
+          // TCP selected but no IP entered.
           throw new Error(
-            'A reachable IP address is required to register a Valor terminal over TCP.'
+            'Enter the terminal IP address, or switch the connection type to USB.'
           )
         }
 
@@ -1160,11 +1165,12 @@ const DevicesConnectionsScreen = ({
           registerForm.authKey.trim()
         )
       : registerFormType === 'valor'
-        ? !!(
+        ? // EPI is optional — it is never sent in a Valor request (it only comes
+          // back in the response), so it must not block registration.
+          !!(
             registerForm.name.trim() &&
             (registerForm.connectionType === 'usb' ||
-              registerForm.ipAddress.trim()) &&
-            registerForm.epi.trim()
+              registerForm.ipAddress.trim())
           )
         : !!(
             registerForm.name.trim() &&
@@ -1179,10 +1185,10 @@ const DevicesConnectionsScreen = ({
           (editForm.connectionType === 'usb' || editForm.ipAddress.trim())
         )
       : currentTerminal?.terminal_type === 'valor'
-        ? !!(
+        ? // EPI optional (never sent to the terminal).
+          !!(
             editForm.name.trim() &&
-            (editForm.connectionType === 'usb' || editForm.ipAddress.trim()) &&
-            editForm.epi.trim()
+            (editForm.connectionType === 'usb' || editForm.ipAddress.trim())
           )
         : !!(editForm.name.trim() && editForm.tpn.trim())
 
