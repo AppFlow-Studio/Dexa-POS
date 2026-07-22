@@ -15,6 +15,46 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
+import { useEmployeeStore } from "./useEmployeeStore";
+import { useNotificationStore } from "./useNotificationStore";
+
+/**
+ * Mirror an alert into the session-dock notification sheet (informational —
+ * resolving still happens via the bell). Deduped by alertId; removed on
+ * resolve. Tagged to this station's logged-in employee so the per-employee
+ * panel filter shows it.
+ */
+function mirrorNotification(alert: QrGuestAlert, skipIfExists = false) {
+  const employeeId =
+    useEmployeeStore.getState().loggedInEmployee?.id ?? null;
+  if (!employeeId) return;
+  const store = useNotificationStore.getState();
+  const exists = store.notifications.some(
+    (n) =>
+      n.type === "qr_call_server" && n.payload?.alertId === alert.id,
+  );
+  if (exists && skipIfExists) return;
+  // Refresh in place: drop any existing entry for this alert first.
+  if (exists) {
+    store.removeNotification({
+      type: "qr_call_server",
+      payload: { alertId: alert.id },
+    });
+  }
+  store.addNotification({
+    type: "qr_call_server",
+    message: `${alert.tableLabel} — guest called a server${alert.message ? `: “${alert.message}”` : ""}`,
+    employeeId,
+    payload: { alertId: alert.id },
+  });
+}
+
+function unmirrorNotification(alertId: string) {
+  useNotificationStore.getState().removeNotification({
+    type: "qr_call_server",
+    payload: { alertId },
+  });
+}
 
 export interface QrGuestAlert {
   id: string;
@@ -73,8 +113,13 @@ export const useQrGuestAlertsStore = create<QrGuestAlertsState>((set, get) => ({
       .neq("status", "resolved")
       .order("created_at", { ascending: true });
     if (error) {
-      console.warn("[QrGuestAlerts] seed failed:", error.message);
+      console.warn("[QrGuestAlerts] seed failed:", error.message, error);
       return;
+    }
+    if (__DEV__) {
+      console.log(
+        `[QrGuestAlerts] seed: ${data?.length ?? 0} open alert(s) for location ${locationId}`,
+      );
     }
     const alerts: QrGuestAlert[] = (data ?? []).map((row: any) => ({
       id: String(row.id),
@@ -86,6 +131,8 @@ export const useQrGuestAlertsStore = create<QrGuestAlertsState>((set, get) => ({
       onlineOrderSessionId: row.online_order_session_id ?? null,
     }));
     set({ alerts, openCount: alerts.length });
+    // Mirror open alerts into the dock notification sheet on cold start.
+    for (const a of alerts) mirrorNotification(a, true);
   },
 
   applyBroadcast: (payload) => {
@@ -94,6 +141,7 @@ export const useQrGuestAlertsStore = create<QrGuestAlertsState>((set, get) => ({
     let next: QrGuestAlert[];
     if (payload.operation === "resolved" || payload.status === "resolved") {
       next = alerts.filter((a) => a.id !== payload.alert_id);
+      unmirrorNotification(payload.alert_id);
     } else {
       const updated: QrGuestAlert = {
         id: payload.alert_id,
@@ -109,6 +157,7 @@ export const useQrGuestAlertsStore = create<QrGuestAlertsState>((set, get) => ({
         idx >= 0
           ? alerts.map((a) => (a.id === payload.alert_id ? updated : a))
           : [...alerts, updated];
+      mirrorNotification(updated);
     }
     set({
       alerts: next,
@@ -139,6 +188,7 @@ export const useQrGuestAlertsStore = create<QrGuestAlertsState>((set, get) => ({
       alerts: prev.filter((a) => a.id !== alertId),
       openCount: Math.max(0, get().openCount - 1),
     });
+    unmirrorNotification(alertId);
     const { data, error } = await client.rpc("resolve_qr_guest_alert", {
       p_alert_id: alertId,
     });

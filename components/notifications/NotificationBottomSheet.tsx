@@ -35,6 +35,9 @@ const NotificationBottomSheet: React.FC<NotificationBottomSheetProps> = ({
       enablePanDownToClose
       onClose={onClose}
       onChange={handleChange}
+      // Always render above every screen overlay (Slot can carry zIndex:100,
+      // and sibling absolute views mount after this sheet in the layout).
+      containerStyle={{ zIndex: 9999, elevation: 9999 }}
       {...bottomSheetTheme}
       backdropComponent={(props) => (
         <BottomSheetBackdrop

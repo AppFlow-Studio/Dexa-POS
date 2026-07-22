@@ -3,6 +3,7 @@ import { format, isToday, isYesterday } from "date-fns";
 import {
   AlertCircle as AlertCircleIcon,
   ArrowRightLeft as ArrowRightLeftIcon,
+  Bell as BellIcon,
   Calendar as CalendarIcon,
   CheckCircle,
   MessageSquare as MessageSquareIcon,
@@ -30,6 +31,12 @@ export const getNotificationAppearance = (type: Notification["type"]) => {
         icon: MessageSquareIcon,
         color: "#9CA3AF",
         title: "New Note",
+      };
+    case "qr_call_server":
+      return {
+        icon: BellIcon,
+        color: "#0C4FD1",
+        title: "Guest Request",
       };
     case "refund_fraud_alert":
       return {

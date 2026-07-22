@@ -2,15 +2,18 @@ import { Notification } from "@/lib/types";
 import { colors } from "@/lib/theme";
 import { formatDistanceToNow } from "date-fns";
 import { getNotificationAppearance } from "@/lib/notificationUtils";
-import { PanGestureHandler } from "react-native-gesture-handler";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  useAnimatedGestureHandler,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
   runOnJS,
 } from "react-native-reanimated";
-import { Text, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
+import { Check } from "lucide-react-native";
+import React, { useState } from "react";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useQrGuestAlertsStore } from "@/stores/useQrGuestAlertsStore";
 
 interface NotificationItemProps {
   notification: Notification;
@@ -19,14 +22,32 @@ interface NotificationItemProps {
 
 const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onDelete }) => {
   const { icon: Icon, color, title } = getNotificationAppearance(notification.type);
+  const supabase = useSupabaseClient();
+  const [resolving, setResolving] = useState(false);
+
+  // QR guest request rows carry a visible resolve action — resolving is
+  // server-side (idempotent) and the broadcast clears every surface (bell,
+  // other stations, floor-plan badge, this mirror).
+  const handleResolveAlert = async () => {
+    const alertId = notification.payload?.alertId as string | undefined;
+    if (!alertId || !supabase) return;
+    setResolving(true);
+    await useQrGuestAlertsStore.getState().resolve(supabase, alertId);
+    setResolving(false);
+  };
 
   const translateX = useSharedValue(0);
   const itemHeight = useSharedValue(76);
 
-  const gestureHandler = useAnimatedGestureHandler({
-    onStart: (_, ctx: any) => { ctx.startX = translateX.value; },
-    onActive: (event, ctx: any) => { translateX.value = ctx.startX + event.translationX; },
-    onEnd: () => {
+  const startX = useSharedValue(0);
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
+      startX.value = translateX.value;
+    })
+    .onUpdate((event) => {
+      translateX.value = startX.value + event.translationX;
+    })
+    .onEnd(() => {
       if (translateX.value < -100) {
         translateX.value = withTiming(-500);
         itemHeight.value = withTiming(0, undefined, (isFinished) => {
@@ -35,8 +56,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onDel
       } else {
         translateX.value = withTiming(0);
       }
-    },
-  });
+    });
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -46,7 +66,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onDel
   }));
 
   return (
-    <PanGestureHandler onGestureEvent={gestureHandler}>
+    <GestureDetector gesture={panGesture}>
       <Animated.View style={animatedStyle}>
         <View
           style={{
@@ -71,10 +91,33 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onDel
             <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
               {notification.message}
             </Text>
+            {notification.type === "qr_call_server" ? (
+              <TouchableOpacity
+                onPress={handleResolveAlert}
+                disabled={resolving}
+                style={{
+                  alignSelf: 'flex-start',
+                  marginTop: 8,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  borderRadius: 8,
+                  backgroundColor: '#0C4FD1',
+                  opacity: resolving ? 0.5 : 1,
+                }}
+              >
+                <Check size={12} color='#fff' />
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>
+                  Mark Resolved
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
       </Animated.View>
-    </PanGestureHandler>
+    </GestureDetector>
   );
 };
 

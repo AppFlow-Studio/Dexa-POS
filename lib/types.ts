@@ -1172,7 +1172,8 @@ export interface Notification {
     | "swap_request_peer_denied"
     | "swap_approved"
     | "swap_denied"
-    | "refund_fraud_alert";
+    | "refund_fraud_alert"
+    | "qr_call_server";
   message: string;
   isRead: boolean;
   timestamp: string; // ISO string

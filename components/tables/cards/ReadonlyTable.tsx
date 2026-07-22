@@ -1,5 +1,7 @@
 import { TABLE_SHAPES } from '@/lib/table-shapes'
 import { ensureOrderPrefetched } from '@/services/tableOrderPrefetch'
+import { useQrGuestAlertsStore } from '@/stores/useQrGuestAlertsStore'
+import { Bell } from 'lucide-react-native'
 import React, { useCallback } from 'react'
 import { View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -37,6 +39,18 @@ const ReadonlyTable: React.FC<
 }) => {
   const data = useTableCardData(table, isTableType, isWall, undefined, shapeDef)
   const { effectiveWidth, effectiveHeight, newAttention, liveSession } = data
+
+  // QR guest "call server" indicator — pure overlay chrome keyed by the
+  // table's label matching an open alert. Never touches session state
+  // (QR orders must not seize dining state). Brand blue, never teal.
+  const tableLabel =
+    (table as { label_override?: string }).label_override?.trim() || table.name
+  const hasQrAlert = useQrGuestAlertsStore(
+    s =>
+      isTableType &&
+      !!tableLabel &&
+      s.alerts.some(a => a.tableLabel === tableLabel)
+  )
 
   const handlePress = useCallback(() => {
     const orderId = liveSession?.order_id
@@ -98,6 +112,26 @@ const ReadonlyTable: React.FC<
           width={effectiveWidth}
           height={effectiveHeight}
         />
+        {hasQrAlert ? (
+          <View
+            pointerEvents='none'
+            style={{
+              position: 'absolute',
+              top: -8,
+              right: -8,
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              backgroundColor: '#0C4FD1',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 2,
+              borderColor: '#fff'
+            }}
+          >
+            <Bell size={12} color='#fff' />
+          </View>
+        ) : null}
       </View>
     </GestureDetector>
   )

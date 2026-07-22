@@ -2,7 +2,9 @@
 // Centralized provider for all location-scoped realtime subscriptions
 
 import { useFloorRealtime } from '@/hooks/realtime/useFloorRealtime';
-import { createContext, ReactNode, useCallback, useContext } from 'react';
+import { useSupabaseClient } from '@/hooks/useSupabaseClient';
+import { useQrGuestAlertsStore } from '@/stores/useQrGuestAlertsStore';
+import { createContext, ReactNode, useCallback, useContext, useEffect } from 'react';
 // import { useWaitlistRealtime } from '@/hooks/useWaitlistRealtime';
 // import { useOrdersRealtime } from '@/hooks/useOrdersRealtime';
 import { useOrdersRealtime } from '@/hooks/realtime/useOrdersRealtime';
@@ -122,6 +124,14 @@ export function LocationRealtimeProvider({
     onOrderChange: callbacks?.onOrderChange,
     onPaymentChange: callbacks?.onPaymentChange,
   });
+
+  // Seed open QR guest alerts once per location so the bell / dock mirror /
+  // floor-plan badge have data even before any broadcast arrives.
+  const alertsSupabase = useSupabaseClient();
+  useEffect(() => {
+    if (!enabled || !locationId || !alertsSupabase) return;
+    useQrGuestAlertsStore.getState().seed(alertsSupabase, locationId);
+  }, [enabled, locationId, alertsSupabase]);
 
   // Reconnect all channels
   const reconnectAll = useCallback(() => {
