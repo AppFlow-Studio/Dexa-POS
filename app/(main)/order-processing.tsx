@@ -1374,7 +1374,7 @@ const OrderProcessing = () => {
 
                   <TouchableOpacity
                     onPress={() => router.replace("/tables")}
-                    className="flex-row items-center rounded-lg p-3 justify-start"
+                    className="rounded-lg p-3"
                     style={{
                       borderWidth: 1,
                       borderColor: colors.border,
@@ -1386,26 +1386,29 @@ const OrderProcessing = () => {
                     {activeSessionCount > 0 && (
                       <View
                         style={{
-                          minWidth: s(18),
-                          height: s(18),
+                          position: "absolute",
+                          top: -s(6),
+                          right: -s(6),
+                          width: activeSessionCount > 9 ? s(22) : s(17),
+                          height: s(17),
                           borderRadius: s(9),
-                          marginLeft: s(6),
-                          backgroundColor: colors.warning + "25",
-                          borderWidth: 1,
-                          borderColor: colors.warning + "45",
+                          backgroundColor: colors.warning,
                           alignItems: "center",
                           justifyContent: "center",
-                          paddingHorizontal: s(4),
                         }}
                       >
                         <Text
                           style={{
-                            color: colors.warning,
+                            color: "#fff",
                             fontSize: s(9),
                             fontWeight: "800",
+                            textAlign: "center",
+                            includeFontPadding: false,
                           }}
                         >
-                          {activeSessionCount}
+                          {activeSessionCount > 99
+                            ? "99+"
+                            : activeSessionCount}
                         </Text>
                       </View>
                     )}

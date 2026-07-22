@@ -186,11 +186,13 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
     const uuidLike =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (explicitName && !uuidLike.test(explicitName)) return explicitName;
+    const guard = (n?: string | null) =>
+      n && !uuidLike.test(n.trim()) ? n : null;
     if (order.service_location_id) {
-      return s.tablesById[order.service_location_id]?.name ?? null;
+      return guard(s.tablesById[order.service_location_id]?.name);
     }
     if (explicitName) {
-      return s.tablesById[explicitName]?.name ?? null;
+      return guard(s.tablesById[explicitName]?.name);
     }
     return null;
   });

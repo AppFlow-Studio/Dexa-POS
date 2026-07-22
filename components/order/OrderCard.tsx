@@ -1,3 +1,4 @@
+import { resolveTableDisplayName } from "@/lib/orderDisplay";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
@@ -39,12 +40,19 @@ const OrderCard: React.FC<OrderCardProps> = ({
   const uiScale = useUiScale();
   const tablesById = useFloorPlanStore((s) => s.tablesById);
 
-  // Look up table name from service_location_id
-  const tableName = useMemo(() => {
-    if (!order.service_location_id) return null;
-    const table = tablesById[order.service_location_id];
-    return table?.name || null;
-  }, [order.service_location_id, tablesById]);
+  // UI-safe table label: prefers the snapshotted name, falls back to a
+  // floor-plan lookup, and never surfaces a raw UUID (QR orders carry the
+  // label in service_location_name; some tables' `name` is an id).
+  const tableName = useMemo(
+    () =>
+      resolveTableDisplayName(
+        order.service_location_id,
+        order.service_location_name,
+      ),
+    // tablesById subscription keeps this fresh when floor plan loads late.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [order.service_location_id, order.service_location_name, tablesById],
+  );
 
   // Derive refund status
   const refundStatus = useMemo(() => {

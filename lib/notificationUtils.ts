@@ -35,7 +35,7 @@ export const getNotificationAppearance = (type: Notification["type"]) => {
     case "qr_call_server":
       return {
         icon: BellIcon,
-        color: "#0C4FD1",
+        color: "#9CA3AF",
         title: "Guest Request",
       };
     case "refund_fraud_alert":

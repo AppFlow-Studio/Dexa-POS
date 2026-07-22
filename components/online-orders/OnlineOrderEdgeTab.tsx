@@ -10,10 +10,13 @@ import {
   useOnlineOrderDrawerStore,
 } from "@/stores/useOnlineOrderDrawerStore";
 import { ShoppingBag } from "lucide-react-native";
+import { createMMKV } from "react-native-mmkv";
 import React, { memo, useEffect, useRef } from "react";
-import { Pressable, Text } from "react-native";
+import { Pressable, Text, useWindowDimensions } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   interpolateColor,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -21,11 +24,13 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+// Persist the tab's vertical position so it stays where staff drag it.
+const edgeTabStorage = createMMKV({ id: "dexa-pos-edge-tab" });
+const POS_KEY = "edge-tab-y-fraction";
+
 const BASE_TAB_WIDTH = 52;
 const BASE_TAB_HEIGHT = 112;
 
-// Matches the Kanban "New Orders" column / "N new" pill accent.
-const NEW_ORDER_BLUE = "#3b82f6";
 
 /**
  * Right-edge "tab folder" for online orders. Docked on every main POS screen
@@ -39,9 +44,26 @@ const OnlineOrderEdgeTab: React.FC = () => {
   const unseenCount = useUnseenOnlineOrderCount();
   const isOpen = useOnlineOrderDrawerStore(selectIsOpen);
   const uiScale = useUiScale();
+  const { height: screenHeight } = useWindowDimensions();
 
   const tabWidth = Math.round(BASE_TAB_WIDTH * uiScale);
   const tabHeight = Math.round(BASE_TAB_HEIGHT * uiScale);
+
+  // Draggable vertical position (top offset in px), persisted as a screen
+  // fraction so it survives rotation / different tablets sensibly.
+  const minY = 8;
+  const maxY = Math.max(minY, screenHeight - tabHeight - 8);
+  const initialY = (() => {
+    const frac = edgeTabStorage.getNumber(POS_KEY);
+    const y = frac != null ? frac * screenHeight : screenHeight * 0.38;
+    return Math.min(maxY, Math.max(minY, y));
+  })();
+  const posY = useSharedValue(initialY);
+  const dragStartY = useSharedValue(0);
+
+  const persistY = (y: number) => {
+    edgeTabStorage.set(POS_KEY, y / screenHeight);
+  };
 
   const visible = activeCount > 0;
 
@@ -76,11 +98,13 @@ const OnlineOrderEdgeTab: React.FC = () => {
     }
   }, [unseenCount, isOpen, scale, glow]);
 
-  // Resolve the theme proxy to a plain string OUTSIDE the worklet — the
+  // Resolve the theme proxy to plain strings OUTSIDE the worklet — the
   // colors Proxy is JS-thread-only and can't be dereferenced on the UI thread.
   const idleBorderColor = String(colors.border);
+  const accentColor = String(colors.teal);
 
   const animatedStyle = useAnimatedStyle(() => ({
+    top: posY.value,
     transform: [
       { translateX: slide.value * (tabWidth + 12) },
       { scale: scale.value },
@@ -88,7 +112,7 @@ const OnlineOrderEdgeTab: React.FC = () => {
     borderColor: interpolateColor(
       glow.value,
       [0, 1],
-      [idleBorderColor, NEW_ORDER_BLUE],
+      [idleBorderColor, accentColor],
     ),
     shadowOpacity: 0.25 + glow.value * 0.5,
   }));
@@ -99,24 +123,40 @@ const OnlineOrderEdgeTab: React.FC = () => {
       .toggleDrawer(getActiveOnlineOrderKeys());
   };
 
+  // Drag to reposition vertically along the right edge. A small activation
+  // distance keeps plain taps working (tap opens the drawer, drag moves it).
+  const panGesture = Gesture.Pan()
+    .activeOffsetY([-10, 10])
+    .failOffsetX([-15, 15])
+    .onStart(() => {
+      dragStartY.value = posY.value;
+    })
+    .onUpdate((e) => {
+      const next = dragStartY.value + e.translationY;
+      posY.value = Math.min(maxY, Math.max(minY, next));
+    })
+    .onEnd(() => {
+      runOnJS(persistY)(posY.value);
+    });
+
   return (
+    <GestureDetector gesture={panGesture}>
     <Animated.View
       pointerEvents={visible ? "auto" : "none"}
       style={[
         {
           position: "absolute",
           right: 0,
-          top: "38%",
           width: tabWidth,
           height: tabHeight,
           backgroundColor: colors.panel,
           borderWidth: 1.5,
           borderRightWidth: 0,
-          borderTopLeftRadius: 16,
-          borderBottomLeftRadius: 16,
-          shadowColor: NEW_ORDER_BLUE,
-          shadowOffset: { width: -2, height: 0 },
-          shadowRadius: 10,
+          borderTopLeftRadius: 20,
+          borderBottomLeftRadius: 20,
+          shadowColor: accentColor,
+          shadowOffset: { width: -3, height: 2 },
+          shadowRadius: 12,
           elevation: 8,
         },
         animatedStyle,
@@ -126,13 +166,24 @@ const OnlineOrderEdgeTab: React.FC = () => {
         onPress={onPress}
         style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
       >
-        <ShoppingBag size={Math.round(24 * uiScale)} color={NEW_ORDER_BLUE} />
+        <Animated.View
+          style={{
+            width: Math.round(36 * uiScale),
+            height: Math.round(36 * uiScale),
+            borderRadius: Math.round(12 * uiScale),
+            backgroundColor: accentColor + "1A",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ShoppingBag size={Math.round(20 * uiScale)} color={accentColor} />
+        </Animated.View>
         <Text
           style={{
             fontWeight: "700",
             color: colors.label,
             fontSize: Math.round(10 * uiScale),
-            marginTop: 6,
+            marginTop: 8,
           }}
         >
           {activeCount}
@@ -143,13 +194,15 @@ const OnlineOrderEdgeTab: React.FC = () => {
               position: "absolute",
               top: -8,
               left: -8,
-              minWidth: Math.round(22 * uiScale),
+              width:
+                unseenCount > 9
+                  ? Math.round(28 * uiScale)
+                  : Math.round(22 * uiScale),
               height: Math.round(22 * uiScale),
-              backgroundColor: NEW_ORDER_BLUE,
+              backgroundColor: accentColor,
               borderRadius: Math.round(11 * uiScale),
               alignItems: "center",
               justifyContent: "center",
-              paddingHorizontal: 4,
               borderWidth: 2,
               borderColor: colors.screen,
             }}
@@ -159,6 +212,8 @@ const OnlineOrderEdgeTab: React.FC = () => {
                 color: "#ffffff",
                 fontSize: Math.round(11 * uiScale),
                 fontWeight: "700",
+                textAlign: "center",
+                includeFontPadding: false,
               }}
             >
               {unseenCount > 99 ? "99+" : unseenCount}
@@ -167,6 +222,7 @@ const OnlineOrderEdgeTab: React.FC = () => {
         )}
       </Pressable>
     </Animated.View>
+    </GestureDetector>
   );
 };
 

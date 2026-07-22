@@ -34,6 +34,11 @@ function formatTime(iso: string | null): string {
   return `${h}:${m.toString().padStart(2, "0")} ${ampm}`;
 }
 
+// Matches a UUID anywhere in the string — table labels sourced from bad
+// upstream data can be a bare UUID or carry one embedded ("Table <uuid>").
+const UUID_RE =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
 function sourceLabel(
   deliveryPlatform: string | null | undefined,
   orderType: string | null | undefined,
@@ -42,7 +47,12 @@ function sourceLabel(
   // QR dine-in orders carry the table label (website sets table_number =
   // table_label → transformed to service_location_name). order_type can't tell
   // them apart — it collapses to 'takeout' — so key on the label's presence.
-  if (tableLabel) return `${tableLabel} · QR`;
+  // Guard against an unlabeled floor-plan table whose "name" is a raw UUID
+  // (bad upstream data) — never surface that to staff.
+  const cleanTableLabel =
+    tableLabel && !UUID_RE.test(tableLabel.trim()) ? tableLabel : null;
+  if (cleanTableLabel) return `Table ${cleanTableLabel} · QR`;
+  if (tableLabel) return "Table · QR";
   if (deliveryPlatform) return deliveryPlatform;
   // Website storefront orders have no delivery platform.
   return orderType === "delivery" ? "Online · Delivery" : "Online";
@@ -171,13 +181,20 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
     ? order.items!.reduce((n, i) => n + (i.quantity || 0), 0)
     : (order._broadcastItemCount ?? 0);
   // Delivery-platform orders show the marketplace's own order number — that's
-  // what the driver/customer reference. Dexa numbers only for first-party orders.
-  const dexaNumber = order.display_number || order.order_number || order.id;
-  const label = order.platform_order_number
-    ? order.platform_order_number
-    : dexaNumber.startsWith("#")
-      ? dexaNumber
-      : `#${dexaNumber}`;
+  // what the driver/customer reference. Dexa numbers only for first-party
+  // orders. Never surface a raw UUID — that's an internal key, not a
+  // human-facing reference; if no real number exists yet, show nothing.
+  const clean = (v?: string | null) =>
+    v && !UUID_RE.test(v) ? v : null;
+  const dexaNumber = clean(order.display_number) || clean(order.order_number);
+  const platformNumber = clean(order.platform_order_number);
+  const label = platformNumber
+    ? platformNumber
+    : dexaNumber
+      ? dexaNumber.startsWith("#")
+        ? dexaNumber
+        : `#${dexaNumber}`
+      : null;
   const total = order.total_amount ?? 0;
   const canCancel = variant !== "done"; // New + In Kitchen + Ready
   // Mark-ready only for delivery-platform (OrderOut) orders in the kitchen lane —
@@ -219,15 +236,29 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
     </View>
   ) : null;
 
+  const variantAccent =
+    variant === "kitchen"
+      ? "#ef4444"
+      : variant === "ready"
+        ? colors.success
+        : colors.teal;
+
   return (
     <View
       style={{
         backgroundColor: colors.card,
         padding: s(16),
-        borderRadius: s(16),
+        borderRadius: s(18),
         borderWidth: 1,
         borderColor: colors.border,
+        borderLeftWidth: s(3),
+        borderLeftColor: variantAccent,
         width: "100%",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 2,
       }}
     >
       {/* Header */}
@@ -238,70 +269,92 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
           alignItems: "center",
         }}
       >
-        <Text style={{ fontSize: s(14), color: colors.label }}>
-          Items: {itemCount}
-        </Text>
-        <Text style={{ fontSize: s(14), color: colors.label }}>
+        <View
+          style={{
+            paddingHorizontal: s(8),
+            paddingVertical: s(3),
+            borderRadius: s(7),
+            backgroundColor: colors.screen,
+          }}
+        >
+          <Text
+            style={{ fontSize: s(12), fontWeight: "600", color: colors.label }}
+          >
+            {itemCount} item{itemCount === 1 ? "" : "s"}
+          </Text>
+        </View>
+        <Text style={{ fontSize: s(12), color: colors.muted }}>
           {formatTime(order.opened_at)}
         </Text>
       </View>
 
       {/* Body */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          marginVertical: s(12),
-        }}
-      >
-        <View style={{ flex: 1 }}>
+      <View style={{ marginVertical: s(12) }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+          }}
+        >
           <Text
             style={{
-              fontSize: s(16),
+              fontSize: s(18),
               fontWeight: "700",
               color: colors.heading,
+              flex: 1,
+              marginRight: s(8),
             }}
-            numberOfLines={1}
-            ellipsizeMode="middle"
-          >
-            {label}
-          </Text>
-          <Text
-            style={{ fontSize: s(14), color: colors.label }}
             numberOfLines={1}
           >
             {order.customer_name || "Guest"}
           </Text>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              marginTop: s(4),
-              gap: s(6),
-            }}
+          <Text
+            style={{ fontSize: s(20), fontWeight: "700", color: colors.heading }}
           >
-            <DeliveryPlatformBadge
-              deliveryPlatform={order.delivery_platform}
-              orderSource={order.order_source}
-              size="sm"
-            />
-            <Text
-              style={{ fontSize: s(12), color: colors.muted, flexShrink: 1 }}
-              numberOfLines={1}
-            >
-              {sourceLabel(
-                order.delivery_platform,
-                order.order_type,
-                order.service_location_name,
-              )}
-            </Text>
-          </View>
+            ${total.toFixed(2)}
+          </Text>
         </View>
-        <Text
-          style={{ fontSize: s(24), fontWeight: "700", color: colors.heading }}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginTop: s(6),
+            gap: s(6),
+          }}
         >
-          ${total.toFixed(2)}
-        </Text>
+          <DeliveryPlatformBadge
+            deliveryPlatform={order.delivery_platform}
+            orderSource={order.order_source}
+            size="sm"
+          />
+          <Text
+            style={{ fontSize: s(12), color: colors.muted, flexShrink: 1 }}
+            numberOfLines={1}
+          >
+            {sourceLabel(
+              order.delivery_platform,
+              order.order_type,
+              order.service_location_name,
+            )}
+          </Text>
+          {label ? (
+            <>
+              <Text style={{ fontSize: s(12), color: colors.muted }}>·</Text>
+              <Text
+                style={{
+                  fontSize: s(12),
+                  color: colors.muted,
+                  fontWeight: "600",
+                }}
+                numberOfLines={1}
+                ellipsizeMode="middle"
+              >
+                {label}
+              </Text>
+            </>
+          ) : null}
+        </View>
       </View>
 
       {/* Item preview — first 3 + overflow */}
@@ -350,19 +403,27 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
             <TouchableOpacity
               onPress={onDecline}
               disabled={submitting !== null}
+              activeOpacity={0.7}
               style={{
                 flex: 1,
-                paddingVertical: s(10),
+                paddingVertical: s(12),
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: s(12),
+                borderRadius: s(14),
                 alignItems: "center",
+                backgroundColor: colors.screen,
               }}
             >
               {submitting === "decline" ? (
                 <ActivityIndicator color={colors.label} />
               ) : (
-                <Text style={{ fontWeight: "700", color: colors.label }}>
+                <Text
+                  style={{
+                    fontWeight: "700",
+                    color: colors.label,
+                    fontSize: s(14),
+                  }}
+                >
                   Decline
                 </Text>
               )}
@@ -370,18 +431,30 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
             <TouchableOpacity
               onPress={onAccept}
               disabled={submitting !== null}
+              activeOpacity={0.85}
               style={{
-                flex: 1,
-                paddingVertical: s(10),
-                borderRadius: s(12),
+                flex: 1.4,
+                paddingVertical: s(12),
+                borderRadius: s(14),
                 alignItems: "center",
                 backgroundColor: colors.teal,
+                shadowColor: colors.teal,
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.3,
+                shadowRadius: 6,
+                elevation: 3,
               }}
             >
               {submitting === "accept" ? (
                 <ActivityIndicator color={colors.onSolid} />
               ) : (
-                <Text style={{ fontWeight: "700", color: colors.onSolid }}>
+                <Text
+                  style={{
+                    fontWeight: "700",
+                    color: colors.onSolid,
+                    fontSize: s(14),
+                  }}
+                >
                   Accept
                 </Text>
               )}
@@ -512,7 +585,7 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
 
       <CancelOnlineOrderDialog
         isOpen={showCancel}
-        orderLabel={String(label)}
+        orderLabel={label ?? (order.customer_name || "Guest")}
         platformLabel={order.delivery_platform}
         onConfirm={onCancelConfirm}
         onCancel={() => setShowCancel(false)}
@@ -520,7 +593,7 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
 
       <MarkOrderReadyDialog
         isOpen={showMarkReady}
-        orderLabel={String(label)}
+        orderLabel={label ?? (order.customer_name || "Guest")}
         platformLabel={order.delivery_platform}
         onConfirm={onMarkReadyConfirm}
         onCancel={() => setShowMarkReady(false)}

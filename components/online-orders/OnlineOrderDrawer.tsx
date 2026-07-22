@@ -9,7 +9,7 @@ import {
   useOnlineOrderDrawerStore,
 } from "@/stores/useOnlineOrderDrawerStore";
 import { router, usePathname } from "expo-router";
-import { LayoutGrid, X } from "lucide-react-native";
+import { LayoutGrid, ShoppingBag, X } from "lucide-react-native";
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
@@ -36,9 +36,9 @@ const SECTION_DEFS: {
   color: string;
   variant: OnlineColumnVariant;
 }[] = [
-  { key: "new", title: "New Orders", color: "#3b82f6", variant: "new" },
+  { key: "new", title: "New Orders", color: String(colors.teal), variant: "new" },
   { key: "kitchen", title: "In Kitchen", color: "#ef4444", variant: "kitchen" },
-  { key: "ready", title: "Ready", color: "#a855f7", variant: "ready" },
+  { key: "ready", title: "Ready", color: "#22c55e", variant: "ready" },
 ];
 
 type DrawerSection = (typeof SECTION_DEFS)[number] & { data: string[] };
@@ -181,10 +181,13 @@ const OnlineOrderDrawer: React.FC<OnlineOrderDrawerProps> = ({
             backgroundColor: colors.panel,
             borderLeftWidth: 1,
             borderLeftColor: colors.border,
+            borderTopLeftRadius: 20,
+            borderBottomLeftRadius: 20,
+            overflow: "hidden",
             shadowColor: "#000",
             shadowOffset: { width: -4, height: 0 },
             shadowOpacity: 0.35,
-            shadowRadius: 12,
+            shadowRadius: 16,
             elevation: 16,
           },
           panelStyle,
@@ -204,15 +207,34 @@ const OnlineOrderDrawer: React.FC<OnlineOrderDrawerProps> = ({
                 borderBottomColor: colors.border,
               }}
             >
-              <Text
-                style={{
-                  fontSize: Math.round(20 * uiScale),
-                  fontWeight: "700",
-                  color: colors.heading,
-                }}
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: Math.round(10 * uiScale) }}
               >
-                Online Orders
-              </Text>
+                <View
+                  style={{
+                    width: Math.round(34 * uiScale),
+                    height: Math.round(34 * uiScale),
+                    borderRadius: Math.round(11 * uiScale),
+                    backgroundColor: colors.teal + "1A",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <ShoppingBag
+                    size={Math.round(18 * uiScale)}
+                    color={colors.teal}
+                  />
+                </View>
+                <Text
+                  style={{
+                    fontSize: Math.round(20 * uiScale),
+                    fontWeight: "700",
+                    color: colors.heading,
+                  }}
+                >
+                  Online Orders
+                </Text>
+              </View>
               <View
                 style={{
                   flexDirection: "row",
@@ -332,15 +354,29 @@ const OnlineOrderDrawer: React.FC<OnlineOrderDrawerProps> = ({
                     >
                       {(section as DrawerSection).title}
                     </Text>
-                    <Text
+                    <View
                       style={{
-                        fontSize: Math.round(14 * uiScale),
-                        fontWeight: "600",
-                        color: colors.muted,
+                        minWidth: Math.round(22 * uiScale),
+                        paddingHorizontal: Math.round(6 * uiScale),
+                        height: Math.round(20 * uiScale),
+                        borderRadius: Math.round(10 * uiScale),
+                        backgroundColor:
+                          (section as DrawerSection).color + "1F",
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
-                      {(section as DrawerSection).data.length}
-                    </Text>
+                      <Text
+                        style={{
+                          fontSize: Math.round(12 * uiScale),
+                          fontWeight: "700",
+                          color: (section as DrawerSection).color,
+                          textAlign: "center",
+                        }}
+                      >
+                        {(section as DrawerSection).data.length}
+                      </Text>
+                    </View>
                   </View>
                 )}
                 renderItem={({ item, section }) => (

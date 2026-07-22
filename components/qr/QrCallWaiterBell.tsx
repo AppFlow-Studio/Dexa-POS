@@ -7,6 +7,7 @@
  * orders channel), so resolving on either surface clears both.
  *
  * Age turns amber after 3 minutes (proposed threshold) — never red.
+ * Uses the app's standard neutral/teal palette — no QR-blue accent here.
  */
 
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
@@ -26,7 +27,6 @@ import {
   View,
 } from "react-native";
 
-const QR_BRAND_BLUE = "#0C4FD1";
 const AMBER_AFTER_MS = 3 * 60 * 1000;
 const POLL_MS = 30_000;
 
@@ -101,31 +101,37 @@ const QrCallWaiterBell: React.FC = () => {
       <TouchableOpacity
         onPress={() => setSheetOpen(true)}
         accessibilityLabel={`${openCount} guest call-server alert${openCount === 1 ? "" : "s"}`}
+        className="rounded-lg p-3"
         style={{
-          padding: s(8),
-          borderRadius: s(10),
           borderWidth: 1,
-          borderColor: QR_BRAND_BLUE + "55",
-          backgroundColor: QR_BRAND_BLUE + "14",
+          borderColor: colors.border,
+          backgroundColor: colors.panel,
         }}
       >
-        <Bell size={s(16)} color={QR_BRAND_BLUE} />
+        <Bell size={s(14)} color={colors.label} />
         <View
           style={{
             position: "absolute",
-            top: -s(5),
-            right: -s(5),
-            minWidth: s(17),
+            top: -s(6),
+            right: -s(6),
+            width: openCount > 9 ? s(22) : s(17),
             height: s(17),
             borderRadius: s(9),
-            backgroundColor: QR_BRAND_BLUE,
+            backgroundColor: colors.warning,
             alignItems: "center",
             justifyContent: "center",
-            paddingHorizontal: s(3),
           }}
         >
-          <Text style={{ color: "#fff", fontSize: s(10), fontWeight: "700" }}>
-            {openCount}
+          <Text
+            style={{
+              color: "#fff",
+              fontSize: s(9),
+              fontWeight: "800",
+              textAlign: "center",
+              includeFontPadding: false,
+            }}
+          >
+            {openCount > 99 ? "99+" : openCount}
           </Text>
         </View>
       </TouchableOpacity>
@@ -162,7 +168,7 @@ const QrCallWaiterBell: React.FC = () => {
                 gap: s(10),
               }}
             >
-              <Bell size={s(18)} color={QR_BRAND_BLUE} />
+              <Bell size={s(18)} color={colors.label} />
               <Text
                 style={{
                   flex: 1,
@@ -234,12 +240,12 @@ const QrCallWaiterBell: React.FC = () => {
                         paddingVertical: s(9),
                         paddingHorizontal: s(14),
                         borderRadius: s(10),
-                        backgroundColor: QR_BRAND_BLUE,
+                        backgroundColor: colors.teal,
                         opacity: resolvingId === alert.id ? 0.5 : 1,
                       }}
                     >
-                      <Check size={s(14)} color="#fff" />
-                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: s(12) }}>
+                      <Check size={s(14)} color={colors.onSolid} />
+                      <Text style={{ color: colors.onSolid, fontWeight: "700", fontSize: s(12) }}>
                         Resolve
                       </Text>
                     </TouchableOpacity>
