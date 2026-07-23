@@ -266,6 +266,22 @@ describe("ValorService request framing by transport", () => {
     expect(req.startsWith("<STX>")).toBe(false);
     expect(req.startsWith("{")).toBe(true);
   });
+
+  it("does NOT abort with 'No ACK' over USB when the terminal skips the JSON handshake", async () => {
+    // Over USB the VP terminal goes live for card capture and emits ONLY the
+    // final frame (no JSON ACK / Payload-Received). The 5s ACK hard-fail must be
+    // disabled on USB so the sale waits for the final response instead of
+    // aborting while the pinpad is still ready.
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "0", RRN: "1", TRAN_NO: "1", MASKED_PAN: "4111 **** **** 1111" }));
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect({ ...CONFIG, connectionType: "usb" });
+    const res = await svc.processSale({ amount: 1715, referenceId: "000003" });
+    expect(res.success).toBe(true);
+  });
 });
 
 describe("ValorService.terminalQuery — real terminal (ACK-only)", () => {

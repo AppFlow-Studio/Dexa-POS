@@ -490,7 +490,6 @@ export class ValorService {
       return Promise.reject(new ValorCommandError("Transport is not open", "connect", null));
     }
     const referenceId = String(body.REQ_TXN_ID ?? "");
-    const requireAck = opts.requireAck ?? true;
     const correlate = opts.correlate ?? true;
     const reader = new ValorFrameReader();
 
@@ -513,6 +512,16 @@ export class ValorService {
     const isUsb = this._config?.connectionType === "usb";
     const toWire = (b: ValorRequestBody): string =>
       isUsb ? `<STX> ${encodeValorFrame(b)} <ETX>` : encodeValorFrame(b);
+
+    // ACK-required early timeout is TCP-only. Over USB the VP terminal accepts
+    // the request and goes straight to card capture WITHOUT emitting the
+    // recognizable JSON `{"MSG":"ACK"}` / "Payload Request Received" handshake
+    // within the 5s window (it sends a bare 0x06 our brace-depth reader drops,
+    // or nothing until the final frame). The terminal being live for card entry
+    // proves the request landed, so the 5s "No ACK" hard-fail is a false abort
+    // there — wait for the final response (sale window) instead. `resolveOnAck`
+    // (health ping) still resolves immediately if a JSON ACK does arrive.
+    const requireAck = isUsb ? false : (opts.requireAck ?? true);
 
     return new Promise<ValorRawResponse>((resolve, reject) => {
       let stan: string | null = null;
