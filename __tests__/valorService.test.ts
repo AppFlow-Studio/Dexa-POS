@@ -120,17 +120,34 @@ describe("ValorService recovery — TRAN_MODE 90", () => {
 });
 
 describe("ValorService.settleBatch — TRAN_MODE 0 / TRAN_CODE 9", () => {
-  it("returns outcome 'settled' with batchNo on STATE 0", async () => {
+  it("parses the confirmed VP550 settlement contract on STATE 0", async () => {
+    // Real VP550 capture (2026-07-23): BATCH_NO is a JSON number; AMOUNT is cents;
+    // EPI/SERIAL_NO identify the terminal; TOTAL_TRAN_COUNT is the batch count.
     const scripted = new ScriptedTransport();
     scripted.onWrite = (_body, emit) => {
-      emit(encodeValorFrame({ STATE: "0", BATCH_NO: "231", MSG: "Batch Settled" }));
+      emit(
+        encodeValorFrame({
+          STATE: "0",
+          EPI: "2319984097",
+          SERIAL_NO: "NCC804380219",
+          CARD_TYPE: "",
+          AMOUNT: "623",
+          DATE: "23072026 15:35:40",
+          BATCH_NO: 3,
+          TOTAL_TRAN_COUNT: "1",
+        }),
+      );
     };
     mockTransportImpl.current = () => scripted;
     const svc = newService();
     await svc.connect(CONFIG);
     const res = await svc.settleBatch({ referenceId: "SET0001" });
     expect(res.outcome).toBe("settled");
-    expect(res.batchNo).toBe("231");
+    expect(res.batchNo).toBe("3"); // number → stringified
+    expect(res.totalTranCount).toBe(1);
+    expect(res.settledAmount).toBe(623);
+    expect(res.epi).toBe("2319984097");
+    expect(res.serialNo).toBe("NCC804380219");
     // sends the FETCH + SETTLEMENT command
     const req = scripted.raws.find((r) => r.includes('"TRAN_CODE":"9"'));
     expect(req).toBeTruthy();

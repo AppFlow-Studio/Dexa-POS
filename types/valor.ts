@@ -284,15 +284,19 @@ export interface ValorSettlementParams {
  */
 export interface ValorSettlementResult {
   outcome: "settled" | "declined" | "indeterminate";
-  /** Terminal batch number, when the response carried one. */
+  /** BATCH_NO — the terminal's closed batch number (arrives as a JSON number; stringified). */
   batchNo?: string;
-  /** Best-effort summary (cents / counts) — metadata only, field names locked by live capture. */
-  salesCount?: number;
-  refundCount?: number;
-  grossAmount?: number;
-  tipAmount?: number;
-  netAmount?: number;
-  /** Untouched terminal response — passed to finalize_valor_settlement. */
+  /** TOTAL_TRAN_COUNT — count of transactions the terminal closed; cross-check vs the DB snapshot. */
+  totalTranCount?: number;
+  /** AMOUNT — terminal-reported total settled amount in CENTS. Metadata only, never authoritative. */
+  settledAmount?: number;
+  /**
+   * EPI / SERIAL_NO — the settlement response DOES carry terminal identity (unlike the 96 health
+   * ping, which only ACKs over USB). Cross-check against payment_terminals before marking settled.
+   */
+  epi?: string;
+  serialNo?: string;
+  /** Untouched terminal response — passed verbatim to finalize_valor_settlement. */
   raw?: ValorRawResponse;
   terminalResponse?: Record<string, unknown>;
   error?: string;

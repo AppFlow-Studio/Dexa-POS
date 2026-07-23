@@ -450,13 +450,20 @@ export class ValorService {
 
   private _interpretSettlementFinal(final: ValorRawResponse): ValorSettlementResult {
     const state = String(final.STATE ?? "");
+    // Confirmed VP550 settlement contract (live capture 2026-07-23): STATE, EPI,
+    // SERIAL_NO, AMOUNT (cents), BATCH_NO (number), TOTAL_TRAN_COUNT. No gross/tip/
+    // refund split or per-host lines — finalize computes those from the pinned rows
+    // and uses AMOUNT/TOTAL_TRAN_COUNT only as a cross-check.
+    const rawCount = (final as Record<string, unknown>).TOTAL_TRAN_COUNT;
+    const count = rawCount != null ? parseInt(String(rawCount), 10) : NaN;
     const base = {
       raw: final,
       terminalResponse: buildValorTerminalResponse(final, this._config?.terminalId),
       batchNo: final.BATCH_NO != null ? String(final.BATCH_NO) : undefined,
-      // Summary totals are best-effort metadata; their exact keys are locked by
-      // the Wave-0 live capture. finalize_valor_settlement never marks payments
-      // settled off these — only off STATE + pinned membership.
+      totalTranCount: Number.isFinite(count) ? count : undefined,
+      settledAmount: final.AMOUNT != null ? valorAmountToCents(String(final.AMOUNT)) : undefined,
+      epi: final.EPI != null ? String(final.EPI) : undefined,
+      serialNo: final.SERIAL_NO != null ? String(final.SERIAL_NO) : undefined,
     };
     if (state === VALOR_SUCCESS_STATE) return { outcome: "settled", ...base };
     if (state === VALOR_FAILED_STATE) {
