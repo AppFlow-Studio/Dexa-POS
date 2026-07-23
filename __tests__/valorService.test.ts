@@ -158,12 +158,15 @@ class ScriptedTransport implements ITerminalTransport {
   write(data: string) {
     this.raws.push(data);
     let body: any = null;
-    let inner = data;
-    const s = inner.lastIndexOf(VALOR_STX);
-    if (s !== -1) inner = inner.slice(s + 1);
-    const e = inner.indexOf(VALOR_ETX);
-    if (e !== -1) inner = inner.slice(0, e);
-    try { body = JSON.parse(inner); } catch { /* trailing ACK */ }
+    // Strip framing to recover the JSON payload. Handles both the raw
+    // control-byte form (0x02/0x03) and the literal "<STX>"/"<ETX>" text
+    // markers the VP USB path now uses — the real terminal likewise strips
+    // its framing before parsing. Extract the {...} object by brace bounds.
+    const open = data.indexOf("{");
+    const close = data.lastIndexOf("}");
+    if (open !== -1 && close > open) {
+      try { body = JSON.parse(data.slice(open, close + 1)); } catch { /* trailing ACK */ }
+    }
     // Ignore the POS trailing ACK (MSG:ACK, no TRAN_MODE).
     if (body && body.TRAN_MODE != null) {
       const emit = (frame: string) => { for (const cb of [...this._data]) cb(frame); };
@@ -234,7 +237,10 @@ describe("ValorService request framing by transport", () => {
     emit(encodeValorFrame({ STATE: "0", RRN: "1", TRAN_NO: "1", MASKED_PAN: "4111 **** **** 1111" }));
   };
 
-  it("wraps the request in STX/ETX over USB", async () => {
+  it("wraps the request in LITERAL <STX>/<ETX> text markers over USB", async () => {
+    // The VP USB semi-integration sample code writes the 5-char ASCII text
+    // "<STX>"/"<ETX>" (with surrounding spaces), NOT the 0x02/0x03 control bytes.
+    // Raw control bytes reproduce the "always ACK, never processed" failure.
     const scripted = new ScriptedTransport();
     scripted.onWrite = saleReplies;
     mockTransportImpl.current = () => scripted;
@@ -242,8 +248,11 @@ describe("ValorService request framing by transport", () => {
     await svc.connect({ ...CONFIG, connectionType: "usb" });
     await svc.processSale({ amount: 1715, referenceId: "000001" });
     const req = scripted.raws[0];
-    expect(req.startsWith(VALOR_STX)).toBe(true);
-    expect(req.endsWith(VALOR_ETX)).toBe(true);
+    expect(req.startsWith("<STX> ")).toBe(true);
+    expect(req.endsWith(" <ETX>")).toBe(true);
+    // must NOT contain the raw control bytes
+    expect(req.includes(VALOR_STX)).toBe(false);
+    expect(req.includes(VALOR_ETX)).toBe(false);
   });
 
   it("sends bare JSON over TCP", async () => {
@@ -254,7 +263,7 @@ describe("ValorService request framing by transport", () => {
     await svc.connect({ ...CONFIG, connectionType: "local_socket" });
     await svc.processSale({ amount: 1715, referenceId: "000002" });
     const req = scripted.raws[0];
-    expect(req.startsWith(VALOR_STX)).toBe(false);
+    expect(req.startsWith("<STX>")).toBe(false);
     expect(req.startsWith("{")).toBe(true);
   });
 });

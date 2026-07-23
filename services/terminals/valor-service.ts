@@ -42,8 +42,6 @@ import {
   VALOR_CANCEL_TIMEOUT_MS,
   VALOR_STATUS_TIMEOUT_MS,
   VALOR_CONNECT_TIMEOUT_MS,
-  VALOR_STX,
-  VALOR_ETX,
   type ValorConnectionConfig,
   type ValorRawResponse,
   type ValorRequestBody,
@@ -499,17 +497,22 @@ export class ValorService {
     // Framing is transport-specific:
     //  - TCP: BARE JSON. The VP terminal ignores STX/ETX-framed TCP requests
     //    (ACK'd but the txn never starts) — verified on-device.
-    //  - USB CDC serial: STX + JSON + ETX, per Valor's USB semi-integration
-    //    guide ("all communication is framed with STX/ETX"). Serial has no
-    //    packet boundaries, so the terminal needs the delimiters to know a
-    //    message ended. The terminal must ALSO be in "USB Listening mode"
-    //    (home screen → Star icon → Start USB) or it won't answer any command —
-    //    that's why USB auto-connect (a presence check) shows online but Test
-    //    (a real command) fails.
-    // Responses are read identically either way (ValorFrameReader ignores STX/ETX).
+    //  - USB CDC serial: LITERAL text markers "<STX> " + JSON + " <ETX>", matching
+    //    Valor's USB semi-integration sample code VERBATIM. The samples write the
+    //    5-char ASCII text "<STX>"/"<ETX>" (with surrounding spaces) via
+    //    `ser.write(payload.encode())` / `port.write(...)` — NOT the 0x02/0x03
+    //    control bytes. Sending raw control bytes reproduces the same failure as
+    //    STX/ETX-framed TCP: the terminal boundary-detects enough to ACK but its
+    //    dispatcher can't parse the payload, so it never prompts for card
+    //    ("always ACK, never processed"). The terminal must ALSO be in "USB
+    //    Listening mode" (Parameter Download → USB Listening screen, or Start USB)
+    //    and run app 3.0.44+/1.0.36RT+ or it won't answer any command.
+    // Responses are read identically either way (ValorFrameReader scans by
+    // brace-depth and ignores anything — control bytes or literal text — outside
+    // the JSON object).
     const isUsb = this._config?.connectionType === "usb";
     const toWire = (b: ValorRequestBody): string =>
-      isUsb ? VALOR_STX + encodeValorFrame(b) + VALOR_ETX : encodeValorFrame(b);
+      isUsb ? `<STX> ${encodeValorFrame(b)} <ETX>` : encodeValorFrame(b);
 
     return new Promise<ValorRawResponse>((resolve, reject) => {
       let stan: string | null = null;
