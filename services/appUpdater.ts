@@ -40,6 +40,16 @@ function isValidManifest(obj: unknown): obj is VersionManifest {
   );
 }
 
+function compareVersionStrings(a: string, b: string): number {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
 export async function checkForNativeUpdate(): Promise<VersionManifest | null> {
   if (__DEV__) return null;
   try {
@@ -58,8 +68,8 @@ export async function checkForNativeUpdate(): Promise<VersionManifest | null> {
     const raw: unknown = await res.json();
     if (!isValidManifest(raw)) return null;
 
-    const currentBuild = Number(Application.nativeBuildVersion ?? 0);
-    return raw.buildNumber > currentBuild ? raw : null;
+    const currentVersion = Application.nativeApplicationVersion ?? '0.0.0';
+    return compareVersionStrings(raw.version, currentVersion) > 0 ? raw : null;
   } catch {
     return null; // offline or malformed — fail silently
   }
