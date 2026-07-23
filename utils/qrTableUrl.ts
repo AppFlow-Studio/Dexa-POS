@@ -30,6 +30,15 @@ export function buildStoreUrl(input: {
   slug?: string | null;
   customDomain?: string | null;
 }): string {
+  const slug = (input.slug || "").trim();
+
+  // Dev/staging override wins over everything — including custom domains —
+  // so a dev POS never previews/prints QR tents pointing at production.
+  if (QR_STORE_BASE_URL_OVERRIDE) {
+    if (!slug) return "";
+    return `${normalizeBaseUrl(QR_STORE_BASE_URL_OVERRIDE)}/sites/${slug}`;
+  }
+
   const customDomain = (input.customDomain || "").trim();
   if (customDomain) {
     if (/^https?:\/\//i.test(customDomain)) {
@@ -38,12 +47,7 @@ export function buildStoreUrl(input: {
     return `https://${customDomain}`;
   }
 
-  const slug = (input.slug || "").trim();
   if (!slug) return "";
-
-  if (QR_STORE_BASE_URL_OVERRIDE) {
-    return `${normalizeBaseUrl(QR_STORE_BASE_URL_OVERRIDE)}/sites/${slug}`;
-  }
 
   return `https://${slug}.${QR_ROOT_DOMAIN}`;
 }

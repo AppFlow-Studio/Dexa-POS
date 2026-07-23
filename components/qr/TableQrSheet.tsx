@@ -33,7 +33,7 @@ import {
   ScanLine,
   X,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -76,14 +76,21 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
 
   const locationId = selectedStore?.id ?? null;
 
+  // Guards stale async responses: each load() bumps this id, and only the
+  // latest request may commit state. Prevents a slow response for table A
+  // rendering/printing under table B after a quick close-and-reopen.
+  const loadIdRef = useRef(0);
+
   const load = useCallback(async () => {
     if (!locationId) return;
+    const loadId = ++loadIdRef.current;
     setLoading(true);
     setLoadError(null);
     const [codeRes, cfgRes] = await Promise.all([
       FloorPlanService.getActiveTableQrCode(client, floorPlanObjectId),
       FloorPlanService.getQrStoreConfig(client, locationId),
     ]);
+    if (loadId !== loadIdRef.current) return; // superseded by a newer load
     if (codeRes.error)
       setLoadError(codeRes.error.message ?? "Failed to load QR state");
     else setActiveCode(codeRes.data);
@@ -95,11 +102,18 @@ const TableQrSheet: React.FC<TableQrSheetProps> = ({
 
   useEffect(() => {
     if (visible) {
+      // Reset table-scoped state so a previous table's code can't flash or
+      // be acted on while the new table's data loads.
+      loadIdRef.current++; // invalidate any in-flight load for the old table
+      setActiveCode(null);
+      setStoreConfig(null);
       setConfirmKind(null);
       setPinFor(null);
       load();
+    } else {
+      loadIdRef.current++; // sheet closed — drop any in-flight response
     }
-  }, [visible, load]);
+  }, [visible, floorPlanObjectId, load]);
 
   // Store-level gate: the guest scan route rejects unless all of these hold.
   const storeGateReason = !storeConfig

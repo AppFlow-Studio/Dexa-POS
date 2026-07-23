@@ -79,9 +79,13 @@ export function registerSoundService(
   activeInstance = service;
 }
 
-/** Ring the "bell" preset for a QR guest call-server alert. */
+/**
+ * Ring the "bell" preset for a QR guest call-server alert.
+ * Honors the active sound config (master enabled flag + cooldown) — unlike
+ * playPreview, this must never ring when the merchant has sounds disabled.
+ */
 export function playQrGuestAlertSound(): void {
-  activeInstance?.playPreview("bell");
+  activeInstance?.playAlert("bell");
 }
 
 // ─── Service ──────────────────────────────────────────────────────
@@ -134,6 +138,20 @@ class KDSSoundService {
   playPreview(preset: SoundPreset): void {
     if (!this.initialized) return;
     this._playPreset(preset);
+  }
+
+  /**
+   * Play a specific preset as a real alert: respects the master enabled
+   * flag and the shared cooldown (unlike playPreview, which is test-only).
+   */
+  playAlert(preset: SoundPreset): void {
+    if (!this.config.enabled || !this.initialized) return;
+
+    const now = Date.now();
+    if (now - this.lastPlayTime < this.COOLDOWN_MS) return;
+
+    this._playPreset(preset);
+    this.lastPlayTime = now;
   }
 
   private _playPreset(preset: SoundPreset): void {
