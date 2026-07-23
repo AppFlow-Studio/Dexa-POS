@@ -3251,6 +3251,37 @@ const DevicesConnectionsScreen = ({
                                   : 'DEJAVOO'}
                             </Text>
                           </View>
+                          {(currentTerminal.terminal_type === 'castles' ||
+                            currentTerminal.terminal_type === 'valor') && (
+                            <View
+                              style={{
+                                paddingHorizontal: s(6),
+                                paddingVertical: s(2),
+                                borderRadius: s(4),
+                                backgroundColor: colors.teal + '20',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: s(3)
+                              }}
+                            >
+                              {currentTerminal.connection_type === 'usb' ? (
+                                <Usb size={s(9)} color={colors.teal} />
+                              ) : (
+                                <Wifi size={s(9)} color={colors.teal} />
+                              )}
+                              <Text
+                                style={{
+                                  fontSize: s(9),
+                                  fontWeight: '700',
+                                  color: colors.teal
+                                }}
+                              >
+                                {currentTerminal.connection_type === 'usb'
+                                  ? 'USB'
+                                  : 'WiFi'}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                         <View style={{ marginTop: s(4), gap: s(2) }}>
                           {currentTerminal.terminal_type === 'castles' ||
@@ -3270,7 +3301,9 @@ const DevicesConnectionsScreen = ({
                                     width: s(36)
                                   }}
                                 >
-                                  Addr:
+                                  {currentTerminal.connection_type === 'usb'
+                                    ? 'Conn:'
+                                    : 'Addr:'}
                                 </Text>
                                 <Text
                                   style={{
@@ -3280,10 +3313,13 @@ const DevicesConnectionsScreen = ({
                                   }}
                                   selectable
                                 >
-                                  {currentTerminal.ip_address ?? '—'}
-                                  {currentTerminal.ip_address
-                                    ? `:${currentTerminal.port || (currentTerminal.terminal_type === 'valor' ? 5000 : 8080)}`
-                                    : ''}
+                                  {currentTerminal.connection_type === 'usb'
+                                    ? 'USB (wired)'
+                                    : `${currentTerminal.ip_address ?? '—'}${
+                                        currentTerminal.ip_address
+                                          ? `:${currentTerminal.port || (currentTerminal.terminal_type === 'valor' ? 5000 : 8080)}`
+                                          : ''
+                                      }`}
                                 </Text>
                               </View>
                               {currentTerminal.terminal_type === 'valor' &&

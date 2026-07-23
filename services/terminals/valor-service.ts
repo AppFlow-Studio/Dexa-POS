@@ -42,6 +42,8 @@ import {
   VALOR_CANCEL_TIMEOUT_MS,
   VALOR_STATUS_TIMEOUT_MS,
   VALOR_CONNECT_TIMEOUT_MS,
+  VALOR_STX,
+  VALOR_ETX,
   type ValorConnectionConfig,
   type ValorRawResponse,
   type ValorRequestBody,
@@ -494,10 +496,20 @@ export class ValorService {
     const correlate = opts.correlate ?? true;
     const reader = new ValorFrameReader();
 
-    // Requests are BARE JSON on every transport. The VP terminal rejects
-    // STX/ETX-framed requests over BOTH TCP (ACK'd but txn never starts) and USB
-    // (no ACK at all). Responses are read the same way regardless
-    // (ValorFrameReader ignores STX/ETX if present).
+    // Framing is transport-specific:
+    //  - TCP: BARE JSON. The VP terminal ignores STX/ETX-framed TCP requests
+    //    (ACK'd but the txn never starts) — verified on-device.
+    //  - USB CDC serial: STX + JSON + ETX, per Valor's USB semi-integration
+    //    guide ("all communication is framed with STX/ETX"). Serial has no
+    //    packet boundaries, so the terminal needs the delimiters to know a
+    //    message ended. The terminal must ALSO be in "USB Listening mode"
+    //    (home screen → Star icon → Start USB) or it won't answer any command —
+    //    that's why USB auto-connect (a presence check) shows online but Test
+    //    (a real command) fails.
+    // Responses are read identically either way (ValorFrameReader ignores STX/ETX).
+    const isUsb = this._config?.connectionType === "usb";
+    const toWire = (b: ValorRequestBody): string =>
+      isUsb ? VALOR_STX + encodeValorFrame(b) + VALOR_ETX : encodeValorFrame(b);
 
     return new Promise<ValorRawResponse>((resolve, reject) => {
       let stan: string | null = null;
@@ -585,7 +597,7 @@ export class ValorService {
           const captured = stan;
           if (opts.sendTrailingAck) {
             transport
-              .write(encodeValorFrame({ STATE: "0", MSG: "ACK" }))
+              .write(toWire({ STATE: "0", MSG: "ACK" }))
               .catch(() => { /* best-effort trailing ACK */ });
           }
           done(() => resolve(frame));
@@ -612,7 +624,7 @@ export class ValorService {
       transport.onError(onError);
 
       // TEMP DIAGNOSTIC (Valor USB bring-up): log exactly what goes on the wire.
-      const _wire = encodeValorFrame(body);
+      const _wire = toWire(body);
       try {
         console.log(
           `[ValorService] RAW TX (${_wire.length}B): ` +
