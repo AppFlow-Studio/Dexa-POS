@@ -35,6 +35,7 @@ import {
   VALOR_DEFAULT_PORT,
   VALOR_CANCEL_PORT,
   VALOR_SUCCESS_STATE,
+  VALOR_FAILED_STATE,
   VALOR_CLEARED_STATE,
   VALOR_ACK_TIMEOUT_MS,
   VALOR_SALE_TIMEOUT_MS,
@@ -42,6 +43,8 @@ import {
   VALOR_CANCEL_TIMEOUT_MS,
   VALOR_STATUS_TIMEOUT_MS,
   VALOR_CONNECT_TIMEOUT_MS,
+  VALOR_SETTLEMENT_TIMEOUT_MS,
+  VALOR_SETTLEMENT_MUTEX_ACQUIRE_TIMEOUT_MS,
   type ValorConnectionConfig,
   type ValorRawResponse,
   type ValorRequestBody,
@@ -54,6 +57,8 @@ import {
   type ValorRefundParams,
   type ValorVoidParams,
   type ValorTipAdjustParams,
+  type ValorSettlementParams,
+  type ValorSettlementResult,
 } from "@/types/valor";
 
 const VALOR_MUTEX_ACQUIRE_TIMEOUT_MS = 60_000;
@@ -175,8 +180,11 @@ export class ValorService {
     await this._connectInner(this._config);
   }
 
-  private _runExclusive<T>(fn: () => Promise<T>): Promise<T> {
-    return withTimeout(this._mutex, VALOR_MUTEX_ACQUIRE_TIMEOUT_MS).runExclusive(fn);
+  private _runExclusive<T>(
+    fn: () => Promise<T>,
+    acquireTimeoutMs: number = VALOR_MUTEX_ACQUIRE_TIMEOUT_MS,
+  ): Promise<T> {
+    return withTimeout(this._mutex, acquireTimeoutMs).runExclusive(fn);
   }
 
   // ── Transaction commands ──
@@ -392,6 +400,75 @@ export class ValorService {
     } finally {
       try { transport.disconnect(); } catch { /* ignore */ }
     }
+  }
+
+  // ── Settlement / batch-out ──
+
+  /**
+   * Close the terminal's card batch (TRAN_MODE 0 FETCH + TRAN_CODE 9 SETTLEMENT).
+   * Contacts the acquirer host, so it runs on a long window and waits for the
+   * final frame (no card-entry ACK gate). Returns a 3-state outcome — the caller
+   * marks payments settled ONLY on `outcome === "settled"`.
+   *
+   * Settlement has no STAN, so there is no TRAN_MODE 90 re-query: any failure
+   * AFTER the request reached the wire is `indeterminate` (the terminal may have
+   * closed the batch) and must route to manual reconcile, never an auto-retry.
+   * Only a pre-dispatch failure (transport not open / write rejected → phase
+   * "connect", or a pre-dispatch mutex-acquire timeout) is a safe clean failure.
+   */
+  async settleBatch(params: ValorSettlementParams): Promise<ValorSettlementResult> {
+    const body: ValorRequestBody = {
+      TRAN_MODE: VALOR_TRAN_MODE.FETCH,
+      TRAN_CODE: VALOR_TRAN_CODE.SETTLEMENT,
+      REQ_TXN_ID: params.referenceId,
+      PAPER_RECEIPT: "0",
+    };
+    try {
+      const final = await this._runExclusive(async () => {
+        await this._ensureConnectedInner();
+        return this._sendOnTransport(this._transport!, body, {
+          finalTimeout: VALOR_SETTLEMENT_TIMEOUT_MS,
+          requireAck: false,
+          correlate: true,
+          sendTrailingAck: true,
+        });
+      }, VALOR_SETTLEMENT_MUTEX_ACQUIRE_TIMEOUT_MS);
+      return this._interpretSettlementFinal(final);
+    } catch (err) {
+      if (err instanceof ValorCommandError) {
+        // phase "connect" ⇒ nothing was dispatched (transport not open / write
+        // rejected) ⇒ safe clean failure. Any other phase ⇒ the settle command
+        // reached the wire; the terminal may have closed the batch ⇒ indeterminate.
+        return err.phase === "connect"
+          ? { outcome: "declined", error: err.message }
+          : { outcome: "indeterminate", error: err.message };
+      }
+      // Non-command errors (e.g. mutex-acquire timeout) fire BEFORE dispatch ⇒ safe.
+      return { outcome: "declined", error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  private _interpretSettlementFinal(final: ValorRawResponse): ValorSettlementResult {
+    const state = String(final.STATE ?? "");
+    const base = {
+      raw: final,
+      terminalResponse: buildValorTerminalResponse(final, this._config?.terminalId),
+      batchNo: final.BATCH_NO != null ? String(final.BATCH_NO) : undefined,
+      // Summary totals are best-effort metadata; their exact keys are locked by
+      // the Wave-0 live capture. finalize_valor_settlement never marks payments
+      // settled off these — only off STATE + pinned membership.
+    };
+    if (state === VALOR_SUCCESS_STATE) return { outcome: "settled", ...base };
+    if (state === VALOR_FAILED_STATE) {
+      return {
+        outcome: "declined",
+        error: final.ERROR_MSG ?? "Settlement declined",
+        errorCode: final.ERROR_CODE,
+        ...base,
+      };
+    }
+    // STATE "-2" or anything unrecognized ⇒ indeterminate (never a silent success).
+    return { outcome: "indeterminate", error: final.ERROR_MSG, errorCode: final.ERROR_CODE, ...base };
   }
 
   // ── Reversals / adjustments ──

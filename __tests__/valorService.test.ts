@@ -119,6 +119,74 @@ describe("ValorService recovery — TRAN_MODE 90", () => {
   });
 });
 
+describe("ValorService.settleBatch — TRAN_MODE 0 / TRAN_CODE 9", () => {
+  it("returns outcome 'settled' with batchNo on STATE 0", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "0", BATCH_NO: "231", MSG: "Batch Settled" }));
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.settleBatch({ referenceId: "SET0001" });
+    expect(res.outcome).toBe("settled");
+    expect(res.batchNo).toBe("231");
+    // sends the FETCH + SETTLEMENT command
+    const req = scripted.raws.find((r) => r.includes('"TRAN_CODE":"9"'));
+    expect(req).toBeTruthy();
+    expect(req!.includes('"TRAN_MODE":"0"')).toBe(true);
+  });
+
+  it("returns outcome 'declined' on STATE -1 (e.g. no open batch)", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "-1", ERROR_MSG: "No open batch" }));
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.settleBatch({ referenceId: "SET0002" });
+    expect(res.outcome).toBe("declined");
+    expect(res.error).toMatch(/no open batch/i);
+  });
+
+  it("returns outcome 'indeterminate' on an unrecognized STATE (-2)", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "-2", ERROR_MSG: "In progress" }));
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.settleBatch({ referenceId: "SET0003" });
+    expect(res.outcome).toBe("indeterminate");
+  });
+
+  it("returns 'indeterminate' when the socket drops AFTER the settle is dispatched", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = () => { scripted.fireClose(); };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.settleBatch({ referenceId: "SET0004" });
+    // dispatched then lost → the terminal may have closed the batch → never a clean decline
+    expect(res.outcome).toBe("indeterminate");
+  });
+
+  it("frames the settle request with literal <STX> markers over USB", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "0", BATCH_NO: "12" }));
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect({ ...CONFIG, connectionType: "usb" });
+    await svc.settleBatch({ referenceId: "SET0005" });
+    const req = scripted.raws.find((r) => r.includes('"TRAN_CODE":"9"'));
+    expect(req!.startsWith("<STX> ")).toBe(true);
+  });
+});
+
 describe("ValorService.cancelInFlight", () => {
   it("reports cleared when the terminal clears before card entry (TCP, port 5001)", async () => {
     const svc = newService();
@@ -202,6 +270,8 @@ class ScriptedTransport implements ITerminalTransport {
     }
     return Promise.resolve();
   }
+  /** Test helper: simulate the socket dropping mid-command. */
+  fireClose() { for (const cb of [...this._close]) cb(true); }
   onData(cb: (c: string) => void) { this._data.push(cb); }
   onError(cb: (e: Error) => void) { this._err.push(cb); }
   onClose(cb: (h: boolean) => void) { this._close.push(cb); }

@@ -270,6 +270,35 @@ export interface ValorRecoveryResult {
   terminalResponse?: Record<string, unknown>;
 }
 
+/** Batch-out / settlement (TRAN_MODE 0 FETCH + TRAN_CODE 9 SETTLEMENT). */
+export interface ValorSettlementParams {
+  /** Client transaction id (REQ_TXN_ID) for this settlement request. */
+  referenceId: string;
+}
+
+/**
+ * Settlement outcome is 3-state — the caller marks the batch's payments settled
+ * ONLY on `outcome === "settled"`. Settlement has no STAN, so a lost final frame
+ * after dispatch is `indeterminate` (route to manual reconcile), never a clean
+ * decline. Summary totals are best-effort metadata, never authoritative.
+ */
+export interface ValorSettlementResult {
+  outcome: "settled" | "declined" | "indeterminate";
+  /** Terminal batch number, when the response carried one. */
+  batchNo?: string;
+  /** Best-effort summary (cents / counts) — metadata only, field names locked by live capture. */
+  salesCount?: number;
+  refundCount?: number;
+  grossAmount?: number;
+  tipAmount?: number;
+  netAmount?: number;
+  /** Untouched terminal response — passed to finalize_valor_settlement. */
+  raw?: ValorRawResponse;
+  terminalResponse?: Record<string, unknown>;
+  error?: string;
+  errorCode?: string;
+}
+
 export interface ValorCancelResult {
   /** true only when the terminal confirmed the txn was cleared before card entry. */
   cleared: boolean;
@@ -308,6 +337,15 @@ export const VALOR_SALE_TIMEOUT_MS = 120_000;
 export const VALOR_TERMINAL_QUERY_TIMEOUT_MS = 10_000;
 export const VALOR_CANCEL_TIMEOUT_MS = 10_000;
 export const VALOR_STATUS_TIMEOUT_MS = 15_000;
+/** Batch settlement contacts the acquirer host and can take minutes. */
+export const VALOR_SETTLEMENT_TIMEOUT_MS = 180_000;
+/**
+ * Mutex-acquire wait for settlement — must exceed a full in-flight sale window
+ * (VALOR_SALE_TIMEOUT_MS) + the settle window so a settle queued behind a live
+ * sale doesn't throw a pre-dispatch mutex timeout mid-batch. Settlement is
+ * end-of-day, so a long queue wait here is acceptable.
+ */
+export const VALOR_SETTLEMENT_MUTEX_ACQUIRE_TIMEOUT_MS = 300_000;
 /** Hard ceiling for the interactive "Test Connection" spinner. */
 export const VALOR_TEST_DEADLINE_MS = 30_000;
 export const VALOR_TEST_OP_NAME = "_probe_valor_test";
