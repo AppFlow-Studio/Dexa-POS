@@ -677,9 +677,12 @@ function ResultsView ({
 }) {
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
+  const needsReview = result.status === 'needs_review'
+  const isValor = result.processor === 'valor'
+
   const overallIcon = result.success ? (
     <CheckCircle color={colors.success} size={s(32)} />
-  ) : result.partialSuccess ? (
+  ) : result.partialSuccess || needsReview ? (
     <AlertTriangle color={colors.warning} size={s(32)} />
   ) : (
     <XCircle color={colors.danger} size={s(32)} />
@@ -687,13 +690,15 @@ function ResultsView ({
 
   const overallLabel = result.success
     ? 'Batchout Complete'
+    : needsReview
+    ? 'Batchout Needs Review'
     : result.partialSuccess
     ? 'Partial Batchout'
     : 'Batchout Failed'
 
   const overallColor = result.success
     ? colors.success
-    : result.partialSuccess
+    : result.partialSuccess || needsReview
     ? colors.warning
     : colors.danger
 
@@ -704,7 +709,7 @@ function ResultsView ({
         <Text style={{ fontSize: s(20), fontWeight: '700', color: overallColor }}>
           {overallLabel}
         </Text>
-        {result.error ? (
+        {result.error && !(isValor && needsReview) ? (
           <Text
             style={{
               fontSize: s(13),
@@ -718,7 +723,45 @@ function ResultsView ({
         ) : null}
       </View>
 
-      {(result.success || result.partialSuccess) && !result.dbWriteFailed ? (
+      {/* Valor: single-batch summary (no per-acquirer hosts). Shown for a
+          settled batch AND for needs_review so staff can see the batch #. */}
+      {isValor && result.batchUuid && (result.success || needsReview) ? (
+        <Card scale={uiScale}>
+          <StatRow
+            label='Status'
+            value={result.success ? 'Settled' : 'Needs review'}
+            scale={uiScale}
+          />
+          {result.batchNumber ? (
+            <StatRow label='Terminal batch #' value={result.batchNumber} scale={uiScale} />
+          ) : null}
+          {result.paymentsUpdated != null ? (
+            <StatRow
+              label='Payments marked settled'
+              value={String(result.paymentsUpdated)}
+              scale={uiScale}
+            />
+          ) : null}
+          <View
+            style={{
+              marginTop: s(8),
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <Text style={{ fontSize: s(13), color: colors.label }}>Batch ID</Text>
+            <Text
+              style={{ fontSize: s(11), color: colors.muted, flexShrink: 1, marginLeft: s(12) }}
+              numberOfLines={1}
+            >
+              {result.batchUuid}
+            </Text>
+          </View>
+        </Card>
+      ) : null}
+
+      {!isValor && (result.success || result.partialSuccess) && !result.dbWriteFailed ? (
         <Card scale={uiScale}>
           {result.paymentsUpdated != null ? (
             <StatRow
@@ -772,7 +815,19 @@ function ResultsView ({
         />
       ) : null}
 
-      {result.requiresSupport ? (
+      {isValor && needsReview ? (
+        <Banner
+          tone='warning'
+          title='Needs Review'
+          body={
+            (result.error ?? 'This batch could not be auto-confirmed.') +
+            ' The payments were NOT marked settled. Verify at the processor, then use the manual reconcile option on the batch.'
+          }
+          scale={uiScale}
+        />
+      ) : null}
+
+      {!isValor && result.requiresSupport ? (
         <Banner
           tone='warning'
           title='Partial Batchout'
