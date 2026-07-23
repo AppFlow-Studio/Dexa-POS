@@ -2822,7 +2822,9 @@ const DevicesConnectionsScreen = ({
                         >
                           {currentTerminal.terminal_type === 'castles'
                             ? 'Castles'
-                            : 'Dejavoo'}
+                            : currentTerminal.terminal_type === 'valor'
+                              ? 'Valor'
+                              : 'Dejavoo'}
                         </Text>
                       </View>
                     </View>
@@ -2862,7 +2864,8 @@ const DevicesConnectionsScreen = ({
                     />
                   </View>
 
-                  {currentTerminal.terminal_type === 'castles' && (
+                  {(currentTerminal.terminal_type === 'castles' ||
+                    currentTerminal.terminal_type === 'valor') && (
                     <>
                       {/* Connection type — same selector pattern as register. */}
                       <View style={{ marginBottom: s(12) }}>
@@ -2972,7 +2975,11 @@ const DevicesConnectionsScreen = ({
                               onChangeText={v =>
                                 setEditForm(f => ({ ...f, port: v }))
                               }
-                              placeholder='8080'
+                              placeholder={
+                                currentTerminal.terminal_type === 'valor'
+                                  ? '5000'
+                                  : '8080'
+                              }
                               placeholderTextColor={colors.muted}
                               keyboardType='number-pad'
                               style={{
@@ -3010,7 +3017,73 @@ const DevicesConnectionsScreen = ({
                       )}
                     </>
                   )}
-                  {currentTerminal.terminal_type !== 'castles' && (
+                  {currentTerminal.terminal_type === 'valor' && (
+                    <>
+                      {editForm.connectionType === 'local_socket' && (
+                        <View style={{ marginBottom: s(12) }}>
+                          <Text
+                            style={{
+                              color: colors.muted,
+                              fontSize: s(11),
+                              marginBottom: s(4)
+                            }}
+                          >
+                            Cancel Port
+                          </Text>
+                          <TextInput
+                            value={editForm.cancelPort}
+                            onChangeText={v =>
+                              setEditForm(f => ({ ...f, cancelPort: v }))
+                            }
+                            placeholder='5001'
+                            placeholderTextColor={colors.muted}
+                            keyboardType='number-pad'
+                            style={{
+                              backgroundColor: colors.screen,
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              borderRadius: s(8),
+                              paddingHorizontal: s(12),
+                              paddingVertical: s(10),
+                              color: colors.heading,
+                              fontSize: s(13)
+                            }}
+                          />
+                        </View>
+                      )}
+                      <View style={{ marginBottom: s(12) }}>
+                        <Text
+                          style={{
+                            color: colors.muted,
+                            fontSize: s(11),
+                            marginBottom: s(4)
+                          }}
+                        >
+                          EPI (optional)
+                        </Text>
+                        <TextInput
+                          value={editForm.epi}
+                          onChangeText={v =>
+                            setEditForm(f => ({ ...f, epi: v }))
+                          }
+                          placeholder='Electronic Payment Interface id'
+                          placeholderTextColor={colors.muted}
+                          style={{
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: s(8),
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(10),
+                            color: colors.heading,
+                            fontSize: s(13)
+                          }}
+                        />
+                      </View>
+                    </>
+                  )}
+                  {currentTerminal.terminal_type !== 'castles' &&
+                    currentTerminal.terminal_type !== 'valor' && (
                     <>
                       <View style={{ marginBottom: s(12) }}>
                         <Text
