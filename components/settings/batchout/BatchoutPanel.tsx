@@ -23,6 +23,8 @@ import {
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import type { CastlesSettlementHostResult } from '@/types/castles'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
+import { getSharedValorService } from '@/services/terminals/valor-service'
+import { VALOR_DEFAULT_PORT, VALOR_SETTLEMENT_TIMEOUT_MS } from '@/types/valor'
 import { useAuth } from '@clerk/clerk-expo'
 import { useQuery } from '@tanstack/react-query'
 import { useFocusEffect } from 'expo-router'
@@ -41,6 +43,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -48,6 +51,13 @@ import {
 } from 'react-native'
 
 type ScreenState = 'idle' | 'confirming' | 'settling' | 'results'
+
+/**
+ * TEMP (Valor batch-out Wave 0): shows an on-terminal settlement-response capture
+ * button for Valor terminals so we can lock the finalize field mapping from a real
+ * VP550 response. Remove once the settlement contract is documented and Wave 3b ships.
+ */
+const VALOR_SETTLEMENT_CAPTURE = true
 
 interface BatchoutPanelProps {
   /** When true, renders the today's batch log section below the action card. */
@@ -115,9 +125,46 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
 
   const terminal = selectedStation?.payment_terminal
   const isCastles = terminal?.terminal_type === 'castles'
+  const isValor = terminal?.terminal_type === 'valor'
   const isUsbTerminal = terminal?.connection_type === 'usb'
   const terminalHost = terminal?.ip_address
   const terminalPort = terminal?.port ?? CASTLES_DEFAULT_PORT
+
+  // TEMP (Valor Wave 0): capture the real on-terminal settlement response so we can
+  // lock the finalize field mapping. Fires a REAL batch close; result shown on-screen.
+  const [captureOutput, setCaptureOutput] = useState<string | null>(null)
+  const [capturing, setCapturing] = useState(false)
+  const runValorCapture = useCallback(async () => {
+    if (!terminal) return
+    setCapturing(true)
+    setCaptureOutput('Connecting to terminal…')
+    try {
+      const valor = getSharedValorService()
+      const isUsb = terminal.connection_type === 'usb'
+      await valor.connect({
+        connectionType: isUsb ? 'usb' : 'local_socket',
+        host: isUsb ? undefined : terminal.ip_address ?? undefined,
+        port: isUsb ? undefined : terminal.port ?? VALOR_DEFAULT_PORT,
+        cancelPort: (terminal as any).cancel_port ?? undefined,
+        epi: (terminal as any).epi ?? undefined,
+        timeout: VALOR_SETTLEMENT_TIMEOUT_MS,
+        terminalId: terminal.id
+      })
+      setCaptureOutput('Settling batch… do not unplug the terminal.')
+      const res = await valor.settleBatch({ referenceId: `CAP${Date.now()}` })
+      setCaptureOutput(
+        JSON.stringify(
+          { outcome: res.outcome, error: res.error, batchNo: res.batchNo, raw: res.raw },
+          null,
+          2
+        )
+      )
+    } catch (e) {
+      setCaptureOutput('ERROR: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setCapturing(false)
+    }
+  }, [terminal])
 
   // serial_number isn't in get_location_stations_with_status — fetch it
   // separately so the header can show it.
@@ -402,19 +449,77 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
       </View>
 
       {!isCastles ? (
-        <View
-          style={{
-            borderRadius: s(14),
-            borderWidth: 1,
-            borderColor: colors.warning + '60',
-            backgroundColor: colors.warning + '15',
-            padding: s(14)
-          }}
-        >
-          <Text style={{ fontSize: s(13), color: colors.warning }}>
-            Batchout is currently supported for Castles terminals only.
-          </Text>
-        </View>
+        isValor && VALOR_SETTLEMENT_CAPTURE ? (
+          <View
+            style={{
+              borderRadius: s(14),
+              borderWidth: 1,
+              borderColor: colors.warning + '60',
+              backgroundColor: colors.warning + '15',
+              padding: s(14),
+              gap: s(10)
+            }}
+          >
+            <Text style={{ fontSize: s(14), fontWeight: '700', color: colors.label }}>
+              Valor settlement — capture (temporary)
+            </Text>
+            <Text style={{ fontSize: s(12), color: colors.muted }}>
+              Full Valor batch-out is still being built. This button fires a REAL batch
+              close on the terminal and shows the raw response so we can lock the field
+              mapping. Long-press the JSON to copy, or screenshot it, and report it back.
+            </Text>
+            <TouchableOpacity
+              disabled={capturing || (!isUsbTerminal && !terminalHost)}
+              onPress={runValorCapture}
+              style={{
+                paddingVertical: s(12),
+                borderRadius: s(10),
+                alignItems: 'center',
+                backgroundColor: capturing ? colors.panel : colors.teal,
+                opacity: capturing || (!isUsbTerminal && !terminalHost) ? 0.6 : 1
+              }}
+            >
+              {capturing ? (
+                <ActivityIndicator color={colors.label} />
+              ) : (
+                <Text style={{ fontSize: s(14), fontWeight: '700', color: '#fff' }}>
+                  Capture settlement response
+                </Text>
+              )}
+            </TouchableOpacity>
+            {captureOutput ? (
+              <ScrollView
+                style={{
+                  maxHeight: s(320),
+                  borderRadius: s(8),
+                  backgroundColor: colors.panel,
+                  padding: s(10)
+                }}
+              >
+                <Text
+                  selectable
+                  style={{ fontFamily: 'monospace', fontSize: s(11), color: colors.label }}
+                >
+                  {captureOutput}
+                </Text>
+              </ScrollView>
+            ) : null}
+          </View>
+        ) : (
+          <View
+            style={{
+              borderRadius: s(14),
+              borderWidth: 1,
+              borderColor: colors.warning + '60',
+              backgroundColor: colors.warning + '15',
+              padding: s(14)
+            }}
+          >
+            <Text style={{ fontSize: s(13), color: colors.warning }}>
+              Batchout is currently supported for Castles terminals only.
+            </Text>
+          </View>
+        )
       ) : state === 'idle' || state === 'confirming' ? (
         <IdleView
           stats={unsettledStats}
