@@ -337,14 +337,39 @@ export class ValorService {
   }
 
   /**
-   * Cancel-before-card on the SECOND socket (port 5001). Fire-and-DON'T-trust:
-   * the authoritative outcome is always the primary socket's final frame or
-   * TRAN_MODE 90 on the captured STAN. Only effective before card presentation.
+   * Cancel-before-card. Fire-and-DON'T-trust: the authoritative outcome is always
+   * the primary channel's final frame or TRAN_MODE 90 on the captured STAN. Only
+   * effective before card presentation. Transport-specific:
+   *  - TCP: a SECOND short-lived socket (port 5001) — runs concurrently with the
+   *    in-flight sale which holds the mutex + primary socket.
+   *  - USB: there is only ONE serial channel, so we write CANCEL (TRAN_MODE 99)
+   *    directly on the SHARED transport the in-flight sale is using, bypassing the
+   *    mutex (the sale holds it, blocked on card entry). The terminal aborts and
+   *    emits its final "cancelled/cleared" frame, which the sale's own onData
+   *    handler receives and resolves. We never see a response on this call → we
+   *    report `sent`, not `cleared`.
    */
   async cancelInFlight(referenceId: string): Promise<ValorCancelResult> {
     const cfg = this._config;
-    if (!cfg?.host) return { cleared: false, error: "No host configured" };
+    if (!cfg) return { cleared: false, error: "Not configured" };
 
+    // USB: single channel — dispatch CANCEL on the shared transport, no socket.
+    if (cfg.connectionType === "usb") {
+      const t = this._transport;
+      if (!t?.isOpen) return { cleared: false, error: "USB transport not open" };
+      try {
+        await t.write(
+          this._frameRequest({ TRAN_MODE: VALOR_TRAN_MODE.CANCEL, REQ_TXN_ID: referenceId }),
+        );
+        // Dispatched. Outcome surfaces on the in-flight sale's final frame.
+        return { cleared: false, sent: true };
+      } catch (err) {
+        return { cleared: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    // TCP: cancel-before-card on the SECOND socket (port 5001).
+    if (!cfg.host) return { cleared: false, error: "No host configured" };
     const cancelPort = cfg.cancelPort ?? VALOR_CANCEL_PORT;
     const transport = createValorTransport({
       connectionType: "local_socket",
@@ -361,7 +386,7 @@ export class ValorService {
       );
       const msg = String(final.ERROR_MSG ?? "").toUpperCase();
       const cleared = msg.includes("CLEARED SUCCESSFULLY") || String(final.STATE ?? "") === "-2";
-      return { cleared, raw: final };
+      return { cleared, sent: true, raw: final };
     } catch (err) {
       return { cleared: false, error: err instanceof Error ? err.message : String(err) };
     } finally {
@@ -477,6 +502,20 @@ export class ValorService {
   // ── Core send / handshake state machine ──
 
   /**
+   * Frame a request body for the wire, transport-specific:
+   *  - TCP: BARE JSON. The VP terminal ignores STX/ETX-framed TCP requests
+   *    (ACK'd but the txn never starts) — verified on-device.
+   *  - USB CDC serial: LITERAL text markers "<STX> " + JSON + " <ETX>", matching
+   *    Valor's USB semi-integration sample code VERBATIM (the samples write the
+   *    5-char ASCII text, NOT the 0x02/0x03 control bytes; raw control bytes make
+   *    the terminal ACK but never prompt for card).
+   */
+  private _frameRequest(body: ValorRequestBody): string {
+    const isUsb = this._config?.connectionType === "usb";
+    return isUsb ? `<STX> ${encodeValorFrame(body)} <ETX>` : encodeValorFrame(body);
+  }
+
+  /**
    * Write a framed request on `transport` and drive the ACK → Payload-Received →
    * final handshake. Resolves with the final response frame; throws a
    * ValorCommandError (carrying phase + captured STAN) on any failure.
@@ -493,25 +532,14 @@ export class ValorService {
     const correlate = opts.correlate ?? true;
     const reader = new ValorFrameReader();
 
-    // Framing is transport-specific:
-    //  - TCP: BARE JSON. The VP terminal ignores STX/ETX-framed TCP requests
-    //    (ACK'd but the txn never starts) — verified on-device.
-    //  - USB CDC serial: LITERAL text markers "<STX> " + JSON + " <ETX>", matching
-    //    Valor's USB semi-integration sample code VERBATIM. The samples write the
-    //    5-char ASCII text "<STX>"/"<ETX>" (with surrounding spaces) via
-    //    `ser.write(payload.encode())` / `port.write(...)` — NOT the 0x02/0x03
-    //    control bytes. Sending raw control bytes reproduces the same failure as
-    //    STX/ETX-framed TCP: the terminal boundary-detects enough to ACK but its
-    //    dispatcher can't parse the payload, so it never prompts for card
-    //    ("always ACK, never processed"). The terminal must ALSO be in "USB
-    //    Listening mode" (Parameter Download → USB Listening screen, or Start USB)
-    //    and run app 3.0.44+/1.0.36RT+ or it won't answer any command.
+    // Framing is transport-specific — see _frameRequest. The terminal must ALSO
+    // be in "USB Listening mode" (Parameter Download → USB Listening screen, or
+    // Start USB) and run app 3.0.44+/1.0.36RT+ or it won't answer any command.
     // Responses are read identically either way (ValorFrameReader scans by
     // brace-depth and ignores anything — control bytes or literal text — outside
     // the JSON object).
     const isUsb = this._config?.connectionType === "usb";
-    const toWire = (b: ValorRequestBody): string =>
-      isUsb ? `<STX> ${encodeValorFrame(b)} <ETX>` : encodeValorFrame(b);
+    const toWire = (b: ValorRequestBody): string => this._frameRequest(b);
 
     // ACK-required early timeout is TCP-only. Over USB the VP terminal accepts
     // the request and goes straight to card capture WITHOUT emitting the

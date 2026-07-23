@@ -273,6 +273,12 @@ export interface ValorRecoveryResult {
 export interface ValorCancelResult {
   /** true only when the terminal confirmed the txn was cleared before card entry. */
   cleared: boolean;
+  /**
+   * USB only: the CANCEL command was dispatched on the shared serial line but the
+   * outcome is NOT observed here — it surfaces on the in-flight sale's final frame
+   * (or TRAN_MODE 90). `cleared` stays false in that case; `sent` reports dispatch.
+   */
+  sent?: boolean;
   raw?: ValorRawResponse;
   error?: string;
 }

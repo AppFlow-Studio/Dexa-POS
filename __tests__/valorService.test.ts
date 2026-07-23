@@ -119,12 +119,40 @@ describe("ValorService recovery — TRAN_MODE 90", () => {
   });
 });
 
-describe("ValorService.cancelInFlight — port 5001", () => {
-  it("reports cleared when the terminal clears before card entry", async () => {
+describe("ValorService.cancelInFlight", () => {
+  it("reports cleared when the terminal clears before card entry (TCP, port 5001)", async () => {
     const svc = newService();
     await svc.connect(CONFIG);
     const res = await svc.cancelInFlight("000129");
     expect(res.cleared).toBe(true);
+  });
+
+  it("dispatches a framed CANCEL on the shared USB transport (no second socket)", async () => {
+    // USB has a single serial channel: CANCEL (TRAN_MODE 99) is written directly
+    // on the in-flight sale's transport; the outcome surfaces on that sale's
+    // final frame, so this call reports `sent`, not `cleared`.
+    const scripted = new ScriptedTransport();
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect({ ...CONFIG, connectionType: "usb" });
+    const res = await svc.cancelInFlight("000129");
+    expect(res.sent).toBe(true);
+    expect(res.cleared).toBe(false);
+    const cancelReq = scripted.raws.find((r) => r.includes('"TRAN_MODE":"99"'));
+    expect(cancelReq).toBeTruthy();
+    // framed with the literal USB text markers, not raw control bytes
+    expect(cancelReq!.startsWith("<STX> ")).toBe(true);
+    expect(cancelReq!.includes(VALOR_STX)).toBe(false);
+  });
+
+  it("errors (does not open a socket) when USB transport is not open", async () => {
+    const svc = newService();
+    // configured for USB but never connected → no shared transport
+    (svc as any)._config = { ...CONFIG, connectionType: "usb" };
+    const res = await svc.cancelInFlight("000129");
+    expect(res.cleared).toBe(false);
+    expect(res.sent).toBeFalsy();
+    expect(res.error).toMatch(/not open/i);
   });
 });
 
