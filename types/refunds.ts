@@ -103,6 +103,8 @@ export interface PaymentRefundContext {
   stan: string;
   /** Valor reversal reference (charge-slip "Trans" number) — void/refund key. */
   tranNo?: string;
+  /** ATOM paymentId — linked refund/void key for the on-device terminal. */
+  atomPaymentId?: string;
   /** Card last-4 (Valor CARD_NO fallback reversal key). */
   cardLast4?: string;
   authCode: string;

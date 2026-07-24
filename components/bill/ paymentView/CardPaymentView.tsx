@@ -30,6 +30,14 @@ import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import { getSharedValorService } from "@/services/terminals/valor-service";
 import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
 import { VALOR_DEFAULT_PORT } from "@/types/valor";
+import { getSharedAtomService } from "@/services/terminals/atom-service";
+import { atomBringPosToForeground } from "@/native/AtomBridge";
+import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
+import {
+  useActiveProcessor,
+  resolveActiveProcessor,
+} from "@/hooks/useActiveProcessor";
+import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from "@/types/atom";
 import {
   useActiveOrder,
   useActiveOrderTotals,
@@ -117,9 +125,11 @@ const CardPaymentView = () => {
     last4?: string;
     amount: number;
     tipAmount: number;
-    terminalType: "castles" | "dejavoo" | "valor";
+    terminalType: "castles" | "dejavoo" | "valor" | "atom";
     /** Valor reversal reference (charge-slip "Trans" number) for tip-adjust. */
     tranNo?: string;
+    /** ATOM paymentId — reversal/tip-adjust reference. */
+    paymentId?: string;
   } | null>(null);
   const tipAdjustTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -210,6 +220,15 @@ const CardPaymentView = () => {
     selectedStation?.payment_terminal,
   );
 
+  // Single source of truth for which terminal is active on this station. When
+  // the active terminal is the on-device ATOM it is always ready (surfaced ==
+  // reachable), so the Charge Card button must NOT gate on the configured
+  // terminal's health check.
+  const activeProcessor = useActiveProcessor();
+  const isAtomActive = activeProcessor.source === "atom";
+  const effectiveTerminalReady = isAtomActive ? true : terminalReady;
+  const effectiveTerminalStatus = isAtomActive ? "online" : terminalStatus;
+
   const tipsConfig = useLocationConfigStore((s) => s.config.tips);
   const TIP_PRESETS = tipsConfig.presetPercentages;
   const tipAdjustTimeoutMs = (tipsConfig.tipAdjustTimeoutSeconds ?? 30) * 1000;
@@ -291,10 +310,12 @@ const CardPaymentView = () => {
   useEffect(() => {
     if (status === "processing") {
       const processPayment = async () => {
-        if (!selectedStation?.payment_terminal) {
+        // Active terminal for this sale — single source of truth (honours the
+        // processor preference: auto / force ATOM / prefer configured).
+        const terminal = resolveActiveProcessor().activeTerminal;
+        if (!terminal) {
           throw new Error("No payment terminal selected");
         }
-        const terminal = selectedStation.payment_terminal;
         const tipAmount = parseFloat(tipInput) || 0;
 
         try {
@@ -735,6 +756,162 @@ const CardPaymentView = () => {
             return;
           }
 
+          // ====== ATOM BRANCH (on-device loopback) — ON-DEVICE TIP PROMPT =====
+          if (terminal.terminal_type === "atom") {
+            const host = terminal.ip_address ?? ATOM_LOOPBACK_HOST;
+            const port =
+              terminal.port ??
+              useAtomTerminalStore.getState().port ??
+              undefined;
+            if (!port) {
+              throw new Error("ATOM terminal port not detected");
+            }
+
+            const service = getSharedAtomService();
+            service.configure({
+              host,
+              port,
+              terminalId: terminal.id,
+              timeout: ATOM_SALE_TIMEOUT_MS,
+            });
+
+            // Reference id — the posReferenceNumber / idempotency handle.
+            const staSuffix = selectedStation?.id?.slice(-4) ?? "";
+            const referenceId = `ATOM_${Date.now()}_${staSuffix}`;
+            currentRefIdRef.current = referenceId;
+
+            // Pre-swipe journal (idempotency handle) — written BEFORE the send.
+            // The tip is collected ON THE TERMINAL, so it isn't known until the
+            // response; record the base only.
+            const activeOrderForJournal =
+              useOrderStore.getState().activeOrderId;
+            const orderForJournal = activeOrderForJournal
+              ? useOrderStore.getState().ordersById[activeOrderForJournal]
+              : undefined;
+            const paymentJournalKey = uuidv4();
+            const paymentJournalId = writePaymentJournal({
+              orderId: activeOrderForJournal ?? "unknown",
+              dbOrderId: orderForJournal?.db_order_id,
+              amount: totalToPay,
+              tipAmount: 0,
+              paymentMethod: "Card",
+              idempotencyKey: paymentJournalKey,
+            });
+
+            // ONE immediate-capture sale with an ON-DEVICE tip prompt (Flow A).
+            // The P30 shows tip buttons (presets + CUSTOM + NO TIP) BEFORE the
+            // card read; totalAmountToAuthorize is the BASE and the terminal
+            // adds the chosen tip. Amounts are DOLLARS. The customer's actual
+            // tip comes back on the response.
+            const result = await service.processSale({
+              amount: totalToPay,
+              tipPrompt: {
+                suggestedPercentages: TIP_PRESETS,
+                allowCustomAmount: tipsConfig.allowCustom ?? true,
+                timeoutSeconds: tipsConfig.tipAdjustTimeoutSeconds ?? 30,
+              },
+              referenceId,
+              posData: {
+                industryData: {
+                  type: "RESTAURANT",
+                  checkNumber: referenceId,
+                },
+              },
+            });
+
+            // ATOM foregrounds itself for the card read and does NOT relaunch the
+            // POS afterward — bring ourselves back to the front.
+            void atomBringPosToForeground();
+
+            const atomTx = result.terminalResponse?.atom_transaction as
+              | Record<string, string>
+              | undefined;
+
+            // INDETERMINATE — the terminal may have charged. Do NOT complete the
+            // payment or fail the journal; leave it for reconciliation.
+            if (result.indeterminate) {
+              updatePaymentJournal(paymentJournalId, {
+                status: "terminal_approved",
+                terminalTxnId: result.paymentId ?? referenceId,
+              });
+              showIdle();
+              setErrorModal({
+                visible: true,
+                title: "Verifying Payment",
+                message:
+                  "The payment result could not be confirmed. Check the terminal before charging again — do not re-charge if the terminal shows approved.",
+              });
+              return;
+            }
+
+            // Cardholder cancelled / timed out at the tip screen — NO card was
+            // read and NO charge occurred. Clean, retryable abort (not a decline).
+            if (result.aborted) {
+              failPaymentJournal(
+                paymentJournalId,
+                `terminal_aborted: ${result.errorCode ?? "cancelled"}`,
+              );
+              showIdle();
+              setErrorModal({
+                visible: true,
+                title: "Payment Cancelled",
+                message:
+                  result.error || "Cancelled at the tip screen — no charge.",
+              });
+              return;
+            }
+
+            // Clean decline / validation error — no charge happened.
+            if (!result.success) {
+              failPaymentJournal(
+                paymentJournalId,
+                `terminal_declined: ${result.error ?? "Declined"}`,
+              );
+              showDeclined();
+              setErrorModal({
+                visible: true,
+                title: "Payment Declined",
+                message: result.error || "Transaction failed",
+              });
+              return;
+            }
+
+            // The tip the cardholder actually chose on the terminal (DOLLARS).
+            const chargedTip = Number(
+              (result.raw?.paymentResults?.tipAmount ?? 0).toFixed(2),
+            );
+
+            // Full success — persist with the terminal-collected tip (Castles
+            // contract: amountOverride = base, tipAmount = additive tip). No
+            // post-capture tip-adjust: the tip is already on the captured txn.
+            await handlePaymentCompletion({
+              method: "Card",
+              tipAmount: chargedTip,
+              transactionDetails: {
+                terminalType: "atom",
+                isCashPriced: false,
+                authorizationCode: atomTx?.approvalCode,
+                cardType: atomTx?.cardType,
+                last4: atomTx?.cardLast4,
+                transactionId: result.paymentId ?? referenceId,
+                rrn: atomTx?.rrn ?? result.rrn,
+                // Carries the ATOM paymentId (processor_response.atom_transaction)
+                // used later for /cancel refunds.
+                atomTransaction: result.terminalResponse,
+                paymentJournalHandle: {
+                  id: paymentJournalId,
+                  idempotencyKey: paymentJournalKey,
+                },
+              },
+              amountOverride: totalToPay,
+            });
+
+            showApproved();
+            schedulePostTipAdjustIdle(3000);
+            setStatus("success");
+            return;
+          }
+
           // ============ DEJAVOO BRANCH (default) ============
           const DejavooAPI = new DejavooSpinAPI(supabase);
           console.log("[CardPayment] Loading Dejavoo terminal:", terminal);
@@ -1015,7 +1192,7 @@ const CardPaymentView = () => {
         keyboardShouldPersistTaps="handled"
       >
         {/* Terminal Status Banner */}
-        {terminalStatus !== "online" && (
+        {effectiveTerminalStatus !== "online" && (
           <View style={{ marginBottom: s(16) }}>
             <TerminalStatusBanner
               status={terminalStatus}
@@ -1472,22 +1649,22 @@ const CardPaymentView = () => {
           {status === "ready" && (
             <TouchableOpacity
               onPress={handleChargeCard}
-              disabled={!terminalReady}
+              disabled={!effectiveTerminalReady}
               style={{
                 width: "100%",
                 paddingVertical: s(11),
                 borderRadius: s(8),
                 marginBottom: s(8),
                 alignItems: "center",
-                backgroundColor: terminalReady ? colors.teal : colors.panel,
-                borderWidth: terminalReady ? 0 : 1,
+                backgroundColor: effectiveTerminalReady ? colors.teal : colors.panel,
+                borderWidth: effectiveTerminalReady ? 0 : 1,
                 borderColor: colors.border,
-                opacity: terminalReady ? 1 : 0.5,
+                opacity: effectiveTerminalReady ? 1 : 0.5,
               }}
             >
               <Text
                 style={{
-                  color: terminalReady ? colors.onSolid : colors.muted,
+                  color: effectiveTerminalReady ? colors.onSolid : colors.muted,
                   fontWeight: "700",
                   fontSize: s(14),
                 }}
@@ -1537,10 +1714,13 @@ const CardPaymentView = () => {
                 if (isCancelling) return;
                 if (status === "processing" && currentRefIdRef.current) {
                   setIsCancelling(true);
-                  const terminal = selectedStation?.payment_terminal;
+                  const terminal = resolveActiveProcessor().activeTerminal;
                   try {
                     if (terminal?.terminal_type === "castles") {
                       await getSharedCastlesService().gracefulDisconnect();
+                    } else if (terminal?.terminal_type === "atom") {
+                      // ATOM has no cancel-before-card endpoint in v1 — the
+                      // /authorize call blocks until the terminal resolves. No-op.
                     } else if (terminal?.terminal_type === "valor") {
                       // Cancel-before-card on the 5001 socket. Fire-and-don't-
                       // trust: if the card already landed this is a no-op and the

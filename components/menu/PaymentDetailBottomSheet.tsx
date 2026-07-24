@@ -40,8 +40,12 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useActiveProcessor } from "@/hooks/useActiveProcessor";
 import { round2 } from "@/utils/money";
-import { getTerminalMatchInfo } from "@/utils/terminalMatchGuard";
+import {
+  getTerminalMatchInfo,
+  getTipAdjustMatchInfo,
+} from "@/utils/terminalMatchGuard";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { formatDistanceToNow } from "date-fns";
 import { usePathname, useRouter } from "expo-router";
@@ -56,6 +60,7 @@ import {
   CreditCard,
   Delete,
   DollarSign,
+  Info,
   Lock,
   Package,
   Printer,
@@ -94,6 +99,8 @@ interface PaymentRowData {
   isVoided: boolean;
   last4?: string;
   cardBrand?: string;
+  /** ATOM linked reversal/tip-adjust reference (on-device terminal). */
+  atomPaymentId?: string;
   cardInfo?: {
     brand?: string;
     last4?: string;
@@ -152,6 +159,8 @@ interface TipAdjustPaymentRow {
   entryMode?: string;
   timestamp?: string;
   isCard: boolean;
+  /** ATOM linked reversal/tip-adjust reference. */
+  atomPaymentId?: string;
 }
 type RefundType = "full" | "items" | "payments";
 
@@ -1164,6 +1173,8 @@ interface RightPaneSummaryProps {
   formatTimestamp: (timestamp: string) => string;
   terminalCanProcess: boolean;
   terminalBlockReason?: string;
+  tipCanProcess: boolean;
+  tipBlockReason?: string;
   isReadOnly?: boolean;
   isClaiming?: boolean;
   ownerLabel?: string | null;
@@ -1187,6 +1198,8 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   formatTimestamp,
   terminalCanProcess,
   terminalBlockReason,
+  tipCanProcess,
+  tipBlockReason,
   isReadOnly = false,
   isClaiming = false,
   ownerLabel,
@@ -2139,7 +2152,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               variant="primary"
             />
           )}
-          {!isReadOnly && hasCardPayments && terminalCanProcess && (
+          {!isReadOnly && hasCardPayments && tipCanProcess && (
             <ActionButton
               icon={<CircleDollarSign size={s(16)} />}
               label="Adjust Tip"
@@ -2156,6 +2169,73 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                 onPress={onRefund}
                 variant="danger"
               />
+            )}
+          {/* Explainer: when tip-adjust / refund are unavailable because the
+              active terminal can't service these payments, say WHY instead of
+              silently hiding the actions. */}
+          {!isReadOnly &&
+            (hasCardPayments || paymentSummary.collected > 0) &&
+            !terminalCanProcess &&
+            terminalBlockReason && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  gap: s(8),
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
+                  borderWidth: 1,
+                  borderColor: colors.warning,
+                  backgroundColor: colors.panel,
+                }}
+              >
+                <Info size={s(15)} color={colors.warning} />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: s(12),
+                    lineHeight: s(17),
+                    color: colors.muted,
+                  }}
+                >
+                  Tip adjust & refund unavailable. {terminalBlockReason}
+                </Text>
+              </View>
+            )}
+          {/* ATOM-specific: refund IS available but tip-adjust is not (tips are
+              baked into the sale). Explain why "Adjust Tip" is missing while
+              "Process Refund" remains. */}
+          {!isReadOnly &&
+            hasCardPayments &&
+            terminalCanProcess &&
+            !tipCanProcess &&
+            tipBlockReason && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  gap: s(8),
+                  paddingHorizontal: s(12),
+                  paddingVertical: s(10),
+                  borderRadius: s(8),
+                  borderWidth: 1,
+                  borderColor: colors.warning,
+                  backgroundColor: colors.panel,
+                }}
+              >
+                <Info size={s(15)} color={colors.warning} />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: s(12),
+                    lineHeight: s(17),
+                    color: colors.muted,
+                  }}
+                >
+                  Tip adjust unavailable. {tipBlockReason}
+                </Text>
+              </View>
             )}
         </View>
       </View>
@@ -2213,6 +2293,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
         method: p.method,
         orderAmount: p.orderAmount,
         currentTip: p.tipAmount,
+        atomPaymentId: p.atomPaymentId,
         referenceId: p.referenceId || p.cardInfo?.referenceId,
         rrn: p.cardInfo?.rrn,
         last4: p.last4 || p.cardInfo?.last4,
@@ -2321,6 +2402,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           referenceId: payment.referenceId,
           rrn: payment.rrn,
           last4: payment.last4,
+          atomPaymentId: payment.atomPaymentId,
         })),
       });
       onTipAdjusted();
@@ -5396,16 +5478,22 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       ? lastOrderRef.current.order
       : null);
 
-  // Check if active terminal matches the order's payment terminal type
+  // Which terminal types this station can service reversals on (single source
+  // of truth). An EXISTING payment can be refunded/tip-adjusted on any available
+  // terminal that matches its capture type — includes the on-device ATOM.
+  const { availableTypes: activeAvailableTypes } = useActiveProcessor();
   const { canProcess: terminalCanProcess, blockReason: terminalBlockReason } =
     useMemo(
-      () =>
-        getTerminalMatchInfo(
-          order?.payments,
-          selectedStation?.payment_terminal?.terminal_type,
-        ),
-      [order?.payments, selectedStation?.payment_terminal?.terminal_type],
+      () => getTerminalMatchInfo(order?.payments, activeAvailableTypes),
+      [order?.payments, activeAvailableTypes],
     );
+  // Tip-adjust has a stricter rule than refund: ATOM (on-device) payments can't
+  // be tip-adjusted post-capture (tip is baked into the sale). Refund stays on
+  // getTerminalMatchInfo above.
+  const { canProcess: tipCanProcess, blockReason: tipBlockReason } = useMemo(
+    () => getTipAdjustMatchInfo(order?.payments, activeAvailableTypes),
+    [order?.payments, activeAvailableTypes],
+  );
 
   // Reset view when sheet opens (Modal is controlled by isOpen state directly)
   useEffect(() => {
@@ -5467,6 +5555,14 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           | Record<string, any>
           | undefined;
         const valorTx = (valorRaw?.valor_transaction ?? valorRaw) as
+          | Record<string, string>
+          | undefined;
+        // ATOM: same dual-shape handling — full buildAtomTerminalResponse
+        // (same-session) vs inner atom_transaction (reloaded).
+        const atomRaw = payment.transactionDetails?.atomTransaction as
+          | Record<string, any>
+          | undefined;
+        const atomTx = (atomRaw?.atom_transaction ?? atomRaw) as
           | Record<string, string>
           | undefined;
         const cardBrand =
@@ -5553,6 +5649,8 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           paymentId: payment.id,
           dbPaymentId: payment.db_payment_id || payment.id,
           originalPaymentIndex: index,
+          // ATOM linked reversal/tip-adjust reference (on-device terminal).
+          atomPaymentId: atomTx?.paymentId ? String(atomTx.paymentId) : undefined,
           referenceId: txDetails?.referenceId
             ? String(txDetails.referenceId)
             : castlesTx?.referenceId
@@ -6445,6 +6543,8 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     formatTimestamp={formatTimestamp}
                     terminalCanProcess={terminalCanProcess}
                     terminalBlockReason={terminalBlockReason}
+                    tipCanProcess={tipCanProcess}
+                    tipBlockReason={tipBlockReason}
                     isReadOnly={isOrderReadOnly(order, currentStationId)}
                     isClaiming={isClaiming}
                     ownerLabel={

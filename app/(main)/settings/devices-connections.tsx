@@ -34,6 +34,10 @@ import { PrinterService } from '@/services/printing/PrinterService'
 import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useAtomTerminalStore } from '@/stores/useAtomTerminalStore'
+import { probeAtomLoopbackNow } from '@/services/terminals/atomLoopbackDetector'
+import { useProcessorPreferenceStore } from '@/stores/useProcessorPreferenceStore'
+import { useActiveProcessor } from '@/hooks/useActiveProcessor'
 import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
@@ -286,6 +290,19 @@ const DevicesConnectionsScreen = ({
 
   // Terminal status
   const currentTerminal = selectedStation?.payment_terminal ?? null
+  // Auto-detected on-device ("internal") ATOM terminal, if present.
+  const atomInternalTerminal = useAtomTerminalStore(s => s.internalTerminal)
+  const atomInternalPort = useAtomTerminalStore(s => s.port)
+  const [atomTesting, setAtomTesting] = useState(false)
+  // Active-processor toggle: ATOM (on-device) or Off for NEW sales. Reversals
+  // always follow each payment's capture terminal.
+  const atomEnabled = useProcessorPreferenceStore(s => s.atomEnabled)
+  const setAtomEnabled = useProcessorPreferenceStore(s => s.setAtomEnabled)
+  const activeProcessor = useActiveProcessor()
+  const processorOptions: { value: boolean; label: string }[] = [
+    { value: true, label: 'ATOM' },
+    { value: false, label: 'Off' }
+  ]
   const { status: terminalStatus, recheckStatus } = useTerminalStatus(
     currentTerminal?.id ?? undefined,
     currentTerminal ?? undefined
@@ -1865,6 +1882,182 @@ const DevicesConnectionsScreen = ({
           />
           {expandedSections.terminal && (
             <View style={{ paddingHorizontal: s(12), paddingVertical: s(10) }}>
+              {/* Auto-detected on-device ATOM processor (loopback). Read-only —
+                  ATOM needs no IP/credentials; it's discovered, not configured. */}
+              {atomInternalTerminal && (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.teal,
+                    borderRadius: s(10),
+                    padding: s(12),
+                    marginBottom: s(12),
+                    backgroundColor: colors.panel
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: s(8)
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: s(8),
+                          height: s(8),
+                          borderRadius: s(4),
+                          backgroundColor: colors.success
+                        }}
+                      />
+                      <Text
+                        style={{
+                          fontSize: s(15),
+                          fontWeight: '700',
+                          color: colors.heading
+                        }}
+                      >
+                        {atomInternalTerminal.terminal_name}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        paddingHorizontal: s(8),
+                        paddingVertical: s(3),
+                        borderRadius: s(6),
+                        borderWidth: 1,
+                        borderColor: colors.success
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(11),
+                          fontWeight: '700',
+                          color: colors.success
+                        }}
+                      >
+                        Online
+                      </Text>
+                    </View>
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      color: colors.muted,
+                      marginTop: s(6)
+                    }}
+                  >
+                    On-device processor · ATOM ·{' '}
+                    {atomInternalTerminal.ip_address}:
+                    {atomInternalPort ?? atomInternalTerminal.port}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      color: colors.muted,
+                      marginTop: s(2)
+                    }}
+                  >
+                    Auto-detected. Refunds & tip-adjusts always follow the
+                    terminal each payment was captured on.
+                  </Text>
+
+                  {/* #2 — Active processor override for NEW sales */}
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      fontWeight: '700',
+                      color: colors.label,
+                      marginTop: s(12),
+                      marginBottom: s(6)
+                    }}
+                  >
+                    ACTIVE PROCESSOR FOR NEW SALES
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: s(6) }}>
+                    {processorOptions.map(opt => {
+                      const selected = atomEnabled === opt.value
+                      return (
+                        <TouchableOpacity
+                          key={String(opt.value)}
+                          onPress={() => setAtomEnabled(opt.value)}
+                          style={{
+                            flex: 1,
+                            paddingVertical: s(8),
+                            paddingHorizontal: s(6),
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            borderColor: selected ? colors.teal : colors.border,
+                            backgroundColor: selected ? colors.teal : 'transparent',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(12),
+                              fontWeight: '600',
+                              color: selected ? '#ffffff' : colors.muted
+                            }}
+                            numberOfLines={1}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      color: colors.muted,
+                      marginTop: s(6)
+                    }}
+                  >
+                    {activeProcessor.activeTerminal
+                      ? `New card sales use: ${activeProcessor.activeLabel}.`
+                      : 'ATOM is Off and no other terminal is configured — new card sales are disabled.'}
+                  </Text>
+
+                  <TouchableOpacity
+                    onPress={async () => {
+                      setAtomTesting(true)
+                      try {
+                        await probeAtomLoopbackNow()
+                      } finally {
+                        setAtomTesting(false)
+                      }
+                    }}
+                    disabled={atomTesting}
+                    style={{
+                      marginTop: s(10),
+                      alignSelf: 'flex-start',
+                      paddingHorizontal: s(12),
+                      paddingVertical: s(7),
+                      borderRadius: s(8),
+                      borderWidth: 1,
+                      borderColor: colors.teal,
+                      opacity: atomTesting ? 0.5 : 1
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: s(12),
+                        fontWeight: '600',
+                        color: colors.teal
+                      }}
+                    >
+                      {atomTesting ? 'Testing…' : 'Test Connection'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
               {showRegisterForm ? (
                 // ── Register form ──
                 <View>

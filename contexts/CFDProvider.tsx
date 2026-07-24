@@ -2324,6 +2324,16 @@ function CFDServerProvider ({ children }: { children: React.ReactNode }) {
         setTipResponse(null)
         return
       }
+      // ATOM uses TIP-BEFORE-SALE — the tip is baked into the single
+      // immediate-capture /authorize, so there is no post-capture adjust.
+      // Guard-off here so a stale ATOM `captured` row (e.g. mid-upgrade) can
+      // never fall through to another terminal's branch below.
+      if (captured.terminalType === 'atom') {
+        console.log('[CFD tip-adjust] ATOM is tip-before-sale — no post-capture adjust')
+        useTipAdjustStore.getState().clear()
+        setTipResponse(null)
+        return
+      }
       if (!useTipAdjustStore.getState().startInFlight()) {
         console.log('[CFD tip-adjust] already in flight, ignoring duplicate')
         return

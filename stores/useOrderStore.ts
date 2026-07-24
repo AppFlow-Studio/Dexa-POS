@@ -2827,6 +2827,11 @@ const syncPaymentToBackend = async (
       return details.valorTransaction as Record<string, unknown>;
     }
 
+    // ATOM: pre-built JSONB from buildAtomTerminalResponse() — pass through directly
+    if (details.atomTransaction) {
+      return details.atomTransaction as Record<string, unknown>;
+    }
+
     const tx = details.dejavooTransaction;
     const entryType = tx?.entryType ?? tx?.entryMode;
     const amounts = tx?.amounts || {
@@ -4316,6 +4321,8 @@ function mergeTransactionDetails(
       broadcast.dejavooTransaction ?? local.dejavooTransaction,
     valorTransaction:
       broadcast.valorTransaction ?? local.valorTransaction,
+    atomTransaction:
+      broadcast.atomTransaction ?? local.atomTransaction,
   };
 }
 
@@ -16816,6 +16823,10 @@ export const useOrderStore = create<OrderState>()(
                     // terminal_response): { terminal_vendor, valor_transaction }.
                     const valorTxn = (payment.processor_response as any)
                       ?.valor_transaction as Record<string, any> | undefined;
+                    // ATOM (on-device) mirrors Valor: processor_response holds
+                    // { terminal_vendor: "atom", atom_transaction }.
+                    const atomTxn = (payment.processor_response as any)
+                      ?.atom_transaction as Record<string, any> | undefined;
 
                     return {
                       // Core identifiers
@@ -16956,11 +16967,13 @@ export const useOrderStore = create<OrderState>()(
                           payment.card_type ??
                           castlesTxn?.cardType ??
                           valorTxn?.cardType ??
+                          atomTxn?.cardType ??
                           dejavooTxn?.CardType,
                         last4:
                           payment.card_last_four ??
                           castlesTxn?.cardLast4 ??
                           valorTxn?.cardLast4 ??
+                          atomTxn?.cardLast4 ??
                           dejavooTxn?.Last4,
                         transactionId: payment.transaction_id,
                         amountTendered: payment.amount_tendered,
@@ -16971,7 +16984,7 @@ export const useOrderStore = create<OrderState>()(
                         dejavooTransaction:
                           payment.processor_response?.dejavoo_transaction,
                         // Additional terminal fields
-                        rrn: payment.rrn ?? valorTxn?.rrn,
+                        rrn: payment.rrn ?? valorTxn?.rrn ?? atomTxn?.rrn,
                         batchNumber:
                           payment.batch_number ||
                           payment.dejavoo_batch_number ||
@@ -16981,7 +16994,8 @@ export const useOrderStore = create<OrderState>()(
                           payment.processor_response?.dejavoo_transaction
                             ?.entryMode ??
                           castlesTxn?.entryMode ??
-                          valorTxn?.entryMode,
+                          valorTxn?.entryMode ??
+                          atomTxn?.entryMode,
                         referenceId: payment.reference_number,
                         castlesTransaction: castlesTxn,
                         // Full Valor blob for the detail sheet (reads
@@ -16991,6 +17005,15 @@ export const useOrderStore = create<OrderState>()(
                         valorTransaction:
                           (payment.processor_response as any)
                             ?.terminal_vendor === "valor"
+                            ? payment.processor_response
+                            : undefined,
+                        // Full ATOM blob for the detail sheet (reads
+                        // atomTransaction.atom_transaction.*). Only set for
+                        // actual ATOM payments so other processor_response blobs
+                        // aren't misread as card data.
+                        atomTransaction:
+                          (payment.processor_response as any)
+                            ?.terminal_vendor === "atom"
                             ? payment.processor_response
                             : undefined,
                       },

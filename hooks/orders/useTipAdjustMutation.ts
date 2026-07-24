@@ -9,6 +9,7 @@ import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import { getSharedValorService } from "@/services/terminals/valor-service";
 import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
+import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { VALOR_DEFAULT_PORT } from "@/types/valor";
 import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
@@ -32,6 +33,8 @@ export interface TipAdjustPaymentInput {
   rrn?: string;
   /** Valor reversal reference (charge-slip "Trans" number). Falls back to last4. */
   tranNo?: string;
+  /** ATOM paymentId — routes this payment's tip-adjust to the on-device terminal. */
+  atomPaymentId?: string;
   last4?: string;
 }
 
@@ -52,7 +55,13 @@ export function useTipAdjustMutation() {
 
   return useMutation({
     mutationFn: async (input: TipAdjustMutationInput) => {
-      if (!selectedStation?.payment_terminal) {
+      // ATOM payments route to the on-device ("internal") terminal by paymentId,
+      // regardless of the station's configured terminal. When the whole submit
+      // is ATOM payments, we don't require a configured terminal at all.
+      const atomInternal = useAtomTerminalStore.getState().internalTerminal;
+      const isAtomSubmit =
+        !!atomInternal && input.payments.some((p) => p.atomPaymentId);
+      if (!selectedStation?.payment_terminal && !isAtomSubmit) {
         throw new Error("No payment terminal configured.");
       }
 
@@ -76,10 +85,19 @@ export function useTipAdjustMutation() {
         }
       }
 
-      const terminal = selectedStation.payment_terminal;
+      const terminal = selectedStation?.payment_terminal;
       const processedDbIds = new Set<string>();
 
-      if (terminal.terminal_type === "castles") {
+      if (isAtomSubmit) {
+        // ──── ATOM BRANCH (on-device loopback) ────
+        // ATOM uses TIP-BEFORE-SALE: the tip is baked into the single
+        // immediate-capture /authorize, so a captured (COMPLETED) txn can't be
+        // tip-adjusted. Fail fast to cover programmatic / offline-queue callers —
+        // the UI already hides "Adjust Tip" for ATOM (getTipAdjustMatchInfo).
+        throw new Error(
+          "ATOM tips are collected before the sale and can't be adjusted afterward. Refund and re-charge to change the tip.",
+        );
+      } else if (terminal?.terminal_type === "castles") {
         // ──── CASTLES BRANCH ────
         const isUsb = terminal.connection_type === 'usb';
         const host = isUsb ? undefined : terminal.ip_address;
@@ -124,7 +142,7 @@ export function useTipAdjustMutation() {
 
           if (payment.dbPaymentId) processedDbIds.add(payment.dbPaymentId);
         }
-      } else if (terminal.terminal_type === "valor") {
+      } else if (terminal?.terminal_type === "valor") {
         // ──── VALOR BRANCH ────
         const isUsb = terminal.connection_type === 'usb';
         const host = isUsb ? undefined : terminal.ip_address;
@@ -176,6 +194,7 @@ export function useTipAdjustMutation() {
         }
       } else {
         // ──── DEJAVOO BRANCH ────
+        if (!terminal) throw new Error("No payment terminal configured.");
         const api = new DejavooSpinAPI(supabase);
         const loaded = await api.loadTerminal(terminal.id, terminal);
 

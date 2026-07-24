@@ -771,6 +771,8 @@ export interface OrderPaymentTransactionDetails {
   castlesTransaction?: Record<string, unknown>;
   // Full Valor response JSONB (from buildValorTerminalResponse)
   valorTransaction?: Record<string, unknown>;
+  // Full ATOM response JSONB (from buildAtomTerminalResponse)
+  atomTransaction?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
