@@ -27,6 +27,7 @@ import {
   type AtomPingResponse,
   type AtomSaleParams,
   type AtomTipAdjustParams,
+  type AtomCompleteParams,
   type AtomRefundParams,
   type AtomCancelParams,
   type AtomTxnResult,
@@ -73,30 +74,78 @@ export class AtomService {
    * GET /ping — cheap reachability probe. Returns true on any 2xx.
    * Accepts an explicit host/port so the loopback detector can probe candidate
    * ports before a config is set.
+   *
+   * Serialized via the same mutex as sales: the ATOM app is single-session, so
+   * a probe overlapping a live /authorize makes the terminal report "device is
+   * busy". The mutex guarantees a probe never races a sale.
    */
   async ping(host?: string, port?: number): Promise<boolean> {
     if (!atomTransportReady()) return false;
-    try {
-      const res = await atomFetch<AtomPingResponse>(this.base(host, port), {
-        method: "GET",
-        path: `${ATOM_API_BASE}/ping`,
-        timeoutMs: ATOM_PING_TIMEOUT_MS,
-      });
-      return res.ok;
-    } catch {
-      return false;
-    }
+    return this._mutex.runExclusive(async () => {
+      try {
+        const res = await atomFetch<AtomPingResponse>(this.base(host, port), {
+          method: "GET",
+          path: `${ATOM_API_BASE}/ping`,
+          timeoutMs: ATOM_PING_TIMEOUT_MS,
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    });
   }
 
-  /** GET /status — richer health (deviceReady / gatewayOnline / currentBatch). */
-  async status(host?: string, port?: number): Promise<AtomDeviceStatusResponse | null> {
+  /**
+   * GET /status — richer health (deviceReady / gatewayOnline / currentBatch).
+   * Mutex-guarded (see ping) so it can't collide with a sale. Pass
+   * `{ skipLock: true }` ONLY from inside a method that already holds the mutex.
+   */
+  async status(
+    host?: string,
+    port?: number,
+    opts?: { skipLock?: boolean },
+  ): Promise<AtomDeviceStatusResponse | null> {
     if (!atomTransportReady()) return null;
-    const res = await atomFetch<AtomDeviceStatusResponse>(this.base(host, port), {
-      method: "GET",
-      path: `${ATOM_API_BASE}/status`,
-      timeoutMs: ATOM_STATUS_TIMEOUT_MS,
+    const run = async () => {
+      const res = await atomFetch<AtomDeviceStatusResponse>(
+        this.base(host, port),
+        {
+          method: "GET",
+          path: `${ATOM_API_BASE}/status`,
+          timeoutMs: ATOM_STATUS_TIMEOUT_MS,
+        },
+      );
+      return res.ok ? (res.data ?? null) : null;
+    };
+    return opts?.skipLock ? run() : this._mutex.runExclusive(run);
+  }
+
+  /**
+   * POST /restart — reboot the ATOM app (restartType APPLICATION) to clear a
+   * wedged/busy state (a prior transaction that never returned to idle). The
+   * app persists across POS restarts, so this is the in-app recovery. `force`
+   * restarts even if an operation is in progress. Returns true on a 2xx.
+   */
+  async restart(force = true): Promise<boolean> {
+    if (!this._config) return false;
+    return this._mutex.runExclusive(async () => {
+      try {
+        const res = await atomFetch<{ success?: boolean }>(this.base(), {
+          method: "POST",
+          path: `${ATOM_API_BASE}/restart`,
+          body: { restartType: "APPLICATION", force },
+          timeoutMs: ATOM_STATUS_TIMEOUT_MS,
+        });
+        console.log("[AtomService] restart result", {
+          status: res.status,
+          ok: res.ok,
+        });
+        return res.ok;
+      } catch (e) {
+        console.warn("[AtomService] restart failed", e);
+        return false;
+      }
     });
-    return res.ok ? (res.data ?? null) : null;
   }
 
   // ── Sale ──
@@ -111,6 +160,28 @@ export class AtomService {
    * mutually exclusive; tipPrompt wins if both are somehow supplied.
    */
   async processSale(params: AtomSaleParams): Promise<AtomTxnResult> {
+    return this._authorize(params, true);
+  }
+
+  /**
+   * POST /authorize with completeThisAuthorization:false — AUTH ONLY (places a
+   * hold, no capture). The transaction stays APPROVED until a later /complete
+   * captures it (with the tip). Never sends a tip at authorize time — the tip is
+   * collected at capture. This is the auth-only lifecycle (tip window stays open;
+   * the check does not auto-close until capture).
+   */
+  async authorizeOnly(params: AtomSaleParams): Promise<AtomTxnResult> {
+    return this._authorize(
+      { ...params, tipAmount: undefined, tipPrompt: undefined },
+      false,
+    );
+  }
+
+  /** Shared /authorize implementation for processSale (capture) + authorizeOnly. */
+  private async _authorize(
+    params: AtomSaleParams,
+    completeThisAuthorization: boolean,
+  ): Promise<AtomTxnResult> {
     if (!this._config) {
       return { success: false, error: "AtomService not configured" };
     }
@@ -124,7 +195,7 @@ export class AtomService {
         posReferenceNumber: params.referenceId,
         totalAmountToAuthorize: params.amount,
         currency: ATOM_DEFAULT_CURRENCY,
-        completeThisAuthorization: true,
+        completeThisAuthorization,
         ...tipFields,
         ...(params.posData ? { posData: params.posData } : {}),
       };
@@ -151,10 +222,18 @@ export class AtomService {
       // HTTP error (400 validation / 500 device) — a clean failure, not a charge.
       if (!res.ok) {
         const err = res.data as AtomErrorResponse | undefined;
+        console.warn("[AtomService] authorize rejected", {
+          status: res.status,
+          errorCode: err?.errorCode,
+          error: err?.error,
+        });
         // Inline tip-prompt cancel (DEV008) / timeout (DEV009): the cardholder
         // aborted at the tip screen — NO card read, NO charge. Retryable abort.
         const aborted =
           err?.errorCode === "DEV008" || err?.errorCode === "DEV009";
+        // "Device is busy": the ATOM app is stuck in a prior, non-idle
+        // transaction (no dedicated errorCode in the API — matched by message).
+        const busy = /busy|in progress|not\s*idle/i.test(err?.error ?? "");
         return {
           success: false,
           aborted,
@@ -162,7 +241,9 @@ export class AtomService {
             ? err?.errorCode === "DEV009"
               ? "Tip prompt timed out — no charge. Try again."
               : "Payment cancelled at the tip screen — no charge."
-            : (err?.error ?? `ATOM HTTP ${res.status}`),
+            : busy
+              ? "Terminal is busy from a previous transaction. Tap “Reset Terminal” in Settings → Devices & Connections, then try again."
+              : (err?.error ?? `ATOM HTTP ${res.status}`),
           errorCode: err?.errorCode,
         };
       }
@@ -225,6 +306,38 @@ export class AtomService {
         },
       );
       return this._interpretMutation(res, "tipAdjust");
+    });
+  }
+
+  // ── Capture (complete an auth-only) ──
+
+  /**
+   * POST /complete — capture a prior AUTH-ONLY payment (by paymentId), optionally
+   * with a tip, moving it APPROVED → COMPLETED for settlement. Amounts are
+   * DOLLARS; `finalTotalAmount` = base + tip. Body field names to be confirmed
+   * on-device (Wave 0) — they may mirror /tipAdjust's `newFinalTotalAmount`.
+   */
+  async complete(params: AtomCompleteParams): Promise<AtomTxnResult> {
+    if (!this._config) {
+      return { success: false, error: "AtomService not configured" };
+    }
+    return this._mutex.runExclusive(async () => {
+      const body: Record<string, unknown> = {
+        paymentId: params.paymentId,
+        posReferenceNumber: params.referenceId,
+        finalTotalAmount: params.finalTotalAmount,
+        tipAmount: params.tipAmount,
+      };
+      const res = await atomFetch<AtomPaymentResponse | AtomErrorResponse>(
+        this.base(),
+        {
+          method: "POST",
+          path: `${ATOM_API_BASE}/complete`,
+          body,
+          timeoutMs: this._config!.timeout,
+        },
+      );
+      return this._interpretMutation(res, "complete");
     });
   }
 

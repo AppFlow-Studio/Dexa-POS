@@ -35,7 +35,13 @@ import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useAtomTerminalStore } from '@/stores/useAtomTerminalStore'
-import { probeAtomLoopbackNow } from '@/services/terminals/atomLoopbackDetector'
+import {
+  probeAtomLoopbackNow,
+  suspendAtomLoopbackProbing,
+  resumeAtomLoopbackProbing
+} from '@/services/terminals/atomLoopbackDetector'
+import { getSharedAtomService } from '@/services/terminals/atom-service'
+import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from '@/types/atom'
 import { useProcessorPreferenceStore } from '@/stores/useProcessorPreferenceStore'
 import { useActiveProcessor } from '@/hooks/useActiveProcessor'
 import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
@@ -294,6 +300,74 @@ const DevicesConnectionsScreen = ({
   const atomInternalTerminal = useAtomTerminalStore(s => s.internalTerminal)
   const atomInternalPort = useAtomTerminalStore(s => s.port)
   const [atomTesting, setAtomTesting] = useState(false)
+  const [atomResetting, setAtomResetting] = useState(false)
+  // Wave 0 lifecycle diagnostics (__DEV__ only): verify auth-only + /complete
+  // primitives on the real terminal before wiring the full flow.
+  const [atomDiagBusy, setAtomDiagBusy] = useState(false)
+  const [atomDiagLog, setAtomDiagLog] = useState<string[]>([])
+  const [atomDiagAuthPaymentId, setAtomDiagAuthPaymentId] = useState<
+    string | null
+  >(null)
+  const appendAtomDiag = (line: string) =>
+    setAtomDiagLog(prev => [
+      ...prev,
+      `${new Date().toISOString().slice(11, 19)}  ${line}`
+    ])
+  // Runs one ATOM primitive in isolation: configures the shared service,
+  // suspends loopback probing (single-session terminal), fires, logs the raw
+  // verdict + a follow-up /status, then resumes. Returns the result.
+  const runAtomDiagProbe = async (
+    label: string,
+    fn: (svc: ReturnType<typeof getSharedAtomService>) => Promise<any>
+  ): Promise<any> => {
+    const port = atomInternalPort ?? undefined
+    if (!port) {
+      appendAtomDiag(`[${label}] SKIPPED — ATOM terminal not detected`)
+      return null
+    }
+    setAtomDiagBusy(true)
+    suspendAtomLoopbackProbing()
+    try {
+      const svc = getSharedAtomService()
+      svc.configure({
+        host: atomInternalTerminal?.ip_address ?? ATOM_LOOPBACK_HOST,
+        port,
+        terminalId: atomInternalTerminal?.id ?? 'atom-internal',
+        timeout: ATOM_SALE_TIMEOUT_MS
+      })
+      appendAtomDiag(`[${label}] firing…`)
+      const r = await fn(svc)
+      appendAtomDiag(
+        `[${label}] → ${JSON.stringify({
+          success: r?.success,
+          aborted: r?.aborted,
+          indeterminate: r?.indeterminate,
+          paymentId: r?.paymentId,
+          category: r?.raw?.paymentResults?.responseCategory,
+          txnStatus: r?.raw?.paymentResults?.transactionStatus,
+          tip: r?.raw?.paymentResults?.tipAmount,
+          finalTotal: r?.raw?.paymentResults?.finalTotalAmount,
+          error: r?.error
+        })}`
+      )
+      const st = await svc.status()
+      appendAtomDiag(
+        `[${label}] status → ${JSON.stringify({
+          status: st?.status,
+          deviceReady: st?.deviceReady
+        })}`
+      )
+      return r
+    } catch (e) {
+      appendAtomDiag(
+        `[${label}] EXCEPTION: ${e instanceof Error ? e.message : String(e)}`
+      )
+      return null
+    } finally {
+      resumeAtomLoopbackProbing()
+      setAtomDiagBusy(false)
+    }
+  }
   // Active-processor toggle: ATOM (on-device) or Off for NEW sales. Reversals
   // always follow each payment's capture terminal.
   const atomEnabled = useProcessorPreferenceStore(s => s.atomEnabled)
@@ -2025,37 +2099,293 @@ const DevicesConnectionsScreen = ({
                       : 'ATOM is Off and no other terminal is configured — new card sales are disabled.'}
                   </Text>
 
-                  <TouchableOpacity
-                    onPress={async () => {
-                      setAtomTesting(true)
-                      try {
-                        await probeAtomLoopbackNow()
-                      } finally {
-                        setAtomTesting(false)
-                      }
-                    }}
-                    disabled={atomTesting}
+                  <View
                     style={{
                       marginTop: s(10),
-                      alignSelf: 'flex-start',
-                      paddingHorizontal: s(12),
-                      paddingVertical: s(7),
-                      borderRadius: s(8),
-                      borderWidth: 1,
-                      borderColor: colors.teal,
-                      opacity: atomTesting ? 0.5 : 1
+                      flexDirection: 'row',
+                      gap: s(8),
+                      alignItems: 'center'
                     }}
                   >
-                    <Text
+                    <TouchableOpacity
+                      onPress={async () => {
+                        setAtomTesting(true)
+                        try {
+                          await probeAtomLoopbackNow()
+                        } finally {
+                          setAtomTesting(false)
+                        }
+                      }}
+                      disabled={atomTesting || atomResetting}
                       style={{
-                        fontSize: s(12),
-                        fontWeight: '600',
-                        color: colors.teal
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(7),
+                        borderRadius: s(8),
+                        borderWidth: 1,
+                        borderColor: colors.teal,
+                        opacity: atomTesting ? 0.5 : 1
                       }}
                     >
-                      {atomTesting ? 'Testing…' : 'Test Connection'}
-                    </Text>
-                  </TouchableOpacity>
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: '600',
+                          color: colors.teal
+                        }}
+                      >
+                        {atomTesting ? 'Testing…' : 'Test Connection'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Reboots the ATOM app to clear a wedged "device is busy"
+                        state — the app persists across POS restarts, so this is
+                        the in-app recovery. */}
+                    <TouchableOpacity
+                      onPress={async () => {
+                        setAtomResetting(true)
+                        try {
+                          const ok = await getSharedAtomService().restart(true)
+                          // Give the ATOM app a few seconds to relaunch, then
+                          // re-probe so the terminal re-surfaces.
+                          await new Promise(r => setTimeout(r, 4000))
+                          await probeAtomLoopbackNow()
+                          toastService.show({
+                            title: ok ? 'Terminal Reset' : 'Reset Sent',
+                            message: ok
+                              ? 'The ATOM terminal was restarted. Try charging again.'
+                              : 'Reset request sent. If it stays busy, force-stop and reopen the ATOM app on the device.',
+                            type: ok ? 'success' : 'warning'
+                          })
+                        } catch {
+                          toastService.show({
+                            title: 'Reset Failed',
+                            message:
+                              'Could not reach the ATOM terminal to reset it.',
+                            type: 'error'
+                          })
+                        } finally {
+                          setAtomResetting(false)
+                        }
+                      }}
+                      disabled={atomTesting || atomResetting}
+                      style={{
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(7),
+                        borderRadius: s(8),
+                        borderWidth: 1,
+                        borderColor: colors.warning,
+                        opacity: atomResetting ? 0.5 : 1
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: '600',
+                          color: colors.warning
+                        }}
+                      >
+                        {atomResetting ? 'Resetting…' : 'Reset Terminal'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Wave 0 — on-device lifecycle diagnostics. DEV builds only.
+                      Verifies auth-only + /complete on a REAL card before the
+                      full auth→tip→complete flow is wired. Each button = one
+                      real $1 primitive; read the log + follow-up device status. */}
+                  {__DEV__ && (
+                    <View
+                      style={{
+                        marginTop: s(14),
+                        paddingTop: s(12),
+                        borderTopWidth: 1,
+                        borderTopColor: colors.border
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: '700',
+                          color: colors.muted,
+                          marginBottom: s(8)
+                        }}
+                      >
+                        ATOM Lifecycle Diagnostics (dev · real $1 card)
+                      </Text>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          flexWrap: 'wrap',
+                          gap: s(8)
+                        }}
+                      >
+                        {[
+                          {
+                            key: 'auth',
+                            label: '1 · Auth-only $1',
+                            disabled: false,
+                            run: async () => {
+                              const r = await runAtomDiagProbe(
+                                'auth-only $1',
+                                svc =>
+                                  svc.authorizeOnly({
+                                    amount: 1.0,
+                                    referenceId: `DIAGAUTH_${Date.now()}`
+                                  })
+                              )
+                              if (r?.success && r?.paymentId)
+                                setAtomDiagAuthPaymentId(r.paymentId)
+                            }
+                          },
+                          {
+                            key: 'complete0',
+                            label: '2 · Complete $0 tip',
+                            disabled: !atomDiagAuthPaymentId,
+                            run: () =>
+                              runAtomDiagProbe('complete $0', svc =>
+                                svc.complete({
+                                  paymentId: atomDiagAuthPaymentId!,
+                                  finalTotalAmount: 1.0,
+                                  tipAmount: 0,
+                                  referenceId: `DIAGCOMP_${Date.now()}`
+                                })
+                              )
+                          },
+                          {
+                            key: 'completeTip',
+                            label: '3 · Complete +$0.50',
+                            disabled: !atomDiagAuthPaymentId,
+                            run: () =>
+                              runAtomDiagProbe('complete +$0.50', svc =>
+                                svc.complete({
+                                  paymentId: atomDiagAuthPaymentId!,
+                                  finalTotalAmount: 1.5,
+                                  tipAmount: 0.5,
+                                  referenceId: `DIAGCOMP_${Date.now()}`
+                                })
+                              )
+                          },
+                          {
+                            key: 'saleTip',
+                            label: '4 · Sale$1 → tipAdjust',
+                            disabled: false,
+                            run: async () => {
+                              const r = await runAtomDiagProbe('sale $1', svc =>
+                                svc.processSale({
+                                  amount: 1.0,
+                                  referenceId: `DIAGSALE_${Date.now()}`
+                                })
+                              )
+                              if (r?.success && r?.paymentId)
+                                await runAtomDiagProbe(
+                                  'tipAdjust on captured',
+                                  svc =>
+                                    svc.tipAdjust({
+                                      paymentId: r.paymentId,
+                                      tipAmount: 0.5,
+                                      newFinalTotalAmount: 1.5,
+                                      referenceId: `DIAGTIP_${Date.now()}`
+                                    })
+                                )
+                            }
+                          },
+                          {
+                            // Flow B: tip baked into ONE immediate sale (no
+                            // delayed capture, no on-device prompt). Read the
+                            // log's authorizedAmount: 1.5 = tip-inclusive
+                            // (send base+tip), 2.0 = tip-added (send base only).
+                            key: 'saleTipB',
+                            label: '5 · Sale $1 +$0.50 tip (Flow B)',
+                            disabled: false,
+                            run: () =>
+                              runAtomDiagProbe('sale+tip Flow B', svc =>
+                                svc.processSale({
+                                  amount: 1.5,
+                                  tipAmount: 0.5,
+                                  referenceId: `DIAGSALEB_${Date.now()}`
+                                })
+                              )
+                          }
+                        ].map(btn => (
+                          <TouchableOpacity
+                            key={btn.key}
+                            onPress={btn.run}
+                            disabled={atomDiagBusy || btn.disabled}
+                            style={{
+                              paddingHorizontal: s(10),
+                              paddingVertical: s(6),
+                              borderRadius: s(8),
+                              borderWidth: 1,
+                              borderColor: colors.teal,
+                              opacity: atomDiagBusy || btn.disabled ? 0.4 : 1
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: s(11),
+                                fontWeight: '600',
+                                color: colors.teal
+                              }}
+                            >
+                              {btn.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                        <TouchableOpacity
+                          onPress={() => {
+                            setAtomDiagLog([])
+                            setAtomDiagAuthPaymentId(null)
+                          }}
+                          disabled={atomDiagBusy}
+                          style={{
+                            paddingHorizontal: s(10),
+                            paddingVertical: s(6),
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            borderColor: colors.muted,
+                            opacity: atomDiagBusy ? 0.4 : 1
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(11),
+                              fontWeight: '600',
+                              color: colors.muted
+                            }}
+                          >
+                            Clear
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                      {atomDiagLog.length > 0 && (
+                        <ScrollView
+                          style={{
+                            marginTop: s(10),
+                            maxHeight: s(180),
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            backgroundColor: colors.inset,
+                            padding: s(8)
+                          }}
+                        >
+                          {atomDiagLog.map((line, i) => (
+                            <Text
+                              key={i}
+                              style={{
+                                fontSize: s(10),
+                                lineHeight: s(15),
+                                color: colors.heading,
+                                fontFamily: 'monospace'
+                              }}
+                            >
+                              {line}
+                            </Text>
+                          ))}
+                        </ScrollView>
+                      )}
+                    </View>
+                  )}
                 </View>
               )}
               {showRegisterForm ? (

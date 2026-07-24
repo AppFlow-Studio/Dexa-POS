@@ -19,6 +19,10 @@ import { getSharedValorService } from "@/services/terminals/valor-service";
 import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
 import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from "@/types/valor";
 import { getSharedAtomService } from "@/services/terminals/atom-service";
+import {
+  suspendAtomLoopbackProbing,
+  resumeAtomLoopbackProbing,
+} from "@/services/terminals/atomLoopbackDetector";
 import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
 import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from "@/types/atom";
 import {
@@ -1598,9 +1602,12 @@ export class RefundService {
       // This replaces the old /refund-with-omitted-amount path, which ATOM rejects
       // (NOT_ALLOWED) on a captured sale. Partial (or post-settlement) → linked
       // return for the exact amount via /refund.
-      const result = useVoid
-        ? await service.cancel({ paymentId, referenceId })
-        : await service.refund({ paymentId, amount, referenceId });
+      // Pause loopback probing for the reversal (single-session terminal).
+      suspendAtomLoopbackProbing();
+      const result = await (useVoid
+        ? service.cancel({ paymentId, referenceId })
+        : service.refund({ paymentId, amount, referenceId })
+      ).finally(() => resumeAtomLoopbackProbing());
       return {
         success: result.success,
         terminalResponse: result.terminalResponse,

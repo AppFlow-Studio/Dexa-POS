@@ -221,6 +221,21 @@ export interface AtomSaleParams {
   posData?: AtomAuthorizationRequest["posData"];
 }
 
+/**
+ * POST /complete — capture a prior AUTH-ONLY payment (by paymentId), optionally
+ * with a tip. Moves the txn APPROVED → COMPLETED. Amounts are DOLLARS.
+ */
+export interface AtomCompleteParams {
+  /** ATOM paymentId of the original auth-only /authorize. */
+  paymentId: string;
+  /** Final total to capture in DOLLARS (base + tip). */
+  finalTotalAmount: number;
+  /** Tip in DOLLARS (0 if none). */
+  tipAmount: number;
+  /** posReferenceNumber for this capture. */
+  referenceId: string;
+}
+
 /** POST /tipAdjust — adds/updates the tip on a prior payment AND captures it. */
 export interface AtomTipAdjustParams {
   /** ATOM paymentId of the original sale/auth. */
@@ -288,6 +303,15 @@ export interface AtomTxnResult {
 
 export const ATOM_API_BASE = "/api/device/v1";
 export const ATOM_DEFAULT_CURRENCY = "USD";
+
+/**
+ * Gate for the on-device inline tip prompt (Flow A, `tipPrompt` on /authorize).
+ * Kept OFF until the P30's ATOM build is confirmed to support `tipPrompt`
+ * without wedging the terminal into a stuck "device is busy" state. When false,
+ * sales are plain immediate-capture (no tip prompt; tip 0) — the shape that was
+ * verified working in the DB. Flip to true to test on-device tip collection.
+ */
+export const ATOM_TIP_PROMPT_ENABLED = false;
 
 /** Loopback host for the on-device ATOM app. */
 export const ATOM_LOOPBACK_HOST = "127.0.0.1";

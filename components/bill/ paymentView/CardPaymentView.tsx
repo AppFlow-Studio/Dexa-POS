@@ -31,6 +31,10 @@ import { getSharedValorService } from "@/services/terminals/valor-service";
 import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
 import { VALOR_DEFAULT_PORT } from "@/types/valor";
 import { getSharedAtomService } from "@/services/terminals/atom-service";
+import {
+  suspendAtomLoopbackProbing,
+  resumeAtomLoopbackProbing,
+} from "@/services/terminals/atomLoopbackDetector";
 import { atomBringPosToForeground } from "@/native/AtomBridge";
 import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
 import {
@@ -781,8 +785,8 @@ const CardPaymentView = () => {
             currentRefIdRef.current = referenceId;
 
             // Pre-swipe journal (idempotency handle) — written BEFORE the send.
-            // The tip is collected ON THE TERMINAL, so it isn't known until the
-            // response; record the base only.
+            // Flow B: the tip is entered on the POS before Charge and baked into
+            // the single sale, so it's known here.
             const activeOrderForJournal =
               useOrderStore.getState().activeOrderId;
             const orderForJournal = activeOrderForJournal
@@ -793,31 +797,32 @@ const CardPaymentView = () => {
               orderId: activeOrderForJournal ?? "unknown",
               dbOrderId: orderForJournal?.db_order_id,
               amount: totalToPay,
-              tipAmount: 0,
+              tipAmount,
               paymentMethod: "Card",
               idempotencyKey: paymentJournalKey,
             });
 
-            // ONE immediate-capture sale with an ON-DEVICE tip prompt (Flow A).
-            // The P30 shows tip buttons (presets + CUSTOM + NO TIP) BEFORE the
-            // card read; totalAmountToAuthorize is the BASE and the terminal
-            // adds the chosen tip. Amounts are DOLLARS. The customer's actual
-            // tip comes back on the response.
-            const result = await service.processSale({
-              amount: totalToPay,
-              tipPrompt: {
-                suggestedPercentages: TIP_PRESETS,
-                allowCustomAmount: tipsConfig.allowCustom ?? true,
-                timeoutSeconds: tipsConfig.tipAdjustTimeoutSeconds ?? 30,
-              },
-              referenceId,
-              posData: {
-                industryData: {
-                  type: "RESTAURANT",
-                  checkNumber: referenceId,
+            // ONE immediate-capture sale, tip baked in (Flow B). NO on-device
+            // prompt (it wedges) and NO delayed capture (the gateway declines
+            // /complete + /tipAdjust). Verified on this build: `amount` is the
+            // BASE and the terminal ADDS `tipAmount` on top → charges base+tip.
+            // Pause background loopback probing for the whole sale — the ATOM
+            // app is single-session, so a probe overlapping the live authorize
+            // makes the terminal report "device is busy".
+            suspendAtomLoopbackProbing();
+            const result = await service
+              .processSale({
+                amount: totalToPay,
+                ...(tipAmount > 0 ? { tipAmount } : {}),
+                referenceId,
+                posData: {
+                  industryData: {
+                    type: "RESTAURANT",
+                    checkNumber: referenceId,
+                  },
                 },
-              },
-            });
+              })
+              .finally(() => resumeAtomLoopbackProbing());
 
             // ATOM foregrounds itself for the card read and does NOT relaunch the
             // POS afterward — bring ourselves back to the front.
@@ -876,17 +881,12 @@ const CardPaymentView = () => {
               return;
             }
 
-            // The tip the cardholder actually chose on the terminal (DOLLARS).
-            const chargedTip = Number(
-              (result.raw?.paymentResults?.tipAmount ?? 0).toFixed(2),
-            );
-
-            // Full success — persist with the terminal-collected tip (Castles
-            // contract: amountOverride = base, tipAmount = additive tip). No
-            // post-capture tip-adjust: the tip is already on the captured txn.
+            // Full success — persist the tip we baked into the sale (Castles
+            // contract: amountOverride = base, tipAmount = additive tip). The
+            // terminal charged base+tip; the payment records base + tip.
             await handlePaymentCompletion({
               method: "Card",
-              tipAmount: chargedTip,
+              tipAmount,
               transactionDetails: {
                 terminalType: "atom",
                 isCashPriced: false,
@@ -1244,8 +1244,11 @@ const CardPaymentView = () => {
                   ${totalToPay.toFixed(2)}
                 </Text>
 
-                {/* Merchant-side tip options hidden — tip is captured via CFD post-capture flow */}
-                {false && (
+                {/* Merchant enters the tip BEFORE charging on ATOM (Flow B):
+                    no CFD and no post-capture tip-adjust, so the server keys the
+                    tip here and it's baked into the single sale. Other terminals
+                    capture tips via the CFD post-capture flow, so stay hidden. */}
+                {isAtomActive && (
                   <>
                     <Text
                       style={{

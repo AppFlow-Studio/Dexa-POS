@@ -35,6 +35,23 @@ let _timer: ReturnType<typeof setInterval> | null = null;
 let _appStateSub: { remove: () => void } | null = null;
 let _isLandiDevice: boolean | null = null;
 let _probing = false;
+/**
+ * When >0, probing is suspended. The ATOM app is single-session, so a health
+ * probe (ping/status) overlapping a live sale/refund makes the terminal report
+ * "device is busy". Payment flows bump this around the transaction. Refcounted
+ * so nested/overlapping suspends compose safely.
+ */
+let _suspendCount = 0;
+
+/** Pause background probing (call before an ATOM sale/refund). */
+export function suspendAtomLoopbackProbing(): void {
+  _suspendCount += 1;
+}
+
+/** Resume background probing (call after the ATOM sale/refund settles). */
+export function resumeAtomLoopbackProbing(): void {
+  _suspendCount = Math.max(0, _suspendCount - 1);
+}
 
 /** True on a Landi P-series device (where the ATOM app can run). Cached. */
 async function isLandiDevice(): Promise<boolean> {
@@ -54,6 +71,9 @@ async function isLandiDevice(): Promise<boolean> {
 /** Probe candidate ports; on the first reachable one, surface + configure. */
 async function probeOnce(): Promise<void> {
   if (_probing) return;
+  // Suspended during a live sale/refund — never let a probe grab the ATOM
+  // app's single session while a transaction is in flight.
+  if (_suspendCount > 0) return;
   _probing = true;
   try {
     if (!AtomService.isAvailable()) return;
@@ -104,7 +124,7 @@ async function probeOnce(): Promise<void> {
 }
 
 function onAppStateChange(state: AppStateStatus): void {
-  if (state === "active") {
+  if (state === "active" && _suspendCount === 0) {
     void probeOnce();
   }
 }
