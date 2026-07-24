@@ -50,6 +50,10 @@ import {
   type ValorRequestBody,
   type ValorSaleParams,
   type ValorSaleResult,
+  type ValorPreAuthParams,
+  type ValorPreAuthResult,
+  type ValorAuthCompleteParams,
+  type ValorAuthCompleteResult,
   type ValorTerminalQueryResult,
   type ValorRecoveryResult,
   type ValorCancelResult,
@@ -269,6 +273,63 @@ export class ValorService {
       errorCode: final.ERROR_CODE,
       ...base,
     };
+  }
+
+  /**
+   * Pre-authorization / hold (CREDIT PREAUTH — TRAN_MODE 1 / TRAN_CODE 3). Card-present,
+   * places a hold the caller later captures via processAuthComplete (TICKET) referencing
+   * the returned TRAN_NO, or releases via processVoid. Mirrors processSale's STAN capture
+   * + TRAN_MODE 90 recovery: a lost response AFTER the STAN is INDETERMINATE (a hold may
+   * exist on the card), never a silent success or a clean decline.
+   */
+  async processPreAuth(params: ValorPreAuthParams): Promise<ValorPreAuthResult> {
+    const body: ValorRequestBody = {
+      TRAN_MODE: VALOR_TRAN_MODE.CREDIT,
+      TRAN_CODE: VALOR_TRAN_CODE.PREAUTH,
+      AMOUNT: centsToValorAmount(params.amount),
+      REQ_TXN_ID: params.referenceId,
+      SIGNATURE: params.signature ? "1" : "0",
+      MOBILE_ENTRY: "0",
+      PAPER_RECEIPT: "0",
+      EARLY_RESPONSE: (params.earlyResponse ?? true) ? "1" : "0",
+    };
+
+    let capturedStan: string | null = null;
+    try {
+      const final = await this._runExclusive(async () => {
+        await this._ensureConnectedInner();
+        return this._sendOnTransport(this._transport!, body, {
+          finalTimeout: this._config?.timeout ?? VALOR_SALE_TIMEOUT_MS,
+          requireAck: true,
+          correlate: true,
+          sendTrailingAck: true,
+          onStan: (s) => {
+            capturedStan = s;
+            params.onStan?.(s);
+          },
+        });
+      });
+      // A hold and a sale interpret identically (STATE/PARTIAL/TRAN_NO/RRN/STAN).
+      return this._interpretSaleFinal(final, capturedStan);
+    } catch (err) {
+      if (err instanceof ValorCommandError) {
+        const stan = err.stan ?? capturedStan;
+        if (stan) {
+          const recovered = await this.transactionStatus(stan);
+          if (recovered.outcome === "approved" && recovered.raw) {
+            return this._interpretSaleFinal(recovered.raw, stan);
+          }
+          if (recovered.outcome === "declined") {
+            return { success: false, stan, error: err.message, errorCode: recovered.raw?.ERROR_CODE };
+          }
+          // unknown — leave indeterminate for the caller's manual-void path.
+          return { success: false, indeterminate: true, stan, error: err.message };
+        }
+        // Pre-S2 failure — the request never reached card entry; safe clean failure.
+        return { success: false, error: err.message };
+      }
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   /** Lightweight health/test ping (TRAN_MODE 96). Castles-getData analog. */
@@ -537,6 +598,39 @@ export class ValorService {
       },
       "tipAdjust",
     );
+  }
+
+  /**
+   * Complete / capture a prior pre-auth (TICKET — TRAN_MODE 0 / TRAN_CODE 4). References
+   * the hold by TRAN_NO (the charge-slip "Trans" number) or CARD_NO (last-4) — NOT rrn/stan.
+   * The wire AMOUNT is the FINAL capture (tip folded in), so an over-the-hold total is
+   * captured here. Surfaces PARTIAL="1" (expired hold captured for less) so the caller
+   * ledgers the terminal-reported amount, not the requested one.
+   */
+  async processAuthComplete(params: ValorAuthCompleteParams): Promise<ValorAuthCompleteResult> {
+    if (!params.tranNo && !params.cardNo) {
+      return { success: false, error: "Completion requires TRAN_NO or CARD_NO" };
+    }
+    const totalCents = params.captureAmount + (params.tipAmount ?? 0);
+    const result = await this._runTxnCommand(
+      {
+        TRAN_MODE: VALOR_TRAN_MODE.FETCH,
+        TRAN_CODE: VALOR_TRAN_CODE.TICKET,
+        AMOUNT: centsToValorAmount(totalCents),
+        REQ_TXN_ID: params.referenceId,
+        ...(params.tranNo ? { TRAN_NO: params.tranNo } : { CARD_NO: params.cardNo }),
+        TICKET_CONFIRMATION: "0",
+        AMT_CONFIRM: "0",
+        SIGNATURE: "0",
+        MOBILE_ENTRY: "0",
+        PAPER_RECEIPT: "0",
+      },
+      "completion",
+    );
+    if (result.success && String(result.raw?.PARTIAL ?? "0") === "1") {
+      return { ...result, partial: true, approvedAmount: valorAmountToCents(result.raw?.AMOUNT) };
+    }
+    return result;
   }
 
   /** Shared runner for reversal/adjustment commands (non-sale). */

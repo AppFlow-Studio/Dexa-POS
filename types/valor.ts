@@ -12,9 +12,9 @@
 //   - TRAN_MODE 90 (+ STAN_NO) re-queries an in-flight txn (recovery).
 //   - TRAN_MODE 96 (TERMINAL_QUERY) is the lightweight health/test ping.
 //
-// Scope of this file (v1): sale, void, refund, tip-adjust, cancel,
-// terminal-query, transaction-status (recovery). Preauth / settlement /
-// tokenize / presale are deferred.
+// Scope of this file: sale, preauth (hold) + completion (capture), void, refund,
+// tip-adjust, settlement, cancel, terminal-query, transaction-status (recovery).
+// Tokenize / presale are deferred.
 // ============================================================
 
 import type { ValorTransportType } from "@/services/terminals/valor-transport.types";
@@ -220,6 +220,62 @@ export interface ValorSaleResult extends ValorTxnResult {
   /** PARTIAL="1" — card approved less than requested; collect the remainder. */
   partial?: boolean;
   /** Approved amount in cents when `partial` is true. */
+  approvedAmount?: number;
+}
+
+/**
+ * Pre-authorization / hold (CREDIT PREAUTH — TRAN_MODE 1 / TRAN_CODE 3). Card-present,
+ * so it mirrors sale params (STAN capture + TRAN_MODE 90 recovery). The response's
+ * TRAN_NO is the reference the later completion (TICKET) / release (VOID) needs.
+ */
+export interface ValorPreAuthParams {
+  /** Hold amount in cents. */
+  amount: number;
+  /** Client transaction id (REQ_TXN_ID) — the idempotency handle. */
+  referenceId: string;
+  /** Prompt for a signature (default off). */
+  signature?: boolean;
+  /**
+   * Send the final response BEFORE the receipt prints (EARLY_RESPONSE=1).
+   * Default true so the POS is not blocked on printing.
+   */
+  earlyResponse?: boolean;
+  /**
+   * Invoked with the STAN captured at S2 ("Payload Request Received"), BEFORE the
+   * card is presented. Persist it so an immediate crash can recover via TRAN_MODE 90.
+   */
+  onStan?: (stan: string) => void;
+}
+
+export interface ValorPreAuthResult extends ValorTxnResult {
+  /** PARTIAL="1" — card authorized less than requested; collect the remainder. */
+  partial?: boolean;
+  /** Authorized amount in cents when `partial` is true. */
+  approvedAmount?: number;
+}
+
+/**
+ * Completion / capture of a prior pre-auth (TICKET — TRAN_MODE 0 / TRAN_CODE 4).
+ * References the pre-auth by exactly ONE of tranNo / cardNo (like VOID / TIP_ADJUST).
+ * The wire AMOUNT is the final capture (tip folded in) — the completion captures
+ * whatever amount is sent, so an over-the-hold final total is captured here.
+ */
+export interface ValorAuthCompleteParams {
+  /** Base capture amount in cents. */
+  captureAmount: number;
+  /** Tip in cents (optional) — folded into the wire AMOUNT. */
+  tipAmount?: number;
+  /** The pre-auth's charge-slip "Trans" number. */
+  tranNo?: string;
+  /** Last-4 of the original card (CARD_NO) — fallback reference. */
+  cardNo?: string;
+  referenceId: string;
+}
+
+export interface ValorAuthCompleteResult extends ValorTxnResult {
+  /** PARTIAL="1" — completion captured less than requested (e.g. expired hold). */
+  partial?: boolean;
+  /** Captured amount in cents when `partial` is true. */
   approvedAmount?: number;
 }
 

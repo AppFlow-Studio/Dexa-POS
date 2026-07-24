@@ -399,6 +399,138 @@ describe("ValorService request framing by transport", () => {
   });
 });
 
+describe("ValorService.processPreAuth — CREDIT PREAUTH (TRAN_MODE 1 / TRAN_CODE 3)", () => {
+  const preAuthReplies = (body: any, emit: (f: string) => void) => {
+    const ref = String(body.REQ_TXN_ID ?? "");
+    emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+    emit(encodeValorFrame({ STATE: "0", STAN_NO: "7", MSG: "Payload Request Received" }));
+    emit(
+      encodeValorFrame({
+        STATE: "0",
+        MER_TXN_ID: ref,
+        REQ_TXN_ID: ref,
+        TRAN_TYPE: "Credit",
+        TRAN_METHOD: "Pre Auth",
+        AMOUNT: "1000",
+        RRN: "123456789012",
+        TRAN_NO: "5", // the completion/void reference
+        CODE: "RA1234",
+        ENTRY_MODE: "CHIP",
+        ISSUER: "VISA",
+        MASKED_PAN: "4111 **** **** 1111",
+      }),
+    );
+  };
+
+  it("sends mode 1 / code 3 and maps TRAN_NO + rrn + valor_transaction blob", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = preAuthReplies;
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processPreAuth({ amount: 1000, referenceId: "000300" });
+
+    expect(res.success).toBe(true);
+    expect(res.tranNo).toBe("5");
+    expect(res.rrn).toBe("123456789012");
+    const blob = res.terminalResponse as any;
+    expect(blob.valor_transaction.approvalCode).toBe("RA1234");
+    expect(blob.valor_transaction.cardLast4).toBe("1111");
+    const req = scripted.raws[0];
+    expect(req.includes('"TRAN_MODE":"1"')).toBe(true);
+    expect(req.includes('"TRAN_CODE":"3"')).toBe(true);
+  });
+
+  it("returns success WITHOUT a TRAN_NO when the hold is only recovered via TRAN_MODE 90", async () => {
+    // A hold placed but whose final frame was lost, then recovered by TRAN_MODE 90
+    // that omits TRAN_NO — the hold exists but is uncapturable by reference. The
+    // service reports success+no-tranNo; the orchestration layer must NOT store it
+    // as a normal authorized payment (Wave 2 routes to the release-from-terminal path).
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (body, emit) => {
+      if (String(body.TRAN_MODE) === "90") {
+        emit(encodeValorFrame({ STATE: "0", RRN: "123456789012", MASKED_PAN: "4111 **** **** 1111" }));
+        return;
+      }
+      emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+      emit(encodeValorFrame({ STATE: "0", STAN_NO: "8", MSG: "Payload Request Received" }));
+      scripted.fireClose(); // socket dies after STAN, before final
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processPreAuth({ amount: 1000, referenceId: "000301" });
+
+    expect(res.success).toBe(true);
+    expect(res.stan).toBe("8");
+    expect(res.tranNo).toBeUndefined();
+  });
+});
+
+describe("ValorService.processAuthComplete — TICKET (TRAN_MODE 0 / TRAN_CODE 4)", () => {
+  const completionReplies = (body: any, emit: (f: string) => void, extra: Record<string, unknown> = {}) => {
+    const ref = String(body.REQ_TXN_ID ?? "");
+    emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+    emit(
+      encodeValorFrame({
+        STATE: "0",
+        MER_TXN_ID: ref,
+        REQ_TXN_ID: ref,
+        TRAN_METHOD: "Completion",
+        AMOUNT: "1200",
+        RRN: "123456789012",
+        TRAN_NO: "5",
+        CODE: "RA1234",
+        MASKED_PAN: "4111 **** **** 1111",
+        ...extra,
+      }),
+    );
+  };
+
+  it("folds tip into AMOUNT, references by TRAN_NO, and reports success", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (b, emit) => completionReplies(b, emit);
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processAuthComplete({
+      captureAmount: 1000,
+      tipAmount: 200,
+      tranNo: "5",
+      referenceId: "000310",
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.tranNo).toBe("5");
+    const req = scripted.raws[0];
+    expect(req.includes('"TRAN_MODE":"0"')).toBe(true);
+    expect(req.includes('"TRAN_CODE":"4"')).toBe(true);
+    expect(req.includes('"AMOUNT":"1200"')).toBe(true); // base 1000 + tip 200
+    expect(req.includes('"TRAN_NO":"5"')).toBe(true);
+  });
+
+  it("rejects with a clear error when neither TRAN_NO nor CARD_NO is given", async () => {
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processAuthComplete({ captureAmount: 1000, referenceId: "000311" });
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/TRAN_NO or CARD_NO/i);
+  });
+
+  it("surfaces PARTIAL=1 with the terminal-reported captured amount", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (b, emit) => completionReplies(b, emit, { PARTIAL: "1", AMOUNT: "500" });
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processAuthComplete({ captureAmount: 1000, tranNo: "5", referenceId: "000312" });
+
+    expect(res.success).toBe(true);
+    expect(res.partial).toBe(true);
+    expect(res.approvedAmount).toBe(500);
+  });
+});
+
 describe("ValorService.terminalQuery — real terminal (ACK-only)", () => {
   it("resolves success when the terminal answers 96 with ONLY an ACK", async () => {
     // Real VP terminals reply to TRAN_MODE 96 with just {"STATE":"0","MSG":"ACK"}
