@@ -29,6 +29,15 @@ async function nextValorRefId(
   return counter.next();
 }
 
+/**
+ * Kill switch for Valor open-tab (pre-auth). Temporarily OFF: the on-device flow
+ * was slow and needs perf work before shipping. Flip to `true` to re-enable —
+ * gates BOTH the service (openTab below) and the "Open Tab" UI entry
+ * (PaymentMethodSelectionView imports this). Close/Release stay available so an
+ * existing Valor hold can still be captured or voided.
+ */
+export const VALOR_OPEN_TAB_ENABLED = false;
+
 // ============================================================
 // TYPES
 // ============================================================
@@ -115,8 +124,17 @@ export async function openTab(
       last4 = castlesTxn?.cardLast4 ?? undefined;
       entryMode = castlesTxn?.entryMode ?? undefined;
     } else if (terminal.type === "valor") {
+      if (!VALOR_OPEN_TAB_ENABLED) {
+        return {
+          success: false,
+          error: "Open Tab is temporarily unavailable on Valor terminals.",
+        };
+      }
+      // preAuthService works in DOLLARS; the Valor service takes integer CENTS.
+      // (Passing dollars here charged $25 as a 25¢ hold.)
+      const amountCents = Math.round((amount + Number.EPSILON) * 100);
       const result = await terminal.service.processPreAuth({
-        amount,
+        amount: amountCents,
         referenceId,
       });
 
