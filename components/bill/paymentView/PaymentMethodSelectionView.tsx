@@ -6,7 +6,9 @@ import {
   useOrderPreAuth
 } from '@/stores/selectors/orderSelectors'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { PaymentView, usePaymentStore } from '@/stores/usePaymentStore'
+import { VALOR_OPEN_TAB_ENABLED } from '@/services/preAuthService'
 import {
   Banknote,
   CheckCircle2,
@@ -127,6 +129,14 @@ const PaymentMethodSelectionView: React.FC = () => {
   const preAuth = useOrderPreAuth(activeOrder?.id)
   const preAuthEnabled = useLocationConfigStore(s => s.config.preAuth.enabled)
 
+  // Open Tab (pre-auth) is temporarily disabled on Valor terminals (perf).
+  // Close/Release of an existing hold stay available.
+  const terminalType = useStoreSettingsStore(
+    s => s.selectedStation?.payment_terminal?.terminal_type
+  )
+  const openTabDisabledForTerminal =
+    terminalType === 'valor' && !VALOR_OPEN_TAB_ENABLED
+
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(
     hasPreAuth ? 'Close Tab' : 'Card Reader'
   )
@@ -185,7 +195,7 @@ const PaymentMethodSelectionView: React.FC = () => {
       description: 'Standard cash transaction',
       view: 'cash' as PaymentView
     },
-    ...(!hasPreAuth && preAuthEnabled
+    ...(!hasPreAuth && preAuthEnabled && !openTabDisabledForTerminal
       ? [
           {
             name: 'Open Tab' as PaymentMethod,

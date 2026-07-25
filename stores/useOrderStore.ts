@@ -15302,6 +15302,14 @@ export const useOrderStore = create<OrderState>()(
                       const castlesTxn =
                         terminalResponse?.castles_transaction as
                           Record<string, any> | undefined;
+                      // Valor blob lives in processor_response; read both columns.
+                      const valorTxn = ((p as any).processor_response
+                        ?.valor_transaction ??
+                        terminalResponse?.valor_transaction) as
+                          Record<string, any> | undefined;
+                      const terminalVendor = (terminalResponse?.terminal_vendor ??
+                        (p as any).processor_response?.terminal_vendor) as
+                          string | undefined;
 
                       // Refund evidence: take max across DB + local. Apply
                       // refund didn't always advance `status`, so we have to
@@ -15386,19 +15394,26 @@ export const useOrderStore = create<OrderState>()(
                         ...(isPreAuth
                           ? {
                               preAuthAmount: p.amount,
-                              preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
+                              preAuthRrn:
+                                (p as any).rrn || castlesTxn?.rrn || valorTxn?.rrn,
                               preAuthStan: castlesTxn?.stan,
+                              preAuthTranNo:
+                                valorTxn?.tranNo || (p as any).transaction_id,
                               preAuthAuthCode:
                                 (p as any).authorization_code ||
-                                castlesTxn?.approvalCode,
+                                castlesTxn?.approvalCode ||
+                                valorTxn?.approvalCode,
                               preAuthReferenceId:
                                 (p as any).reference_number ||
-                                castlesTxn?.referenceId,
+                                castlesTxn?.referenceId ||
+                                valorTxn?.reqTxnId,
                               preAuthTerminalType:
-                                (terminalResponse?.terminal_vendor === "castles"
+                                (terminalVendor === "castles"
                                   ? "castles"
+                                  : terminalVendor === "valor"
+                                  ? "valor"
                                   : "dejavoo") as
-                                  "dejavoo" | "castles" | undefined,
+                                  "dejavoo" | "castles" | "valor" | undefined,
                             }
                           : {}),
                       };
@@ -15685,6 +15700,14 @@ export const useOrderStore = create<OrderState>()(
                     Record<string, any> | undefined;
                   const castlesTxn = terminalResponse?.castles_transaction as
                     Record<string, any> | undefined;
+                  // Valor blob lives in processor_response; read both columns.
+                  const valorTxn = ((p as any).processor_response
+                    ?.valor_transaction ??
+                    terminalResponse?.valor_transaction) as
+                    Record<string, any> | undefined;
+                  const terminalVendor = (terminalResponse?.terminal_vendor ??
+                    (p as any).processor_response?.terminal_vendor) as
+                    string | undefined;
 
                   return {
                     id: `payment_${p.id}`,
@@ -15732,18 +15755,26 @@ export const useOrderStore = create<OrderState>()(
                     ...(isPreAuth
                       ? {
                           preAuthAmount: p.amount,
-                          preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
+                          preAuthRrn:
+                            (p as any).rrn || castlesTxn?.rrn || valorTxn?.rrn,
                           preAuthStan: castlesTxn?.stan,
+                          preAuthTranNo:
+                            valorTxn?.tranNo || (p as any).transaction_id,
                           preAuthAuthCode:
                             (p as any).authorization_code ||
-                            castlesTxn?.approvalCode,
+                            castlesTxn?.approvalCode ||
+                            valorTxn?.approvalCode,
                           preAuthReferenceId:
                             (p as any).reference_number ||
-                            castlesTxn?.referenceId,
+                            castlesTxn?.referenceId ||
+                            valorTxn?.reqTxnId,
                           preAuthTerminalType:
-                            (terminalResponse?.terminal_vendor === "castles"
+                            (terminalVendor === "castles"
                               ? "castles"
-                              : "dejavoo") as "dejavoo" | "castles" | undefined,
+                              : terminalVendor === "valor"
+                              ? "valor"
+                              : "dejavoo") as
+                              "dejavoo" | "castles" | "valor" | undefined,
                         }
                       : {}),
                   };
@@ -16821,12 +16852,14 @@ export const useOrderStore = create<OrderState>()(
                       Record<string, any> | undefined;
                     // Valor stores its blob in processor_response (not
                     // terminal_response): { terminal_vendor, valor_transaction }.
-                    const valorTxn = (payment.processor_response as any)
-                      ?.valor_transaction as Record<string, any> | undefined;
-                    // ATOM (on-device) mirrors Valor: processor_response holds
-                    // { terminal_vendor: "atom", atom_transaction }.
                     const atomTxn = (payment.processor_response as any)
                       ?.atom_transaction as Record<string, any> | undefined;
+                    // Read both columns: process_preauth stores the blob in
+                    // terminal_response; capture/sale dual-store in processor_response.
+                    const valorTxn = ((payment.processor_response as any)
+                      ?.valor_transaction ??
+                      (terminalResp as any)?.valor_transaction) as
+                      Record<string, any> | undefined;
 
                     return {
                       // Core identifiers
@@ -17023,18 +17056,26 @@ export const useOrderStore = create<OrderState>()(
                       ...(payment.status === "authorized"
                         ? {
                             preAuthAmount: payment.amount,
-                            preAuthRrn: payment.rrn || castlesTxn?.rrn,
+                            preAuthRrn:
+                              payment.rrn || castlesTxn?.rrn || valorTxn?.rrn,
                             preAuthStan: castlesTxn?.stan,
+                            preAuthTranNo:
+                              valorTxn?.tranNo ||
+                              (payment as any).transaction_id,
                             preAuthAuthCode:
                               payment.authorization_code ||
-                              castlesTxn?.approvalCode,
+                              castlesTxn?.approvalCode ||
+                              valorTxn?.approvalCode,
                             preAuthReferenceId:
                               payment.reference_number ||
-                              castlesTxn?.referenceId,
+                              castlesTxn?.referenceId ||
+                              valorTxn?.reqTxnId,
                             preAuthTerminalType: (payment.terminal_type ===
                             "castles"
                               ? "castles"
-                              : "dejavoo") as "castles" | "dejavoo",
+                              : payment.terminal_type === "valor" || valorTxn
+                              ? "valor"
+                              : "dejavoo") as "castles" | "dejavoo" | "valor",
                           }
                         : {}),
 

@@ -25,6 +25,7 @@ import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
+import { VALOR_DEFAULT_PORT } from '@/types/valor'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -183,12 +184,29 @@ const PreAuthPaymentView: React.FC = () => {
       throw new Error('No payment terminal selected')
     }
 
-    // Valor pre-auth / tabs are deferred (v1 = core money path only). Fail
-    // loudly rather than mis-routing a Valor terminal to the Dejavoo branch.
+    // Valor open-tab: connect the shared Valor service (mirrors the proven
+    // Valor sale path in CardPaymentView). The counter-based referenceId is
+    // minted inside preAuthService's Valor branches, which need terminalId.
     if (terminal.terminal_type === 'valor') {
-      throw new Error(
-        'Pre-authorization (open tab) is not yet supported on Valor terminals.',
-      )
+      const isUsb = terminal.connection_type === 'usb'
+      const host = isUsb ? undefined : terminal.ip_address
+      if (!isUsb && !host)
+        throw new Error('Valor terminal has no IP address configured')
+      const port = isUsb ? undefined : (terminal.port ?? VALOR_DEFAULT_PORT)
+
+      const service = getSharedValorService()
+      if (service.isSuspended()) service.resume()
+      await service.connect({
+        connectionType: isUsb ? 'usb' : 'local_socket',
+        host,
+        port,
+        cancelPort: terminal.cancel_port,
+        epi: terminal.epi,
+        timeout: 120_000,
+        terminalId: terminal.id
+      })
+
+      return { type: 'valor' as const, service, terminalId: terminal.id }
     }
 
     if (terminal.terminal_type === 'castles') {
@@ -552,7 +570,8 @@ const PreAuthPaymentView: React.FC = () => {
               <Text style={styles.warningActionText}>Increase Hold</Text>
             </TouchableOpacity>
           )}
-          {preAuth.preAuthTerminalType === 'dejavoo' && (
+          {(preAuth.preAuthTerminalType === 'dejavoo' ||
+            preAuth.preAuthTerminalType === 'valor') && (
             <Text style={styles.warningInfo}>
               Hold will be adjusted at close
             </Text>
@@ -574,6 +593,8 @@ const PreAuthPaymentView: React.FC = () => {
             <Text style={styles.preAuthValue}>
               {preAuth.preAuthTerminalType === 'castles'
                 ? 'Castles'
+                : preAuth.preAuthTerminalType === 'valor'
+                ? 'Valor'
                 : 'Dejavoo'}
             </Text>
           </View>
