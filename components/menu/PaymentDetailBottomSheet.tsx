@@ -80,6 +80,7 @@ import React, {
 import {
   ActivityIndicator,
   Modal,
+  Pressable,
   ScrollView,
   Text,
   TextInput,
@@ -261,6 +262,138 @@ const ActionButton: React.FC<ActionButtonProps> = ({
     </TouchableOpacity>
   );
 };
+
+// Compact warning button shown in the action row when tip-adjust / refund is
+// unavailable. Tapping it opens LimitInfoModal explaining the limitation.
+const LimitInfoButton: React.FC<{
+  onPress: () => void;
+  s: (n: number) => number;
+}> = ({ onPress, s }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel="Why are these actions unavailable?"
+    style={{
+      width: s(48),
+      paddingVertical: s(8),
+      borderRadius: s(8),
+      borderWidth: 1,
+      borderColor: colors.warning + "55",
+      backgroundColor: colors.warning + "15",
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+  >
+    <Info size={s(18)} color={colors.warning} />
+  </TouchableOpacity>
+);
+
+// Centered popup explaining why tip-adjust / refund actions are unavailable.
+const LimitInfoModal: React.FC<{
+  info: { title: string; message: string } | null;
+  onClose: () => void;
+  s: (n: number) => number;
+}> = ({ info, onClose, s }) => (
+  <Modal
+    visible={!!info}
+    transparent
+    animationType="fade"
+    onRequestClose={onClose}
+  >
+    <Pressable
+      onPress={onClose}
+      style={{
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.55)",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: s(24),
+      }}
+    >
+      <Pressable
+        onPress={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: s(440),
+          backgroundColor: colors.panel,
+          borderRadius: s(16),
+          borderWidth: 1,
+          borderColor: colors.warning + "40",
+          padding: s(20),
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: s(10),
+            marginBottom: s(12),
+          }}
+        >
+          <View
+            style={{
+              width: s(36),
+              height: s(36),
+              borderRadius: s(18),
+              backgroundColor: colors.warning + "20",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Info size={s(20)} color={colors.warning} />
+          </View>
+          <Text
+            style={{
+              flex: 1,
+              fontSize: s(16),
+              fontWeight: "700",
+              color: colors.label,
+            }}
+          >
+            {info?.title}
+          </Text>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <X size={s(20)} color={colors.muted} />
+          </TouchableOpacity>
+        </View>
+        <Text
+          style={{
+            fontSize: s(14),
+            lineHeight: s(21),
+            color: colors.muted,
+          }}
+        >
+          {info?.message}
+        </Text>
+        <TouchableOpacity
+          onPress={onClose}
+          style={{
+            marginTop: s(20),
+            paddingVertical: s(11),
+            borderRadius: s(10),
+            backgroundColor: colors.teal + "20",
+            borderWidth: 1,
+            borderColor: colors.teal + "50",
+            alignItems: "center",
+          }}
+        >
+          <Text
+            style={{
+              fontSize: s(14),
+              fontWeight: "700",
+              color: colors.teal,
+            }}
+          >
+            Got it
+          </Text>
+        </TouchableOpacity>
+      </Pressable>
+    </Pressable>
+  </Modal>
+);
 
 // Summary Card Component
 interface SummaryCardProps {
@@ -1210,6 +1343,12 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   const [expandedPaymentIndex, setExpandedPaymentIndex] = useState<
     number | null
   >(null);
+  // Explainer popup for why tip-adjust / refund actions are unavailable.
+  // Opened by the compact warning button in the footer action row.
+  const [limitInfo, setLimitInfo] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
 
   const isOpen = order?.check_status === "Opened";
   const balanceDue =
@@ -2172,36 +2311,21 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
             )}
           {/* Explainer: when tip-adjust / refund are unavailable because the
               active terminal can't service these payments, say WHY instead of
-              silently hiding the actions. */}
+              silently hiding the actions. Compact icon button opens a popup so
+              it sits cleanly in the action row instead of a squeezed banner. */}
           {!isReadOnly &&
             (hasCardPayments || paymentSummary.collected > 0) &&
             !terminalCanProcess &&
             terminalBlockReason && (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "flex-start",
-                  gap: s(8),
-                  paddingHorizontal: s(12),
-                  paddingVertical: s(10),
-                  borderRadius: s(8),
-                  borderWidth: 1,
-                  borderColor: colors.warning,
-                  backgroundColor: colors.panel,
-                }}
-              >
-                <Info size={s(15)} color={colors.warning} />
-                <Text
-                  style={{
-                    flex: 1,
-                    fontSize: s(12),
-                    lineHeight: s(17),
-                    color: colors.muted,
-                  }}
-                >
-                  Tip adjust & refund unavailable. {terminalBlockReason}
-                </Text>
-              </View>
+              <LimitInfoButton
+                s={s}
+                onPress={() =>
+                  setLimitInfo({
+                    title: "Tip Adjust & Refund Unavailable",
+                    message: terminalBlockReason,
+                  })
+                }
+              />
             )}
           {/* ATOM-specific: refund IS available but tip-adjust is not (tips are
               baked into the sale). Explain why "Adjust Tip" is missing while
@@ -2211,34 +2335,25 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
             terminalCanProcess &&
             !tipCanProcess &&
             tipBlockReason && (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "flex-start",
-                  gap: s(8),
-                  paddingHorizontal: s(12),
-                  paddingVertical: s(10),
-                  borderRadius: s(8),
-                  borderWidth: 1,
-                  borderColor: colors.warning,
-                  backgroundColor: colors.panel,
-                }}
-              >
-                <Info size={s(15)} color={colors.warning} />
-                <Text
-                  style={{
-                    flex: 1,
-                    fontSize: s(12),
-                    lineHeight: s(17),
-                    color: colors.muted,
-                  }}
-                >
-                  Tip adjust unavailable. {tipBlockReason}
-                </Text>
-              </View>
+              <LimitInfoButton
+                s={s}
+                onPress={() =>
+                  setLimitInfo({
+                    title: "Tip Adjust Unavailable",
+                    message: tipBlockReason,
+                  })
+                }
+              />
             )}
         </View>
       </View>
+
+      {/* Explainer popup for unavailable tip-adjust / refund actions. */}
+      <LimitInfoModal
+        info={limitInfo}
+        onClose={() => setLimitInfo(null)}
+        s={s}
+      />
     </View>
   );
 };
