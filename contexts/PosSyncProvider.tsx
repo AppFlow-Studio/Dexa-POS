@@ -9,7 +9,11 @@ import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
-import { getStorageSizeStats } from "@/lib/storage";
+import {
+    getBucketKeyCount,
+    getStorageSizeStats,
+    type StorageBucketName,
+} from "@/lib/storage";
 import { initLandiPrinter } from "@/native/LandiPrinter";
 import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
 import { syncEmployees as syncEmployeesService } from "@/services/employeeSyncService";
@@ -464,24 +468,25 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     hasCheckedStorageSizeRef.current = true;
 
     const TEN_MB = 10 * 1024 * 1024;
-    const stats = getStorageSizeStats();
-    const buckets = [
-      { name: "general", ...stats.general },
-      { name: "secure", ...stats.secure },
-      { name: "sync", ...stats.sync },
-    ];
+    // Three O(1) native size reads — no key/value enumeration on the boot path.
+    // keyCount is resolved only for a bucket that actually breaches, so the
+    // common (healthy) case stays free.
+    const sizes = getStorageSizeStats();
 
-    for (const bucket of buckets) {
-      if (bucket.totalBytes > TEN_MB) {
+    for (const [name, totalBytes] of Object.entries(sizes) as [
+      StorageBucketName,
+      number,
+    ][]) {
+      if (totalBytes > TEN_MB) {
         Sentry.captureMessage("MMKV bucket size exceeded 10MB", {
           level: "warning",
           tags: {
             source: "storage_monitor",
-            bucket: bucket.name,
+            bucket: name,
           },
           extra: {
-            totalBytes: bucket.totalBytes,
-            keyCount: bucket.keyCount,
+            totalBytes,
+            keyCount: getBucketKeyCount(name),
             thresholdBytes: TEN_MB,
           },
         });
