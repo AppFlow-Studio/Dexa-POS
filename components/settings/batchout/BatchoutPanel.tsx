@@ -21,6 +21,7 @@ import {
   type UnsettledStats
 } from '@/services/settlementService'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useActiveProcessor } from '@/hooks/useActiveProcessor'
 import type { CastlesSettlementHostResult } from '@/types/castles'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
 import { useAuth } from '@clerk/clerk-expo'
@@ -127,6 +128,12 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
   const isUsbTerminal = terminal?.connection_type === 'usb'
   const terminalHost = terminal?.ip_address
   const terminalPort = terminal?.port ?? CASTLES_DEFAULT_PORT
+
+  // ATOM (Landi P30) settles host-side automatically — there's no manual
+  // batch-out to run on-device. When it's the active processor and there's no
+  // Castles/Valor terminal to settle, show an informational card instead of the
+  // generic "unsupported" warning.
+  const atomActive = useActiveProcessor().atomActive
 
   // Terminals with a supported batch-out path. Valor is gated by a kill switch so
   // it can be turned off in the field without an OTA; it requires the
@@ -403,14 +410,19 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         <Text
           style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}
         >
-          {terminal?.terminal_name || 'Payment Terminal'}
+          {terminal?.terminal_name ||
+            (atomActive ? 'ATOM (on-device)' : 'Payment Terminal')}
         </Text>
         <Text style={{ marginTop: s(4), fontSize: s(13), color: colors.muted }}>
           {isCastles
             ? isUsbTerminal
               ? 'Castles · USB'
               : `Castles @ ${terminalHost}:${terminalPort}`
-            : terminal?.terminal_type ?? 'No terminal configured'}
+            : terminal?.terminal_type
+              ? terminal.terminal_type
+              : atomActive
+                ? 'Landi P30 · TSYS'
+                : 'No terminal configured'}
         </Text>
         {terminalSerial ? (
           <Text style={{ marginTop: s(2), fontSize: s(12), color: colors.muted }}>
@@ -419,7 +431,27 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         ) : null}
       </View>
 
-      {!isSupported ? (
+      {isSupported ? (
+        state === 'idle' || state === 'confirming' ? (
+          <IdleView
+            stats={unsettledStats}
+            statsLoading={statsLoading}
+            onSettle={handleConfirm}
+            onPrintDay={printDay}
+            disabled={state === 'confirming' || (!isUsbTerminal && !terminalHost)}
+          />
+        ) : state === 'settling' ? (
+          <SettlingView statusMessage={statusMessage} />
+        ) : state === 'results' && result ? (
+          <ResultsView
+            result={result}
+            onDone={handleResultDone}
+            onRetry={handleRetry}
+          />
+        ) : null
+      ) : atomActive ? (
+        <AtomAutoSettleView scale={uiScale} />
+      ) : (
         <View
           style={{
             borderRadius: s(14),
@@ -433,23 +465,7 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
             Batchout is currently supported for Castles and Valor terminals only.
           </Text>
         </View>
-      ) : state === 'idle' || state === 'confirming' ? (
-        <IdleView
-          stats={unsettledStats}
-          statsLoading={statsLoading}
-          onSettle={handleConfirm}
-          onPrintDay={printDay}
-          disabled={state === 'confirming' || (!isUsbTerminal && !terminalHost)}
-        />
-      ) : state === 'settling' ? (
-        <SettlingView statusMessage={statusMessage} />
-      ) : state === 'results' && result ? (
-        <ResultsView
-          result={result}
-          onDone={handleResultDone}
-          onRetry={handleRetry}
-        />
-      ) : null}
+      )}
 
       {showBatchLog ? (
         <PendingFinalizeSection
@@ -469,6 +485,44 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
           onPrintBatch={printBatch}
         />
       ) : null}
+    </View>
+  )
+}
+
+// ── ATOM auto-settle (host-side) ───────────────────────────────
+
+function AtomAutoSettleView ({ scale }: { scale: number }) {
+  const s = (n: number) => Math.round(n * scale)
+  return (
+    <View
+      style={{
+        borderRadius: s(14),
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.card,
+        padding: s(16),
+        gap: s(12)
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
+        <CheckCircle color={colors.success} size={s(22)} strokeWidth={2} />
+        <Text
+          style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
+        >
+          Automatic settlement
+        </Text>
+      </View>
+      <Text style={{ fontSize: s(13), lineHeight: s(19), color: colors.muted }}>
+        ATOM (Landi P30) settles automatically. The processor closes the batch
+        host-side at the end of each business day — there's no manual batch-out
+        to run on this device.
+      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+        <Clock color={colors.muted} size={s(14)} strokeWidth={2} />
+        <Text style={{ fontSize: s(12), color: colors.muted, flex: 1 }}>
+          Settled totals appear in Reports once the host closes the batch.
+        </Text>
+      </View>
     </View>
   )
 }

@@ -9,6 +9,7 @@ import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { PaymentView, usePaymentStore } from '@/stores/usePaymentStore'
 import { VALOR_OPEN_TAB_ENABLED } from '@/services/preAuthService'
+import { useActiveProcessor } from '@/hooks/useActiveProcessor'
 import {
   Banknote,
   CheckCircle2,
@@ -134,8 +135,15 @@ const PaymentMethodSelectionView: React.FC = () => {
   const terminalType = useStoreSettingsStore(
     s => s.selectedStation?.payment_terminal?.terminal_type
   )
+  // ATOM (Landi P30) has no pre-auth capability — the on-device processor only
+  // supports immediate-capture sales, so there's no APPROVED auth to hold. Hide
+  // Open Tab whenever ATOM is the active processor (same treatment as the Valor
+  // perf kill-switch). Uses the active processor, not the configured terminal,
+  // because a NEW hold routes to whatever device services new sales.
+  const activeProcessorType = useActiveProcessor().activeType
   const openTabDisabledForTerminal =
-    terminalType === 'valor' && !VALOR_OPEN_TAB_ENABLED
+    (terminalType === 'valor' && !VALOR_OPEN_TAB_ENABLED) ||
+    activeProcessorType === 'atom'
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(
     hasPreAuth ? 'Close Tab' : 'Card Reader'

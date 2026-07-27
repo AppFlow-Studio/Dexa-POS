@@ -15,6 +15,7 @@ import {
 } from '@/services/preAuthService'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { getSharedValorService } from '@/services/terminals/valor-service'
+import { resolveActiveProcessor } from '@/hooks/useActiveProcessor'
 import {
   useActiveOrder,
   useActiveOrderTotals,
@@ -241,6 +242,21 @@ const PreAuthPaymentView: React.FC = () => {
       toastService.show({
         title: 'Invalid Amount',
         message: 'Enter a valid hold amount',
+        type: 'error'
+      })
+      return
+    }
+
+    // ATOM (Landi P30) can't place holds — pre-auth isn't part of the on-device
+    // capability set. Defense-in-depth guard for the OPEN path only; capture /
+    // release of an existing hold must still work regardless of the active
+    // processor. The Open Tab entry is also hidden in PaymentMethodSelectionView
+    // when ATOM is active, so this should rarely be reached.
+    if (resolveActiveProcessor().activeType === 'atom') {
+      toastService.show({
+        title: 'Not Supported',
+        message:
+          'Open Tab / pre-auth isn’t available on ATOM (Landi P30). Charge the full amount instead.',
         type: 'error'
       })
       return
