@@ -714,6 +714,8 @@ function normalizeKdsTicket(ticket: KDSTicket): KDSTicket {
 
 /** KDS-relevant kitchen statuses */
 const KDS_STATUSES = new Set(["sent", "preparing", "ready"]);
+const KDS_DONE_TICKET_RETENTION_MS = 60 * 60 * 1000;
+const KDS_DONE_TICKET_LIMIT = 50;
 
 /** Terminal order statuses — remove from KDS */
 const TERMINAL_ORDER_STATUSES = new Set([
@@ -735,15 +737,70 @@ function buildRemoteDonePatch(
   currentDone: KDSTicket[],
 ): Partial<KDSState> {
   if (removed.length === 0) return {};
-  const updatedDone = dedupeTicketsByIdKeepFirst([
-    ...removed.map((t) => ({
-      ...t,
-      status: "done" as KDSTicket["status"],
-      done_time_epoch: Date.now(),
-    })),
-    ...currentDone,
-  ]).slice(0, 50);
+  const updatedDone = mergeDoneTickets(
+    removed.map((ticket) => asDoneTicket(ticket)),
+    currentDone,
+  );
   return { doneTickets: updatedDone, doneCount: updatedDone.length };
+}
+
+function getDoneTicketEpoch(ticket: KDSTicket): number {
+  const doneEpoch =
+    ticket.done_time_epoch || safeParseUtcTimestamp(ticket.done_time);
+  if (doneEpoch) return doneEpoch;
+
+  return ticket.status === "done"
+    ? ticket.ready_time_epoch || safeParseUtcTimestamp(ticket.ready_time) || 0
+    : 0;
+}
+
+function asDoneTicket(ticket: KDSTicket, fallbackEpoch = Date.now()): KDSTicket {
+  const doneEpoch = getDoneTicketEpoch(ticket) || fallbackEpoch;
+  return {
+    ...ticket,
+    status: "done",
+    done_time_epoch: doneEpoch,
+  };
+}
+
+function isRecentDoneTicket(ticket: KDSTicket, now = Date.now()): boolean {
+  const doneEpoch = getDoneTicketEpoch(ticket);
+  return doneEpoch > now - KDS_DONE_TICKET_RETENTION_MS;
+}
+
+function mergeDoneTickets(
+  incomingDone: KDSTicket[],
+  currentDone: KDSTicket[],
+  now = Date.now(),
+): KDSTicket[] {
+  const normalizedIncoming =
+    incomingDone.length > 0
+      ? incomingDone.map((ticket) => asDoneTicket(ticket, now))
+      : [];
+  const candidates =
+    normalizedIncoming.length > 0
+      ? [...normalizedIncoming, ...currentDone]
+      : currentDone;
+  const merged = dedupeTicketsByIdKeepFirst(candidates)
+    .filter((ticket) => isRecentDoneTicket(ticket, now))
+    .sort((a, b) => getDoneTicketEpoch(b) - getDoneTicketEpoch(a))
+    .slice(0, KDS_DONE_TICKET_LIMIT);
+
+  if (incomingDone.length === 0 && arraysShallowEqual(merged, currentDone)) {
+    return currentDone;
+  }
+
+  return merged;
+}
+
+function doneTicketsShallowEqual(a: KDSTicket[], b: KDSTicket[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] === b[i]) continue;
+    if (a[i].ticket_id !== b[i].ticket_id) return false;
+    if (!ticketDeepEqual(a[i], b[i])) return false;
+  }
+  return true;
 }
 
 function getEffectiveItemQuantity(
@@ -1571,10 +1628,13 @@ export const useKDSStore = create<KDSState>()(
               // we never freeze a still-cooking ticket at epoch 0.
               ready_time_epoch:
                 t.status === "ready"
-                  ? safeParseUtcTimestamp(
-                      (t as KDSTicket & { ready_time?: string | null })
-                        .ready_time,
-                    ) || undefined
+                  ? safeParseUtcTimestamp(t.ready_time) || undefined
+                  : undefined,
+              done_time_epoch:
+                t.status === "done"
+                  ? safeParseUtcTimestamp(t.done_time) ||
+                    safeParseUtcTimestamp(t.ready_time) ||
+                    undefined
                   : undefined,
             }),
           );
@@ -1605,7 +1665,22 @@ export const useKDSStore = create<KDSState>()(
               ),
             };
           });
-          const visibleRemapped = withAckOverlay.filter(ticketShouldRemainVisible);
+          const serverDoneTickets = withAckOverlay
+            .filter((ticket) => ticket.status === "done")
+            .map((ticket) => asDoneTicket(ticket));
+          const currentDoneTickets = get().doneTickets;
+          const nextDoneTickets = mergeDoneTickets(
+            serverDoneTickets,
+            currentDoneTickets,
+          );
+          const doneChanged = !doneTicketsShallowEqual(
+            nextDoneTickets,
+            currentDoneTickets,
+          );
+          const activeRemapped = withAckOverlay.filter(
+            (ticket) => ticket.status !== "done",
+          );
+          const visibleRemapped = activeRemapped.filter(ticketShouldRemainVisible);
           const dedupedRemapped = dedupeTicketsById(visibleRemapped);
           const sorted = sortKdsTicketsStable(dedupedRemapped);
           const { merged, mergedById, changed } = mergeTickets(
@@ -1613,7 +1688,7 @@ export const useKDSStore = create<KDSState>()(
             get()._ticketsById,
           );
 
-          if (!changed && get()._hasHydrated) {
+          if (!changed && !doneChanged && get()._hasHydrated) {
             set({ isInitialLoading: false, isFetching: false });
             return;
           }
@@ -1640,6 +1715,8 @@ export const useKDSStore = create<KDSState>()(
             _ticketsById: mergedById,
             _ticketIdsByOrderId: buildOrderIdIndex(mergedById),
             prioritizedTicketIds: nextPrioritized,
+            doneTickets: nextDoneTickets,
+            doneCount: nextDoneTickets.length,
             ...bucketed,
             _hasHydrated: true,
             isInitialLoading: false,
@@ -1724,10 +1801,13 @@ export const useKDSStore = create<KDSState>()(
               // we never freeze a still-cooking ticket at epoch 0.
               ready_time_epoch:
                 t.status === "ready"
-                  ? safeParseUtcTimestamp(
-                      (t as KDSTicket & { ready_time?: string | null })
-                        .ready_time,
-                    ) || undefined
+                  ? safeParseUtcTimestamp(t.ready_time) || undefined
+                  : undefined,
+              done_time_epoch:
+                t.status === "done"
+                  ? safeParseUtcTimestamp(t.done_time) ||
+                    safeParseUtcTimestamp(t.ready_time) ||
+                    undefined
                   : undefined,
             }),
           );
@@ -1756,7 +1836,22 @@ export const useKDSStore = create<KDSState>()(
               ),
             };
           });
-          const visibleRemapped = withAckOverlay.filter(ticketShouldRemainVisible);
+          const serverDoneTickets = withAckOverlay
+            .filter((ticket) => ticket.status === "done")
+            .map((ticket) => asDoneTicket(ticket));
+          const currentDoneTickets = get().doneTickets;
+          const nextDoneTickets = mergeDoneTickets(
+            serverDoneTickets,
+            currentDoneTickets,
+          );
+          const doneChanged = !doneTicketsShallowEqual(
+            nextDoneTickets,
+            currentDoneTickets,
+          );
+          const activeRemapped = withAckOverlay.filter(
+            (ticket) => ticket.status !== "done",
+          );
+          const visibleRemapped = activeRemapped.filter(ticketShouldRemainVisible);
           const dedupedRemapped = dedupeTicketsById(visibleRemapped);
           const sorted = sortKdsTicketsStable(dedupedRemapped);
           if (__DEV__) {
@@ -1764,6 +1859,7 @@ export const useKDSStore = create<KDSState>()(
               locationId,
               processedCount: processed.length,
               remappedCount: remapped.length,
+              serverDoneCount: serverDoneTickets.length,
               visibleCount: visibleRemapped.length,
               dedupedCount: dedupedRemapped.length,
               sortedCount: sorted.length,
@@ -1839,9 +1935,12 @@ export const useKDSStore = create<KDSState>()(
           // AND the item-level recalled flag (persisted in MMKV) so the
           // ticket survives even after a hot-reload that clears the Set.
           const currentTickets = get().tickets;
-          const serverTicketIds = new Set(sorted.map((t) => t.ticket_id));
+          const serverResolvedTickets = [...sorted, ...serverDoneTickets];
+          const serverTicketIds = new Set(
+            serverResolvedTickets.map((t) => t.ticket_id),
+          );
           const serverTicketSignatures = new Set(
-            sorted.map(getTicketLogicalSignature),
+            serverResolvedTickets.map(getTicketLogicalSignature),
           );
           const protectedMissing = currentTickets.filter(
             (t) =>
@@ -1873,7 +1972,7 @@ export const useKDSStore = create<KDSState>()(
             get()._ticketsById,
           );
 
-          if (!changed && get()._hasHydrated) {
+          if (!changed && !doneChanged && get()._hasHydrated) {
             set({ isFetching: false });
             return;
           }
@@ -1904,6 +2003,8 @@ export const useKDSStore = create<KDSState>()(
             _ticketsById: mergedById,
             _ticketIdsByOrderId: buildOrderIdIndex(mergedById),
             prioritizedTicketIds: nextPrioritized,
+            doneTickets: nextDoneTickets,
+            doneCount: nextDoneTickets.length,
             ...bucketed,
             _hasHydrated: true,
             isFetching: false,
@@ -2046,14 +2147,10 @@ export const useKDSStore = create<KDSState>()(
           deleteTicketMutationVersion(ticketId);
 
           if (ticket) {
-            const updatedDone = dedupeTicketsByIdKeepFirst([
-              {
-                ...ticket,
-                status: "done" as KDSTicket["status"],
-                done_time_epoch: Date.now(),
-              },
-              ...get().doneTickets,
-            ]).slice(0, 50);
+            const updatedDone = mergeDoneTickets(
+              [asDoneTicket(ticket)],
+              get().doneTickets,
+            );
             extraState = {
               doneTickets: updatedDone,
               doneCount: updatedDone.length,
@@ -3568,10 +3665,10 @@ export const useKDSStore = create<KDSState>()(
         );
         const updatedDone =
           servedTickets.length > 0
-            ? dedupeTicketsByIdKeepFirst([
-                ...servedTickets,
-                ...get().doneTickets,
-              ]).slice(0, 50)
+            ? mergeDoneTickets(
+                servedTickets.map((ticket) => asDoneTicket(ticket)),
+                get().doneTickets,
+              )
             : get().doneTickets;
         set({
           tickets: updatedTickets,
@@ -3736,10 +3833,7 @@ export const useKDSStore = create<KDSState>()(
           delete updatedById[id];
           deleteTicketMutationVersion(id);
         }
-        const updatedDone = dedupeTicketsByIdKeepFirst([
-          ...newDoneTickets,
-          ...get().doneTickets,
-        ]).slice(0, 50);
+        const updatedDone = mergeDoneTickets(newDoneTickets, get().doneTickets);
 
         const bucketed = smartBucketTickets(
           updatedTickets,

@@ -7,6 +7,8 @@ interface KickedOutModalProps {
   visible: boolean
   kickedBy: string | null
   kickReason: string | null
+  title?: string | null
+  message?: string | null
   countdown: number
   onAcknowledge: () => void
 }
@@ -19,11 +21,20 @@ export function KickedOutModal ({
   visible,
   kickedBy,
   kickReason,
+  title,
+  message,
   countdown,
   onAcknowledge
 }: KickedOutModalProps) {
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
+  const displayTitle = title ?? 'Session Taken Over'
+  const displayMessage =
+    message ??
+    (kickedBy
+      ? `${kickedBy} has taken over this station.`
+      : 'Another user has taken over this station.')
+
   return (
     <Modal
       visible={visible}
@@ -74,7 +85,7 @@ export function KickedOutModal ({
               marginBottom: s(8)
             }}
           >
-            Session Taken Over
+            {displayTitle}
           </Text>
 
           {/* Message */}
@@ -86,9 +97,7 @@ export function KickedOutModal ({
               marginBottom: s(16)
             }}
           >
-            {kickedBy
-              ? `${kickedBy} has taken over this station.`
-              : 'Another user has taken over this station.'}
+            {displayMessage}
           </Text>
 
           {kickReason && (
