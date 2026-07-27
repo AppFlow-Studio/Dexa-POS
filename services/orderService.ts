@@ -141,6 +141,35 @@ export type ReopenCheckResult = {
   reopen_count?: number;
 };
 
+/**
+ * Short-lived cache of a POSITIVE session-validity result.
+ *
+ * `ensureSessionValid` runs as a serial pre-flight before hot mutations, so an
+ * uncached call adds a full extra round trip in front of the RPC the user is
+ * actually waiting on — it's a large part of the "Creating order" wait on a
+ * slow connection.
+ *
+ * Safe to cache on the ORDER paths because this guard is the last and weakest
+ * of four kick-detection layers: `useSessionKickListener` already covers kicks
+ * via realtime broadcast (instant), a 30s poll, and app-foreground
+ * revalidation — and this function fails open on any RPC error anyway. The
+ * default TTL matches that poller's 30s interval, so the guard is never staler
+ * than the primary detection the app already relies on.
+ *
+ * NOT used on the payment path: `processPayment` passes `maxAgeMs: 0` to force
+ * a live check. Money movement is the one place where a stale "still valid"
+ * isn't an acceptable trade, and payments are already gated behind a
+ * multi-second terminal round trip, so the extra RPC is invisible there.
+ *
+ * Only `is_valid: true` is cached. A negative result is never cached, so a
+ * kicked session re-checks on every call.
+ *
+ * The key includes deviceId + sessionId, so a new session (re-login, station
+ * switch) can never read an entry belonging to the previous one.
+ */
+const SESSION_VALID_TTL_MS = 30_000;
+let _sessionValidCache: { key: string; checkedAt: number } | null = null;
+
 export class OrderService {
   /**
    * Validates that the current station session is still active.
@@ -149,14 +178,29 @@ export class OrderService {
    *
    * This is a lightweight guard to prevent kicked devices from continuing
    * to perform operations if all realtime kick channels failed.
+   *
+   * @param opts.maxAgeMs How stale a cached positive result may be. Defaults to
+   *   SESSION_VALID_TTL_MS. Pass 0 to force a live check (payment path).
    */
-  static async ensureSessionValid(client: SupabaseClient): Promise<boolean> {
+  static async ensureSessionValid(
+    client: SupabaseClient,
+    opts?: { maxAgeMs?: number },
+  ): Promise<boolean> {
     try {
       const deviceId = getDeviceId();
       const sessionId = useStoreSettingsStore.getState().stationSessionId;
 
       if (!deviceId || !sessionId) {
         // No active session - allow operation (might be during setup)
+        return true;
+      }
+
+      const maxAgeMs = opts?.maxAgeMs ?? SESSION_VALID_TTL_MS;
+      const cacheKey = `${deviceId}:${sessionId}`;
+      if (
+        _sessionValidCache?.key === cacheKey &&
+        Date.now() - _sessionValidCache.checkedAt < maxAgeMs
+      ) {
         return true;
       }
 
@@ -186,9 +230,12 @@ export class OrderService {
           `[OrderService] SESSION INVALID - status: ${result.status}, ` +
             `kicked_by: ${result.kicked_by}. Blocking operation.`,
         );
+        // Not cached: a kicked session must re-check on every call.
+        _sessionValidCache = null;
         return false;
       }
 
+      _sessionValidCache = { key: cacheKey, checkedAt: Date.now() };
       return true;
     } catch (err) {
       // Fail open on unexpected errors
@@ -715,8 +762,12 @@ export class OrderService {
     params: ProcessPaymentV2Params,
     opts?: { keyOverride?: string },
   ): Promise<{ data: ProcessPaymentResult | null; error: any }> {
-    // Session guard: prevent kicked devices from processing payments
-    const sessionValid = await OrderService.ensureSessionValid(client);
+    // Session guard: prevent kicked devices from processing payments.
+    // maxAgeMs: 0 — never trust a cached result on the money path. The extra
+    // round trip is invisible next to the terminal's own multi-second flow.
+    const sessionValid = await OrderService.ensureSessionValid(client, {
+      maxAgeMs: 0,
+    });
     if (!sessionValid) {
       return {
         data: null,
