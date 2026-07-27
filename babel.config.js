@@ -30,8 +30,9 @@ module.exports = function (api) {
     ]);
   }
 
-  // react-native-reanimated/plugin must be last per its plugin docs.
-  plugins.push("react-native-reanimated/plugin");
+  // Reanimated 4 moved its Babel plugin into react-native-worklets; the old
+  // `react-native-reanimated/plugin` is a deprecated re-export. Must be last.
+  plugins.push("react-native-worklets/plugin");
 
   return {
     presets: [

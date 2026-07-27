@@ -74,12 +74,15 @@ import {
     useAuth,
 } from "@clerk/clerk-expo";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+// SDK 56+: expo-router ships a forked navigation and disallows importing
+// @react-navigation/* directly. These theme values/types are re-exported by
+// expo-router from its vendored copy.
 import {
     DarkTheme,
     DefaultTheme,
     Theme,
     ThemeProvider,
-} from "@react-navigation/native";
+} from "expo-router";
 import * as NavigationBar from "expo-navigation-bar";
 import { Stack, useNavigationContainerRef } from "expo-router";
 import { StatusBar } from "expo-status-bar";

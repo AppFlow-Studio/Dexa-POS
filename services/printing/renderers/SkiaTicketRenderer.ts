@@ -1,5 +1,5 @@
 import { Skia, PaintStyle } from "@shopify/react-native-skia";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { Asset } from "expo-asset";
 
 // ============================================================================
