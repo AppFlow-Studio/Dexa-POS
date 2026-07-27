@@ -129,6 +129,11 @@ export interface PosStaffLoginResponse {
     | "INVALID_PIN"
     | "STATION_NOT_FOUND"
     | "STATION_IN_USE"
+    | "SUBSCRIPTION_SUSPENDED"
+    | "BILLING_SUSPENDED"
+    | "PAYMENT_REQUIRED"
+    | "STATION_QUOTA_EXCEEDED"
+    | "STATION_LIMIT_REACHED"
     | "LOCKOUT_5MIN"
     | "LOCKOUT_30MIN";
   staff?: {

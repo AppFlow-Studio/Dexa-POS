@@ -6,7 +6,10 @@ import {
     STATION_IN_USE_AUTH_ERROR,
     useEmployeeStore,
 } from "@/stores/useEmployeeStore";
-import { SelectedLocation } from "@/stores/useStoreSettingsStore";
+import {
+    SelectedLocation,
+    useStoreSettingsStore,
+} from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { PosStaffLoginResponse, SelectedStation } from "@/types/station";
 import * as Application from "expo-application";
@@ -42,7 +45,8 @@ export type DeviceInfo = Awaited<ReturnType<typeof getDeviceInfo>>;
 export type SignInOutcome =
   | { outcome: "navigating" }
   | { outcome: "cache_miss" }
-  | { outcome: "server_validation_required" };
+  | { outcome: "server_validation_required" }
+  | { outcome: "blocked"; title: string; message: string };
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -172,6 +176,15 @@ export function usePinSignIn() {
       // This prevents temporary entry followed by rollback when backend rejects.
       if (isOnline) {
         return { outcome: "server_validation_required" };
+      }
+
+      const billingAccess = useStoreSettingsStore.getState().billingAccess;
+      if (billingAccess && !billingAccess.allowed && billingAccess.failure) {
+        return {
+          outcome: "blocked",
+          title: billingAccess.failure.title,
+          message: billingAccess.failure.message,
+        };
       }
 
       // 2. Offline-only optimistic sign-in
