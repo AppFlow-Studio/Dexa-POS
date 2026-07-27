@@ -4,8 +4,8 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
+import { registerResumeTask } from "@/lib/lifecycle/appLifecycleCoordinator";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, AppStateStatus } from "react-native";
 
 // ============================================================================
 // Types
@@ -327,28 +327,26 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
   useEffect(() => {
     if (!deviceId || !stationSessionId) return;
 
-    const handleAppStateChange = (nextState: AppStateStatus) => {
-      if (nextState === "active" && !isKickedRef.current) {
-        // Layer 2 polls every 30s, so only fire here if it's been a while —
-        // avoids an extra RPC on the critical first-tap path after idle.
-        const age = Date.now() - lastLayer3ValidateRef.current;
-        if (age < 5 * 60 * 1000) return;
+    // Session validity is auth-adjacent, but Layer 2 already polls every 30s,
+    // so this is a backstop rather than the primary check — `interactions`,
+    // not `immediate`. The 5-minute staleness gate it always had is now the
+    // task's shouldRun, and the coordinator's bucket ordering replaces the
+    // hand-rolled 500ms setTimeout that was doing the same job by feel.
+    const unregister = registerResumeTask({
+      id: "auth.session-kick-validate",
+      bucket: "interactions",
+      requiresNetwork: true,
+      shouldRun: () =>
+        !isKickedRef.current &&
+        Date.now() - lastLayer3ValidateRef.current >= 5 * 60 * 1000,
+      run: async () => {
         lastLayer3ValidateRef.current = Date.now();
         if (__DEV__) console.log("[KickListener] Layer 3: App became active - validating session");
-        setTimeout(() => {
-          validateSession();
-        }, 500);
-      }
-    };
+        await validateSession();
+      },
+    });
 
-    const subscription = AppState.addEventListener(
-      "change",
-      handleAppStateChange
-    );
-
-    return () => {
-      subscription.remove();
-    };
+    return unregister;
   }, [deviceId, stationSessionId, validateSession]);
 
   // ============================================================================
