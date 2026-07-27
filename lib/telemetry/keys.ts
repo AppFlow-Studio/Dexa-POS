@@ -76,6 +76,20 @@ export const KEY_RESUME_REQUESTS = internKey("resume.requests");
 /** Requests in flight concurrently at any instant during a resume window. */
 export const KEY_RESUME_PEAK_CONCURRENT = internKey("resume.peak_concurrent");
 
+// --------------------------------------------------------------------------
+// Realtime channel lifecycle (hooks/realtime/useRealtimechannel.ts).
+//
+// Added because a telemetry export showed the floor fallback poll running —
+// which only happens while the channel is NOT subscribed — with no way to see
+// why, or for how long. `rt.disconnected_ms` is the number that matters: the
+// fallback poll's cost scales with it, so a station with long/frequent
+// disconnects pays repeatedly for the heaviest floor RPC.
+// --------------------------------------------------------------------------
+export const KEY_RT_CHANNEL_DISCONNECT = internKey("rt.channel_disconnect");
+export const KEY_RT_CHANNEL_SUBSCRIBED = internKey("rt.channel_subscribed");
+/** Wall time between losing SUBSCRIBED and regaining it. */
+export const KEY_RT_DISCONNECTED_MS = internKey("rt.disconnected_ms");
+
 const resumeBucketCache: Record<string, number> = Object.create(null);
 
 /** Per-bucket completion span id (`resume.bucket_ms.<bucket>`). */

@@ -3,6 +3,12 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { registerResumeTask } from '@/lib/lifecycle/appLifecycleCoordinator';
 import {
+  KEY_RT_CHANNEL_DISCONNECT,
+  KEY_RT_CHANNEL_SUBSCRIBED,
+  KEY_RT_DISCONNECTED_MS,
+} from '@/lib/telemetry/keys';
+import { recordCount, recordSample } from '@/lib/telemetry/registry';
+import {
   getRawIsOnline,
   subscribeOnlineStatus,
 } from '@/services/offlineSyncService';
@@ -75,8 +81,35 @@ export function useRealtimeChannel<T>({
     subscribedAt: null,
   });
 
+  // Wall-clock start of the current disconnected stretch, or null while
+  // SUBSCRIBED. Drives rt.disconnected_ms.
+  const disconnectedSinceRef = useRef<number | null>(null);
+
   // Update status and notify parent
   const updateStatus = useCallback((updates: Partial<ChannelStatus>) => {
+    // Channel-lifecycle telemetry. Recorded here rather than in an effect
+    // because this is the single funnel every state change passes through, and
+    // statusRef still holds the PREVIOUS state at this point. Counting
+    // edges (not polling state) is what makes rt.disconnected_ms meaningful:
+    // the floor fallback poll's cost is a direct function of it.
+    if (updates.state) {
+      const prevState = statusRef.current;
+      const nextState = updates.state;
+      if (prevState === 'SUBSCRIBED' && nextState !== 'SUBSCRIBED') {
+        disconnectedSinceRef.current = Date.now();
+        recordCount(KEY_RT_CHANNEL_DISCONNECT);
+      } else if (prevState !== 'SUBSCRIBED' && nextState === 'SUBSCRIBED') {
+        recordCount(KEY_RT_CHANNEL_SUBSCRIBED);
+        if (disconnectedSinceRef.current !== null) {
+          recordSample(
+            KEY_RT_DISCONNECTED_MS,
+            Date.now() - disconnectedSinceRef.current,
+          );
+          disconnectedSinceRef.current = null;
+        }
+      }
+    }
+
     setStatus(prev => {
       const newStatus = { ...prev, ...updates };
       if (updates.state) {
