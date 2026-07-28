@@ -293,7 +293,15 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     else sheetRef.current?.dismiss();
   }, [table]);
 
-  const handleDismiss = useCallback(() => onClose(), [onClose]);
+  // An action tapped inside the native sheet is deferred here and run once the
+  // sheet has FULLY dismissed. See the action-button onPress below for why.
+  const pendingActionRef = useRef<(() => void) | null>(null);
+  const handleDismiss = useCallback(() => {
+    onClose();
+    const pending = pendingActionRef.current;
+    pendingActionRef.current = null;
+    pending?.();
+  }, [onClose]);
 
   const liveSession = useTableSessionStore((s) =>
     table ? s.sessions[table.id] : undefined,
@@ -1188,9 +1196,18 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
                       }
                       return;
                     }
-                    action.onPress();
                     if (action.dismissOnPress !== false) {
+                      // Native modal: defer the action until the sheet has FULLY
+                      // dismissed (handleDismiss, fired by Expo UI's onDismiss
+                      // after the hide animation). Running it now — while the
+                      // native ModalBottomSheet tears down its RN host surface —
+                      // drops whatever it opens: e.g. "View Order" sets the active
+                      // order (header updates) but the TableOrderView overlay
+                      // mounts into the dying surface and never appears.
+                      pendingActionRef.current = action.onPress;
                       sheetRef.current?.dismiss();
+                    } else {
+                      action.onPress();
                     }
                   }}
                   disabled={action.disabled}
