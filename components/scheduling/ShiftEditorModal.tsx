@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { colors, switchTrackColors } from "@/lib/theme";
 import { Role, Shift, TemplateShift } from "@/lib/types"; // Import TemplateShift
-import BottomSheet from "@gorhom/bottom-sheet";
+import BottomSheet from "@/components/ui/bottomSheet";
 import {
   addDays,
   differenceInMinutes,

@@ -19,26 +19,29 @@ import com.temurappflowstudios.dexapos.hardware.HardwareDetectionPackage
 import com.temurappflowstudios.dexapos.printer.LandiPrinterPackage
 import com.temurappflowstudios.dexapos.nsd.NsdPublisherPackage
 import com.temurappflowstudios.dexapos.nsd.NsdDiscoveryPackage
+import com.temurappflowstudios.dexapos.atom.AtomBridgePackage
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ExpoReactHostFactory
 
 class MainApplication : Application(), ReactApplication {
 
-  private fun buildPackages(base: List<ReactPackage>): List<ReactPackage> =
-    base.toMutableList().apply {
+  // Autolinked packages + our custom (non-autolinked) native ReactPackages.
+  // Shared by the legacy reactNativeHost and the bridgeless reactHost below.
+  private val reactPackages: List<ReactPackage>
+    get() = PackageList(this).packages.toMutableList().apply {
       add(TcpServerPackage())
       add(SecondaryDisplayPackage())
       add(HardwareDetectionPackage())
       add(LandiPrinterPackage())
       add(NsdPublisherPackage())
       add(NsdDiscoveryPackage())
+      add(AtomBridgePackage())
     }
 
   override val reactNativeHost: ReactNativeHost =
         object : DefaultReactNativeHost(this) {
-          override fun getPackages(): List<ReactPackage> =
-            buildPackages(PackageList(this).packages)
+          override fun getPackages(): List<ReactPackage> = reactPackages
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
 
@@ -48,11 +51,12 @@ class MainApplication : Application(), ReactApplication {
           override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
       }
 
+  // SDK 57: build the bridgeless ReactHost via Expo's factory (NOT RN's plain
+  // DefaultReactHost.getDefaultReactHost) so the expo-updates + expo-dev-launcher
+  // host handlers are installed. The plain RN factory skips that integration,
+  // which leaves UpdatesController uninitialized and breaks the dev launcher.
   override val reactHost: ReactHost
-    get() = ExpoReactHostFactory.getDefaultReactHost(
-      applicationContext,
-      buildPackages(PackageList(this).packages)
-    )
+    get() = ExpoReactHostFactory.getDefaultReactHost(applicationContext, reactPackages)
 
   override fun onCreate() {
     super.onCreate()

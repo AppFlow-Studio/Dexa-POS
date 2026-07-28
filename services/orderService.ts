@@ -830,13 +830,13 @@ export class OrderService {
       //                            row (consumed by apply_refund_to_payment_v4
       //                            for proportional SC reversal).
       "process_payment_v12",
-      // v16 — forks v15. The split-payment "fully paid" test now requires ALL
-      // portions captured (v_portions_remaining = 0) and drops v15's
-      // `balance <= 0.02` dust fallback inside the split branch. On a tiny
-      // order (e.g. a $0.02 custom item split 2 ways) that fallback flipped the
-      // order to `paid` after the FIRST $0.01 portion — amount_paid=$0.01 with a
-      // real portion still owed — and enforce_order_math rejected it (P0005).
-      "process_payment_v16",
+      // v17 — forks v16 byte-identical + a valor_transaction branch that funnels
+      // Valor's nested card fields (cardLast4/rrn/approvalCode/entryMode) into the
+      // order_payments columns and stamps terminal_type='valor'. Without it the
+      // client called v16 (no valor arm) so Valor payments persisted with null
+      // last4/rrn/auth and a 'dejavoo' label. MUST match the direct payment path
+      // in useOrderStore.syncPaymentToBackend, which also calls v17.
+      "process_payment_v17",
       params,
       {
         deadline: DEADLINES.paymentRpc,

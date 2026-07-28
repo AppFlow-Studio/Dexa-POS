@@ -21,6 +21,7 @@ import {
   type UnsettledStats
 } from '@/services/settlementService'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useActiveProcessor } from '@/hooks/useActiveProcessor'
 import type { CastlesSettlementHostResult } from '@/types/castles'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
 import { useAuth } from '@clerk/clerk-expo'
@@ -48,6 +49,14 @@ import {
 } from 'react-native'
 
 type ScreenState = 'idle' | 'confirming' | 'settling' | 'results'
+
+/**
+ * Kill switch for Valor batch-out. Default ON for staging/preview where the
+ * prepare_valor_settlement / finalize_valor_settlement RPCs are live. Flip false
+ * to hide the Valor path in the field without an OTA if the prod RPCs aren't
+ * deployed yet (a missing RPC also surfaces a clean "not deployed" message).
+ */
+const VALOR_BATCHOUT_ENABLED = true
 
 interface BatchoutPanelProps {
   /** When true, renders the today's batch log section below the action card. */
@@ -115,9 +124,22 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
 
   const terminal = selectedStation?.payment_terminal
   const isCastles = terminal?.terminal_type === 'castles'
+  const isValor = terminal?.terminal_type === 'valor'
   const isUsbTerminal = terminal?.connection_type === 'usb'
   const terminalHost = terminal?.ip_address
   const terminalPort = terminal?.port ?? CASTLES_DEFAULT_PORT
+
+  // ATOM (Landi P30) settles host-side automatically — there's no manual
+  // batch-out to run on-device. When it's the active processor and there's no
+  // Castles/Valor terminal to settle, show an informational card instead of the
+  // generic "unsupported" warning.
+  const atomActive = useActiveProcessor().atomActive
+
+  // Terminals with a supported batch-out path. Valor is gated by a kill switch so
+  // it can be turned off in the field without an OTA; it requires the
+  // prepare_valor_settlement / finalize_valor_settlement RPCs to be live in the
+  // DB the app points at (staging done; prod on the user's deploy).
+  const isSupported = isCastles || (isValor && VALOR_BATCHOUT_ENABLED)
 
   // serial_number isn't in get_location_stations_with_status — fetch it
   // separately so the header can show it.
@@ -302,9 +324,12 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         terminalId: terminal.id,
         merchantId: selectedStore.merchant_id,
         initiatedBy: userId ?? 'unknown',
+        terminalType: terminal.terminal_type ?? undefined,
         terminalHost: isUsbTerminal ? undefined : terminalHost,
         terminalPort: isUsbTerminal ? undefined : terminalPort,
         connectionType: isUsbTerminal ? 'usb' : 'local_socket',
+        epi: (terminal as any).epi ?? undefined,
+        cancelPort: (terminal as any).cancel_port ?? undefined,
         locationId: selectedStore.id,
         supabase,
         onStatus: setStatusMessage
@@ -385,14 +410,19 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         <Text
           style={{ fontSize: s(16), fontWeight: '700', color: colors.heading }}
         >
-          {terminal?.terminal_name || 'Payment Terminal'}
+          {terminal?.terminal_name ||
+            (atomActive ? 'ATOM (on-device)' : 'Payment Terminal')}
         </Text>
         <Text style={{ marginTop: s(4), fontSize: s(13), color: colors.muted }}>
           {isCastles
             ? isUsbTerminal
               ? 'Castles · USB'
               : `Castles @ ${terminalHost}:${terminalPort}`
-            : terminal?.terminal_type ?? 'No terminal configured'}
+            : terminal?.terminal_type
+              ? terminal.terminal_type
+              : atomActive
+                ? 'Landi P30 · TSYS'
+                : 'No terminal configured'}
         </Text>
         {terminalSerial ? (
           <Text style={{ marginTop: s(2), fontSize: s(12), color: colors.muted }}>
@@ -401,7 +431,27 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
         ) : null}
       </View>
 
-      {!isCastles ? (
+      {isSupported ? (
+        state === 'idle' || state === 'confirming' ? (
+          <IdleView
+            stats={unsettledStats}
+            statsLoading={statsLoading}
+            onSettle={handleConfirm}
+            onPrintDay={printDay}
+            disabled={state === 'confirming' || (!isUsbTerminal && !terminalHost)}
+          />
+        ) : state === 'settling' ? (
+          <SettlingView statusMessage={statusMessage} />
+        ) : state === 'results' && result ? (
+          <ResultsView
+            result={result}
+            onDone={handleResultDone}
+            onRetry={handleRetry}
+          />
+        ) : null
+      ) : atomActive ? (
+        <AtomAutoSettleView scale={uiScale} />
+      ) : (
         <View
           style={{
             borderRadius: s(14),
@@ -412,26 +462,10 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
           }}
         >
           <Text style={{ fontSize: s(13), color: colors.warning }}>
-            Batchout is currently supported for Castles terminals only.
+            Batchout is currently supported for Castles and Valor terminals only.
           </Text>
         </View>
-      ) : state === 'idle' || state === 'confirming' ? (
-        <IdleView
-          stats={unsettledStats}
-          statsLoading={statsLoading}
-          onSettle={handleConfirm}
-          onPrintDay={printDay}
-          disabled={state === 'confirming' || (!isUsbTerminal && !terminalHost)}
-        />
-      ) : state === 'settling' ? (
-        <SettlingView statusMessage={statusMessage} />
-      ) : state === 'results' && result ? (
-        <ResultsView
-          result={result}
-          onDone={handleResultDone}
-          onRetry={handleRetry}
-        />
-      ) : null}
+      )}
 
       {showBatchLog ? (
         <PendingFinalizeSection
@@ -451,6 +485,44 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
           onPrintBatch={printBatch}
         />
       ) : null}
+    </View>
+  )
+}
+
+// ── ATOM auto-settle (host-side) ───────────────────────────────
+
+function AtomAutoSettleView ({ scale }: { scale: number }) {
+  const s = (n: number) => Math.round(n * scale)
+  return (
+    <View
+      style={{
+        borderRadius: s(14),
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.card,
+        padding: s(16),
+        gap: s(12)
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(10) }}>
+        <CheckCircle color={colors.success} size={s(22)} strokeWidth={2} />
+        <Text
+          style={{ fontSize: s(15), fontWeight: '700', color: colors.heading }}
+        >
+          Automatic settlement
+        </Text>
+      </View>
+      <Text style={{ fontSize: s(13), lineHeight: s(19), color: colors.muted }}>
+        ATOM (Landi P30) settles automatically. The processor closes the batch
+        host-side at the end of each business day — there's no manual batch-out
+        to run on this device.
+      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(8) }}>
+        <Clock color={colors.muted} size={s(14)} strokeWidth={2} />
+        <Text style={{ fontSize: s(12), color: colors.muted, flex: 1 }}>
+          Settled totals appear in Reports once the host closes the batch.
+        </Text>
+      </View>
     </View>
   )
 }
@@ -659,9 +731,12 @@ function ResultsView ({
 }) {
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
+  const needsReview = result.status === 'needs_review'
+  const isValor = result.processor === 'valor'
+
   const overallIcon = result.success ? (
     <CheckCircle color={colors.success} size={s(32)} />
-  ) : result.partialSuccess ? (
+  ) : result.partialSuccess || needsReview ? (
     <AlertTriangle color={colors.warning} size={s(32)} />
   ) : (
     <XCircle color={colors.danger} size={s(32)} />
@@ -669,13 +744,15 @@ function ResultsView ({
 
   const overallLabel = result.success
     ? 'Batchout Complete'
+    : needsReview
+    ? 'Batchout Needs Review'
     : result.partialSuccess
     ? 'Partial Batchout'
     : 'Batchout Failed'
 
   const overallColor = result.success
     ? colors.success
-    : result.partialSuccess
+    : result.partialSuccess || needsReview
     ? colors.warning
     : colors.danger
 
@@ -686,7 +763,7 @@ function ResultsView ({
         <Text style={{ fontSize: s(20), fontWeight: '700', color: overallColor }}>
           {overallLabel}
         </Text>
-        {result.error ? (
+        {result.error && !(isValor && needsReview) ? (
           <Text
             style={{
               fontSize: s(13),
@@ -700,7 +777,45 @@ function ResultsView ({
         ) : null}
       </View>
 
-      {(result.success || result.partialSuccess) && !result.dbWriteFailed ? (
+      {/* Valor: single-batch summary (no per-acquirer hosts). Shown for a
+          settled batch AND for needs_review so staff can see the batch #. */}
+      {isValor && result.batchUuid && (result.success || needsReview) ? (
+        <Card scale={uiScale}>
+          <StatRow
+            label='Status'
+            value={result.success ? 'Settled' : 'Needs review'}
+            scale={uiScale}
+          />
+          {result.batchNumber ? (
+            <StatRow label='Terminal batch #' value={result.batchNumber} scale={uiScale} />
+          ) : null}
+          {result.paymentsUpdated != null ? (
+            <StatRow
+              label='Payments marked settled'
+              value={String(result.paymentsUpdated)}
+              scale={uiScale}
+            />
+          ) : null}
+          <View
+            style={{
+              marginTop: s(8),
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <Text style={{ fontSize: s(13), color: colors.label }}>Batch ID</Text>
+            <Text
+              style={{ fontSize: s(11), color: colors.muted, flexShrink: 1, marginLeft: s(12) }}
+              numberOfLines={1}
+            >
+              {result.batchUuid}
+            </Text>
+          </View>
+        </Card>
+      ) : null}
+
+      {!isValor && (result.success || result.partialSuccess) && !result.dbWriteFailed ? (
         <Card scale={uiScale}>
           {result.paymentsUpdated != null ? (
             <StatRow
@@ -754,7 +869,19 @@ function ResultsView ({
         />
       ) : null}
 
-      {result.requiresSupport ? (
+      {isValor && needsReview ? (
+        <Banner
+          tone='warning'
+          title='Needs Review'
+          body={
+            (result.error ?? 'This batch could not be auto-confirmed.') +
+            ' The payments were NOT marked settled. Verify at the processor, then use the manual reconcile option on the batch.'
+          }
+          scale={uiScale}
+        />
+      ) : null}
+
+      {!isValor && result.requiresSupport ? (
         <Banner
           tone='warning'
           title='Partial Batchout'

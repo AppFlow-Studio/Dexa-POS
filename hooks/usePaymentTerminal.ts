@@ -10,6 +10,14 @@ import { getSharedCastlesService } from '@/services/terminals/castles-service';
 import { getOrCreateCounter } from '@/services/terminals/castles-txn-counter';
 import { extractLast4 } from '@/services/terminals/castles-response-mapper';
 import { CASTLES_DEFAULT_PORT, CASTLES_SOCKET_TIMEOUT_MS } from '@/types/castles';
+import { getSharedValorService } from '@/services/terminals/valor-service';
+import { getOrCreateValorCounter } from '@/services/terminals/valor-txn-counter';
+import {
+  VALOR_DEFAULT_PORT,
+  VALOR_SALE_TIMEOUT_MS,
+  VALOR_TEST_DEADLINE_MS,
+  VALOR_TEST_OP_NAME,
+} from '@/types/valor';
 import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore';
 import { withDeadline, DeadlineExceededError } from '@/lib/network/withDeadline';
 
@@ -46,6 +54,7 @@ export function usePaymentTerminal() {
   }, [supabase]);
 
   const getCastlesService = useCallback(() => getSharedCastlesService(), []);
+  const getValorService = useCallback(() => getSharedValorService(), []);
 
   // Load terminals for the current station
   const loadTerminals = useCallback(async (locationId: string) => {
@@ -62,8 +71,10 @@ export function usePaymentTerminal() {
         name: t.terminal_name,
         model: t.terminal_model,
         terminalType: t.terminal_type,
-        ipAddress: t.local_ip_address,
-        port: t.local_port,
+        ipAddress: t.terminal_type === 'valor' ? t.valor_ip_address : t.local_ip_address,
+        port: t.terminal_type === 'valor' ? t.valor_port : t.local_port,
+        cancelPort: t.valor_cancel_port,
+        epi: t.valor_epi,
         connectionType: t.connection_type === 'usb' ? 'usb' as const : 'local_socket' as const,
         isActive: t.is_active,
         isConnected: t.is_connected,
@@ -216,6 +227,82 @@ export function usePaymentTerminal() {
         }
       }
 
+      // Valor: connect + TERMINAL_QUERY (TRAN_MODE 96) to verify responsiveness
+      if (terminal?.terminalType === 'valor') {
+        const service = getValorService();
+        const isUsb = terminal.connectionType === 'usb';
+        const host = terminal.ipAddress;
+        if (!isUsb && !host) throw new Error('Valor terminal IP address not configured');
+
+        if (service.isSuspended()) service.resume();
+
+        const config = {
+          connectionType: isUsb ? ('usb' as const) : ('local_socket' as const),
+          host: isUsb ? undefined : host,
+          port: isUsb ? undefined : (terminal.port ?? VALOR_DEFAULT_PORT),
+          cancelPort: terminal.cancelPort,
+          epi: terminal.epi,
+          timeout: VALOR_SALE_TIMEOUT_MS,
+          terminalId: targetId,
+        };
+
+        let qResult: Awaited<ReturnType<typeof service.terminalQuery>>;
+        try {
+          qResult = await withDeadline(
+            async () => {
+              await service.connect(config);
+              return service.terminalQuery();
+            },
+            VALOR_TEST_DEADLINE_MS,
+            VALOR_TEST_OP_NAME,
+          );
+        } catch (deadlineErr) {
+          if (deadlineErr instanceof DeadlineExceededError) {
+            try { await service.suspend(); } catch { /* best-effort */ }
+            service.resume(config);
+            updateTerminalStatus(targetId, {
+              isConnected: false,
+              lastConnectionStatus: 'Offline',
+              lastConnectionTest: new Date().toISOString(),
+            });
+            setError('Terminal not responding — check that it is powered on and on the same network.');
+            return false;
+          }
+          throw deadlineErr;
+        }
+
+        updateTerminalStatus(targetId, {
+          isConnected: qResult.success,
+          lastConnectionStatus: qResult.success ? 'Online' : 'Offline',
+          lastConnectionTest: new Date().toISOString(),
+        });
+
+        try {
+          await supabase.rpc('update_terminal_health', {
+            p_terminal_id: targetId,
+            p_is_connected: qResult.success,
+            p_status: qResult.success ? 'Online' : 'Offline',
+            p_firmware_version: qResult.data?.appVersion ?? null,
+            p_consecutive_failures: qResult.success ? 0 : undefined,
+          });
+        } catch (dbErr) {
+          console.warn('[usePaymentTerminal] Valor DB health update failed:', dbErr);
+        }
+
+        if (qResult.success && qResult.data?.serialNumber) {
+          supabase
+            .from('payment_terminals')
+            .update({ serial_number: qResult.data.serialNumber })
+            .eq('id', targetId)
+            .then(({ error }) => {
+              if (error) console.warn('[usePaymentTerminal] Valor serial update failed:', error);
+            });
+        }
+
+        if (!qResult.success) setError(qResult.error || 'Terminal did not respond to query');
+        return qResult.success;
+      }
+
       // Dejavoo: existing path
       const service = getDejavooService();
       const loaded = await service.loadCredentials(targetId);
@@ -259,7 +346,7 @@ export function usePaymentTerminal() {
     } finally {
       setConnectionTesting(false);
     }
-  }, [activeTerminalId, terminals, getDejavooService, getCastlesService, updateTerminalStatus, setConnectionTesting, setError, supabase]);
+  }, [activeTerminalId, terminals, getDejavooService, getCastlesService, getValorService, updateTerminalStatus, setConnectionTesting, setError, supabase]);
 
   // ============================================================
   // CASTLES SALE
@@ -353,6 +440,88 @@ export function usePaymentTerminal() {
   }, [getCastlesService, updateTerminalStatus]);
 
   // ============================================================
+  // VALOR SALE
+  // ============================================================
+
+  const processValorSale = useCallback(async (params: {
+    orderId: string;
+    amount: number;
+    tipAmount?: number;
+    terminal: { id: string; ipAddress?: string; port?: number; cancelPort?: number; epi?: string; connectionType?: 'local_socket' | 'usb' };
+  }): Promise<{
+    success: boolean;
+    transactionId?: string;
+    authCode?: string;
+    cardType?: string;
+    lastFour?: string;
+    error?: string;
+    terminalResponse?: Record<string, unknown>;
+    partial?: boolean;
+    indeterminate?: boolean;
+  }> => {
+    const service = getValorService();
+    const isUsb = params.terminal.connectionType === 'usb';
+    const host = params.terminal.ipAddress;
+    if (!isUsb && !host) {
+      return { success: false, error: 'Valor terminal IP address not configured' };
+    }
+
+    if (!service.isConnected()) {
+      try {
+        await service.connect({
+          connectionType: isUsb ? 'usb' : 'local_socket',
+          host: isUsb ? undefined : host,
+          port: isUsb ? undefined : (params.terminal.port ?? VALOR_DEFAULT_PORT),
+          cancelPort: params.terminal.cancelPort,
+          epi: params.terminal.epi,
+          timeout: VALOR_SALE_TIMEOUT_MS,
+          terminalId: params.terminal.id,
+        });
+        updateTerminalStatus(params.terminal.id, {
+          isConnected: true,
+          lastConnectionStatus: 'Online',
+          lastConnectionTest: new Date().toISOString(),
+          consecutiveFailures: 0,
+          lastErrorMessage: null,
+        });
+      } catch (err) {
+        updateTerminalStatus(params.terminal.id, {
+          isConnected: false,
+          lastConnectionStatus: 'Offline',
+          lastConnectionTest: new Date().toISOString(),
+          lastErrorMessage: err instanceof Error ? err.message : String(err),
+        });
+        return { success: false, error: `Failed to connect to Valor terminal: ${err instanceof Error ? err.message : String(err)}` };
+      }
+    }
+
+    const counter = getOrCreateValorCounter({ terminalId: params.terminal.id, supabaseClient: supabase });
+    if (!counter.isInitialized) await counter.initialize();
+    const referenceId = counter.next();
+
+    // Valor amounts are integer cents.
+    const result = await service.processSale({
+      amount: Math.round((params.amount + Number.EPSILON) * 100),
+      tipAmount: params.tipAmount ? Math.round((params.tipAmount + Number.EPSILON) * 100) : undefined,
+      referenceId,
+    });
+
+    const valorTx = result.terminalResponse?.valor_transaction as Record<string, string> | undefined;
+    if (result.success) {
+      return {
+        success: true,
+        transactionId: result.tranNo ?? valorTx?.tranNo ?? referenceId,
+        authCode: valorTx?.approvalCode,
+        cardType: valorTx?.cardType,
+        lastFour: valorTx?.cardLast4,
+        terminalResponse: result.terminalResponse,
+        partial: result.partial,
+      };
+    }
+    return { success: false, error: result.error || 'Payment failed', indeterminate: result.indeterminate };
+  }, [getValorService, updateTerminalStatus, supabase]);
+
+  // ============================================================
   // PROCESS PAYMENT (dispatches based on terminalType)
   // ============================================================
 
@@ -386,6 +555,23 @@ export function usePaymentTerminal() {
           id: activeTerminalId,
           ipAddress: terminal.ipAddress,
           port: terminal.port,
+          connectionType: terminal.connectionType,
+        },
+      });
+    }
+
+    // ---- Valor path ----
+    if (terminal?.terminalType === 'valor') {
+      return processValorSale({
+        orderId: params.orderId,
+        amount: params.amount,
+        tipAmount: params.tipAmount,
+        terminal: {
+          id: activeTerminalId,
+          ipAddress: terminal.ipAddress,
+          port: terminal.port,
+          cancelPort: terminal.cancelPort,
+          epi: terminal.epi,
           connectionType: terminal.connectionType,
         },
       });
@@ -434,7 +620,7 @@ export function usePaymentTerminal() {
         error: err instanceof Error ? err.message : 'Payment failed',
       };
     }
-  }, [activeTerminalId, terminals, getDejavooService, processCastlesSale]);
+  }, [activeTerminalId, terminals, getDejavooService, processCastlesSale, processValorSale]);
 
   // Void a transaction
   const voidPayment = useCallback(async (referenceId: string): Promise<{
@@ -561,13 +747,52 @@ export function usePaymentTerminal() {
    */
   const testConnectionWithConfig = useCallback(async (params: {
     terminalId: string;
-    terminalType: 'castles' | 'dejavoo';
+    terminalType: 'castles' | 'dejavoo' | 'valor';
     ipAddress?: string;
     port?: number;
+    cancelPort?: number;
+    epi?: string;
     tpn?: string;
     authKey?: string;
   }): Promise<{ success: boolean; error?: string; serialNumber?: string }> => {
     try {
+      if (params.terminalType === 'valor') {
+        const host = params.ipAddress;
+        if (!host) return { success: false, error: 'IP address is required' };
+
+        const service = getValorService();
+        const config = {
+          connectionType: 'local_socket' as const,
+          host,
+          port: params.port ?? VALOR_DEFAULT_PORT,
+          cancelPort: params.cancelPort,
+          epi: params.epi,
+          timeout: VALOR_SALE_TIMEOUT_MS,
+          terminalId: params.terminalId,
+        };
+        let qResult: Awaited<ReturnType<typeof service.terminalQuery>>;
+        try {
+          qResult = await withDeadline(
+            async () => {
+              await service.connect(config);
+              return service.terminalQuery();
+            },
+            VALOR_TEST_DEADLINE_MS,
+            VALOR_TEST_OP_NAME,
+          );
+        } catch (deadlineErr) {
+          if (deadlineErr instanceof DeadlineExceededError) {
+            try { await service.suspend(); } catch { /* best-effort */ }
+            service.resume(config);
+            return { success: false, error: 'Terminal not responding — check power and network.' };
+          }
+          throw deadlineErr;
+        }
+        return qResult.success
+          ? { success: true, serialNumber: qResult.data?.serialNumber ?? undefined }
+          : { success: false, error: qResult.error || 'Terminal did not respond' };
+      }
+
       if (params.terminalType === 'castles') {
         const host = params.ipAddress;
         if (!host) return { success: false, error: 'IP address is required' };
@@ -652,7 +877,7 @@ export function usePaymentTerminal() {
         error: err instanceof Error ? err.message : 'Connection test failed',
       };
     }
-  }, [getCastlesService, getDejavooService, supabase]);
+  }, [getCastlesService, getValorService, getDejavooService, supabase]);
 
   /**
    * Run TCP diagnostic against the Castles terminal.

@@ -7,8 +7,8 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+} from "@/components/ui/bottomSheet";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { ArrowRight, CreditCard, Banknote, X } from "lucide-react-native";
 import React, { forwardRef, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";

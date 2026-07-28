@@ -11,7 +11,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
   BottomSheetTextInput,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { Link } from "expo-router";
 import { AlertTriangle, Check, Edit, MoreHorizontal, Search, Trash2 } from "lucide-react-native";
 import React, {
