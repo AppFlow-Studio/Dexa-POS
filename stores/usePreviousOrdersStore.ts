@@ -282,12 +282,6 @@ const MAX_IN_MEMORY_PREVIOUS_ORDERS = 200;
  * fetch that grows.
  */
 export const HISTORY_PAGE_SIZE = 50;
-/** Page size for the menu section's append-style infinite scroll. */
-const LOAD_MORE_PAGE_SIZE = HISTORY_PAGE_SIZE;
-const LOAD_MORE_COOLDOWN_MS = 2000;
-
-// Cooldown tracking for onEndReached cascade prevention
-let _lastLoadMoreCompletedAt = 0;
 
 export type DateWindowLabel = "today" | "yesterday" | "last_7_days" | "custom";
 
@@ -383,7 +377,6 @@ interface PreviousOrdersState {
     label: DateWindowLabel;
   }) => void;
   refreshPreviousOrders: (opts?: { force?: boolean }) => Promise<void>; // Full refresh from backend
-  loadMoreOrders: () => Promise<void>; // Paginated load-more
   checkForNewOrders: () => Promise<number>; // Check for new orders (lightweight)
   clearNewOrdersCount: () => void; // Reset new orders counter
 
@@ -1409,134 +1402,6 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     // Clear the new orders counter (called after user taps refresh)
     clearNewOrdersCount: () => {
       set({ newOrdersCount: 0 });
-    },
-
-    loadMoreOrders: async () => {
-      const { _isLoadingMore, _hasMore, _currentOffset, _oldestCursor } = get();
-      if (_isLoadingMore || !_hasMore) return;
-
-      // Cooldown: prevent onEndReached cascade
-      if (Date.now() - _lastLoadMoreCompletedAt < LOAD_MORE_COOLDOWN_MS) return;
-
-      // Block pagination until date bounds are resolved (refresh must complete first)
-      const { _resolvedStartTs, _resolvedEndTs } =
-        get().dateWindow ?? DEFAULT_DATE_WINDOW;
-      if (!_resolvedStartTs || !_resolvedEndTs) {
-        if (__DEV__)
-          console.log(
-            "[loadMoreOrders] Skipped — waiting for date bounds to resolve",
-          );
-        return;
-      }
-
-      const client = _supabaseClient;
-      if (!client) return;
-
-      const locationId = resolveHistoryLocationId();
-      if (!locationId) return;
-
-      const activeFilters = get().filters;
-      const activeFilterKey = historyFilterKey(activeFilters);
-
-      set({ _isLoadingMore: true });
-
-      try {
-        // Append-style pagination, still used by the menu's PreviousOrdersSection
-        // (infinite scroll). The redesigned Previous Orders screen uses discrete
-        // pages via `goToPage` instead and never calls this.
-        const { data, error, hasMore } =
-          await OrderService.getFilteredHistoryPage(client, {
-            locationId,
-            filters: activeFilters,
-            limit: LOAD_MORE_PAGE_SIZE,
-            offset: _currentOffset,
-            startTs: _resolvedStartTs,
-            endTs: _resolvedEndTs,
-            // Total already known from the first page; filters haven't changed.
-            withCount: false,
-          });
-        const nextCursor: string | null = null;
-
-        if (error || !data) {
-          console.error("Failed to load more orders:", error);
-          return;
-        }
-
-        // A page that arrives after the user changed filters belongs to a
-        // result set that no longer exists. Appending it would interleave two
-        // different queries' rows.
-        if (historyFilterKey(get().filters) !== activeFilterKey) return;
-
-        const newOrders = data.map((fo, index) =>
-          _transformFetchedOrder(fo as FetchedOrderData, index, data.length),
-        );
-
-        // Deduplicate against existing previousOrders
-        const existingKeys = new Set<string>();
-        for (const po of get().previousOrders) {
-          if (po.db_order_id) existingKeys.add(po.db_order_id);
-          if (po.orderId) existingKeys.add(po.orderId);
-        }
-
-        const uniqueNewOrders = newOrders
-          .filter((o) => {
-            const key = o.db_order_id || o.orderId;
-            return !existingKeys.has(key);
-          })
-          // Drop empty-draft shells (e.g. cross-station abandoned drafts).
-          // Cursor/hasMore below come from the raw page, so paging is unaffected.
-          .filter((o) => !isEmptyDraftOrder(o));
-
-        if (uniqueNewOrders.length === 0) {
-          set({
-            _hasMore: hasMore,
-            _currentOffset: _currentOffset + data.length,
-            _oldestCursor: nextCursor ?? _oldestCursor,
-            _isLoadingMore: false,
-          });
-          return;
-        }
-
-        set((state) => {
-          // Pages arrive already ordered by the server, and each page continues
-          // where the last ended — so appending preserves the true order for
-          // every sort. The old client-side re-sort by timestamp silently
-          // reordered amount-sorted results back into date order.
-          let merged = [...state.previousOrders, ...uniqueNewOrders];
-
-          // Safety cap: trim the tail (the end furthest from the top of the
-          // list) if the in-memory limit is exceeded. `_hasMore` stays true so
-          // the footer keeps offering to load, and the count in the footer is
-          // the server total rather than the trimmed length.
-          if (merged.length > MAX_IN_MEMORY_PREVIOUS_ORDERS) {
-            merged = merged.slice(0, MAX_IN_MEMORY_PREVIOUS_ORDERS);
-          }
-
-          return {
-            previousOrders: merged,
-            _orderLookup: buildOrderLookupMap(merged),
-            _currentOffset: _currentOffset + data.length,
-            _hasMore: hasMore,
-            _oldestCursor: nextCursor ?? state._oldestCursor,
-          };
-        });
-      } catch (err) {
-        console.error("Error in loadMoreOrders:", err);
-      } finally {
-        _lastLoadMoreCompletedAt = Date.now();
-        set({ _isLoadingMore: false });
-        // Keep the offline snapshot in sync with scrolled-in pages so going
-        // offline mid-scroll retains everything the user already loaded.
-        // Unfiltered views only — see the note in refreshPreviousOrders.
-        const lid = resolveHistoryLocationId();
-        if (lid && isDefaultHistoryFilters(get().filters)) {
-          previousOrdersOfflineCache.set(
-            lid,
-            get().previousOrders,
-            (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
-          );
-        }
-      }
     },
 
     refundFullOrder: async (

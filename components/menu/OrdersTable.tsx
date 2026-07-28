@@ -51,6 +51,16 @@ const columns: ColumnConfig[] = [
   { key: "actions", label: "", sortable: false, width: "w-[48px]" },
 ];
 
+/**
+ * Columns the backend can order by. In `serverSorted` mode the rest are shown
+ * but not tappable: sorting by them would reorder only the current page, which
+ * looks like a working sort while quietly lying about the rest of the result
+ * set. `order` is excluded because display_number sorts lexically, so it
+ * disagrees with the true chronological order the merchant expects from an
+ * order-number column.
+ */
+const SERVER_SORTABLE_COLUMNS = new Set<SortColumn>(["time", "total"]);
+
 interface OrdersTableProps {
   orders: OrderProfile[];
   sortColumn: SortColumn;
@@ -67,6 +77,14 @@ interface OrdersTableProps {
   /** True while the initial history fetch is in flight (shows a spinner in
    *  place of the "No orders found" empty state). */
   isInitialLoading?: boolean;
+  /**
+   * Set when `orders` is one page of a server-sorted result set. Suppresses the
+   * local re-sort, which would otherwise reorder just the visible page and
+   * contradict the column header.
+   */
+  serverSorted?: boolean;
+  /** Rendered after the last row — used for the pagination bar. */
+  ListFooter?: React.ReactElement | null;
 }
 
 // Status pill config — follows design_theme.md: bg=color+'20', border=color+'50'
@@ -498,11 +516,25 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   onEndReached,
   isLoadingMore,
   isInitialLoading,
+  serverSorted = false,
+  ListFooter = null,
 }) => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
-  // Sort orders based on current sort column and direction
+
+  /**
+   * Rows arrive already ordered.
+   *
+   * `serverSorted` means the caller paginates server-side, so `orders` is one
+   * page of a globally-sorted result set and re-sorting it here would only
+   * reorder those 50 rows — showing, say, the largest total on THIS page under
+   * a header claiming the largest overall. The header still reflects the active
+   * sort; the caller translates a header tap into a server sort.
+   *
+   * Callers that pass the full result set (no pagination) keep the local sort.
+   */
   const sortedOrders = useMemo(() => {
+    if (serverSorted) return orders;
     return [...orders].sort((a, b) => {
       let aVal: any;
       let bVal: any;
@@ -539,7 +571,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
       if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
       return 0;
     });
-  }, [orders, sortColumn, sortDirection]);
+  }, [orders, sortColumn, sortDirection, serverSorted]);
 
   const renderItem = useCallback(
     ({ item }: { item: OrderProfile }) => (
@@ -566,11 +598,18 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
           borderBottomColor: colors.border,
         }}
       >
-        {columns.map((column) => (
+        {columns.map((column) => {
+          // In server-sorted mode only the columns the backend can order by
+          // stay interactive — see SERVER_SORTABLE_COLUMNS.
+          const isSortable =
+            column.sortable &&
+            (!serverSorted ||
+              SERVER_SORTABLE_COLUMNS.has(column.key as SortColumn));
+          return (
           <TouchableOpacity
             key={column.key}
-            onPress={() => column.sortable && onSort(column.key as SortColumn)}
-            disabled={!column.sortable}
+            onPress={() => isSortable && onSort(column.key as SortColumn)}
+            disabled={!isSortable}
             className={`py-2 px-3 flex-row items-center gap-x-1 ${
               column.flex || ""
             } ${column.width || ""}`}
@@ -594,7 +633,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
             >
               {column.label}
             </Text>
-            {column.sortable &&
+            {isSortable &&
               sortColumn === column.key &&
               (sortDirection === "asc" ? (
                 <ArrowUp size={s(10)} color={colors.teal} />
@@ -602,7 +641,8 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
                 <ArrowDown size={s(10)} color={colors.teal} />
               ))}
           </TouchableOpacity>
-        ))}
+          );
+        })}
       </View>
 
       {/* Table Body — FlashList recycles row cells instead of mount/unmount
@@ -647,7 +687,9 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
             <View style={{ paddingVertical: 16, alignItems: "center" }}>
               <ActivityIndicator size="small" color={colors.teal} />
             </View>
-          ) : null
+          ) : (
+            ListFooter
+          )
         }
       />
     </View>
