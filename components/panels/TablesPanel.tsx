@@ -5,8 +5,8 @@ import { ensureOrderPrefetched } from "@/services/tableOrderPrefetch";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
@@ -75,35 +75,48 @@ const Section: React.FC<SectionProps> = ({
 
   return (
     <View style={{ flex: 1 }}>
+      {/* Section header */}
       <TouchableOpacity
         onPress={onToggle}
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: s(10),
+          paddingHorizontal: s(14),
           paddingVertical: s(8),
-          borderRadius: s(8),
+          paddingTop: s(14),
         }}
       >
         {isOpen ? (
-          <ChevronDown size={s(14)} color={colors.muted} />
+          <ChevronDown size={s(12)} color={colors.muted} />
         ) : (
-          <ChevronRight size={s(14)} color={colors.muted} />
+          <ChevronRight size={s(12)} color={colors.muted} />
         )}
         <Text
           style={{
-            fontSize: s(11),
+            fontSize: s(10),
             fontWeight: "600",
             color: colors.muted,
             textTransform: "uppercase",
-            letterSpacing: 0.5,
-            marginLeft: s(6),
+            letterSpacing: 0.8,
+            marginLeft: s(4),
           }}
         >
           {title}
         </Text>
       </TouchableOpacity>
-      {isOpen && <View style={{ flex: 1, paddingLeft: s(4) }}>{children}</View>}
+      {/* Grouped card container — iOS Settings style */}
+      {isOpen && (
+        <View
+          style={{
+            marginHorizontal: s(8),
+            backgroundColor: colors.panel,
+            borderRadius: s(10),
+            overflow: "hidden",
+          }}
+        >
+          {children}
+        </View>
+      )}
     </View>
   );
 };
@@ -138,19 +151,17 @@ function InlineSelect<T extends string>({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          paddingHorizontal: s(10),
-          paddingVertical: s(6),
-          borderRadius: s(8),
-          borderWidth: 1,
-          backgroundColor: value ? colors.teal + "15" : colors.card,
-          borderColor: value ? colors.teal + "40" : colors.border,
+          paddingHorizontal: s(8),
+          paddingVertical: s(7),
+          borderRadius: s(6),
+          backgroundColor: colors.screen,
         }}
       >
         <Text
           style={{
             fontSize: s(11),
             fontWeight: "600",
-            color: value ? colors.teal : colors.muted,
+            color: value ? colors.heading : colors.muted,
             flex: 1,
           }}
           numberOfLines={1}
@@ -158,8 +169,8 @@ function InlineSelect<T extends string>({
           {selectedLabel ?? label}
         </Text>
         <ChevronDown
-          size={s(12)}
-          color={value ? colors.teal : colors.muted}
+          size={s(11)}
+          color={colors.muted}
           style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }}
         />
       </TouchableOpacity>
@@ -168,15 +179,18 @@ function InlineSelect<T extends string>({
         <View
           style={{
             position: "absolute",
-            top: s(34),
+            top: s(36),
             left: 0,
             right: 0,
             zIndex: 100,
             backgroundColor: colors.panel,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: s(8),
+            borderRadius: s(10),
             overflow: "hidden",
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.15,
+            shadowRadius: 12,
+            elevation: 8,
           }}
         >
           {nullable && (
@@ -186,17 +200,14 @@ function InlineSelect<T extends string>({
                 setOpen(false);
               }}
               style={{
-                paddingHorizontal: s(12),
-                paddingVertical: s(8),
-                backgroundColor: !value ? colors.teal + "15" : "transparent",
-                borderBottomWidth: 1,
-                borderBottomColor: colors.border,
+                paddingHorizontal: s(14),
+                paddingVertical: s(9),
               }}
             >
               <Text
                 style={{
-                  fontSize: s(11),
-                  fontWeight: "600",
+                  fontSize: s(12),
+                  fontWeight: "500",
                   color: !value ? colors.teal : colors.label,
                 }}
               >
@@ -212,16 +223,14 @@ function InlineSelect<T extends string>({
                 setOpen(false);
               }}
               style={{
-                paddingHorizontal: s(12),
-                paddingVertical: s(8),
-                backgroundColor:
-                  value === opt.value ? colors.teal + "15" : "transparent",
+                paddingHorizontal: s(14),
+                paddingVertical: s(9),
               }}
             >
               <Text
                 style={{
-                  fontSize: s(11),
-                  fontWeight: "600",
+                  fontSize: s(12),
+                  fontWeight: "500",
                   color: value === opt.value ? colors.teal : colors.label,
                 }}
                 numberOfLines={1}
@@ -445,21 +454,16 @@ const TablesPanel: React.FC<{ onFocusTable?: (tableId: string) => void }> = ({
     [onFocusTable],
   );
 
-  const noopFn = useCallback(() => {}, []);
   const toggleTableExpand = useCallback((tableId: string) => {
     setExpandedTableIds((prev) => ({ ...prev, [tableId]: !prev[tableId] }));
   }, []);
-  const navigateToTableOrder = useCallback(
-    (tableId: string) => {
-      const orderId =
-        useTableSessionStore.getState().sessions[tableId]?.order_id;
-      if (orderId) {
-        ensureOrderPrefetched(orderId).catch(() => {});
-      }
-      usePendingTableOverlay.getState().openTable(tableId);
-    },
-    [],
-  );
+  const navigateToTableOrder = useCallback((tableId: string) => {
+    const orderId = useTableSessionStore.getState().sessions[tableId]?.order_id;
+    if (orderId) {
+      ensureOrderPrefetched(orderId).catch(() => {});
+    }
+    usePendingTableOverlay.getState().openTable(tableId);
+  }, []);
   // Wave 3.3: row wrapper memoized on stable props. Without this, the inline
   // `() => toggleTableExpand(item.id)` arrow was a fresh function on every
   // parent render, busting React.memo on TableListItem and re-rendering every
@@ -491,33 +495,52 @@ const TablesPanel: React.FC<{ onFocusTable?: (tableId: string) => void }> = ({
         backgroundColor: colors.screen,
       }}
     >
-      {/* Capacity bar */}
+      {/* Capacity bar — iOS-style group card */}
       <View
         style={{
-          paddingHorizontal: s(12),
-          paddingVertical: s(10),
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
+          marginHorizontal: s(8),
+          marginTop: s(10),
+          marginBottom: s(4),
+          backgroundColor: colors.panel,
+          borderRadius: s(10),
+          paddingHorizontal: s(14),
+          paddingVertical: s(12),
+          overflow: "hidden",
         }}
       >
         <View
           style={{
             flexDirection: "row",
             justifyContent: "space-between",
-            marginBottom: s(6),
+            marginBottom: s(5),
           }}
         >
-          <Text style={{ fontSize: s(11), color: colors.muted }}>
-            {occupiedCount}/{totalTables} tables
+          <Text
+            style={{
+              fontSize: s(10),
+              fontWeight: "600",
+              color: colors.muted,
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+            }}
+          >
+            Capacity
           </Text>
-          <Text style={{ fontSize: s(11), color: colors.muted }}>
-            {capacityPercentage}% capacity
+          <Text
+            style={{
+              fontSize: s(11),
+              fontWeight: "700",
+              color: colors.heading,
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            {occupiedCount}/{totalTables} · {capacityPercentage}%
           </Text>
         </View>
         <View
           style={{
-            height: s(4),
-            backgroundColor: colors.card,
+            height: s(3),
+            backgroundColor: colors.border + "50",
             borderRadius: s(2),
             overflow: "hidden",
           }}
@@ -533,15 +556,17 @@ const TablesPanel: React.FC<{ onFocusTable?: (tableId: string) => void }> = ({
         </View>
       </View>
 
-      {/* Filters + Sort */}
+      {/* Filters — iOS-style group card */}
       <View
         style={{
-          paddingHorizontal: s(12),
+          marginHorizontal: s(8),
+          marginBottom: s(4),
+          backgroundColor: colors.panel,
+          borderRadius: s(10),
+          paddingHorizontal: s(10),
           paddingVertical: s(8),
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-          gap: s(6),
           zIndex: 10,
+          overflow: "visible",
         }}
       >
         <View style={{ flexDirection: "row", gap: s(6) }}>
@@ -569,7 +594,7 @@ const TablesPanel: React.FC<{ onFocusTable?: (tableId: string) => void }> = ({
       </View>
 
       {/* Table list */}
-      <View style={{ flex: 1, padding: s(8) }}>
+      <View style={{ flex: 1 }}>
         <Section
           title={activePlanName}
           isOpen={isSectionOpen}
