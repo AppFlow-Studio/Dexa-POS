@@ -74,7 +74,7 @@ jest.mock("react-native-gesture-handler", () => {
 import PanelSheet, { type BottomSheetMethods } from "@/components/ui/PanelSheet";
 import { useBillPanelLayoutStore } from "@/stores/useBillPanelLayoutStore";
 import React from "react";
-import { Text } from "react-native";
+import { BackHandler, Text } from "react-native";
 import TestRenderer, { act } from "react-test-renderer";
 
 interface HarnessProps {
@@ -191,5 +191,166 @@ describe("PanelSheet", () => {
     pressBackdrop();
     expect(isOpen()).toBe(true);
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("PanelSheet — presentation, snap index, footer, modal", () => {
+  function render(node: React.ReactElement) {
+    let r!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      r = TestRenderer.create(node);
+    });
+    const root = r.root;
+    return {
+      has: (text: string) =>
+        root.findAll((n) => n.props?.children === text).length > 0,
+    };
+  }
+
+  it("modal starts closed even with index >= 0, and present() opens to the index snap", () => {
+    // Regression guard for the CashDrawerSheet flash-open: <BottomSheetModal index={1}>
+    // is always mounted but must stay closed until present().
+    const ref = React.createRef<BottomSheetMethods>();
+    const onChange = jest.fn();
+    const { has } = render(
+      <PanelSheet
+        ref={ref}
+        modal
+        index={1}
+        snapPoints={["50%", "100%"]}
+        onChange={onChange}
+      >
+        <Text>MODAL_BODY</Text>
+      </PanelSheet>,
+    );
+    expect(has("MODAL_BODY")).toBe(false);
+    expect(onChange).not.toHaveBeenCalled();
+    act(() => ref.current!.present());
+    expect(has("MODAL_BODY")).toBe(true);
+    expect(onChange).toHaveBeenLastCalledWith(1);
+  });
+
+  it("expand() targets the last snap index on a multi-snap sheet", () => {
+    const ref = React.createRef<BottomSheetMethods>();
+    const onChange = jest.fn();
+    render(
+      <PanelSheet
+        ref={ref}
+        index={-1}
+        snapPoints={["50%", "95%"]}
+        onChange={onChange}
+      >
+        <Text>MS_BODY</Text>
+      </PanelSheet>,
+    );
+    act(() => ref.current!.expand());
+    expect(onChange).toHaveBeenLastCalledWith(1);
+  });
+
+  it("snapToIndex(0) targets the first snap index on a multi-snap sheet", () => {
+    const ref = React.createRef<BottomSheetMethods>();
+    const onChange = jest.fn();
+    render(
+      <PanelSheet
+        ref={ref}
+        index={-1}
+        snapPoints={["50%", "95%"]}
+        onChange={onChange}
+      >
+        <Text>MS2_BODY</Text>
+      </PanelSheet>,
+    );
+    act(() => ref.current!.snapToIndex(0));
+    expect(onChange).toHaveBeenLastCalledWith(0);
+  });
+
+  it("renders a pinned footerComponent while open", () => {
+    const ref = React.createRef<BottomSheetMethods>();
+    const { has } = render(
+      <PanelSheet
+        ref={ref}
+        index={-1}
+        snapPoints={["90%"]}
+        footerComponent={() => <Text>FOOTER_BTN</Text>}
+      >
+        <Text>BODY</Text>
+      </PanelSheet>,
+    );
+    act(() => ref.current!.expand());
+    expect(has("FOOTER_BTN")).toBe(true);
+  });
+
+  it("consumes Android hardware back and closes a dismissible sheet (no leak to the router)", () => {
+    // Regression: the native modal consumed back implicitly; an in-tree overlay must
+    // too, or back navigates away / exits the app while a sheet is open.
+    const handlers: Array<() => boolean> = [];
+    const spy = jest
+      .spyOn(BackHandler, "addEventListener")
+      .mockImplementation((_ev: any, cb: any) => {
+        handlers.push(cb);
+        return { remove: () => {} } as any;
+      });
+    const ref = React.createRef<BottomSheetMethods>();
+    const onClose = jest.fn();
+    const { has } = render(
+      <PanelSheet
+        ref={ref}
+        index={-1}
+        snapPoints={["90%"]}
+        enablePanDownToClose
+        onClose={onClose}
+      >
+        <Text>BACK_BODY</Text>
+      </PanelSheet>,
+    );
+    act(() => ref.current!.expand());
+    expect(has("BACK_BODY")).toBe(true);
+    let consumed = false;
+    act(() => {
+      consumed = handlers[handlers.length - 1]?.() ?? false;
+    });
+    expect(consumed).toBe(true); // back is swallowed, never reaches the router
+    expect(has("BACK_BODY")).toBe(false);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it("ignores a redundant dismiss() re-issued from onClose (controlled-modal pattern)", () => {
+    // Mirrors TableContextSheet: onClose flips a prop whose effect calls dismiss()
+    // again. That redundant close must be a no-op — otherwise it starts a second
+    // close animation on the just-unmounted panel, which fatally crashed Reanimated
+    // on the New Architecture (backdrop tap → app dropped to home).
+    const ref = React.createRef<BottomSheetMethods>();
+    const onClose = jest.fn(() => {
+      ref.current!.dismiss(); // the `table → null` effect re-dismissing
+    });
+    const { has } = render(
+      <PanelSheet ref={ref} modal snapPoints={["90%"]} onClose={onClose}>
+        <Text>CTRL_BODY</Text>
+      </PanelSheet>,
+    );
+    act(() => ref.current!.present());
+    expect(has("CTRL_BODY")).toBe(true);
+    expect(() => {
+      act(() => ref.current!.close());
+    }).not.toThrow();
+    expect(has("CTRL_BODY")).toBe(false);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('presentation="sheet" renders without a measured bill column', () => {
+    useBillPanelLayoutStore.getState().setLayout(0, 0);
+    const ref = React.createRef<BottomSheetMethods>();
+    const { has } = render(
+      <PanelSheet
+        ref={ref}
+        presentation="sheet"
+        index={0}
+        snapPoints={["80%"]}
+      >
+        <Text>SHEET_BODY</Text>
+      </PanelSheet>,
+    );
+    expect(has("SHEET_BODY")).toBe(true);
   });
 });

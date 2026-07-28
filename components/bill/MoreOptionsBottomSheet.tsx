@@ -496,6 +496,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     <>
       <PanelSheet
         ref={ref}
+        presentation="bill-column"
         index={-1}
         snapPoints={snapPoints}
         topInset={0}

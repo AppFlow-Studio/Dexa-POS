@@ -148,6 +148,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
   return (
     <PanelSheet
       ref={ref}
+      presentation="bill-column"
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose
