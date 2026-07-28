@@ -34,6 +34,16 @@ import { PrinterService } from '@/services/printing/PrinterService'
 import { usePrinterStore } from '@/stores/usePrinterStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useAtomTerminalStore } from '@/stores/useAtomTerminalStore'
+import {
+  probeAtomLoopbackNow,
+  suspendAtomLoopbackProbing,
+  resumeAtomLoopbackProbing
+} from '@/services/terminals/atomLoopbackDetector'
+import { getSharedAtomService } from '@/services/terminals/atom-service'
+import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from '@/types/atom'
+import { useProcessorPreferenceStore } from '@/stores/useProcessorPreferenceStore'
+import { useActiveProcessor } from '@/hooks/useActiveProcessor'
 import { useTerminalConnectionStore } from '@/stores/useTerminalConnectionStore'
 import { getSharedCastlesService } from '@/services/terminals/castles-service'
 import { CASTLES_DEFAULT_PORT } from '@/types/castles'
@@ -286,6 +296,87 @@ const DevicesConnectionsScreen = ({
 
   // Terminal status
   const currentTerminal = selectedStation?.payment_terminal ?? null
+  // Auto-detected on-device ("internal") ATOM terminal, if present.
+  const atomInternalTerminal = useAtomTerminalStore(s => s.internalTerminal)
+  const atomInternalPort = useAtomTerminalStore(s => s.port)
+  const [atomTesting, setAtomTesting] = useState(false)
+  const [atomResetting, setAtomResetting] = useState(false)
+  // Wave 0 lifecycle diagnostics (__DEV__ only): verify auth-only + /complete
+  // primitives on the real terminal before wiring the full flow.
+  const [atomDiagBusy, setAtomDiagBusy] = useState(false)
+  const [atomDiagLog, setAtomDiagLog] = useState<string[]>([])
+  const [atomDiagAuthPaymentId, setAtomDiagAuthPaymentId] = useState<
+    string | null
+  >(null)
+  const appendAtomDiag = (line: string) =>
+    setAtomDiagLog(prev => [
+      ...prev,
+      `${new Date().toISOString().slice(11, 19)}  ${line}`
+    ])
+  // Runs one ATOM primitive in isolation: configures the shared service,
+  // suspends loopback probing (single-session terminal), fires, logs the raw
+  // verdict + a follow-up /status, then resumes. Returns the result.
+  const runAtomDiagProbe = async (
+    label: string,
+    fn: (svc: ReturnType<typeof getSharedAtomService>) => Promise<any>
+  ): Promise<any> => {
+    const port = atomInternalPort ?? undefined
+    if (!port) {
+      appendAtomDiag(`[${label}] SKIPPED — ATOM terminal not detected`)
+      return null
+    }
+    setAtomDiagBusy(true)
+    suspendAtomLoopbackProbing()
+    try {
+      const svc = getSharedAtomService()
+      svc.configure({
+        host: atomInternalTerminal?.ip_address ?? ATOM_LOOPBACK_HOST,
+        port,
+        terminalId: atomInternalTerminal?.id ?? 'atom-internal',
+        timeout: ATOM_SALE_TIMEOUT_MS
+      })
+      appendAtomDiag(`[${label}] firing…`)
+      const r = await fn(svc)
+      appendAtomDiag(
+        `[${label}] → ${JSON.stringify({
+          success: r?.success,
+          aborted: r?.aborted,
+          indeterminate: r?.indeterminate,
+          paymentId: r?.paymentId,
+          category: r?.raw?.paymentResults?.responseCategory,
+          txnStatus: r?.raw?.paymentResults?.transactionStatus,
+          tip: r?.raw?.paymentResults?.tipAmount,
+          finalTotal: r?.raw?.paymentResults?.finalTotalAmount,
+          error: r?.error
+        })}`
+      )
+      const st = await svc.status()
+      appendAtomDiag(
+        `[${label}] status → ${JSON.stringify({
+          status: st?.status,
+          deviceReady: st?.deviceReady
+        })}`
+      )
+      return r
+    } catch (e) {
+      appendAtomDiag(
+        `[${label}] EXCEPTION: ${e instanceof Error ? e.message : String(e)}`
+      )
+      return null
+    } finally {
+      resumeAtomLoopbackProbing()
+      setAtomDiagBusy(false)
+    }
+  }
+  // Active-processor toggle: ATOM (on-device) or Off for NEW sales. Reversals
+  // always follow each payment's capture terminal.
+  const atomEnabled = useProcessorPreferenceStore(s => s.atomEnabled)
+  const setAtomEnabled = useProcessorPreferenceStore(s => s.setAtomEnabled)
+  const activeProcessor = useActiveProcessor()
+  const processorOptions: { value: boolean; label: string }[] = [
+    { value: true, label: 'ATOM' },
+    { value: false, label: 'Off' }
+  ]
   const { status: terminalStatus, recheckStatus } = useTerminalStatus(
     currentTerminal?.id ?? undefined,
     currentTerminal ?? undefined
@@ -371,7 +462,7 @@ const DevicesConnectionsScreen = ({
   const [showTerminalPicker, setShowTerminalPicker] = useState(false)
   const [showRegisterForm, setShowRegisterForm] = useState(false)
   const [registerFormType, setRegisterFormType] = useState<
-    'dejavoo' | 'castles'
+    'dejavoo' | 'castles' | 'valor'
   >('castles')
   const [registerForm, setRegisterForm] = useState({
     name: '',
@@ -385,7 +476,10 @@ const DevicesConnectionsScreen = ({
     /** Pre-discovered serial number from the USB wizard's getData handshake.
      *  Threaded into the INSERT so the terminal card shows S/N immediately
      *  instead of "— not yet discovered —" until the next testConnection. */
-    serialNumber: '' as string
+    serialNumber: '' as string,
+    /** Valor cancel port (5001) + EPI (merchant/device id). */
+    cancelPort: '5001',
+    epi: ''
   })
   const [isEditingTerminal, setIsEditingTerminal] = useState(false)
   const [editForm, setEditForm] = useState({
@@ -395,7 +489,9 @@ const DevicesConnectionsScreen = ({
     authKey: '',
     ipAddress: '',
     port: '8080',
-    connectionType: 'local_socket' as 'local_socket' | 'usb'
+    connectionType: 'local_socket' as 'local_socket' | 'usb',
+    cancelPort: '5001',
+    epi: ''
   })
   const [isAssigning, setIsAssigning] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
@@ -697,6 +793,120 @@ const DevicesConnectionsScreen = ({
             }
           })
         }
+      } else if (registerFormType === 'valor') {
+        const connectionType =
+          registerForm.connectionType === 'usb' ? 'usb' : 'local'
+        const localIp =
+          registerForm.connectionType === 'local_socket'
+            ? registerForm.ipAddress
+            : null
+        const localPort =
+          registerForm.connectionType === 'local_socket'
+            ? parseInt(registerForm.port, 10) || 5000
+            : null
+        const cancelPort = parseInt(registerForm.cancelPort, 10) || 5001
+
+        // Pre-test over TCP to discover the serial number before the INSERT.
+        let discoveredSN: string | undefined
+        if (
+          registerForm.connectionType === 'local_socket' &&
+          registerForm.ipAddress
+        ) {
+          const preTest = await testConnectionWithConfig({
+            terminalId: `provisional-${selectedStation.id}`,
+            terminalType: 'valor',
+            ipAddress: registerForm.ipAddress,
+            port: localPort ?? 5000,
+            cancelPort,
+            epi: registerForm.epi
+          })
+          // Don't persist a terminal we can't reach. A failed pre-test would
+          // otherwise leave a dead row that resolves as the station's active
+          // terminal and knocks the real terminal offline.
+          if (!preTest.success) {
+            throw new Error(
+              preTest.error ||
+                'Could not connect to the Valor terminal. Check the IP, port, and that Valor Connect is enabled on the terminal, then try again.'
+            )
+          }
+          discoveredSN = preTest.serialNumber
+        } else if (registerForm.connectionType === 'usb') {
+          // USB: no TCP pre-test. The terminal enumerates as a Qualcomm CDC
+          // device (VID 0x1E0E) and connects via the USB auto-connect
+          // coordinator once plugged in; the health check verifies liveness.
+          // The serial isn't available from a query — it backfills from the
+          // first sale's response (hardwareSerial).
+        } else {
+          // TCP selected but no IP entered.
+          throw new Error(
+            'Enter the terminal IP address, or switch the connection type to USB.'
+          )
+        }
+
+        // Store the IP in BOTH local_ip_address (surfaced as ip_address by the
+        // station RPC, so the sale path works without a server change) AND the
+        // valor_* columns (canonical config).
+        const { data: terminalRow, error: termErr } = await supabase
+          .from('payment_terminals')
+          .insert({
+            location_id: selectedStore.id,
+            merchant_id: selectedStore.merchant_id,
+            station_id: selectedStation.id,
+            terminal_name: registerForm.name,
+            terminal_type: 'valor',
+            terminal_model: registerForm.model || null,
+            register_id: 'VALOR',
+            auth_key: 'VALOR',
+            local_ip_address: localIp,
+            local_port: localPort,
+            valor_ip_address: localIp,
+            valor_port: localPort ?? 5000,
+            valor_cancel_port: cancelPort,
+            valor_epi: registerForm.epi || null,
+            connection_type: connectionType,
+            is_active: true,
+            is_connected: false,
+            api_environment: 'production',
+            serial_number: discoveredSN ?? null
+          } as any)
+          .select('id')
+          .single()
+        if (termErr) throw termErr
+        newTerminalId = terminalRow.id
+        // Deactivate other terminals at this station — otherwise the station
+        // keeps >1 is_active=true row and the station RPC resolves the active
+        // terminal ambiguously, flip-flopping the health-check target.
+        await supabase
+          .from('payment_terminals')
+          .update({ is_active: false })
+          .eq('station_id', selectedStation.id)
+          .eq('is_active', true)
+          .neq('id', newTerminalId)
+        await loadTerminals(selectedStore.id)
+        if (newTerminalId) {
+          setActiveTerminal(newTerminalId)
+          setSelectedStation({
+            ...selectedStation,
+            payment_terminal: {
+              id: newTerminalId,
+              terminal_name: registerForm.name,
+              register_id: null,
+              auth_key: null,
+              terminal_type: 'valor',
+              terminal_model: registerForm.model || null,
+              is_connected: false,
+              ip_address: localIp ?? undefined,
+              port: localPort ?? 5000,
+              cancel_port: cancelPort,
+              epi: registerForm.epi || undefined,
+              connection_type:
+                connectionType === 'usb' ? 'usb' : 'local_socket',
+              serial_number: discoveredSN ?? null,
+              last_connection_status: null,
+              last_connection_test_at: null
+            }
+          })
+        }
       } else {
         const connectionType =
           registerForm.connectionType === 'usb' ? 'usb' : 'local'
@@ -867,7 +1077,9 @@ const DevicesConnectionsScreen = ({
         ipAddress: '',
         port: '8080',
         connectionType: 'local_socket',
-        serialNumber: ''
+        serialNumber: '',
+        cancelPort: '5001',
+        epi: ''
       })
     } catch (err) {
       toastService.show({
@@ -889,10 +1101,15 @@ const DevicesConnectionsScreen = ({
       tpn: currentTerminal.register_id || '',
       authKey: '',
       ipAddress: currentTerminal.ip_address || '',
-      port: String(currentTerminal.port || 8080),
+      port: String(
+        currentTerminal.port ||
+          (currentTerminal.terminal_type === 'valor' ? 5000 : 8080)
+      ),
       connectionType: (currentTerminal.connection_type === 'usb'
         ? 'usb'
-        : 'local_socket') as 'local_socket' | 'usb'
+        : 'local_socket') as 'local_socket' | 'usb',
+      cancelPort: String(currentTerminal.cancel_port || 5001),
+      epi: currentTerminal.epi || ''
     })
     setIsEditingTerminal(true)
   }
@@ -903,9 +1120,16 @@ const DevicesConnectionsScreen = ({
     try {
       const testResult = await testConnectionWithConfig({
         terminalId: currentTerminal.id,
-        terminalType: currentTerminal.terminal_type as 'castles' | 'dejavoo',
+        terminalType: currentTerminal.terminal_type as
+          | 'castles'
+          | 'dejavoo'
+          | 'valor',
         ipAddress: editForm.ipAddress || undefined,
         port: editForm.port ? parseInt(editForm.port, 10) : undefined,
+        cancelPort: editForm.cancelPort
+          ? parseInt(editForm.cancelPort, 10)
+          : undefined,
+        epi: editForm.epi || undefined,
         tpn: editForm.tpn || undefined,
         authKey: editForm.authKey || undefined
       })
@@ -925,6 +1149,25 @@ const DevicesConnectionsScreen = ({
           editForm.connectionType === 'local_socket'
             ? parseInt(editForm.port, 10) || 8080
             : null
+        if (testResult.serialNumber)
+          updatePayload.serial_number = testResult.serialNumber
+      } else if (currentTerminal.terminal_type === 'valor') {
+        updatePayload.connection_type =
+          editForm.connectionType === 'usb' ? 'usb' : 'local'
+        const ip =
+          editForm.connectionType === 'local_socket'
+            ? editForm.ipAddress.trim()
+            : null
+        const port =
+          editForm.connectionType === 'local_socket'
+            ? parseInt(editForm.port, 10) || 5000
+            : null
+        updatePayload.local_ip_address = ip
+        updatePayload.local_port = port
+        updatePayload.valor_ip_address = ip
+        updatePayload.valor_port = port ?? 5000
+        updatePayload.valor_cancel_port = parseInt(editForm.cancelPort, 10) || 5001
+        updatePayload.valor_epi = editForm.epi.trim() || null
         if (testResult.serialNumber)
           updatePayload.serial_number = testResult.serialNumber
       } else {
@@ -961,7 +1204,24 @@ const DevicesConnectionsScreen = ({
                     ? ('usb' as const)
                     : ('local_socket' as const)
               }
-            : { register_id: editForm.tpn.trim() }),
+            : currentTerminal.terminal_type === 'valor'
+              ? {
+                  ip_address:
+                    editForm.connectionType === 'local_socket'
+                      ? editForm.ipAddress.trim()
+                      : undefined,
+                  port:
+                    editForm.connectionType === 'local_socket'
+                      ? parseInt(editForm.port, 10) || 5000
+                      : undefined,
+                  cancel_port: parseInt(editForm.cancelPort, 10) || 5001,
+                  epi: editForm.epi.trim() || undefined,
+                  connection_type:
+                    editForm.connectionType === 'usb'
+                      ? ('usb' as const)
+                      : ('local_socket' as const)
+                }
+              : { register_id: editForm.tpn.trim() }),
           is_connected: testResult.success,
           last_connection_status: testResult.success ? 'Online' : 'Offline',
           last_connection_test_at: new Date().toISOString()
@@ -995,11 +1255,19 @@ const DevicesConnectionsScreen = ({
           registerForm.tpn.trim() &&
           registerForm.authKey.trim()
         )
-      : !!(
-          registerForm.name.trim() &&
-          (registerForm.connectionType === 'usb' ||
-            registerForm.ipAddress.trim())
-        )
+      : registerFormType === 'valor'
+        ? // EPI is optional — it is never sent in a Valor request (it only comes
+          // back in the response), so it must not block registration.
+          !!(
+            registerForm.name.trim() &&
+            (registerForm.connectionType === 'usb' ||
+              registerForm.ipAddress.trim())
+          )
+        : !!(
+            registerForm.name.trim() &&
+            (registerForm.connectionType === 'usb' ||
+              registerForm.ipAddress.trim())
+          )
 
   const isEditFormValid =
     currentTerminal?.terminal_type === 'castles'
@@ -1007,7 +1275,13 @@ const DevicesConnectionsScreen = ({
           editForm.name.trim() &&
           (editForm.connectionType === 'usb' || editForm.ipAddress.trim())
         )
-      : !!(editForm.name.trim() && editForm.tpn.trim())
+      : currentTerminal?.terminal_type === 'valor'
+        ? // EPI optional (never sent to the terminal).
+          !!(
+            editForm.name.trim() &&
+            (editForm.connectionType === 'usb' || editForm.ipAddress.trim())
+          )
+        : !!(editForm.name.trim() && editForm.tpn.trim())
 
   // ---------------------------------------------------------------------------
   // PRINTER HANDLERS
@@ -1682,6 +1956,438 @@ const DevicesConnectionsScreen = ({
           />
           {expandedSections.terminal && (
             <View style={{ paddingHorizontal: s(12), paddingVertical: s(10) }}>
+              {/* Auto-detected on-device ATOM processor (loopback). Read-only —
+                  ATOM needs no IP/credentials; it's discovered, not configured. */}
+              {atomInternalTerminal && (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.teal,
+                    borderRadius: s(10),
+                    padding: s(12),
+                    marginBottom: s(12),
+                    backgroundColor: colors.panel
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: s(8)
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: s(8),
+                          height: s(8),
+                          borderRadius: s(4),
+                          backgroundColor: colors.success
+                        }}
+                      />
+                      <Text
+                        style={{
+                          fontSize: s(15),
+                          fontWeight: '700',
+                          color: colors.heading
+                        }}
+                      >
+                        {atomInternalTerminal.terminal_name}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        paddingHorizontal: s(8),
+                        paddingVertical: s(3),
+                        borderRadius: s(6),
+                        borderWidth: 1,
+                        borderColor: colors.success
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(11),
+                          fontWeight: '700',
+                          color: colors.success
+                        }}
+                      >
+                        Online
+                      </Text>
+                    </View>
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: s(12),
+                      color: colors.muted,
+                      marginTop: s(6)
+                    }}
+                  >
+                    On-device processor · ATOM ·{' '}
+                    {atomInternalTerminal.ip_address}:
+                    {atomInternalPort ?? atomInternalTerminal.port}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      color: colors.muted,
+                      marginTop: s(2)
+                    }}
+                  >
+                    Auto-detected. Refunds & tip-adjusts always follow the
+                    terminal each payment was captured on.
+                  </Text>
+
+                  {/* #2 — Active processor override for NEW sales */}
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      fontWeight: '700',
+                      color: colors.label,
+                      marginTop: s(12),
+                      marginBottom: s(6)
+                    }}
+                  >
+                    ACTIVE PROCESSOR FOR NEW SALES
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: s(6) }}>
+                    {processorOptions.map(opt => {
+                      const selected = atomEnabled === opt.value
+                      return (
+                        <TouchableOpacity
+                          key={String(opt.value)}
+                          onPress={() => setAtomEnabled(opt.value)}
+                          style={{
+                            flex: 1,
+                            paddingVertical: s(8),
+                            paddingHorizontal: s(6),
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            borderColor: selected ? colors.teal : colors.border,
+                            backgroundColor: selected ? colors.teal : 'transparent',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(12),
+                              fontWeight: '600',
+                              color: selected ? '#ffffff' : colors.muted
+                            }}
+                            numberOfLines={1}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: s(11),
+                      color: colors.muted,
+                      marginTop: s(6)
+                    }}
+                  >
+                    {activeProcessor.activeTerminal
+                      ? `New card sales use: ${activeProcessor.activeLabel}.`
+                      : 'ATOM is Off and no other terminal is configured — new card sales are disabled.'}
+                  </Text>
+
+                  <View
+                    style={{
+                      marginTop: s(10),
+                      flexDirection: 'row',
+                      gap: s(8),
+                      alignItems: 'center'
+                    }}
+                  >
+                    <TouchableOpacity
+                      onPress={async () => {
+                        setAtomTesting(true)
+                        try {
+                          await probeAtomLoopbackNow()
+                        } finally {
+                          setAtomTesting(false)
+                        }
+                      }}
+                      disabled={atomTesting || atomResetting}
+                      style={{
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(7),
+                        borderRadius: s(8),
+                        borderWidth: 1,
+                        borderColor: colors.teal,
+                        opacity: atomTesting ? 0.5 : 1
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: '600',
+                          color: colors.teal
+                        }}
+                      >
+                        {atomTesting ? 'Testing…' : 'Test Connection'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Reboots the ATOM app to clear a wedged "device is busy"
+                        state — the app persists across POS restarts, so this is
+                        the in-app recovery. */}
+                    <TouchableOpacity
+                      onPress={async () => {
+                        setAtomResetting(true)
+                        try {
+                          const ok = await getSharedAtomService().restart(true)
+                          // Give the ATOM app a few seconds to relaunch, then
+                          // re-probe so the terminal re-surfaces.
+                          await new Promise(r => setTimeout(r, 4000))
+                          await probeAtomLoopbackNow()
+                          toastService.show({
+                            title: ok ? 'Terminal Reset' : 'Reset Sent',
+                            message: ok
+                              ? 'The ATOM terminal was restarted. Try charging again.'
+                              : 'Reset request sent. If it stays busy, force-stop and reopen the ATOM app on the device.',
+                            type: ok ? 'success' : 'warning'
+                          })
+                        } catch {
+                          toastService.show({
+                            title: 'Reset Failed',
+                            message:
+                              'Could not reach the ATOM terminal to reset it.',
+                            type: 'error'
+                          })
+                        } finally {
+                          setAtomResetting(false)
+                        }
+                      }}
+                      disabled={atomTesting || atomResetting}
+                      style={{
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(7),
+                        borderRadius: s(8),
+                        borderWidth: 1,
+                        borderColor: colors.warning,
+                        opacity: atomResetting ? 0.5 : 1
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: '600',
+                          color: colors.warning
+                        }}
+                      >
+                        {atomResetting ? 'Resetting…' : 'Reset Terminal'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Wave 0 — on-device lifecycle diagnostics. DEV builds only.
+                      Verifies auth-only + /complete on a REAL card before the
+                      full auth→tip→complete flow is wired. Each button = one
+                      real $1 primitive; read the log + follow-up device status. */}
+                  {__DEV__ && (
+                    <View
+                      style={{
+                        marginTop: s(14),
+                        paddingTop: s(12),
+                        borderTopWidth: 1,
+                        borderTopColor: colors.border
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: s(12),
+                          fontWeight: '700',
+                          color: colors.muted,
+                          marginBottom: s(8)
+                        }}
+                      >
+                        ATOM Lifecycle Diagnostics (dev · real $1 card)
+                      </Text>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          flexWrap: 'wrap',
+                          gap: s(8)
+                        }}
+                      >
+                        {[
+                          {
+                            key: 'auth',
+                            label: '1 · Auth-only $1',
+                            disabled: false,
+                            run: async () => {
+                              const r = await runAtomDiagProbe(
+                                'auth-only $1',
+                                svc =>
+                                  svc.authorizeOnly({
+                                    amount: 1.0,
+                                    referenceId: `DIAGAUTH_${Date.now()}`
+                                  })
+                              )
+                              if (r?.success && r?.paymentId)
+                                setAtomDiagAuthPaymentId(r.paymentId)
+                            }
+                          },
+                          {
+                            key: 'complete0',
+                            label: '2 · Complete $0 tip',
+                            disabled: !atomDiagAuthPaymentId,
+                            run: () =>
+                              runAtomDiagProbe('complete $0', svc =>
+                                svc.complete({
+                                  paymentId: atomDiagAuthPaymentId!,
+                                  finalTotalAmount: 1.0,
+                                  tipAmount: 0,
+                                  referenceId: `DIAGCOMP_${Date.now()}`
+                                })
+                              )
+                          },
+                          {
+                            key: 'completeTip',
+                            label: '3 · Complete +$0.50',
+                            disabled: !atomDiagAuthPaymentId,
+                            run: () =>
+                              runAtomDiagProbe('complete +$0.50', svc =>
+                                svc.complete({
+                                  paymentId: atomDiagAuthPaymentId!,
+                                  finalTotalAmount: 1.5,
+                                  tipAmount: 0.5,
+                                  referenceId: `DIAGCOMP_${Date.now()}`
+                                })
+                              )
+                          },
+                          {
+                            key: 'saleTip',
+                            label: '4 · Sale$1 → tipAdjust',
+                            disabled: false,
+                            run: async () => {
+                              const r = await runAtomDiagProbe('sale $1', svc =>
+                                svc.processSale({
+                                  amount: 1.0,
+                                  referenceId: `DIAGSALE_${Date.now()}`
+                                })
+                              )
+                              if (r?.success && r?.paymentId)
+                                await runAtomDiagProbe(
+                                  'tipAdjust on captured',
+                                  svc =>
+                                    svc.tipAdjust({
+                                      paymentId: r.paymentId,
+                                      tipAmount: 0.5,
+                                      newFinalTotalAmount: 1.5,
+                                      referenceId: `DIAGTIP_${Date.now()}`
+                                    })
+                                )
+                            }
+                          },
+                          {
+                            // Flow B: tip baked into ONE immediate sale (no
+                            // delayed capture, no on-device prompt). Read the
+                            // log's authorizedAmount: 1.5 = tip-inclusive
+                            // (send base+tip), 2.0 = tip-added (send base only).
+                            key: 'saleTipB',
+                            label: '5 · Sale $1 +$0.50 tip (Flow B)',
+                            disabled: false,
+                            run: () =>
+                              runAtomDiagProbe('sale+tip Flow B', svc =>
+                                svc.processSale({
+                                  amount: 1.5,
+                                  tipAmount: 0.5,
+                                  referenceId: `DIAGSALEB_${Date.now()}`
+                                })
+                              )
+                          }
+                        ].map(btn => (
+                          <TouchableOpacity
+                            key={btn.key}
+                            onPress={btn.run}
+                            disabled={atomDiagBusy || btn.disabled}
+                            style={{
+                              paddingHorizontal: s(10),
+                              paddingVertical: s(6),
+                              borderRadius: s(8),
+                              borderWidth: 1,
+                              borderColor: colors.teal,
+                              opacity: atomDiagBusy || btn.disabled ? 0.4 : 1
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: s(11),
+                                fontWeight: '600',
+                                color: colors.teal
+                              }}
+                            >
+                              {btn.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                        <TouchableOpacity
+                          onPress={() => {
+                            setAtomDiagLog([])
+                            setAtomDiagAuthPaymentId(null)
+                          }}
+                          disabled={atomDiagBusy}
+                          style={{
+                            paddingHorizontal: s(10),
+                            paddingVertical: s(6),
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            borderColor: colors.muted,
+                            opacity: atomDiagBusy ? 0.4 : 1
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: s(11),
+                              fontWeight: '600',
+                              color: colors.muted
+                            }}
+                          >
+                            Clear
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                      {atomDiagLog.length > 0 && (
+                        <ScrollView
+                          style={{
+                            marginTop: s(10),
+                            maxHeight: s(180),
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            backgroundColor: colors.inset,
+                            padding: s(8)
+                          }}
+                        >
+                          {atomDiagLog.map((line, i) => (
+                            <Text
+                              key={i}
+                              style={{
+                                fontSize: s(10),
+                                lineHeight: s(15),
+                                color: colors.heading,
+                                fontFamily: 'monospace'
+                              }}
+                            >
+                              {line}
+                            </Text>
+                          ))}
+                        </ScrollView>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
               {showRegisterForm ? (
                 // ── Register form ──
                 <View>
@@ -1722,7 +2428,61 @@ const DevicesConnectionsScreen = ({
                     </TouchableOpacity>
                   </View>
 
-                  {/* Castles-only header */}
+                  {/* Terminal type toggle (Castles / Valor) */}
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      gap: s(8),
+                      marginBottom: s(12)
+                    }}
+                  >
+                    {(
+                      [
+                        { id: 'castles' as const, label: 'Castles' },
+                        { id: 'valor' as const, label: 'Valor' }
+                      ]
+                    ).map(opt => {
+                      const active = registerFormType === opt.id
+                      return (
+                        <TouchableOpacity
+                          key={opt.id}
+                          onPress={() => {
+                            setRegisterFormType(opt.id)
+                            setQuickTestStatus('idle')
+                            setRegisterForm(f => ({
+                              ...f,
+                              port: opt.id === 'valor' ? '5000' : '8080'
+                            }))
+                          }}
+                          style={{
+                            flex: 1,
+                            borderRadius: s(8),
+                            borderWidth: 1,
+                            paddingVertical: s(10),
+                            alignItems: 'center',
+                            backgroundColor: active
+                              ? colors.teal + '20'
+                              : 'transparent',
+                            borderColor: active
+                              ? colors.teal + '50'
+                              : colors.border
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontWeight: '700',
+                              fontSize: s(12),
+                              color: active ? colors.teal : colors.muted
+                            }}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+
+                  {/* Type header */}
                   <View
                     style={{
                       flexDirection: 'row',
@@ -1737,15 +2497,28 @@ const DevicesConnectionsScreen = ({
                       backgroundColor: colors.teal + '15'
                     }}
                   >
-                    <Image
-                      source={require('@/assets/images/castles.jpg')}
-                      style={{
-                        width: s(36),
-                        height: s(36),
-                        borderRadius: s(6)
-                      }}
-                      resizeMode='cover'
-                    />
+                    {registerFormType === 'castles' && (
+                      <Image
+                        source={require('@/assets/images/castles.jpg')}
+                        style={{
+                          width: s(36),
+                          height: s(36),
+                          borderRadius: s(6)
+                        }}
+                        resizeMode='cover'
+                      />
+                    )}
+                    {registerFormType === 'valor' && (
+                      <Image
+                        source={require('@/assets/images/valorlogo.jpg')}
+                        style={{
+                          width: s(36),
+                          height: s(36),
+                          borderRadius: s(6)
+                        }}
+                        resizeMode='cover'
+                      />
+                    )}
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
@@ -1754,7 +2527,9 @@ const DevicesConnectionsScreen = ({
                           color: colors.teal
                         }}
                       >
-                        Castles Terminal
+                        {registerFormType === 'valor'
+                          ? 'Valor Terminal'
+                          : 'Castles Terminal'}
                       </Text>
                       <Text
                         style={{
@@ -1763,12 +2538,14 @@ const DevicesConnectionsScreen = ({
                           marginTop: s(2)
                         }}
                       >
-                        Network (TCP) payment terminal
+                        {registerFormType === 'valor'
+                          ? 'Semi-integrated (TCP) payment terminal'
+                          : 'Network (TCP) payment terminal'}
                       </Text>
                     </View>
                   </View>
 
-                  {registerFormType === 'castles' ? (
+                  {registerFormType === 'castles' || registerFormType === 'valor' ? (
                     <>
                       {/* Connection type selector — visibly tells the user
                           this terminal is wired (USB) or networked (TCP).
@@ -1922,6 +2699,79 @@ const DevicesConnectionsScreen = ({
                           <Text style={{ flex: 1, fontSize: s(11), color: colors.label, lineHeight: s(16) }}>
                             USB — no IP needed. The terminal is identified by USB device serial after the wizard handshake.
                           </Text>
+                        </View>
+                      )}
+                      {/* Valor-only: cancel port (5001) + EPI */}
+                      {registerFormType === 'valor' && (
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            gap: s(8),
+                            marginBottom: s(8)
+                          }}
+                        >
+                          {registerForm.connectionType === 'local_socket' && (
+                            <View style={{ flex: 1.2 }}>
+                              <Text
+                                style={{
+                                  color: colors.muted,
+                                  fontSize: s(11),
+                                  marginBottom: s(4)
+                                }}
+                              >
+                                Cancel Port
+                              </Text>
+                              <TextInput
+                                value={registerForm.cancelPort}
+                                onChangeText={v =>
+                                  setRegisterForm(f => ({ ...f, cancelPort: v }))
+                                }
+                                placeholder='5001'
+                                placeholderTextColor={colors.muted}
+                                keyboardType='number-pad'
+                                style={{
+                                  backgroundColor: colors.screen,
+                                  borderWidth: 1,
+                                  borderColor: colors.border,
+                                  borderRadius: s(8),
+                                  paddingHorizontal: s(12),
+                                  paddingVertical: s(10),
+                                  color: colors.heading,
+                                  fontSize: s(13)
+                                }}
+                              />
+                            </View>
+                          )}
+                          <View style={{ flex: 3 }}>
+                            <Text
+                              style={{
+                                color: colors.muted,
+                                fontSize: s(11),
+                                marginBottom: s(4)
+                              }}
+                            >
+                              EPI *
+                            </Text>
+                            <TextInput
+                              value={registerForm.epi}
+                              onChangeText={v =>
+                                setRegisterForm(f => ({ ...f, epi: v }))
+                              }
+                              placeholder='e.g. 2319900000'
+                              placeholderTextColor={colors.muted}
+                              keyboardType='number-pad'
+                              style={{
+                                backgroundColor: colors.screen,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                borderRadius: s(8),
+                                paddingHorizontal: s(12),
+                                paddingVertical: s(10),
+                                color: colors.heading,
+                                fontSize: s(13)
+                              }}
+                            />
+                          </View>
                         </View>
                       )}
                       <View style={{ marginBottom: s(12) }}>
@@ -2104,9 +2954,9 @@ const DevicesConnectionsScreen = ({
                             marginLeft: s(6)
                           }}
                         >
-                          {registerFormType === 'castles'
-                            ? 'Save & Connect'
-                            : 'Register Terminal'}
+                          {registerFormType === 'dejavoo'
+                            ? 'Register Terminal'
+                            : 'Save & Connect'}
                         </Text>
                       </>
                     )}
@@ -2234,7 +3084,9 @@ const DevicesConnectionsScreen = ({
                                   >
                                     {t.terminalType === 'castles'
                                       ? 'Castles'
-                                      : 'Dejavoo'}
+                                      : t.terminalType === 'valor'
+                                        ? 'Valor'
+                                        : 'Dejavoo'}
                                   </Text>
                                 </View>
                                 {/* Connection-type pill — USB vs TCP/WiFi. Helps staff
@@ -2493,7 +3345,9 @@ const DevicesConnectionsScreen = ({
                         >
                           {currentTerminal.terminal_type === 'castles'
                             ? 'Castles'
-                            : 'Dejavoo'}
+                            : currentTerminal.terminal_type === 'valor'
+                              ? 'Valor'
+                              : 'Dejavoo'}
                         </Text>
                       </View>
                     </View>
@@ -2533,7 +3387,8 @@ const DevicesConnectionsScreen = ({
                     />
                   </View>
 
-                  {currentTerminal.terminal_type === 'castles' && (
+                  {(currentTerminal.terminal_type === 'castles' ||
+                    currentTerminal.terminal_type === 'valor') && (
                     <>
                       {/* Connection type — same selector pattern as register. */}
                       <View style={{ marginBottom: s(12) }}>
@@ -2643,7 +3498,11 @@ const DevicesConnectionsScreen = ({
                               onChangeText={v =>
                                 setEditForm(f => ({ ...f, port: v }))
                               }
-                              placeholder='8080'
+                              placeholder={
+                                currentTerminal.terminal_type === 'valor'
+                                  ? '5000'
+                                  : '8080'
+                              }
                               placeholderTextColor={colors.muted}
                               keyboardType='number-pad'
                               style={{
@@ -2681,7 +3540,73 @@ const DevicesConnectionsScreen = ({
                       )}
                     </>
                   )}
-                  {currentTerminal.terminal_type !== 'castles' && (
+                  {currentTerminal.terminal_type === 'valor' && (
+                    <>
+                      {editForm.connectionType === 'local_socket' && (
+                        <View style={{ marginBottom: s(12) }}>
+                          <Text
+                            style={{
+                              color: colors.muted,
+                              fontSize: s(11),
+                              marginBottom: s(4)
+                            }}
+                          >
+                            Cancel Port
+                          </Text>
+                          <TextInput
+                            value={editForm.cancelPort}
+                            onChangeText={v =>
+                              setEditForm(f => ({ ...f, cancelPort: v }))
+                            }
+                            placeholder='5001'
+                            placeholderTextColor={colors.muted}
+                            keyboardType='number-pad'
+                            style={{
+                              backgroundColor: colors.screen,
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              borderRadius: s(8),
+                              paddingHorizontal: s(12),
+                              paddingVertical: s(10),
+                              color: colors.heading,
+                              fontSize: s(13)
+                            }}
+                          />
+                        </View>
+                      )}
+                      <View style={{ marginBottom: s(12) }}>
+                        <Text
+                          style={{
+                            color: colors.muted,
+                            fontSize: s(11),
+                            marginBottom: s(4)
+                          }}
+                        >
+                          EPI (optional)
+                        </Text>
+                        <TextInput
+                          value={editForm.epi}
+                          onChangeText={v =>
+                            setEditForm(f => ({ ...f, epi: v }))
+                          }
+                          placeholder='Electronic Payment Interface id'
+                          placeholderTextColor={colors.muted}
+                          style={{
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: s(8),
+                            paddingHorizontal: s(12),
+                            paddingVertical: s(10),
+                            color: colors.heading,
+                            fontSize: s(13)
+                          }}
+                        />
+                      </View>
+                    </>
+                  )}
+                  {currentTerminal.terminal_type !== 'castles' &&
+                    currentTerminal.terminal_type !== 'valor' && (
                     <>
                       <View style={{ marginBottom: s(12) }}>
                         <Text
@@ -2844,12 +3769,46 @@ const DevicesConnectionsScreen = ({
                             >
                               {currentTerminal.terminal_type === 'castles'
                                 ? 'CASTLES'
-                                : 'DEJAVOO'}
+                                : currentTerminal.terminal_type === 'valor'
+                                  ? 'VALOR'
+                                  : 'DEJAVOO'}
                             </Text>
                           </View>
+                          {(currentTerminal.terminal_type === 'castles' ||
+                            currentTerminal.terminal_type === 'valor') && (
+                            <View
+                              style={{
+                                paddingHorizontal: s(6),
+                                paddingVertical: s(2),
+                                borderRadius: s(4),
+                                backgroundColor: colors.teal + '20',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: s(3)
+                              }}
+                            >
+                              {currentTerminal.connection_type === 'usb' ? (
+                                <Usb size={s(9)} color={colors.teal} />
+                              ) : (
+                                <Wifi size={s(9)} color={colors.teal} />
+                              )}
+                              <Text
+                                style={{
+                                  fontSize: s(9),
+                                  fontWeight: '700',
+                                  color: colors.teal
+                                }}
+                              >
+                                {currentTerminal.connection_type === 'usb'
+                                  ? 'USB'
+                                  : 'WiFi'}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                         <View style={{ marginTop: s(4), gap: s(2) }}>
-                          {currentTerminal.terminal_type === 'castles' ? (
+                          {currentTerminal.terminal_type === 'castles' ||
+                          currentTerminal.terminal_type === 'valor' ? (
                             <>
                               <View
                                 style={{
@@ -2865,7 +3824,9 @@ const DevicesConnectionsScreen = ({
                                     width: s(36)
                                   }}
                                 >
-                                  Addr:
+                                  {currentTerminal.connection_type === 'usb'
+                                    ? 'Conn:'
+                                    : 'Addr:'}
                                 </Text>
                                 <Text
                                   style={{
@@ -2875,12 +3836,45 @@ const DevicesConnectionsScreen = ({
                                   }}
                                   selectable
                                 >
-                                  {currentTerminal.ip_address ?? '—'}
-                                  {currentTerminal.ip_address
-                                    ? `:${currentTerminal.port || 8080}`
-                                    : ''}
+                                  {currentTerminal.connection_type === 'usb'
+                                    ? 'USB (wired)'
+                                    : `${currentTerminal.ip_address ?? '—'}${
+                                        currentTerminal.ip_address
+                                          ? `:${currentTerminal.port || (currentTerminal.terminal_type === 'valor' ? 5000 : 8080)}`
+                                          : ''
+                                      }`}
                                 </Text>
                               </View>
+                              {currentTerminal.terminal_type === 'valor' &&
+                                currentTerminal.epi && (
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        color: colors.muted,
+                                        fontSize: s(9),
+                                        fontWeight: '600',
+                                        width: s(36)
+                                      }}
+                                    >
+                                      EPI:
+                                    </Text>
+                                    <Text
+                                      style={{
+                                        color: colors.heading,
+                                        fontSize: s(9),
+                                        fontFamily: 'monospace'
+                                      }}
+                                      selectable
+                                    >
+                                      {currentTerminal.epi}
+                                    </Text>
+                                  </View>
+                                )}
                               <View
                                 style={{
                                   flexDirection: 'row',

@@ -1,0 +1,553 @@
+// ValorService state-machine + recovery tests (Wave 3 / Wave 4 service layer).
+//
+// The transport factory is mocked so we can swap in (a) the realistic scenario
+// mock for happy/partial/decline/recovery/cancel and (b) a bespoke scripted
+// transport for the stale-frame + missing-STAN edge cases — no hardware, no
+// MMKV, no native TCP.
+
+import type { ITerminalTransport } from "@/services/terminals/valor-transport.types";
+import {
+  ValorMockTransport,
+  setValorMockScenario,
+} from "@/services/terminals/valor-transport-mock";
+import { encodeValorFrame } from "@/services/terminals/valor-framing";
+import { VALOR_STX, VALOR_ETX } from "@/types/valor";
+
+// Holder so individual tests can override what the factory returns.
+const mockTransportImpl: { current: () => ITerminalTransport } = {
+  current: () => new ValorMockTransport(),
+};
+
+jest.mock("@/services/terminals/valor-transport-factory", () => ({
+  createValorTransport: () => mockTransportImpl.current(),
+}));
+
+// Imported after the mock is registered.
+import { ValorService } from "@/services/terminals/valor-service";
+
+const CONFIG = {
+  connectionType: "local_socket" as const,
+  host: "127.0.0.1",
+  port: 5000,
+  cancelPort: 5001,
+  timeout: 5000,
+  terminalId: "terminal-1",
+};
+
+function newService(): ValorService {
+  return new ValorService();
+}
+
+beforeEach(() => {
+  mockTransportImpl.current = () => new ValorMockTransport();
+  setValorMockScenario("healthy");
+});
+
+describe("ValorService.processSale — scenario mock", () => {
+  it("approves a healthy sale with a valor_transaction blob", async () => {
+    setValorMockScenario("healthy");
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processSale({ amount: 1500, referenceId: "000123" });
+
+    expect(res.success).toBe(true);
+    expect(res.partial).toBeFalsy();
+    expect(res.stan).toBeTruthy();
+    expect(res.tranNo).toBe("20"); // reversal reference (NOT the STAN)
+    expect(res.rrn).toBe("514712500424");
+    const blob = res.terminalResponse as any;
+    expect(blob.terminal_vendor).toBe("valor");
+    expect(blob.valor_transaction.cardLast4).toBe("5103");
+    expect(blob.valor_transaction.tranNo).toBe("20");
+  });
+
+  it("returns partial=true (does NOT report full success) on PARTIAL=1", async () => {
+    setValorMockScenario("partial_approval");
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processSale({ amount: 1000, referenceId: "000124" });
+
+    expect(res.success).toBe(true);
+    expect(res.partial).toBe(true);
+    expect(res.approvedAmount).toBe(500); // half of requested cents
+  });
+
+  it("returns a clean decline on STATE=-1", async () => {
+    setValorMockScenario("decline");
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processSale({ amount: 1000, referenceId: "000125" });
+
+    expect(res.success).toBe(false);
+    expect(res.indeterminate).toBeFalsy();
+    expect(res.errorCode).toBe("V0005");
+  });
+
+  it("treats a pre-card no-ACK as a clean (non-indeterminate) failure", async () => {
+    setValorMockScenario("no_ack");
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processSale({ amount: 1000, referenceId: "000126" });
+
+    expect(res.success).toBe(false);
+    expect(res.indeterminate).toBeFalsy();
+    expect(res.stan).toBeUndefined();
+  }, 8000); // ACK timeout is 5s; give the test room to observe it fire
+});
+
+describe("ValorService recovery — TRAN_MODE 90", () => {
+  it("recovers an approval when the socket drops after STAN capture", async () => {
+    setValorMockScenario("drop_after_stan");
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processSale({ amount: 2000, referenceId: "000127" });
+
+    // Sale socket died after S2, but TRAN_MODE 90 returned an approval.
+    expect(res.success).toBe(true);
+    expect(res.stan).toBeTruthy();
+  });
+
+  it("stays INDETERMINATE when recovery cannot confirm (unknown)", async () => {
+    setValorMockScenario("drop_after_stan_unknown");
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processSale({ amount: 2000, referenceId: "000128" });
+
+    expect(res.success).toBe(false);
+    expect(res.indeterminate).toBe(true);
+    expect(res.stan).toBeTruthy();
+  });
+});
+
+describe("ValorService.settleBatch — TRAN_MODE 0 / TRAN_CODE 9", () => {
+  it("parses the confirmed VP550 settlement contract on STATE 0", async () => {
+    // Real VP550 capture (2026-07-23): BATCH_NO is a JSON number; AMOUNT is cents;
+    // EPI/SERIAL_NO identify the terminal; TOTAL_TRAN_COUNT is the batch count.
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(
+        encodeValorFrame({
+          STATE: "0",
+          EPI: "2319984097",
+          SERIAL_NO: "NCC804380219",
+          CARD_TYPE: "",
+          AMOUNT: "623",
+          DATE: "23072026 15:35:40",
+          BATCH_NO: 3,
+          TOTAL_TRAN_COUNT: "1",
+        }),
+      );
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.settleBatch({ referenceId: "SET0001" });
+    expect(res.outcome).toBe("settled");
+    expect(res.batchNo).toBe("3"); // number → stringified
+    expect(res.totalTranCount).toBe(1);
+    expect(res.settledAmount).toBe(623);
+    expect(res.epi).toBe("2319984097");
+    expect(res.serialNo).toBe("NCC804380219");
+    // sends the FETCH + SETTLEMENT command
+    const req = scripted.raws.find((r) => r.includes('"TRAN_CODE":"9"'));
+    expect(req).toBeTruthy();
+    expect(req!.includes('"TRAN_MODE":"0"')).toBe(true);
+  });
+
+  it("returns outcome 'declined' on STATE -1 (e.g. no open batch)", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "-1", ERROR_MSG: "No open batch" }));
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.settleBatch({ referenceId: "SET0002" });
+    expect(res.outcome).toBe("declined");
+    expect(res.error).toMatch(/no open batch/i);
+  });
+
+  it("returns outcome 'indeterminate' on an unrecognized STATE (-2)", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "-2", ERROR_MSG: "In progress" }));
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.settleBatch({ referenceId: "SET0003" });
+    expect(res.outcome).toBe("indeterminate");
+  });
+
+  it("returns 'indeterminate' when the socket drops AFTER the settle is dispatched", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = () => { scripted.fireClose(); };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.settleBatch({ referenceId: "SET0004" });
+    // dispatched then lost → the terminal may have closed the batch → never a clean decline
+    expect(res.outcome).toBe("indeterminate");
+  });
+
+  it("frames the settle request with literal <STX> markers over USB", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "0", BATCH_NO: "12" }));
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect({ ...CONFIG, connectionType: "usb" });
+    await svc.settleBatch({ referenceId: "SET0005" });
+    const req = scripted.raws.find((r) => r.includes('"TRAN_CODE":"9"'));
+    expect(req!.startsWith("<STX> ")).toBe(true);
+  });
+});
+
+describe("ValorService.cancelInFlight", () => {
+  it("reports cleared when the terminal clears before card entry (TCP, port 5001)", async () => {
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.cancelInFlight("000129");
+    expect(res.cleared).toBe(true);
+  });
+
+  it("dispatches a framed CANCEL on the shared USB transport (no second socket)", async () => {
+    // USB has a single serial channel: CANCEL (TRAN_MODE 99) is written directly
+    // on the in-flight sale's transport; the outcome surfaces on that sale's
+    // final frame, so this call reports `sent`, not `cleared`.
+    const scripted = new ScriptedTransport();
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect({ ...CONFIG, connectionType: "usb" });
+    const res = await svc.cancelInFlight("000129");
+    expect(res.sent).toBe(true);
+    expect(res.cleared).toBe(false);
+    const cancelReq = scripted.raws.find((r) => r.includes('"TRAN_MODE":"99"'));
+    expect(cancelReq).toBeTruthy();
+    // framed with the literal USB text markers, not raw control bytes
+    expect(cancelReq!.startsWith("<STX> ")).toBe(true);
+    expect(cancelReq!.includes(VALOR_STX)).toBe(false);
+  });
+
+  it("errors (does not open a socket) when USB transport is not open", async () => {
+    const svc = newService();
+    // configured for USB but never connected → no shared transport
+    (svc as any)._config = { ...CONFIG, connectionType: "usb" };
+    const res = await svc.cancelInFlight("000129");
+    expect(res.cleared).toBe(false);
+    expect(res.sent).toBeFalsy();
+    expect(res.error).toMatch(/not open/i);
+  });
+});
+
+describe("ValorService.terminalQuery — TRAN_MODE 96", () => {
+  it("returns serial + app version", async () => {
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.terminalQuery();
+    expect(res.success).toBe(true);
+    expect(res.data?.serialNumber).toBe("MOCK-VALOR-SN-0001");
+    expect(res.data?.appVersion).toBe("v3.0.27");
+  });
+});
+
+// ── Bespoke scripted transport for correlation / missing-STAN edge cases ──
+
+class ScriptedTransport implements ITerminalTransport {
+  private _open = false;
+  private _data: ((c: string) => void)[] = [];
+  private _err: ((e: Error) => void)[] = [];
+  private _close: ((h: boolean) => void)[] = [];
+  /** Test supplies the reply choreography for each written request. */
+  onWrite: (body: any, emit: (frame: string) => void) => void = () => {};
+  /** Raw bytes handed to write() — lets tests assert on-wire framing. */
+  raws: string[] = [];
+
+  get isOpen() { return this._open; }
+  secondsSinceLastData() { return 0; }
+  connect() { this._open = true; return Promise.resolve(); }
+  disconnect() { this._open = false; }
+  write(data: string) {
+    this.raws.push(data);
+    let body: any = null;
+    // Strip framing to recover the JSON payload. Handles both the raw
+    // control-byte form (0x02/0x03) and the literal "<STX>"/"<ETX>" text
+    // markers the VP USB path now uses — the real terminal likewise strips
+    // its framing before parsing. Extract the {...} object by brace bounds.
+    const open = data.indexOf("{");
+    const close = data.lastIndexOf("}");
+    if (open !== -1 && close > open) {
+      try { body = JSON.parse(data.slice(open, close + 1)); } catch { /* trailing ACK */ }
+    }
+    // Ignore the POS trailing ACK (MSG:ACK, no TRAN_MODE).
+    if (body && body.TRAN_MODE != null) {
+      const emit = (frame: string) => { for (const cb of [...this._data]) cb(frame); };
+      setTimeout(() => this.onWrite(body, emit), 5);
+    }
+    return Promise.resolve();
+  }
+  /** Test helper: simulate the socket dropping mid-command. */
+  fireClose() { for (const cb of [...this._close]) cb(true); }
+  onData(cb: (c: string) => void) { this._data.push(cb); }
+  onError(cb: (e: Error) => void) { this._err.push(cb); }
+  onClose(cb: (h: boolean) => void) { this._close.push(cb); }
+  offData(cb: (c: string) => void) { const i = this._data.indexOf(cb); if (i !== -1) this._data.splice(i, 1); }
+  offError(cb: (e: Error) => void) { const i = this._err.indexOf(cb); if (i !== -1) this._err.splice(i, 1); }
+  offClose(cb: (h: boolean) => void) { const i = this._close.indexOf(cb); if (i !== -1) this._close.splice(i, 1); }
+  removeAllListeners() { this._data = []; this._err = []; this._close = []; }
+}
+
+describe("ValorService stale-frame correlation guard", () => {
+  it("discards a final frame whose MER_TXN_ID mismatches, resolves on the correct one", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (body, emit) => {
+      const ref = String(body.REQ_TXN_ID ?? "");
+      emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+      emit(encodeValorFrame({ STATE: "0", STAN_NO: "9", MSG: "Payload Request Received" }));
+      // Stale frame from a prior/cancelled txn — different MER_TXN_ID.
+      emit(encodeValorFrame({ STATE: "0", MER_TXN_ID: "999999", RRN: "000000000000", TRAN_NO: "99", CODE: "STALE1", MASKED_PAN: "4111 **** **** 1111" }));
+      // Correct final for our reference.
+      emit(encodeValorFrame({ STATE: "0", MER_TXN_ID: ref, REQ_TXN_ID: ref, RRN: "514712500424", TRAN_NO: "20", CODE: "TAS706", MASKED_PAN: "4160 **** **** 5103" }));
+    };
+    mockTransportImpl.current = () => scripted;
+
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processSale({ amount: 1500, referenceId: "000200" });
+
+    expect(res.success).toBe(true);
+    expect(res.rrn).toBe("514712500424"); // NOT the stale frame's 000000000000
+    expect(res.tranNo).toBe("20"); // NOT "99"
+    expect((res.terminalResponse as any).valor_transaction.approvalCode).toBe("TAS706");
+  });
+
+  it("completes but warns when the Payload-Received frame lacks STAN_NO", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (body, emit) => {
+      const ref = String(body.REQ_TXN_ID ?? "");
+      emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+      emit(encodeValorFrame({ STATE: "0", MSG: "Payload Request Received" })); // no STAN_NO
+      emit(encodeValorFrame({ STATE: "0", MER_TXN_ID: ref, RRN: "514712500424", TRAN_NO: "21", MASKED_PAN: "4160 **** **** 5103" }));
+    };
+    mockTransportImpl.current = () => scripted;
+
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processSale({ amount: 1500, referenceId: "000201" });
+
+    expect(res.success).toBe(true);
+    expect(res.stan).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("missing STAN_NO"));
+    warn.mockRestore();
+  });
+});
+
+describe("ValorService request framing by transport", () => {
+  // TCP wants bare JSON; USB CDC serial wants STX/ETX (per Valor's USB guide).
+  const saleReplies = (_body: any, emit: (f: string) => void) => {
+    emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+    emit(encodeValorFrame({ STATE: "0", STAN_NO: "1", MSG: "Payload Request Received" }));
+    emit(encodeValorFrame({ STATE: "0", RRN: "1", TRAN_NO: "1", MASKED_PAN: "4111 **** **** 1111" }));
+  };
+
+  it("wraps the request in LITERAL <STX>/<ETX> text markers over USB", async () => {
+    // The VP USB semi-integration sample code writes the 5-char ASCII text
+    // "<STX>"/"<ETX>" (with surrounding spaces), NOT the 0x02/0x03 control bytes.
+    // Raw control bytes reproduce the "always ACK, never processed" failure.
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = saleReplies;
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect({ ...CONFIG, connectionType: "usb" });
+    await svc.processSale({ amount: 1715, referenceId: "000001" });
+    const req = scripted.raws[0];
+    expect(req.startsWith("<STX> ")).toBe(true);
+    expect(req.endsWith(" <ETX>")).toBe(true);
+    // must NOT contain the raw control bytes
+    expect(req.includes(VALOR_STX)).toBe(false);
+    expect(req.includes(VALOR_ETX)).toBe(false);
+  });
+
+  it("sends bare JSON over TCP", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = saleReplies;
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect({ ...CONFIG, connectionType: "local_socket" });
+    await svc.processSale({ amount: 1715, referenceId: "000002" });
+    const req = scripted.raws[0];
+    expect(req.startsWith("<STX>")).toBe(false);
+    expect(req.startsWith("{")).toBe(true);
+  });
+
+  it("does NOT abort with 'No ACK' over USB when the terminal skips the JSON handshake", async () => {
+    // Over USB the VP terminal goes live for card capture and emits ONLY the
+    // final frame (no JSON ACK / Payload-Received). The 5s ACK hard-fail must be
+    // disabled on USB so the sale waits for the final response instead of
+    // aborting while the pinpad is still ready.
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "0", RRN: "1", TRAN_NO: "1", MASKED_PAN: "4111 **** **** 1111" }));
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect({ ...CONFIG, connectionType: "usb" });
+    const res = await svc.processSale({ amount: 1715, referenceId: "000003" });
+    expect(res.success).toBe(true);
+  });
+});
+
+describe("ValorService.processPreAuth — CREDIT PREAUTH (TRAN_MODE 1 / TRAN_CODE 3)", () => {
+  const preAuthReplies = (body: any, emit: (f: string) => void) => {
+    const ref = String(body.REQ_TXN_ID ?? "");
+    emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+    emit(encodeValorFrame({ STATE: "0", STAN_NO: "7", MSG: "Payload Request Received" }));
+    emit(
+      encodeValorFrame({
+        STATE: "0",
+        MER_TXN_ID: ref,
+        REQ_TXN_ID: ref,
+        TRAN_TYPE: "Credit",
+        TRAN_METHOD: "Pre Auth",
+        AMOUNT: "1000",
+        RRN: "123456789012",
+        TRAN_NO: "5", // the completion/void reference
+        CODE: "RA1234",
+        ENTRY_MODE: "CHIP",
+        ISSUER: "VISA",
+        MASKED_PAN: "4111 **** **** 1111",
+      }),
+    );
+  };
+
+  it("sends mode 1 / code 3 and maps TRAN_NO + rrn + valor_transaction blob", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = preAuthReplies;
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processPreAuth({ amount: 1000, referenceId: "000300" });
+
+    expect(res.success).toBe(true);
+    expect(res.tranNo).toBe("5");
+    expect(res.rrn).toBe("123456789012");
+    const blob = res.terminalResponse as any;
+    expect(blob.valor_transaction.approvalCode).toBe("RA1234");
+    expect(blob.valor_transaction.cardLast4).toBe("1111");
+    const req = scripted.raws[0];
+    expect(req.includes('"TRAN_MODE":"1"')).toBe(true);
+    expect(req.includes('"TRAN_CODE":"3"')).toBe(true);
+  });
+
+  it("returns success WITHOUT a TRAN_NO when the hold is only recovered via TRAN_MODE 90", async () => {
+    // A hold placed but whose final frame was lost, then recovered by TRAN_MODE 90
+    // that omits TRAN_NO — the hold exists but is uncapturable by reference. The
+    // service reports success+no-tranNo; the orchestration layer must NOT store it
+    // as a normal authorized payment (Wave 2 routes to the release-from-terminal path).
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (body, emit) => {
+      if (String(body.TRAN_MODE) === "90") {
+        emit(encodeValorFrame({ STATE: "0", RRN: "123456789012", MASKED_PAN: "4111 **** **** 1111" }));
+        return;
+      }
+      emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+      emit(encodeValorFrame({ STATE: "0", STAN_NO: "8", MSG: "Payload Request Received" }));
+      scripted.fireClose(); // socket dies after STAN, before final
+    };
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processPreAuth({ amount: 1000, referenceId: "000301" });
+
+    expect(res.success).toBe(true);
+    expect(res.stan).toBe("8");
+    expect(res.tranNo).toBeUndefined();
+  });
+});
+
+describe("ValorService.processAuthComplete — TICKET (TRAN_MODE 0 / TRAN_CODE 4)", () => {
+  const completionReplies = (body: any, emit: (f: string) => void, extra: Record<string, unknown> = {}) => {
+    const ref = String(body.REQ_TXN_ID ?? "");
+    emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+    emit(
+      encodeValorFrame({
+        STATE: "0",
+        MER_TXN_ID: ref,
+        REQ_TXN_ID: ref,
+        TRAN_METHOD: "Completion",
+        AMOUNT: "1200",
+        RRN: "123456789012",
+        TRAN_NO: "5",
+        CODE: "RA1234",
+        MASKED_PAN: "4111 **** **** 1111",
+        ...extra,
+      }),
+    );
+  };
+
+  it("folds tip into AMOUNT, references by TRAN_NO, and reports success", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (b, emit) => completionReplies(b, emit);
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processAuthComplete({
+      captureAmount: 1000,
+      tipAmount: 200,
+      tranNo: "5",
+      referenceId: "000310",
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.tranNo).toBe("5");
+    const req = scripted.raws[0];
+    expect(req.includes('"TRAN_MODE":"0"')).toBe(true);
+    expect(req.includes('"TRAN_CODE":"4"')).toBe(true);
+    expect(req.includes('"AMOUNT":"1200"')).toBe(true); // base 1000 + tip 200
+    expect(req.includes('"TRAN_NO":"5"')).toBe(true);
+  });
+
+  it("rejects with a clear error when neither TRAN_NO nor CARD_NO is given", async () => {
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processAuthComplete({ captureAmount: 1000, referenceId: "000311" });
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/TRAN_NO or CARD_NO/i);
+  });
+
+  it("surfaces PARTIAL=1 with the terminal-reported captured amount", async () => {
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (b, emit) => completionReplies(b, emit, { PARTIAL: "1", AMOUNT: "500" });
+    mockTransportImpl.current = () => scripted;
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.processAuthComplete({ captureAmount: 1000, tranNo: "5", referenceId: "000312" });
+
+    expect(res.success).toBe(true);
+    expect(res.partial).toBe(true);
+    expect(res.approvedAmount).toBe(500);
+  });
+});
+
+describe("ValorService.terminalQuery — real terminal (ACK-only)", () => {
+  it("resolves success when the terminal answers 96 with ONLY an ACK", async () => {
+    // Real VP terminals reply to TRAN_MODE 96 with just {"STATE":"0","MSG":"ACK"}
+    // and no data frame. resolveOnAck must treat that as a successful ping
+    // instead of waiting for a final frame that never comes.
+    const scripted = new ScriptedTransport();
+    scripted.onWrite = (_body, emit) => {
+      emit(encodeValorFrame({ STATE: "0", MSG: "ACK" }));
+    };
+    mockTransportImpl.current = () => scripted;
+
+    const svc = newService();
+    await svc.connect(CONFIG);
+    const res = await svc.terminalQuery();
+
+    expect(res.success).toBe(true);
+    // No SERIAL_NO/APP_VERSION in an ACK-only reply — that's expected.
+    expect(res.data?.serialNumber).toBeUndefined();
+  });
+});

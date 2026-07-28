@@ -4,7 +4,7 @@ import { useUiScale } from "@/lib/uiScale";
 import BottomSheet, {
     BottomSheetBackdrop,
     BottomSheetView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import React, { forwardRef, useEffect, useMemo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 

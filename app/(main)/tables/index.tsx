@@ -123,6 +123,10 @@ const TablesScreen = () => {
   const location_id = useStoreSettingsStore((s) => s.selectedStore?.id || "");
 
   const [legendVisible, setLegendVisible] = useState(false);
+  // Measured height of the tables-screen content root — used to size the
+  // TableOrderView overlay exactly. Full window height overflows past the safe
+  // area / system bars and pushed the bill's Pay bar off the bottom.
+  const [tablesContentHeight, setTablesContentHeight] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [searchText, setSearchText] = useState("");
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
@@ -787,6 +791,10 @@ const TablesScreen = () => {
       key={colorScheme}
       className="flex-1 px-2 py-1"
       style={{ backgroundColor: colors.screen }}
+      onLayout={(e) => {
+        const h = e.nativeEvent.layout.height;
+        if (h > 0) setTablesContentHeight((prev) => (prev === h ? prev : h));
+      }}
     >
       <View
         className="flex-1 flex-row rounded-lg"
@@ -1243,7 +1251,7 @@ const TablesScreen = () => {
         currentServer={currentTransferServerName}
       />
 
-      <TableOrderOverlay />
+      <TableOrderOverlay availableHeight={tablesContentHeight} />
     </View>
   );
 };

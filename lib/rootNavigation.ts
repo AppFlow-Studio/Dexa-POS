@@ -1,5 +1,3 @@
-import { CommonActions } from '@react-navigation/native';
-
 type NavRef = { current: { dispatch: (action: any) => void } | null };
 
 let _navRef: NavRef | null = null;
@@ -51,10 +49,15 @@ export function replaceRoute(groupName: string, screenName?: string) {
     route.state = { routes: [{ name: screenName }] };
   }
 
-  nav.dispatch(
-    CommonActions.reset({
+  // Inlined CommonActions.reset() — SDK 56+ expo-router disallows importing
+  // @react-navigation/native directly. reset() just builds a { type: 'RESET',
+  // payload } action; the container ref dispatches it to the root navigator
+  // exactly as before.
+  nav.dispatch({
+    type: 'RESET',
+    payload: {
       index: 0,
       routes: [route],
-    }),
-  );
+    },
+  });
 }

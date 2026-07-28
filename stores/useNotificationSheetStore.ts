@@ -1,4 +1,4 @@
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import React from "react";
 import { create } from "zustand";
 

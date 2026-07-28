@@ -29,7 +29,12 @@ export interface StationPaymentTerminal {
     | "square"
     | "stripe_terminal"
     | "castles"
+<<<<<<< HEAD
     | "valor";
+=======
+    | "valor"
+    | "atom";
+>>>>>>> 4ee75d9eefc78285ddde5f1d2433ad71d00cca23
   terminal_model: string | null;
   is_connected: boolean;
   /** Castles/Valor terminal IP address */

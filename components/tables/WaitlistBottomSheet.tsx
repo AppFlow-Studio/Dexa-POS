@@ -20,7 +20,7 @@ import BottomSheet, {
   BottomSheetFlatList,
   BottomSheetTextInput,
   BottomSheetView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { useRouter } from "expo-router";
 import {
   AlertCircle,
