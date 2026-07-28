@@ -1,6 +1,13 @@
 import DatePillRow, { type DatePillDef } from "@/components/menu/DatePillRow";
+import ChannelTabBar from "@/components/previous-orders/ChannelTabBar";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
+import OrdersSelectDropdown, {
+    ActiveFilterPill,
+} from "@/components/previous-orders/OrdersSelectDropdown";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
+import ProviderChipRow, {
+    type ProviderFilter,
+} from "@/components/previous-orders/ProviderChipRow";
 import ReceiptModal from "@/components/receipts/ReceiptModal";
 import {
     useCloseCheck,
@@ -9,6 +16,22 @@ import {
 } from "@/hooks/orders/useOrderActions";
 import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import {
+    buildProviderRoster,
+    buildProviderRosterFromSummaries,
+    compareOrders,
+    countChannelsFromSummaries,
+    countProvidersFromSummaries,
+    getChannelTab,
+    getProviderKey,
+    matchesSearch,
+    matchesStatus,
+    SORT_OPTIONS,
+    STATUS_OPTIONS,
+    type ChannelTab,
+    type SortKey,
+    type StatusFilter,
+} from "@/lib/previousOrdersFilters";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
@@ -18,18 +41,7 @@ import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore"
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { FlashList } from "@shopify/flash-list";
-import {
-    AlertTriangle,
-    ArrowDown,
-    ArrowUp,
-    Globe,
-    RefreshCw,
-    RotateCcw,
-    Search,
-    ShoppingBag,
-    Truck,
-    Utensils,
-} from "lucide-react-native";
+import { RefreshCw, Search } from "lucide-react-native";
 
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -38,7 +50,6 @@ import {
     KeyboardAvoidingView,
     Platform,
     RefreshControl,
-    ScrollView,
     Text,
     TextInput,
     TouchableOpacity,
@@ -55,6 +66,11 @@ import Animated, {
     withTiming,
 } from "react-native-reanimated";
 import { useShallow } from "zustand/react/shallow";
+
+/** Rows a filtered list needs before it can scroll (and self-paginate) at 1080p. */
+const MIN_ROWS_BEFORE_AUTOFILL = 12;
+/** Slightly above the store's 2s load-more cooldown so each tick lands. */
+const AUTOFILL_INTERVAL_MS = 2100;
 
 // ─── Skeleton Loading ───────────────────────────────────────
 const SkeletonBar = ({
@@ -107,172 +123,23 @@ const SkeletonRow = () => {
   return (
     <View
       style={{
-        backgroundColor: colors.panel,
-        borderRadius: s(12),
-        marginHorizontal: s(8),
-        marginBottom: s(8),
-        padding: s(16),
+        height: s(64),
+        paddingHorizontal: s(16),
+        flexDirection: "row",
+        alignItems: "center",
+        gap: s(12),
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: s(12) }}>
-        <SkeletonBar width={70} height={s(20)} />
-        <SkeletonBar width={50} height={s(14)} />
-        <View style={{ flex: 1 }} />
-        <SkeletonBar width={60} height={s(24)} style={{ borderRadius: s(6) }} />
-        <SkeletonBar
-          width={32}
-          height={s(32)}
-          style={{ borderRadius: s(16) }}
-        />
-        <SkeletonBar
-          width={40}
-          height={s(20)}
-          style={{ borderRadius: s(10) }}
-        />
-        <SkeletonBar width={70} height={s(20)} />
+      <SkeletonBar width={28} height={s(28)} style={{ borderRadius: s(9) }} />
+      <View style={{ flex: 1, gap: s(6) }}>
+        <SkeletonBar width={90} height={s(13)} />
+        <SkeletonBar width={200} height={s(11)} />
       </View>
-      <SkeletonBar width={180} height={s(12)} style={{ marginTop: s(6) }} />
-    </View>
-  );
-};
-
-// ─── Filter Pill Component ──────────────────────────────────
-interface FilterPillProps {
-  label: string;
-  isActive: boolean;
-  onPress: () => void;
-  icon?: React.ReactNode;
-  count?: number;
-}
-
-const FilterPill = ({
-  label,
-  isActive,
-  onPress,
-  icon,
-  count,
-}: FilterPillProps) => {
-  const uiScale = useUiScale();
-  const s = (n: number) => Math.round(n * uiScale);
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.7}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: s(6),
-        paddingHorizontal: s(12),
-        paddingVertical: s(8),
-        borderRadius: 999,
-        backgroundColor: isActive ? colors.teal + "20" : "transparent",
-      }}
-    >
-      {icon && typeof icon === "string" ? icon : <View>{icon}</View>}
-      <Text
-        style={{
-          fontSize: s(12),
-          fontWeight: isActive ? "700" : "600",
-          color: isActive ? colors.heading : colors.label,
-        }}
-      >
-        {label}
-      </Text>
-      {count != null && count > 0 && (
-        <View
-          style={{
-            borderRadius: 999,
-            paddingHorizontal: s(6),
-            minWidth: s(20),
-            alignItems: "center",
-            backgroundColor: isActive ? colors.teal + "30" : colors.teal + "15",
-          }}
-        >
-          <Text
-            style={{ fontSize: s(11), fontWeight: "700", color: colors.teal }}
-          >
-            {count}
-          </Text>
-        </View>
-      )}
-    </TouchableOpacity>
-  );
-};
-
-// ─── Sort Segment Group ─────────────────────────────────────
-const SortSegmentGroup = ({
-  sortBy,
-  sortOrder,
-  onSortChange,
-}: {
-  sortBy: "date" | "total" | "status";
-  sortOrder: "asc" | "desc";
-  onSortChange: (field: "date" | "total" | "status") => void;
-}) => {
-  const uiScale = useUiScale();
-  const s = (n: number) => Math.round(n * uiScale);
-  const segments: { key: "date" | "total" | "status"; label: string }[] = [
-    { key: "date", label: "Date" },
-    { key: "total", label: "Amount" },
-    { key: "status", label: "Status" },
-  ];
-
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        borderRadius: s(8),
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.card,
-      }}
-    >
-      {segments.map((seg, idx) => {
-        const isActive = sortBy === seg.key;
-        return (
-          <React.Fragment key={seg.key}>
-            {idx > 0 && (
-              <View
-                style={{
-                  width: 1,
-                  backgroundColor: colors.border,
-                  alignSelf: "stretch",
-                }}
-              />
-            )}
-            <TouchableOpacity
-              onPress={() => onSortChange(seg.key)}
-              activeOpacity={0.7}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: s(4),
-                paddingHorizontal: s(12),
-                paddingVertical: s(8),
-                backgroundColor: isActive ? colors.teal + "20" : "transparent",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: s(12),
-                  fontWeight: isActive ? "700" : "600",
-                  color: isActive ? colors.teal : colors.label,
-                }}
-              >
-                {seg.label}
-              </Text>
-              {isActive &&
-                (sortOrder === "desc" ? (
-                  <ArrowDown color={colors.teal} size={s(12)} />
-                ) : (
-                  <ArrowUp color={colors.teal} size={s(12)} />
-                ))}
-            </TouchableOpacity>
-          </React.Fragment>
-        );
-      })}
+      <SkeletonBar width={64} height={s(22)} style={{ borderRadius: 999 }} />
+      <SkeletonBar width={72} height={s(16)} />
+      <SkeletonBar width={36} height={s(36)} style={{ borderRadius: s(8) }} />
     </View>
   );
 };
@@ -296,12 +163,22 @@ const PreviousOrdersScreen = () => {
   // Expand/collapse state
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
 
-  // Filter & sort state
+  // Filter & sort state. Four orthogonal axes — channel tab, provider (Online
+  // tab only), status and sort — replacing the old single-select pill strip
+  // that mixed all four into one horizontally-scrolling row.
   const [searchText, setSearchText] = useState("");
-  const [sortBy, setSortBy] = useState<"date" | "total" | "status">("date");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const [channelTab, setChannelTab] = useState<ChannelTab>("all");
+  const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("date_desc");
   const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync();
+
+  // Leaving the Online tab drops the provider filter so it can never linger as
+  // a hidden active filter behind a tab the user can't see it on.
+  const handleChannelTabSelect = useCallback((tab: ChannelTab) => {
+    setChannelTab(tab);
+    if (tab !== "online") setProviderFilter("all");
+  }, []);
 
   // Store-driven loading flag: true during the initial fetch AND on every
   // filter/date-window switch (setDateWindow clears the list + flags a refetch).
@@ -393,6 +270,8 @@ const PreviousOrdersScreen = () => {
           _oldestCursor: null,
           lastHistoryRefreshAt: null,
           _lastRefreshLocationId: null,
+          windowSummaries: null,
+          windowSummariesTruncated: false,
         });
       };
     }, []),
@@ -471,131 +350,126 @@ const PreviousOrdersScreen = () => {
     return [...offlineLiveOrders, ...historyMinusLive];
   }, [previousOrders, offlineLiveOrders]);
 
-  // ─── Compute filter counts from allOrders ──────────────
-  const filterCounts = useMemo(() => {
-    let needsAttention = 0;
-    let refunded = 0;
-    let dineIn = 0;
-    let takeaway = 0;
-    let delivery = 0;
-    let online = 0;
+  // ─── Window-wide counts ────────────────────────────────
+  // The list is paginated 30 rows at a time, so counting `allOrders` counts the
+  // loaded pages, not the date range — a June→July window read "Online 6" when
+  // the range held far more. Counts and the provider roster come from the
+  // discriminator-only summary fetch, which covers the whole window in one
+  // round trip. Falls back to the loaded page until it resolves.
+  const windowSummaries = usePreviousOrdersStore((s) => s.windowSummaries);
 
-    for (const o of allOrders) {
-      if (o.paid_status === "Pending") needsAttention++;
-      if (
-        o.order_status === "refunded" ||
-        (o.payments || []).some((p) => (p.refundedAmount ?? 0) > 0)
-      ) {
-        refunded++;
-      }
-      if (o._isOnlineOrder) online++;
-      switch (o.order_type) {
-        case "Dine In":
-          dineIn++;
-          break;
-        case "Takeaway":
-          takeaway++;
-          break;
-        case "Delivery":
-          delivery++;
-          break;
-      }
-    }
-
-    return { needsAttention, refunded, dineIn, takeaway, delivery, online };
-  }, [allOrders]);
+  const providerRoster = useMemo(
+    () =>
+      windowSummaries
+        ? buildProviderRosterFromSummaries(windowSummaries)
+        : buildProviderRoster(allOrders),
+    [windowSummaries, allOrders],
+  );
 
   // ─── Client-side filtering + sorting ───────────────────
+  // Search + status apply to every tab, so tab counts stay consistent with what
+  // the list will actually show once a tab is picked.
+  const searchStatusFiltered = useMemo(
+    () =>
+      allOrders.filter(
+        (o) => matchesSearch(o, searchText) && matchesStatus(o, statusFilter),
+      ),
+    [allOrders, searchText, statusFilter],
+  );
+
+  // While a search is active the counts must reflect the search, and summaries
+  // carry no customer name/phone — so fall back to counting loaded rows there.
+  const isSearching = searchText.trim().length > 0;
+
+  const channelCounts = useMemo(() => {
+    if (windowSummaries && !isSearching) {
+      return countChannelsFromSummaries(windowSummaries, statusFilter);
+    }
+    const counts: Record<ChannelTab, number> = {
+      all: searchStatusFiltered.length,
+      online: 0,
+      dine_in: 0,
+      takeout: 0,
+      delivery: 0,
+    };
+    for (const o of searchStatusFiltered) counts[getChannelTab(o)]++;
+    return counts;
+  }, [windowSummaries, isSearching, statusFilter, searchStatusFiltered]);
+
+  const onlineOrders = useMemo(
+    () => searchStatusFiltered.filter((o) => getChannelTab(o) === "online"),
+    [searchStatusFiltered],
+  );
+
+  const providerCounts = useMemo(() => {
+    if (windowSummaries && !isSearching) {
+      return countProvidersFromSummaries(windowSummaries, statusFilter);
+    }
+    const counts: Record<string, number> = {};
+    for (const o of onlineOrders) {
+      const key = getProviderKey(o);
+      if (key) counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  }, [windowSummaries, isSearching, statusFilter, onlineOrders]);
+
   const filteredOrders = useMemo(() => {
-    let filtered = allOrders;
+    let filtered =
+      channelTab === "all"
+        ? searchStatusFiltered
+        : channelTab === "online"
+          ? onlineOrders
+          : searchStatusFiltered.filter((o) => getChannelTab(o) === channelTab);
 
-    // Search by display_number, customer_name, or customer_phone.
-    // Phone match is digits-only so formatted ("(415) 555-0123") and
-    // unformatted ("4155550123") queries both hit the same orders.
-    if (searchText.trim()) {
-      const query = searchText.toLowerCase().trim();
-      const queryDigits = query.replace(/\D/g, "");
-      filtered = filtered.filter((o) => {
-        const customerName = (o.customer_name || "walk-in").toLowerCase();
-        const displayNumber = String(o.display_number || "").toLowerCase();
-        if (customerName.includes(query) || displayNumber.includes(query)) {
-          return true;
-        }
-        if (queryDigits && o.customer_phone) {
-          const phoneDigits = o.customer_phone.replace(/\D/g, "");
-          if (phoneDigits.includes(queryDigits)) return true;
-        }
-        return false;
-      });
+    if (channelTab === "online" && providerFilter !== "all") {
+      filtered = filtered.filter((o) => getProviderKey(o) === providerFilter);
     }
 
-    // Status / type filter (single-select)
-    if (activeFilter === "needs-attention") {
-      filtered = filtered.filter((o) => o.paid_status === "Pending");
-    } else if (activeFilter === "refunded") {
-      filtered = filtered.filter(
-        (o) =>
-          o.order_status === "refunded" ||
-          (o.payments || []).some((p) => (p.refundedAmount ?? 0) > 0),
-      );
-    } else if (activeFilter === "dine-in") {
-      filtered = filtered.filter((o) => o.order_type === "dine_in");
-    } else if (activeFilter === "takeaway") {
-      filtered = filtered.filter((o) => o.order_type === "takeout");
-    } else if (activeFilter === "delivery") {
-      filtered = filtered.filter((o) => o.order_type === "delivery");
-    } else if (activeFilter === "online") {
-      filtered = filtered.filter((o) => o._isOnlineOrder);
-    }
+    return [...filtered].sort((a, b) => compareOrders(a, b, sortKey));
+  }, [
+    searchStatusFiltered,
+    onlineOrders,
+    channelTab,
+    providerFilter,
+    sortKey,
+  ]);
 
-    // Sorting
-    const sortMultiplier = sortOrder === "asc" ? 1 : -1;
-    filtered = [...filtered].sort((a, b) => {
-      switch (sortBy) {
-        case "date": {
-          const dateA = new Date(a.opened_at || 0).getTime();
-          const dateB = new Date(b.opened_at || 0).getTime();
-          return (dateA - dateB) * sortMultiplier;
-        }
-        case "total":
-          return (
-            ((a.total_amount || 0) - (b.total_amount || 0)) * sortMultiplier
-          );
-        case "status": {
-          const statusA = (a.paid_status || "").toLowerCase();
-          const statusB = (b.paid_status || "").toLowerCase();
-          return statusA.localeCompare(statusB) * sortMultiplier;
-        }
-        default:
-          return 0;
-      }
-    });
+  // Non-default filters that aren't visible as their own always-on control get
+  // a pinned "N filters · Clear" pill so nothing is silently narrowing the list.
+  const activeFilterCount =
+    (statusFilter !== "all" ? 1 : 0) + (providerFilter !== "all" ? 1 : 0);
 
-    return filtered;
-  }, [allOrders, searchText, activeFilter, sortBy, sortOrder]);
+  const clearFilters = useCallback(() => {
+    setStatusFilter("all");
+    setProviderFilter("all");
+  }, []);
+
+  // Filtering happens client-side over the pages loaded so far, so a narrow
+  // filter can leave a handful of rows in a list too short to scroll — and a
+  // list that can't scroll never fires onEndReached, stranding the merchant on
+  // those rows while more matches sit unfetched. Keep pulling pages until the
+  // filtered result can fill the viewport or the window is exhausted. The
+  // store's own 2s load-more cooldown paces this, so it can't become a storm.
+  const filteredCount = filteredOrders.length;
+  useEffect(() => {
+    if (!hasMore || isLoadingMore || isInitialLoading) return;
+    if (filteredCount >= MIN_ROWS_BEFORE_AUTOFILL) return;
+    const timer = setTimeout(() => {
+      void loadMoreOrders();
+    }, AUTOFILL_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [
+    hasMore,
+    isLoadingMore,
+    isInitialLoading,
+    filteredCount,
+    loadMoreOrders,
+  ]);
 
   // Mutation hooks
   const closeCheckMutation = useCloseCheck();
   const reopenCheckMutation = useReopenCheck();
   const voidOrderMutation = useVoidOrder();
-
-  // ─── Filter toggle (single-select) ────────────────────
-  const toggleFilter = useCallback((filter: string) => {
-    setActiveFilter((prev) => (prev === filter ? null : filter));
-  }, []);
-
-  // ─── Sort toggle ────────────────────────────────────────
-  const handleSortChange = useCallback(
-    (field: "date" | "total" | "status") => {
-      if (sortBy === field) {
-        setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
-      } else {
-        setSortBy(field);
-        setSortOrder("desc");
-      }
-    },
-    [sortBy],
-  );
 
   // ─── Row callbacks ──────────────────────────────────────
   const handlePress = useCallback((order: OrderProfile) => {
@@ -730,127 +604,103 @@ const PreviousOrdersScreen = () => {
       style={{ flex: 1, backgroundColor: colors.screen }}
     >
       <View style={{ flex: 1, padding: s(16), backgroundColor: colors.screen }}>
-        {/* ─── Date Pills ─────────────────────────────── */}
+        {/* ─── Control bar: date · search · status · sort ─
+            One row, never scrolls at 1920px. Status and Sort are dropdowns, so
+            the row's width is fixed regardless of how many options exist. */}
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: s(8),
-            marginBottom: s(8),
+            gap: s(10),
+            marginBottom: s(10),
           }}
         >
           <DatePillRow
             activeLabel={dateWindowLabel}
+            size="md"
             onSelect={handleDatePillSelect}
           />
-        </View>
 
-        {/* ─── Toolbar ─────────────────────────────────── */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: s(8),
-            marginBottom: s(10),
-          }}
-        >
-          {/* Search bar */}
+          {/* Search — flexes to absorb the leftover width */}
           <View
             style={{
+              flex: 1,
               flexDirection: "row",
               alignItems: "center",
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor: colors.border,
               borderRadius: s(8),
-              paddingHorizontal: s(10),
-              width: 340,
+              paddingHorizontal: s(12),
+              height: s(44),
             }}
           >
-            <Search color={colors.label} size={s(15)} />
+            <Search color={colors.label} size={s(16)} />
             <TextInput
-              placeholder="Search order, customer, or phone..."
+              placeholder="Search order #, customer, phone, or source"
               placeholderTextColor={colors.muted}
               value={searchText}
               onChangeText={setSearchText}
               style={{
-                marginLeft: s(6),
+                marginLeft: s(8),
                 fontSize: s(13),
-                paddingVertical: s(8),
-                height: s(36),
+                height: s(42),
                 flex: 1,
                 color: colors.heading,
               }}
             />
           </View>
 
-          {/* Scrollable filter pills */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: s(6), alignItems: "center" }}
-            style={{ flex: 1 }}
-          >
-            <FilterPill
-              label="Needs Attention"
-              isActive={activeFilter === "needs-attention"}
-              onPress={() => toggleFilter("needs-attention")}
-              icon={<AlertTriangle color={colors.teal} size={s(13)} />}
-              count={filterCounts.needsAttention}
-            />
-            <FilterPill
-              label="Refunded"
-              isActive={activeFilter === "refunded"}
-              onPress={() => toggleFilter("refunded")}
-              icon={<RotateCcw color={colors.teal} size={s(13)} />}
-              count={filterCounts.refunded}
-            />
-            <FilterPill
-              label="Online"
-              isActive={activeFilter === "online"}
-              onPress={() => toggleFilter("online")}
-              icon={<Globe color={colors.teal} size={s(13)} />}
-              count={filterCounts.online}
-            />
-            <FilterPill
-              label="Dine-In"
-              isActive={activeFilter === "dine-in"}
-              onPress={() => toggleFilter("dine-in")}
-              icon={<Utensils color={colors.teal} size={s(13)} />}
-              count={filterCounts.dineIn}
-            />
-            <FilterPill
-              label="Takeaway"
-              isActive={activeFilter === "takeaway"}
-              onPress={() => toggleFilter("takeaway")}
-              icon={<ShoppingBag color={colors.teal} size={s(13)} />}
-              count={filterCounts.takeaway}
-            />
-            <FilterPill
-              label="Delivery"
-              isActive={activeFilter === "delivery"}
-              onPress={() => toggleFilter("delivery")}
-              icon={<Truck color={colors.teal} size={s(13)} />}
-              count={filterCounts.delivery}
-            />
-          </ScrollView>
+          <ActiveFilterPill count={activeFilterCount} onClear={clearFilters} />
 
-          {/* Sort segment pinned right */}
-          <SortSegmentGroup
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            onSortChange={handleSortChange}
+          <OrdersSelectDropdown
+            prefix="Status:"
+            options={STATUS_OPTIONS}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            isActive={statusFilter !== "all"}
+          />
+
+          <OrdersSelectDropdown
+            prefix="Sort:"
+            options={SORT_OPTIONS}
+            value={sortKey}
+            onChange={setSortKey}
+            isActive={sortKey !== "date_desc"}
           />
         </View>
+
+        {/* ─── Channel tabs ────────────────────────────── */}
+        <ChannelTabBar
+          active={channelTab}
+          counts={channelCounts}
+          onSelect={handleChannelTabSelect}
+        />
+
+        {/* ─── Provider sub-row (Online tab only) ──────── */}
+        {channelTab === "online" && providerRoster.length > 0 && (
+          <View style={{ marginTop: s(10) }}>
+            <ProviderChipRow
+              roster={providerRoster}
+              counts={providerCounts}
+              totalCount={onlineOrders.length}
+              selected={providerFilter}
+              onSelect={setProviderFilter}
+            />
+          </View>
+        )}
 
         {/* ─── Order List ──────────────────────────────── */}
         <View
           style={{
             flex: 1,
+            marginTop: s(10),
             borderRadius: s(12),
+            borderWidth: 1,
+            borderColor: colors.border,
             overflow: "hidden",
             position: "relative",
-            backgroundColor: colors.screen,
+            backgroundColor: colors.panel,
           }}
         >
           {/* FlashList recycles row cells for smoother fling scrolling. Rows
@@ -864,7 +714,7 @@ const PreviousOrdersScreen = () => {
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             extraData={expandedOrderId}
-            estimatedItemSize={90}
+            estimatedItemSize={s(65)}
             drawDistance={500}
             ListEmptyComponent={
               isInitialLoading ? (
@@ -905,9 +755,8 @@ const PreviousOrdersScreen = () => {
               />
             }
             contentContainerStyle={{
-              paddingTop: s(4),
               paddingBottom: s(16),
-              backgroundColor: colors.screen,
+              backgroundColor: colors.panel,
             }}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.3}

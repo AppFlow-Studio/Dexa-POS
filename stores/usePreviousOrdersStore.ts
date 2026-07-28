@@ -5,6 +5,10 @@ import {
     type BusinessDayConfig,
 } from "@/lib/businessDay";
 import { DEADLINES } from "@/lib/network/deadlines";
+import {
+    resolveFetchedOrderPlatform,
+    type OnlineOrderJoinRow,
+} from "@/lib/fetchedOrderPlatform";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import { withDeadline } from "@/lib/network/withDeadline";
 import {
@@ -13,7 +17,7 @@ import {
 } from "@/lib/paymentStatus";
 import { applyRefundRecovery } from "@/lib/refundRecovery";
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
-import { OrderService } from "@/services/orderService";
+import { OrderService, type HistoryOrderSummary } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
 import { previousOrdersOfflineCache } from "@/stores/previousOrdersOfflineCache";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -297,6 +301,17 @@ interface PreviousOrdersState {
   // requests rows older than this — constant-time vs offset-based skip.
   _oldestCursor: string | null;
 
+  /**
+   * Discriminator-only projection of EVERY order in the current date window,
+   * independent of pagination. Screens compute channel/provider/status counts
+   * from this instead of from `previousOrders`, which only ever holds the pages
+   * loaded so far — over a multi-week window that under-counted badly.
+   * Null until the first summary fetch resolves for the window.
+   */
+  windowSummaries: HistoryOrderSummary[] | null;
+  /** True when the window exceeded the summary row cap and counts under-report. */
+  windowSummariesTruncated: boolean;
+
   // Actions
   addOrderToHistory: (order: OrderProfile) => void;
   getOrderById: (orderId: string) => PreviousOrder | undefined;
@@ -342,26 +357,13 @@ function _transformFetchedOrder(
 ): PreviousOrder {
   const broadcastData = normalizeFetchedOrder(fo);
 
-  // Derive online order info from the online_orders join (authoritative
-  // source — NOT `order_source` column which may carry platform-specific
-  // values). Supabase returns [{order_id, provider, delivery_company}]
-  // for online orders, [] for non-online orders.
-  const onlineOrderRows = (fo as any).online_orders as
-    | {
-        order_id: string;
-        provider?: string;
-        delivery_company?: string | null;
-      }[]
-    | undefined;
-  const isOnlineOrder =
-    Array.isArray(onlineOrderRows) && onlineOrderRows.length > 0;
-
-  // Extract the platform provider from the online_orders join so
-  // DeliveryPlatformBadge can show the correct logo (UberEats, DoorDash, etc.).
-  // Falls back to: delivery_company → provider → "online".
-  const onlineProvider = isOnlineOrder ? onlineOrderRows![0] : null;
-  const _deliveryPlatform =
-    onlineProvider?.delivery_company ?? onlineProvider?.provider ?? null;
+  // Online-ness and marketplace identity — see lib/fetchedOrderPlatform.ts for
+  // why the join alone can't answer either question.
+  const { isOnlineOrder, deliveryPlatform: _deliveryPlatform } =
+    resolveFetchedOrderPlatform(
+      fo as any,
+      (fo as any).online_orders as OnlineOrderJoinRow[] | undefined,
+    );
 
   const profile = transformBroadcastToOrder(broadcastData, undefined);
 
@@ -454,6 +456,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     _hasMore: false,
     _isLoadingMore: false,
     _oldestCursor: null,
+    windowSummaries: null,
+    windowSummariesTruncated: false,
 
     setDateWindow: (window) => {
       // Resolve bounds synchronously (Luxon, no network) so the live-orders
@@ -479,6 +483,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         _isLoadingMore: false,
         _oldestCursor: null,
         newOrdersCount: 0,
+        // Counts belong to the old window — drop them so tabs render a loading
+        // 0 rather than last window's numbers.
+        windowSummaries: null,
+        windowSummariesTruncated: false,
       });
       // Trailing-edge debounce: rapid pill taps (Today → Yesterday → Last 7
       // → Yesterday) only fire one refetch for the final selection. UI
@@ -849,7 +857,42 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             },
           });
 
-          // Step 2: Fetch orders within the business day window.
+          // Step 2a: Window-wide count summaries, in parallel with the page
+          // fetch below. Deliberately not awaited here and never fatal — if it
+          // fails the list still renders, only the tab counts stay stale.
+          void withDeadline(
+            (signal) =>
+              OrderService.getHistoryOrderSummaries(
+                client,
+                locationId,
+                startTs,
+                endTs,
+                signal,
+              ),
+            DEADLINES.read,
+            "getHistoryOrderSummaries",
+          )
+            .then(({ data, error, truncated }) => {
+              if (error || !data) return;
+              // Guard against a stale response landing after the user switched
+              // windows: only accept it if the bounds still match.
+              const current = get().dateWindow;
+              if (
+                current?._resolvedStartTs !== startTs ||
+                current?._resolvedEndTs !== endTs
+              ) {
+                return;
+              }
+              set({
+                windowSummaries: data,
+                windowSummariesTruncated: truncated,
+              });
+            })
+            .catch((err) => {
+              console.warn("[PreviousOrders] summary fetch failed:", err);
+            });
+
+          // Step 2b: Fetch orders within the business day window.
           // Deadline-wrapped so server-side statement timeouts (~30s) fail fast.
           let fetchedOrders: any[] | null = null;
           try {

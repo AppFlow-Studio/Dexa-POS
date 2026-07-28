@@ -633,6 +633,10 @@ export function mapOrderType (
 ): OrderProfile['order_type'] {
   switch (orderType) {
     case 'dine_in':
+    // QR / table-ordering flow writes `qr_dine_in`. It is dine-in; without this
+    // case it fell through to the `takeout` default and every QR order was
+    // labelled "Takeaway".
+    case 'qr_dine_in':
       return 'dine_in'
     case 'takeout':
       return 'takeout'

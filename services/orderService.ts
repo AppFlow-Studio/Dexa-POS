@@ -170,6 +170,20 @@ export type ReopenCheckResult = {
 const SESSION_VALID_TTL_MS = 30_000;
 let _sessionValidCache: { key: string; checkedAt: number } | null = null;
 
+/**
+ * Minimal projection of an order used only to count/bucket it. Deliberately
+ * excludes items, payments and joins — see `getHistoryOrderSummaries`.
+ */
+export interface HistoryOrderSummary {
+  id: string;
+  created_at: string;
+  order_type: string | null;
+  order_source: string | null;
+  delivery_platform: string | null;
+  status: string | null;
+  payment_status: string | null;
+}
+
 export class OrderService {
   /**
    * Validates that the current station session is still active.
@@ -1268,6 +1282,53 @@ export class OrderService {
 
     const { data, error } = await query;
     return { data, error };
+  }
+
+  /**
+   * Fetch the discriminator columns for EVERY order in a date window — no
+   * joins, no items, no payments.
+   *
+   * The history list is paginated 30 rows at a time, so any count derived from
+   * `previousOrders` is a count of the loaded page, not of the window. Over a
+   * two-month range that made the Previous Orders channel tabs read "Online 6"
+   * when the window actually held far more. This query is what the tab and
+   * provider-chip counts are computed from: one cheap round trip per window
+   * change that covers the whole range.
+   *
+   * Capped at 5000 rows. Beyond that the counts under-report rather than
+   * blowing up the response — see `truncated` on the result.
+   */
+  static async getHistoryOrderSummaries(
+    client: SupabaseClient,
+    locationId: string,
+    startTs?: string | null,
+    endTs?: string | null,
+    signal?: AbortSignal,
+  ): Promise<{
+    data: HistoryOrderSummary[] | null
+    error: any
+    truncated: boolean
+  }> {
+    const CAP = 5000
+    let query = client
+      .from('orders')
+      .select(
+        'id, created_at, order_type, order_source, delivery_platform, status, payment_status'
+      )
+      .eq('location_id', locationId)
+      .order('created_at', { ascending: false })
+      .limit(CAP)
+
+    if (startTs) query = query.gte('created_at', startTs)
+    if (endTs) query = query.lt('created_at', endTs)
+    if (signal) query = query.abortSignal(signal)
+
+    const { data, error } = await query
+    return {
+      data: data as HistoryOrderSummary[] | null,
+      error,
+      truncated: (data?.length ?? 0) >= CAP
+    }
   }
 
   /**
