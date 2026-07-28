@@ -26,6 +26,10 @@ import {
     UpdateOrderItemQuantityResult,
     UpdateOrderItemResult,
 } from "@/types/db-order-management-types";
+import {
+    buildHistoryOrderQuery,
+    type HistoryOrderFilters,
+} from "@/services/historyOrderFilters";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
 
@@ -1285,6 +1289,176 @@ export class OrderService {
   }
 
   /**
+   * Cheap staleness probe for a date window: the exact row count plus the most
+   * recent `updated_at`.
+   *
+   * Lets the screen show a cached page instantly and only refetch when the
+   * backend actually moved. `updated_at` (not `created_at`) is the signal
+   * because it also changes on the edits that matter here — a payment landing,
+   * a refund, a void, a check reopening — none of which alter the count.
+   *
+   * Two small queries, no rows returned by the first, one row by the second.
+   */
+  static async getHistoryWindowSignature(
+    client: SupabaseClient,
+    locationId: string,
+    startTs?: string | null,
+    endTs?: string | null,
+    signal?: AbortSignal,
+  ): Promise<{
+    count: number | null;
+    latestUpdatedAt: string | null;
+    error: any;
+  }> {
+    const scope = (q: any) => {
+      let scoped = q.eq("location_id", locationId);
+      if (startTs) scoped = scoped.gte("created_at", startTs);
+      if (endTs) scoped = scoped.lt("created_at", endTs);
+      if (signal) scoped = scoped.abortSignal(signal);
+      return scoped;
+    };
+
+    const countQuery = scope(
+      client.from("orders").select("id", { count: "exact", head: true }),
+    );
+    const latestQuery = scope(
+      client
+        .from("orders")
+        .select("updated_at")
+        .order("updated_at", { ascending: false })
+        .limit(1),
+    );
+
+    const [countRes, latestRes] = await Promise.all([countQuery, latestQuery]);
+
+    const error = (countRes as any)?.error ?? (latestRes as any)?.error ?? null;
+    if (error) return { count: null, latestUpdatedAt: null, error };
+
+    return {
+      count: (countRes as any)?.count ?? null,
+      latestUpdatedAt:
+        ((latestRes as any)?.data?.[0]?.updated_at as string | undefined) ??
+        null,
+      error: null,
+    };
+  }
+
+  /**
+   * Fetch one page of filtered history, plus the exact total matching the same
+   * filters.
+   *
+   * This replaces the "fetch 30 by created_at, then filter/sort/search/count in
+   * JS" approach. Because `buildHistoryOrderQuery` is applied to both the page
+   * and the count, the "N of M" the merchant reads is always consistent with
+   * the rows beneath it, and sort/search cover the whole date window rather
+   * than the loaded pages.
+   *
+   * Discrete offset paging: page N is fetched independently, so the merchant
+   * can jump forward AND backward. (An earlier keyset/cursor design only walked
+   * forward, which suits infinite scroll but can't express "previous page".)
+   * Offset paging is the right trade here — 50-row pages over a date-bounded
+   * window keep the skip shallow, and correctness beats constant-time.
+   *
+   * `totalCount` is requested only when asked for, since the total is a
+   * property of the filters and doesn't change between pages of one result set.
+   */
+  static async getFilteredHistoryPage(
+    client: SupabaseClient,
+    params: {
+      locationId: string;
+      filters: HistoryOrderFilters;
+      /** Rows per page. */
+      limit: number;
+      /** Zero-based row offset — `pageIndex * limit`. */
+      offset?: number;
+      startTs?: string | null;
+      endTs?: string | null;
+      /** Request the exact total alongside the page. */
+      withCount?: boolean;
+      signal?: AbortSignal;
+    },
+  ): Promise<{
+    data: any[] | null;
+    error: any;
+    hasMore: boolean;
+    totalCount: number | null;
+  }> {
+    const {
+      locationId,
+      filters,
+      limit,
+      offset = 0,
+      startTs,
+      endTs,
+      withCount = false,
+      signal,
+    } = params;
+
+    const applyScope = (q: any) => {
+      let scoped = q.eq("location_id", locationId);
+      if (startTs) scoped = scoped.gte("created_at", startTs);
+      if (endTs) scoped = scoped.lt("created_at", endTs);
+      return scoped;
+    };
+
+    // ── Page query ───────────────────────────────────────────
+    let pageQuery: any = client.from("orders").select(
+      `
+        *,
+        order_items (*),
+        order_payments (*),
+        order_discounts (*),
+        stations (station_name),
+        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name),
+        online_orders:online_orders!online_orders_order_id_fkey (order_id, provider, delivery_company)
+      `,
+    );
+    pageQuery = applyScope(pageQuery).eq("order_items.is_voided", false);
+    pageQuery = buildHistoryOrderQuery(pageQuery, filters);
+    pageQuery = pageQuery.range(offset, offset + limit - 1);
+
+    if (signal) pageQuery = pageQuery.abortSignal(signal);
+
+    // ── Count query (first page only) ────────────────────────
+    // head:true returns no rows — just the Content-Range total.
+    const countPromise = withCount
+      ? (() => {
+          let countQuery: any = client
+            .from("orders")
+            .select("id", { count: "exact", head: true });
+          countQuery = applyScope(countQuery);
+          countQuery = buildHistoryOrderQuery(countQuery, filters);
+          if (signal) countQuery = countQuery.abortSignal(signal);
+          return countQuery;
+        })()
+      : null;
+
+    const [pageResult, countResult] = await Promise.all([
+      pageQuery,
+      countPromise ?? Promise.resolve(null),
+    ]);
+
+    const { data, error } = pageResult as { data: any[] | null; error: any };
+    if (error) {
+      return { data: null, error, hasMore: false, totalCount: null };
+    }
+
+    const rows = data ?? [];
+    const totalCount =
+      (countResult as { count?: number | null } | null)?.count ?? null;
+
+    return {
+      data: rows,
+      error: null,
+      // With a known total, "more" is exact. Without one, a full page implies
+      // there is probably another.
+      hasMore:
+        totalCount != null ? offset + rows.length < totalCount : rows.length === limit,
+      totalCount,
+    };
+  }
+
+  /**
    * Fetch the discriminator columns for EVERY order in a date window — no
    * joins, no items, no payments.
    *
@@ -1295,6 +1469,10 @@ export class OrderService {
    * provider-chip counts are computed from: one cheap round trip per window
    * change that covers the whole range.
    *
+   * Search and status are applied server-side so the counts always describe the
+   * same population the list is showing. Channel and provider are NOT applied —
+   * those are the axes being counted.
+   *
    * Capped at 5000 rows. Beyond that the counts under-report rather than
    * blowing up the response — see `truncated` on the result.
    */
@@ -1304,23 +1482,41 @@ export class OrderService {
     startTs?: string | null,
     endTs?: string | null,
     signal?: AbortSignal,
+    /**
+     * Search + status from the active filters. Channel/provider are omitted on
+     * purpose — they're the axes being counted, so constraining them would make
+     * every tab report its own count as the total.
+     */
+    filters?: HistoryOrderFilters,
   ): Promise<{
     data: HistoryOrderSummary[] | null
     error: any
     truncated: boolean
   }> {
     const CAP = 5000
-    let query = client
+    let query: any = client
       .from('orders')
       .select(
         'id, created_at, order_type, order_source, delivery_platform, status, payment_status'
       )
       .eq('location_id', locationId)
-      .order('created_at', { ascending: false })
-      .limit(CAP)
 
     if (startTs) query = query.gte('created_at', startTs)
     if (endTs) query = query.lt('created_at', endTs)
+
+    if (filters) {
+      query = buildHistoryOrderQuery(query, {
+        ...filters,
+        channel: 'all',
+        provider: 'all',
+        // Sort is irrelevant to a count and would add an ORDER BY for nothing.
+        sort: 'date_desc',
+      })
+    } else {
+      query = query.order('created_at', { ascending: false })
+    }
+
+    query = query.limit(CAP)
     if (signal) query = query.abortSignal(signal)
 
     const { data, error } = await query

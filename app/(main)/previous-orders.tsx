@@ -19,13 +19,8 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import {
     buildProviderRoster,
     buildProviderRosterFromSummaries,
-    compareOrders,
     countChannelsFromSummaries,
     countProvidersFromSummaries,
-    getChannelTab,
-    getProviderKey,
-    matchesSearch,
-    matchesStatus,
     SORT_OPTIONS,
     STATUS_OPTIONS,
     type ChannelTab,
@@ -33,23 +28,42 @@ import {
     type StatusFilter,
 } from "@/lib/previousOrdersFilters";
 import { iosOnly } from "@/lib/safeAnimations";
+import {
+    DEFAULT_HISTORY_FILTERS,
+    historyFilterKey,
+} from "@/services/historyOrderFilters";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import {
+    HISTORY_PAGE_SIZE,
+    usePreviousOrdersStore,
+} from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { FlashList } from "@shopify/flash-list";
-import { RefreshCw, Search } from "lucide-react-native";
+import {
+    ChevronLeft,
+    ChevronRight,
+    RefreshCw,
+    Search,
+} from "lucide-react-native";
 
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
     RefreshControl,
+    ScrollView,
+    StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
@@ -67,10 +81,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { useShallow } from "zustand/react/shallow";
 
-/** Rows a filtered list needs before it can scroll (and self-paginate) at 1080p. */
-const MIN_ROWS_BEFORE_AUTOFILL = 12;
-/** Slightly above the store's 2s load-more cooldown so each tick lands. */
-const AUTOFILL_INTERVAL_MS = 2100;
+/** Idle time after the last keystroke before a search hits the server. */
+const SEARCH_DEBOUNCE_MS = 350;
 
 // ─── Skeleton Loading ───────────────────────────────────────
 const SkeletonBar = ({
@@ -144,6 +156,154 @@ const SkeletonRow = () => {
   );
 };
 
+// ─── Pagination Bar ─────────────────────────────────────────
+/**
+ * Fixed pagination bar below the list.
+ *
+ * The list shows exactly one page at a time, so this bar is the only way to
+ * move through the result set — and because it's always visible (rather than
+ * an affordance you have to scroll to the bottom to discover), the merchant can
+ * always see how much there is and where they are.
+ */
+const PaginationBar = ({
+  pageIndex,
+  pageCount,
+  totalCount,
+  rangeStart,
+  rangeEnd,
+  isLoading,
+  onPrev,
+  onNext,
+}: {
+  pageIndex: number;
+  pageCount: number;
+  totalCount: number | null;
+  rangeStart: number;
+  rangeEnd: number;
+  isLoading: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+}) => {
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+
+  const canPrev = pageIndex > 0 && !isLoading;
+  const canNext = pageIndex < pageCount - 1 && !isLoading;
+
+  const PagerButton = ({
+    label,
+    icon,
+    enabled,
+    onPress,
+  }: {
+    label: string;
+    icon: React.ReactNode;
+    enabled: boolean;
+    onPress: () => void;
+  }) => (
+    <TouchableOpacity
+      onPress={enabled ? onPress : undefined}
+      disabled={!enabled}
+      activeOpacity={0.7}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: s(6),
+        height: s(44),
+        paddingHorizontal: s(16),
+        borderRadius: s(8),
+        borderWidth: 1,
+        borderColor: enabled ? colors.border : colors.border + "60",
+        backgroundColor: enabled ? colors.card : "transparent",
+        opacity: enabled ? 1 : 0.45,
+      }}
+    >
+      {icon}
+      <Text
+        style={{
+          fontSize: s(13),
+          fontWeight: "700",
+          color: enabled ? colors.heading : colors.muted,
+        }}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingVertical: s(14),
+        paddingHorizontal: s(16),
+        gap: s(12),
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        backgroundColor: colors.panel,
+      }}
+    >
+      <PagerButton
+        label="Previous"
+        icon={
+          <ChevronLeft
+            size={s(16)}
+            color={canPrev ? colors.heading : colors.muted}
+          />
+        }
+        enabled={canPrev}
+        onPress={onPrev}
+      />
+
+      <View style={{ alignItems: "center", gap: s(2) }}>
+        {isLoading ? (
+          <ActivityIndicator size="small" color={colors.teal} />
+        ) : (
+          <>
+            <Text
+              style={{
+                fontSize: s(13),
+                fontWeight: "600",
+                color: colors.heading,
+                fontVariant: ["tabular-nums"],
+              }}
+            >
+              {totalCount === 0
+                ? "No orders"
+                : `${rangeStart}–${rangeEnd} of ${totalCount ?? "…"}`}
+            </Text>
+            {pageCount > 0 && (
+              <Text
+                style={{
+                  fontSize: s(11),
+                  color: colors.muted,
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                Page {pageIndex + 1} of {pageCount}
+              </Text>
+            )}
+          </>
+        )}
+      </View>
+
+      <PagerButton
+        label="Next"
+        icon={
+          <ChevronRight
+            size={s(16)}
+            color={canNext ? colors.heading : colors.muted}
+          />
+        }
+        enabled={canNext}
+        onPress={onNext}
+      />
+    </View>
+  );
+};
+
 // ─── Main Screen ────────────────────────────────────────────
 const PreviousOrdersScreen = () => {
   const uiScale = useUiScale();
@@ -163,22 +323,65 @@ const PreviousOrdersScreen = () => {
   // Expand/collapse state
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
 
-  // Filter & sort state. Four orthogonal axes — channel tab, provider (Online
-  // tab only), status and sort — replacing the old single-select pill strip
-  // that mixed all four into one horizontally-scrolling row.
-  const [searchText, setSearchText] = useState("");
-  const [channelTab, setChannelTab] = useState<ChannelTab>("all");
-  const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("date_desc");
+  // Scroll position is per-page: landing on page 2 halfway down would look like
+  // the list simply grew. Reset to the top whenever the page changes.
+  const scrollRef = useRef<ScrollView>(null);
+
+  // ─── Filter & sort state ───
+  // Owned by the store and applied SERVER-side. The screen renders whatever the
+  // server matched, in the order the server returned it — it does not filter,
+  // sort or search locally. That's what makes "Amount high–low" mean the
+  // highest in the date range (not the highest of the loaded page) and a search
+  // cover the whole range.
+  const filters = usePreviousOrdersStore((s) => s.filters);
+  const setFilters = usePreviousOrdersStore((s) => s.setFilters);
+  const totalMatchingCount = usePreviousOrdersStore(
+    (s) => s.totalMatchingCount,
+  );
   const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync();
+
+  const channelTab = filters.channel as ChannelTab;
+  const providerFilter = filters.provider as ProviderFilter;
+  const statusFilter = filters.status as StatusFilter;
+  const sortKey = filters.sort as SortKey;
+
+  // Search is debounced: every keystroke would otherwise clear the list and
+  // fire a refetch. Local state drives the input so typing stays responsive;
+  // the committed value is what reaches the store.
+  const [searchText, setSearchText] = useState(filters.search);
+  useEffect(() => {
+    if (searchText === filters.search) return;
+    const timer = setTimeout(
+      () => setFilters({ search: searchText }),
+      SEARCH_DEBOUNCE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [searchText, filters.search, setFilters]);
 
   // Leaving the Online tab drops the provider filter so it can never linger as
   // a hidden active filter behind a tab the user can't see it on.
-  const handleChannelTabSelect = useCallback((tab: ChannelTab) => {
-    setChannelTab(tab);
-    if (tab !== "online") setProviderFilter("all");
-  }, []);
+  const handleChannelTabSelect = useCallback(
+    (tab: ChannelTab) => {
+      setFilters({
+        channel: tab,
+        ...(tab !== "online" ? { provider: "all" } : {}),
+      });
+    },
+    [setFilters],
+  );
+
+  const handleProviderSelect = useCallback(
+    (provider: ProviderFilter) => setFilters({ provider }),
+    [setFilters],
+  );
+  const handleStatusSelect = useCallback(
+    (status: StatusFilter) => setFilters({ status }),
+    [setFilters],
+  );
+  const handleSortSelect = useCallback(
+    (sort: SortKey) => setFilters({ sort }),
+    [setFilters],
+  );
 
   // Store-driven loading flag: true during the initial fetch AND on every
   // filter/date-window switch (setDateWindow clears the list + flags a refetch).
@@ -205,9 +408,10 @@ const PreviousOrdersScreen = () => {
   // top of every date window. It surfaces here only once it syncs and a fetch /
   // broadcast returns it.
   const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
-  const loadMoreOrders = usePreviousOrdersStore((s) => s.loadMoreOrders);
-  const isLoadingMore = usePreviousOrdersStore((s) => s._isLoadingMore);
-  const hasMore = usePreviousOrdersStore((s) => s._hasMore);
+  const pageIndex = usePreviousOrdersStore((s) => s.pageIndex);
+  const pageCount = usePreviousOrdersStore((s) => s.pageCount);
+  const isPageLoading = usePreviousOrdersStore((s) => s._isPageLoading);
+  const goToPage = usePreviousOrdersStore((s) => s.goToPage);
   const { rawIsOnline } = useNetworkStatus();
 
   // OFFLINE ONLY: backend unreachable, so previousOrders can't refresh. Surface
@@ -251,11 +455,12 @@ const PreviousOrdersScreen = () => {
     }),
   );
 
-  // Release previous orders from memory when navigating away (~10MB for 500
-  // orders). Nothing is persisted locally — the list is re-fetched from the
-  // backend on next entry via usePreviousOrdersListSync. Also reset pagination
-  // state so a re-entry starts from a clean keyset cursor instead of resuming
-  // the prior session's paging.
+  // Release the loaded page from memory when navigating away. The rows are
+  // persisted to MMKV by the store, so re-entry rehydrates from that cache and
+  // only refetches when the backend signature says something changed — it does
+  // NOT pay for a full fetch every visit. Filters and page position reset so a
+  // re-entry starts from an unfiltered first page rather than resuming a
+  // narrowed view with no visible cause.
   useFocusEffect(
     useCallback(() => {
       return () => {
@@ -264,6 +469,9 @@ const PreviousOrdersScreen = () => {
           _orderLookup: {},
           newOrdersCount: 0,
           _isRefreshing: false,
+          pageIndex: 0,
+          pageCount: 0,
+          _isPageLoading: false,
           _currentOffset: 0,
           _hasMore: false,
           _isLoadingMore: false,
@@ -272,14 +480,34 @@ const PreviousOrdersScreen = () => {
           _lastRefreshLocationId: null,
           windowSummaries: null,
           windowSummariesTruncated: false,
+          // Filters are server-side now, so a stale one left behind would make
+          // the next visit fetch a narrowed list with no visible cause.
+          filters: { ...DEFAULT_HISTORY_FILTERS },
+          _loadedFilterKey: historyFilterKey(DEFAULT_HISTORY_FILTERS),
+          totalMatchingCount: null,
         });
       };
     }, []),
   );
 
-  const handleLoadMore = useCallback(() => {
-    if (hasMore && !isLoadingMore) void loadMoreOrders();
-  }, [hasMore, isLoadingMore, loadMoreOrders]);
+  const handlePrevPage = useCallback(() => {
+    void goToPage(pageIndex - 1);
+  }, [goToPage, pageIndex]);
+
+  const handleNextPage = useCallback(() => {
+    void goToPage(pageIndex + 1);
+  }, [goToPage, pageIndex]);
+
+  // 1-based inclusive range of the rows on screen, for "51–100 of 312".
+  const rangeStart =
+    previousOrders.length === 0 ? 0 : pageIndex * HISTORY_PAGE_SIZE + 1;
+  const rangeEnd = pageIndex * HISTORY_PAGE_SIZE + previousOrders.length;
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    // An expanded row from the previous page has no meaning on this one.
+    setExpandedOrderId(null);
+  }, [pageIndex]);
 
   // Server-fetched history mapped to OrderProfile. Online: exactly the
   // date-bounded backend fetch. Offline: offlineLiveOrders (the device's own
@@ -351,11 +579,10 @@ const PreviousOrdersScreen = () => {
   }, [previousOrders, offlineLiveOrders]);
 
   // ─── Window-wide counts ────────────────────────────────
-  // The list is paginated 30 rows at a time, so counting `allOrders` counts the
-  // loaded pages, not the date range — a June→July window read "Online 6" when
-  // the range held far more. Counts and the provider roster come from the
-  // discriminator-only summary fetch, which covers the whole window in one
-  // round trip. Falls back to the loaded page until it resolves.
+  // Counts describe the whole date window, not the loaded pages, and come from
+  // a discriminator-only summary query that applies the same search + status
+  // the list does. Channel and provider are excluded from that query since
+  // they're the axes being counted.
   const windowSummaries = usePreviousOrdersStore((s) => s.windowSummaries);
 
   const providerRoster = useMemo(
@@ -366,73 +593,26 @@ const PreviousOrdersScreen = () => {
     [windowSummaries, allOrders],
   );
 
-  // ─── Client-side filtering + sorting ───────────────────
-  // Search + status apply to every tab, so tab counts stay consistent with what
-  // the list will actually show once a tab is picked.
-  const searchStatusFiltered = useMemo(
+  const channelCounts = useMemo<Record<ChannelTab, number>>(
     () =>
-      allOrders.filter(
-        (o) => matchesSearch(o, searchText) && matchesStatus(o, statusFilter),
-      ),
-    [allOrders, searchText, statusFilter],
+      windowSummaries
+        ? countChannelsFromSummaries(windowSummaries, "all")
+        : { all: 0, online: 0, dine_in: 0, takeout: 0, delivery: 0 },
+    [windowSummaries],
   );
 
-  // While a search is active the counts must reflect the search, and summaries
-  // carry no customer name/phone — so fall back to counting loaded rows there.
-  const isSearching = searchText.trim().length > 0;
-
-  const channelCounts = useMemo(() => {
-    if (windowSummaries && !isSearching) {
-      return countChannelsFromSummaries(windowSummaries, statusFilter);
-    }
-    const counts: Record<ChannelTab, number> = {
-      all: searchStatusFiltered.length,
-      online: 0,
-      dine_in: 0,
-      takeout: 0,
-      delivery: 0,
-    };
-    for (const o of searchStatusFiltered) counts[getChannelTab(o)]++;
-    return counts;
-  }, [windowSummaries, isSearching, statusFilter, searchStatusFiltered]);
-
-  const onlineOrders = useMemo(
-    () => searchStatusFiltered.filter((o) => getChannelTab(o) === "online"),
-    [searchStatusFiltered],
+  const providerCounts = useMemo(
+    () =>
+      windowSummaries
+        ? countProvidersFromSummaries(windowSummaries, "all")
+        : {},
+    [windowSummaries],
   );
 
-  const providerCounts = useMemo(() => {
-    if (windowSummaries && !isSearching) {
-      return countProvidersFromSummaries(windowSummaries, statusFilter);
-    }
-    const counts: Record<string, number> = {};
-    for (const o of onlineOrders) {
-      const key = getProviderKey(o);
-      if (key) counts[key] = (counts[key] ?? 0) + 1;
-    }
-    return counts;
-  }, [windowSummaries, isSearching, statusFilter, onlineOrders]);
-
-  const filteredOrders = useMemo(() => {
-    let filtered =
-      channelTab === "all"
-        ? searchStatusFiltered
-        : channelTab === "online"
-          ? onlineOrders
-          : searchStatusFiltered.filter((o) => getChannelTab(o) === channelTab);
-
-    if (channelTab === "online" && providerFilter !== "all") {
-      filtered = filtered.filter((o) => getProviderKey(o) === providerFilter);
-    }
-
-    return [...filtered].sort((a, b) => compareOrders(a, b, sortKey));
-  }, [
-    searchStatusFiltered,
-    onlineOrders,
-    channelTab,
-    providerFilter,
-    sortKey,
-  ]);
+  // The server already applied every filter and the sort — render as-is.
+  // No client-side filter/sort/search pass exists any more; adding one back
+  // would silently re-scope results to the loaded pages.
+  const visibleOrders = allOrders;
 
   // Non-default filters that aren't visible as their own always-on control get
   // a pinned "N filters · Clear" pill so nothing is silently narrowing the list.
@@ -440,31 +620,8 @@ const PreviousOrdersScreen = () => {
     (statusFilter !== "all" ? 1 : 0) + (providerFilter !== "all" ? 1 : 0);
 
   const clearFilters = useCallback(() => {
-    setStatusFilter("all");
-    setProviderFilter("all");
-  }, []);
-
-  // Filtering happens client-side over the pages loaded so far, so a narrow
-  // filter can leave a handful of rows in a list too short to scroll — and a
-  // list that can't scroll never fires onEndReached, stranding the merchant on
-  // those rows while more matches sit unfetched. Keep pulling pages until the
-  // filtered result can fill the viewport or the window is exhausted. The
-  // store's own 2s load-more cooldown paces this, so it can't become a storm.
-  const filteredCount = filteredOrders.length;
-  useEffect(() => {
-    if (!hasMore || isLoadingMore || isInitialLoading) return;
-    if (filteredCount >= MIN_ROWS_BEFORE_AUTOFILL) return;
-    const timer = setTimeout(() => {
-      void loadMoreOrders();
-    }, AUTOFILL_INTERVAL_MS);
-    return () => clearTimeout(timer);
-  }, [
-    hasMore,
-    isLoadingMore,
-    isInitialLoading,
-    filteredCount,
-    loadMoreOrders,
-  ]);
+    setFilters({ status: "all", provider: "all" });
+  }, [setFilters]);
 
   // Mutation hooks
   const closeCheckMutation = useCloseCheck();
@@ -657,7 +814,7 @@ const PreviousOrdersScreen = () => {
             prefix="Status:"
             options={STATUS_OPTIONS}
             value={statusFilter}
-            onChange={setStatusFilter}
+            onChange={handleStatusSelect}
             isActive={statusFilter !== "all"}
           />
 
@@ -665,7 +822,7 @@ const PreviousOrdersScreen = () => {
             prefix="Sort:"
             options={SORT_OPTIONS}
             value={sortKey}
-            onChange={setSortKey}
+            onChange={handleSortSelect}
             isActive={sortKey !== "date_desc"}
           />
         </View>
@@ -683,9 +840,9 @@ const PreviousOrdersScreen = () => {
             <ProviderChipRow
               roster={providerRoster}
               counts={providerCounts}
-              totalCount={onlineOrders.length}
+              totalCount={channelCounts.online}
               selected={providerFilter}
-              onSelect={setProviderFilter}
+              onSelect={handleProviderSelect}
             />
           </View>
         )}
@@ -703,49 +860,19 @@ const PreviousOrdersScreen = () => {
             backgroundColor: colors.panel,
           }}
         >
-          {/* FlashList recycles row cells for smoother fling scrolling. Rows
-              expand on tap, so `extraData={expandedOrderId}` is REQUIRED to
-              re-render recycled cells when the expanded row changes, and
-              `disableAutoLayout` is intentionally NOT set (variable-height rows
-              need auto-layout correction). FlatList batching props have no
-              FlashList equivalent. */}
-          <FlashList
-            data={filteredOrders}
-            keyExtractor={(item) => item.id}
-            renderItem={renderItem}
-            extraData={expandedOrderId}
-            estimatedItemSize={s(65)}
-            drawDistance={500}
-            ListEmptyComponent={
-              isInitialLoading ? (
-                <View style={{ paddingTop: s(4) }}>
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <SkeletonRow key={i} />
-                  ))}
-                </View>
-              ) : (
-                <View
-                  style={{
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingVertical: s(64),
-                  }}
-                >
-                  <Text style={{ fontSize: s(20), color: colors.muted }}>
-                    No orders found
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: s(14),
-                      color: colors.muted,
-                      marginTop: s(8),
-                    }}
-                  >
-                    Try adjusting your filters or search
-                  </Text>
-                </View>
-              )
-            }
+          {/* One page of rows in a plain ScrollView — no virtualization.
+              At 50 rows per page the whole page is cheap to mount, and
+              rendering every row outright avoids the recycling artefacts that
+              a list of expandable rows is prone to (a recycled cell keeping the
+              previous row's expanded height). Paging, not scrolling, is how the
+              merchant moves through the result set. */}
+          <ScrollView
+            ref={scrollRef}
+            contentContainerStyle={{
+              paddingBottom: s(16),
+              backgroundColor: colors.panel,
+              flexGrow: 1,
+            }}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}
@@ -754,20 +881,75 @@ const PreviousOrdersScreen = () => {
                 colors={[colors.teal]}
               />
             }
-            contentContainerStyle={{
-              paddingBottom: s(16),
-              backgroundColor: colors.panel,
-            }}
-            onEndReached={handleLoadMore}
-            onEndReachedThreshold={0.3}
-            ListFooterComponent={
-              isLoadingMore ? (
-                <View style={{ paddingVertical: s(16), alignItems: "center" }}>
-                  <ActivityIndicator size="small" color={colors.teal} />
-                </View>
-              ) : null
-            }
-          />
+          >
+            {isInitialLoading && visibleOrders.length === 0 ? (
+              <View style={{ paddingTop: s(4) }}>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <SkeletonRow key={i} />
+                ))}
+              </View>
+            ) : visibleOrders.length === 0 ? (
+              <View
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: s(64),
+                }}
+              >
+                <Text style={{ fontSize: s(20), color: colors.muted }}>
+                  No orders found
+                </Text>
+                <Text
+                  style={{
+                    fontSize: s(14),
+                    color: colors.muted,
+                    marginTop: s(8),
+                  }}
+                >
+                  Try adjusting your filters or search
+                </Text>
+              </View>
+            ) : (
+              <>
+                {visibleOrders.map((item) => (
+                  <React.Fragment key={item.id}>
+                    {renderItem({ item })}
+                  </React.Fragment>
+                ))}
+
+                {/* Pager sits at the end of the rows, so it's reached by
+                    scrolling to the bottom of the page rather than occupying
+                    fixed space above the fold. */}
+                <PaginationBar
+                  pageIndex={pageIndex}
+                  pageCount={pageCount}
+                  totalCount={totalMatchingCount}
+                  rangeStart={rangeStart}
+                  rangeEnd={rangeEnd}
+                  isLoading={isPageLoading}
+                  onPrev={handlePrevPage}
+                  onNext={handleNextPage}
+                />
+              </>
+            )}
+          </ScrollView>
+
+          {/* Dim the page while the next one loads, so the outgoing rows stay
+              in place instead of the list flashing empty between pages. */}
+          {isPageLoading && (
+            <View
+              pointerEvents="none"
+              style={{
+                ...StyleSheet.absoluteFillObject,
+                backgroundColor: colors.panel + "AA",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <ActivityIndicator size="large" color={colors.teal} />
+            </View>
+          )}
 
           {/* New Orders Banner */}
           {newOrdersCount > 0 && (

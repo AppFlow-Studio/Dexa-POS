@@ -4,6 +4,10 @@ import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
+import {
+    DEFAULT_HISTORY_FILTERS,
+    historyFilterKey,
+} from "@/services/historyOrderFilters";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
@@ -203,6 +207,17 @@ const PreviousOrdersSection = () => {
   // so a re-entry starts from a clean keyset cursor and always re-fetches.
   useFocusEffect(
     useCallback(() => {
+      // This surface does its own client-side filtering over `previousOrders`
+      // (see `filteredOrders` below) using local tab state. The Previous Orders
+      // screen sets SERVER-side filters on the same shared store, so inheriting
+      // those would filter the list twice — once by a control this screen
+      // doesn't render, and again by its own tabs. Reset on entry so what's
+      // fetched here is always the unfiltered window.
+      usePreviousOrdersStore.setState({
+        filters: { ...DEFAULT_HISTORY_FILTERS },
+        _loadedFilterKey: historyFilterKey(DEFAULT_HISTORY_FILTERS),
+        totalMatchingCount: null,
+      });
       return () => {
         usePreviousOrdersStore.setState({
           previousOrders: [],
@@ -215,6 +230,9 @@ const PreviousOrdersSection = () => {
           _oldestCursor: null,
           lastHistoryRefreshAt: null,
           _lastRefreshLocationId: null,
+          filters: { ...DEFAULT_HISTORY_FILTERS },
+          _loadedFilterKey: historyFilterKey(DEFAULT_HISTORY_FILTERS),
+          totalMatchingCount: null,
         });
       };
     }, []),
