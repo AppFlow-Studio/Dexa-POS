@@ -1,5 +1,6 @@
 import {
   DEFAULT_HISTORY_FILTERS,
+  EMPTY_DRAFT_EXCLUSION_OR,
   buildHistoryOrderQuery,
   historyFilterKey,
   historyPageCount,
@@ -230,7 +231,54 @@ describe("buildHistoryOrderQuery — search", () => {
   it("applies no search predicate for whitespace-only input", () => {
     const q = fakeQuery();
     buildHistoryOrderQuery(q, filters({ search: "   " }));
-    expect(q.__find("or")).toHaveLength(0);
+    // The unconditional empty-draft exclusion is the only `or` left.
+    expect(q.__find("or")).toHaveLength(1);
+    expect(q.__find("or")[0].args[0]).toBe(EMPTY_DRAFT_EXCLUSION_OR);
+  });
+});
+
+describe("buildHistoryOrderQuery — empty drafts", () => {
+  it("always excludes never-touched $0 drafts, on every filter set", () => {
+    // The exact count and the page rows are built from this same query; if the
+    // exclusion were conditional, some filter combination would again render
+    // fewer rows than the pager total ("1-4 of 6").
+    const cases: Partial<HistoryOrderFilters>[] = [
+      {},
+      { channel: "online", provider: "doordash" },
+      { status: "refunded" },
+      { search: "kenji", sort: "amount_desc" },
+    ];
+    for (const patch of cases) {
+      const q = fakeQuery();
+      buildHistoryOrderQuery(q, filters(patch));
+      const clauses = q.__find("or").map((c: any) => c.args[0]);
+      expect(clauses).toContain(EMPTY_DRAFT_EXCLUSION_OR);
+    }
+  });
+
+  it("keeps every arm that rescues a legitimate $0-looking row", () => {
+    // Mirrors isEmptyDraftOrder in usePreviousOrdersStore: closed, paid,
+    // voided or refunded orders are real history even at $0 total.
+    for (const arm of [
+      "total_amount.neq.0",
+      // A fully-comped open order totals $0 but keeps its pre-discount
+      // subtotal and discount — these arms are what keep it visible.
+      "subtotal.neq.0",
+      "discount_amount.neq.0",
+      // orders.completed_at is what the client renames to closed_at.
+      "completed_at.not.is.null",
+      "payment_status.eq.paid",
+      "status.in.(void,refunded)",
+    ]) {
+      expect(EMPTY_DRAFT_EXCLUSION_OR).toContain(arm);
+    }
+  });
+
+  it("applies the exclusion last, so earlier or-group positions are stable", () => {
+    const q = fakeQuery();
+    buildHistoryOrderQuery(q, filters({ status: "refunded", search: "kenji" }));
+    const ors = q.__find("or");
+    expect(ors[ors.length - 1].args[0]).toBe(EMPTY_DRAFT_EXCLUSION_OR);
   });
 });
 

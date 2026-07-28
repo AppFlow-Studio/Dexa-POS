@@ -108,6 +108,36 @@ function escapeSearchTerm(raw: string): string {
 }
 
 /**
+ * Server-side mirror of the store's `isEmptyDraftOrder()`: a $0 order that was
+ * never closed, paid, voided or refunded is a seated-and-abandoned draft, not
+ * history. Expressed by De Morgan as "keep the row if ANY of these hold".
+ *
+ * This must live in the query both the page and the count are built from —
+ * when the exclusion was client-side only, the exact `count` included drafts
+ * the client then dropped, so the pager read "1–4 of 6" over 4 rows and the
+ * tab counts overstated the window. (`total_amount.neq.0` does not match NULL,
+ * which is correct: a draft with no totals yet is still a draft.)
+ *
+ * The client predicate also requires zero items, which this query can't see —
+ * but `subtotal` (pre-discount) and `discount_amount` stand in for it: an open
+ * order whose total is $0 because it was fully comped still has a nonzero
+ * subtotal and/or discount, so those arms keep it visible. A truly empty draft
+ * has every one of these at zero/null.
+ *
+ * Column note: the client-side `closed_at` is `orders.completed_at` renamed by
+ * the transform (utils/orderTransformers.ts) — the orders table has no
+ * closed_at column.
+ */
+export const EMPTY_DRAFT_EXCLUSION_OR = [
+  "total_amount.neq.0",
+  "subtotal.neq.0",
+  "discount_amount.neq.0",
+  "completed_at.not.is.null",
+  "payment_status.eq.paid",
+  "status.in.(void,refunded)",
+].join(",");
+
+/**
  * Apply channel/status/provider/search/sort to a PostgREST query builder.
  *
  * Typed loosely because the Supabase filter builder and the count builder have
@@ -197,6 +227,13 @@ export function buildHistoryOrderQuery<T extends any>(
     ];
     q = q.or(clauses.join(","));
   }
+
+  // ── Empty drafts ─────────────────────────────────────────
+  // Applied unconditionally and last, so every consumer of this builder (page,
+  // exact count, window summaries) excludes the same rows. Chained `.or()`
+  // calls are ANDed by PostgREST, so this cannot interact with the status or
+  // search `or` groups above.
+  q = q.or(EMPTY_DRAFT_EXCLUSION_OR);
 
   // ── Sort ─────────────────────────────────────────────────
   // `id` is appended as a deterministic tiebreaker. Without it, rows sharing a

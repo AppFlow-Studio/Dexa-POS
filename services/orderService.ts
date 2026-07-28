@@ -28,6 +28,7 @@ import {
 } from "@/types/db-order-management-types";
 import {
     buildHistoryOrderQuery,
+    EMPTY_DRAFT_EXCLUSION_OR,
     type HistoryOrderFilters,
 } from "@/services/historyOrderFilters";
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -1513,7 +1514,12 @@ export class OrderService {
         sort: 'date_desc',
       })
     } else {
-      query = query.order('created_at', { ascending: false })
+      // No filters → buildHistoryOrderQuery never ran, so the empty-draft
+      // exclusion it normally applies must be added here or the counts would
+      // include drafts the list excludes.
+      query = query
+        .or(EMPTY_DRAFT_EXCLUSION_OR)
+        .order('created_at', { ascending: false })
     }
 
     query = query.limit(CAP)

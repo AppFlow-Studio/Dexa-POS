@@ -183,6 +183,13 @@ function latestUpdatedAtOf(rows: { updated_at?: string | null }[]): string | nul
   return latest;
 }
 
+/**
+ * Belt-and-suspenders twin of `EMPTY_DRAFT_EXCLUSION_OR` in
+ * services/historyOrderFilters.ts. The server query excludes these rows before
+ * the exact count is taken (so "N of M" stays honest); this catches rows that
+ * arrive by paths that bypass that query — broadcasts and the offline cache.
+ * Keep the two predicates in step.
+ */
 function isEmptyDraftOrder(po: PreviousOrder): boolean {
   return (
     (po.items?.length ?? 0) === 0 &&
