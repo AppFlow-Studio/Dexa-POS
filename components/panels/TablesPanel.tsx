@@ -108,6 +108,7 @@ const Section: React.FC<SectionProps> = ({
       {isOpen && (
         <View
           style={{
+            flex: 1,
             marginHorizontal: s(8),
             backgroundColor: colors.panel,
             borderRadius: s(10),

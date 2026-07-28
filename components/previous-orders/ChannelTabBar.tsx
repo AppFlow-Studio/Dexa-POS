@@ -65,9 +65,16 @@ const ChannelTabBarContent: React.FC<ChannelTabBarProps> = ({
                 // Exactly half the height: a magic 999 radius is not clamped
                 // reliably on Android's New Architecture and renders square.
                 borderRadius: s(22) / 2,
+                overflow: "hidden",
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: isActive ? colors.teal : "transparent",
+                // Never "transparent": toggling between transparent and solid
+                // lets Fabric reuse the background drawable without reapplying
+                // the corner radius, so the badge randomly rendered square.
+                // A view that always draws a background keeps its radius.
+                // Inactive uses a 1/255-alpha teal: visually nothing, but the
+                // drawable is real so the radius is applied on first paint.
+                backgroundColor: isActive ? colors.teal : colors.teal + "01",
               }}
             >
               <Text
