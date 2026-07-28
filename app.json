@@ -72,7 +72,8 @@
           "organization": "appflow-studios"
         }
       ],
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "react-native-edge-to-edge"
     ],
     "experiments": {
       "typedRoutes": true

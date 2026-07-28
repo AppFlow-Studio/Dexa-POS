@@ -239,7 +239,7 @@ class SecondaryDisplayModule(private val reactContext: ReactApplicationContext) 
 
             if (presentation == null || currentDisplayId != secondaryDisplay.displayId) {
                 dismissPresentation()
-                val activity = currentActivity
+                val activity = reactContext.currentActivity
                 if (activity == null) {
                     Log.w(TAG, "No current activity, cannot create Presentation")
                     return

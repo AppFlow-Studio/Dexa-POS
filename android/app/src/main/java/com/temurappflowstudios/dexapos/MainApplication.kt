@@ -21,23 +21,24 @@ import com.temurappflowstudios.dexapos.nsd.NsdPublisherPackage
 import com.temurappflowstudios.dexapos.nsd.NsdDiscoveryPackage
 
 import expo.modules.ApplicationLifecycleDispatcher
-import expo.modules.ReactNativeHostWrapper
+import expo.modules.ExpoReactHostFactory
 
 class MainApplication : Application(), ReactApplication {
 
-  override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
-        this,
+  private fun buildPackages(base: List<ReactPackage>): List<ReactPackage> =
+    base.toMutableList().apply {
+      add(TcpServerPackage())
+      add(SecondaryDisplayPackage())
+      add(HardwareDetectionPackage())
+      add(LandiPrinterPackage())
+      add(NsdPublisherPackage())
+      add(NsdDiscoveryPackage())
+    }
+
+  override val reactNativeHost: ReactNativeHost =
         object : DefaultReactNativeHost(this) {
-          override fun getPackages(): List<ReactPackage> {
-            val packages = PackageList(this).packages.toMutableList()
-            packages.add(TcpServerPackage())
-            packages.add(SecondaryDisplayPackage())
-            packages.add(HardwareDetectionPackage())
-            packages.add(LandiPrinterPackage())
-            packages.add(NsdPublisherPackage())
-            packages.add(NsdDiscoveryPackage())
-            return packages
-          }
+          override fun getPackages(): List<ReactPackage> =
+            buildPackages(PackageList(this).packages)
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
 
@@ -46,10 +47,12 @@ class MainApplication : Application(), ReactApplication {
           override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
           override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
       }
-  )
 
   override val reactHost: ReactHost
-    get() = ReactNativeHostWrapper.createReactHost(applicationContext, reactNativeHost)
+    get() = ExpoReactHostFactory.getDefaultReactHost(
+      applicationContext,
+      buildPackages(PackageList(this).packages)
+    )
 
   override fun onCreate() {
     super.onCreate()
