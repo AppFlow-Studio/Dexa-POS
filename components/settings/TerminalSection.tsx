@@ -40,7 +40,7 @@ export interface PaymentTerminal {
 }
 
 export interface RegisterTerminalParams {
-  type: "dejavoo" | "castles";
+  type: "dejavoo" | "castles" | "valor";
   name: string;
   model: string;
   tpn: string;
@@ -49,6 +49,10 @@ export interface RegisterTerminalParams {
   ipAddress: string;
   port: string;
   connectionType: "local_socket" | "usb";
+  /** Valor cancel port (5001). */
+  cancelPort?: string;
+  /** Valor EPI. */
+  epi?: string;
 }
 
 export interface SaveEditParams {
@@ -59,6 +63,8 @@ export interface SaveEditParams {
   ipAddress: string;
   port: string;
   connectionType: "local_socket" | "usb";
+  cancelPort?: string;
+  epi?: string;
 }
 
 export interface TerminalSectionProps {
@@ -110,7 +116,7 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
   // ---- Local UI state ----
   const [showTerminalPicker, setShowTerminalPicker] = useState(false);
   const [showRegisterForm, setShowRegisterForm] = useState(false);
-  const [registerFormType, setRegisterFormType] = useState<"dejavoo" | "castles">("dejavoo");
+  const [registerFormType, setRegisterFormType] = useState<"dejavoo" | "castles" | "valor">("dejavoo");
   const [registerForm, setRegisterForm] = useState({
     name: "",
     tpn: "",
@@ -120,6 +126,8 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
     ipAddress: "",
     port: "8080",
     connectionType: "local_socket" as "local_socket" | "usb",
+    cancelPort: "5001",
+    epi: "",
   });
 
   const [isEditingTerminal, setIsEditingTerminal] = useState(false);
@@ -131,6 +139,8 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
     ipAddress: "",
     port: "8080",
     connectionType: "local_socket" as "local_socket" | "usb",
+    cancelPort: "5001",
+    epi: "",
   });
 
   const [isAssigning, setIsAssigning] = useState(false);
@@ -146,12 +156,16 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
   const isRegisterFormValid =
     registerFormType === "dejavoo"
       ? registerForm.name.trim() && registerForm.tpn.trim() && registerForm.authKey.trim()
-      : registerForm.name.trim() && (registerForm.connectionType === "usb" || registerForm.ipAddress.trim());
+      : registerFormType === "valor"
+        ? registerForm.name.trim() && (registerForm.connectionType === "usb" || registerForm.ipAddress.trim()) && registerForm.epi.trim()
+        : registerForm.name.trim() && (registerForm.connectionType === "usb" || registerForm.ipAddress.trim());
 
   const isEditFormValid =
     currentTerminal?.terminal_type === "castles"
       ? editForm.name.trim() && (editForm.connectionType === "usb" || editForm.ipAddress.trim())
-      : editForm.name.trim() && editForm.tpn.trim();
+      : currentTerminal?.terminal_type === "valor"
+        ? editForm.name.trim() && (editForm.connectionType === "usb" || editForm.ipAddress.trim()) && editForm.epi.trim()
+        : editForm.name.trim() && editForm.tpn.trim();
 
   // ---- Handlers ----
 
@@ -206,6 +220,8 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
         ipAddress: "",
         port: "8080",
         connectionType: "local_socket",
+        cancelPort: "5001",
+        epi: "",
       });
     } catch {
       // parent handles toast
@@ -222,8 +238,10 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
       tpn: currentTerminal.register_id || "",
       authKey: "",
       ipAddress: currentTerminal.ip_address || "",
-      port: String(currentTerminal.port || 8080),
+      port: String(currentTerminal.port || (currentTerminal.terminal_type === "valor" ? 5000 : 8080)),
       connectionType: (currentTerminal.connection_type === "usb" ? "usb" : "local_socket") as "local_socket" | "usb",
+      cancelPort: String(currentTerminal.cancel_port || 5001),
+      epi: currentTerminal.epi || "",
     });
     setIsEditingTerminal(true);
   }, [currentTerminal]);
@@ -245,16 +263,16 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
   }, [editForm, onSaveEdit]);
 
   const runInlineTest = useCallback(
-    async (ip: string, port: string, terminalId: string) => {
+    async (ip: string, port: string, terminalId: string, terminalType: "castles" | "valor" = "castles") => {
       const cleanIp = ip.replace(/\s/g, '');
       if (!cleanIp) return;
       setQuickTestStatus("testing");
       try {
         const ok = await onTestConnectionWithConfig({
           terminalId,
-          terminalType: "castles",
+          terminalType,
           ipAddress: cleanIp,
-          port: parseInt(port.replace(/\s/g, ''), 10) || 8080,
+          port: parseInt(port.replace(/\s/g, ''), 10) || (terminalType === "valor" ? 5000 : 8080),
         });
         setQuickTestStatus(ok.success ? "online" : "offline");
       } catch {
@@ -387,6 +405,22 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
               Cloud / SPIN API
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setRegisterFormType("valor")}
+            style={{
+              flex: 1, borderRadius: 8, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 12, alignItems: "center",
+              backgroundColor: registerFormType === "valor" ? colors.teal + "20" : "transparent",
+              borderColor: registerFormType === "valor" ? colors.teal + "50" : colors.border,
+            }}
+          >
+            <Wifi size={18} color={registerFormType === "valor" ? colors.teal : colors.muted} />
+            <Text style={{ fontWeight: "700", fontSize: 12, marginTop: 6, color: registerFormType === "valor" ? colors.teal : colors.muted }}>
+              Valor
+            </Text>
+            <Text style={{ fontSize: 10, marginTop: 2, textAlign: "center", color: registerFormType === "valor" ? colors.label : colors.muted }}>
+              Valor Connect / TCP
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Castles flow */}
@@ -452,6 +486,101 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
                   value={registerForm.model}
                   onChangeText={(v) => setRegisterForm((f) => ({ ...f, model: v }))}
                   placeholder="e.g. S1F2"
+                  placeholderTextColor={colors.muted}
+                  style={inputStyle}
+                />
+              </View>
+            </View>
+          </>
+        )}
+
+        {/* Valor flow (TCP v1) */}
+        {registerFormType === "valor" && (
+          <>
+            {/* Step 1: Connection */}
+            <View style={{ marginBottom: 16 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: colors.teal + "20", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.teal + "50" }}>
+                  <Text style={{ color: colors.teal, fontSize: 10, fontWeight: "bold" }}>1</Text>
+                </View>
+                <Text style={{ color: colors.label, fontSize: 13, fontWeight: "600" }}>Connection</Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <View style={{ flex: 3 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Terminal IP *</Text>
+                  <TextInput
+                    value={registerForm.ipAddress}
+                    onChangeText={(v) => { setRegisterForm((f) => ({ ...f, ipAddress: v })); setQuickTestStatus("idle"); }}
+                    placeholder="192.168.1.100"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="decimal-pad"
+                    style={inputStyle}
+                  />
+                </View>
+                <View style={{ flex: 1.2 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Port</Text>
+                  <TextInput
+                    value={registerForm.port}
+                    onChangeText={(v) => setRegisterForm((f) => ({ ...f, port: v }))}
+                    placeholder="5000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    style={inputStyle}
+                  />
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                <View style={{ flex: 1.2 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Cancel Port</Text>
+                  <TextInput
+                    value={registerForm.cancelPort}
+                    onChangeText={(v) => setRegisterForm((f) => ({ ...f, cancelPort: v }))}
+                    placeholder="5001"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    style={inputStyle}
+                  />
+                </View>
+                <View style={{ flex: 3 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>EPI *</Text>
+                  <TextInput
+                    value={registerForm.epi}
+                    onChangeText={(v) => setRegisterForm((f) => ({ ...f, epi: v }))}
+                    placeholder="e.g. 2319900000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    style={inputStyle}
+                  />
+                </View>
+              </View>
+              {renderQuickTestButton(
+                registerForm.ipAddress,
+                !registerForm.ipAddress.trim(),
+                () => runInlineTest(registerForm.ipAddress, registerForm.port, "quick-test", "valor"),
+              )}
+            </View>
+
+            {/* Step 2: Label */}
+            <View style={{ marginBottom: 20 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: colors.teal + "20", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.teal + "50" }}>
+                  <Text style={{ color: colors.teal, fontSize: 10, fontWeight: "bold" }}>2</Text>
+                </View>
+                <Text style={{ color: colors.label, fontSize: 13, fontWeight: "600" }}>Label</Text>
+              </View>
+              <TextInput
+                value={registerForm.name}
+                onChangeText={(v) => setRegisterForm((f) => ({ ...f, name: v }))}
+                placeholder="e.g. Front Counter, Bar"
+                placeholderTextColor={colors.muted}
+                style={inputStyle}
+              />
+              <View style={{ marginTop: 8 }}>
+                <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Model (optional)</Text>
+                <TextInput
+                  value={registerForm.model}
+                  onChangeText={(v) => setRegisterForm((f) => ({ ...f, model: v }))}
+                  placeholder="e.g. VP500"
                   placeholderTextColor={colors.muted}
                   style={inputStyle}
                 />
@@ -545,7 +674,7 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
             <>
               <Check size={15} color={isRegisterFormValid ? colors.teal : colors.muted} />
               <Text style={{ fontSize: 13, color: isRegisterFormValid ? colors.teal : colors.muted, fontWeight: "700", marginLeft: 6 }}>
-                {registerFormType === "castles" ? "Save & Connect" : "Register Terminal"}
+                {registerFormType === "dejavoo" ? "Register Terminal" : "Save & Connect"}
               </Text>
             </>
           )}
@@ -598,7 +727,7 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
                     <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
                       <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8, backgroundColor: colors.teal + "30" }}>
                         <Text style={{ fontSize: 11, fontWeight: "500", color: colors.teal }}>
-                          {t.terminalType === "castles" ? "Castles" : "Dejavoo"}
+                          {t.terminalType === "castles" ? "Castles" : t.terminalType === "valor" ? "Valor" : "Dejavoo"}
                         </Text>
                       </View>
                       {t.model && <Text style={{ color: colors.muted, fontSize: 11 }}>{t.model}</Text>}
@@ -647,7 +776,7 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
             <Text style={{ color: colors.heading, fontWeight: "bold", fontSize: 14 }}>Edit Terminal</Text>
             <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.teal + "30" }}>
               <Text style={{ fontSize: 11, fontWeight: "bold", color: colors.teal }}>
-                {currentTerminal.terminal_type === "castles" ? "Castles" : "Dejavoo"}
+                {currentTerminal.terminal_type === "castles" ? "Castles" : currentTerminal.terminal_type === "valor" ? "Valor" : "Dejavoo"}
               </Text>
             </View>
           </View>
@@ -745,8 +874,73 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({
           </>
         )}
 
+        {/* Valor: IP + Port + Cancel Port + EPI + inline test */}
+        {currentTerminal.terminal_type === "valor" && (
+          <>
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              Connection
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+              <View style={{ flex: 3 }}>
+                <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Terminal IP *</Text>
+                <TextInput
+                  value={editForm.ipAddress}
+                  onChangeText={(v) => setEditForm((f) => ({ ...f, ipAddress: v }))}
+                  placeholder="192.168.1.100"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="decimal-pad"
+                  style={inputStyle}
+                />
+              </View>
+              <View style={{ flex: 1.2 }}>
+                <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Port</Text>
+                <TextInput
+                  value={editForm.port}
+                  onChangeText={(v) => setEditForm((f) => ({ ...f, port: v }))}
+                  placeholder="5000"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="number-pad"
+                  style={inputStyle}
+                />
+              </View>
+            </View>
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+              <View style={{ flex: 1.2 }}>
+                <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Cancel Port</Text>
+                <TextInput
+                  value={editForm.cancelPort}
+                  onChangeText={(v) => setEditForm((f) => ({ ...f, cancelPort: v }))}
+                  placeholder="5001"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="number-pad"
+                  style={inputStyle}
+                />
+              </View>
+              <View style={{ flex: 3 }}>
+                <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>EPI *</Text>
+                <TextInput
+                  value={editForm.epi}
+                  onChangeText={(v) => setEditForm((f) => ({ ...f, epi: v }))}
+                  placeholder="e.g. 2319900000"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="number-pad"
+                  style={inputStyle}
+                />
+              </View>
+            </View>
+            <View style={{ marginBottom: 16 }}>
+              {renderQuickTestButton(
+                editForm.ipAddress,
+                !editForm.ipAddress.trim(),
+                () => runInlineTest(editForm.ipAddress, editForm.port, currentTerminal.id, "valor"),
+                true,
+              )}
+            </View>
+          </>
+        )}
+
         {/* Dejavoo: TPN + AuthKey */}
-        {currentTerminal.terminal_type !== "castles" && (
+        {currentTerminal.terminal_type !== "castles" && currentTerminal.terminal_type !== "valor" && (
           <>
             <View style={{ marginBottom: 12 }}>
               <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>TPN *</Text>

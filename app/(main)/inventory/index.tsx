@@ -13,7 +13,7 @@ import { useUiScale } from '@/lib/uiScale'
 import { InventoryItem } from '@/lib/types'
 import { useInventoryStore } from '@/stores/useInventoryStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import BottomSheet from '@gorhom/bottom-sheet'
+import BottomSheet from '@/components/ui/bottomSheet'
 import {
   AlertTriangle,
   ChevronDown,

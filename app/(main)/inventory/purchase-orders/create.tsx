@@ -14,7 +14,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetView
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { useRouter } from "expo-router";
 import {
   ArrowLeft,

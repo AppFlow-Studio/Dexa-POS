@@ -6,6 +6,8 @@
 import { captureRpcError } from "@/lib/supabase";
 import { addPendingFinalize } from "@/services/pendingFinalize";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
+import { getSharedValorService } from "@/services/terminals/valor-service";
+import { VALOR_DEFAULT_PORT, VALOR_SETTLEMENT_TIMEOUT_MS } from "@/types/valor";
 import type {
     CastlesSettlementHostResult,
     CastlesSettlementResult,
@@ -23,11 +25,16 @@ export interface SettlementInput {
   terminalId: string; // payment_terminals.id (UUID)
   merchantId: string; // required by RPCs for tenant isolation
   initiatedBy: string; // Clerk userId — audit trail
+  /** 'castles' (default) or 'valor' — selects the settlement path. */
+  terminalType?: string;
   /** Required for TCP terminals; ignored for USB. */
   terminalHost?: string;
   terminalPort?: number;
-  /** 'usb' for wired Castles, otherwise TCP. Defaults to 'local_socket'. */
+  /** 'usb' for wired Castles/Valor, otherwise TCP. Defaults to 'local_socket'. */
   connectionType?: 'local_socket' | 'usb';
+  /** Valor only: terminal EPI + cancel port from the payment_terminals row. */
+  epi?: string;
+  cancelPort?: number;
   locationId: string;
   supabase: SupabaseClient;
   onStatus?: (message: string) => void;
@@ -51,6 +58,10 @@ export interface SettlementOutput {
   }>;
   dbWriteFailed?: boolean;
   error?: string;
+  /** 'castles' (default) or 'valor'. */
+  processor?: string;
+  /** Valor: the terminal's closed batch number (BATCH_NO). */
+  batchNumber?: string;
 }
 
 // Shape of a row returned by get_unsettled_summary_by_terminal
@@ -194,7 +205,20 @@ async function verifyOrProvisionTerminal(params: {
 
 // ── Service ───────────────────────────────────────────────────────
 
+/**
+ * Settlement dispatcher — routes by terminal type. Castles keeps its full
+ * host-keyed flow; Valor runs the on-terminal TRAN_MODE 0/9 flow.
+ */
 export async function runSettlement(
+  input: SettlementInput,
+): Promise<SettlementOutput> {
+  if (input.terminalType === 'valor') {
+    return runValorSettlement(input);
+  }
+  return runCastlesSettlement(input);
+}
+
+async function runCastlesSettlement(
   input: SettlementInput,
 ): Promise<SettlementOutput> {
   const {
@@ -284,6 +308,127 @@ export async function runSettlement(
   }
 
   return lastOutput!;
+}
+
+// ── Valor on-terminal settlement (TRAN_MODE 0 / TRAN_CODE 9) ───────
+
+/**
+ * Single-attempt Valor settlement — NO auto-retry loop (a Valor settle has no
+ * per-acquirer partial detection and no STAN re-query, so a re-fire could cut a
+ * second batch). prepare pins membership; settleBatch closes the batch on the
+ * terminal; finalize marks the pinned payments (STATE-only) or routes to
+ * needs_review. On a finalize RPC failure AFTER a confirmed close, the response
+ * is journaled for replay from the BatchoutPanel.
+ */
+async function runValorSettlement(
+  input: SettlementInput,
+): Promise<SettlementOutput> {
+  const {
+    terminalId,
+    merchantId,
+    initiatedBy,
+    terminalHost,
+    terminalPort = VALOR_DEFAULT_PORT,
+    connectionType = 'local_socket',
+    epi,
+    cancelPort,
+    supabase,
+    onStatus,
+  } = input;
+
+  const isUsb = connectionType === 'usb';
+  if (!isUsb && !terminalHost) {
+    throw new Error('Valor settlement requires either a USB connection or a TCP terminal host.');
+  }
+
+  const failOutput = (error: string, extra?: Partial<SettlementOutput>): SettlementOutput => ({
+    success: false, partialSuccess: false, shouldRetry: false, requiresSupport: false,
+    hosts: [], processor: 'valor', error, ...extra,
+  });
+
+  onStatus?.('Connecting to Valor terminal...');
+  const valor = getSharedValorService();
+  await valor.connect({
+    connectionType: isUsb ? 'usb' : 'local_socket',
+    host: isUsb ? undefined : terminalHost,
+    port: isUsb ? undefined : terminalPort,
+    cancelPort,
+    epi,
+    timeout: VALOR_SETTLEMENT_TIMEOUT_MS,
+    terminalId,
+  });
+
+  // 1. Prepare: snapshot + pin membership (server side).
+  onStatus?.('Preparing settlement batch...');
+  const { data: prep, error: prepErr } = await supabase.rpc('prepare_valor_settlement', {
+    p_terminal_id: terminalId,
+    p_merchant_id: merchantId,
+    p_initiated_by: initiatedBy,
+  });
+  if (prepErr) {
+    // Missing RPC (env not migrated yet) surfaces as a clear message, not a crash.
+    const msg = /function .*prepare_valor_settlement.* does not exist/i.test(prepErr.message ?? '')
+      ? 'Valor settlement is not deployed to this environment yet.'
+      : `Prepare failed: ${prepErr.message}`;
+    captureRpcError('prepare_valor_settlement', prepErr);
+    return failOutput(msg);
+  }
+  const batchUuid: string = prep.batch_uuid;
+  const batchId: string = prep.batch_id;
+  const paymentCount: number = prep.payment_count ?? 0;
+
+  // 2. Close the batch on the terminal (single attempt).
+  onStatus?.('Settling batch on the terminal — this can take a minute. Do not unplug.');
+  const referenceId = `VS${String(Date.now()).slice(-6)}`;
+  const res = await valor.settleBatch({ referenceId });
+
+  // The exact terminal response drives finalize. On an indeterminate settle we
+  // still call finalize with a STATE-less marker so the server routes the batch
+  // to needs_review (out of 'pending') rather than leaving it stuck.
+  const valorResponse = res.raw ?? { STATE: null, indeterminate: true, error: res.error ?? 'no response' };
+
+  // 3. Finalize: mark payments (STATE-only) or needs_review.
+  onStatus?.('Recording settlement results...');
+  const { data: fin, error: finErr } = await supabase.rpc('finalize_valor_settlement', {
+    p_batch_uuid: batchUuid,
+    p_merchant_id: merchantId,
+    p_valor_response: valorResponse,
+  });
+
+  if (finErr) {
+    captureRpcError('finalize_valor_settlement', finErr);
+    // If the terminal confirmed the close, journal the response so any device can
+    // replay finalize (terminal already closed — re-settling would double-cut).
+    if (res.outcome === 'settled') {
+      await addPendingFinalize(
+        {
+          batchUuid, merchantId, terminalId,
+          processor: 'valor', castlesResponse: valorResponse,
+          savedAt: new Date().toISOString(),
+        },
+        supabase,
+      );
+    }
+    return failOutput(
+      'Settlement completed on the terminal but saving the result failed. Retry the DB sync from settings.',
+      { batchUuid, batchId, dbWriteFailed: true },
+    );
+  }
+
+  return {
+    success: Boolean(fin.success),
+    partialSuccess: false,
+    shouldRetry: Boolean(fin.should_retry),
+    requiresSupport: Boolean(fin.requires_support),
+    hosts: [],
+    processor: 'valor',
+    batchUuid,
+    batchId: fin.batch_id ?? batchId,
+    status: fin.status,
+    batchNumber: fin.batch_number,
+    paymentsUpdated: fin.success ? paymentCount : undefined,
+    error: fin.success ? undefined : (fin.error ?? `Settlement ${fin.status}`),
+  };
 }
 
 // ── Inner per-attempt body (kept side-effectful: writes the settlement_batches row) ──

@@ -16,7 +16,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
   BottomSheetTextInput,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { useRouter } from "expo-router";
 import { ArrowLeft, ChevronDown, Plus, Search, Trash2, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";

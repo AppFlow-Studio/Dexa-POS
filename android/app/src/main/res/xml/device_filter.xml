@@ -9,4 +9,12 @@
       Matched by vendor only so all Castles models are covered.
     -->
     <usb-device vendor-id="3238" />
+    <!--
+      Valor VP terminal — USB vendor ID 0x1E0E (7694 decimal), a Qualcomm
+      "Android Diag" CDC serial interface. Same purpose as above: persistent USB
+      permission + USB_DEVICE_ATTACHED for zero-touch auto-connect. 0x1E0E is a
+      shared Qualcomm VID; JS-side (valor-transport-usb.ts) narrows to the Valor
+      terminal by product-name hints when multiple Qualcomm devices are present.
+    -->
+    <usb-device vendor-id="7694" />
 </resources>
