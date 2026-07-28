@@ -1,10 +1,4 @@
-import {
-  Circle,
-  Group,
-  Rect,
-  RoundedRect,
-  Text,
-} from "@shopify/react-native-skia";
+import { Circle, Group, RoundedRect, Text } from "@shopify/react-native-skia";
 import React from "react";
 
 import { getTableFont, measureWidth } from "./skiaTableFont";
@@ -75,18 +69,6 @@ const SkiaTableContent: React.FC<{
   const centerX = contentLeft + contentW / 2;
   const totalHeight = lines.reduce((sum, l) => sum + lineHeight(l.size), 0);
   let cursorY = contentTop + (contentH - totalHeight) / 2;
-
-  // DEBUG: semi-transparent red rect showing the shape-aware text content area
-  const debugContentRect =
-    contentW > 0 && contentH > 0 ? (
-      <Rect
-        x={contentLeft}
-        y={contentTop}
-        width={contentW}
-        height={contentH}
-        color="rgba(255,0,0,0.25)"
-      />
-    ) : null;
 
   const textNodes = lines.map((l, i) => {
     const font = getTableFont(l.size, l.weight);
@@ -185,7 +167,6 @@ const SkiaTableContent: React.FC<{
 
   return (
     <>
-      {debugContentRect}
       {textNodes}
       {badgeNodes}
     </>
