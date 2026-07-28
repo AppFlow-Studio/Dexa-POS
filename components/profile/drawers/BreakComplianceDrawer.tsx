@@ -1,7 +1,7 @@
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { CheckCircle2, Coffee } from "lucide-react-native";
 import React, { forwardRef, useMemo } from "react";
 import { Text, View } from "react-native";

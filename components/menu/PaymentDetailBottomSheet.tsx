@@ -46,7 +46,7 @@ import {
   getTerminalMatchInfo,
   getTipAdjustMatchInfo,
 } from "@/utils/terminalMatchGuard";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { formatDistanceToNow } from "date-fns";
 import { usePathname, useRouter } from "expo-router";
 import {

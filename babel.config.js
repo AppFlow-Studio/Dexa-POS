@@ -30,9 +30,15 @@ module.exports = function (api) {
     ]);
   }
 
-  // Reanimated 4 moved its Babel plugin into react-native-worklets; the old
-  // `react-native-reanimated/plugin` is a deprecated re-export. Must be last.
-  plugins.push("react-native-worklets/plugin");
+  // Do NOT add `react-native-worklets/plugin` (or the deprecated
+  // `react-native-reanimated/plugin`) here. On Expo SDK 57, babel-preset-expo
+  // auto-injects the Worklets plugin — ordered last — whenever
+  // `react-native-worklets` is installed (see
+  // babel-preset-expo/build/configs/expo.js: `plugins.push(require(worklets/plugin))`,
+  // guarded by `options.worklets !== false`). Adding it manually double-registers
+  // the plugin. Expo docs: "Reanimated Babel plugin is automatically configured
+  // in babel-preset-expo when you install the library." To opt out of the auto
+  // injection instead, pass `{ worklets: false }` to babel-preset-expo below.
 
   return {
     presets: [

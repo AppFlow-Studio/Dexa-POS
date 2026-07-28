@@ -21,6 +21,7 @@
   "dependencies": {
     "@backpackapp-io/react-native-toast": "^0.15.1",
     "@clerk/clerk-expo": "^2.19.31",
+    "@expo/ui": "~57.0.7",
     "@expo/vector-icons": "^15.1.1",
     "@gorhom/bottom-sheet": "^5.2.14",
     "@react-native-async-storage/async-storage": "2.2.0",

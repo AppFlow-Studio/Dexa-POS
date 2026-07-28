@@ -8,7 +8,7 @@ import {
   SendAllButton,
   SendCourseButton
 } from '@/components/bill/SendToKitchenButton'
-import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+import { BottomSheetMethods } from '@/components/ui/bottomSheet'
 import {
   ArrowUpToLine,
   ChevronDown,

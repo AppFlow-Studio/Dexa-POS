@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import BottomSheet from "@gorhom/bottom-sheet";
+import BottomSheet from "@/components/ui/bottomSheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Calendar,

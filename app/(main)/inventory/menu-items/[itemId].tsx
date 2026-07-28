@@ -6,7 +6,7 @@ import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   AlertTriangle,

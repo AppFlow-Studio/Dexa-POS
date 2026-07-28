@@ -6,8 +6,8 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
   BottomSheetTextInput
-} from '@gorhom/bottom-sheet'
-import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+} from '@/components/ui/bottomSheet'
+import { BottomSheetMethods } from '@/components/ui/bottomSheet'
 import { Receipt, X } from 'lucide-react-native'
 import React, { forwardRef, useEffect, useMemo, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'

@@ -41,7 +41,7 @@ import type {
   ServerSection,
   TableSession,
 } from "@/types/db-floor-plan-types";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { useRouter } from "expo-router";
 import {
     AlertTriangle,

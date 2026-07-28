@@ -18,11 +18,15 @@ import {
     TableStatus,
 } from "@/types/db-floor-plan-types";
 import { formatCurrency } from "@/utils/currency";
+// Migrated off @gorhom/bottom-sheet — it has no Reanimated-4 support on RN 0.86 +
+// Fabric (issues #2546/#2592/#2600/#2613, still open; sheets never open). Expo UI's
+// community bottom-sheet is a native (Jetpack Compose ModalBottomSheet) drop-in with
+// the same API. BottomSheetBackdrop is intentionally dropped — the native modal
+// supplies its own scrim, and dismiss-on-outside-tap is preserved via enablePanDownToClose.
 import {
-    BottomSheetBackdrop,
     BottomSheetModal,
     BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import {
     ArrowLeftRight,
     CalendarClock,
@@ -702,14 +706,6 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
         snapPoints={snapPoints}
         enableDynamicSizing={false}
         onDismiss={handleDismiss}
-        backdropComponent={(props) => (
-          <BottomSheetBackdrop
-            {...props}
-            appearsOnIndex={0}
-            disappearsOnIndex={-1}
-            pressBehavior="close"
-          />
-        )}
         backgroundStyle={bottomSheetTheme.backgroundStyle}
         handleIndicatorStyle={bottomSheetTheme.handleIndicatorStyle}
         enablePanDownToClose

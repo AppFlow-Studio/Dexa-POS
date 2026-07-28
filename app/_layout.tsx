@@ -73,7 +73,7 @@ import {
     TokenCache,
     useAuth,
 } from "@clerk/clerk-expo";
-import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { BottomSheetModalProvider } from "@/components/ui/bottomSheet";
 // SDK 56+: expo-router ships a forked navigation and disallows importing
 // @react-navigation/* directly. These theme values/types are re-exported by
 // expo-router from its vendored copy.
@@ -951,7 +951,7 @@ export default Sentry.wrap(function RootLayout() {
           >
             <TanstackProvider>
               <PosSyncProvider>
-                <GestureHandlerRootView>
+                <GestureHandlerRootView style={{ flex: 1 }}>
                   <UiScaleProvider>
                     <SafeAreaProvider>
                       <ThemeProvider

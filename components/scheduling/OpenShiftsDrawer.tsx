@@ -10,7 +10,7 @@ import { useScheduleStore } from "@/stores/useScheduleStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { format, parseISO } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import {

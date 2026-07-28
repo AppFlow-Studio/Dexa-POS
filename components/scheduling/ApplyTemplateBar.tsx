@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { colors } from "@/lib/theme";
 import { ApplyMode } from "@/lib/types";
-import BottomSheet from "@gorhom/bottom-sheet";
+import BottomSheet from "@/components/ui/bottomSheet";
 import { AlertTriangle, CheckCircle, ChevronDown } from "lucide-react-native";
 import React, { useRef } from "react";
 import { Text, View } from "react-native";
