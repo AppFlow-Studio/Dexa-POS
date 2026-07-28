@@ -5,7 +5,6 @@ import { OrderProfile } from "@/lib/types";
 import { useUiScale } from "@/lib/uiScale";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { formatPaymentStatus } from "@/utils/orderStatusHelpers";
-import { FlashList } from "@shopify/flash-list";
 
 import {
     ArrowDown,
@@ -14,8 +13,15 @@ import {
     MoreVertical,
     XCircle,
 } from "lucide-react-native";
-import React, { memo, useCallback, useMemo } from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+    ActivityIndicator,
+    RefreshControl,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import DeliveryPlatformBadge from "../order/DeliveryPlatformBadge";
 
 export type SortColumn = "order" | "time" | "staff" | "total" | "status";
@@ -72,8 +78,6 @@ interface OrdersTableProps {
   ) => void;
   refreshing?: boolean;
   onRefresh?: () => void;
-  onEndReached?: () => void;
-  isLoadingMore?: boolean;
   /** True while the initial history fetch is in flight (shows a spinner in
    *  place of the "No orders found" empty state). */
   isInitialLoading?: boolean;
@@ -85,6 +89,9 @@ interface OrdersTableProps {
   serverSorted?: boolean;
   /** Rendered after the last row — used for the pagination bar. */
   ListFooter?: React.ReactElement | null;
+  /** Scrolls the body back to the top whenever this value changes — pass the
+   *  page index so a page turn starts from the first row. */
+  resetScrollKey?: number;
 }
 
 // Status pill config — follows design_theme.md: bg=color+'20', border=color+'50'
@@ -513,14 +520,20 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   onMoreClick,
   refreshing,
   onRefresh,
-  onEndReached,
-  isLoadingMore,
   isInitialLoading,
   serverSorted = false,
   ListFooter = null,
+  resetScrollKey,
 }) => {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
+  const scrollRef = useRef<ScrollView>(null);
+
+  // A new page starting mid-scroll would look like the list simply grew —
+  // jump back to the top whenever the caller's page key changes.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [resetScrollKey]);
 
   /**
    * Rows arrive already ordered.
@@ -572,13 +585,6 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
       return 0;
     });
   }, [orders, sortColumn, sortDirection, serverSorted]);
-
-  const renderItem = useCallback(
-    ({ item }: { item: OrderProfile }) => (
-      <OrderRow order={item} onMoreClick={onMoreClick} />
-    ),
-    [onMoreClick],
-  );
 
   return (
     <View
@@ -645,20 +651,30 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         })}
       </View>
 
-      {/* Table Body — FlashList recycles row cells instead of mount/unmount
-          on fling scroll (matches the menu grid's Perf F8 migration). Rows are
-          uniform-height, so `disableAutoLayout` is safe and avoids the New-Arch
-          AutoLayout "dark rectangle" artifact. FlatList batching props
-          (initialNumToRender/windowSize/etc.) have no FlashList equivalent. */}
-      <FlashList
-        data={sortedOrders}
-        renderItem={renderItem}
-        keyExtractor={(item: OrderProfile) => item.id}
-        estimatedItemSize={53}
-        disableAutoLayout
-        drawDistance={500}
-        contentContainerStyle={{ backgroundColor: colors.screen }}
-        ListEmptyComponent={() =>
+      {/* Table Body — one server page of rows in a plain ScrollView, no
+          virtualization (same rationale as the full Previous Orders screen):
+          at 50 rows per page the whole page is cheap to mount, and mounting
+          every row outright avoids FlashList's cell-recycling scroll feel.
+          Paging, not scrolling, is how the merchant moves through the set. */}
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{
+          backgroundColor: colors.screen,
+          flexGrow: 1,
+        }}
+        showsVerticalScrollIndicator={true}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={!!refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.teal}
+              colors={[colors.teal]}
+            />
+          ) : undefined
+        }
+      >
+        {sortedOrders.length === 0 ? (
           isInitialLoading ? (
             <View className="py-20 items-center justify-center">
               <ActivityIndicator size="small" color={colors.teal} />
@@ -676,22 +692,15 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
               </Text>
             </View>
           )
-        }
-        showsVerticalScrollIndicator={true}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        onEndReached={onEndReached}
-        onEndReachedThreshold={0.3}
-        ListFooterComponent={
-          isLoadingMore ? (
-            <View style={{ paddingVertical: 16, alignItems: "center" }}>
-              <ActivityIndicator size="small" color={colors.teal} />
-            </View>
-          ) : (
-            ListFooter
-          )
-        }
-      />
+        ) : (
+          <>
+            {sortedOrders.map((item) => (
+              <OrderRow key={item.id} order={item} onMoreClick={onMoreClick} />
+            ))}
+            {ListFooter}
+          </>
+        )}
+      </ScrollView>
     </View>
   );
 };

@@ -603,10 +603,11 @@ const PreviousOrdersSection = () => {
           backgroundColor: colors.screen,
         }}
       >
-        {/* Orders Table - No ScrollView wrapper to avoid nested VirtualizedLists.
-            One server-sorted page at a time; the pager rides in the list footer
-            so it's reached by scrolling to the bottom of the rows. */}
+        {/* Orders Table - one server-sorted page at a time; the pager rides in
+            the list footer so it's reached by scrolling to the bottom of the
+            rows. resetScrollKey snaps the body back to the top on page turn. */}
         <OrdersTable
+          resetScrollKey={pageIndex}
           orders={filteredOrders}
           sortColumn={sortColumn}
           sortDirection={sortDirection}
