@@ -836,10 +836,24 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         const deduped = base.filter(
           (o) => (o.db_order_id || o.orderId) !== newKey,
         );
-        const mergedCache = [previousOrder, ...deduped].sort(
-          (a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-        );
+        // Insert by position rather than re-sorting. This runs on EVERY
+        // archived order — i.e. during checkout — and the cached list is
+        // already newest-first, so a full sort of up to 200 rows was pure
+        // main-thread cost on the till's critical path. The new order is
+        // almost always the newest, making this an O(1) unshift in practice.
+        const newTs = new Date(previousOrder.timestamp).getTime();
+        let insertAt = 0;
+        while (
+          insertAt < deduped.length &&
+          new Date(deduped[insertAt].timestamp).getTime() > newTs
+        ) {
+          insertAt++;
+        }
+        const mergedCache = [
+          ...deduped.slice(0, insertAt),
+          previousOrder,
+          ...deduped.slice(insertAt),
+        ];
         previousOrdersOfflineCache.set(
           locationId,
           mergedCache,
