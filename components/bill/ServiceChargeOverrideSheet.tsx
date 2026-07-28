@@ -2,11 +2,10 @@ import { bottomSheetTheme, colors } from '@/lib/theme'
 import { useActiveOrder, useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePinOverrideStore } from '@/stores/usePinOverrideStore'
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetScrollView,
-  BottomSheetTextInput
-} from '@/components/ui/bottomSheet'
+import PanelSheet, {
+  PanelSheetScrollView as BottomSheetScrollView,
+  PanelSheetTextInput as BottomSheetTextInput
+} from '@/components/ui/PanelSheet'
 import { BottomSheetMethods } from '@/components/ui/bottomSheet'
 import { Receipt, X } from 'lucide-react-native'
 import React, { forwardRef, useEffect, useMemo, useState } from 'react'
@@ -22,7 +21,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   Props
 > = ({ onClose }, ref) => {
-  const snapPoints = useMemo(() => ['60%', '90%'], [])
+  const snapPoints = useMemo(() => ['94%'], [])
   const activeOrder = useActiveOrder()
   const totals = useActiveOrderTotals()
   const activeOrderId = useOrderStore(s => s.activeOrderId)
@@ -147,7 +146,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
   }
 
   return (
-    <BottomSheet
+    <PanelSheet
       ref={ref}
       index={-1}
       snapPoints={snapPoints}
@@ -155,14 +154,6 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
       enableContentPanningGesture
       backgroundStyle={bottomSheetTheme.backgroundStyle}
       handleIndicatorStyle={bottomSheetTheme.handleIndicatorStyle}
-      backdropComponent={props => (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.5}
-        />
-      )}
       onClose={onClose}
     >
       <BottomSheetScrollView
@@ -502,7 +493,7 @@ const ServiceChargeOverrideSheetComponent: React.ForwardRefRenderFunction<
           </Text>
         </TouchableOpacity>
       </BottomSheetScrollView>
-    </BottomSheet>
+    </PanelSheet>
   )
 }
 

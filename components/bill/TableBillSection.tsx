@@ -9,6 +9,7 @@ import {
   SendCourseButton
 } from '@/components/bill/SendToKitchenButton'
 import { BottomSheetMethods } from '@/components/ui/bottomSheet'
+import { useBillPanelLayoutStore } from '@/stores/useBillPanelLayoutStore'
 import {
   ArrowUpToLine,
   ChevronDown,
@@ -1237,6 +1238,13 @@ const TableBillSection = ({
       <View
         className='flex-1 flex-col'
         style={{ backgroundColor: colors.panel }}
+        // Publish the bill-column geometry so PanelSheet (Order Breakdown,
+        // Discount, More Options, Service Charge) can anchor to this column.
+        onLayout={e =>
+          useBillPanelLayoutStore
+            .getState()
+            .setLayout(e.nativeEvent.layout.width, e.nativeEvent.layout.height)
+        }
       >
         {isReadOnly && (
           <ReadOnlyBanner
