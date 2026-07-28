@@ -60,10 +60,13 @@ const ChannelTabBarContent: React.FC<ChannelTabBarProps> = ({
             <View
               style={{
                 minWidth: s(22),
+                height: s(22),
                 paddingHorizontal: s(6),
-                paddingVertical: s(1),
-                borderRadius: 999,
+                // Exactly half the height: a magic 999 radius is not clamped
+                // reliably on Android's New Architecture and renders square.
+                borderRadius: s(22) / 2,
                 alignItems: "center",
+                justifyContent: "center",
                 backgroundColor: isActive ? colors.teal : "transparent",
               }}
             >
