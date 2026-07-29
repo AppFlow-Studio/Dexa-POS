@@ -9,7 +9,11 @@ import { useOrderReconcile } from "@/hooks/useOrderReconcile";
 import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
-import { getStorageSizeStats } from "@/lib/storage";
+import {
+    getBucketKeyCount,
+    getStorageSizeStats,
+    type StorageBucketName,
+} from "@/lib/storage";
 import { initLandiPrinter } from "@/native/LandiPrinter";
 import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
 import { syncEmployees as syncEmployeesService } from "@/services/employeeSyncService";
@@ -40,6 +44,14 @@ import {
     stopCastlesUsbAutoConnect,
 } from "@/services/terminals/castlesUsbAutoConnect";
 import {
+    startValorUsbAutoConnect,
+    stopValorUsbAutoConnect,
+} from "@/services/terminals/valorUsbAutoConnect";
+import {
+    startAtomLoopbackDetect,
+    stopAtomLoopbackDetect,
+} from "@/services/terminals/atomLoopbackDetector";
+import {
     startTimeclockSyncProcessor,
     stopTimeclockSyncProcessor,
 } from "@/services/timeclockSyncProcessor";
@@ -67,10 +79,14 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
+import {
+  registerResumeTask,
+  registerSuspendTask,
+} from "@/lib/lifecycle/appLifecycleCoordinator";
 import { TaxRate } from "@/types/menu";
 import * as Sentry from "@sentry/react-native";
 import React, { useCallback, useEffect, useRef } from "react";
-import { AppState, AppStateStatus, InteractionManager } from "react-native";
+import { InteractionManager } from "react-native";
 
 // Debug server URL - use your machine's local IP (run: ipconfig getifaddr en0)
 // Change this IP to match your machine's IP address
@@ -276,11 +292,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     const isUsbCastles =
       terminal?.terminal_type === "castles" &&
       terminal?.connection_type === "usb";
+    const isUsbValor =
+      terminal?.terminal_type === "valor" &&
+      terminal?.connection_type === "usb";
     if (!isKDS && isUsbCastles) {
       startCastlesUsbAutoConnect();
     }
+    if (!isKDS && isUsbValor) {
+      startValorUsbAutoConnect();
+    }
     return () => {
       stopCastlesUsbAutoConnect();
+      stopValorUsbAutoConnect();
     };
   }, [
     isKDS,
@@ -288,6 +311,17 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     selectedStation?.payment_terminal?.terminal_type,
     selectedStation?.payment_terminal?.connection_type,
   ]);
+
+  // On-device ("internal") ATOM detection: probe the loopback ATOM app and
+  // surface it as an available terminal. Self-gates on Landi hardware + the
+  // native AtomBridge, so it's a no-op on non-Landi devices. POS-only.
+  useEffect(() => {
+    if (isKDS) return;
+    startAtomLoopbackDetect();
+    return () => {
+      stopAtomLoopbackDetect();
+    };
+  }, [isKDS]);
 
   // Star printer health check + background discovery lifecycle
   useEffect(() => {
@@ -464,24 +498,25 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     hasCheckedStorageSizeRef.current = true;
 
     const TEN_MB = 10 * 1024 * 1024;
-    const stats = getStorageSizeStats();
-    const buckets = [
-      { name: "general", ...stats.general },
-      { name: "secure", ...stats.secure },
-      { name: "sync", ...stats.sync },
-    ];
+    // Three O(1) native size reads — no key/value enumeration on the boot path.
+    // keyCount is resolved only for a bucket that actually breaches, so the
+    // common (healthy) case stays free.
+    const sizes = getStorageSizeStats();
 
-    for (const bucket of buckets) {
-      if (bucket.totalBytes > TEN_MB) {
+    for (const [name, totalBytes] of Object.entries(sizes) as [
+      StorageBucketName,
+      number,
+    ][]) {
+      if (totalBytes > TEN_MB) {
         Sentry.captureMessage("MMKV bucket size exceeded 10MB", {
           level: "warning",
           tags: {
             source: "storage_monitor",
-            bucket: bucket.name,
+            bucket: name,
           },
           extra: {
-            totalBytes: bucket.totalBytes,
-            keyCount: bucket.keyCount,
+            totalBytes,
+            keyCount: getBucketKeyCount(name),
             thresholdBytes: TEN_MB,
           },
         });
@@ -702,60 +737,89 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     return () => task.cancel();
   }, [selectedStore?.id, isKDS, syncFloorPlans, syncTaxRates]);
 
-  // App state listener - reconnect realtime and refresh stale data when app becomes active
-  // KDS screen handles its own 120s polling fallback, so skip POS reconnect logic
+  // Resume recovery, registered with the lifecycle coordinator instead of a
+  // private AppState listener. Each item keeps the exact gate it had before —
+  // the change is WHEN it runs relative to the others, not WHETHER it runs.
+  // KDS handles its own 120s polling fallback, so POS-only items check isKDS.
   useEffect(() => {
-    const handleAppStateChange = (nextState: AppStateStatus) => {
-      if (nextState === "active") {
-        console.log("[PosSyncProvider] App became active - refreshing data");
+    const unregister = [
+      // --- frame: active-order + active-floor convergence -------------------
+      // First thing the operator looks at after wake, so it goes ahead of
+      // settings/employees/terminal work but behind auth validity.
+      registerResumeTask({
+        id: "pos.floor-status-converge",
+        bucket: "frame",
+        requiresNetwork: true,
+        shouldRun: () => !isKDS,
+        run: () => {
+          // Floor realtime (re)connection is owned by useFloorRealtime /
+          // useRealtimeChannel. Here we only converge state via the
+          // authoritative snapshot if it's stale.
+          useFloorPlanStore.getState().loadFloorPlanStatusIfStale();
+        },
+      }),
+      registerResumeTask({
+        id: "pos.active-orders-invalidate",
+        bucket: "frame",
+        requiresNetwork: true,
+        // Only if data is older than staleTime. useOrderSyncRecovery handles
+        // reconnection-triggered refetches separately. queryKey includes
+        // stationId, so use a prefix-matching lookup (exact:false) rather than
+        // getQueryState (exact-match).
+        shouldRun: () => {
+          if (isKDS) return false;
+          const locationId =
+            useStoreSettingsStore.getState().selectedStore?.id;
+          if (!locationId) return false;
+          const cached = queryClient.getQueryCache().find({
+            queryKey: orderQueryKeys.active(locationId),
+            exact: false,
+          });
+          return Date.now() - (cached?.state.dataUpdatedAt ?? 0) > 2 * 60 * 1000;
+        },
+        run: () => {
+          const locationId =
+            useStoreSettingsStore.getState().selectedStore?.id;
+          if (!locationId) return;
+          queryClient.invalidateQueries({
+            queryKey: orderQueryKeys.active(locationId),
+          });
+        },
+      }),
 
-        // Refresh location settings for ALL devices (fallback for missed broadcasts).
-        // Gate behind a 5-minute staleness window — fires on every active event
-        // (including brief foreground→background→foreground cycles) otherwise,
-        // which adds a network round-trip on the critical first-tap path.
-        const storeSettings = useStoreSettingsStore.getState();
-        const settingsAge = Date.now() - lastStoreSettingsRefreshRef.current;
-        if (settingsAge > 5 * 60 * 1000) {
+      // --- interactions: config refresh + terminal pre-warm ------------------
+      registerResumeTask({
+        id: "pos.store-settings-refresh",
+        bucket: "interactions",
+        requiresNetwork: true,
+        // Fallback for missed broadcasts. 5-minute staleness window — without
+        // it this fired on every active event including brief
+        // foreground→background→foreground cycles.
+        shouldRun: () =>
+          Date.now() - lastStoreSettingsRefreshRef.current > 5 * 60 * 1000,
+        run: () => {
           lastStoreSettingsRefreshRef.current = Date.now();
-          storeSettings.refreshSelectedStore(supabase);
-        }
-
-        // Refresh staff/PIN data on the same 5-minute staleness window as
-        // store settings — picks up PIN changes made on another device or the
-        // backend without requiring a manual "Sync POS" or re-selecting the store.
-        refreshEmployeesIfStale();
-
-        if (!isKDS) {
-          const floorPlanStore = useFloorPlanStore.getState();
-
-          // Floor realtime (re)connection on foreground is owned by
-          // useFloorRealtime / useRealtimeChannel (AppState-aware). Here we only
-          // converge state via the authoritative snapshot if it's stale.
-          floorPlanStore.loadFloorPlanStatusIfStale();
-
-          // Refresh orders when app resumes — only if data is older than staleTime.
-          // useOrderSyncRecovery handles reconnection-triggered refetches separately.
-          // queryKey now includes stationId, so use a prefix-matching cache lookup
-          // (exact:false) instead of getQueryState (which is exact-match).
-          if (storeSettings.selectedStore?.id) {
-            const cached = queryClient.getQueryCache().find({
-              queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
-              exact: false,
-            });
-            const dataAge = Date.now() - (cached?.state.dataUpdatedAt ?? 0);
-            if (dataAge > 2 * 60 * 1000) {
-              queryClient.invalidateQueries({
-                queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
-              });
-            }
-          }
-        }
-
-        // Resume the Castles singleton with the current station's terminal
-        // config so the first post-resume payment skips the cold-connect
-        // penalty. Read from the store (not closure) to avoid stale refs.
-        const service = getSharedCastlesService();
-        if (service.isSuspended()) {
+          useStoreSettingsStore.getState().refreshSelectedStore(supabase);
+        },
+      }),
+      registerResumeTask({
+        id: "pos.employees-refresh",
+        bucket: "interactions",
+        requiresNetwork: true,
+        // Own 5-minute staleness window lives inside refreshEmployeesIfStale,
+        // shared with the idle-interval fallback.
+        run: () => refreshEmployeesIfStale(),
+      }),
+      registerResumeTask({
+        id: "pos.castles-resume",
+        bucket: "interactions",
+        // Deliberately NOT `immediate`: this is a terminal pre-warm, not
+        // active-payment recovery. A station with no payment in flight must
+        // not put a TCP connect ahead of the operator's first tap.
+        shouldRun: () => getSharedCastlesService().isSuspended(),
+        run: () => {
+          // Read from the store (not closure) to avoid stale refs.
+          const service = getSharedCastlesService();
           const terminal =
             useStoreSettingsStore.getState().selectedStation?.payment_terminal;
           if (
@@ -763,7 +827,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
             terminal?.terminal_type === "castles" &&
             (terminal.ip_address || terminal.connection_type === "usb")
           ) {
-            // Resume + pre-warm connection with terminal config
             service.resume({
               connectionType:
                 terminal.connection_type === "usb" ? "usb" : "local_socket",
@@ -773,41 +836,40 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
               terminalId: terminal.id,
             });
           } else {
-            // Always clear suspended flag — lazy-connect will handle the rest
+            // Always clear suspended flag — lazy-connect handles the rest.
             service.resume();
           }
-        }
-      } else if (nextState === "background") {
-        // Idle GC: reclaim completed-order memory now, while backgrounded and
-        // nobody is waiting on the JS thread — so the app wakes up lean instead
-        // of carrying a shift's worth of archived orders until the next 2-min
-        // prune tick. Deliberately a GC, NOT a purge+resync: blowing away the
-        // working set on idle would force a network re-fetch on the operator's
-        // first tap (the documented ~1hr-idle cold-start lag), trading a quiet
-        // background cost for foreground latency on a busy floor. Skip on KDS
-        // (it owns its own lifecycle and has no POS order workspace).
-        if (!isKDS) {
-          useOrderStore.getState().clearInactiveOrders();
-        }
+        },
+      }),
 
-        // Graceful Castles disconnect: send return2Idle + close the socket so
-        // the terminal cleans up its side. Fire-and-forget — the method is
-        // safe (never throws, never blocks long) but defensively catch.
-        getSharedCastlesService()
-          .suspend()
-          .catch(() => {});
-      }
-    };
+      // --- suspend ----------------------------------------------------------
+      registerSuspendTask({
+        id: "pos.background-gc-and-terminal-release",
+        run: () => {
+          // Idle GC: reclaim completed-order memory now, while backgrounded and
+          // nobody is waiting on the JS thread — so the app wakes up lean instead
+          // of carrying a shift's worth of archived orders until the next 2-min
+          // prune tick. Deliberately a GC, NOT a purge+resync: blowing away the
+          // working set on idle would force a network re-fetch on the operator's
+          // first tap (the documented ~1hr-idle cold-start lag), trading a quiet
+          // background cost for foreground latency on a busy floor. Skip on KDS
+          // (it owns its own lifecycle and has no POS order workspace).
+          if (!isKDS) {
+            useOrderStore.getState().clearInactiveOrders();
+          }
 
-    const subscription = AppState.addEventListener(
-      "change",
-      handleAppStateChange,
-    );
+          // Graceful Castles disconnect: send return2Idle + close the socket so
+          // the terminal cleans up its side. Fire-and-forget — the method is
+          // safe (never throws, never blocks long) but defensively catch.
+          getSharedCastlesService()
+            .suspend()
+            .catch(() => {});
+        },
+      }),
+    ];
 
-    return () => {
-      subscription.remove();
-    };
-  }, [isKDS]);
+    return () => unregister.forEach((fn) => fn());
+  }, [isKDS, supabase, refreshEmployeesIfStale]);
 
   // Unified location config sync — hydrates pos_config + subscribes to real-time updates
   // Also handles legacy SETTINGS_UPDATE events for backward compat with older stations

@@ -20,7 +20,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetSectionList,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { Portal } from "@rn-primitives/portal";
 import { useRouter } from "expo-router";
 import {

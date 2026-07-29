@@ -1,4 +1,4 @@
-import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
+import { BottomSheetMethods } from '@/components/ui/bottomSheet'
 import { Keyboard } from 'react-native'
 import { create } from 'zustand'
 

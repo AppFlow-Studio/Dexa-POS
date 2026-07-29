@@ -1,11 +1,20 @@
 // services/hardware/terminalHealthCheck.ts
 // Background terminal health monitoring service (singleton pattern)
 
-import { AppState, AppStateStatus } from "react-native";
-import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { SupabaseClient } from "@supabase/supabase-js";
+import {
+  registerResumeTask,
+  registerSuspendTask,
+} from "@/lib/lifecycle/appLifecycleCoordinator";
+import {
+  getRawIsOnline,
+  subscribeOnlineStatus,
+} from "@/services/offlineSyncService";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { probeCastlesTerminal, getSharedCastlesService } from "@/services/terminals/castles-service";
+import { getSharedValorService } from "@/services/terminals/valor-service";
+import { VALOR_USB_VENDOR_ID } from "@/services/terminals/valor-transport-usb";
+import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from "@/types/valor";
 import { listDevices } from "@/modules/castles-usb";
 
 const CASTLES_VENDOR_ID = 0x0ca6;
@@ -25,9 +34,8 @@ const DEFAULT_HEALTH_CHECK_INTERVAL_MS = 90 * 1000; // 90 seconds
 const FAILURE_TOAST_THRESHOLD = 3;
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
-let appStateSubscription: ReturnType<
-  typeof AppState.addEventListener
-> | null = null;
+/** Unregister fns for the lifecycle-coordinator tasks (was an AppState sub). */
+let lifecycleUnregister: (() => void)[] = [];
 let netInfoUnsubscribe: (() => void) | null = null;
 let wasConnected = true;
 let currentSupabase: SupabaseClient | null = null;
@@ -43,8 +51,12 @@ let toastShownForCurrentFailureStreak = false;
 async function performHealthCheck(): Promise<void> {
   if (!currentSupabase || !currentTerminalId || !currentPaymentTerminal) return;
 
+  const terminalType = currentPaymentTerminal.terminal_type;
+
   // Don't fight the suspend — probing a closed/closing socket is wasted work.
-  if (getSharedCastlesService().isSuspended()) return;
+  // Check only the service that owns this terminal type.
+  if (terminalType === "castles" && getSharedCastlesService().isSuspended()) return;
+  if (terminalType === "valor" && getSharedValorService().isSuspended()) return;
 
   // Skip if a payment is currently being processed
   const isProcessing = usePaymentTerminalStore.getState().isProcessingPayment;
@@ -53,10 +65,70 @@ async function performHealthCheck(): Promise<void> {
     return;
   }
 
-  if (currentPaymentTerminal.terminal_type === "castles") {
+  if (terminalType === "castles") {
     await performCastlesHealthCheck();
+  } else if (terminalType === "valor") {
+    await performValorHealthCheck();
   } else {
     await performDejavooHealthCheck();
+  }
+}
+
+async function performValorHealthCheck(): Promise<void> {
+  const service = getSharedValorService();
+  const isUsb = currentPaymentTerminal?.connection_type === "usb";
+
+  // Single-session safe (mirrors the Castles fix): the Valor terminal accepts
+  // one TCP session. If the shared singleton is already connected, DON'T open a
+  // second probe socket — that wedges the terminal. Trust the open connection.
+  if (service.isConnected()) {
+    handleSuccess();
+    return;
+  }
+
+  if (isUsb) {
+    // USB (Qualcomm CDC, VID 0x1E0E): read-only presence check via listDevices —
+    // don't open the port (that would steal it from the shared singleton used for
+    // sales). Same approach as the Castles USB health check above.
+    try {
+      const devices = await listDevices();
+      const found = devices.some((d) => d.vendorId === VALOR_USB_VENDOR_ID);
+      if (found) {
+        handleSuccess();
+      } else {
+        handleFailure("USB terminal not detected (cable unplugged or terminal powered off)");
+      }
+    } catch (err) {
+      handleFailure(
+        err instanceof Error ? err.message : "USB device enumeration failed",
+      );
+    }
+    return;
+  }
+
+  const host = currentPaymentTerminal?.ip_address;
+  if (!host) {
+    handleFailure("Valor terminal IP address not configured");
+    return;
+  }
+  const port = currentPaymentTerminal?.port ?? VALOR_DEFAULT_PORT;
+
+  if (service.isSuspended()) service.resume();
+  try {
+    await service.connect({
+      connectionType: "local_socket",
+      host,
+      port,
+      cancelPort: currentPaymentTerminal?.cancel_port,
+      epi: currentPaymentTerminal?.epi,
+      timeout: VALOR_SALE_TIMEOUT_MS,
+      terminalId: currentTerminalId!,
+    });
+    const q = await service.terminalQuery();
+    if (q.success) handleSuccess();
+    else handleFailure(q.error || "Terminal unreachable");
+  } catch (err) {
+    handleFailure(err instanceof Error ? err.message : "Terminal unreachable");
   }
 }
 
@@ -313,24 +385,30 @@ async function updateDatabaseHealth(
 // APP STATE HANDLING
 // ============================================================================
 
-function handleAppState(nextState: AppStateStatus): void {
-  if (nextState === "active") {
-    // Resume: send immediate check and restart interval
-    if (!intervalId && currentTerminalId) {
-      performHealthCheck();
-      const intervalMs =
-        (currentPaymentTerminal?.health_check_interval ?? 0) * 1000 ||
-        DEFAULT_HEALTH_CHECK_INTERVAL_MS;
-      intervalId = setInterval(performHealthCheck, intervalMs);
-      console.log("[TerminalHealthCheck] Resumed on app active");
-    }
-  } else {
-    // Background/inactive: pause interval to save battery
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-      console.log("[TerminalHealthCheck] Paused (app backgrounded)");
-    }
+/**
+ * Resume half, run from the coordinator's `interactions` bucket. A terminal
+ * probe is a network round-trip that the operator is not waiting on; letting
+ * it race auth/order recovery is exactly the resume storm this was moved out
+ * of. If a payment is actually mid-flight, its own recovery path owns that —
+ * not this poller.
+ */
+function handleResume(): void {
+  if (!intervalId && currentTerminalId) {
+    performHealthCheck();
+    const intervalMs =
+      (currentPaymentTerminal?.health_check_interval ?? 0) * 1000 ||
+      DEFAULT_HEALTH_CHECK_INTERVAL_MS;
+    intervalId = setInterval(performHealthCheck, intervalMs);
+    console.log("[TerminalHealthCheck] Resumed on app active");
+  }
+}
+
+function handleSuspend(): void {
+  // Background/inactive: pause interval to save battery
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+    console.log("[TerminalHealthCheck] Paused (app backgrounded)");
   }
 }
 
@@ -344,8 +422,8 @@ export function startTerminalHealthCheck(
   paymentTerminal: StationPaymentTerminal,
 ): void {
   // Avoid duplicate starts — also clean up orphaned listeners from backgrounding
-  // (backgrounding nulls intervalId but leaves appStateSubscription/netInfoUnsubscribe alive)
-  if (intervalId || appStateSubscription || netInfoUnsubscribe) {
+  // (backgrounding nulls intervalId but leaves the lifecycle/netinfo subs alive)
+  if (intervalId || lifecycleUnregister.length > 0 || netInfoUnsubscribe) {
     stopTerminalHealthCheck();
   }
 
@@ -366,15 +444,26 @@ export function startTerminalHealthCheck(
   // Start interval
   intervalId = setInterval(performHealthCheck, intervalMs);
 
-  // Listen for app state changes
-  appStateSubscription = AppState.addEventListener("change", handleAppState);
+  lifecycleUnregister = [
+    registerResumeTask({
+      id: "hardware.terminal-health-resume",
+      bucket: "interactions",
+      requiresNetwork: true,
+      run: handleResume,
+    }),
+    registerSuspendTask({
+      id: "hardware.terminal-health-suspend",
+      run: handleSuspend,
+    }),
+  ];
 
-  // Listen for network connectivity changes — trigger immediate health check
-  // when WiFi reconnects so terminals recover in seconds instead of waiting
-  // for the next interval.
-  wasConnected = true;
-  netInfoUnsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
-    const isNow = state.isConnected ?? false;
+  // Network recovery — trigger an immediate health check when connectivity
+  // returns so terminals recover in seconds instead of waiting for the next
+  // interval. Uses the app's single network source (offlineSyncService owns
+  // NetInfo.configure) rather than a second raw NetInfo subscription.
+  wasConnected = getRawIsOnline();
+  netInfoUnsubscribe = subscribeOnlineStatus(() => {
+    const isNow = getRawIsOnline();
     if (!wasConnected && isNow) {
       console.log("[TerminalHealthCheck] Network reconnected, immediate check");
       performHealthCheck();
@@ -393,10 +482,8 @@ export function stopTerminalHealthCheck(): void {
     intervalId = null;
   }
 
-  if (appStateSubscription) {
-    appStateSubscription.remove();
-    appStateSubscription = null;
-  }
+  lifecycleUnregister.forEach((fn) => fn());
+  lifecycleUnregister = [];
 
   if (netInfoUnsubscribe) {
     netInfoUnsubscribe();

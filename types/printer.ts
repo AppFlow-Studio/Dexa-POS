@@ -118,6 +118,9 @@ interface PrintJobBase {
   priority: PrintJobPriority;
   status: PrintJobStatus;
   createdAt: number;
+  /** Set when the job reaches a terminal status (completed/failed). Drives the
+   *  diagnostics-retention window in usePrintQueueStore.pruneJobs(). */
+  completedAt?: number;
   attempts: number;
   maxRetries: number;
   lastError?: string;
@@ -146,6 +149,7 @@ export interface SerializedPrintJob {
   dataBase64?: string; // base64-encoded Uint8Array (raw jobs)
   document?: PrintDocument; // structured document (document jobs)
   createdAt: number;
+  completedAt?: number;
   attempts: number;
   maxRetries: number;
   lastError?: string;
@@ -399,6 +403,7 @@ export function serializePrintJob(job: PrintJob): SerializedPrintJob {
     priority: job.priority,
     status: job.status,
     createdAt: job.createdAt,
+    completedAt: job.completedAt,
     attempts: job.attempts,
     maxRetries: job.maxRetries,
     lastError: job.lastError,
@@ -425,6 +430,7 @@ export function deserializePrintJob(serialized: SerializedPrintJob): PrintJob {
     priority: serialized.priority,
     status: serialized.status,
     createdAt: serialized.createdAt,
+    completedAt: serialized.completedAt,
     attempts: serialized.attempts,
     maxRetries: serialized.maxRetries,
     lastError: serialized.lastError,

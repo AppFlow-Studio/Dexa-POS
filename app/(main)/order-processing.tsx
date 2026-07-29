@@ -45,7 +45,7 @@ import {
   formatOrderStatus,
   formatPaymentStatus,
 } from "@/utils/orderStatusHelpers";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -72,7 +72,6 @@ import React, {
 } from "react";
 import {
   Dimensions,
-  InteractionManager,
   Keyboard,
   Modal,
   PanResponder,
@@ -515,13 +514,21 @@ const OrderProcessing = () => {
       // Always eager-creating here is safe because ensureActiveOrderCreated
       // is idempotent and single-flight.
     }
-    // Defer the eager backend create off the screen-entry frame: it's an RPC
-    // whose broadcast/re-render can land mid-first-interaction. The local draft
-    // is already usable; this just pre-persists it so the first item-add is
-    // faster. ensureActiveOrderCreated is idempotent + single-flight, so the
-    // add-item path still creates on demand if this hasn't run yet.
+    // Fire the eager backend create on the next tick — NOT via
+    // InteractionManager. This RPC is what the "Creating order" gate waits on
+    // (MenuSection blocks adds until db_order_id lands), so every ms spent
+    // waiting for interactions to drain — the nav transition, any Animated
+    // handle — is a ms the user spends staring at the overlay. There is no
+    // "first interaction" to protect here precisely because the gate is up:
+    // the menu is blocked until this resolves, so starting earlier only moves
+    // the unblocking re-render earlier. The RPC itself is a fetch and costs
+    // the JS thread almost nothing to kick off.
+    //
+    // setTimeout(0) (not a bare call) keeps the effect's cancel semantics for
+    // a same-tick activeOrderId flip, so a draft that's activated and
+    // immediately switched away from doesn't get a stray backend row.
     let cancelled = false;
-    const task = InteractionManager.runAfterInteractions(async () => {
+    const timer = setTimeout(async () => {
       if (cancelled) return;
       const result = await useOrderStore
         .getState()
@@ -541,10 +548,10 @@ const OrderProcessing = () => {
         if (cancelled) return;
         void useOrderStore.getState().ensureActiveOrderCreated(activeOrderId);
       }
-    });
+    }, 0);
     return () => {
       cancelled = true;
-      task.cancel();
+      clearTimeout(timer);
     };
   }, [activeOrderId, orderAttributionOrderId]);
 
@@ -1775,7 +1782,7 @@ const OrderProcessing = () => {
           <Pressable
             onPress={() => setIsOrdersModuleOpen(false)}
             style={{
-              ...StyleSheet.absoluteFillObject,
+              ...StyleSheet.absoluteFill,
               backgroundColor: "rgba(0,0,0,0.5)",
             }}
           />
@@ -2054,7 +2061,7 @@ export default OrderProcessing;
 
 const styles = StyleSheet.create({
   sheetOverlayLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 20000,
     elevation: 20000,
   },

@@ -45,6 +45,8 @@ export interface KDSTicket {
   customer_name: string | null;
   order_notes?: string | null;
   start_time: string | null;
+  ready_time?: string | null;
+  done_time?: string | null;
   start_time_epoch: number;
   done_time_epoch?: number;
   ready_time_epoch?: number;

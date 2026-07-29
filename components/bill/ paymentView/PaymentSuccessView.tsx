@@ -1,5 +1,7 @@
 "use no memo";
 
+import { runAfterPaint } from "@/lib/afterPaint";
+import { startInteraction } from "@/lib/perf";
 import { useUiScale } from "@/lib/uiScale";
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
@@ -59,13 +61,30 @@ const PaymentSuccessView = () => {
     usePaymentStore.getState().setPaymentClean();
   }, []);
 
+  // Success-paint telemetry. `autoPrint` splits the sample into the print and
+  // no-print control cohorts — the two should now be indistinguishable, which
+  // is what proves the raster no longer sits in front of this frame.
+  useEffect(() => {
+    startInteraction("pos.payment_success_paint", {
+      autoPrint: !!autoPrintReceipt,
+    }).endAfterPaint();
+  }, []);
+
   // Auto-print receipt on mount when setting enabled.
   // For split orders with per-portion auto-print on, each portion already
   // printed its own receipt (in usePaymentStore) — skip the combined one to
   // avoid double-printing. The combined receipt stays available via the manual
   // Print button and the reprint selector.
+  //
+  // Deferred past the success frame via runAfterPaint: printReceipt builds the
+  // template data and document synchronously, and the drain it kicks rasterizes
+  // the Star receipt on the JS thread — all of which used to land in this same
+  // tick and delay the "Payment Successful" paint. Not cancelled on unmount:
+  // the payment already succeeded, so the receipt must print regardless. State
+  // is re-read at fire time rather than captured here.
   useEffect(() => {
-    if (autoPrintReceipt && activeOrderId) {
+    if (!autoPrintReceipt || !activeOrderId) return;
+    runAfterPaint(() => {
       const order = useOrderStore.getState().ordersById[activeOrderId];
       const printedPerPortion =
         !!order?.split_payment_path && autoPrintSplitReceipts;
@@ -73,7 +92,7 @@ const PaymentSuccessView = () => {
         PrinterService.printReceipt(order, selectedStore)
           .catch((e) => console.warn("[PaymentSuccessView] Auto-print receipt failed:", e));
       }
-    }
+    });
   }, []); // Run once on mount — payment just completed
 
   const activeOrder = useActiveOrder();

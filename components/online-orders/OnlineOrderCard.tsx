@@ -4,6 +4,7 @@ import CancelOnlineOrderDialog, {
 import MarkOrderReadyDialog from "@/components/online-orders/MarkOrderReadyDialog";
 import DeliveryPlatformBadge from "@/components/order/DeliveryPlatformBadge";
 import { useOnlineOrderActions } from "@/hooks/orders/useOnlineOrderActions";
+import { resolveOrderLabel } from "@/lib/onlineOrderLabel";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useOrder } from "@/stores/selectors/orderSelectors";
@@ -170,14 +171,7 @@ const OnlineOrderCardImpl: React.FC<OnlineOrderCardProps> = ({
   const itemCount = itemsLoaded
     ? order.items!.reduce((n, i) => n + (i.quantity || 0), 0)
     : (order._broadcastItemCount ?? 0);
-  // Delivery-platform orders show the marketplace's own order number — that's
-  // what the driver/customer reference. Dexa numbers only for first-party orders.
-  const dexaNumber = order.display_number || order.order_number || order.id;
-  const label = order.platform_order_number
-    ? order.platform_order_number
-    : dexaNumber.startsWith("#")
-      ? dexaNumber
-      : `#${dexaNumber}`;
+  const label = resolveOrderLabel(order);
   const total = order.total_amount ?? 0;
   const canCancel = variant !== "done"; // New + In Kitchen + Ready
   // Mark-ready only for delivery-platform (OrderOut) orders in the kitchen lane —

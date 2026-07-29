@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
-import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@/components/ui/bottomSheet";
 import React, { useMemo } from "react";
 import { Text, View } from "react-native";
 import {

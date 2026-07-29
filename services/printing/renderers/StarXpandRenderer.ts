@@ -1,7 +1,11 @@
 import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-document";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { TextBlock, renderTextBlocksToImage } from "./SkiaTicketRenderer";
 import { sanitizeForPrint } from "../utils/sanitizeText";
+import {
+  TEMP_LOGO_PREFIX,
+  nextTempImageSeq,
+} from "../utils/tempImageCleanup";
 
 // ============================================================================
 // TYPES
@@ -11,6 +15,17 @@ export interface StarRenderOptions {
   supportsAutoCut: boolean;
   maxCharsPerLine: number;
   graphicsOnly: boolean; // TSP100III etc. — must use actionPrintImage
+}
+
+export interface StarRenderResult {
+  /** StarXpandCommand string for `StarPrinter.print()`. */
+  commands: string;
+  /**
+   * file:// URIs of every PNG written for this document. The Star SDK reads
+   * them by path during `print()`, so the caller must delete them only AFTER
+   * the print call settles — see `deleteTempImages`.
+   */
+  tempFiles: string[];
 }
 
 // 80mm paper @ 203dpi = 576 dots printable width
@@ -46,7 +61,7 @@ function getStarXpandCommand() {
 export async function renderDocumentToStarCommands(
   doc: PrintDocument,
   options: StarRenderOptions,
-): Promise<string> {
+): Promise<StarRenderResult> {
   const StarXpandCommand = getStarXpandCommand();
 
   // Guard: Star SDK rendering layer must be fully loaded
@@ -73,7 +88,8 @@ export async function renderDocumentToStarCommands(
 
   // Force all printing to use graphics mode to ensure exact font consistency across all printers.
   // This uses SkiaTicketRenderer which enforces the bundled SpaceMono font.
-  await renderNodesGraphicsOnly(printerBuilder, doc.nodes, w, options, StarXpandCommand);
+  const tempFiles: string[] = [];
+  await renderNodesGraphicsOnly(printerBuilder, doc.nodes, w, options, StarXpandCommand, tempFiles);
 
   const builder = new StarXpandCommand.StarXpandCommandBuilder();
   builder.addDocument(
@@ -82,9 +98,9 @@ export async function renderDocumentToStarCommands(
 
   const commands = await builder.getCommands();
   console.log(
-    `[StarXpandRenderer] Commands generated (graphicsOnly=${options.graphicsOnly}): ${commands.length} chars, preview: ${commands.substring(0, 200)}`,
+    `[StarXpandRenderer] Commands generated (graphicsOnly=${options.graphicsOnly}): ${commands.length} chars, ${tempFiles.length} temp images, preview: ${commands.substring(0, 200)}`,
   );
-  return commands;
+  return { commands, tempFiles };
 }
 
 // ============================================================================
@@ -104,6 +120,7 @@ async function renderNodesGraphicsOnly(
   options: StarRenderOptions,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sdk: any,
+  tempFiles: string[],
 ): Promise<void> {
   const printWidthDots = lineWidth >= 42
     ? PRINT_WIDTH_DOTS_80MM
@@ -117,6 +134,7 @@ async function renderNodesGraphicsOnly(
 
     const imageUri = await renderTextBlocksToImage(textBuffer, printWidthDots);
     if (imageUri) {
+      tempFiles.push(imageUri);
       pb.actionPrintImage(
         new sdk.Printer.ImageParameter(imageUri, printWidthDots),
       );
@@ -237,10 +255,11 @@ async function renderNodesGraphicsOnly(
       case "image": {
         await flushTextBuffer();
         if (node.base64Png) {
-          const tempUri = `${FileSystem.cacheDirectory}receipt-logo-${Date.now()}.png`;
+          const tempUri = `${FileSystem.cacheDirectory}${TEMP_LOGO_PREFIX}${Date.now()}-${nextTempImageSeq()}.png`;
           await FileSystem.writeAsStringAsync(tempUri, node.base64Png, {
             encoding: FileSystem.EncodingType.Base64,
           });
+          tempFiles.push(tempUri);
           pb.styleAlignment(sdk.Printer.Alignment.Center);
           pb.actionPrintImage(
             new sdk.Printer.ImageParameter(tempUri, printWidthDots / 2),
@@ -474,7 +493,10 @@ async function renderNode(
         const printWidthDots = lineWidth >= 42
           ? PRINT_WIDTH_DOTS_80MM
           : PRINT_WIDTH_DOTS_58MM;
-        const tempUri = `${FileSystem.cacheDirectory}receipt-logo-${Date.now()}.png`;
+        // Non-graphics path (currently unreachable — graphics mode is forced).
+        // These files have no owning driver call, so the orphan sweep is their
+        // only cleanup; the shared prefix is what makes them sweepable.
+        const tempUri = `${FileSystem.cacheDirectory}${TEMP_LOGO_PREFIX}${Date.now()}-${nextTempImageSeq()}.png`;
         try {
           await FileSystem.writeAsStringAsync(tempUri, node.base64Png, {
             encoding: FileSystem.EncodingType.Base64,

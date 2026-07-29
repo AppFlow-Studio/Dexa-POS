@@ -1,7 +1,8 @@
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetView, // Using BottomSheetView as per DropShiftBottomSheet
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
+import { useOverlayTelemetry } from "@/hooks/useOverlayTelemetry";
 import React, { useCallback, useMemo, useState } from "react";
 import { bottomSheetTheme } from "@/lib/theme";
 import NotificationPanel from "./NotificationPanel"; // Assuming NotificationPanel is in the same directory
@@ -22,6 +23,10 @@ const NotificationBottomSheet: React.FC<NotificationBottomSheetProps> = ({
   // panel + its store subscription + section data alive for the whole app
   // lifetime, adding to the per-navigation baseline cost.
   const [isOpen, setIsOpen] = useState(false);
+
+  // Renders-while-closed accounting for the global overlay set. The panel is
+  // already gated on `isOpen`, so this is the proof rather than a fix.
+  useOverlayTelemetry("notifications", isOpen);
 
   const handleChange = useCallback((index: number) => {
     setIsOpen(index >= 0);
@@ -52,4 +57,7 @@ const NotificationBottomSheet: React.FC<NotificationBottomSheetProps> = ({
   );
 };
 
-export default NotificationBottomSheet;
+// Persistently mounted in the (main) layout, which re-renders on every
+// navigation. Both props must be referentially stable at the call site for this
+// to bite — see the hoisted NOOP in app/(main)/_layout.tsx.
+export default React.memo(NotificationBottomSheet);

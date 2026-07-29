@@ -12,7 +12,7 @@ import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import BottomSheet from "@gorhom/bottom-sheet";
+import BottomSheet from "@/components/ui/bottomSheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Maximize2, Minus, Plus, Redo2, Undo2 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -886,12 +886,12 @@ const LayoutEditorScreenContent = () => {
             {/* Grid fills the visible viewport only — a world-sized SVG would
                 rasterize a huge bitmap (6000×6000×4B ≈ 324MB → Android crash).
                 Static so it always covers the whole screen at any pan/zoom. */}
-            <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
               <GridPattern />
             </View>
 
             <Animated.View
-              style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
+              style={[StyleSheet.absoluteFill, canvasAnimatedStyle]}
               pointerEvents="box-none"
             >
               {tables.map((table) => (

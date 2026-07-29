@@ -9,6 +9,7 @@ import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
 import TableLayoutView from "@/components/tables/TableLayoutView";
 import TableOrderOverlay from "@/components/tables/TableOrderOverlay";
 import { useLoading } from "@/contexts/LoadingContext";
+import { useScreenRenderTelemetry } from "@/hooks/useScreenRenderTelemetry";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
@@ -82,6 +83,9 @@ const getSelectedTablesCapacity = (
 };
 
 const TablesScreen = () => {
+  // First hook in the body: the render-start timestamp must be taken before
+  // the floor-plan subscriptions below, or the mount span under-reports.
+  useScreenRenderTelemetry("tables");
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   const { colorScheme } = useColorScheme();
@@ -123,6 +127,10 @@ const TablesScreen = () => {
   const location_id = useStoreSettingsStore((s) => s.selectedStore?.id || "");
 
   const [legendVisible, setLegendVisible] = useState(false);
+  // Measured height of the tables-screen content root — used to size the
+  // TableOrderView overlay exactly. Full window height overflows past the safe
+  // area / system bars and pushed the bill's Pay bar off the bottom.
+  const [tablesContentHeight, setTablesContentHeight] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [searchText, setSearchText] = useState("");
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
@@ -787,6 +795,10 @@ const TablesScreen = () => {
       key={colorScheme}
       className="flex-1 px-2 py-1"
       style={{ backgroundColor: colors.screen }}
+      onLayout={(e) => {
+        const h = e.nativeEvent.layout.height;
+        if (h > 0) setTablesContentHeight((prev) => (prev === h ? prev : h));
+      }}
     >
       <View
         className="flex-1 flex-row rounded-lg"
@@ -1243,7 +1255,7 @@ const TablesScreen = () => {
         currentServer={currentTransferServerName}
       />
 
-      <TableOrderOverlay />
+      <TableOrderOverlay availableHeight={tablesContentHeight} />
     </View>
   );
 };

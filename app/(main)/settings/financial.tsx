@@ -18,7 +18,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
   BottomSheetView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import {
   AlertTriangle,
   ArrowRight,

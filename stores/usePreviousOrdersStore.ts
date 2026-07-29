@@ -5,6 +5,17 @@ import {
     type BusinessDayConfig,
 } from "@/lib/businessDay";
 import { DEADLINES } from "@/lib/network/deadlines";
+import {
+    resolveFetchedOrderPlatform,
+    type OnlineOrderJoinRow,
+} from "@/lib/fetchedOrderPlatform";
+import {
+    DEFAULT_HISTORY_FILTERS,
+    historyFilterKey,
+    historyPageCount,
+    isDefaultHistoryFilters,
+    type HistoryOrderFilters,
+} from "@/services/historyOrderFilters";
 import { isOnlineOrderSource } from "@/lib/orderSource";
 import { withDeadline } from "@/lib/network/withDeadline";
 import {
@@ -13,9 +24,12 @@ import {
 } from "@/lib/paymentStatus";
 import { applyRefundRecovery } from "@/lib/refundRecovery";
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
-import { OrderService } from "@/services/orderService";
+import { OrderService, type HistoryOrderSummary } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
-import { previousOrdersOfflineCache } from "@/stores/previousOrdersOfflineCache";
+import {
+    isCacheFresh,
+    previousOrdersOfflineCache,
+} from "@/stores/previousOrdersOfflineCache";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type {
@@ -153,6 +167,29 @@ function _isFinalState(profile: OrderProfile): boolean {
  * applies to non-final orders, so a fully-voided-items order (non-zero stored
  * total) or any paid/closed/refunded historical order is never hidden.
  */
+/**
+ * Newest `updated_at` across a fetched page, for the cache signature.
+ * Returns null when the rows carry no `updated_at` (e.g. a projection that
+ * omits it), which `isCacheFresh` treats as unknown → stale.
+ */
+function latestUpdatedAtOf(rows: { updated_at?: string | null }[]): string | null {
+  let latest: string | null = null;
+  for (const row of rows) {
+    const value = row?.updated_at;
+    if (typeof value === "string" && (latest === null || value > latest)) {
+      latest = value;
+    }
+  }
+  return latest;
+}
+
+/**
+ * Belt-and-suspenders twin of `EMPTY_DRAFT_EXCLUSION_OR` in
+ * services/historyOrderFilters.ts. The server query excludes these rows before
+ * the exact count is taken (so "N of M" stays honest); this catches rows that
+ * arrive by paths that bypass that query — broadcasts and the offline cache.
+ * Keep the two predicates in step.
+ */
 function isEmptyDraftOrder(po: PreviousOrder): boolean {
   return (
     (po.items?.length ?? 0) === 0 &&
@@ -246,12 +283,12 @@ const toRefundReasonType = (reason: string): RefundReasonType => {
 };
 
 const MAX_IN_MEMORY_PREVIOUS_ORDERS = 200;
-const INITIAL_FETCH_SIZE = 30;
-const LOAD_MORE_PAGE_SIZE = 30;
-const LOAD_MORE_COOLDOWN_MS = 2000;
-
-// Cooldown tracking for onEndReached cascade prevention
-let _lastLoadMoreCompletedAt = 0;
+/**
+ * Rows per page. The list shows exactly one page at a time and the merchant
+ * steps between pages, so this is a hard page size rather than an initial
+ * fetch that grows.
+ */
+export const HISTORY_PAGE_SIZE = 50;
 
 export type DateWindowLabel = "today" | "yesterday" | "last_7_days" | "custom";
 
@@ -262,6 +299,14 @@ export interface DateWindow {
   // Resolved bounds from RPC (cached for broadcast guard + loadMore)
   _resolvedStartTs: string | null;
   _resolvedEndTs: string | null;
+  /**
+   * True once `_resolvedStartTs/_endTs` came from the authoritative server RPC
+   * rather than the synchronous Luxon estimate `setDateWindow` seeds them with.
+   * A refresh that already has server bounds for an unchanged window reuses
+   * them instead of re-awaiting the RPC — the bounds depend only on the window,
+   * so a filter or tab change can't have invalidated them.
+   */
+  _boundsFromServer?: boolean;
 }
 
 const DEFAULT_DATE_WINDOW: DateWindow = {
@@ -270,6 +315,7 @@ const DEFAULT_DATE_WINDOW: DateWindow = {
   label: "today",
   _resolvedStartTs: null,
   _resolvedEndTs: null,
+  _boundsFromServer: false,
 };
 
 interface PreviousOrdersState {
@@ -297,6 +343,45 @@ interface PreviousOrdersState {
   // requests rows older than this — constant-time vs offset-based skip.
   _oldestCursor: string | null;
 
+  /**
+   * Discriminator-only projection of every order in the current date window
+   * matching the active search + status, independent of channel/provider.
+   * Drives the tab and chip counts, which must describe the whole window rather
+   * than the pages loaded so far.
+   * Null until the first summary fetch resolves.
+   */
+  windowSummaries: HistoryOrderSummary[] | null;
+  /** True when the window exceeded the summary row cap and counts under-report. */
+  windowSummariesTruncated: boolean;
+
+  /**
+   * Server-side filter/sort state. `previousOrders` holds exactly the rows the
+   * SERVER matched for these filters — the screen renders it as-is and does no
+   * filtering, sorting or searching of its own. That's what makes the sort
+   * cover the whole window and the "N of M" count trustworthy.
+   */
+  filters: HistoryOrderFilters;
+  /**
+   * `historyFilterKey` of the filters the loaded page belongs to. Guards
+   * against a slow response for filter set A landing after the user switched
+   * to B and replacing B's page with A's rows.
+   */
+  _loadedFilterKey: string;
+  /** Exact server count for the active filters + window. Null until it lands. */
+  totalMatchingCount: number | null;
+  setFilters: (patch: Partial<HistoryOrderFilters>) => void;
+
+  // ── Discrete pagination ──
+  // `previousOrders` holds ONE page, not an accumulating list. Page N is
+  // fetched independently so the merchant can step forward and back.
+  /** Zero-based index of the page currently in `previousOrders`. */
+  pageIndex: number;
+  /** Total pages for the active filters, derived from `totalMatchingCount`. */
+  pageCount: number;
+  /** True while a page navigation is in flight. */
+  _isPageLoading: boolean;
+  goToPage: (pageIndex: number) => Promise<void>;
+
   // Actions
   addOrderToHistory: (order: OrderProfile) => void;
   getOrderById: (orderId: string) => PreviousOrder | undefined;
@@ -308,7 +393,6 @@ interface PreviousOrdersState {
     label: DateWindowLabel;
   }) => void;
   refreshPreviousOrders: (opts?: { force?: boolean }) => Promise<void>; // Full refresh from backend
-  loadMoreOrders: () => Promise<void>; // Paginated load-more
   checkForNewOrders: () => Promise<number>; // Check for new orders (lightweight)
   clearNewOrdersCount: () => void; // Reset new orders counter
 
@@ -342,26 +426,13 @@ function _transformFetchedOrder(
 ): PreviousOrder {
   const broadcastData = normalizeFetchedOrder(fo);
 
-  // Derive online order info from the online_orders join (authoritative
-  // source — NOT `order_source` column which may carry platform-specific
-  // values). Supabase returns [{order_id, provider, delivery_company}]
-  // for online orders, [] for non-online orders.
-  const onlineOrderRows = (fo as any).online_orders as
-    | {
-        order_id: string;
-        provider?: string;
-        delivery_company?: string | null;
-      }[]
-    | undefined;
-  const isOnlineOrder =
-    Array.isArray(onlineOrderRows) && onlineOrderRows.length > 0;
-
-  // Extract the platform provider from the online_orders join so
-  // DeliveryPlatformBadge can show the correct logo (UberEats, DoorDash, etc.).
-  // Falls back to: delivery_company → provider → "online".
-  const onlineProvider = isOnlineOrder ? onlineOrderRows![0] : null;
-  const _deliveryPlatform =
-    onlineProvider?.delivery_company ?? onlineProvider?.provider ?? null;
+  // Online-ness and marketplace identity — see lib/fetchedOrderPlatform.ts for
+  // why the join alone can't answer either question.
+  const { isOnlineOrder, deliveryPlatform: _deliveryPlatform } =
+    resolveFetchedOrderPlatform(
+      fo as any,
+      (fo as any).online_orders as OnlineOrderJoinRow[] | undefined,
+    );
 
   const profile = transformBroadcastToOrder(broadcastData, undefined);
 
@@ -440,6 +511,67 @@ function _transformFetchedOrder(
   };
 }
 
+/**
+ * Fetch the window-wide discriminator projection that drives the tab and
+ * provider counts, then publish it and persist it for the next entry.
+ *
+ * Fire-and-forget by design: it runs alongside the page fetch and is never
+ * fatal — a failure leaves the list rendered with stale counts rather than
+ * blocking the screen. Stale responses are dropped by re-checking the window
+ * and filter key at resolve time.
+ */
+function _loadWindowSummaries(
+  client: SupabaseClient,
+  locationId: string,
+  startTs: string | null,
+  endTs: string | null,
+  activeFilters: HistoryOrderFilters,
+): Promise<void> {
+  const activeFilterKey = historyFilterKey(activeFilters);
+  return withDeadline(
+    (signal) =>
+      OrderService.getHistoryOrderSummaries(
+        client,
+        locationId,
+        startTs,
+        endTs,
+        signal,
+        activeFilters,
+      ),
+    DEADLINES.read,
+    "getHistoryOrderSummaries",
+  )
+    .then(({ data, error, truncated }) => {
+      if (error || !data) return;
+      const current = usePreviousOrdersStore.getState();
+      if (
+        current.dateWindow?._resolvedStartTs !== startTs ||
+        current.dateWindow?._resolvedEndTs !== endTs ||
+        historyFilterKey(current.filters) !== activeFilterKey
+      ) {
+        return;
+      }
+      usePreviousOrdersStore.setState({
+        windowSummaries: data,
+        windowSummariesTruncated: truncated,
+      });
+      // Only the unfiltered projection is cacheable — a search- or
+      // status-narrowed one isn't what the next entry (which resets to default
+      // filters) is asking about.
+      if (isDefaultHistoryFilters(activeFilters)) {
+        previousOrdersOfflineCache.setSummaries(
+          locationId,
+          data,
+          (current.dateWindow ?? DEFAULT_DATE_WINDOW).label,
+          truncated,
+        );
+      }
+    })
+    .catch((err) => {
+      console.warn("[PreviousOrders] summary fetch failed:", err);
+    });
+}
+
 export const usePreviousOrdersStore = create<PreviousOrdersState>(
   (set, get) => ({
     previousOrders: [],
@@ -454,6 +586,127 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     _hasMore: false,
     _isLoadingMore: false,
     _oldestCursor: null,
+    windowSummaries: null,
+    windowSummariesTruncated: false,
+    filters: { ...DEFAULT_HISTORY_FILTERS },
+    _loadedFilterKey: historyFilterKey(DEFAULT_HISTORY_FILTERS),
+    totalMatchingCount: null,
+    pageIndex: 0,
+    pageCount: 0,
+    _isPageLoading: false,
+
+    /**
+     * Load a specific page of the current filter set.
+     *
+     * Each page is an independent query, so this serves Next, Previous and any
+     * direct jump identically. The previous page stays on screen until the new
+     * one arrives (`_isPageLoading` drives an overlay rather than clearing the
+     * list), so stepping through pages doesn't flash empty.
+     */
+    goToPage: async (pageIndex: number) => {
+      const state = get();
+      if (state._isPageLoading) return;
+
+      const target = Math.max(0, pageIndex);
+      // pageCount is 0 before the first count lands; allow page 0 regardless.
+      if (state.pageCount > 0 && target >= state.pageCount) return;
+
+      const client = _supabaseClient;
+      if (!client) return;
+      const locationId = resolveHistoryLocationId();
+      if (!locationId) return;
+
+      const { _resolvedStartTs, _resolvedEndTs } =
+        state.dateWindow ?? DEFAULT_DATE_WINDOW;
+      if (!_resolvedStartTs || !_resolvedEndTs) return;
+
+      const activeFilters = state.filters;
+      const activeFilterKey = historyFilterKey(activeFilters);
+
+      set({ _isPageLoading: true });
+      try {
+        const { data, error, totalCount } =
+          await OrderService.getFilteredHistoryPage(client, {
+            locationId,
+            filters: activeFilters,
+            limit: HISTORY_PAGE_SIZE,
+            offset: target * HISTORY_PAGE_SIZE,
+            startTs: _resolvedStartTs,
+            endTs: _resolvedEndTs,
+            // Re-count on page moves: a refund or void elsewhere can change the
+            // total while the merchant is paging, and a stale total would let
+            // them step past the end.
+            withCount: true,
+          });
+
+        if (error || !data) {
+          console.error("[PreviousOrders] page fetch failed:", error);
+          return;
+        }
+        // Discard a page whose filters the user has already moved on from.
+        if (historyFilterKey(get().filters) !== activeFilterKey) return;
+
+        const pageOrders = data
+          .map((fo, index) =>
+            _transformFetchedOrder(fo as FetchedOrderData, index, data.length),
+          )
+          .filter((po) => !isEmptyDraftOrder(po));
+
+        set({
+          previousOrders: pageOrders,
+          _orderLookup: buildOrderLookupMap(pageOrders),
+          pageIndex: target,
+          _loadedFilterKey: activeFilterKey,
+          ...(totalCount != null
+            ? {
+                totalMatchingCount: totalCount,
+                pageCount: historyPageCount(totalCount, HISTORY_PAGE_SIZE),
+              }
+            : {}),
+        });
+      } catch (err) {
+        console.error("[PreviousOrders] page fetch threw:", err);
+      } finally {
+        set({ _isPageLoading: false });
+      }
+    },
+
+    /**
+     * Change one or more filters. Because the server owns the result set, any
+     * change invalidates the loaded pages AND the cursor — page 2 of the old
+     * filter must never be appended to page 1 of the new one. Clearing here and
+     * refetching is what keeps that impossible by construction.
+     *
+     * No-ops when the filter set is unchanged, so a component re-render that
+     * re-sends the same value doesn't wipe the list and refetch.
+     */
+    setFilters: (patch) => {
+      const current = get().filters;
+      const next = { ...current, ...patch };
+      if (historyFilterKey(next) === historyFilterKey(current)) return;
+
+      set({
+        filters: next,
+        previousOrders: [],
+        _orderLookup: {},
+        _isRefreshing: true,
+        _currentOffset: 0,
+        _hasMore: false,
+        _isLoadingMore: false,
+        _oldestCursor: null,
+        totalMatchingCount: null,
+        // A new filter set is a new result set — always start at its first page.
+        pageIndex: 0,
+        pageCount: 0,
+        // Channel/provider don't affect counts, so only drop the summaries when
+        // the axes they DO depend on change. Avoids a count flicker on every
+        // tab tap.
+        ...(next.status !== current.status || next.search !== current.search
+          ? { windowSummaries: null, windowSummariesTruncated: false }
+          : {}),
+      });
+      _scheduleDebouncedRefresh();
+    },
 
     setDateWindow: (window) => {
       // Resolve bounds synchronously (Luxon, no network) so the live-orders
@@ -467,6 +720,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           ...window,
           _resolvedStartTs: localBounds?.startTs ?? null,
           _resolvedEndTs: localBounds?.endTs ?? null,
+          // Luxon estimate — the refresh below still resolves server bounds.
+          _boundsFromServer: false,
         },
         previousOrders: [],
         _orderLookup: {},
@@ -479,6 +734,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         _isLoadingMore: false,
         _oldestCursor: null,
         newOrdersCount: 0,
+        // Counts belong to the old window — drop them so tabs render a loading
+        // 0 rather than last window's numbers.
+        windowSummaries: null,
+        windowSummariesTruncated: false,
       });
       // Trailing-edge debounce: rapid pill taps (Today → Yesterday → Last 7
       // → Yesterday) only fire one refetch for the final selection. UI
@@ -656,10 +915,24 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         const deduped = base.filter(
           (o) => (o.db_order_id || o.orderId) !== newKey,
         );
-        const mergedCache = [previousOrder, ...deduped].sort(
-          (a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-        );
+        // Insert by position rather than re-sorting. This runs on EVERY
+        // archived order — i.e. during checkout — and the cached list is
+        // already newest-first, so a full sort of up to 200 rows was pure
+        // main-thread cost on the till's critical path. The new order is
+        // almost always the newest, making this an O(1) unshift in practice.
+        const newTs = new Date(previousOrder.timestamp).getTime();
+        let insertAt = 0;
+        while (
+          insertAt < deduped.length &&
+          new Date(deduped[insertAt].timestamp).getTime() > newTs
+        ) {
+          insertAt++;
+        }
+        const mergedCache = [
+          ...deduped.slice(0, insertAt),
+          previousOrder,
+          ...deduped.slice(insertAt),
+        ];
         previousOrdersOfflineCache.set(
           locationId,
           mergedCache,
@@ -733,6 +1006,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         const cached = previousOrdersOfflineCache.get(locationId);
         if (cached) {
           const orders = cached.orders.filter((po) => !isEmptyDraftOrder(po));
+          const cachedSummaries = previousOrdersOfflineCache.getSummaries(
+            locationId,
+            cached.windowLabel,
+          );
           set({
             previousOrders: orders,
             _orderLookup: buildOrderLookupMap(orders),
@@ -741,6 +1018,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             // No live pagination offline — cache is a fixed snapshot.
             _hasMore: false,
             _isLoadingMore: false,
+            // Without this the tabs render 0 next to a populated list: the
+            // screen nulls windowSummaries on unmount and there's no network
+            // here to rebuild them.
+            ...(cachedSummaries
+              ? {
+                  windowSummaries: cachedSummaries,
+                  windowSummariesTruncated: false,
+                }
+              : {}),
           });
           if (__DEV__)
             console.log(
@@ -763,6 +1049,103 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         return;
       }
 
+      // ── Cache-and-revalidate ────────────────────────────────
+      // Re-entering the screen used to refetch unconditionally. Instead, show
+      // the cached page straight away, then ask the backend two cheap questions
+      // — how many orders are in this window, and when was the newest one
+      // touched. If both match what the cache was built from, nothing changed
+      // and the fetch below is skipped entirely.
+      //
+      // Only for the unfiltered first page: a filtered or deeper page isn't
+      // what the cache holds. `force` (pull-to-refresh) always skips this.
+      if (
+        !force &&
+        isDefaultHistoryFilters(st.filters) &&
+        st.pageIndex === 0
+      ) {
+        const cached = previousOrdersOfflineCache.get(locationId);
+        const cachedSig = previousOrdersOfflineCache.getSignature(locationId);
+        const windowLabel = (st.dateWindow ?? DEFAULT_DATE_WINDOW).label;
+
+        if (cached && cachedSig && cached.windowLabel === windowLabel) {
+          const cachedOrders = cached.orders.filter(
+            (po) => !isEmptyDraftOrder(po),
+          );
+          // Paint the cached rows now so the screen isn't blank while probing.
+          // The cached summaries go up with them: without this the tabs render
+          // 0 beside a populated list, because the screen nulls windowSummaries
+          // on unmount and this path used to return before anything refetched
+          // them.
+          const cachedSummaries = previousOrdersOfflineCache.getSummaries(
+            locationId,
+            windowLabel,
+          );
+          set({
+            previousOrders: cachedOrders,
+            _orderLookup: buildOrderLookupMap(cachedOrders),
+            _isRefreshing: false,
+            ...(cachedSummaries
+              ? {
+                  windowSummaries: cachedSummaries,
+                  windowSummariesTruncated: false,
+                }
+              : {}),
+          });
+
+          try {
+            const { _resolvedStartTs, _resolvedEndTs } =
+              st.dateWindow ?? DEFAULT_DATE_WINDOW;
+            const live = await withDeadline(
+              (signal) =>
+                OrderService.getHistoryWindowSignature(
+                  client,
+                  locationId,
+                  _resolvedStartTs,
+                  _resolvedEndTs,
+                  signal,
+                ),
+              DEADLINES.read,
+              "getHistoryWindowSignature",
+            );
+
+            if (!live.error && isCacheFresh(cachedSig, live, windowLabel)) {
+              // Backend hasn't moved — keep the cached rows, refresh the
+              // bookkeeping so the coalesce window and counts stay sane.
+              set({
+                lastHistoryRefreshAt: Date.now(),
+                _lastRefreshLocationId: locationId,
+                totalMatchingCount: live.count,
+                pageCount:
+                  live.count != null
+                    ? historyPageCount(live.count, HISTORY_PAGE_SIZE)
+                    : 0,
+              });
+              // Rows are current, but the counts may not be cached (first ever
+              // entry, a window too large to cache, or a TTL'd-out blob). Fetch
+              // them in the background so the tabs fill in instead of sitting
+              // at 0 for the rest of the visit.
+              if (!cachedSummaries) {
+                void _loadWindowSummaries(
+                  client,
+                  locationId,
+                  _resolvedStartTs,
+                  _resolvedEndTs,
+                  st.filters,
+                );
+              }
+              if (__DEV__)
+                console.log(
+                  `[PreviousOrders] cache fresh (${cachedOrders.length} orders) — skipped refetch.`,
+                );
+              return;
+            }
+          } catch (err) {
+            // Probe failed — fall through to the full fetch below.
+            console.warn("[PreviousOrders] signature probe failed:", err);
+          }
+        }
+      }
+
       if (refreshPreviousOrdersInFlight) {
         return refreshPreviousOrdersInFlight;
       }
@@ -780,26 +1163,48 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           let startTs: string | null = null;
           let endTs: string | null = null;
 
+          // Strategy 0: Reuse server bounds already resolved for this same
+          // window. Bounds are a function of the date window alone, so a
+          // refresh triggered by a tab/filter/sort change (the common case —
+          // every ChannelTabBar tap routes through setFilters → refresh) can't
+          // have invalidated them. Skipping the round-trip here is what stops
+          // each tab tap from paying a serial RPC before the page query even
+          // starts. setDateWindow clears the flag, so a genuine window change
+          // still re-resolves.
+          if (
+            dateWindow._boundsFromServer &&
+            dateWindow._resolvedStartTs &&
+            dateWindow._resolvedEndTs
+          ) {
+            startTs = dateWindow._resolvedStartTs;
+            endTs = dateWindow._resolvedEndTs;
+          }
+
+          let boundsFromServer = startTs != null && endTs != null;
+
           // Strategy 1: Server RPC (authoritative)
-          try {
-            const bounds = await OrderService.getBusinessDayBounds(
-              client,
-              locationId,
-              dateWindow.startDate,
-              dateWindow.endDate,
-            );
-            if (bounds) {
-              startTs = bounds.start_ts;
-              endTs = bounds.end_ts;
-              console.log(
-                `[PreviousOrders] ✅ Business day bounds (server): ${startTs} → ${endTs}`,
+          if (!boundsFromServer) {
+            try {
+              const bounds = await OrderService.getBusinessDayBounds(
+                client,
+                locationId,
+                dateWindow.startDate,
+                dateWindow.endDate,
+              );
+              if (bounds) {
+                startTs = bounds.start_ts;
+                endTs = bounds.end_ts;
+                boundsFromServer = true;
+                console.log(
+                  `[PreviousOrders] ✅ Business day bounds (server): ${startTs} → ${endTs}`,
+                );
+              }
+            } catch (rpcErr) {
+              console.warn(
+                "[PreviousOrders] RPC get_business_day_bounds failed:",
+                rpcErr,
               );
             }
-          } catch (rpcErr) {
-            console.warn(
-              "[PreviousOrders] RPC get_business_day_bounds failed:",
-              rpcErr,
-            );
           }
 
           // Strategy 2: Client-side Luxon (if RPC failed)
@@ -846,38 +1251,63 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
               ...dateWindow,
               _resolvedStartTs: startTs,
               _resolvedEndTs: endTs,
+              // Only server bounds are reusable — a Luxon fallback stays
+              // provisional so the next refresh retries the RPC.
+              _boundsFromServer: boundsFromServer,
             },
           });
 
-          // Step 2: Fetch orders within the business day window.
+          const activeFilters = get().filters;
+          const activeFilterKey = historyFilterKey(activeFilters);
+
+          // Step 2a: Window-wide count summaries, in parallel with the page
+          // fetch below. Deliberately not awaited here and never fatal — if it
+          // fails the list still renders, only the tab counts stay stale.
+          void _loadWindowSummaries(
+            client,
+            locationId,
+            startTs,
+            endTs,
+            activeFilters,
+          );
+
+          // Step 2b: First filtered page + the exact total for these filters.
           // Deadline-wrapped so server-side statement timeouts (~30s) fail fast.
           let fetchedOrders: any[] | null = null;
+          let pageHasMore = false;
+          let pageTotal: number | null = null;
           try {
             const result = await withDeadline(
               (signal) =>
-                OrderService.getHistoryOrders(
-                  client,
+                OrderService.getFilteredHistoryPage(client, {
                   locationId,
-                  INITIAL_FETCH_SIZE,
-                  null,
+                  filters: activeFilters,
+                  limit: HISTORY_PAGE_SIZE,
+                  offset: 0,
                   startTs,
                   endTs,
+                  withCount: true,
                   signal,
-                ),
+                }),
               DEADLINES.read,
-              "getHistoryOrders",
+              "getFilteredHistoryPage",
             );
             if (result.error) {
               console.error("Failed to fetch previous orders:", result.error);
               return;
             }
             fetchedOrders = result.data;
+            pageHasMore = result.hasMore;
+            pageTotal = result.totalCount;
           } catch (err) {
             console.error("Failed to fetch previous orders:", err);
             return;
           }
 
           if (!fetchedOrders) return;
+
+          // Drop a response whose filters the user has already moved on from.
+          if (historyFilterKey(get().filters) !== activeFilterKey) return;
 
           // Transform fetched data into PreviousOrder objects using extracted helper
           const newPreviousOrders: PreviousOrder[] = fetchedOrders.map(
@@ -892,90 +1322,119 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           // Skip pre-sort: the merged result is sorted below, and the Map merge
           // loses ordering anyway.
 
-          // Drop offline-unsynced placeholders before merging: this is an online
-          // refresh, so the authoritative server result supersedes them. A truly
-          // synced order comes back from the fetch (unflagged); a not-yet-synced
-          // one re-surfaces on a later fetch/broadcast. Prevents a duplicate row
-          // (offline-badged local copy keyed by orderId + server copy keyed by
-          // db_order_id) that the keyed merge would otherwise keep.
-          const existingPreviousOrders = get().previousOrders.filter(
-            (o) => !o._offlineUnsynced,
-          );
+          // How the server result combines with what's already in memory
+          // depends on whether the client can reproduce the server's ordering.
+          //
+          // Default filters + newest-first is the one case where it can, so the
+          // historical merge is kept there: it preserves orders added by a
+          // broadcast that raced this refresh, and it's the shape the offline
+          // cache and the other `previousOrders` consumers expect.
+          //
+          // Under any other filter or sort the server's ordering is
+          // authoritative and not reconstructible here (an amount sort can't be
+          // re-derived from timestamps, and a broadcast order may not even match
+          // the filter). There the page replaces the list outright.
+          const canMergeLocally =
+            isDefaultHistoryFilters(activeFilters) &&
+            activeFilters.sort === "date_desc";
 
-          // Build merge map — filtered when date-bounded, full when not
-          const ordersMap = new Map<string, PreviousOrder>();
-          if (startTs && endTs) {
-            // Filtered merge: only keep existing orders within the current date window.
-            // This drops stale orders from other days while preserving broadcast-added
-            // orders from today (avoids race condition where broadcast arrives mid-refresh).
-            const startTime = new Date(startTs).getTime();
-            const endTime = new Date(endTs).getTime();
-            existingPreviousOrders.forEach((order) => {
-              const key = order.db_order_id || order.orderId;
-              const orderTime = new Date(order.timestamp).getTime();
-              if (orderTime >= startTime && orderTime < endTime) {
+          let mergedPreviousOrders: PreviousOrder[];
+          if (canMergeLocally) {
+            // Drop offline-unsynced placeholders before merging: this is an
+            // online refresh, so the authoritative server result supersedes
+            // them. A truly synced order comes back from the fetch (unflagged);
+            // a not-yet-synced one re-surfaces on a later fetch/broadcast.
+            // Prevents a duplicate row (offline-badged local copy keyed by
+            // orderId + server copy keyed by db_order_id).
+            const existingPreviousOrders = get().previousOrders.filter(
+              (o) => !o._offlineUnsynced,
+            );
+
+            const ordersMap = new Map<string, PreviousOrder>();
+            if (startTs && endTs) {
+              // Only keep existing orders inside the current window. Drops
+              // stale orders from other days while preserving broadcast-added
+              // orders from today.
+              const startTime = new Date(startTs).getTime();
+              const endTime = new Date(endTs).getTime();
+              existingPreviousOrders.forEach((order) => {
+                const key = order.db_order_id || order.orderId;
+                const orderTime = new Date(order.timestamp).getTime();
+                if (orderTime >= startTime && orderTime < endTime) {
+                  ordersMap.set(key, order);
+                }
+              });
+            } else {
+              existingPreviousOrders.forEach((order) => {
+                const key = order.db_order_id || order.orderId;
                 ordersMap.set(key, order);
-              }
-            });
-          } else {
-            // No date bounds (fallback): full merge to preserve all existing orders
-            existingPreviousOrders.forEach((order) => {
+              });
+            }
+
+            // Overlay fetched data — server wins on duplicates
+            newPreviousOrders.forEach((order) => {
               const key = order.db_order_id || order.orderId;
               ordersMap.set(key, order);
             });
+
+            mergedPreviousOrders = Array.from(ordersMap.values()).filter(
+              (po) => !isEmptyDraftOrder(po),
+            );
+            mergedPreviousOrders.sort(
+              (a, b) =>
+                new Date(b.timestamp).getTime() -
+                new Date(a.timestamp).getTime(),
+            );
+          } else {
+            // Server order preserved verbatim — no client sort.
+            mergedPreviousOrders = newPreviousOrders.filter(
+              (po) => !isEmptyDraftOrder(po),
+            );
           }
-
-          // Overlay fetched data — server wins on duplicates
-          newPreviousOrders.forEach((order) => {
-            const key = order.db_order_id || order.orderId;
-            ordersMap.set(key, order);
-          });
-
-          // Convert map values back to an array, dropping empty-draft shells
-          // (e.g. cross-station abandoned drafts) so they never render in the
-          // history list. Pagination state below is derived from the raw
-          // `fetchedOrders` count/cursor, so client-side filtering here does
-          // not skew keyset paging.
-          let mergedPreviousOrders = Array.from(ordersMap.values()).filter(
-            (po) => !isEmptyDraftOrder(po),
-          );
-
-          // Sort by timestamp descending (newest first)
-          mergedPreviousOrders.sort(
-            (a, b) =>
-              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-          );
 
           const newLookup = buildOrderLookupMap(mergedPreviousOrders);
           const now = Date.now();
-          // Seed keyset cursor from the raw fetched rows (the DB created_at)
-          // rather than the transformed `timestamp` field — opened_at and
-          // created_at usually agree but the DB column is the source of truth
-          // for ORDER BY created_at DESC.
-          const lastFetchedRow = fetchedOrders[fetchedOrders.length - 1] as
-            | { created_at?: string }
-            | undefined;
-          const _oldestCursor = lastFetchedRow?.created_at ?? null;
           set({
             previousOrders: mergedPreviousOrders,
             newOrdersCount: 0,
             _orderLookup: newLookup,
             lastHistoryRefreshAt: now,
             _lastRefreshLocationId: locationId,
-            // Reset pagination state on refresh
-            _currentOffset: mergedPreviousOrders.length,
-            _hasMore: fetchedOrders.length === INITIAL_FETCH_SIZE,
+            // A refresh always lands on the first page of the result set.
+            pageIndex: 0,
+            pageCount:
+              pageTotal != null
+                ? historyPageCount(pageTotal, HISTORY_PAGE_SIZE)
+                : 0,
+            totalMatchingCount: pageTotal,
+            _loadedFilterKey: activeFilterKey,
+            _currentOffset: fetchedOrders.length,
+            _hasMore: pageHasMore,
             _isLoadingMore: false,
-            _oldestCursor,
+            _oldestCursor: null,
           });
 
-          // Persist this successful fetch as the offline fallback snapshot.
-          // Read back ONLY when offline (see top of refreshPreviousOrders).
-          previousOrdersOfflineCache.set(
-            locationId,
-            mergedPreviousOrders,
-            (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
-          );
+          // Record the signature this data corresponds to, so the next entry
+          // can tell whether the backend moved without refetching rows.
+          if (canMergeLocally) {
+            previousOrdersOfflineCache.setSignature(locationId, {
+              count: pageTotal,
+              latestUpdatedAt: latestUpdatedAtOf(fetchedOrders),
+              windowLabel: (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
+            });
+          }
+
+          // Persist this successful fetch as the offline fallback snapshot —
+          // but only for the unfiltered view. Caching a filtered result would
+          // make the next offline open show, say, "DoorDash + refunded only"
+          // as if it were the whole history.
+          if (canMergeLocally) {
+            previousOrdersOfflineCache.set(
+              locationId,
+              mergedPreviousOrders,
+              (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
+            );
+          }
 
           if (__DEV__)
             console.log(
@@ -1075,119 +1534,6 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     // Clear the new orders counter (called after user taps refresh)
     clearNewOrdersCount: () => {
       set({ newOrdersCount: 0 });
-    },
-
-    loadMoreOrders: async () => {
-      const { _isLoadingMore, _hasMore, _currentOffset, _oldestCursor } = get();
-      if (_isLoadingMore || !_hasMore) return;
-
-      // Cooldown: prevent onEndReached cascade
-      if (Date.now() - _lastLoadMoreCompletedAt < LOAD_MORE_COOLDOWN_MS) return;
-
-      // Block pagination until date bounds are resolved (refresh must complete first)
-      const { _resolvedStartTs, _resolvedEndTs } =
-        get().dateWindow ?? DEFAULT_DATE_WINDOW;
-      if (!_resolvedStartTs || !_resolvedEndTs) {
-        if (__DEV__)
-          console.log(
-            "[loadMoreOrders] Skipped — waiting for date bounds to resolve",
-          );
-        return;
-      }
-
-      const client = _supabaseClient;
-      if (!client) return;
-
-      const locationId = resolveHistoryLocationId();
-      if (!locationId) return;
-
-      set({ _isLoadingMore: true });
-
-      try {
-        const { data, error, hasMore, nextCursor } =
-          await OrderService.getHistoryOrdersByCursor(
-            client,
-            locationId,
-            LOAD_MORE_PAGE_SIZE,
-            _oldestCursor,
-            null,
-            _resolvedStartTs,
-            _resolvedEndTs,
-          );
-
-        if (error || !data) {
-          console.error("Failed to load more orders:", error);
-          return;
-        }
-
-        const newOrders = data.map((fo, index) =>
-          _transformFetchedOrder(fo as FetchedOrderData, index, data.length),
-        );
-
-        // Deduplicate against existing previousOrders
-        const existingKeys = new Set<string>();
-        for (const po of get().previousOrders) {
-          if (po.db_order_id) existingKeys.add(po.db_order_id);
-          if (po.orderId) existingKeys.add(po.orderId);
-        }
-
-        const uniqueNewOrders = newOrders
-          .filter((o) => {
-            const key = o.db_order_id || o.orderId;
-            return !existingKeys.has(key);
-          })
-          // Drop empty-draft shells (e.g. cross-station abandoned drafts).
-          // Cursor/hasMore below come from the raw page, so paging is unaffected.
-          .filter((o) => !isEmptyDraftOrder(o));
-
-        if (uniqueNewOrders.length === 0) {
-          set({
-            _hasMore: hasMore,
-            _currentOffset: _currentOffset + data.length,
-            _oldestCursor: nextCursor ?? _oldestCursor,
-            _isLoadingMore: false,
-          });
-          return;
-        }
-
-        set((state) => {
-          let merged = [...state.previousOrders, ...uniqueNewOrders];
-
-          // Sort by timestamp descending
-          merged.sort(
-            (a, b) =>
-              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-          );
-
-          // Safety cap: trim oldest if exceeding limit
-          if (merged.length > MAX_IN_MEMORY_PREVIOUS_ORDERS) {
-            merged = merged.slice(0, MAX_IN_MEMORY_PREVIOUS_ORDERS);
-          }
-
-          return {
-            previousOrders: merged,
-            _orderLookup: buildOrderLookupMap(merged),
-            _currentOffset: _currentOffset + data.length,
-            _hasMore: hasMore,
-            _oldestCursor: nextCursor ?? state._oldestCursor,
-          };
-        });
-      } catch (err) {
-        console.error("Error in loadMoreOrders:", err);
-      } finally {
-        _lastLoadMoreCompletedAt = Date.now();
-        set({ _isLoadingMore: false });
-        // Keep the offline snapshot in sync with scrolled-in pages so going
-        // offline mid-scroll retains everything the user already loaded.
-        const lid = resolveHistoryLocationId();
-        if (lid) {
-          previousOrdersOfflineCache.set(
-            lid,
-            get().previousOrders,
-            (get().dateWindow ?? DEFAULT_DATE_WINDOW).label,
-          );
-        }
-      }
     },
 
     refundFullOrder: async (

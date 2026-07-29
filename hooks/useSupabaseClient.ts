@@ -2,6 +2,10 @@ import { useAuth } from "@clerk/clerk-expo";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useRef } from "react";
 import { realtimeConfig } from "@/lib/realtimeConfig";
+import {
+  noteRequestEnd,
+  noteRequestStart,
+} from "@/lib/telemetry/resumeRequests";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_KEY!;
@@ -97,10 +101,27 @@ let sharedClient: SupabaseClient | null = null;
 // when the JS heap is fine. Anything above the threshold gets a console.warn
 // so the next outlier surfaces immediately during dev.
 const PAYLOAD_WARN_BYTES = 1_000_000; // 1 MB
+
+/**
+ * Always-on request accounting for the resume-window telemetry. Two integer
+ * updates per request; records nothing unless a resume window is open. This
+ * is what produces the before/after concurrent-request numbers for the
+ * lifecycle-coordinator work, so it must NOT be __DEV__-gated — the
+ * measurement has to be available on the tablet builds under test.
+ */
+const countedFetch: typeof fetch = async (input, init) => {
+  noteRequestStart();
+  try {
+    return await fetch(input, init);
+  } finally {
+    noteRequestEnd();
+  }
+};
+
 const instrumentedFetch: typeof fetch | undefined = __DEV__
   ? async (input, init) => {
       const start = Date.now();
-      const response = await fetch(input, init);
+      const response = await countedFetch(input, init);
       try {
         const len = Number(response.headers.get("content-length") ?? 0);
         if (len >= PAYLOAD_WARN_BYTES) {
@@ -135,9 +156,9 @@ function getSharedClient(): SupabaseClient {
         return getCachedAccessToken();
       },
       realtime: realtimeConfig,
-      ...(instrumentedFetch
-        ? { global: { fetch: instrumentedFetch } }
-        : {}),
+      // instrumentedFetch already wraps countedFetch in dev; in production we
+      // still need the counting layer, just not the payload logging.
+      global: { fetch: instrumentedFetch ?? countedFetch },
     });
   }
   return sharedClient;

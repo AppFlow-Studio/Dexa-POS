@@ -1,3 +1,4 @@
+import { useOverlayTelemetry } from '@/hooks/useOverlayTelemetry'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { useMenuManagementSearchStore } from '@/stores/useMenuManagementSearchStore'
@@ -6,11 +7,12 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetSectionList,
   BottomSheetTextInput
-} from '@gorhom/bottom-sheet'
+} from '@/components/ui/bottomSheet'
 import { router } from 'expo-router'
 import { Search, Settings, X } from 'lucide-react-native'
 import {
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -44,6 +46,10 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
   // full menu/category/modifier result set (and the grouped sections) on every
   // menu-store change for the whole app lifetime — wasted work + retained arrays.
   const [isOpen, setIsOpen] = useState(false)
+
+  // Renders-while-closed accounting for the global overlay set. The heavy work
+  // here is already gated on `isOpen`, so this is the proof rather than a fix.
+  useOverlayTelemetry('menu_search', isOpen)
 
   const handleChange = useCallback((index: number) => {
     setIsOpen(index >= 0)
@@ -495,4 +501,7 @@ function Badge ({
   )
 }
 
-export default MenuSearchSheet
+// Persistently mounted in the (main) layout, whose `usePathname()` makes it
+// re-render on every navigation. The only prop is a stable `useRef` handle, so
+// memo makes screen changes free here. See PaymentDetailBottomSheet for detail.
+export default memo(MenuSearchSheet)

@@ -41,7 +41,8 @@ import type {
   ServerSection,
   TableSession,
 } from "@/types/db-floor-plan-types";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
+import { useBillPanelLayoutStore } from "@/stores/useBillPanelLayoutStore";
 import { useRouter } from "expo-router";
 import {
     AlertTriangle,
@@ -454,6 +455,13 @@ const BillSectionContent = ({
       updateActiveOrderDetails: s.updateActiveOrderDetails,
     })),
   );
+  // Deliberately whole-object, unlike the ~20 field selectors above. This one
+  // feeds the async handlers (assign-to-table, close-check, void) which need a
+  // consistent snapshot of the order rather than a field, and it is read at
+  // ~80 sites. Splitting it would trade one subscription for dozens without
+  // reducing renders: BillSection is the visible bill on order-processing, so
+  // it is *supposed* to re-render when the active order changes. The waste this
+  // wave targets is hidden overlays, not this component.
   const activeOrder = useOrderStore((s) =>
     s.activeOrderId ? s.ordersById[s.activeOrderId] : null,
   );
@@ -1976,6 +1984,14 @@ const BillSectionContent = ({
         borderRightWidth: 2,
         borderColor: colors.border,
       }}
+      // Publish the FULL bill-column geometry so PanelSheet (More Options,
+      // Breakdown, Discount, Service Charge) anchors to the whole column — not
+      // the inner bill-content sub-section.
+      onLayout={(e) =>
+        useBillPanelLayoutStore
+          .getState()
+          .setLayout(e.nativeEvent.layout.width, e.nativeEvent.layout.height)
+      }
     >
       <View
         className="px-3 pt-2 pb-1"

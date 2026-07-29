@@ -21,6 +21,7 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -50,7 +51,7 @@ const PinDots = ({
   shake,
 }: {
   length: number;
-  shake: Animated.SharedValue<number>;
+  shake: SharedValue<number>;
 }) => {
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shake.value }],

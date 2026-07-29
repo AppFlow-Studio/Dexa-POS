@@ -4,7 +4,7 @@ import {
     useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import React, { useEffect, useState } from "react";
-import { Dimensions, Keyboard, Platform, StyleSheet } from "react-native";
+import { Keyboard, Platform, useWindowDimensions } from "react-native";
 import Animated, {
     cancelAnimation,
     Easing,
@@ -14,23 +14,34 @@ import Animated, {
 } from "react-native-reanimated";
 import ModifierScreen from "./ModifierScreen";
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-
 /**
  * ModifierScreenOverlay - Slides up from the bottom.
+ *
+ * SIZING: The overlay is mounted inside MenuSection (a flex column), so it must
+ * NOT rely on inset-only `StyleSheet.absoluteFill` (top/left/right/bottom:0
+ * with no width/height). On the New Architecture (Fabric) an inset-only absolute
+ * box can collapse to its content size when the parent flex column doesn't hand
+ * it a resolved height — which rendered the whole ModifierScreen as a tiny box in
+ * the corner. We give it EXPLICIT window width/height (from `useWindowDimensions`,
+ * which also tracks rotation/resize, unlike a module-level `Dimensions.get`) so it
+ * always fills the viewport. Anchored top/left; the extra width past the menu
+ * column simply spills off-screen right, leaving the cart column visible.
  *
  * PERFORMANCE: ModifierScreen mounts on demand and remains mounted briefly
  * after close for fast repeat edits without keeping its subscription tree
  * alive for the full table-order session.
  */
 const ModifierScreenOverlay: React.FC = () => {
+  const { height } = useWindowDimensions();
   const isFullscreen = useModifierSidebarStore(selectIsFullscreen);
   const isOpen = useModifierSidebarStore((s) => s.isOpen);
   const [shouldMountScreen, setShouldMountScreen] = useState(false);
   const [keepScreenPainted, setKeepScreenPainted] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
 
-  const translateY = useSharedValue(SCREEN_HEIGHT);
+  // Start fully off-screen at the bottom. Kept in a ref-like shared value; the
+  // effect below re-targets it whenever the open state or viewport height change.
+  const translateY = useSharedValue(height);
 
   useEffect(() => {
     if (isOpen || isFullscreen) {
@@ -60,18 +71,11 @@ const ModifierScreenOverlay: React.FC = () => {
 
   useEffect(() => {
     cancelAnimation(translateY);
-    if (isFullscreen) {
-      translateY.value = withTiming(0, {
-        duration: 60,
-        easing: Easing.out(Easing.quad),
-      });
-    } else {
-      translateY.value = withTiming(SCREEN_HEIGHT, {
-        duration: 60,
-        easing: Easing.out(Easing.quad),
-      });
-    }
-  }, [isFullscreen, translateY]);
+    translateY.value = withTiming(isFullscreen ? 0 : height, {
+      duration: 60,
+      easing: Easing.out(Easing.quad),
+    });
+  }, [isFullscreen, translateY, height]);
 
   useEffect(() => {
     const showEvent =
@@ -101,7 +105,20 @@ const ModifierScreenOverlay: React.FC = () => {
   return (
     <Animated.View
       style={[
-        styles.overlay,
+        {
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          // WIDTH comes from the parent (left:0 + right:0 = the MenuSection
+          // column's width — the cross axis resolves fine). HEIGHT must be
+          // explicit: the flex-column parent doesn't hand a resolved height to an
+          // inset-only absolute child on Fabric, which collapsed the sheet into
+          // the corner. Parent is `overflow-hidden`, so any excess height clips.
+          height,
+          backgroundColor: colors.card,
+          zIndex: 9999,
+        },
         animatedStyle,
         keyboardInset > 0 ? { paddingBottom: keyboardInset } : null,
       ]}
@@ -111,18 +128,5 @@ const ModifierScreenOverlay: React.FC = () => {
     </Animated.View>
   );
 };
-
-const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.card,
-    zIndex: 9999,
-    elevation: 0,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-  },
-});
 
 export default ModifierScreenOverlay;
