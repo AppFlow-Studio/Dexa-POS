@@ -3,6 +3,9 @@
 # dependencies
 node_modules/
 
+# mem-watch tool output (scripts/mem-watch.mjs)
+mem-watch-*.csv
+
 # Expo
 .expo/
 dist/
