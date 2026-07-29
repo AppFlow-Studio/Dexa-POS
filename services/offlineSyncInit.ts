@@ -1091,6 +1091,39 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         return result.success;
       }
 
+      case "close_and_free_session": {
+        const { p_order_id, p_session_id, p_staff_id } = op.params;
+
+        const resolvedOrderId = op.localOrderId
+          ? resolveOrderId(op.localOrderId)
+          : p_order_id;
+        const resolvedSessionId = p_session_id
+          ? resolveSessionId(p_session_id)
+          : null;
+
+        if (!resolvedOrderId || !resolvedSessionId) {
+          console.log(
+            "[OfflineSync] close_and_free_session: order/session not synced yet, will retry",
+          );
+          return false;
+        }
+
+        const result = await OrderService.closeAndFreeSession(
+          _supabaseClient,
+          resolvedOrderId,
+          resolvedSessionId,
+          p_staff_id,
+          op.idempotencyKey,
+        );
+        if (result.already_freed) {
+          console.log(
+            "[OfflineSync:close_and_free_session] Already freed, treating as success",
+          );
+          return true;
+        }
+        return result.success;
+      }
+
       // ================================================================
       // UNIFIED PAYMENT HANDLER - Uses process_payment_v2
       // Handles: Full card, Full cash, Split, Per-item payments

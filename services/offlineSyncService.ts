@@ -60,6 +60,7 @@ export type OperationType =
   // Check status operations
   | "close_check" // Close check (lock from edits)
   | "reopen_check" // Reopen closed check
+  | "close_and_free_session" // Wave B: atomic close-check + free-session (replay-safe)
   // Coursing operations
   | "fire_course"
   | "remove_course"
@@ -115,6 +116,7 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   // Check status operations (after items/payments)
   close_check: 4, // Close check
   reopen_check: 4, // Reopen check
+  close_and_free_session: 4, // Wave B: atomic close-check + free-session
 
   // Pre-auth operations (process before capture)
   process_preauth: 4,

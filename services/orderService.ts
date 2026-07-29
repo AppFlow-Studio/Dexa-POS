@@ -2310,6 +2310,51 @@ export class OrderService {
   }
 
   /**
+   * Wave B — atomically close the check AND free the dine-in session via the
+   * close_and_free_session RPC, so the terminal transitions route through the
+   * event projector (stamping paid_at + emitting payment_complete/table_cleared/
+   * table_cleaned). Idempotent + replay-safe: returns { already_freed: true }
+   * when the session was already freed by a prior attempt or another station.
+   */
+  static async closeAndFreeSession(
+    client: SupabaseClient,
+    orderId: string,
+    sessionId: string,
+    staffId?: string | null,
+    idempotencyKey?: string | null,
+  ): Promise<{ success: boolean; already_freed?: boolean; error?: string }> {
+    const { data, error } = await _runWithDeadline<any>(
+      "close_and_free_session",
+      DEADLINES.closeCheck,
+      async (signal) => {
+        const { data: d, error: e } = await client
+          .rpc("close_and_free_session", {
+            p_order_id: orderId,
+            p_session_id: sessionId,
+            p_staff_id: staffId || null,
+            p_idempotency_key: idempotencyKey || null,
+          })
+          .abortSignal(signal);
+        return { data: d, error: e };
+      },
+    );
+
+    if (error) {
+      console.error("[OrderService:closeAndFreeSession] RPC error:", error);
+      return { success: false, error: error.message };
+    }
+
+    const result = (data ?? {}) as {
+      success?: boolean;
+      already_freed?: boolean;
+    };
+    return {
+      success: result.success === true,
+      already_freed: result.already_freed === true,
+    };
+  }
+
+  /**
    * Reopen a closed check to add more items
    * @param client - Supabase client
    * @param orderId - Order database ID (UUID)
