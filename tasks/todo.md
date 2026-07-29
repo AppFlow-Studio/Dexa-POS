@@ -1,5 +1,87 @@
 # Tasks
 
+## ▶ CURRENT: Enable react-native-worklets Bundle Mode (2026-07-28)
+
+### Goal
+Reclaim the **25–30% memory regression** reanimated imposes on Hermes (RN 0.85+; we're on
+0.86) — the "Known regression" Expo SDK 57 flags. Expo's *only* recommended workaround is
+**Worklets Bundle Mode**. Memory win for an all-day tablet POS, fully reversible, JS-layer only
+(no native rebuild).
+
+### Research facts driving the plan
+- **Babel**: `babel-preset-expo` auto-injects `react-native-worklets/plugin` with **NO options**
+  (`worklets` is boolean-only). Can't pass `bundleMode` through the preset → set
+  `{ worklets: false }` and add the plugin **manually** with `{ bundleMode: true }`. Reverses the
+  current babel.config comment on purpose.
+- **Metro patches, exact-match**: `metro+0.84.4.patch` + `metro-runtime+0.84.4.patch` exist in the
+  SWM repo and match our installed metro/metro-runtime `0.84.4` exactly. Tiny single-hunk patches.
+  We already run `patch-package` on `postinstall`.
+- **Metro config composes**: `getBundleModeMetroConfig(config)` chains (doesn't clobber)
+  `resolver.resolveRequest` + `transformer.getTransformOptions` (adds `inlineRequires:true`) and
+  swaps `serializer.createModuleIdFactory`.
+- **#9817 startup-crash likely N/A**: that crash hits resolvers that **remap the bare
+  `react-native` specifier** (uniwind). Verified NativeWind (`react-native-css-interop`
+  `metro/index.js:123-147`) does NOT — only special-cases its `poisonPillPath` sentinel +
+  `global.css`; `react-native` passes through untouched → bundleMode's self-guard stays intact.
+  Confirm by real device boot.
+- **Compat**: worklets `0.10.x` supports RN 0.86 ✔
+
+### Stages
+- [x] **S0 Branch**: `perf/worklets-bundle-mode` created off `fix/clear-tables-payments`. NOTE: your
+      uncommitted clear-tables-payments WIP (ExpandedTableDetails, TableOrderView, serverPaidCloseGate*,
+      types/*, stations migration) rode along on the dirty tree — untouched; S6 commit will scope to
+      the 5 bundle-mode files only.
+- [x] **S1 Patches**: `patches/metro+0.84.4.patch` + `patches/metro-runtime+0.84.4.patch` downloaded
+      (exact-match from SWM repo) and applied — `metro@0.84.4 ✔` / `metro-runtime@0.84.4 ✔`, verified in
+      node_modules. Skipped `npm dedupe` (no same-version metro dup; only a separate 0.87.0 nested under
+      metro-transform-worker, semver-incompatible → dedupe can't merge it anyway).
+- [x] **S2 babel.config.js**: preset → `{ jsxImportSource:"nativewind", worklets:false }`; appended
+      `["react-native-worklets/plugin", { bundleMode:true, strictGlobal:true }]` last; comment rewritten.
+- [x] **S3 metro.config.js**: `getBundleModeMetroConfig(config)` applied before `withNativeWind`; Sentry +
+      `minifierConfig.drop_console` preserved; fallback-ordering note in comment.
+- [x] **S4 (me) bundle check**: babel+metro smoke tests pass; **full prod `expo export` EXIT 0** (23MB
+      hbc, no SHA-1/resolve/worklet/recursion errors). Bundle Mode confirmed ACTIVE: **962 generated
+      `.worklets/*.js` modules** + `__workletsModuleProxy`/`.worklets/`/`bundleMode` markers in the hbc.
+- [ ] **S5 (you) device boot + memory**: launches with no `RangeError: Maximum call stack size` /
+      `'main' has not been registered`; smoke-test bottom sheets/gesture-handler/moti/skia/draggable
+      tables/CFD + Fast Refresh on a worklet edit; EAS `preview` build → measure memory vs baseline.
+- [ ] **S6 Commit** (only after you confirm boot): the 5 bundle-mode files only
+      (babel.config.js, metro.config.js, patches/metro+0.84.4.patch, patches/metro-runtime+0.84.4.patch, tasks/todo.md).
+
+### Rollback (fully reversible)
+`git revert` config commit, `rm patches/metro+0.84.4.patch patches/metro-runtime+0.84.4.patch`,
+`npm install`. No native rebuild.
+
+### Risks / watch-list
+- **#9817** — believed N/A (NativeWind doesn't remap `react-native`); confirm by boot. Fallbacks:
+  swap metro ordering / apply reporter's sentinel patch / abandon until SWM fix.
+- **Patches are metro-0.84.4-pinned** temporary workarounds; a metro bump needs re-fetched patches —
+  patch-package fails loudly on mismatch (safe).
+- `strictGlobal:true` is SWM-recommended; smoke test catches any captured-global fallout (can drop to false).
+
+### Review (S1–S4, 2026-07-29)
+- Bundle Mode is wired and **proven active** in a real bundle, not just config-valid. Evidence:
+  full production `expo export` succeeded (EXIT 0), and the Babel plugin emitted **962 per-worklet
+  modules** into `node_modules/react-native-worklets/.worklets/` (legacy mode emits zero) — sampled
+  one was our `TableLayoutView` pinch-zoom worklet. Bundle-mode runtime markers are compiled into
+  the shipped `.hbc`.
+- The one real risk (#9817 startup recursion) stays theoretical for us because NativeWind
+  (`react-native-css-interop`) passes the bare `react-native` specifier straight through — verified
+  in source before starting. The metro SHA-1 patch did its job: zero "Failed to get SHA-1" errors
+  across a full-app bundle that generated ~962 on-the-fly modules.
+- Chose NOT to run `npm dedupe` despite the SWM README nudging it: that warning targets *same-version*
+  metro duplication (patched copy not the loaded copy). Our tree has a single 0.84.4 (the one Metro
+  loads) plus a semver-incompatible 0.87.0 nested under metro-transform-worker that dedupe can't merge —
+  so dedupe would only churn the tree for nothing. patch-package confirmed it patched the 0.84.4 copy.
+- Pre-existing, out-of-scope: `patches/react-native-tcp-socket+6.4.1.patch` fails to apply (it embedded
+  `android/build/` Gradle binary artifacts when created — can never apply on a clean tree). Untouched by
+  this work (git apply is atomic); has been failing on every install. Worth a separate cleanup
+  (recreate the patch from source files only), but not part of this task.
+- Not verifiable headless (→ S5 on device): the #9817 boot behavior, the metro-runtime Fast-Refresh
+  patch (dev-only HMR path), and the actual memory delta. Needs a device/emulator run + EAS preview.
+
+---
+
 ## Perf Roadmap — Phase 3: Data layer + Tables flow (in progress)
 
 Plan approved 2026-06-11 (persona-reviewed: 3 blockers fixed in design). Order: T → A → B. Wave C deferred.
