@@ -62,6 +62,13 @@ import {
   setCurrentRoute
 } from '@/lib/telemetry/registry'
 import { SafeAreaView } from 'react-native-safe-area-context'
+/**
+ * Hoisted so the reference is stable across renders. This layout re-renders on
+ * every navigation (usePathname), and an inline `() => {}` would be a new prop
+ * each time, defeating React.memo on the sheet it's passed to.
+ */
+const NOOP = () => {}
+
 /** Side-effect component: keeps POS orders in sync when realtime drops */
 function OrderSyncRecoveryBridge ({ locationId }: { locationId: string }) {
   useOrderSyncRecovery(locationId)
@@ -91,7 +98,12 @@ export default function MainLayout () {
   const menuSearchSheetRef = useRef<BottomSheetMethods>(null)
   const setSheetRef = useNotificationSheetStore(state => state.setSheetRef)
   const clearSheetRef = useNotificationSheetStore(state => state.clearSheetRef)
-  const { setSearchSheetRef, clearSearchSheetRef } = useMenuManagementSearchStore()
+  // Selector-scoped: calling useMenuManagementSearchStore() bare subscribes this
+  // layout to the WHOLE store, so an unrelated `setActiveTab` (menu-management
+  // sidebar) re-rendered the entire app shell — Header, every persistent sheet
+  // and the <Slot/> subtree. These two actions are stable store functions.
+  const setSearchSheetRef = useMenuManagementSearchStore(s => s.setSearchSheetRef)
+  const clearSearchSheetRef = useMenuManagementSearchStore(s => s.clearSearchSheetRef)
 
   // Complementary mitigation to the screens animation fix (lib/screenConfig.ts):
   // hint a GC after every navigation so native cleaners drain promptly.
@@ -285,7 +297,7 @@ export default function MainLayout () {
           edges={['top']}
           style={{ flex: 1, backgroundColor: colors.screen }}
         >
-          <StatusBar style='light' translucent />
+          <StatusBar style='light' />
           <Slot />
           {/* Online-orders edge tab + drawer on KDS too. kdsMode hides the
               POS-only navigation (board/detail routes have no header/back
@@ -336,7 +348,7 @@ export default function MainLayout () {
           className='flex-1'
           style={{ backgroundColor: colors.screen }}
         >
-          <StatusBar style={'light'} translucent />
+          <StatusBar style={'light'} />
 
           <View
             className='flex-1 flex-row'
@@ -372,7 +384,7 @@ export default function MainLayout () {
             bottomSheetRef={
               notificationSheetRef as React.RefObject<BottomSheetMethods>
             }
-            onClose={() => {}}
+            onClose={NOOP}
           />
           <PaymentBottomSheet />
           <View

@@ -1782,7 +1782,7 @@ const OrderProcessing = () => {
           <Pressable
             onPress={() => setIsOrdersModuleOpen(false)}
             style={{
-              ...StyleSheet.absoluteFillObject,
+              ...StyleSheet.absoluteFill,
               backgroundColor: "rgba(0,0,0,0.5)",
             }}
           />
@@ -2061,7 +2061,7 @@ export default OrderProcessing;
 
 const styles = StyleSheet.create({
   sheetOverlayLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 20000,
     elevation: 20000,
   },

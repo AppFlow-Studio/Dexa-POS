@@ -6725,8 +6725,15 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   );
 };
 
-const PaymentDetailBottomSheet = React.forwardRef(
-  PaymentDetailBottomSheetComponent,
+/**
+ * Memoized because this sheet is mounted *persistently* in the (main) layout,
+ * which re-renders on every `usePathname()` change — i.e. on every navigation
+ * in the app. Its only prop is a `useRef` handle, so without memo each screen
+ * change re-rendered this entire ~6.7k-line tree for nothing. Its own store
+ * subscriptions still drive updates when the sheet is actually in use.
+ */
+const PaymentDetailBottomSheet = React.memo(
+  React.forwardRef(PaymentDetailBottomSheetComponent),
 );
 PaymentDetailBottomSheet.displayName = "PaymentDetailBottomSheet";
 

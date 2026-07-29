@@ -737,6 +737,8 @@ export function clearCacheData(): { clearedKeys: string[]; errors: string[] } {
     for (const key of syncStorage.getAllKeys()) {
       if (
         key.startsWith("prev_orders_offline:") ||
+        key.startsWith("prev_orders_sig:") ||
+        key.startsWith("prev_orders_summaries:") ||
         key.startsWith("today_orders:")
       ) {
         syncStorage.remove(key);

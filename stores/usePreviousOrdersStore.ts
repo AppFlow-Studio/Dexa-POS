@@ -299,6 +299,14 @@ export interface DateWindow {
   // Resolved bounds from RPC (cached for broadcast guard + loadMore)
   _resolvedStartTs: string | null;
   _resolvedEndTs: string | null;
+  /**
+   * True once `_resolvedStartTs/_endTs` came from the authoritative server RPC
+   * rather than the synchronous Luxon estimate `setDateWindow` seeds them with.
+   * A refresh that already has server bounds for an unchanged window reuses
+   * them instead of re-awaiting the RPC — the bounds depend only on the window,
+   * so a filter or tab change can't have invalidated them.
+   */
+  _boundsFromServer?: boolean;
 }
 
 const DEFAULT_DATE_WINDOW: DateWindow = {
@@ -307,6 +315,7 @@ const DEFAULT_DATE_WINDOW: DateWindow = {
   label: "today",
   _resolvedStartTs: null,
   _resolvedEndTs: null,
+  _boundsFromServer: false,
 };
 
 interface PreviousOrdersState {
@@ -502,6 +511,67 @@ function _transformFetchedOrder(
   };
 }
 
+/**
+ * Fetch the window-wide discriminator projection that drives the tab and
+ * provider counts, then publish it and persist it for the next entry.
+ *
+ * Fire-and-forget by design: it runs alongside the page fetch and is never
+ * fatal — a failure leaves the list rendered with stale counts rather than
+ * blocking the screen. Stale responses are dropped by re-checking the window
+ * and filter key at resolve time.
+ */
+function _loadWindowSummaries(
+  client: SupabaseClient,
+  locationId: string,
+  startTs: string | null,
+  endTs: string | null,
+  activeFilters: HistoryOrderFilters,
+): Promise<void> {
+  const activeFilterKey = historyFilterKey(activeFilters);
+  return withDeadline(
+    (signal) =>
+      OrderService.getHistoryOrderSummaries(
+        client,
+        locationId,
+        startTs,
+        endTs,
+        signal,
+        activeFilters,
+      ),
+    DEADLINES.read,
+    "getHistoryOrderSummaries",
+  )
+    .then(({ data, error, truncated }) => {
+      if (error || !data) return;
+      const current = usePreviousOrdersStore.getState();
+      if (
+        current.dateWindow?._resolvedStartTs !== startTs ||
+        current.dateWindow?._resolvedEndTs !== endTs ||
+        historyFilterKey(current.filters) !== activeFilterKey
+      ) {
+        return;
+      }
+      usePreviousOrdersStore.setState({
+        windowSummaries: data,
+        windowSummariesTruncated: truncated,
+      });
+      // Only the unfiltered projection is cacheable — a search- or
+      // status-narrowed one isn't what the next entry (which resets to default
+      // filters) is asking about.
+      if (isDefaultHistoryFilters(activeFilters)) {
+        previousOrdersOfflineCache.setSummaries(
+          locationId,
+          data,
+          (current.dateWindow ?? DEFAULT_DATE_WINDOW).label,
+          truncated,
+        );
+      }
+    })
+    .catch((err) => {
+      console.warn("[PreviousOrders] summary fetch failed:", err);
+    });
+}
+
 export const usePreviousOrdersStore = create<PreviousOrdersState>(
   (set, get) => ({
     previousOrders: [],
@@ -650,6 +720,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           ...window,
           _resolvedStartTs: localBounds?.startTs ?? null,
           _resolvedEndTs: localBounds?.endTs ?? null,
+          // Luxon estimate — the refresh below still resolves server bounds.
+          _boundsFromServer: false,
         },
         previousOrders: [],
         _orderLookup: {},
@@ -934,6 +1006,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         const cached = previousOrdersOfflineCache.get(locationId);
         if (cached) {
           const orders = cached.orders.filter((po) => !isEmptyDraftOrder(po));
+          const cachedSummaries = previousOrdersOfflineCache.getSummaries(
+            locationId,
+            cached.windowLabel,
+          );
           set({
             previousOrders: orders,
             _orderLookup: buildOrderLookupMap(orders),
@@ -942,6 +1018,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             // No live pagination offline — cache is a fixed snapshot.
             _hasMore: false,
             _isLoadingMore: false,
+            // Without this the tabs render 0 next to a populated list: the
+            // screen nulls windowSummaries on unmount and there's no network
+            // here to rebuild them.
+            ...(cachedSummaries
+              ? {
+                  windowSummaries: cachedSummaries,
+                  windowSummariesTruncated: false,
+                }
+              : {}),
           });
           if (__DEV__)
             console.log(
@@ -987,10 +1072,24 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             (po) => !isEmptyDraftOrder(po),
           );
           // Paint the cached rows now so the screen isn't blank while probing.
+          // The cached summaries go up with them: without this the tabs render
+          // 0 beside a populated list, because the screen nulls windowSummaries
+          // on unmount and this path used to return before anything refetched
+          // them.
+          const cachedSummaries = previousOrdersOfflineCache.getSummaries(
+            locationId,
+            windowLabel,
+          );
           set({
             previousOrders: cachedOrders,
             _orderLookup: buildOrderLookupMap(cachedOrders),
             _isRefreshing: false,
+            ...(cachedSummaries
+              ? {
+                  windowSummaries: cachedSummaries,
+                  windowSummariesTruncated: false,
+                }
+              : {}),
           });
 
           try {
@@ -1021,6 +1120,19 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
                     ? historyPageCount(live.count, HISTORY_PAGE_SIZE)
                     : 0,
               });
+              // Rows are current, but the counts may not be cached (first ever
+              // entry, a window too large to cache, or a TTL'd-out blob). Fetch
+              // them in the background so the tabs fill in instead of sitting
+              // at 0 for the rest of the visit.
+              if (!cachedSummaries) {
+                void _loadWindowSummaries(
+                  client,
+                  locationId,
+                  _resolvedStartTs,
+                  _resolvedEndTs,
+                  st.filters,
+                );
+              }
               if (__DEV__)
                 console.log(
                   `[PreviousOrders] cache fresh (${cachedOrders.length} orders) — skipped refetch.`,
@@ -1051,26 +1163,48 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           let startTs: string | null = null;
           let endTs: string | null = null;
 
+          // Strategy 0: Reuse server bounds already resolved for this same
+          // window. Bounds are a function of the date window alone, so a
+          // refresh triggered by a tab/filter/sort change (the common case —
+          // every ChannelTabBar tap routes through setFilters → refresh) can't
+          // have invalidated them. Skipping the round-trip here is what stops
+          // each tab tap from paying a serial RPC before the page query even
+          // starts. setDateWindow clears the flag, so a genuine window change
+          // still re-resolves.
+          if (
+            dateWindow._boundsFromServer &&
+            dateWindow._resolvedStartTs &&
+            dateWindow._resolvedEndTs
+          ) {
+            startTs = dateWindow._resolvedStartTs;
+            endTs = dateWindow._resolvedEndTs;
+          }
+
+          let boundsFromServer = startTs != null && endTs != null;
+
           // Strategy 1: Server RPC (authoritative)
-          try {
-            const bounds = await OrderService.getBusinessDayBounds(
-              client,
-              locationId,
-              dateWindow.startDate,
-              dateWindow.endDate,
-            );
-            if (bounds) {
-              startTs = bounds.start_ts;
-              endTs = bounds.end_ts;
-              console.log(
-                `[PreviousOrders] ✅ Business day bounds (server): ${startTs} → ${endTs}`,
+          if (!boundsFromServer) {
+            try {
+              const bounds = await OrderService.getBusinessDayBounds(
+                client,
+                locationId,
+                dateWindow.startDate,
+                dateWindow.endDate,
+              );
+              if (bounds) {
+                startTs = bounds.start_ts;
+                endTs = bounds.end_ts;
+                boundsFromServer = true;
+                console.log(
+                  `[PreviousOrders] ✅ Business day bounds (server): ${startTs} → ${endTs}`,
+                );
+              }
+            } catch (rpcErr) {
+              console.warn(
+                "[PreviousOrders] RPC get_business_day_bounds failed:",
+                rpcErr,
               );
             }
-          } catch (rpcErr) {
-            console.warn(
-              "[PreviousOrders] RPC get_business_day_bounds failed:",
-              rpcErr,
-            );
           }
 
           // Strategy 2: Client-side Luxon (if RPC failed)
@@ -1117,6 +1251,9 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
               ...dateWindow,
               _resolvedStartTs: startTs,
               _resolvedEndTs: endTs,
+              // Only server bounds are reusable — a Luxon fallback stays
+              // provisional so the next refresh retries the RPC.
+              _boundsFromServer: boundsFromServer,
             },
           });
 
@@ -1126,39 +1263,13 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           // Step 2a: Window-wide count summaries, in parallel with the page
           // fetch below. Deliberately not awaited here and never fatal — if it
           // fails the list still renders, only the tab counts stay stale.
-          void withDeadline(
-            (signal) =>
-              OrderService.getHistoryOrderSummaries(
-                client,
-                locationId,
-                startTs,
-                endTs,
-                signal,
-                activeFilters,
-              ),
-            DEADLINES.read,
-            "getHistoryOrderSummaries",
-          )
-            .then(({ data, error, truncated }) => {
-              if (error || !data) return;
-              // Guard against a stale response landing after the user switched
-              // window or filters: only accept it if both still match.
-              const current = get();
-              if (
-                current.dateWindow?._resolvedStartTs !== startTs ||
-                current.dateWindow?._resolvedEndTs !== endTs ||
-                historyFilterKey(current.filters) !== activeFilterKey
-              ) {
-                return;
-              }
-              set({
-                windowSummaries: data,
-                windowSummariesTruncated: truncated,
-              });
-            })
-            .catch((err) => {
-              console.warn("[PreviousOrders] summary fetch failed:", err);
-            });
+          void _loadWindowSummaries(
+            client,
+            locationId,
+            startTs,
+            endTs,
+            activeFilters,
+          );
 
           // Step 2b: First filtered page + the exact total for these filters.
           // Deadline-wrapped so server-side statement timeouts (~30s) fail fast.

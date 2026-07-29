@@ -11,6 +11,7 @@ import { router } from 'expo-router'
 import { Search, Settings, X } from 'lucide-react-native'
 import {
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -495,4 +496,7 @@ function Badge ({
   )
 }
 
-export default MenuSearchSheet
+// Persistently mounted in the (main) layout, whose `usePathname()` makes it
+// re-render on every navigation. The only prop is a stable `useRef` handle, so
+// memo makes screen changes free here. See PaymentDetailBottomSheet for detail.
+export default memo(MenuSearchSheet)

@@ -17,12 +17,15 @@
 
 import { syncStorage } from "@/lib/storage";
 import type { PreviousOrder } from "@/lib/types";
+import type { HistoryOrderSummary } from "@/services/orderService";
 import type { DateWindowLabel } from "@/stores/usePreviousOrdersStore";
 
 const PREFIX = "prev_orders_offline:";
 const KEY = (locationId: string) => `${PREFIX}${locationId}`;
 const SIG_PREFIX = "prev_orders_sig:";
 const SIG_KEY = (locationId: string) => `${SIG_PREFIX}${locationId}`;
+const SUM_PREFIX = "prev_orders_summaries:";
+const SUM_KEY = (locationId: string) => `${SUM_PREFIX}${locationId}`;
 
 // Hard cap so a busy location can't bloat MMKV. Matches the in-memory cap.
 const MAX_CACHED_ORDERS = 200;
@@ -53,6 +56,28 @@ export interface CachedSignature {
   windowLabel: DateWindowLabel;
   cachedAt: number;
 }
+
+/**
+ * The window-wide discriminator projection behind the tab and provider counts,
+ * cached under its own key rather than inside `CachedPayload`.
+ *
+ * Separate on purpose: `set()` runs on every archived order (i.e. during
+ * checkout), and folding summaries into that payload would force a
+ * read-parse-rewrite of this blob on the till's critical path. Keyed and
+ * TTL'd exactly like the rows so the two expire together.
+ */
+interface CachedSummaries {
+  summaries: HistoryOrderSummary[];
+  windowLabel: DateWindowLabel;
+  cachedAt: number;
+}
+
+/**
+ * Rows above this are not cached at all. A truncated cache would make the tab
+ * counts silently under-report on re-entry, which is worse than paying for the
+ * refetch — so past this size we store nothing and the caller refetches.
+ */
+const MAX_CACHED_SUMMARIES = 2000;
 
 export const previousOrdersOfflineCache = {
   get(locationId: string): CachedPayload | null {
@@ -96,6 +121,61 @@ export const previousOrdersOfflineCache = {
     }
   },
 
+  /**
+   * Cached tab/provider counts for a window. Returns null when absent, expired,
+   * or built for a different window than the one being asked about.
+   */
+  getSummaries(
+    locationId: string,
+    windowLabel: DateWindowLabel,
+  ): HistoryOrderSummary[] | null {
+    try {
+      const raw = syncStorage.getString(SUM_KEY(locationId));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as CachedSummaries;
+      if (!parsed || !Array.isArray(parsed.summaries)) return null;
+      if (parsed.windowLabel !== windowLabel) return null;
+      if (
+        typeof parsed.cachedAt === "number" &&
+        Date.now() - parsed.cachedAt > CACHE_TTL_MS
+      ) {
+        syncStorage.remove(SUM_KEY(locationId));
+        return null;
+      }
+      return parsed.summaries;
+    } catch (err) {
+      console.error("[previousOrdersOfflineCache.getSummaries]", err);
+      return null;
+    }
+  },
+
+  /**
+   * Persist the window's summaries. A truncated set (or one over the cache cap)
+   * is dropped rather than stored — see MAX_CACHED_SUMMARIES. Any previously
+   * cached set is cleared in that case so a stale smaller one isn't served.
+   */
+  setSummaries(
+    locationId: string,
+    summaries: HistoryOrderSummary[],
+    windowLabel: DateWindowLabel,
+    truncated: boolean,
+  ): void {
+    try {
+      if (truncated || summaries.length > MAX_CACHED_SUMMARIES) {
+        syncStorage.remove(SUM_KEY(locationId));
+        return;
+      }
+      const payload: CachedSummaries = {
+        summaries,
+        windowLabel,
+        cachedAt: Date.now(),
+      };
+      syncStorage.set(SUM_KEY(locationId), JSON.stringify(payload));
+    } catch (err) {
+      console.error("[previousOrdersOfflineCache.setSummaries]", err);
+    }
+  },
+
   setSignature(
     locationId: string,
     signature: Omit<CachedSignature, "cachedAt">,
@@ -135,6 +215,7 @@ export const previousOrdersOfflineCache = {
     try {
       syncStorage.remove(KEY(locationId));
       syncStorage.remove(SIG_KEY(locationId));
+      syncStorage.remove(SUM_KEY(locationId));
     } catch (err) {
       console.error("[previousOrdersOfflineCache.clearLocation]", err);
     }

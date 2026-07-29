@@ -52,4 +52,7 @@ const NotificationBottomSheet: React.FC<NotificationBottomSheetProps> = ({
   );
 };
 
-export default NotificationBottomSheet;
+// Persistently mounted in the (main) layout, which re-renders on every
+// navigation. Both props must be referentially stable at the call site for this
+// to bite — see the hoisted NOOP in app/(main)/_layout.tsx.
+export default React.memo(NotificationBottomSheet);

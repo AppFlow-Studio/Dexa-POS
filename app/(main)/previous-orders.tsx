@@ -695,7 +695,7 @@ const PreviousOrdersScreen = () => {
             <View
               pointerEvents="none"
               style={{
-                ...StyleSheet.absoluteFillObject,
+                ...StyleSheet.absoluteFill,
                 backgroundColor: colors.panel + "AA",
                 alignItems: "center",
                 justifyContent: "center",
