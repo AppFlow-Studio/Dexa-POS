@@ -23,6 +23,19 @@ import { startWatcher, stopWatcher } from "@/lib/telemetry/longTaskWatcher";
 
 const FLUSH_INTERVAL_MS = 30_000;
 
+// Wave-0 telemetry is a measurement PILOT, not an optimization — it shipped
+// defaulted ON (useSettingsStore `telemetryEnabled: true`), and that value is
+// already persisted on every 2.2.3 install, so flipping the store default can
+// no longer turn it off in the field. Gate the whole harness here instead:
+// shipped (release) builds run it only when explicitly opted in via
+// EXPO_PUBLIC_TELEMETRY_PILOT=1, while __DEV__ keeps it on for local work.
+// This is the reliable kill switch; the in-app toggle still governs it wherever
+// the pilot is allowed to run.
+const PILOT_FORCED_ON =
+  process.env.EXPO_PUBLIC_TELEMETRY_PILOT === "1" ||
+  process.env.EXPO_PUBLIC_TELEMETRY_PILOT === "true";
+const TELEMETRY_ALLOWED = __DEV__ || PILOT_FORCED_ON;
+
 let initialized = false;
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -81,6 +94,14 @@ function handleAppStateChange(state: AppStateStatus): void {
 export function initTelemetry(): void {
   if (initialized) return;
   initialized = true;
+
+  // Shipped-build kill switch: force the harness off regardless of the
+  // persisted toggle and start no timers/listeners/subscriptions. Every record*
+  // path short-circuits on the disabled flag, so hot-path taps become no-ops.
+  if (!TELEMETRY_ALLOWED) {
+    setTelemetryEnabled(false);
+    return;
+  }
 
   hydrateFromMMKV();
 
