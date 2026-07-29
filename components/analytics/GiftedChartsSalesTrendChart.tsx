@@ -7,6 +7,23 @@ import { LineChart } from "@/components/charts/LazyGiftedCharts";
 
 const screenWidth = Dimensions.get("window").width;
 
+/**
+ * The slice of a report row this chart consumes. `currentReportData` is
+ * declared `null as any` in useAnalyticsStore, so annotating at this boundary
+ * is what types the whole pipeline below — without it every `.map`/`.filter`
+ * callback param inherits `any` from the store and trips noImplicitAny.
+ *
+ * All fields optional: which one carries the measure depends on the report
+ * (`value` for sales, `revenue`/`quantity` for the item reports), hence the
+ * fallback chain in `formattedData`.
+ */
+interface SalesTrendDatum {
+  date?: string;
+  value?: number;
+  revenue?: number;
+  quantity?: number;
+}
+
 const getXAxisLabelInterval = (dataLength: number) => {
   if (dataLength <= 14) return 1;
   if (dataLength <= 60) return 7;
@@ -16,7 +33,7 @@ const getXAxisLabelInterval = (dataLength: number) => {
 export default function GiftedChartsSalesTrendChart() {
   const { currentReportData, isLoading, error } = useAnalyticsStore();
 
-  const rawData = currentReportData?.chartData || [];
+  const rawData: SalesTrendDatum[] = currentReportData?.chartData || [];
 
   const processedData = rawData
     .map((item) => {

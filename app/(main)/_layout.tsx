@@ -50,6 +50,7 @@ import {
   unstable_batchedUpdates,
   View
 } from 'react-native'
+import { setCurrentRoutePath } from '@/lib/currentRoute'
 import { hintNativeGc } from '@/lib/nativeMemory'
 import {
   KEY_FANOUT_KDS_MS,
@@ -115,8 +116,12 @@ export default function MainLayout () {
   }, [pathname])
 
   // Wave-0 telemetry: tag long-task samples with the screen they blocked.
+  // Also publishes the path imperatively (lib/currentRoute) so persistently
+  // mounted overlays can read it from callbacks without taking their own
+  // `usePathname()` subscription — this layout is already the one subscriber.
   useEffect(() => {
     setCurrentRoute(pathname)
+    setCurrentRoutePath(pathname)
   }, [pathname])
 
   useEffect(() => {

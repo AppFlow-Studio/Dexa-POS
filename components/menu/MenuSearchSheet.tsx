@@ -1,3 +1,4 @@
+import { useOverlayTelemetry } from '@/hooks/useOverlayTelemetry'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { useMenuManagementSearchStore } from '@/stores/useMenuManagementSearchStore'
@@ -45,6 +46,10 @@ const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
   // full menu/category/modifier result set (and the grouped sections) on every
   // menu-store change for the whole app lifetime — wasted work + retained arrays.
   const [isOpen, setIsOpen] = useState(false)
+
+  // Renders-while-closed accounting for the global overlay set. The heavy work
+  // here is already gated on `isOpen`, so this is the proof rather than a fix.
+  useOverlayTelemetry('menu_search', isOpen)
 
   const handleChange = useCallback((index: number) => {
     setIsOpen(index >= 0)
