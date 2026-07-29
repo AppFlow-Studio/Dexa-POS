@@ -5,7 +5,7 @@ import { useScheduleStore } from "@/stores/useScheduleStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { format, parseISO } from "date-fns";
 import {
   ArrowLeft,

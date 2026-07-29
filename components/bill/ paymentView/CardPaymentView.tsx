@@ -27,6 +27,21 @@ import {
 } from "@/services/terminals/castles-response-mapper";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
+import { getSharedValorService } from "@/services/terminals/valor-service";
+import { getOrCreateValorCounter } from "@/services/terminals/valor-txn-counter";
+import { VALOR_DEFAULT_PORT } from "@/types/valor";
+import { getSharedAtomService } from "@/services/terminals/atom-service";
+import {
+  suspendAtomLoopbackProbing,
+  resumeAtomLoopbackProbing,
+} from "@/services/terminals/atomLoopbackDetector";
+import { atomBringPosToForeground } from "@/native/AtomBridge";
+import { useAtomTerminalStore } from "@/stores/useAtomTerminalStore";
+import {
+  useActiveProcessor,
+  resolveActiveProcessor,
+} from "@/hooks/useActiveProcessor";
+import { ATOM_LOOPBACK_HOST, ATOM_SALE_TIMEOUT_MS } from "@/types/atom";
 import {
   useActiveOrder,
   useActiveOrderTotals,
@@ -114,7 +129,11 @@ const CardPaymentView = () => {
     last4?: string;
     amount: number;
     tipAmount: number;
-    terminalType: "castles" | "dejavoo";
+    terminalType: "castles" | "dejavoo" | "valor" | "atom";
+    /** Valor reversal reference (charge-slip "Trans" number) for tip-adjust. */
+    tranNo?: string;
+    /** ATOM paymentId — reversal/tip-adjust reference. */
+    paymentId?: string;
   } | null>(null);
   const tipAdjustTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -205,6 +224,15 @@ const CardPaymentView = () => {
     selectedStation?.payment_terminal,
   );
 
+  // Single source of truth for which terminal is active on this station. When
+  // the active terminal is the on-device ATOM it is always ready (surfaced ==
+  // reachable), so the Charge Card button must NOT gate on the configured
+  // terminal's health check.
+  const activeProcessor = useActiveProcessor();
+  const isAtomActive = activeProcessor.source === "atom";
+  const effectiveTerminalReady = isAtomActive ? true : terminalReady;
+  const effectiveTerminalStatus = isAtomActive ? "online" : terminalStatus;
+
   const tipsConfig = useLocationConfigStore((s) => s.config.tips);
   const TIP_PRESETS = tipsConfig.presetPercentages;
   const tipAdjustTimeoutMs = (tipsConfig.tipAdjustTimeoutSeconds ?? 30) * 1000;
@@ -286,10 +314,12 @@ const CardPaymentView = () => {
   useEffect(() => {
     if (status === "processing") {
       const processPayment = async () => {
-        if (!selectedStation?.payment_terminal) {
+        // Active terminal for this sale — single source of truth (honours the
+        // processor preference: auto / force ATOM / prefer configured).
+        const terminal = resolveActiveProcessor().activeTerminal;
+        if (!terminal) {
           throw new Error("No payment terminal selected");
         }
-        const terminal = selectedStation.payment_terminal;
         const tipAmount = parseFloat(tipInput) || 0;
 
         try {
@@ -501,6 +531,384 @@ const CardPaymentView = () => {
               setStatus("success");
               tipAdjustTimeoutRef.current = null;
             }, tipAdjustTimeoutMs);
+            return;
+          }
+
+          // ============ VALOR BRANCH ============
+          if (terminal.terminal_type === "valor") {
+            const isUsb = terminal.connection_type === "usb";
+            const host = isUsb ? undefined : terminal.ip_address;
+            if (!isUsb && !host)
+              throw new Error("Valor terminal has no IP address configured");
+            const port = isUsb
+              ? undefined
+              : (terminal.port ?? VALOR_DEFAULT_PORT);
+
+            const service = getSharedValorService();
+            await service.connect({
+              connectionType: isUsb ? "usb" : "local_socket",
+              host,
+              port,
+              cancelPort: terminal.cancel_port,
+              epi: terminal.epi,
+              timeout: 120_000,
+              terminalId: terminal.id,
+            });
+
+            const counter = getOrCreateValorCounter({
+              terminalId: terminal.id,
+              supabaseClient: supabase,
+            });
+            if (!counter.isInitialized) await counter.initialize();
+            const referenceId = counter.next();
+            currentRefIdRef.current = referenceId;
+
+            // Pre-swipe journal (idempotency handle) — written BEFORE the send.
+            const activeOrderForJournal =
+              useOrderStore.getState().activeOrderId;
+            const orderForJournal = activeOrderForJournal
+              ? useOrderStore.getState().ordersById[activeOrderForJournal]
+              : undefined;
+            const paymentJournalKey = uuidv4();
+            const paymentJournalId = writePaymentJournal({
+              orderId: activeOrderForJournal ?? "unknown",
+              dbOrderId: orderForJournal?.db_order_id,
+              amount: totalToPay,
+              tipAmount,
+              paymentMethod: "Card",
+              idempotencyKey: paymentJournalKey,
+            });
+
+            // Valor amounts are integer cents.
+            const amountCents = Math.round((totalToPay + Number.EPSILON) * 100);
+            const tipCents = Math.round((tipAmount + Number.EPSILON) * 100);
+
+            const result = await service.processSale({
+              amount: amountCents,
+              tipAmount: tipCents,
+              referenceId,
+              // Capture STAN at S2 (before card) into the journal so an
+              // immediate crash can still recover via TRAN_MODE 90.
+              onStan: (stan) => {
+                updatePaymentJournal(paymentJournalId, {
+                  status: "terminal_approved",
+                  terminalTxnId: stan,
+                  ...(orderForJournal?.db_order_id && {
+                    dbOrderId: orderForJournal.db_order_id,
+                  }),
+                });
+              },
+            });
+
+            const valorTx = result.terminalResponse?.valor_transaction as
+              | Record<string, string>
+              | undefined;
+
+            // INDETERMINATE — the terminal may have charged. Do NOT complete
+            // the payment or fail the journal; leave it for reconciliation.
+            if (result.indeterminate) {
+              updatePaymentJournal(paymentJournalId, {
+                status: "terminal_approved",
+                terminalTxnId: result.stan ?? referenceId,
+              });
+              showIdle();
+              setErrorModal({
+                visible: true,
+                title: "Verifying Payment",
+                message:
+                  "The payment result could not be confirmed. Check the terminal before charging again — do not re-charge if the terminal shows approved.",
+              });
+              return;
+            }
+
+            // Clean decline — no charge happened.
+            if (!result.success) {
+              failPaymentJournal(
+                paymentJournalId,
+                `terminal_declined: ${result.error ?? "Declined"}`,
+              );
+              showDeclined();
+              setErrorModal({
+                visible: true,
+                title: "Payment Declined",
+                message: result.error || "Transaction failed",
+              });
+              return;
+            }
+
+            // PARTIAL approval — record the approved portion, keep the order
+            // outstanding for the remainder. Never auto-complete or re-run full.
+            if (result.partial) {
+              const approvedDollars = (result.approvedAmount ?? 0) / 100;
+              await handlePaymentCompletion({
+                method: "Card",
+                tipAmount: 0,
+                transactionDetails: {
+                  terminalType: "valor",
+                  isCashPriced: false,
+                  authorizationCode: valorTx?.approvalCode,
+                  cardType: valorTx?.cardType,
+                  last4: valorTx?.cardLast4,
+                  transactionId: referenceId,
+                  rrn: valorTx?.rrn,
+                  valorTransaction: result.terminalResponse,
+                  paymentJournalHandle: {
+                    id: paymentJournalId,
+                    idempotencyKey: paymentJournalKey,
+                  },
+                },
+                amountOverride: approvedDollars,
+              });
+              showIdle();
+              setErrorModal({
+                visible: true,
+                title: "Partial Approval",
+                message: `Approved $${approvedDollars.toFixed(2)}. Collect the remaining $${Math.max(0, totalToPay - approvedDollars).toFixed(2)} with another payment.`,
+              });
+              setStatus("ready");
+              return;
+            }
+
+            // Full success — complete + transition to CFD tip adjust.
+            const completionResult = await handlePaymentCompletion({
+              method: "Card",
+              tipAmount,
+              transactionDetails: {
+                terminalType: "valor",
+                isCashPriced: false,
+                authorizationCode: valorTx?.approvalCode,
+                cardType: valorTx?.cardType,
+                last4: valorTx?.cardLast4,
+                transactionId: referenceId,
+                rrn: valorTx?.rrn,
+                valorTransaction: result.terminalResponse,
+                paymentJournalHandle: {
+                  id: paymentJournalId,
+                  idempotencyKey: paymentJournalKey,
+                },
+              },
+              amountOverride: totalToPay,
+            });
+
+            // Backfill the terminal serial from the sale response. Valor's
+            // TRAN_MODE 96 query returns no serial, so a completed sale is the
+            // only place we learn it. Fire-and-forget; also mirror it into the
+            // in-memory station so the settings card updates without a reload.
+            const saleSerial = valorTx?.hardwareSerial;
+            const valorTerminalId = selectedStation?.payment_terminal?.id;
+            if (
+              saleSerial &&
+              valorTerminalId &&
+              selectedStation?.payment_terminal?.serial_number !== saleSerial
+            ) {
+              void supabase
+                .from("payment_terminals")
+                .update({ serial_number: saleSerial })
+                .eq("id", valorTerminalId)
+                .then(
+                  () => {
+                    const s = useStoreSettingsStore.getState();
+                    const station = s.selectedStation;
+                    if (station?.payment_terminal?.id === valorTerminalId) {
+                      s.setSelectedStation({
+                        ...station,
+                        payment_terminal: {
+                          ...station.payment_terminal,
+                          serial_number: saleSerial,
+                        },
+                      });
+                    }
+                  },
+                  () => {
+                    /* non-fatal: serial backfill is best-effort */
+                  },
+                );
+            }
+
+            const captured = {
+              referenceId,
+              rrn: result.rrn,
+              stan: result.stan,
+              tranNo: result.tranNo ?? valorTx?.tranNo,
+              dbPaymentId: (completionResult as any)?.dbPaymentId,
+              last4: valorTx?.cardLast4,
+              amount: totalToPay,
+              tipAmount,
+              terminalType: "valor" as const,
+            };
+            capturedPaymentRef.current = captured;
+            useTipAdjustStore.getState().setCaptured({
+              ...captured,
+              localOrderId: activeOrderId ?? undefined,
+              dbOrderId:
+                (activeOrderId
+                  ? useOrderStore.getState().ordersById[activeOrderId]
+                      ?.db_order_id
+                  : undefined) ?? undefined,
+              capturedAt: Date.now(),
+            });
+
+            showTipSelection(totalToPay, TIP_PRESETS, "card");
+            setStatus("tip_adjusting");
+            tipAdjustTimeoutRef.current = setTimeout(() => {
+              useTipAdjustStore.getState().clear();
+              showApproved();
+              schedulePostTipAdjustIdle(3000);
+              setStatus("success");
+              tipAdjustTimeoutRef.current = null;
+            }, tipAdjustTimeoutMs);
+            return;
+          }
+
+          // ====== ATOM BRANCH (on-device loopback) — ON-DEVICE TIP PROMPT =====
+          if (terminal.terminal_type === "atom") {
+            const host = terminal.ip_address ?? ATOM_LOOPBACK_HOST;
+            const port =
+              terminal.port ??
+              useAtomTerminalStore.getState().port ??
+              undefined;
+            if (!port) {
+              throw new Error("ATOM terminal port not detected");
+            }
+
+            const service = getSharedAtomService();
+            service.configure({
+              host,
+              port,
+              terminalId: terminal.id,
+              timeout: ATOM_SALE_TIMEOUT_MS,
+            });
+
+            // Reference id — the posReferenceNumber / idempotency handle.
+            const staSuffix = selectedStation?.id?.slice(-4) ?? "";
+            const referenceId = `ATOM_${Date.now()}_${staSuffix}`;
+            currentRefIdRef.current = referenceId;
+
+            // Pre-swipe journal (idempotency handle) — written BEFORE the send.
+            // Flow B: the tip is entered on the POS before Charge and baked into
+            // the single sale, so it's known here.
+            const activeOrderForJournal =
+              useOrderStore.getState().activeOrderId;
+            const orderForJournal = activeOrderForJournal
+              ? useOrderStore.getState().ordersById[activeOrderForJournal]
+              : undefined;
+            const paymentJournalKey = uuidv4();
+            const paymentJournalId = writePaymentJournal({
+              orderId: activeOrderForJournal ?? "unknown",
+              dbOrderId: orderForJournal?.db_order_id,
+              amount: totalToPay,
+              tipAmount,
+              paymentMethod: "Card",
+              idempotencyKey: paymentJournalKey,
+            });
+
+            // ONE immediate-capture sale, tip baked in (Flow B). NO on-device
+            // prompt (it wedges) and NO delayed capture (the gateway declines
+            // /complete + /tipAdjust). Verified on this build: `amount` is the
+            // BASE and the terminal ADDS `tipAmount` on top → charges base+tip.
+            // Pause background loopback probing for the whole sale — the ATOM
+            // app is single-session, so a probe overlapping the live authorize
+            // makes the terminal report "device is busy".
+            suspendAtomLoopbackProbing();
+            const result = await service
+              .processSale({
+                amount: totalToPay,
+                ...(tipAmount > 0 ? { tipAmount } : {}),
+                referenceId,
+                posData: {
+                  industryData: {
+                    type: "RESTAURANT",
+                    checkNumber: referenceId,
+                  },
+                },
+              })
+              .finally(() => resumeAtomLoopbackProbing());
+
+            // ATOM foregrounds itself for the card read and does NOT relaunch the
+            // POS afterward — bring ourselves back to the front.
+            void atomBringPosToForeground();
+
+            const atomTx = result.terminalResponse?.atom_transaction as
+              | Record<string, string>
+              | undefined;
+
+            // INDETERMINATE — the terminal may have charged. Do NOT complete the
+            // payment or fail the journal; leave it for reconciliation.
+            if (result.indeterminate) {
+              updatePaymentJournal(paymentJournalId, {
+                status: "terminal_approved",
+                terminalTxnId: result.paymentId ?? referenceId,
+              });
+              showIdle();
+              setErrorModal({
+                visible: true,
+                title: "Verifying Payment",
+                message:
+                  "The payment result could not be confirmed. Check the terminal before charging again — do not re-charge if the terminal shows approved.",
+              });
+              return;
+            }
+
+            // Cardholder cancelled / timed out at the tip screen — NO card was
+            // read and NO charge occurred. Clean, retryable abort (not a decline).
+            if (result.aborted) {
+              failPaymentJournal(
+                paymentJournalId,
+                `terminal_aborted: ${result.errorCode ?? "cancelled"}`,
+              );
+              showIdle();
+              setErrorModal({
+                visible: true,
+                title: "Payment Cancelled",
+                message:
+                  result.error || "Cancelled at the tip screen — no charge.",
+              });
+              return;
+            }
+
+            // Clean decline / validation error — no charge happened.
+            if (!result.success) {
+              failPaymentJournal(
+                paymentJournalId,
+                `terminal_declined: ${result.error ?? "Declined"}`,
+              );
+              showDeclined();
+              setErrorModal({
+                visible: true,
+                title: "Payment Declined",
+                message: result.error || "Transaction failed",
+              });
+              return;
+            }
+
+            // Full success — persist the tip we baked into the sale (Castles
+            // contract: amountOverride = base, tipAmount = additive tip). The
+            // terminal charged base+tip; the payment records base + tip.
+            await handlePaymentCompletion({
+              method: "Card",
+              tipAmount,
+              transactionDetails: {
+                terminalType: "atom",
+                isCashPriced: false,
+                authorizationCode: atomTx?.approvalCode,
+                cardType: atomTx?.cardType,
+                last4: atomTx?.cardLast4,
+                transactionId: result.paymentId ?? referenceId,
+                rrn: atomTx?.rrn ?? result.rrn,
+                // Carries the ATOM paymentId (processor_response.atom_transaction)
+                // used later for /cancel refunds.
+                atomTransaction: result.terminalResponse,
+                paymentJournalHandle: {
+                  id: paymentJournalId,
+                  idempotencyKey: paymentJournalKey,
+                },
+              },
+              amountOverride: totalToPay,
+            });
+
+            showApproved();
+            schedulePostTipAdjustIdle(3000);
+            setStatus("success");
             return;
           }
 
@@ -784,7 +1192,7 @@ const CardPaymentView = () => {
         keyboardShouldPersistTaps="handled"
       >
         {/* Terminal Status Banner */}
-        {terminalStatus !== "online" && (
+        {effectiveTerminalStatus !== "online" && (
           <View style={{ marginBottom: s(16) }}>
             <TerminalStatusBanner
               status={terminalStatus}
@@ -836,8 +1244,11 @@ const CardPaymentView = () => {
                   ${totalToPay.toFixed(2)}
                 </Text>
 
-                {/* Merchant-side tip options hidden — tip is captured via CFD post-capture flow */}
-                {false && (
+                {/* Merchant enters the tip BEFORE charging on ATOM (Flow B):
+                    no CFD and no post-capture tip-adjust, so the server keys the
+                    tip here and it's baked into the single sale. Other terminals
+                    capture tips via the CFD post-capture flow, so stay hidden. */}
+                {isAtomActive && (
                   <>
                     <Text
                       style={{
@@ -1241,22 +1652,22 @@ const CardPaymentView = () => {
           {status === "ready" && (
             <TouchableOpacity
               onPress={handleChargeCard}
-              disabled={!terminalReady}
+              disabled={!effectiveTerminalReady}
               style={{
                 width: "100%",
                 paddingVertical: s(11),
                 borderRadius: s(8),
                 marginBottom: s(8),
                 alignItems: "center",
-                backgroundColor: terminalReady ? colors.teal : colors.panel,
-                borderWidth: terminalReady ? 0 : 1,
+                backgroundColor: effectiveTerminalReady ? colors.teal : colors.panel,
+                borderWidth: effectiveTerminalReady ? 0 : 1,
                 borderColor: colors.border,
-                opacity: terminalReady ? 1 : 0.5,
+                opacity: effectiveTerminalReady ? 1 : 0.5,
               }}
             >
               <Text
                 style={{
-                  color: terminalReady ? colors.onSolid : colors.muted,
+                  color: effectiveTerminalReady ? colors.onSolid : colors.muted,
                   fontWeight: "700",
                   fontSize: s(14),
                 }}
@@ -1306,10 +1717,22 @@ const CardPaymentView = () => {
                 if (isCancelling) return;
                 if (status === "processing" && currentRefIdRef.current) {
                   setIsCancelling(true);
-                  const terminal = selectedStation?.payment_terminal;
+                  const terminal = resolveActiveProcessor().activeTerminal;
                   try {
                     if (terminal?.terminal_type === "castles") {
                       await getSharedCastlesService().gracefulDisconnect();
+                    } else if (terminal?.terminal_type === "atom") {
+                      // ATOM has no cancel-before-card endpoint in v1 — the
+                      // /authorize call blocks until the terminal resolves. No-op.
+                    } else if (terminal?.terminal_type === "valor") {
+                      // Cancel-before-card on the 5001 socket. Fire-and-don't-
+                      // trust: if the card already landed this is a no-op and the
+                      // main sale reconciles via TRAN_MODE 90.
+                      if (currentRefIdRef.current) {
+                        await getSharedValorService().cancelInFlight(
+                          currentRefIdRef.current,
+                        );
+                      }
                     } else if (terminal) {
                       const DejavooAPI = new DejavooSpinAPI(supabase);
                       await DejavooAPI.loadTerminal(

@@ -769,6 +769,10 @@ export interface OrderPaymentTransactionDetails {
   dejavooTransaction?: DejavooSaleTransactionResponse;
   // Full Castles response JSONB (from buildCastlesTerminalResponse)
   castlesTransaction?: Record<string, unknown>;
+  // Full Valor response JSONB (from buildValorTerminalResponse)
+  valorTransaction?: Record<string, unknown>;
+  // Full ATOM response JSONB (from buildAtomTerminalResponse)
+  atomTransaction?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -843,9 +847,12 @@ export interface OrderProfilePayment {
   preAuthAmount?: number;
   preAuthRrn?: string;
   preAuthStan?: string; // Castles only
+  /** Valor only — the charge-slip "Trans" number; the reference the Valor
+   *  completion (TICKET) / release (VOID) needs (Valor has no RRN/STAN reversal). */
+  preAuthTranNo?: string;
   preAuthAuthCode?: string;
   preAuthReferenceId?: string;
-  preAuthTerminalType?: "dejavoo" | "castles";
+  preAuthTerminalType?: "dejavoo" | "castles" | "valor";
 
   // Void tracking
   isVoided: boolean;

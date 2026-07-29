@@ -40,6 +40,14 @@ import {
     stopCastlesUsbAutoConnect,
 } from "@/services/terminals/castlesUsbAutoConnect";
 import {
+    startValorUsbAutoConnect,
+    stopValorUsbAutoConnect,
+} from "@/services/terminals/valorUsbAutoConnect";
+import {
+    startAtomLoopbackDetect,
+    stopAtomLoopbackDetect,
+} from "@/services/terminals/atomLoopbackDetector";
+import {
     startTimeclockSyncProcessor,
     stopTimeclockSyncProcessor,
 } from "@/services/timeclockSyncProcessor";
@@ -276,11 +284,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     const isUsbCastles =
       terminal?.terminal_type === "castles" &&
       terminal?.connection_type === "usb";
+    const isUsbValor =
+      terminal?.terminal_type === "valor" &&
+      terminal?.connection_type === "usb";
     if (!isKDS && isUsbCastles) {
       startCastlesUsbAutoConnect();
     }
+    if (!isKDS && isUsbValor) {
+      startValorUsbAutoConnect();
+    }
     return () => {
       stopCastlesUsbAutoConnect();
+      stopValorUsbAutoConnect();
     };
   }, [
     isKDS,
@@ -288,6 +303,17 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     selectedStation?.payment_terminal?.terminal_type,
     selectedStation?.payment_terminal?.connection_type,
   ]);
+
+  // On-device ("internal") ATOM detection: probe the loopback ATOM app and
+  // surface it as an available terminal. Self-gates on Landi hardware + the
+  // native AtomBridge, so it's a no-op on non-Landi devices. POS-only.
+  useEffect(() => {
+    if (isKDS) return;
+    startAtomLoopbackDetect();
+    return () => {
+      stopAtomLoopbackDetect();
+    };
+  }, [isKDS]);
 
   // Star printer health check + background discovery lifecycle
   useEffect(() => {

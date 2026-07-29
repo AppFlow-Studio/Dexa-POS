@@ -1,7 +1,7 @@
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetView, // Using BottomSheetView as per DropShiftBottomSheet
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import React, { useCallback, useMemo, useState } from "react";
 import { bottomSheetTheme } from "@/lib/theme";
 import NotificationPanel from "./NotificationPanel"; // Assuming NotificationPanel is in the same directory

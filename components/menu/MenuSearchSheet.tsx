@@ -6,7 +6,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetSectionList,
   BottomSheetTextInput
-} from '@gorhom/bottom-sheet'
+} from '@/components/ui/bottomSheet'
 import { router } from 'expo-router'
 import { Search, Settings, X } from 'lucide-react-native'
 import {

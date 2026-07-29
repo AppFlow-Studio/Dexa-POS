@@ -23,7 +23,7 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetSectionList
-} from '@gorhom/bottom-sheet'
+} from '@/components/ui/bottomSheet'
 import * as ImagePicker from 'expo-image-picker'
 import { router } from 'expo-router'
 import {

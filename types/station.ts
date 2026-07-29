@@ -28,13 +28,23 @@ export interface StationPaymentTerminal {
     | "clover"
     | "square"
     | "stripe_terminal"
-    | "castles";
+    | "castles"
+<<<<<<< HEAD
+    | "valor";
+=======
+    | "valor"
+    | "atom";
+>>>>>>> 4ee75d9eefc78285ddde5f1d2433ad71d00cca23
   terminal_model: string | null;
   is_connected: boolean;
-  /** Castles terminal IP address */
+  /** Castles/Valor terminal IP address */
   ip_address?: string;
-  /** Castles terminal port (default 8080) */
+  /** Castles terminal port (default 8080) / Valor port (default 5000) */
   port?: number;
+  /** Valor cancel-before-card port (default 5001) */
+  cancel_port?: number;
+  /** Valor EPI (merchant/device identifier) */
+  epi?: string;
   /** Hardware serial number printed on the device */
   serial_number?: string | null;
   last_connection_status: "Online" | "Offline" | "NotFound" | null;

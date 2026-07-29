@@ -14,8 +14,8 @@ import BottomSheet, {
     BottomSheetBackdrop,
     BottomSheetScrollView,
     BottomSheetTextInput,
-} from "@gorhom/bottom-sheet";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+} from "@/components/ui/bottomSheet";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { Ban, Check, RotateCcw, Trash2, X } from "lucide-react-native";
 import React, {
     forwardRef,

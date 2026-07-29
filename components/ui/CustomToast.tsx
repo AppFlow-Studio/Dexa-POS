@@ -7,8 +7,7 @@ import {
     X,
     XCircle,
 } from "lucide-react-native";
-import { MotiView } from "moti";
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import {
     Animated,
     PanResponder,
@@ -16,6 +15,12 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import Reanimated, {
+    FadeOut,
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
+} from "react-native-reanimated";
 
 interface CustomToastProps {
   id: string;
@@ -39,7 +44,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
   const translateX = useRef(new Animated.Value(0)).current;
 
   const panResponder = useRef(
-    new PanResponder.create({
+    PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) =>
         Math.abs(gestureState.dx) > 10 &&
         Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
@@ -70,6 +75,24 @@ const CustomToast: React.FC<CustomToastProps> = ({
       },
     }),
   ).current;
+
+  // Enter animation (replaces moti MotiView `from`/`animate`): fade + slight
+  // slide-in on mount, driven by reanimated. Compact (undo) slides up from
+  // below (+12); the full toast slides down from above (-20), matching the
+  // previous moti behavior.
+  const enterOpacity = useSharedValue(0);
+  const enterTranslateY = useSharedValue(onUndo ? 12 : -20);
+  useEffect(() => {
+    const duration = onUndo ? 200 : 300;
+    enterOpacity.value = withTiming(1, { duration });
+    enterTranslateY.value = withTiming(0, { duration });
+    // Run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const enterStyle = useAnimatedStyle(() => ({
+    opacity: enterOpacity.value,
+    transform: [{ translateY: enterTranslateY.value }],
+  }));
 
   const handleUndo = () => {
     if (onUndo) {
@@ -108,16 +131,16 @@ const CustomToast: React.FC<CustomToastProps> = ({
         }}
         {...panResponder.panHandlers}
       >
-        <MotiView
-          from={{ opacity: 0, translateY: 12 }}
-          animate={{ opacity: 1, translateY: 0 }}
-          exit={{ opacity: 0, translateY: 12 }}
-          transition={{ type: "timing", duration: 200 }}
-          style={{
-            maxWidth: 300,
-            width: 300,
-            marginBottom: 6,
-          }}
+        <Reanimated.View
+          style={[
+            {
+              maxWidth: 300,
+              width: 300,
+              marginBottom: 6,
+            },
+            enterStyle,
+          ]}
+          exiting={FadeOut.duration(200)}
         >
           <View
             style={{
@@ -185,7 +208,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
               <X size={14} color={colors.label} />
             </TouchableOpacity>
           </View>
-        </MotiView>
+        </Reanimated.View>
       </Animated.View>
     );
   }
@@ -197,16 +220,16 @@ const CustomToast: React.FC<CustomToastProps> = ({
       }}
       {...panResponder.panHandlers}
     >
-      <MotiView
-        from={{ opacity: 0, translateY: -20 }}
-        animate={{ opacity: 1, translateY: 0 }}
-        exit={{ opacity: 0, translateY: -20 }}
-        transition={{ type: "timing", duration: 300 }}
-        style={{
-          width: 380,
-          maxWidth: 400,
-          marginBottom: 10,
-        }}
+      <Reanimated.View
+        style={[
+          {
+            width: 380,
+            maxWidth: 400,
+            marginBottom: 10,
+          },
+          enterStyle,
+        ]}
+        exiting={FadeOut.duration(300)}
       >
         <View className={containerClasses}>
           {Icon}
@@ -218,7 +241,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
             <X size={18} color={colors.label} />
           </TouchableOpacity>
         </View>
-      </MotiView>
+      </Reanimated.View>
     </Animated.View>
   );
 };

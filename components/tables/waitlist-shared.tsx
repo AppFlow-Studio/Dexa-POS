@@ -13,7 +13,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
   BottomSheetView
-} from '@gorhom/bottom-sheet'
+} from '@/components/ui/bottomSheet'
 import {
   AlertCircle,
   Bell,

@@ -4,7 +4,7 @@ import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetTextInput,
   BottomSheetView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { Package, Search, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";

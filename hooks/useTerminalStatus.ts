@@ -7,7 +7,9 @@ import {
   probeCastlesTerminal,
   type CastlesProbeReason,
 } from '@/services/terminals/castles-service';
+import { getSharedValorService } from '@/services/terminals/valor-service';
 import { CASTLES_DEFAULT_PORT } from '@/types/castles';
+import { VALOR_DEFAULT_PORT, VALOR_SALE_TIMEOUT_MS } from '@/types/valor';
 import type { StationPaymentTerminal } from '@/types/station';
 import NetInfo from '@react-native-community/netinfo';
 import { useEffect, useRef, useState } from 'react';
@@ -27,6 +29,8 @@ export type TerminalStatusReason =
   | 'dejavoo_offline'
   | 'dejavoo_not_found'
   | 'dejavoo_error'
+  | 'valor_offline'
+  | 'valor_error'
   | 'not_configured';
 
 /**
@@ -167,6 +171,58 @@ export function useTerminalStatus(
         setReason(probe.reason);
         setErrorMessage(probe.error || 'Castles terminal is unreachable');
         return false;
+      }
+
+      // --- Valor branch: single-session-safe probe via TERMINAL_QUERY ---
+      if (paymentTerminal.terminal_type === 'valor') {
+        const service = getSharedValorService();
+        // If the shared singleton is already connected, trust it — opening a
+        // competing probe socket would wedge the single-session terminal.
+        if (service.isConnected()) {
+          lastCheckTimeRef.current = now;
+          setStatus('online');
+          setReason('online');
+          setErrorMessage(null);
+          return true;
+        }
+        const host = paymentTerminal.ip_address;
+        if (!host && paymentTerminal.connection_type !== 'usb') {
+          setStatus('offline');
+          setReason('no_ip_configured');
+          setErrorMessage('Valor terminal has no IP address configured');
+          lastCheckTimeRef.current = now;
+          return false;
+        }
+        try {
+          if (service.isSuspended()) service.resume();
+          await service.connect({
+            connectionType: paymentTerminal.connection_type === 'usb' ? 'usb' : 'local_socket',
+            host,
+            port: paymentTerminal.port ?? VALOR_DEFAULT_PORT,
+            cancelPort: paymentTerminal.cancel_port,
+            epi: paymentTerminal.epi,
+            timeout: VALOR_SALE_TIMEOUT_MS,
+            terminalId,
+          });
+          const q = await service.terminalQuery();
+          lastCheckTimeRef.current = now;
+          if (q.success) {
+            setStatus('online');
+            setReason('online');
+            setErrorMessage(null);
+            return true;
+          }
+          setStatus('offline');
+          setReason('valor_offline');
+          setErrorMessage(q.error || 'Valor terminal is unreachable');
+          return false;
+        } catch (err) {
+          lastCheckTimeRef.current = now;
+          setStatus('offline');
+          setReason('valor_error');
+          setErrorMessage(err instanceof Error ? err.message : 'Valor terminal is unreachable');
+          return false;
+        }
       }
 
       // --- Dejavoo branch (default) ---

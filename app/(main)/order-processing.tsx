@@ -45,7 +45,7 @@ import {
   formatOrderStatus,
   formatPaymentStatus,
 } from "@/utils/orderStatusHelpers";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
