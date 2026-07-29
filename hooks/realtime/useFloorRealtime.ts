@@ -58,8 +58,24 @@ const JUST_LOADED_SUPPRESS_MS = 1_200;
 // Array.from(listeners) + Immer proxy creation on the tables screen.
 const HEARTBEAT_MS = 120_000;
 const HEARTBEAT_STALE_MS = 60_000;
-// Fallback poll cadence while the channel is disconnected.
+// Fallback poll cadence while the channel is disconnected. Starts tight so a
+// brief drop converges fast, then backs off — a channel that's been down for
+// minutes is a degraded network, and hammering it with the heaviest floor RPC
+// every 5s makes that worse, not better.
+//
+// Measured cost of one poll on a Tab S6 Lite: 835-1999ms of RPC plus a ~215KB
+// floor-plan-db persist. At a flat 5s cadence that's a ~25% duty cycle of the
+// most expensive query we have, running indefinitely, on a station whose
+// network is already struggling — and it runs on EVERY screen, because
+// useFloorRealtime is mounted in LocationRealtimeProvider.
+//
+// The 30s ceiling is deliberately still tighter than the 60s staleness we
+// already tolerate while CONNECTED (HEARTBEAT_STALE_MS), so this stays more
+// aggressive when disconnected than when healthy — it just stops being
+// pathological.
 const FALLBACK_POLL_MS = 5_000;
+const FALLBACK_POLL_MAX_MS = 30_000;
+const FALLBACK_POLL_BACKOFF = 2;
 
 /**
  * Subscribes to `location:{locationId}:tables` and keeps the floor plan +
@@ -244,8 +260,24 @@ export function useFloorRealtime({
   useEffect(() => {
     if (!enabled || isConnected || !locationId) return;
     reconcileNow(); // cover the mount→SUBSCRIBED gap immediately
-    const id = setInterval(reconcileNow, FALLBACK_POLL_MS);
-    return () => clearInterval(id);
+
+    // Self-rescheduling timeout rather than setInterval, so the delay can grow.
+    // Resets to FALLBACK_POLL_MS every time this effect re-runs — i.e. on every
+    // transition back out of SUBSCRIBED — so a reconnect always restores the
+    // tight cadence and the backoff only accumulates within one outage.
+    let delay = FALLBACK_POLL_MS;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = () => {
+      reconcileNow();
+      delay = Math.min(delay * FALLBACK_POLL_BACKOFF, FALLBACK_POLL_MAX_MS);
+      timer = setTimeout(tick, delay);
+    };
+    timer = setTimeout(tick, delay);
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [enabled, isConnected, locationId, reconcileNow]);
 
   return {

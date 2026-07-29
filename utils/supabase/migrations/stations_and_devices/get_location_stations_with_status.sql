@@ -54,6 +54,10 @@ BEGIN
         s.app_version,
         s.os_version,
 <<<<<<< HEAD
+        s.current_receipt_printer_id,
+        s.kiosk_profile_id,
+=======
+<<<<<<< HEAD
         -- Payment terminal data (non-sensitive metadata only).
         -- Resolved DIRECTLY from payment_terminals.station_id + is_active — the
         -- same source of truth the client uses (loadTerminals / register /
@@ -65,6 +69,7 @@ BEGIN
         s.current_receipt_printer_id,
         s.kiosk_profile_id,
 >>>>>>> 4ee75d9eefc78285ddde5f1d2433ad71d00cca23
+>>>>>>> dc7652f1f25d3f3033a98fc838c847f27fd64f7a
         CASE WHEN pt.id IS NOT NULL THEN json_build_object(
           'id', pt.id,
           'terminal_name', pt.terminal_name,
@@ -75,6 +80,10 @@ BEGIN
           'is_connected', pt.is_connected,
           'last_connection_status', pt.last_connection_status,
           'last_connection_test_at', pt.last_connection_test_at,
+<<<<<<< HEAD
+          'ip_address', COALESCE(pt.local_ip_address::text, pt.valor_ip_address::text),
+          'port', COALESCE(pt.local_port, pt.valor_port),
+=======
 <<<<<<< HEAD
           -- Valor stores its network config in valor_* columns; everything else
           -- uses local_*. Fall back to local_* so a Valor row that only wrote
@@ -89,6 +98,7 @@ BEGIN
           'ip_address', COALESCE(pt.local_ip_address::text, pt.valor_ip_address::text),
           'port', COALESCE(pt.local_port, pt.valor_port),
 >>>>>>> 4ee75d9eefc78285ddde5f1d2433ad71d00cca23
+>>>>>>> dc7652f1f25d3f3033a98fc838c847f27fd64f7a
           'cancel_port', pt.valor_cancel_port,
           'epi', pt.valor_epi,
           'connection_type', pt.connection_type

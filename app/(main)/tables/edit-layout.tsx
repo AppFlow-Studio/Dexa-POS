@@ -886,12 +886,12 @@ const LayoutEditorScreenContent = () => {
             {/* Grid fills the visible viewport only — a world-sized SVG would
                 rasterize a huge bitmap (6000×6000×4B ≈ 324MB → Android crash).
                 Static so it always covers the whole screen at any pan/zoom. */}
-            <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
               <GridPattern />
             </View>
 
             <Animated.View
-              style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
+              style={[StyleSheet.absoluteFill, canvasAnimatedStyle]}
               pointerEvents="box-none"
             >
               {tables.map((table) => (

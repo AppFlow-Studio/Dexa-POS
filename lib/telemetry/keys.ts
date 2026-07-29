@@ -57,6 +57,121 @@ export const KEY_FLOOR_LOAD_APPLY_MS = internKey("floor.load_apply_ms");
 export const KEY_RESUME_SETTLE_MS = internKey("resume_settle_ms");
 
 // --------------------------------------------------------------------------
+// Resume coordinator (lib/lifecycle/appLifecycleCoordinator.ts).
+//
+// resume_settle_ms above measures the SYMPTOM (how long until the JS thread
+// settles after foreground). These measure the CAUSE: which bucket spent the
+// time, how many tasks ran vs were gated out, and how many HTTP requests the
+// resume actually issued. `resume.requests` is the before/after number for
+// the request-storm acceptance criterion — compare its max (peak concurrent
+// in one resume window) across builds.
+// --------------------------------------------------------------------------
+export const KEY_RESUME_BUCKET_MS = internKey("resume.bucket_ms");
+export const KEY_RESUME_TASK_MS = internKey("resume.task_ms");
+export const KEY_RESUME_TASK_ERROR = internKey("resume.task_error");
+export const KEY_RESUME_TASKS_RUN = internKey("resume.tasks_run");
+export const KEY_RESUME_TASKS_SKIPPED = internKey("resume.tasks_skipped");
+/** Requests issued inside a resume window (count = windows, max = peak). */
+export const KEY_RESUME_REQUESTS = internKey("resume.requests");
+/** Requests in flight concurrently at any instant during a resume window. */
+export const KEY_RESUME_PEAK_CONCURRENT = internKey("resume.peak_concurrent");
+
+// --------------------------------------------------------------------------
+// Realtime channel lifecycle (hooks/realtime/useRealtimechannel.ts).
+//
+// Added because a telemetry export showed the floor fallback poll running —
+// which only happens while the channel is NOT subscribed — with no way to see
+// why, or for how long. `rt.disconnected_ms` is the number that matters: the
+// fallback poll's cost scales with it, so a station with long/frequent
+// disconnects pays repeatedly for the heaviest floor RPC.
+// --------------------------------------------------------------------------
+export const KEY_RT_CHANNEL_DISCONNECT = internKey("rt.channel_disconnect");
+export const KEY_RT_CHANNEL_SUBSCRIBED = internKey("rt.channel_subscribed");
+/** Wall time between losing SUBSCRIBED and regaining it. */
+export const KEY_RT_DISCONNECTED_MS = internKey("rt.disconnected_ms");
+
+// --------------------------------------------------------------------------
+// Global overlay mount/render accounting (hooks/useOverlayTelemetry.ts).
+//
+// The acceptance number for W0-x is `overlay.render_closed.<name>`: renders a
+// persistently-mounted overlay performed while it was CLOSED. Target 0 during
+// an order-mutation burst — anything above that is a subscription the overlay
+// shouldn't be holding while hidden.
+//
+// `overlay.mount.<name>` counts how many times the heavy body actually mounted
+// in the session (1 per open when the controller unmounts on close), and
+// `overlay.open_ms.<name>` is the tap → first-committed-frame duration that
+// decides unmount-on-close vs retain-after-first-open.
+// --------------------------------------------------------------------------
+export interface OverlayKeyIds {
+  /** Renders performed while `isOpen` was false. Target: 0. */
+  renderClosed: number;
+  /** Renders performed while open — informational, not a budget. */
+  renderOpen: number;
+  /** Body mounts (count = mounts this session). */
+  mount: number;
+  /** Open request → first committed frame of the body, ms. */
+  openMs: number;
+}
+
+const overlayKeyCache: Record<string, OverlayKeyIds> = Object.create(null);
+
+export function overlayKeyIds(name: string): OverlayKeyIds {
+  let ids = overlayKeyCache[name];
+  if (ids === undefined) {
+    ids = {
+      renderClosed: internKey(`overlay.render_closed.${name}`),
+      renderOpen: internKey(`overlay.render_open.${name}`),
+      mount: internKey(`overlay.mount.${name}`),
+      openMs: internKey(`overlay.open_ms.${name}`),
+    };
+    overlayKeyCache[name] = ids;
+  }
+  return ids;
+}
+
+// --------------------------------------------------------------------------
+// Screen mount/render cost (hooks/useScreenRenderTelemetry.ts).
+//
+// Phase-1 audit item 6: attribute the Tables / table-detail stall to mount vs
+// re-render. `screen.mount_ms` is time from the first render call to the first
+// committed frame; `screen.render_ms` is the same for every subsequent commit;
+// `screen.renders` is the raw commit count for the screen.
+// --------------------------------------------------------------------------
+export interface ScreenKeyIds {
+  mountMs: number;
+  renderMs: number;
+  renders: number;
+}
+
+const screenKeyCache: Record<string, ScreenKeyIds> = Object.create(null);
+
+export function screenKeyIds(name: string): ScreenKeyIds {
+  let ids = screenKeyCache[name];
+  if (ids === undefined) {
+    ids = {
+      mountMs: internKey(`screen.mount_ms.${name}`),
+      renderMs: internKey(`screen.render_ms.${name}`),
+      renders: internKey(`screen.renders.${name}`),
+    };
+    screenKeyCache[name] = ids;
+  }
+  return ids;
+}
+
+const resumeBucketCache: Record<string, number> = Object.create(null);
+
+/** Per-bucket completion span id (`resume.bucket_ms.<bucket>`). */
+export function resumeBucketKeyIds(bucket: string): number {
+  let id = resumeBucketCache[bucket];
+  if (id === undefined) {
+    id = internKey(`resume.bucket_ms.${bucket}`);
+    resumeBucketCache[bucket] = id;
+  }
+  return id;
+}
+
+// --------------------------------------------------------------------------
 // Per-persist-key ids (persist.fire.<mmkvKey> etc.), cached per store name so
 // lazyDebouncedWrite does one object-property hit per call after the first.
 // --------------------------------------------------------------------------

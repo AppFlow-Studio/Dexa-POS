@@ -268,7 +268,8 @@ export const useTableCardData = (
 
   const textFit = useMemo(() => {
     const shapeId = table.shape_id?.toLowerCase() ?? "";
-    const isCircleShape = shapeId.includes("circle");
+    const isCircleShape =
+      shapeId.includes("circle") || shapeId.includes("high-top");
     const isBoothShape =
       shapeId.includes("booth") || table.category === "booth";
     const minDim = Math.min(effectiveWidth, effectiveHeight);
