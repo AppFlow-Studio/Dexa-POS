@@ -64,7 +64,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
 
   useEffect(() => {
     if (isSyncing) {
-      Animated.loop(
+      const loop = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
             toValue: 0.6,
@@ -77,10 +77,13 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
             useNativeDriver: true,
           }),
         ])
-      ).start();
-    } else {
-      pulseAnim.setValue(1);
+      );
+      loop.start();
+      // Stop the loop when syncing ends or the bar unmounts — a bare
+      // Animated.loop().start() keeps running (and holds a JS timer) forever.
+      return () => loop.stop();
     }
+    pulseAnim.setValue(1);
   }, [isSyncing]);
 
   const mainBtn = {

@@ -15,16 +15,30 @@ export interface OptimizedListImageProps {
   /** Low-data placeholder while the remote image loads */
   blurhash?: string | null;
   thumbhash?: string | null;
+  /**
+   * Decode target (px) for remote/base64/file sources. expo-image downscales
+   * the native bitmap to ~this size instead of decoding at full resolution —
+   * bitmaps live in the native heap on Android 8+, so an uncapped 1024² photo
+   * costs ~4MB each; at 256px it's ~256KB (~16× less). Menu thumbnails render
+   * ~100–180px so 256 stays crisp. Raise it for larger displays.
+   */
+  decodeSize?: number;
 }
 
-function toExpoSource(source: ImageSourcePropType): string | number | ImageSource {
+function toExpoSource(
+  source: ImageSourcePropType,
+  decodeSize: number,
+): string | number | ImageSource {
   if (typeof source === "number") return source;
   if (Array.isArray(source)) {
     return source[0] as ImageSource;
   }
   if (typeof source === "object" && source !== null && "uri" in source) {
     const uri = (source as { uri?: string }).uri;
-    if (typeof uri === "string") return { uri };
+    // Decode hint: downscale remote/data-URI bitmaps to thumbnail size in the
+    // native heap instead of decoding at full resolution.
+    if (typeof uri === "string")
+      return { uri, width: decodeSize, height: decodeSize };
   }
   return source as ImageSource;
 }
@@ -41,8 +55,12 @@ const OptimizedListImage = React.memo(function OptimizedListImage({
   recyclingKey,
   blurhash,
   thumbhash,
+  decodeSize = 256,
 }: OptimizedListImageProps) {
-  const expoSource = useMemo(() => toExpoSource(source), [source]);
+  const expoSource = useMemo(
+    () => toExpoSource(source, decodeSize),
+    [source, decodeSize],
+  );
 
   const placeholder = useMemo(() => {
     if (blurhash) return { blurhash, width: 32, height: 32 };

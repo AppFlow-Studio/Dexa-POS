@@ -283,6 +283,9 @@ const toRefundReasonType = (reason: string): RefundReasonType => {
 };
 
 const MAX_IN_MEMORY_PREVIOUS_ORDERS = 200;
+// Refund records accumulate all shift; cap retained count to bound memory
+// (older refunds stay queryable from the DB / order history).
+const MAX_IN_MEMORY_REFUNDS = 500;
 /**
  * Rows per page. The list shows exactly one page at a time and the merchant
  * steps between pages, so this is a hard page size rather than an initial
@@ -1668,7 +1671,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             updatedOrder;
         }
         return {
-          refunds: [...state.refunds, refundRecord],
+          refunds: [...state.refunds, refundRecord].slice(-MAX_IN_MEMORY_REFUNDS),
           previousOrders: updatedOrders,
           _orderLookup: newLookup,
         };
@@ -1877,7 +1880,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
         return {
           previousOrders: updatedPreviousOrders,
-          refunds: [...state.refunds, newRefundRecord],
+          refunds: [...state.refunds, newRefundRecord].slice(-MAX_IN_MEMORY_REFUNDS),
           _orderLookup: buildOrderLookupMap(updatedPreviousOrders),
         };
       });

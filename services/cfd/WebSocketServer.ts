@@ -98,6 +98,8 @@ export class WebSocketServer {
   }
 
   private startHeartbeat(): void {
+    // Clear any existing timer so a re-start can't leak a second interval.
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = setInterval(() => {
       const now = Date.now();
       this.clients.forEach((client) => {
