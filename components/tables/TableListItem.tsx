@@ -89,71 +89,6 @@ const useScale = () => {
   return { uiScale, s };
 };
 
-const StatusIndicator = ({
-  status,
-  tableId,
-  isOvertime,
-}: {
-  status: string;
-  tableId?: string;
-  isOvertime: boolean;
-}) => {
-  const { s } = useScale();
-  // Get the session directly from the store to ensure we have the latest status
-  const sessionStatus = tableId
-    ? useTableSessionStore((s) => s.sessions[tableId])?.status
-    : undefined;
-  const finalStatus = sessionStatus || status;
-  const normalizedStatus = finalStatus?.toLowerCase() || "available";
-
-  // Map to theme colors from theme-colors.js
-  let color: string;
-  if (isOvertime) {
-    color = colors.warning;
-  } else {
-    switch (normalizedStatus) {
-      case "available":
-        color = colors.tableAvailable;
-        break;
-      case "seated":
-        color = colors.tableSeated;
-        break;
-      case "ordered":
-        color = colors.tableOrdered;
-        break;
-      case "served":
-        color = colors.tableServed;
-        break;
-      case "check_presented":
-        color = colors.tableCheckPresented;
-        break;
-      case "paid":
-        color = colors.tablePaid;
-        break;
-      case "cleaning":
-        color = colors.tableCleaning;
-        break;
-      case "blocked":
-      case "not_in_service":
-        color = colors.tableNotInService;
-        break;
-      default:
-        color = colors.tableInUse;
-    }
-  }
-
-  return (
-    <View
-      style={{
-        width: s(6),
-        height: s(6),
-        borderRadius: s(3),
-        backgroundColor: color,
-      }}
-    />
-  );
-};
-
 const QuickActionButton: React.FC<{
   onPress: () => void;
   label: string;
@@ -563,13 +498,12 @@ const ExpandedView: React.FC<{
       entering={iosOnly(FadeIn.duration(200))}
       exiting={iosOnly(FadeOut.duration(100))}
       style={{
-        marginTop: s(10),
+        marginTop: s(6),
         borderTopWidth: 1,
-        borderTopColor: colors.border,
+        borderTopColor: colors.border + "30",
         paddingTop: s(10),
-        backgroundColor: colors.screen,
-        borderRadius: s(8),
-        padding: s(10),
+        paddingHorizontal: s(2),
+        paddingBottom: s(4),
         overflow: "visible",
       }}
     >
@@ -871,39 +805,33 @@ const TableListItem: React.FC<{
   return (
     <Animated.View
       style={{
-        marginBottom: s(4),
         overflow: isExpanded ? "visible" : "hidden",
       }}
     >
       <TouchableOpacity
         onPress={handlePress}
-        activeOpacity={0.8}
+        activeOpacity={0.7}
         style={{
-          borderRadius: s(8),
-          backgroundColor: isExpanded ? colors.teal + "08" : colors.panel,
-          borderWidth: 1,
-          borderColor: isExpanded ? colors.teal + "40" : colors.border,
+          backgroundColor: isExpanded ? colors.teal + "08" : "transparent",
           borderLeftWidth: s(3),
           borderLeftColor: accentColor,
-          overflow: isExpanded ? "visible" : "hidden",
+          overflow: "hidden",
         }}
       >
-        {/* Collapsed row */}
+        {/* Collapsed row — flat iOS-style with thin divider */}
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
-            paddingVertical: s(5),
-            paddingHorizontal: s(8),
-            gap: s(6),
+            paddingVertical: s(8),
+            paddingLeft: s(10),
+            paddingRight: s(12),
+            gap: s(8),
+            borderBottomWidth: isExpanded ? 0 : 1,
+            borderBottomColor: colors.border + "30",
           }}
         >
-          {/* Status dot */}
-          <StatusIndicator
-            status={tableData.status}
-            tableId={table.id}
-            isOvertime={isOvertime}
-          />
+          {/* Status left accent bar is on the row itself — no dot */}
 
           {/* Name + meta */}
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -992,23 +920,20 @@ const TableListItem: React.FC<{
                   <View
                     style={{
                       paddingHorizontal: s(5),
-                      paddingVertical: s(1),
-                      borderRadius: s(20),
+                      paddingVertical: s(2),
+                      borderRadius: s(3),
                       backgroundColor: isOvertime
-                        ? colors.warning + "15"
-                        : colors.teal + "15",
-                      borderWidth: 1,
-                      borderColor: isOvertime
-                        ? colors.warning + "30"
-                        : colors.teal + "30",
+                        ? colors.warning + "18"
+                        : colors.teal + "12",
                     }}
                   >
                     <Text
                       style={{
                         fontSize: s(9),
-                        fontWeight: "600",
+                        fontWeight: "700",
                         color: isOvertime ? colors.warning : colors.teal,
                         textAlign: "center",
+                        fontVariant: ["tabular-nums"],
                       }}
                     >
                       {duration}
@@ -1027,7 +952,7 @@ const TableListItem: React.FC<{
       </TouchableOpacity>
 
       {isExpanded && showActiveDetails && (
-        <View style={{ paddingHorizontal: s(12), paddingBottom: s(12) }}>
+        <View style={{ paddingHorizontal: s(14), paddingBottom: s(14) }}>
           <ExpandedView
             tableData={tableData}
             table={table}

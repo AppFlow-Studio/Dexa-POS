@@ -1,11 +1,14 @@
 // services/hardware/heartbeat.ts
 
-import { AppState, AppStateStatus } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
 import * as Application from "expo-application";
 import * as Battery from "expo-battery";
 import { getCachedCapabilities } from "./deviceDetection";
 import { SupabaseClient } from "@supabase/supabase-js";
+import {
+  registerResumeTask,
+  registerSuspendTask,
+} from "@/lib/lifecycle/appLifecycleCoordinator";
 
 // ============================================================================
 // SINGLETON STATE
@@ -16,9 +19,8 @@ const BACKGROUND_OFFLINE_DELAY_MS = 2 * 60_000; // 2 minutes before marking offl
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let backgroundTimerId: ReturnType<typeof setTimeout> | null = null;
-let appStateSubscription: ReturnType<
-  typeof AppState.addEventListener
-> | null = null;
+/** Unregister fns for the lifecycle-coordinator tasks (was an AppState sub). */
+let lifecycleUnregister: (() => void)[] = [];
 let currentSupabase: SupabaseClient | null = null;
 let currentStationId: string | null = null;
 let currentLocationId: string | null = null;
@@ -114,37 +116,54 @@ async function sendGoingOffline(): Promise<void> {
 // APP STATE HANDLING
 // ============================================================================
 
-function handleAppState(nextState: AppStateStatus): void {
-  if (nextState === "active") {
-    // Cancel pending offline timer if we came back quickly
-    if (backgroundTimerId) {
-      clearTimeout(backgroundTimerId);
+/**
+ * Resume half, run from the coordinator's `interactions` bucket. Station
+ * liveness is not what the operator is waiting on, so it must not contend with
+ * auth/order/floor recovery — a heartbeat arriving 200ms later is invisible
+ * backend-side, a delayed first tap is not.
+ *
+ * Cancelling the background offline timer is deliberately NOT part of this —
+ * see cancelBackgroundOfflineTimer, which runs synchronously on the resume
+ * edge because a 2-minute timer that fires while we're already foregrounded
+ * would mark a live station offline.
+ */
+function handleResume(): void {
+  if (!intervalId && currentStationId) {
+    sendHeartbeat();
+    intervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+    console.log("[Heartbeat] Resumed on app active");
+  }
+}
+
+/**
+ * Registered in the `immediate` bucket. Purely local (clearTimeout) and
+ * synchronous, so it costs nothing on the critical path — but it must not be
+ * deferred to a later bucket: if the drain is slow the pending timer could
+ * fire first and report a foregrounded station as offline.
+ */
+function cancelBackgroundOfflineTimer(): void {
+  if (backgroundTimerId) {
+    clearTimeout(backgroundTimerId);
+    backgroundTimerId = null;
+    console.log("[Heartbeat] Cancelled background offline timer");
+  }
+}
+
+function handleSuspend(): void {
+  // Background/inactive: pause interval to save battery
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+    console.log("[Heartbeat] Paused (app backgrounded)");
+  }
+
+  // Start a timer — if app stays backgrounded for 2 min, mark offline
+  if (!backgroundTimerId && currentStationId) {
+    backgroundTimerId = setTimeout(() => {
       backgroundTimerId = null;
-      console.log("[Heartbeat] Cancelled background offline timer");
-    }
-
-    // Resume: send immediate heartbeat and restart interval
-    if (!intervalId && currentStationId) {
-      sendHeartbeat();
-      intervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
-      console.log("[Heartbeat] Resumed on app active");
-    }
-  } else {
-    // Background/inactive: pause interval to save battery
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-      console.log("[Heartbeat] Paused (app backgrounded)");
-    }
-
-    // Start a timer — if app stays backgrounded for 2 min, mark offline
-    if (!backgroundTimerId && currentStationId) {
-      backgroundTimerId = setTimeout(() => {
-        backgroundTimerId = null;
-        sendGoingOffline();
-      }, BACKGROUND_OFFLINE_DELAY_MS);
-      console.log("[Heartbeat] Started 2-min background offline timer");
-    }
+      sendGoingOffline();
+    }, BACKGROUND_OFFLINE_DELAY_MS);
+    console.log("[Heartbeat] Started 2-min background offline timer");
   }
 }
 
@@ -173,8 +192,26 @@ export function startHeartbeat(
   // Start interval
   intervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
 
-  // Listen for app state changes
-  appStateSubscription = AppState.addEventListener("change", handleAppState);
+  // Lifecycle: cancelling the pending offline timer is immediate + local;
+  // the heartbeat write itself is deferred so it doesn't contend with the
+  // operator's first tap.
+  lifecycleUnregister = [
+    registerResumeTask({
+      id: "hardware.heartbeat-cancel-offline-timer",
+      bucket: "immediate",
+      run: cancelBackgroundOfflineTimer,
+    }),
+    registerResumeTask({
+      id: "hardware.heartbeat-resume",
+      bucket: "interactions",
+      requiresNetwork: true,
+      run: handleResume,
+    }),
+    registerSuspendTask({
+      id: "hardware.heartbeat-suspend",
+      run: handleSuspend,
+    }),
+  ];
 
   console.log(`[Heartbeat] Started for station ${stationId} (every 60s)`);
 }
@@ -190,10 +227,8 @@ export async function stopHeartbeat(): Promise<void> {
     intervalId = null;
   }
 
-  if (appStateSubscription) {
-    appStateSubscription.remove();
-    appStateSubscription = null;
-  }
+  lifecycleUnregister.forEach((fn) => fn());
+  lifecycleUnregister = [];
 
   // Send immediate offline signal before clearing refs
   await sendGoingOffline();

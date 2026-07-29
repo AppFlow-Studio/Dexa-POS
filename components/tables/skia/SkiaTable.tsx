@@ -51,6 +51,7 @@ const SkiaTable: React.FC<{ draw: TableDrawData; isSelected: boolean }> = ({
       <SkiaTableContent
         width={width}
         height={height}
+        shapeId={draw.shapeId}
         lines={draw.lines}
         badges={draw.badges}
       />

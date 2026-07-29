@@ -1,9 +1,15 @@
 // services/hardware/starPrinterHealthCheck.ts
 // Background Star Micronics printer health monitoring (singleton pattern)
 
-import { AppState, AppStateStatus } from "react-native";
-import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { StarIO10InUseError } from "react-native-star-io10";
+import {
+  registerResumeTask,
+  registerSuspendTask,
+} from "@/lib/lifecycle/appLifecycleCoordinator";
+import {
+  getRawIsOnline,
+  subscribeOnlineStatus,
+} from "@/services/offlineSyncService";
 import { deferStoreUpdate } from "@/lib/deferredStoreUpdate";
 import { isRecentlyNavigated } from "@/lib/rootNavigation";
 import { usePrinterStore } from "@/stores/usePrinterStore";
@@ -46,9 +52,8 @@ interface PrinterHealthState {
 }
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
-let appStateSubscription: ReturnType<
-  typeof AppState.addEventListener
-> | null = null;
+/** Unregister fns for the lifecycle-coordinator tasks (was an AppState sub). */
+let lifecycleUnregister: (() => void)[] = [];
 let netInfoUnsubscribe: (() => void) | null = null;
 let wasConnected = true; // assume connected initially
 let currentLocationId: string | null = null;
@@ -491,19 +496,26 @@ async function performHealthCheckRound(): Promise<void> {
 // APP STATE HANDLING
 // ============================================================================
 
-function handleAppState(nextState: AppStateStatus): void {
-  if (nextState === "active") {
-    if (!intervalId && currentLocationId) {
-      performHealthCheckRound();
-      intervalId = setInterval(performHealthCheckRound, HEALTH_CHECK_INTERVAL_MS);
-      console.log("[StarPrinterHealthCheck] Resumed on app active");
-    }
-  } else {
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-      console.log("[StarPrinterHealthCheck] Paused (app backgrounded)");
-    }
+/**
+ * Resume half, run from the coordinator's `background` bucket. A round probes
+ * EVERY known printer, so on a multi-printer station this was the single
+ * biggest burst of concurrent requests on the resume path. Nothing the
+ * operator does in the first seconds after wake depends on it — a printer
+ * marked unreachable is discovered at print time regardless.
+ */
+function handleResume(): void {
+  if (!intervalId && currentLocationId) {
+    performHealthCheckRound();
+    intervalId = setInterval(performHealthCheckRound, HEALTH_CHECK_INTERVAL_MS);
+    console.log("[StarPrinterHealthCheck] Resumed on app active");
+  }
+}
+
+function handleSuspend(): void {
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+    console.log("[StarPrinterHealthCheck] Paused (app backgrounded)");
   }
 }
 
@@ -513,8 +525,8 @@ function handleAppState(nextState: AppStateStatus): void {
 
 export function startStarPrinterHealthCheck(locationId: string): void {
   // Avoid duplicate starts — also clean up orphaned listeners from backgrounding
-  // (backgrounding nulls intervalId but leaves appStateSubscription/netInfoUnsubscribe alive)
-  if (intervalId || appStateSubscription || netInfoUnsubscribe) {
+  // (backgrounding nulls intervalId but leaves the lifecycle/netinfo subs alive)
+  if (intervalId || lifecycleUnregister.length > 0 || netInfoUnsubscribe) {
     stopStarPrinterHealthCheck();
   }
 
@@ -522,7 +534,7 @@ export function startStarPrinterHealthCheck(locationId: string): void {
   printerStates.clear();
   dhcpRecoveryAttempted.clear();
   isChecking = false;
-  wasConnected = true;
+  wasConnected = getRawIsOnline();
 
   // Initial check immediately
   performHealthCheckRound();
@@ -530,14 +542,25 @@ export function startStarPrinterHealthCheck(locationId: string): void {
   // Start interval
   intervalId = setInterval(performHealthCheckRound, HEALTH_CHECK_INTERVAL_MS);
 
-  // Listen for app state changes
-  appStateSubscription = AppState.addEventListener("change", handleAppState);
+  lifecycleUnregister = [
+    registerResumeTask({
+      id: "hardware.star-health-resume",
+      bucket: "background",
+      requiresNetwork: true,
+      run: handleResume,
+    }),
+    registerSuspendTask({
+      id: "hardware.star-health-suspend",
+      run: handleSuspend,
+    }),
+  ];
 
-  // Listen for network connectivity changes — trigger immediate health check
-  // when WiFi reconnects so printers recover in seconds instead of waiting
-  // for the 2-minute interval.
-  netInfoUnsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
-    const isNow = state.isConnected ?? false;
+  // Network recovery — trigger an immediate health check when connectivity
+  // returns so printers recover in seconds instead of waiting for the 2-minute
+  // interval. Uses the app's single network source rather than a second raw
+  // NetInfo subscription.
+  netInfoUnsubscribe = subscribeOnlineStatus(() => {
+    const isNow = getRawIsOnline();
     if (!wasConnected && isNow) {
       console.log("[StarPrinterHealthCheck] Network reconnected, triggering immediate health check");
       performHealthCheckRound();
@@ -556,10 +579,8 @@ export function stopStarPrinterHealthCheck(): void {
     intervalId = null;
   }
 
-  if (appStateSubscription) {
-    appStateSubscription.remove();
-    appStateSubscription = null;
-  }
+  lifecycleUnregister.forEach((fn) => fn());
+  lifecycleUnregister = [];
 
   if (netInfoUnsubscribe) {
     netInfoUnsubscribe();

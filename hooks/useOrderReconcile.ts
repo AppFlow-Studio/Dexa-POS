@@ -29,7 +29,7 @@ import { connectionQuality } from '@/lib/network/connectionQuality'
 import { reconcileAllOwnedOrders } from '@/services/cartShapeReconcile'
 import { reconcileAllActiveOrdersHeader } from '@/services/orderHeaderReconcile'
 import { useEffect, useRef } from 'react'
-import { AppState, type AppStateStatus } from 'react-native'
+import { registerResumeTask } from '@/lib/lifecycle/appLifecycleCoordinator'
 
 const TRIGGER_DEBOUNCE_MS = 5000
 const INTER_PASS_DELAY_MS = 500
@@ -81,15 +81,17 @@ export function useOrderReconcile (
       }
     })
 
-    // Trigger 2: AppState background → active.
-    let lastAppState: AppStateStatus = AppState.currentState
-    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
-      const wasBackground =
-        lastAppState === 'background' || lastAppState === 'inactive'
-      lastAppState = next
-      if (wasBackground && next === 'active') {
-        fire('foreground')
-      }
+    // Trigger 2: resume. Registered in the coordinator's `frame` bucket —
+    // order convergence is what the operator is actually looking at after
+    // wake, so it goes ahead of settings/heartbeat/printer work but behind
+    // auth validity. The background→active edge detection the old private
+    // listener did is now the coordinator's job (it only drains on a real
+    // background edge, not on iOS `inactive` flicker).
+    const unregisterResume = registerResumeTask({
+      id: 'orders.reconcile-on-resume',
+      bucket: 'frame',
+      requiresNetwork: true,
+      run: () => fire('foreground'),
     })
 
     return () => {
@@ -98,7 +100,7 @@ export function useOrderReconcile (
         debounceTimerRef.current = null
       }
       unsubQuality()
-      sub.remove()
+      unregisterResume()
     }
   }, [enabled])
 }

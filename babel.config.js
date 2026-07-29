@@ -30,19 +30,25 @@ module.exports = function (api) {
     ]);
   }
 
-  // Do NOT add `react-native-worklets/plugin` (or the deprecated
-  // `react-native-reanimated/plugin`) here. On Expo SDK 57, babel-preset-expo
-  // auto-injects the Worklets plugin — ordered last — whenever
-  // `react-native-worklets` is installed (see
-  // babel-preset-expo/build/configs/expo.js: `plugins.push(require(worklets/plugin))`,
-  // guarded by `options.worklets !== false`). Adding it manually double-registers
-  // the plugin. Expo docs: "Reanimated Babel plugin is automatically configured
-  // in babel-preset-expo when you install the library." To opt out of the auto
-  // injection instead, pass `{ worklets: false }` to babel-preset-expo below.
+  // Worklets Bundle Mode is ON — it reclaims the reanimated/Hermes 25–30% memory
+  // regression flagged in the Expo SDK 57 changelog ("Known regressions"). Bundle
+  // Mode requires the Worklets Babel plugin to receive `{ bundleMode: true }`, but
+  // babel-preset-expo auto-injects that plugin with NO options and gives no way to
+  // pass options through (its `worklets` key is only a boolean on/off flag — see
+  // babel-preset-expo/build/configs/expo.js: `plugins.push([require(worklets/plugin)])`,
+  // guarded by `options.worklets !== false`). So we OPT OUT of the auto-injection via
+  // `{ worklets: false }` on the preset below and register the plugin manually here.
+  // It MUST stay last in `plugins` (worklets has to be the final transform) and after
+  // `babel-plugin-react-compiler` (which must run first). Pairs with
+  // `getBundleModeMetroConfig(...)` in metro.config.js — keep the two in sync.
+  plugins.push([
+    "react-native-worklets/plugin",
+    { bundleMode: true, strictGlobal: true },
+  ]);
 
   return {
     presets: [
-      ["babel-preset-expo", { jsxImportSource: "nativewind" }],
+      ["babel-preset-expo", { jsxImportSource: "nativewind", worklets: false }],
       "nativewind/babel",
     ],
     plugins,

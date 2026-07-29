@@ -24,7 +24,10 @@ import { v4 as uuidv4 } from "uuid";
 import NetInfo from "@react-native-community/netinfo";
 // @ts-ignore
 import type { NetInfoState } from "@react-native-community/netinfo";
-import { AppState } from "react-native";
+import {
+  registerResumeTask,
+  registerSuspendTask,
+} from "@/lib/lifecycle/appLifecycleCoordinator";
 
 // ============================================================================
 // TYPES
@@ -333,8 +336,8 @@ let unsubscribeNetInfo: (() => void) | null = null;
 let periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
 let netInfoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let netInfoPollTimer: ReturnType<typeof setInterval> | null = null;
-let appStateSubscription: ReturnType<typeof AppState.addEventListener> | null =
-  null;
+/** Unregister fns for the lifecycle-coordinator tasks (was an AppState sub). */
+let lifecycleUnregister: (() => void)[] = [];
 
 // Indexes for O(1) lookups instead of linear scans
 const entityKeyIndex = new Map<string, Set<string>>(); // entityKey -> Set<operationId>
@@ -530,10 +533,8 @@ export function destroyOfflineSyncService(): void {
     clearInterval(netInfoPollTimer);
     netInfoPollTimer = null;
   }
-  if (appStateSubscription) {
-    appStateSubscription.remove();
-    appStateSubscription = null;
-  }
+  lifecycleUnregister.forEach((fn) => fn());
+  lifecycleUnregister = [];
   // Clear all auto-retry timers
   for (const timer of autoRetryTimers.values()) {
     clearTimeout(timer);
@@ -672,27 +673,47 @@ function startNetInfoPolling(): void {
 let _lastBackgroundedAt: number | null = null;
 
 function startAppStateListener(): void {
-  appStateSubscription?.remove();
-  appStateSubscription = AppState.addEventListener("change", (nextAppState) => {
-    if (nextAppState !== "active" && isInitialized) {
-      _lastBackgroundedAt = Date.now();
-    }
-    if (nextAppState === "active" && isInitialized) {
-      // If we were backgrounded long enough that connection quality may
-      // have gone stale, re-evaluate from scratch. Brief flickers don't reset.
-      if (
-        _lastBackgroundedAt !== null &&
-        Date.now() - _lastBackgroundedAt > DEADLINES.appForegroundResetMs
-      ) {
-        connectionQuality.reset();
-      }
-      _lastBackgroundedAt = null;
+  lifecycleUnregister.forEach((fn) => fn());
+  lifecycleUnregister = [
+    registerSuspendTask({
+      id: "sync.mark-backgrounded",
+      run: () => {
+        if (isInitialized) _lastBackgroundedAt = Date.now();
+      },
+    }),
+    // Queue replay runs in `interactions`, NOT `immediate`.
+    //
+    // Pre-migration this fired straight off the AppState listener, so a
+    // station resuming with a non-empty offline queue could start replaying
+    // ops before the Clerk token was revalidated — every replayed request
+    // then blocked on the same cold token exchange, and a replay burst could
+    // land ahead of the operator's first tap. The coordinator's bucket
+    // ordering is what makes "replay must not preempt the Immediate bucket"
+    // an actual guarantee rather than a timing accident.
+    registerResumeTask({
+      id: "sync.foreground-network-recheck",
+      bucket: "interactions",
+      shouldRun: () => isInitialized,
+      run: async () => {
+        // If we were backgrounded long enough that connection quality may
+        // have gone stale, re-evaluate from scratch. Brief flickers don't reset.
+        if (
+          _lastBackgroundedAt !== null &&
+          Date.now() - _lastBackgroundedAt > DEADLINES.appForegroundResetMs
+        ) {
+          connectionQuality.reset();
+        }
+        _lastBackgroundedAt = null;
 
-      NetInfo.fetch()
-        .then(handleNetworkChange)
-        .catch(() => {});
-    }
-  });
+        try {
+          handleNetworkChange(await NetInfo.fetch());
+        } catch {
+          // Network probe failure is not actionable here — the NetInfo
+          // subscription and the 10s poll both still cover recovery.
+        }
+      },
+    }),
+  ];
 }
 
 function handleNetworkChange(state: NetInfoState): void {

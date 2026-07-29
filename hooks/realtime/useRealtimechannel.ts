@@ -1,8 +1,17 @@
 // hooks/useRealtimeChannel.ts
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
-import NetInfo from '@react-native-community/netinfo';
+import { registerResumeTask } from '@/lib/lifecycle/appLifecycleCoordinator';
+import {
+  KEY_RT_CHANNEL_DISCONNECT,
+  KEY_RT_CHANNEL_SUBSCRIBED,
+  KEY_RT_DISCONNECTED_MS,
+} from '@/lib/telemetry/keys';
+import { recordCount, recordSample } from '@/lib/telemetry/registry';
+import {
+  getRawIsOnline,
+  subscribeOnlineStatus,
+} from '@/services/offlineSyncService';
 import { RealtimeChannel, REALTIME_SUBSCRIBE_STATES, SupabaseClient } from '@supabase/supabase-js';
 import type {
   RealtimeChannelTopic,
@@ -72,8 +81,35 @@ export function useRealtimeChannel<T>({
     subscribedAt: null,
   });
 
+  // Wall-clock start of the current disconnected stretch, or null while
+  // SUBSCRIBED. Drives rt.disconnected_ms.
+  const disconnectedSinceRef = useRef<number | null>(null);
+
   // Update status and notify parent
   const updateStatus = useCallback((updates: Partial<ChannelStatus>) => {
+    // Channel-lifecycle telemetry. Recorded here rather than in an effect
+    // because this is the single funnel every state change passes through, and
+    // statusRef still holds the PREVIOUS state at this point. Counting
+    // edges (not polling state) is what makes rt.disconnected_ms meaningful:
+    // the floor fallback poll's cost is a direct function of it.
+    if (updates.state) {
+      const prevState = statusRef.current;
+      const nextState = updates.state;
+      if (prevState === 'SUBSCRIBED' && nextState !== 'SUBSCRIBED') {
+        disconnectedSinceRef.current = Date.now();
+        recordCount(KEY_RT_CHANNEL_DISCONNECT);
+      } else if (prevState !== 'SUBSCRIBED' && nextState === 'SUBSCRIBED') {
+        recordCount(KEY_RT_CHANNEL_SUBSCRIBED);
+        if (disconnectedSinceRef.current !== null) {
+          recordSample(
+            KEY_RT_DISCONNECTED_MS,
+            Date.now() - disconnectedSinceRef.current,
+          );
+          disconnectedSinceRef.current = null;
+        }
+      }
+    }
+
     setStatus(prev => {
       const newStatus = { ...prev, ...updates };
       if (updates.state) {
@@ -309,8 +345,12 @@ export function useRealtimeChannel<T>({
   useEffect(() => {
     if (!enabled) return;
 
-    const unsubscribe = NetInfo.addEventListener(state => {
-      if (state.isConnected && statusRef.current !== 'SUBSCRIBED') {
+    // Uses the app's single network source (offlineSyncService owns
+    // NetInfo.configure) instead of a per-channel raw NetInfo subscription —
+    // with 3 channels live on a POS station that was 3 duplicate subscribers
+    // reacting to the same event.
+    const unsubscribe = subscribeOnlineStatus(() => {
+      if (getRawIsOnline() && statusRef.current !== 'SUBSCRIBED') {
         if (__DEV__) console.log(`[Realtime] Network restored, reconnecting ${topic}`);
         // Reset reconnect budget and reconnect immediately
         reconnectAttemptsRef.current = 0;
@@ -331,43 +371,51 @@ export function useRealtimeChannel<T>({
 
     let isMounted = true;
 
-    const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      if (nextAppState !== 'active') return;
+    // Realtime state is an `immediate`-bucket concern per the coordinator's
+    // priority staging: a dead channel means missed orders, and the frame /
+    // interaction buckets behind it assume a live socket. Task id is
+    // topic-scoped because a POS station runs three of these concurrently.
+    const unregister = registerResumeTask({
+      id: `realtime.reconnect:${topic}`,
+      bucket: 'immediate',
+      run: async () => {
+        // Reset reconnect budget - attempts were likely wasted while suspended
+        reconnectAttemptsRef.current = 0;
 
-      // Reset reconnect budget - attempts were likely wasted while suspended
-      reconnectAttemptsRef.current = 0;
+        // Clear any stale reconnect timeout to prevent double-subscribe race
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
 
-      // Clear any stale reconnect timeout to prevent double-subscribe race
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
+        const currentState = statusRef.current;
+        const channel = channelRef.current;
 
-      const currentState = statusRef.current;
-      const channel = channelRef.current;
-
-      if (!channel || currentState !== 'SUBSCRIBED') {
-        // Channel is dead or missing - full reconnect after short delay for network restoration
-        if (__DEV__) console.log(`[Realtime] App foregrounded, reconnecting ${topic} (state: ${currentState})`);
-        reconnectTimeoutRef.current = setTimeout(() => {
-          if (isMounted) {
-            subscribeRef.current();
+        if (!channel || currentState !== 'SUBSCRIBED') {
+          // Channel is dead or missing - full reconnect after short delay for network restoration
+          if (__DEV__) console.log(`[Realtime] App foregrounded, reconnecting ${topic} (state: ${currentState})`);
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (isMounted) {
+              subscribeRef.current();
+            }
+          }, 1000);
+        } else {
+          // Channel appears healthy - proactively refresh auth token. Awaited
+          // so the immediate bucket doesn't report settled while the socket is
+          // still re-authenticating.
+          if (__DEV__) console.log(`[Realtime] App foregrounded, ${topic} still SUBSCRIBED, refreshing auth`);
+          try {
+            await supabaseClient.realtime.setAuth();
+          } catch (error) {
+            console.error(`[Realtime] Failed to refresh auth for ${topic} on foreground:`, error);
           }
-        }, 1000);
-      } else {
-        // Channel appears healthy - proactively refresh auth token
-        if (__DEV__) console.log(`[Realtime] App foregrounded, ${topic} still SUBSCRIBED, refreshing auth`);
-        supabaseClient.realtime.setAuth().catch((error) => {
-          console.error(`[Realtime] Failed to refresh auth for ${topic} on foreground:`, error);
-        });
-      }
-    };
-
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
+        }
+      },
+    });
 
     return () => {
       isMounted = false;
-      subscription.remove();
+      unregister();
     };
   }, [enabled, supabaseClient, topic]);
 
