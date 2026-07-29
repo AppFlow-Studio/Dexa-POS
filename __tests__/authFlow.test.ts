@@ -33,6 +33,18 @@ describe("authFlow", () => {
     });
   });
 
+  it("maps billing access failures before generic sign-in failures", () => {
+    expect(
+      getPinAuthFailure({
+        errorCode: "PAYMENT_REQUIRED",
+        error: "Subscription suspended for non payment",
+      }),
+    ).toEqual({
+      title: "Billing Suspended",
+      message: "Subscription suspended for non payment",
+    });
+  });
+
   it("uses the offline invalid-pin copy when sign-in is deferred offline", () => {
     expect(getPinAuthFailure({ offline: true })).toEqual({
       title: "Sign In Failed",

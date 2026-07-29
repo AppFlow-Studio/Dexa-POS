@@ -201,8 +201,26 @@ export const useEmployeeStore = create<EmployeeState>()(
         return employees.find((e) => e.profileId === staffId);
       },
 
-      setEmployees: (employees) =>
-        set({ employees, isEmployeesReady: employees.length > 0 }),
+      setEmployees: (employees) => {
+        // Merge on id: keep local-only shift state (shiftStatus/clockInAt) for
+        // employees who already existed, since resyncs (e.g. manual "Sync POS")
+        // must overwrite server-sourced fields like `pin` with the latest value
+        // without clobbering shift state tracked purely on-device.
+        const existingById = new Map(
+          get().employees.map((e) => [e.id, e] as const),
+        );
+        const merged = employees.map((incoming) => {
+          const existing = existingById.get(incoming.id);
+          return existing
+            ? {
+                ...incoming,
+                shiftStatus: existing.shiftStatus,
+                clockInAt: existing.clockInAt,
+              }
+            : incoming;
+        });
+        set({ employees: merged, isEmployeesReady: merged.length > 0 });
+      },
 
       setSyncState: ({ isLoading, error }) => set({ isLoading, error }),
 

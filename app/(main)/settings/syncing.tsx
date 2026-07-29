@@ -4,6 +4,7 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors, spinnerColor } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import { useUiScale } from "@/lib/uiScale";
+import { syncEmployees } from "@/services/employeeSyncService";
 import { FloorPlanService } from "@/services/floorPlanService";
 import { syncNow } from "@/services/offlineSyncService";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -49,9 +50,13 @@ const SyncingScreen: React.FC = () => {
   const handleSyncAll = async () => {
     if (!selectedStore?.id) return;
     setSyncingKey("all");
+    console.log(
+      `[SyncingScreen] Employee/PIN sync firing (manual Sync POS): ${selectedStore.id}`,
+    );
     const tasks: Promise<unknown>[] = [
       syncNow(),
       resyncFloorPlan(),
+      syncEmployees(supabase, selectedStore.id),
       queryClient.invalidateQueries({
         queryKey: ["active_orders", selectedStore.id],
       }),

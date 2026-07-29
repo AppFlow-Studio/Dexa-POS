@@ -1,14 +1,15 @@
-import AddExpenseModule from '@/components/inventory/AddExpenseModule'
-import VendorCreatePOModule from '@/components/inventory/VendorCreatePOModule'
-import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
-import { DateRangePicker } from '@/components/ui/DateRangePicker'
-import { useToast } from '@/contexts/ToastContext'
-import { colors } from '@/lib/theme'
-import { PurchaseOrder } from '@/lib/types'
-import { useInventoryStore } from '@/stores/useInventoryStore'
-import { Link } from 'expo-router'
-import { Package, Plus, Receipt, Search, Trash2, X } from 'lucide-react-native'
-import React, { useMemo, useState } from 'react'
+import AddExpenseModule from "@/components/inventory/AddExpenseModule";
+import VendorCreatePOModule from "@/components/inventory/VendorCreatePOModule";
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
+import { PurchaseOrder } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
+import { useInventoryStore } from "@/stores/useInventoryStore";
+import { Link } from "expo-router";
+import { Package, Plus, Receipt, Search, Trash2, X } from "lucide-react-native";
+import React, { useMemo, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -18,59 +19,61 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
-} from 'react-native'
+  View,
+} from "react-native";
 
 const statusStyle = (status: string) => {
   switch (status) {
-    case 'Awaiting Payment':
+    case "Awaiting Payment":
       return {
-        bg: colors.teal + '1A',
-        border: colors.teal + '55',
-        text: colors.teal
-      }
-    case 'Pending Delivery':
+        bg: colors.teal + "1A",
+        border: colors.teal + "55",
+        text: colors.teal,
+      };
+    case "Pending Delivery":
       return {
-        bg: colors.teal + '14',
-        border: colors.teal + '45',
-        text: colors.teal
-      }
-    case 'Draft':
+        bg: colors.teal + "14",
+        border: colors.teal + "45",
+        text: colors.teal,
+      };
+    case "Draft":
       return {
-        bg: colors.teal + '12',
-        border: colors.teal + '35',
-        text: colors.teal
-      }
-    case 'Paid':
+        bg: colors.teal + "12",
+        border: colors.teal + "35",
+        text: colors.teal,
+      };
+    case "Paid":
       return {
-        bg: colors.teal + '22',
-        border: colors.teal + '60',
-        text: colors.teal
-      }
-    case 'Cancelled':
+        bg: colors.teal + "22",
+        border: colors.teal + "60",
+        text: colors.teal,
+      };
+    case "Cancelled":
       return {
-        bg: colors.danger + '18',
-        border: colors.danger + '55',
-        text: colors.danger
-      }
+        bg: colors.danger + "18",
+        border: colors.danger + "55",
+        text: colors.danger,
+      };
     default:
       return {
-        bg: colors.danger + '18',
-        border: colors.danger + '55',
-        text: colors.danger
-      }
+        bg: colors.danger + "18",
+        border: colors.danger + "55",
+        text: colors.danger,
+      };
   }
-}
+};
 
 const PurchaseOrderRow: React.FC<{
-  item: PurchaseOrder
-  onDelete: () => void
+  item: PurchaseOrder;
+  onDelete: () => void;
 }> = ({ item, onDelete }) => {
-  const vendors = useInventoryStore(s => s.vendors)
-  const vendor = vendors.find(v => v.id === item.vendorId)
-  const totalQty = item.items.reduce((a, li) => a + li.quantity, 0)
-  const totalCost = item.items.reduce((a, li) => a + li.cost * li.quantity, 0)
-  const s = statusStyle(item.status)
+  const vendors = useInventoryStore((s) => s.vendors);
+  const vendor = vendors.find((v) => v.id === item.vendorId);
+  const totalQty = item.items.reduce((a, li) => a + li.quantity, 0);
+  const totalCost = item.items.reduce((a, li) => a + li.cost * li.quantity, 0);
+  const s = statusStyle(item.status);
+  const uiScale = useUiScale();
+  const sc = (n: number) => Math.round(n * uiScale);
 
   return (
     <Link href={`/inventory/purchase-orders/${item.id}`} asChild>
@@ -81,24 +84,24 @@ const PurchaseOrderRow: React.FC<{
           borderColor: colors.border,
           borderLeftWidth: 3,
           borderLeftColor:
-            item.status === 'Cancelled' ? colors.danger : colors.teal,
-          borderRadius: 10,
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          marginHorizontal: 10,
-          marginTop: 8
+            item.status === "Cancelled" ? colors.danger : colors.teal,
+          borderRadius: sc(10),
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: sc(12),
+          paddingVertical: sc(10),
+          marginHorizontal: sc(10),
+          marginTop: sc(8),
         }}
       >
         {/* PO Number */}
         <Text
           numberOfLines={1}
           style={{
-            width: '14%',
-            fontSize: 13,
-            fontWeight: '600',
-            color: colors.teal
+            width: "14%",
+            fontSize: sc(13),
+            fontWeight: "600",
+            color: colors.teal,
           }}
         >
           {item.poNumber}
@@ -107,25 +110,27 @@ const PurchaseOrderRow: React.FC<{
         {/* Vendor */}
         <Text
           numberOfLines={1}
-          style={{ width: '18%', fontSize: 12, color: colors.heading }}
+          style={{ width: "18%", fontSize: sc(12), color: colors.heading }}
         >
-          {vendor?.name || '—'}
+          {vendor?.name || "—"}
         </Text>
 
         {/* Status */}
-        <View style={{ width: '16%' }}>
+        <View style={{ width: "16%" }}>
           <View
             style={{
-              alignSelf: 'flex-start',
-              paddingHorizontal: 8,
-              paddingVertical: 3,
+              alignSelf: "flex-start",
+              paddingHorizontal: sc(8),
+              paddingVertical: sc(3),
               backgroundColor: s.bg,
               borderWidth: 1,
               borderColor: s.border,
-              borderRadius: 20
+              borderRadius: 20,
             }}
           >
-            <Text style={{ fontSize: 10, fontWeight: '600', color: s.text }}>
+            <Text
+              style={{ fontSize: sc(10), fontWeight: "600", color: s.text }}
+            >
               {item.status}
             </Text>
           </View>
@@ -134,7 +139,7 @@ const PurchaseOrderRow: React.FC<{
         {/* Date */}
         <Text
           numberOfLines={1}
-          style={{ width: '14%', fontSize: 12, color: colors.label }}
+          style={{ width: "14%", fontSize: sc(12), color: colors.label }}
         >
           {new Date(item.createdAt).toLocaleDateString()}
         </Text>
@@ -142,15 +147,15 @@ const PurchaseOrderRow: React.FC<{
         {/* Employee */}
         <Text
           numberOfLines={1}
-          style={{ width: '16%', fontSize: 12, color: colors.label }}
+          style={{ width: "16%", fontSize: sc(12), color: colors.label }}
         >
-          {item.createdByEmployeeName || '—'}
+          {item.createdByEmployeeName || "—"}
         </Text>
 
         {/* Items */}
         <Text
           numberOfLines={1}
-          style={{ width: '9%', fontSize: 12, color: colors.label }}
+          style={{ width: "9%", fontSize: sc(12), color: colors.label }}
         >
           {totalQty}
         </Text>
@@ -159,31 +164,31 @@ const PurchaseOrderRow: React.FC<{
         <Text
           numberOfLines={1}
           style={{
-            width: '10%',
-            fontSize: 13,
-            fontWeight: '600',
-            color: colors.teal
+            width: "10%",
+            fontSize: sc(13),
+            fontWeight: "600",
+            color: colors.teal,
           }}
         >
           ${totalCost.toFixed(2)}
         </Text>
 
         {/* Delete */}
-        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+        <View style={{ flex: 1, alignItems: "flex-end" }}>
           <TouchableOpacity
-            onPress={e => {
-              e.stopPropagation?.()
-              onDelete()
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onDelete();
             }}
-            style={{ padding: 6 }}
+            style={{ padding: sc(6) }}
           >
-            <Trash2 size={14} color={colors.danger} />
+            <Trash2 size={sc(14)} color={colors.danger} />
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
     </Link>
-  )
-}
+  );
+};
 
 const PurchaseOrdersScreen = () => {
   const {
@@ -192,158 +197,164 @@ const PurchaseOrdersScreen = () => {
     inventoryItems,
     deletePurchaseOrder,
     externalExpenses,
-    removeExternalExpense
-  } = useInventoryStore()
-  const { show } = useToast()
+    removeExternalExpense,
+  } = useInventoryStore();
+  const { show } = useToast();
 
-  const [poToDelete, setPoToDelete] = useState<PurchaseOrder | null>(null)
-  const [query, setQuery] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [expenseQuery, setExpenseQuery] = useState('')
-  const [activeTab, setActiveTab] = useState<'purchase-orders' | 'expenses'>(
-    'purchase-orders'
-  )
-  const [isVendorPickerOpen, setIsVendorPickerOpen] = useState(false)
-  const [vendorPickerQuery, setVendorPickerQuery] = useState('')
-  const [poModuleVendorId, setPoModuleVendorId] = useState<string | null>(null)
-  const [poModuleOpenSignal, setPoModuleOpenSignal] = useState(0)
-  const [expenseModuleOpenSignal, setExpenseModuleOpenSignal] = useState(0)
+  const [poToDelete, setPoToDelete] = useState<PurchaseOrder | null>(null);
+  const [query, setQuery] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [expenseQuery, setExpenseQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<"purchase-orders" | "expenses">(
+    "purchase-orders",
+  );
+  const [isVendorPickerOpen, setIsVendorPickerOpen] = useState(false);
+  const [vendorPickerQuery, setVendorPickerQuery] = useState("");
+  const [poModuleVendorId, setPoModuleVendorId] = useState<string | null>(null);
+  const [poModuleOpenSignal, setPoModuleOpenSignal] = useState(0);
+  const [expenseModuleOpenSignal, setExpenseModuleOpenSignal] = useState(0);
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   const poModuleVendor = useMemo(
-    () => vendors.find(v => v.id === poModuleVendorId) || null,
-    [vendors, poModuleVendorId]
-  )
+    () => vendors.find((v) => v.id === poModuleVendorId) || null,
+    [vendors, poModuleVendorId],
+  );
 
   const vendorPickerResults = useMemo(() => {
-    const q = vendorPickerQuery.trim().toLowerCase()
-    if (!q) return vendors
-    return vendors.filter(v =>
+    const q = vendorPickerQuery.trim().toLowerCase();
+    if (!q) return vendors;
+    return vendors.filter((v) =>
       [v.name, v.contactName, v.email, v.phone]
         .filter(Boolean)
-        .some(s => String(s).toLowerCase().includes(q))
-    )
-  }, [vendors, vendorPickerQuery])
+        .some((s) => String(s).toLowerCase().includes(q)),
+    );
+  }, [vendors, vendorPickerQuery]);
 
   const handleRemoveExpense = async (expenseId: string) => {
-    const e = externalExpenses.find(x => x.id === expenseId)
+    const e = externalExpenses.find((x) => x.id === expenseId);
     try {
-      await removeExternalExpense(expenseId)
+      await removeExternalExpense(expenseId);
       show({
-        title: 'Expense Removed',
-        message: `Expense ${e?.expenseNumber || ''} removed.`,
-        type: 'success'
-      })
+        title: "Expense Removed",
+        message: `Expense ${e?.expenseNumber || ""} removed.`,
+        type: "success",
+      });
     } catch {
       show({
-        title: 'Remove Failed',
-        message: `Could not remove expense ${e?.expenseNumber || ''}.`,
-        type: 'error'
-      })
+        title: "Remove Failed",
+        message: `Could not remove expense ${e?.expenseNumber || ""}.`,
+        type: "error",
+      });
     }
-  }
+  };
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const sd = startDate ? new Date(startDate + 'T00:00:00') : null
-    const ed = endDate ? new Date(endDate + 'T23:59:59') : null
-    return purchaseOrders.filter(po => {
+    const q = query.trim().toLowerCase();
+    const sd = startDate ? new Date(startDate + "T00:00:00") : null;
+    const ed = endDate ? new Date(endDate + "T23:59:59") : null;
+    return purchaseOrders.filter((po) => {
       const inDates =
         (!sd || new Date(po.createdAt) >= sd) &&
-        (!ed || new Date(po.createdAt) <= ed)
-      if (!q) return inDates
+        (!ed || new Date(po.createdAt) <= ed);
+      if (!q) return inDates;
       const vendorName =
         useInventoryStore
           .getState()
-          .vendors.find(v => v.id === po.vendorId)
-          ?.name?.toLowerCase() || ''
+          .vendors.find((v) => v.id === po.vendorId)
+          ?.name?.toLowerCase() || "";
       return (
         inDates &&
-        ((po.poNumber?.toLowerCase() || '').includes(q) ||
+        ((po.poNumber?.toLowerCase() || "").includes(q) ||
           vendorName.includes(q) ||
-          (po.createdByEmployeeName || '').toLowerCase().includes(q) ||
+          (po.createdByEmployeeName || "").toLowerCase().includes(q) ||
           po.status.toLowerCase().includes(q))
-      )
-    })
-  }, [purchaseOrders, query, startDate, endDate])
+      );
+    });
+  }, [purchaseOrders, query, startDate, endDate]);
 
   const filteredExpenses = useMemo(() => {
-    const q = expenseQuery.trim().toLowerCase()
-    if (!q) return externalExpenses
-    return externalExpenses.filter(expense => {
+    const q = expenseQuery.trim().toLowerCase();
+    if (!q) return externalExpenses;
+    return externalExpenses.filter((expense) => {
       return (
         expense.expenseNumber.toLowerCase().includes(q) ||
         expense.purchasedByEmployeeName.toLowerCase().includes(q) ||
-        (expense.storeName || '').toLowerCase().includes(q) ||
-        (expense.relatedPONumber || '').toLowerCase().includes(q) ||
-        expense.items.some(li => li.itemName.toLowerCase().includes(q))
-      )
-    })
-  }, [externalExpenses, expenseQuery])
+        (expense.storeName || "").toLowerCase().includes(q) ||
+        (expense.relatedPONumber || "").toLowerCase().includes(q) ||
+        expense.items.some((li) => li.itemName.toLowerCase().includes(q))
+      );
+    });
+  }, [externalExpenses, expenseQuery]);
 
-  const TABLE_HEADERS = [
-    { label: 'PO Number', width: '14%' },
-    { label: 'Vendor', width: '18%' },
-    { label: 'Status', width: '16%' },
-    { label: 'Date', width: '14%' },
-    { label: 'Employee', width: '16%' },
-    { label: 'Qty', width: '9%' },
-    { label: 'Total', width: '10%' },
-    { label: '', flex: 1 }
-  ]
+  const TABLE_HEADERS: {
+    label: string;
+    width?: import("react-native").DimensionValue;
+    flex?: number;
+  }[] = [
+    { label: "PO Number", width: "14%" as const },
+    { label: "Vendor", width: "18%" as const },
+    { label: "Status", width: "16%" as const },
+    { label: "Date", width: "14%" as const },
+    { label: "Employee", width: "16%" as const },
+    { label: "Qty", width: "9%" as const },
+    { label: "Total", width: "10%" as const },
+    { label: "", flex: 1 },
+  ];
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={{ flex: 1, backgroundColor: colors.screen }}
     >
       <View style={{ flex: 1, backgroundColor: colors.screen }}>
         {/* Tab bar + actions */}
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            paddingHorizontal: 2,
-            paddingBottom: 8
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "flex-start",
+            paddingHorizontal: s(2),
+            paddingBottom: s(8),
           }}
         >
           <View
             style={{
-              flexDirection: 'row',
+              flexDirection: "row",
               borderBottomWidth: 1,
-              borderBottomColor: colors.border
+              borderBottomColor: colors.border,
             }}
           >
-            {(['purchase-orders', 'expenses'] as const).map(tab => {
-              const isActive = activeTab === tab
+            {(["purchase-orders", "expenses"] as const).map((tab) => {
+              const isActive = activeTab === tab;
               const label =
-                tab === 'purchase-orders'
-                  ? 'Purchase Orders'
-                  : 'External Expenses'
+                tab === "purchase-orders"
+                  ? "Purchase Orders"
+                  : "External Expenses";
               return (
                 <TouchableOpacity
                   key={tab}
                   onPress={() => setActiveTab(tab)}
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 9,
+                    paddingHorizontal: s(14),
+                    paddingVertical: s(9),
                     borderBottomWidth: 2,
-                    borderBottomColor: isActive ? colors.teal : 'transparent',
-                    marginBottom: -1
+                    borderBottomColor: isActive ? colors.teal : "transparent",
+                    marginBottom: -1,
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 13,
-                      fontWeight: '600',
-                      color: isActive ? colors.teal : colors.label
+                      fontSize: s(13),
+                      fontWeight: "600",
+                      color: isActive ? colors.teal : colors.label,
                     }}
                   >
                     {label}
                   </Text>
                 </TouchableOpacity>
-              )
+              );
             })}
           </View>
         </View>
@@ -351,131 +362,133 @@ const PurchaseOrdersScreen = () => {
         <Modal
           transparent
           visible={isVendorPickerOpen}
-          animationType='fade'
+          animationType="fade"
           onRequestClose={() => setIsVendorPickerOpen(false)}
         >
           <View
             style={{
               flex: 1,
-              backgroundColor: 'rgba(0,0,0,0.45)',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 16
+              backgroundColor: "rgba(0,0,0,0.45)",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: s(16),
             }}
           >
             <View
               style={{
-                width: '100%',
+                width: "100%",
                 maxWidth: 620,
-                maxHeight: '82%',
+                maxHeight: "82%",
                 backgroundColor: colors.panel,
                 borderWidth: 1,
                 borderColor: colors.border,
-                borderRadius: 14,
-                overflow: 'hidden'
+                borderRadius: s(14),
+                overflow: "hidden",
               }}
             >
               <View
                 style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
+                  paddingHorizontal: s(14),
+                  paddingVertical: s(12),
                   borderBottomWidth: 1,
-                  borderBottomColor: colors.border
+                  borderBottomColor: colors.border,
                 }}
               >
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 14,
-                      fontWeight: '700',
-                      color: colors.heading
+                      fontSize: s(14),
+                      fontWeight: "700",
+                      color: colors.heading,
                     }}
                   >
                     Select Vendor
                   </Text>
                   <TouchableOpacity
                     onPress={() => setIsVendorPickerOpen(false)}
-                    style={{ padding: 6 }}
+                    style={{ padding: s(6) }}
                   >
-                    <X size={16} color={colors.muted} />
+                    <X size={s(16)} color={colors.muted} />
                   </TouchableOpacity>
                 </View>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     backgroundColor: colors.screen,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    height: 38,
-                    gap: 8,
-                    marginTop: 8
+                    borderRadius: s(8),
+                    paddingHorizontal: s(10),
+                    height: s(38),
+                    gap: s(8),
+                    marginTop: s(8),
                   }}
                 >
-                  <Search size={14} color={colors.muted} />
+                  <Search size={s(14)} color={colors.muted} />
                   <TextInput
                     value={vendorPickerQuery}
                     onChangeText={setVendorPickerQuery}
-                    placeholder='Search vendors...'
+                    placeholder="Search vendors..."
                     placeholderTextColor={colors.muted}
-                    style={{ flex: 1, fontSize: 13, color: colors.heading }}
+                    style={{ flex: 1, fontSize: s(13), color: colors.heading }}
                   />
                 </View>
               </View>
 
               <ScrollView
-                contentContainerStyle={{ padding: 14, paddingBottom: 18 }}
+                contentContainerStyle={{ padding: s(14), paddingBottom: s(18) }}
               >
                 {vendorPickerResults.length === 0 ? (
-                  <View style={{ alignItems: 'center', paddingVertical: 22 }}>
-                    <Text style={{ fontSize: 12, color: colors.muted }}>
+                  <View
+                    style={{ alignItems: "center", paddingVertical: s(22) }}
+                  >
+                    <Text style={{ fontSize: s(12), color: colors.muted }}>
                       No vendors found
                     </Text>
                   </View>
                 ) : (
-                  vendorPickerResults.map(v => (
+                  vendorPickerResults.map((v) => (
                     <TouchableOpacity
                       key={v.id}
                       onPress={() => {
-                        setPoModuleVendorId(v.id)
-                        setPoModuleOpenSignal(s => s + 1)
-                        setIsVendorPickerOpen(false)
-                        setVendorPickerQuery('')
+                        setPoModuleVendorId(v.id);
+                        setPoModuleOpenSignal((s) => s + 1);
+                        setIsVendorPickerOpen(false);
+                        setVendorPickerQuery("");
                       }}
                       style={{
                         borderWidth: 1,
                         borderColor: colors.border,
-                        borderRadius: 8,
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        marginBottom: 8
+                        borderRadius: s(8),
+                        paddingHorizontal: s(12),
+                        paddingVertical: s(10),
+                        marginBottom: s(8),
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 13,
-                          fontWeight: '600',
-                          color: colors.heading
+                          fontSize: s(13),
+                          fontWeight: "600",
+                          color: colors.heading,
                         }}
                       >
                         {v.name}
                       </Text>
                       <Text
                         style={{
-                          fontSize: 11,
+                          fontSize: s(11),
                           color: colors.muted,
-                          marginTop: 2
+                          marginTop: s(2),
                         }}
                       >
-                        {v.contactName || 'No contact'}
+                        {v.contactName || "No contact"}
                       </Text>
                     </TouchableOpacity>
                   ))
@@ -486,41 +499,41 @@ const PurchaseOrdersScreen = () => {
         </Modal>
 
         {/* Purchase Orders Tab */}
-        {activeTab === 'purchase-orders' && (
+        {activeTab === "purchase-orders" && (
           <View
             style={{
               flex: 1,
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 12,
-              overflow: 'hidden'
+              borderRadius: s(12),
+              overflow: "hidden",
             }}
           >
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingHorizontal: 12,
-                paddingVertical: 8,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
-                backgroundColor: colors.panel
+                backgroundColor: colors.panel,
               }}
             >
               <Text
                 style={{
-                  fontSize: 12,
-                  fontWeight: '700',
+                  fontSize: s(12),
+                  fontWeight: "700",
                   color: colors.heading,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
                 }}
               >
                 Purchase Orders Table
               </Text>
-              <Text style={{ fontSize: 11, color: colors.muted }}>
+              <Text style={{ fontSize: s(11), color: colors.muted }}>
                 {filtered.length} results
               </Text>
             </View>
@@ -528,60 +541,60 @@ const PurchaseOrdersScreen = () => {
             {/* Filters */}
             <View
               style={{
-                flexDirection: 'row',
-                gap: 10,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
+                flexDirection: "row",
+                gap: s(10),
+                paddingHorizontal: s(12),
+                paddingVertical: s(8),
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
-                backgroundColor: colors.screen
+                backgroundColor: colors.screen,
               }}
             >
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
-                    fontSize: 11,
-                    fontWeight: '600',
+                    fontSize: s(11),
+                    fontWeight: "600",
                     color: colors.muted,
-                    textTransform: 'uppercase',
+                    textTransform: "uppercase",
                     letterSpacing: 0.5,
-                    marginBottom: 5
+                    marginBottom: s(5),
                   }}
                 >
                   Search
                 </Text>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     backgroundColor: colors.panel,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    height: 38,
-                    gap: 8
+                    borderRadius: s(8),
+                    paddingHorizontal: s(10),
+                    height: s(38),
+                    gap: s(8),
                   }}
                 >
-                  <Search size={13} color={colors.muted} />
+                  <Search size={s(13)} color={colors.muted} />
                   <TextInput
                     value={query}
                     onChangeText={setQuery}
-                    placeholder='PO number, vendor, employee...'
+                    placeholder="PO number, vendor, employee..."
                     placeholderTextColor={colors.muted}
                     style={{
                       flex: 1,
-                      fontSize: 13,
+                      fontSize: s(13),
                       color: colors.heading,
-                      paddingVertical: 0
+                      paddingVertical: 0,
                     }}
                   />
                   {!!query && (
                     <TouchableOpacity
-                      onPress={() => setQuery('')}
-                      style={{ padding: 3 }}
+                      onPress={() => setQuery("")}
+                      style={{ padding: s(3) }}
                     >
-                      <X size={14} color={colors.muted} />
+                      <X size={s(14)} color={colors.muted} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -589,12 +602,12 @@ const PurchaseOrdersScreen = () => {
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
-                    fontSize: 11,
-                    fontWeight: '600',
+                    fontSize: s(11),
+                    fontWeight: "600",
                     color: colors.muted,
-                    textTransform: 'uppercase',
+                    textTransform: "uppercase",
                     letterSpacing: 0.5,
-                    marginBottom: 5
+                    marginBottom: s(5),
                   }}
                 >
                   Date Range
@@ -602,35 +615,35 @@ const PurchaseOrdersScreen = () => {
                 <DateRangePicker
                   startDate={startDate}
                   endDate={endDate}
-                  onDateRangeChange={(s, e) => {
-                    setStartDate(s)
-                    setEndDate(e)
+                  onDateRangeChange={(sd, ed) => {
+                    setStartDate(sd);
+                    setEndDate(ed);
                   }}
-                  placeholder='Select date range'
+                  placeholder="Select date range"
                 />
               </View>
 
-              <View style={{ justifyContent: 'flex-end' }}>
+              <View style={{ justifyContent: "flex-end" }}>
                 <TouchableOpacity
                   onPress={() => setIsVendorPickerOpen(true)}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    paddingHorizontal: 12,
-                    height: 38,
-                    backgroundColor: colors.teal + '20',
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: s(6),
+                    paddingHorizontal: s(12),
+                    height: s(38),
+                    backgroundColor: colors.teal + "20",
                     borderWidth: 1,
-                    borderColor: colors.teal + '50',
-                    borderRadius: 8
+                    borderColor: colors.teal + "50",
+                    borderRadius: s(8),
                   }}
                 >
-                  <Plus size={13} color={colors.teal} />
+                  <Plus size={s(13)} color={colors.teal} />
                   <Text
                     style={{
-                      fontSize: 12,
-                      fontWeight: '600',
-                      color: colors.teal
+                      fontSize: s(12),
+                      fontWeight: "600",
+                      color: colors.teal,
                     }}
                   >
                     Create PO
@@ -642,13 +655,13 @@ const PurchaseOrdersScreen = () => {
             {/* Table headers */}
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
+                flexDirection: "row",
+                alignItems: "center",
                 paddingHorizontal: 12,
                 paddingVertical: 7,
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
-                backgroundColor: colors.panel
+                backgroundColor: colors.panel,
               }}
             >
               {TABLE_HEADERS.map((h, i) => (
@@ -657,12 +670,12 @@ const PurchaseOrdersScreen = () => {
                   style={[
                     {
                       fontSize: 11,
-                      fontWeight: '600',
+                      fontWeight: "600",
                       color: colors.muted,
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.5
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
                     },
-                    h.width ? { width: h.width } : { flex: 1 }
+                    h.width ? { width: h.width } : { flex: 1 },
                   ]}
                 >
                   {h.label}
@@ -672,7 +685,7 @@ const PurchaseOrdersScreen = () => {
 
             <FlatList
               data={filtered}
-              keyExtractor={item => item.id}
+              keyExtractor={(item) => item.id}
               contentContainerStyle={{ paddingBottom: 20, paddingTop: 2 }}
               renderItem={({ item }) => (
                 <PurchaseOrderRow
@@ -682,17 +695,17 @@ const PurchaseOrdersScreen = () => {
               )}
               ListEmptyComponent={
                 <View
-                  style={{ alignItems: 'center', paddingVertical: 48, gap: 8 }}
+                  style={{ alignItems: "center", paddingVertical: 48, gap: 8 }}
                 >
                   <View
                     style={{
                       width: 44,
                       height: 44,
                       borderRadius: 12,
-                      backgroundColor: colors.teal + '15',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginBottom: 4
+                      backgroundColor: colors.teal + "15",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: 4,
                     }}
                   >
                     <Package size={20} color={colors.teal} />
@@ -700,8 +713,8 @@ const PurchaseOrdersScreen = () => {
                   <Text
                     style={{
                       fontSize: 14,
-                      fontWeight: '600',
-                      color: colors.heading
+                      fontWeight: "600",
+                      color: colors.heading,
                     }}
                   >
                     No purchase orders
@@ -716,7 +729,7 @@ const PurchaseOrdersScreen = () => {
         )}
 
         {/* Expenses Tab */}
-        {activeTab === 'expenses' && (
+        {activeTab === "expenses" && (
           <View
             style={{
               flex: 1,
@@ -724,28 +737,28 @@ const PurchaseOrdersScreen = () => {
               borderWidth: 1,
               borderColor: colors.border,
               borderRadius: 12,
-              overflow: 'hidden'
+              overflow: "hidden",
             }}
           >
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
                 paddingHorizontal: 12,
                 paddingVertical: 8,
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
-                backgroundColor: colors.panel
+                backgroundColor: colors.panel,
               }}
             >
               <Text
                 style={{
                   fontSize: 12,
-                  fontWeight: '700',
+                  fontWeight: "700",
                   color: colors.heading,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
                 }}
               >
                 External Expenses Table
@@ -757,42 +770,42 @@ const PurchaseOrdersScreen = () => {
 
             <View
               style={{
-                flexDirection: 'row',
+                flexDirection: "row",
                 gap: 10,
                 paddingHorizontal: 12,
                 paddingBottom: 8,
                 paddingTop: 8,
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border,
-                backgroundColor: colors.screen
+                backgroundColor: colors.screen,
               }}
             >
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
                     fontSize: 11,
-                    fontWeight: '600',
+                    fontWeight: "600",
                     color: colors.muted,
-                    textTransform: 'uppercase',
+                    textTransform: "uppercase",
                     letterSpacing: 0.5,
-                    marginBottom: 5
+                    marginBottom: 5,
                   }}
                 >
                   Search Expenses
                 </Text>
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     backgroundColor: colors.panel,
                     borderWidth: 1,
                     borderColor: expenseQuery
-                      ? colors.teal + '55'
+                      ? colors.teal + "55"
                       : colors.border,
                     borderRadius: 8,
                     paddingHorizontal: 10,
                     height: 38,
-                    gap: 8
+                    gap: 8,
                   }}
                 >
                   <Search
@@ -802,18 +815,18 @@ const PurchaseOrdersScreen = () => {
                   <TextInput
                     value={expenseQuery}
                     onChangeText={setExpenseQuery}
-                    placeholder='Expense #, employee, store, related PO, item...'
+                    placeholder="Expense #, employee, store, related PO, item..."
                     placeholderTextColor={colors.muted}
                     style={{
                       flex: 1,
                       fontSize: 13,
                       color: colors.heading,
-                      paddingVertical: 0
+                      paddingVertical: 0,
                     }}
                   />
                   {!!expenseQuery && (
                     <TouchableOpacity
-                      onPress={() => setExpenseQuery('')}
+                      onPress={() => setExpenseQuery("")}
                       style={{ padding: 3 }}
                     >
                       <X size={14} color={colors.muted} />
@@ -822,27 +835,27 @@ const PurchaseOrdersScreen = () => {
                 </View>
               </View>
 
-              <View style={{ justifyContent: 'flex-end' }}>
+              <View style={{ justifyContent: "flex-end" }}>
                 <TouchableOpacity
-                  onPress={() => setExpenseModuleOpenSignal(s => s + 1)}
+                  onPress={() => setExpenseModuleOpenSignal((s) => s + 1)}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
+                    flexDirection: "row",
+                    alignItems: "center",
                     gap: 6,
                     paddingHorizontal: 12,
                     height: 38,
-                    backgroundColor: colors.teal + '20',
+                    backgroundColor: colors.teal + "20",
                     borderWidth: 1,
-                    borderColor: colors.teal + '50',
-                    borderRadius: 8
+                    borderColor: colors.teal + "50",
+                    borderRadius: 8,
                   }}
                 >
                   <Plus size={13} color={colors.teal} />
                   <Text
                     style={{
                       fontSize: 12,
-                      fontWeight: '600',
-                      color: colors.teal
+                      fontWeight: "600",
+                      color: colors.teal,
                     }}
                   >
                     Add Expense
@@ -853,35 +866,35 @@ const PurchaseOrdersScreen = () => {
 
             <FlatList
               data={filteredExpenses}
-              keyExtractor={item => item.id}
+              keyExtractor={(item) => item.id}
               contentContainerStyle={{ padding: 12, paddingBottom: 20 }}
               renderItem={({ item }) => (
                 <View
                   style={{
                     backgroundColor: colors.screen,
                     borderWidth: 1,
-                    borderColor: colors.teal + '35',
+                    borderColor: colors.teal + "35",
                     borderLeftWidth: 3,
                     borderLeftColor: colors.teal,
                     borderRadius: 10,
                     padding: 12,
-                    marginBottom: 8
+                    marginBottom: 8,
                   }}
                 >
                   <View
                     style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      marginBottom: 8
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      marginBottom: 8,
                     }}
                   >
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
                           fontSize: 13,
-                          fontWeight: '600',
-                          color: colors.teal
+                          fontWeight: "600",
+                          color: colors.teal,
                         }}
                       >
                         {item.expenseNumber} · {item.items.length} items
@@ -890,7 +903,7 @@ const PurchaseOrdersScreen = () => {
                         style={{
                           fontSize: 11,
                           color: colors.label,
-                          marginTop: 2
+                          marginTop: 2,
                         }}
                       >
                         By {item.purchasedByEmployeeName}
@@ -903,7 +916,7 @@ const PurchaseOrdersScreen = () => {
                           style={{
                             fontSize: 11,
                             color: colors.muted,
-                            marginTop: 2
+                            marginTop: 2,
                           }}
                         >
                           Store: {item.storeName}
@@ -915,19 +928,19 @@ const PurchaseOrdersScreen = () => {
                             fontSize: 11,
                             color: colors.teal,
                             marginTop: 2,
-                            fontWeight: '600'
+                            fontWeight: "600",
                           }}
                         >
                           Related: {item.relatedPONumber}
                         </Text>
                       )}
                     </View>
-                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                    <View style={{ alignItems: "flex-end", gap: 6 }}>
                       <Text
                         style={{
                           fontSize: 14,
-                          fontWeight: '700',
-                          color: colors.teal
+                          fontWeight: "700",
+                          color: colors.teal,
                         }}
                       >
                         ${item.totalAmount.toFixed(2)}
@@ -944,12 +957,12 @@ const PurchaseOrdersScreen = () => {
                     <View
                       key={index}
                       style={{
-                        flexDirection: 'row',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
                         paddingVertical: 6,
                         borderTopWidth: 1,
-                        borderTopColor: colors.border
+                        borderTopColor: colors.border,
                       }}
                     >
                       <View style={{ flex: 1 }}>
@@ -957,7 +970,7 @@ const PurchaseOrdersScreen = () => {
                           style={{
                             fontSize: 12,
                             color: colors.heading,
-                            fontWeight: '600'
+                            fontWeight: "600",
                           }}
                         >
                           {li.itemName} ×{li.quantity}
@@ -969,8 +982,8 @@ const PurchaseOrdersScreen = () => {
                       <Text
                         style={{
                           fontSize: 12,
-                          fontWeight: '600',
-                          color: colors.teal
+                          fontWeight: "600",
+                          color: colors.teal,
                         }}
                       >
                         ${li.totalAmount.toFixed(2)}
@@ -982,7 +995,7 @@ const PurchaseOrdersScreen = () => {
                       style={{
                         fontSize: 11,
                         color: colors.muted,
-                        marginTop: 6
+                        marginTop: 6,
                       }}
                     >
                       Notes: {item.notes}
@@ -992,17 +1005,17 @@ const PurchaseOrdersScreen = () => {
               )}
               ListEmptyComponent={
                 <View
-                  style={{ alignItems: 'center', paddingVertical: 48, gap: 8 }}
+                  style={{ alignItems: "center", paddingVertical: 48, gap: 8 }}
                 >
                   <View
                     style={{
                       width: 44,
                       height: 44,
                       borderRadius: 12,
-                      backgroundColor: colors.teal + '15',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginBottom: 4
+                      backgroundColor: colors.teal + "15",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: 4,
                     }}
                   >
                     <Receipt size={20} color={colors.teal} />
@@ -1010,8 +1023,8 @@ const PurchaseOrdersScreen = () => {
                   <Text
                     style={{
                       fontSize: 14,
-                      fontWeight: '600',
-                      color: colors.heading
+                      fontWeight: "600",
+                      color: colors.heading,
                     }}
                   >
                     No expenses recorded
@@ -1031,26 +1044,26 @@ const PurchaseOrdersScreen = () => {
           onConfirm={async () => {
             if (poToDelete) {
               try {
-                await deletePurchaseOrder(poToDelete.id)
+                await deletePurchaseOrder(poToDelete.id);
                 show({
-                  title: 'PO Deleted',
+                  title: "PO Deleted",
                   message: `"${poToDelete.poNumber}" deleted.`,
-                  type: 'success'
-                })
+                  type: "success",
+                });
               } catch {
                 show({
-                  title: 'Delete Failed',
+                  title: "Delete Failed",
                   message: `Could not delete "${poToDelete.poNumber}".`,
-                  type: 'error'
-                })
+                  type: "error",
+                });
               }
             }
-            setPoToDelete(null)
+            setPoToDelete(null);
           }}
-          title='Delete PO'
+          title="Delete PO"
           description={`Delete "${poToDelete?.poNumber}"? This cannot be undone.`}
-          confirmText='Delete'
-          variant='destructive'
+          confirmText="Delete"
+          variant="destructive"
         />
 
         {poModuleVendor && (
@@ -1058,11 +1071,11 @@ const PurchaseOrdersScreen = () => {
             vendorId={poModuleVendor.id}
             vendorName={poModuleVendor.name}
             vendorPOs={purchaseOrders.filter(
-              po => po.vendorId === poModuleVendor.id
+              (po) => po.vendorId === poModuleVendor.id,
             )}
             items={inventoryItems}
             resolveItemName={(id: string) =>
-              inventoryItems.find(i => i.id === id)?.name || 'Item'
+              inventoryItems.find((i) => i.id === id)?.name || "Item"
             }
             openSignal={poModuleOpenSignal}
           />
@@ -1071,7 +1084,7 @@ const PurchaseOrdersScreen = () => {
         <AddExpenseModule openSignal={expenseModuleOpenSignal} />
       </View>
     </KeyboardAvoidingView>
-  )
-}
+  );
+};
 
-export default PurchaseOrdersScreen
+export default PurchaseOrdersScreen;

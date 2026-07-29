@@ -2,6 +2,7 @@
 import { useCFDDisplayData } from '@/contexts/CFDDisplayDataContext.base'
 import { iosOnly } from '@/lib/safeAnimations'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { Check, Gift, UtensilsCrossed } from 'lucide-react-native'
 import { useEffect, useMemo } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
@@ -18,6 +19,7 @@ import Animated, {
 
 export function LoyaltyConfirmationScreen () {
   const { loyaltyResult, branding, themeMode } = useCFDDisplayData()
+  const uiScale = useUiScale()
   const programs = loyaltyResult?.programs ?? []
   const hasProgramResults = programs.length > 0
   const customerName = loyaltyResult?.customerName
@@ -40,129 +42,132 @@ export function LoyaltyConfirmationScreen () {
     opacity: iconOpacity.value
   }))
 
-  const styles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.screen
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 20,
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      backgroundColor: colors.panel
-    },
-    headerLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12
-    },
-    headerIconBox: {
-      width: 40,
-      height: 40,
-      borderRadius: 10,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center'
-    },
-    restaurantName: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.heading
-    },
-    headerBadge: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.teal,
-      backgroundColor: `${colors.teal}18`,
-      paddingHorizontal: 12,
-      paddingVertical: 5,
-      borderRadius: 20,
-      overflow: 'hidden'
-    },
-    body: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: 32
-    },
-    iconContainer: {
-      width: 84,
-      height: 84,
-      borderRadius: 42,
-      backgroundColor: colors.teal,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 22
-    },
-    title: {
-      fontSize: 40,
-      fontWeight: '700',
-      color: colors.teal,
-      letterSpacing: -0.8,
-      marginBottom: 8,
-      textAlign: 'center'
-    },
-    subtitle: {
-      fontSize: 18,
-      color: colors.label,
-      textAlign: 'center',
-      marginBottom: 14
-    },
-    welcomeText: {
-      fontSize: 20,
-      color: colors.heading,
-      fontWeight: '500',
-      marginBottom: 14
-    },
-    redeemCard: {
-      marginTop: 6,
-      width: '100%',
-      maxWidth: 560,
-      backgroundColor: colors.card,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: 12,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      alignItems: 'center'
-    },
-    redeemTitle: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.heading,
-      textAlign: 'center'
-    },
-    redeemProgramsText: {
-      marginTop: 4,
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.teal,
-      textAlign: 'center'
-    },
-    rewardBanner: {
-      marginTop: 22,
-      paddingHorizontal: 18,
-      paddingVertical: 10,
-      backgroundColor: colors.card,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: 14,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8
-    },
-    rewardBannerText: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: colors.heading
-    }
-  }), [themeMode])
+  const styles = useMemo(() => {
+    const s = (n: number) => Math.round(n * uiScale)
+    return StyleSheet.create({
+      container: {
+        flex: 1,
+        backgroundColor: colors.screen
+      },
+      header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: s(20),
+        paddingVertical: s(14),
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        backgroundColor: colors.panel
+      },
+      headerLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: s(12)
+      },
+      headerIconBox: {
+        width: s(40),
+        height: s(40),
+        borderRadius: s(10),
+        backgroundColor: colors.card,
+        borderWidth: 1,
+        borderColor: colors.border,
+        alignItems: 'center',
+        justifyContent: 'center'
+      },
+      restaurantName: {
+        fontSize: s(16),
+        fontWeight: '700',
+        color: colors.heading
+      },
+      headerBadge: {
+        fontSize: s(13),
+        fontWeight: '600',
+        color: colors.teal,
+        backgroundColor: `${colors.teal}18`,
+        paddingHorizontal: s(12),
+        paddingVertical: s(5),
+        borderRadius: s(20),
+        overflow: 'hidden'
+      },
+      body: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: s(32)
+      },
+      iconContainer: {
+        width: s(84),
+        height: s(84),
+        borderRadius: s(42),
+        backgroundColor: colors.teal,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: s(22)
+      },
+      title: {
+        fontSize: s(40),
+        fontWeight: '700',
+        color: colors.teal,
+        letterSpacing: -0.8,
+        marginBottom: s(8),
+        textAlign: 'center'
+      },
+      subtitle: {
+        fontSize: s(18),
+        color: colors.label,
+        textAlign: 'center',
+        marginBottom: s(14)
+      },
+      welcomeText: {
+        fontSize: s(20),
+        color: colors.heading,
+        fontWeight: '500',
+        marginBottom: s(14)
+      },
+      redeemCard: {
+        marginTop: s(6),
+        width: '100%',
+        maxWidth: s(560),
+        backgroundColor: colors.card,
+        borderColor: colors.border,
+        borderWidth: 1,
+        borderRadius: s(12),
+        paddingHorizontal: s(14),
+        paddingVertical: s(10),
+        alignItems: 'center'
+      },
+      redeemTitle: {
+        fontSize: s(16),
+        fontWeight: '700',
+        color: colors.heading,
+        textAlign: 'center'
+      },
+      redeemProgramsText: {
+        marginTop: s(4),
+        fontSize: s(13),
+        fontWeight: '600',
+        color: colors.teal,
+        textAlign: 'center'
+      },
+      rewardBanner: {
+        marginTop: s(22),
+        paddingHorizontal: s(18),
+        paddingVertical: s(10),
+        backgroundColor: colors.card,
+        borderColor: colors.border,
+        borderWidth: 1,
+        borderRadius: s(14),
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: s(8)
+      },
+      rewardBannerText: {
+        fontSize: s(15),
+        fontWeight: '600',
+        color: colors.heading
+      }
+    })
+  }, [themeMode, uiScale])
 
   return (
     <View style={styles.container}>
@@ -172,7 +177,7 @@ export function LoyaltyConfirmationScreen () {
       >
         <View style={styles.headerLeft}>
           <View style={styles.headerIconBox}>
-            <UtensilsCrossed size={20} color={colors.teal} />
+            <UtensilsCrossed size={Math.round(20 * uiScale)} color={colors.teal} />
           </View>
           <Text style={styles.restaurantName}>
             {branding?.restaurantName ?? 'Restaurant'}
@@ -183,7 +188,7 @@ export function LoyaltyConfirmationScreen () {
 
       <View style={styles.body}>
         <Animated.View style={[styles.iconContainer, iconStyle]}>
-          <Check size={48} color={colors.screen} strokeWidth={3} />
+          <Check size={Math.round(48 * uiScale)} color={colors.screen} strokeWidth={3} />
         </Animated.View>
 
         <Animated.Text
@@ -216,7 +221,7 @@ export function LoyaltyConfirmationScreen () {
             entering={iosOnly(FadeInDown.duration(260).delay(300))}
             style={styles.rewardBanner}
           >
-            <Gift size={18} color={colors.teal} />
+            <Gift size={Math.round(18 * uiScale)} color={colors.teal} />
             <Text style={styles.rewardBannerText}>You earned a reward!</Text>
           </Animated.View>
         ) : null}

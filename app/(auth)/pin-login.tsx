@@ -24,6 +24,7 @@ import { replaceRoute } from "@/lib/rootNavigation";
 import { colors } from "@/lib/theme";
 import { useUiScale } from "@/lib/uiScale";
 import { MerchantRole } from "@/lib/types";
+import { fetchMerchantBillingAccess } from "@/services/posAccessService";
 import {
     EmployeeProfile,
     STATION_IN_USE_AUTH_ERROR,
@@ -106,6 +107,9 @@ const PinLoginScreen = () => {
   const setStationSessionId = useStoreSettingsStore(
     (state) => state.setStationSessionId,
   );
+  const setBillingAccess = useStoreSettingsStore(
+    (state) => state.setBillingAccess,
+  );
   const {
     getSession,
     clockIn: timeclockClockIn,
@@ -182,6 +186,29 @@ const PinLoginScreen = () => {
     );
   };
 
+  const ensureBillingAccess = useCallback(async () => {
+    if (!isOnline || !selectedStore?.merchant_id) return true;
+
+    try {
+      const access = await fetchMerchantBillingAccess(
+        supabase,
+        selectedStore.merchant_id,
+      );
+      setBillingAccess(access);
+
+      if (!access.allowed && access.failure) {
+        triggerShakeAnimation();
+        showDialog(access.failure.title, access.failure.message, "error");
+        return false;
+      }
+    } catch (error) {
+      console.warn("[PinLogin] Billing access precheck failed:", error);
+      // Let pos_staff_login_v2 remain the final gate if this precheck is unavailable.
+    }
+
+    return true;
+  }, [isOnline, selectedStore?.merchant_id, setBillingAccess, supabase]);
+
   // Handle takeover when user confirms
   const handleTakeover = async () => {
     if (!pendingTakeoverPin || !selectedStore || !selectedStation) {
@@ -193,6 +220,12 @@ const PinLoginScreen = () => {
     showLoading("Taking over station...");
 
     try {
+      if (!(await ensureBillingAccess())) {
+        hideLoading();
+        setPendingTakeoverPin(null);
+        return;
+      }
+
       const deviceName = getDeviceName();
       const info = cachedDeviceInfo ?? (await getDeviceInfo());
 
@@ -234,9 +267,13 @@ const PinLoginScreen = () => {
       if (!response.success) {
         hideLoading();
         triggerShakeAnimation();
+        const authFailure = getPinAuthFailure({
+          error: response.error,
+          errorCode: response.error_code,
+        });
         showDialog(
-          "Takeover Failed",
-          response.error || "Unable to take over station.",
+          authFailure.title,
+          authFailure.message || "Unable to take over station.",
           "error",
         );
         setPendingTakeoverPin(null);
@@ -333,9 +370,13 @@ const PinLoginScreen = () => {
       });
       hideLoading();
       triggerShakeAnimation();
+      const authFailure = getPinAuthFailure({
+        error: error?.message,
+        errorCode: error?.code,
+      });
       showDialog(
-        "Takeover Failed",
-        error?.message || "Unable to take over station. Please try again.",
+        authFailure.title,
+        authFailure.message || "Unable to take over station. Please try again.",
         "error",
       );
       setPendingTakeoverPin(null);
@@ -378,6 +419,11 @@ const PinLoginScreen = () => {
     }
 
     // ── FAST PATH: optimistic sign-in (works online AND offline, cache hit) ──
+    if (isOnline && !(await ensureBillingAccess())) {
+      setPin("");
+      return;
+    }
+
     const result = await performOptimisticSignIn({
       pin,
       selectedStore,
@@ -389,6 +435,13 @@ const PinLoginScreen = () => {
     });
 
     if (result.outcome === "navigating") {
+      setPin("");
+      return;
+    }
+
+    if (result.outcome === "blocked") {
+      triggerShakeAnimation();
+      showDialog(result.title, result.message, "error");
       setPin("");
       return;
     }

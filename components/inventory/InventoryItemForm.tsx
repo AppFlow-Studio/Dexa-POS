@@ -1,5 +1,6 @@
 import { colors } from "@/lib/theme";
 import { InventoryItem } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { Upload } from "lucide-react-native";
 import React, { useState } from "react";
 import {
@@ -26,7 +27,9 @@ const InventoryItemForm: React.FC<InventoryItemFormProps> = ({
 }) => {
   // Form state would be managed here, e.g., with useState or a form library
   const [itemName, setItemName] = useState(item?.name || "");
-  const [availability, setAvailability] = useState(item?.availability ?? true);
+  const [availability, setAvailability] = useState(true);
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   return (
     <KeyboardAvoidingView
@@ -41,7 +44,7 @@ const InventoryItemForm: React.FC<InventoryItemFormProps> = ({
             <View>
               <Text className="text-2xl font-bold mb-2">Item Image</Text>
               <TouchableOpacity className="border-2 border-dashed border-gray-300 rounded-lg h-48 items-center justify-center">
-                <Upload color={colors.muted} size={48} />
+                <Upload color={colors.muted} size={s(48)} />
                 <Text className="text-xl text-gray-500 mt-2">
                   Click to upload
                 </Text>

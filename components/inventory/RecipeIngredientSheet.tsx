@@ -4,11 +4,12 @@ import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetTextInput,
   BottomSheetView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { Package, Search, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { bottomSheetTheme, colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 
 export type RecipeIngredientSheetRef = BottomSheet;
 
@@ -37,6 +38,8 @@ const RecipeIngredientSheet = forwardRef<RecipeIngredientSheetRef, Props>(
     const { inventoryItems } = useInventoryStore();
     const [search, setSearch] = useState("");
     const [selectedId, setSelectedId] = useState<string | null>(currentId);
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
 
     const filtered = useMemo(() => {
       if (!search.trim()) return inventoryItems;
@@ -79,14 +82,14 @@ const RecipeIngredientSheet = forwardRef<RecipeIngredientSheetRef, Props>(
               onPress={() => (ref as any)?.current?.close?.()}
               className="p-2 bg-gray-800 rounded-full"
             >
-              <X size={20} color={colors.label} />
+              <X size={s(20)} color={colors.label} />
             </TouchableOpacity>
           </View>
 
           {/* Search Bar */}
           <View className="p-4 bg-screen">
             <View className="flex-row items-center bg-panel border border-border rounded-xl px-3 py-2">
-              <Search size={20} color={colors.label} />
+              <Search size={s(20)} color={colors.label} />
               <BottomSheetTextInput
                 value={search}
                 onChangeText={setSearch}
@@ -96,7 +99,7 @@ const RecipeIngredientSheet = forwardRef<RecipeIngredientSheetRef, Props>(
               />
               {search.length > 0 && (
                 <TouchableOpacity onPress={() => setSearch("")}>
-                  <X size={16} color={colors.label} />
+                  <X size={s(16)} color={colors.label} />
                 </TouchableOpacity>
               )}
             </View>
@@ -106,7 +109,7 @@ const RecipeIngredientSheet = forwardRef<RecipeIngredientSheetRef, Props>(
           <View className="flex-1 w-full bg-screen">
             {filtered.length === 0 ? (
               <View className="flex-1 items-center justify-center p-8 opacity-50">
-                <Package size={48} color="#4B5563" />
+                <Package size={s(48)} color="#4B5563" />
                 <Text className="text-gray-500 text-lg font-medium mt-4">
                   No items found
                 </Text>
@@ -117,7 +120,7 @@ const RecipeIngredientSheet = forwardRef<RecipeIngredientSheetRef, Props>(
             ) : (
               <BottomSheetScrollView
                 className="flex-1 w-full"
-                contentContainerStyle={{ paddingBottom: 40 }}
+                contentContainerStyle={{ paddingBottom: s(40) }}
               >
                 {filtered.map((item) => {
                   const isSelected = selectedId === item.id;

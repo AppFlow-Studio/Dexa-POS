@@ -1,9 +1,10 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
+import { getPosAccessFailure } from "@/lib/posAccessControl";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { replaceRoute } from "@/lib/rootNavigation";
-import { useRouter } from "expo-router";
+import { refreshSelectedStationOperationalState } from "@/services/posAccessService";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, AppStateStatus } from "react-native";
 
@@ -24,6 +25,7 @@ interface BroadcastKickPayload {
 interface SessionCheckResult {
   is_valid: boolean;
   status: string;
+  error_code?: string | null;
   kicked_by?: string | null;
   kick_reason?: string | null;
   ended_at?: string | null;
@@ -34,6 +36,8 @@ export interface UseSessionKickListenerResult {
   isKicked: boolean;
   kickedBy: string | null;
   kickReason: string | null;
+  kickTitle: string | null;
+  kickMessage: string | null;
   countdown: number;
   acknowledgeKick: () => void;
   /** Manually check if the session is still valid. Returns false if kicked. */
@@ -58,7 +62,6 @@ const SESSION_POLL_INTERVAL_MS = 30_000; // 30 seconds
  */
 export function useSessionKickListener(): UseSessionKickListenerResult {
   const supabase = useSupabaseClient();
-  const router = useRouter();
   const clearSelectedStation = useStoreSettingsStore(
     (state) => state.clearSelectedStation
   );
@@ -72,6 +75,8 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
   const [isKicked, setIsKicked] = useState(false);
   const [kickedBy, setKickedBy] = useState<string | null>(null);
   const [kickReason, setKickReason] = useState<string | null>(null);
+  const [kickTitle, setKickTitle] = useState<string | null>(null);
+  const [kickMessage, setKickMessage] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(KICK_COUNTDOWN_SECONDS);
 
   const broadcastChannelRef = useRef<RealtimeChannel | null>(null);
@@ -94,7 +99,11 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
   // ============================================================================
 
   const triggerKick = useCallback(
-    (by: string | null, reason: string | null) => {
+    (
+      by: string | null,
+      reason: string | null,
+      options?: { title?: string | null; message?: string | null },
+    ) => {
       // Prevent duplicate triggers or triggering after a voluntary logout
       if (isKickedRef.current || isVoluntaryLogoutRef.current) return;
       isKickedRef.current = true;
@@ -106,6 +115,8 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
       setIsKicked(true);
       setKickedBy(by);
       setKickReason(reason);
+      setKickTitle(options?.title ?? null);
+      setKickMessage(options?.message ?? null);
       setCountdown(KICK_COUNTDOWN_SECONDS);
     },
     []
@@ -127,7 +138,7 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
 
     // Hide the modal but keep isKickedRef.current = true so no further triggers fire
     setIsKicked(false);
-  }, [setStationSessionId, clearSelectedStation, router]);
+  }, [setStationSessionId, clearSelectedStation]);
 
   // ============================================================================
   // Core: Acknowledge kick (user presses OK before countdown)
@@ -185,11 +196,37 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
         console.log(
           `[KickListener] Session invalid via poll - status: ${result.status}`
         );
-        triggerKick(
-          result.kicked_by ?? null,
-          result.kick_reason ?? `Session ${result.status}`
-        );
+        const accessFailure = getPosAccessFailure({
+          error: result.error ?? result.kick_reason ?? null,
+          errorCode: result.error_code ?? result.status,
+        });
+
+        if (accessFailure) {
+          triggerKick(null, accessFailure.message, {
+            title: accessFailure.title,
+            message: accessFailure.message,
+          });
+        } else {
+          triggerKick(
+            result.kicked_by ?? null,
+            result.kick_reason ?? `Session ${result.status}`
+          );
+        }
         return false;
+      }
+
+      try {
+        const stationState = await refreshSelectedStationOperationalState(supabase);
+        if (!stationState.valid) {
+          triggerKick(null, stationState.failure.message, {
+            title: stationState.failure.title,
+            message: stationState.failure.message,
+          });
+          return false;
+        }
+      } catch (err) {
+        console.warn("[KickListener] Station access refresh error:", err);
+        // Don't kick on refresh/RPC errors - let the next validation retry.
       }
 
       return true;
@@ -374,6 +411,8 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
       setIsKicked(false);
       setKickedBy(null);
       setKickReason(null);
+      setKickTitle(null);
+      setKickMessage(null);
       setCountdown(KICK_COUNTDOWN_SECONDS);
     }
   }, [stationSessionId]);
@@ -382,6 +421,8 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
     isKicked,
     kickedBy,
     kickReason,
+    kickTitle,
+    kickMessage,
     countdown,
     acknowledgeKick,
     validateSession,

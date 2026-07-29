@@ -19,6 +19,7 @@ import {
   View,
 } from 'react-native'
 import Animated, {
+  SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -35,7 +36,7 @@ const PIN_LENGTH = 4
 
 // ─── PIN dots ────────────────────────────────────────────────────────────────
 
-const PinDots = ({ length, shake }: { length: number; shake: Animated.SharedValue<number> }) => {
+const PinDots = ({ length, shake }: { length: number; shake: SharedValue<number> }) => {
   const uiScale = useUiScale()
   const s = (n: number) => Math.round(n * uiScale)
   const animStyle = useAnimatedStyle(() => ({

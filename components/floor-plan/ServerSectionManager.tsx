@@ -15,7 +15,7 @@ import {
   BottomSheetBackdrop,
   BottomSheetModal,
   BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { bottomSheetTheme } from "@/lib/theme";
 import { Check, UserMinus, UserPlus, Users } from "lucide-react-native";
 import React, { useCallback, useMemo, useRef, useState } from "react";

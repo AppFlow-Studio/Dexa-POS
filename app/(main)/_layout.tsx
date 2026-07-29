@@ -6,6 +6,8 @@ import NotificationBottomSheet from "@/components/notifications/NotificationBott
 import OnlineOrderDrawer from "@/components/online-orders/OnlineOrderDrawer";
 import OnlineOrderEdgeTab from "@/components/online-orders/OnlineOrderEdgeTab";
 import MyProfilePanel from "@/components/profile/MyProfilePanel";
+import { PanelSheetHostContext } from "@/components/ui/PanelSheet";
+import type { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
 import { useKioskOrientation } from "@/hooks/kiosk/useKioskOrientation";
 import { useKioskProfile } from "@/hooks/kiosk/useKioskProfile";
@@ -37,7 +39,6 @@ import { useProfileOverlayStore } from "@/stores/useProfileOverlayStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { OrderPayload, PaymentPayload } from "@/types/real-time";
 import { useAuth } from "@clerk/clerk-expo";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { PortalHost } from "@rn-primitives/portal";
 import { Redirect, Slot, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -466,8 +467,14 @@ export default function MainLayout() {
             presentationStyle="fullScreen"
             onRequestClose={closeProfile}
           >
-            <MyProfilePanel onClose={closeProfile} />
-            <PortalHost name="profile-overlay" />
+            {/* Sheets opened inside the profile Modal must portal into a host that
+                lives *inside* the Modal, or they'd render behind this fullScreen
+                window. The context makes every PanelSheet in this subtree default to
+                the 'profile-overlay' host. */}
+            <PanelSheetHostContext.Provider value="profile-overlay">
+              <MyProfilePanel onClose={closeProfile} />
+              <PortalHost name="profile-overlay" />
+            </PanelSheetHostContext.Provider>
           </Modal>
         </SafeAreaView>
       </KeyboardAvoidingView>

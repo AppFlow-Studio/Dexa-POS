@@ -1,6 +1,7 @@
 import { queryClient } from "@/contexts/TanstackProvider";
 import { useBusinessDayRollover } from "@/hooks/pos/useBusinessDayRollover";
 import { orderQueryKeys, useOrdersQuery } from "@/hooks/pos/useOrdersQuery";
+import { useMenuSnoozeReconcile } from "@/hooks/pos/useMenuSnoozeReconcile";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useServiceChargeRulesSync } from "@/hooks/pos/useServiceChargeRulesSync";
 import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
@@ -9,9 +10,9 @@ import { useStationLoginSync } from "@/hooks/useStationLoginSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { setupConnectionQuality } from "@/lib/network/setupConnectionQuality";
 import { getStorageSizeStats } from "@/lib/storage";
-import { MerchantRole } from "@/lib/types";
 import { initLandiPrinter } from "@/native/LandiPrinter";
 import { setCartShapeReconcileSupabaseClient } from "@/services/cartShapeReconcile";
+import { syncEmployees as syncEmployeesService } from "@/services/employeeSyncService";
 import { FloorPlanService } from "@/services/floorPlanService";
 import {
     detectAndStoreCapabilities,
@@ -39,11 +40,18 @@ import {
     stopCastlesUsbAutoConnect,
 } from "@/services/terminals/castlesUsbAutoConnect";
 import {
+    startValorUsbAutoConnect,
+    stopValorUsbAutoConnect,
+} from "@/services/terminals/valorUsbAutoConnect";
+import {
+    startAtomLoopbackDetect,
+    stopAtomLoopbackDetect,
+} from "@/services/terminals/atomLoopbackDetector";
+import {
     startTimeclockSyncProcessor,
     stopTimeclockSyncProcessor,
 } from "@/services/timeclockSyncProcessor";
 import { setCoursingSupabaseClient } from "@/stores/useCoursingStore";
-import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
     setFloorPlanSupabaseClient,
     useFloorPlanStore,
@@ -91,9 +99,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const isKDS = selectedStation?.station_type === "kds";
   const hasCheckedStorageSizeRef = useRef(false);
   const lastStoreSettingsRefreshRef = useRef<number>(0);
+  const lastEmployeeSyncRefreshRef = useRef<number>(0);
   const supabase = useSupabaseClient();
-  const setEmployees = useEmployeeStore((state) => state.setEmployees);
-  const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
   // Archive layer: TanStack Query fetches orders and hydrates workspace (skip for KDS).
   // stationId is part of the queryKey so the server-side draft filter refetches
   // when the user switches stations on the same device.
@@ -142,6 +149,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   useBusinessDayRollover({
     enabled: Boolean(supabase && selectedStore?.id && !isKDS),
   });
+
+  // Keep 86/out-of-stock state live with website + other-station changes.
+  // pos_sync is staleTime:Infinity, so without this a website 86 never reaches a
+  // running POS. Surgical snooze-only reconcile (no full menu rebuild). KDS skips.
+  useMenuSnoozeReconcile(isKDS ? undefined : selectedStore?.id);
 
   // Wave 3.0d-5: combined order reconcile on slow→fast + foreground recovery.
   // Sequenced: cart-shape push (3.0f-3) → 500ms gap → header pull (3.0d-5).
@@ -272,11 +284,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     const isUsbCastles =
       terminal?.terminal_type === "castles" &&
       terminal?.connection_type === "usb";
+    const isUsbValor =
+      terminal?.terminal_type === "valor" &&
+      terminal?.connection_type === "usb";
     if (!isKDS && isUsbCastles) {
       startCastlesUsbAutoConnect();
     }
+    if (!isKDS && isUsbValor) {
+      startValorUsbAutoConnect();
+    }
     return () => {
       stopCastlesUsbAutoConnect();
+      stopValorUsbAutoConnect();
     };
   }, [
     isKDS,
@@ -284,6 +303,17 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     selectedStation?.payment_terminal?.terminal_type,
     selectedStation?.payment_terminal?.connection_type,
   ]);
+
+  // On-device ("internal") ATOM detection: probe the loopback ATOM app and
+  // surface it as an available terminal. Self-gates on Landi hardware + the
+  // native AtomBridge, so it's a no-op on non-Landi devices. POS-only.
+  useEffect(() => {
+    if (isKDS) return;
+    startAtomLoopbackDetect();
+    return () => {
+      stopAtomLoopbackDetect();
+    };
+  }, [isKDS]);
 
   // Star printer health check + background discovery lifecycle
   useEffect(() => {
@@ -300,73 +330,39 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // Sync employees from location_members
   const syncEmployees = useCallback(
     async (locationId: string) => {
-      setEmployeeSyncState({ isLoading: true, error: null });
       try {
-        const { data, error } = await supabase
-          .from("location_members")
-          .select(
-            `
-          id,
-          pin_code,
-          pin_plain,
-          role_code,
-          staff_profile_id,
-          staff_profiles (
-            id,
-            first_name,
-            last_name,
-            display_name,
-            avatar_url,
-            email,
-            phone
-          )
-        `,
-          )
-          .eq("location_id", locationId)
-          .eq("is_active", true);
-
-        if (error) throw error;
-
-        // console.log("Employee Sync Data received!");
-        // console.log("Employees count:", data?.length || 0);
-        // console.log("Employees data:", data);
-
-        // Map Supabase data to EmployeeProfile format
-        const mappedEmployees: EmployeeProfile[] = (data || []).map(
-          (row: any) => {
-            const profile = row.staff_profiles;
-            const fullName = `${profile?.first_name || ""} ${
-              profile?.last_name || ""
-            }`.trim();
-
-            return {
-              id: row.id, // location_member id
-              profileId: profile?.id || "",
-              fullName: fullName || "Unknown Staff",
-              displayName: profile?.display_name || fullName || "Unknown",
-              role: row.role_code as MerchantRole,
-              profilePictureUrl: profile?.avatar_url || undefined,
-              pin: row.pin_plain ?? null,
-              email: profile?.email,
-              phone: profile?.phone,
-              shiftStatus: "clocked_out" as const,
-            };
-          },
-        );
-
-        // Update employee store with mapped data
-        setEmployees(mappedEmployees);
-        setEmployeeSyncState({ isLoading: false, error: null });
-      } catch (err: any) {
-        console.error("Employee sync failed:", err);
-        setEmployeeSyncState({
-          isLoading: false,
-          error: err?.message || "Sync failed",
-        });
+        await syncEmployeesService(supabase, locationId);
+      } catch {
+        // Error state already recorded in useEmployeeStore by syncEmployeesService.
       }
     },
-    [supabase, setEmployees, setEmployeeSyncState],
+    [supabase],
   );
+
+  // Staff/PIN resync, gated behind a 5-minute staleness window shared by the
+  // AppState "active" handler and the idle interval fallback below — so a
+  // station left open and foregrounded for a whole shift (never backgrounded)
+  // still picks up backend PIN changes without needing a manual "Sync POS".
+  const refreshEmployeesIfStale = useCallback(() => {
+    const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+    if (!locationId) return;
+    const age = Date.now() - lastEmployeeSyncRefreshRef.current;
+    if (age <= 5 * 60 * 1000) return;
+    lastEmployeeSyncRefreshRef.current = Date.now();
+    console.log(
+      `[PosSyncProvider] Employee/PIN staleness resync firing (age ${Math.round(age / 1000)}s)`,
+    );
+    syncEmployeesService(supabase, locationId).catch(() => {});
+  }, [supabase]);
+
+  // Idle fallback: re-check staleness on an interval independent of AppState
+  // transitions, since a device that never backgrounds/foregrounds (the common
+  // case for a tablet POS left open through a shift) would otherwise never
+  // re-consult the 5-minute window at all.
+  useEffect(() => {
+    const interval = setInterval(refreshEmployeesIfStale, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [refreshEmployeesIfStale]);
 
   // Sync floor plans from backend
   const syncFloorPlans = useCallback(
@@ -438,6 +434,14 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         }
 
         const taxRates = (data || []) as TaxRate[];
+        if (taxRates.length === 0) {
+          // No error but zero rows — usually RLS silently filtering (stale JWT /
+          // location not in user's set). setTaxRates preserves existing rates
+          // rather than wiping the map and taxing everything at 0%.
+          console.warn(
+            "Tax rates sync returned 0 rows (no error) — preserving existing rates if any",
+          );
+        }
         useStoreSettingsStore.getState().setTaxRates(taxRates);
         // console.log("Tax rates synced:", taxRates.length);
       } catch (err: any) {
@@ -457,6 +461,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     if (!selectedStore?.id) return;
     const storeId = selectedStore.id;
     const task = InteractionManager.runAfterInteractions(() => {
+      console.log(
+        `[PosSyncProvider] Employee/PIN sync firing (store selection changed): ${storeId}`,
+      );
       syncEmployees(storeId).then(() => {
         // Hydrate active shifts after employees are loaded (needs employee data for mapping)
         if (!isKDS) {
@@ -738,6 +745,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           lastStoreSettingsRefreshRef.current = Date.now();
           storeSettings.refreshSelectedStore(supabase);
         }
+
+        // Refresh staff/PIN data on the same 5-minute staleness window as
+        // store settings — picks up PIN changes made on another device or the
+        // backend without requiring a manual "Sync POS" or re-selecting the store.
+        refreshEmployeesIfStale();
 
         if (!isKDS) {
           const floorPlanStore = useFloorPlanStore.getState();

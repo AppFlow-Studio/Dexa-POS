@@ -6,9 +6,9 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import { useRouter } from "expo-router";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -242,7 +242,6 @@ const TablesPanel: React.FC<{ onFocusTable?: (tableId: string) => void }> = ({
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
 
-  const router = useRouter();
   const floorPlans = useFloorPlanStore((s) => s.floorPlans);
   const tables = useFloorPlanStore((s) => s.tables);
   const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
@@ -457,10 +456,9 @@ const TablesPanel: React.FC<{ onFocusTable?: (tableId: string) => void }> = ({
       if (orderId) {
         ensureOrderPrefetched(orderId).catch(() => {});
       }
-      // Navigate directly to the table order screen instead of using overlay.
-      router.push(`/tables/${tableId}`);
+      usePendingTableOverlay.getState().openTable(tableId);
     },
-    [router],
+    [],
   );
   // Wave 3.3: row wrapper memoized on stable props. Without this, the inline
   // `() => toggleTableExpand(item.id)` arrow was a fresh function on every

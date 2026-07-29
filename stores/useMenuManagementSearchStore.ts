@@ -1,5 +1,5 @@
 // stores/useMenuManagementSearchStore.ts
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { create } from "zustand";
 
 type SearchSheetRef = React.RefObject<BottomSheetMethods | null>;

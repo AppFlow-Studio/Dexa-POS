@@ -1,5 +1,5 @@
 import { Skia, PaintStyle } from "@shopify/react-native-skia";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { Asset } from "expo-asset";
 
 // ============================================================================
@@ -60,6 +60,14 @@ async function loadCustomTypeface() {
 
 let cachedRegularTypeface: any = null;
 let cachedBoldTypeface: any = null;
+
+// Monotonic render counter for the leak diagnostic below. Per-call native Skia
+// objects (Surface/Image/Paint/Font) are NOT reclaimed by the Hermes GC — they
+// hold GPU/EGL-backed native memory that must be dispose()'d explicitly. If this
+// count climbs while disposes don't, prints are leaking GPU memory into the
+// shared Skia context (which can blank other on-screen Canvases like the floor
+// plan). console.warn survives production console-stripping.
+let renderCount = 0;
 
 function getTypeface(bold: boolean): any {
   if (cachedCustomTypeface) {
@@ -162,42 +170,56 @@ export async function renderTextBlocksToImage(
   }
   console.log(`[SkiaTicketRenderer] Surface created: ${printWidthDots}x${surfaceHeight}, ${blocks.length} text blocks`);
 
+  // Every per-call native Skia object (Paint/Font, plus the Surface and Image)
+  // must be dispose()'d on EVERY exit path — native GPU/EGL memory is not
+  // GC-managed, and undisposed objects accumulate across print jobs, starving the
+  // shared Skia GL context (which can blank other on-screen Canvases, e.g. the
+  // floor plan). Register each object in `disposables` at creation; the single
+  // finally below releases them all, on the success return and every early return.
+  let image: ReturnType<typeof surface.makeImageSnapshot> | null = null;
+  const disposables: { dispose?: () => void }[] = [];
+  const track = <T>(o: T): T => {
+    disposables.push(o as unknown as { dispose?: () => void });
+    return o;
+  };
+
+  try {
   const canvas = surface.getCanvas();
 
   // White background
   canvas.clear(Skia.Color("#FFFFFF"));
 
   // Reusable paint objects
-  const blackPaint = Skia.Paint();
+  const blackPaint = track(Skia.Paint());
   blackPaint.setColor(Skia.Color("#000000"));
   blackPaint.setAntiAlias(false); // Crisp for thermal printing
 
-  const whitePaint = Skia.Paint();
+  const whitePaint = track(Skia.Paint());
   whitePaint.setColor(Skia.Color("#FFFFFF"));
   whitePaint.setAntiAlias(false);
 
-  const invertBgPaint = Skia.Paint();
+  const invertBgPaint = track(Skia.Paint());
   invertBgPaint.setColor(Skia.Color("#000000"));
 
   // Bold stroke overlay paints (thin stroke drawn over fill for thermal paper thickness)
-  const boldStrokePaint = Skia.Paint();
+  const boldStrokePaint = track(Skia.Paint());
   boldStrokePaint.setColor(Skia.Color("#000000"));
   boldStrokePaint.setStyle(PaintStyle.Stroke);
   boldStrokePaint.setStrokeWidth(0.5);
   boldStrokePaint.setAntiAlias(false);
 
-  const boldStrokeWhitePaint = Skia.Paint();
+  const boldStrokeWhitePaint = track(Skia.Paint());
   boldStrokeWhitePaint.setColor(Skia.Color("#FFFFFF"));
   boldStrokeWhitePaint.setStyle(PaintStyle.Stroke);
   boldStrokeWhitePaint.setStrokeWidth(0.5);
   boldStrokeWhitePaint.setAntiAlias(false);
 
   // Red paint for secondColor (two-color thermal printers)
-  const redPaint = Skia.Paint();
+  const redPaint = track(Skia.Paint());
   redPaint.setColor(Skia.Color("#FF0000"));
   redPaint.setAntiAlias(false);
 
-  const redStrokePaint = Skia.Paint();
+  const redStrokePaint = track(Skia.Paint());
   redStrokePaint.setColor(Skia.Color("#FF0000"));
   redStrokePaint.setStyle(PaintStyle.Stroke);
   redStrokePaint.setStrokeWidth(0.5);
@@ -215,7 +237,7 @@ export async function renderTextBlocksToImage(
     if (block.isDivider) {
       const style = block.dividerStyle ?? "solid";
       const lineY = y + lineHeight / 2;
-      const linePaint = Skia.Paint();
+      const linePaint = track(Skia.Paint());
       linePaint.setColor(Skia.Color("#000000"));
       linePaint.setStrokeWidth(style === "double" ? 1.5 : 2);
       linePaint.setStyle(PaintStyle.Stroke);
@@ -233,7 +255,7 @@ export async function renderTextBlocksToImage(
     // Only doubleWidth needs width checking.
     let { doubleWidth, doubleHeight } = block;
     const typeface = getTypeface(block.bold) ?? undefined;
-    const checkFont = Skia.Font(typeface, BASE_FONT_SIZE);
+    const checkFont = track(Skia.Font(typeface, BASE_FONT_SIZE));
     const rawWidth = checkFont.getTextWidth(block.text);
     const effectiveWidth = doubleWidth ? rawWidth * 2 : rawWidth;
     if (effectiveWidth > maxContentWidth && doubleWidth) {
@@ -241,12 +263,12 @@ export async function renderTextBlocksToImage(
       // doubleHeight stays — it doesn't affect width
     }
 
-    const font = Skia.Font(typeface, BASE_FONT_SIZE);
+    const font = track(Skia.Font(typeface, BASE_FONT_SIZE));
     font.setEdging(0); // 0 = Alias — no anti-aliasing, crisp for thermal printing
 
     // Handle inverted: draw black rect behind text only, then white text
     if (block.inverted) {
-      const invFont = Skia.Font(typeface, BASE_FONT_SIZE);
+      const invFont = track(Skia.Font(typeface, BASE_FONT_SIZE));
       const invScaleX = doubleWidth ? 2 : 1;
       const textW = invFont.getTextWidth(block.text) * invScaleX;
       const pad = 4;
@@ -335,7 +357,7 @@ export async function renderTextBlocksToImage(
   }
 
   // Export to PNG base64, then write to temp file for reliable Star SDK transfer
-  const image = surface.makeImageSnapshot();
+  image = surface.makeImageSnapshot();
   if (!image) {
     console.error('[SkiaTicketRenderer] makeImageSnapshot() returned null');
     return '';
@@ -356,4 +378,24 @@ export async function renderTextBlocksToImage(
 
   console.log(`[SkiaTicketRenderer] Image written: ${fileUri} (~${Math.round(base64.length * 0.75 / 1024)}KB)`);
   return fileUri;
+  } finally {
+    // Release native GPU/EGL-backed memory on every path (success + early return
+    // + throw). dispose is optional-chained: some rn-skia host objects expose it
+    // as best-effort, and a torn-down object can throw.
+    try { image?.dispose?.(); } catch {}
+    try { surface.dispose?.(); } catch {}
+    for (const d of disposables) {
+      try { d.dispose?.(); } catch {}
+    }
+    renderCount++;
+    // Periodic on-device observability: confirms dispose runs and the alloc count
+    // isn't climbing unbounded. Warn (kept in prod) every 20th render.
+    if (renderCount % 20 === 0) {
+      console.warn("[SkiaTicketRenderer] alloc/dispose", {
+        renders: renderCount,
+        disposedThisCall: disposables.length,
+        imageDisposed: !!image,
+      });
+    }
+  }
 }

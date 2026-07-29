@@ -5,12 +5,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { bottomSheetTheme, colors } from "@/lib/theme";
+import { useUiScale } from "@/lib/uiScale";
 import { InventoryItem, Vendor } from "@/lib/types";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
   BottomSheetTextInput,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { Link } from "expo-router";
 import { AlertTriangle, Check, Edit, MoreHorizontal, Search, Trash2 } from "lucide-react-native";
 import React, {
@@ -51,6 +52,8 @@ const InventorySearchRow = React.memo(
     onDelete: () => void;
   }) => {
     const [isSelected, setIsSelected] = useState(initialIsSelected);
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
 
     useEffect(() => {
       setIsSelected(initialIsSelected);
@@ -68,8 +71,8 @@ const InventorySearchRow = React.memo(
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 12,
-          paddingVertical: 9,
+          paddingHorizontal: s(12),
+          paddingVertical: s(9),
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
         }}
@@ -79,18 +82,18 @@ const InventorySearchRow = React.memo(
           onPress={handlePress}
           activeOpacity={0.7}
           style={{
-            width: 20,
-            height: 20,
-            borderRadius: 5,
+            width: s(20),
+            height: s(20),
+            borderRadius: s(5),
             borderWidth: 1,
             borderColor: isSelected ? colors.teal : colors.border,
             backgroundColor: isSelected ? colors.teal + "20" : "transparent",
             alignItems: "center",
             justifyContent: "center",
-            marginRight: 10,
+            marginRight: s(10),
           }}
         >
-          {isSelected && <Check size={12} color={colors.teal} />}
+          {isSelected && <Check size={s(12)} color={colors.teal} />}
         </TouchableOpacity>
 
         {/* Content */}
@@ -99,17 +102,17 @@ const InventorySearchRow = React.memo(
             {/* Name */}
             <Text
               numberOfLines={1}
-              style={{ width: "25%", fontSize: 13, fontWeight: "600", color: colors.heading, paddingRight: 8 }}
+              style={{ width: "25%", fontSize: s(13), fontWeight: "600", color: colors.heading, paddingRight: s(8) }}
             >
               {item.name}
             </Text>
 
             {/* Stock */}
-            <View style={{ width: "15%", flexDirection: "row", alignItems: "center", gap: 4 }}>
-              {isLowStock && <AlertTriangle size={10} color={colors.warning} />}
+            <View style={{ width: "15%", flexDirection: "row", alignItems: "center", gap: s(4) }}>
+              {isLowStock && <AlertTriangle size={s(10)} color={colors.warning} />}
               <Text
                 numberOfLines={1}
-                style={{ fontSize: 12, fontWeight: "600", color: isLowStock ? colors.warning : colors.label }}
+                style={{ fontSize: s(12), fontWeight: "600", color: isLowStock ? colors.warning : colors.label }}
               >
                 {item.stockQuantity?.toFixed(0)} {item.unit}
               </Text>
@@ -118,7 +121,7 @@ const InventorySearchRow = React.memo(
             {/* Reorder */}
             <Text
               numberOfLines={1}
-              style={{ width: "15%", fontSize: 12, color: colors.label }}
+              style={{ width: "15%", fontSize: s(12), color: colors.label }}
             >
               {item.reorderThreshold}
             </Text>
@@ -126,7 +129,7 @@ const InventorySearchRow = React.memo(
             {/* Cost */}
             <Text
               numberOfLines={1}
-              style={{ width: "15%", fontSize: 12, color: colors.label }}
+              style={{ width: "15%", fontSize: s(12), color: colors.label }}
             >
               ${item.cost.toFixed(2)}
             </Text>
@@ -134,7 +137,7 @@ const InventorySearchRow = React.memo(
             {/* Vendor */}
             <Text
               numberOfLines={1}
-              style={{ width: "20%", fontSize: 12, color: colors.muted }}
+              style={{ width: "20%", fontSize: s(12), color: colors.muted }}
             >
               {vendorName}
             </Text>
@@ -144,8 +147,8 @@ const InventorySearchRow = React.memo(
         {/* Actions */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <TouchableOpacity style={{ padding: 6 }}>
-              <MoreHorizontal size={15} color={colors.muted} />
+            <TouchableOpacity style={{ padding: s(6) }}>
+              <MoreHorizontal size={s(15)} color={colors.muted} />
             </TouchableOpacity>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -153,12 +156,12 @@ const InventorySearchRow = React.memo(
             style={{ backgroundColor: colors.panel, borderColor: colors.border }}
           >
             <DropdownMenuItem onPress={onEdit}>
-              <Edit size={14} color={colors.label} />
-              <Text style={{ fontSize: 13, color: colors.heading, marginLeft: 8 }}>Edit Item</Text>
+              <Edit size={s(14)} color={colors.label} />
+              <Text style={{ fontSize: s(13), color: colors.heading, marginLeft: s(8) }}>Edit Item</Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={onDelete}>
-              <Trash2 size={14} color={colors.danger} />
-              <Text style={{ fontSize: 13, color: colors.danger, marginLeft: 8 }}>Delete Item</Text>
+              <Trash2 size={s(14)} color={colors.danger} />
+              <Text style={{ fontSize: s(13), color: colors.danger, marginLeft: s(8) }}>Delete Item</Text>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -188,6 +191,8 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
   ) => {
     const [searchQuery, setSearchQuery] = useState("");
     const snapPoints = useMemo(() => ["85%"], []);
+    const uiScale = useUiScale();
+    const s = (n: number) => Math.round(n * uiScale);
 
     const selectedIdsSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
@@ -255,8 +260,8 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
         {/* Search bar */}
         <View
           style={{
-            paddingHorizontal: 12,
-            paddingVertical: 8,
+            paddingHorizontal: s(12),
+            paddingVertical: s(8),
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
           }}
@@ -268,13 +273,13 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
               backgroundColor: colors.screen,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 8,
-              paddingHorizontal: 10,
-              height: 38,
-              gap: 8,
+              borderRadius: s(8),
+              paddingHorizontal: s(10),
+              height: s(38),
+              gap: s(8),
             }}
           >
-            <Search size={14} color={colors.muted} />
+            <Search size={s(14)} color={colors.muted} />
             <BottomSheetTextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -282,10 +287,10 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
               placeholderTextColor={colors.muted}
               style={{
                 flex: 1,
-                fontSize: 13,
+                fontSize: s(13),
                 color: colors.heading,
                 paddingVertical: 0,
-                height: 38,
+                height: s(38),
               }}
             />
           </View>
@@ -296,8 +301,8 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
           style={{
             flexDirection: "row",
             alignItems: "center",
-            paddingHorizontal: 12,
-            paddingVertical: 6,
+            paddingHorizontal: s(12),
+            paddingVertical: s(6),
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
             backgroundColor: colors.screen,
@@ -306,24 +311,24 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
           <TouchableOpacity
             onPress={handleToggleAll}
             style={{
-              width: 20,
-              height: 20,
-              borderRadius: 5,
+              width: s(20),
+              height: s(20),
+              borderRadius: s(5),
               borderWidth: 1,
               borderColor: isAllSelected ? colors.teal : colors.border,
               backgroundColor: isAllSelected ? colors.teal + "20" : "transparent",
               alignItems: "center",
               justifyContent: "center",
-              marginRight: 10,
+              marginRight: s(10),
             }}
           >
-            {isAllSelected && <Check size={12} color={colors.teal} />}
+            {isAllSelected && <Check size={s(12)} color={colors.teal} />}
           </TouchableOpacity>
-          <Text style={{ width: "25%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Name</Text>
-          <Text style={{ width: "15%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>In Stock</Text>
-          <Text style={{ width: "15%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Reorder</Text>
-          <Text style={{ width: "15%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Cost</Text>
-          <Text style={{ width: "20%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Vendor</Text>
+          <Text style={{ width: "25%", fontSize: s(11), fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Name</Text>
+          <Text style={{ width: "15%", fontSize: s(11), fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>In Stock</Text>
+          <Text style={{ width: "15%", fontSize: s(11), fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Reorder</Text>
+          <Text style={{ width: "15%", fontSize: s(11), fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Cost</Text>
+          <Text style={{ width: "20%", fontSize: s(11), fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Vendor</Text>
         </View>
 
         {/* List */}
@@ -331,13 +336,13 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
           data={filteredInventory}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: s(100) }}
           initialNumToRender={10}
           maxToRenderPerBatch={10}
           windowSize={5}
           ListEmptyComponent={
-            <View style={{ alignItems: "center", paddingVertical: 40 }}>
-              <Text style={{ fontSize: 13, color: colors.muted }}>No inventory items found</Text>
+            <View style={{ alignItems: "center", paddingVertical: s(40) }}>
+              <Text style={{ fontSize: s(13), color: colors.muted }}>No inventory items found</Text>
             </View>
           }
         />
@@ -347,35 +352,35 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
           <View
             style={{
               position: "absolute",
-              bottom: 16,
-              left: 12,
-              right: 12,
+              bottom: s(16),
+              left: s(12),
+              right: s(12),
               backgroundColor: colors.panel,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 12,
-              paddingHorizontal: 14,
-              paddingVertical: 10,
+              borderRadius: s(12),
+              paddingHorizontal: s(14),
+              paddingVertical: s(10),
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+            <Text style={{ fontSize: s(13), fontWeight: "600", color: colors.heading }}>
               {selectedIds.length} selected
             </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flexDirection: "row", gap: s(8) }}>
               <TouchableOpacity
                 onPress={onClear}
-                style={{ paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: colors.border, borderRadius: 8 }}
+                style={{ paddingHorizontal: s(12), paddingVertical: s(7), borderWidth: 1, borderColor: colors.border, borderRadius: s(8) }}
               >
-                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Clear</Text>
+                <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.label }}>Clear</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={onBulkUpdate}
-                style={{ paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8 }}
+                style={{ paddingHorizontal: s(12), paddingVertical: s(7), backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: s(8) }}
               >
-                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Bulk Update</Text>
+                <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}>Bulk Update</Text>
               </TouchableOpacity>
             </View>
           </View>

@@ -22,11 +22,12 @@ describe("kiosk channel reporting contract", () => {
     expect(migration).toContain("WHERE lower(order_source) = 'online'");
     expect(migration).toContain("orders_order_source_canonical");
     expect(migration).toContain(
-      "CHECK (order_source IN ('pos', 'kiosk', 'online_store', 'orderout'))",
+      "order_source IN ('pos', 'kiosk', 'online_store', 'orderout')",
     );
     expect(migration).toContain("VALIDATE CONSTRAINT orders_order_source_canonical");
     expect(migration).toContain("ALTER COLUMN order_source SET DEFAULT 'pos'");
-    expect(migration).toContain("ALTER COLUMN order_source SET NOT NULL");
+    expect(migration).toContain("order_source IS NOT NULL");
+    expect(migration).not.toContain("ALTER COLUMN order_source SET NOT NULL");
   });
 
   it("sets kiosk source through server-side create-order wrappers", () => {
@@ -50,8 +51,23 @@ describe("kiosk channel reporting contract", () => {
     expect(migration).toContain("CREATE OR REPLACE FUNCTION public.get_sales_by_item_report_v2");
     expect(migration).toContain("CREATE OR REPLACE FUNCTION public.get_payment_summary_stats_v2");
     expect(migration).toContain("CREATE OR REPLACE FUNCTION public.get_admin_transaction_summary_v2");
-    expect(migration).toContain("public.is_order_reportable");
+    expect(migration).toContain(
+      "public.is_order_reportable(o.status, o.payment_status)",
+    );
+    expect(migration).not.toContain(
+      "CREATE OR REPLACE FUNCTION public.is_order_reportable",
+    );
     expect(migration).not.toContain("online_order_provider");
+  });
+
+  it("preserves the legacy item-report shape and protects definer reports", () => {
+    expect(migration).toContain("'category', category_name");
+    expect(migration).toContain("'gross_sales', gross_sales");
+    expect(migration).not.toContain("'summary', jsonb_build_object");
+    expect(migration).toContain("public.user_merchant_id()");
+    expect(migration).toContain("public.user_location_ids()");
+    expect(migration).toContain("public.is_dexapos_admin()");
+    expect(migration).toContain("public.get_admin_merchant_ids()");
   });
 
   it("passes p_order_source at initial POS order creation and removes kiosk post-insert updates", () => {

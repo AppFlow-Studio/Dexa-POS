@@ -26,7 +26,7 @@ EAS Build profiles: `development`, `preview`, `production` (configured in `eas.j
 
 ### Tech Stack
 
-- **Framework**: Expo SDK 53, React Native 0.79 (New Architecture + Hermes enabled)
+- **Framework**: Expo SDK 57, React Native 0.86, React 19 (New Architecture + Hermes enabled)
 - **Routing**: Expo Router (file-based, `app/` directory) with typed routes
 - **Styling**: NativeWind 4 (Tailwind for RN), `global.css` entry point
 - **State**: Zustand stores (~52 in `stores/`) with MMKV persistence

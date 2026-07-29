@@ -9,10 +9,11 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { colors } from '@/lib/theme'
+import { useUiScale } from '@/lib/uiScale'
 import { InventoryItem } from '@/lib/types'
 import { useInventoryStore } from '@/stores/useInventoryStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import BottomSheet from '@gorhom/bottom-sheet'
+import BottomSheet from '@/components/ui/bottomSheet'
 import {
   AlertTriangle,
   ChevronDown,
@@ -53,6 +54,8 @@ const InventoryItemBox: React.FC<{
   const isLowStock = (item.stockQuantity ?? 0) <= (item.reorderThreshold ?? 0)
   const vendors = useInventoryStore(state => state.vendors)
   const vendor = vendors.find(v => v.id === item.vendorId)
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   return (
     <TouchableOpacity
@@ -60,9 +63,9 @@ const InventoryItemBox: React.FC<{
       activeOpacity={0.6}
       style={{
         backgroundColor: colors.panel,
-        margin: 5,
-        borderRadius: 14,
-        padding: 10,
+        margin: s(5),
+        borderRadius: s(14),
+        padding: s(10),
         borderWidth: 1,
         borderColor: colors.border,
         flex: 1,
@@ -88,29 +91,29 @@ const InventoryItemBox: React.FC<{
           flexDirection: 'row',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 8
+          marginBottom: s(8)
         }}
       >
         <View
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 10,
+            width: s(32),
+            height: s(32),
+            borderRadius: s(10),
             backgroundColor: (isLowStock ? colors.danger : colors.teal) + '15',
             alignItems: 'center',
             justifyContent: 'center'
           }}
         >
-          <Package size={15} color={isLowStock ? colors.danger : colors.teal} />
+          <Package size={s(15)} color={isLowStock ? colors.danger : colors.teal} />
         </View>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TouchableOpacity
               style={{
-                width: 28,
-                height: 28,
-                borderRadius: 9,
+                width: s(28),
+                height: s(28),
+                borderRadius: s(9),
                 alignItems: 'center',
                 justifyContent: 'center',
                 backgroundColor: colors.card,
@@ -118,7 +121,7 @@ const InventoryItemBox: React.FC<{
                 borderColor: colors.border
               }}
             >
-              <MoreHorizontal size={12} color={colors.muted} />
+              <MoreHorizontal size={s(12)} color={colors.muted} />
             </TouchableOpacity>
           </DropdownMenuTrigger>
 
@@ -128,8 +131,8 @@ const InventoryItemBox: React.FC<{
               backgroundColor: colors.card,
               borderColor: colors.border,
               borderWidth: 1,
-              borderRadius: 14,
-              padding: 6,
+              borderRadius: s(14),
+              padding: s(6),
               shadowColor: '#000',
               shadowOpacity: 0.18,
               shadowRadius: 18,
@@ -141,17 +144,17 @@ const InventoryItemBox: React.FC<{
               onPress={onEdit}
               className='active:bg-transparent web:hover:bg-transparent web:focus:bg-transparent'
               style={{
-                borderRadius: 10,
-                paddingHorizontal: 10,
-                paddingVertical: 9,
+                borderRadius: s(10),
+                paddingHorizontal: s(10),
+                paddingVertical: s(9),
                 backgroundColor: colors.card
               }}
             >
-              <Edit size={13} color={colors.label} />
+              <Edit size={s(13)} color={colors.label} />
               <Text
                 style={{
-                  marginLeft: 6,
-                  fontSize: 12,
+                  marginLeft: s(6),
+                  fontSize: s(12),
                   fontWeight: '600',
                   color: colors.heading
                 }}
@@ -164,17 +167,17 @@ const InventoryItemBox: React.FC<{
               onPress={onDelete}
               className='active:bg-transparent web:hover:bg-transparent web:focus:bg-transparent'
               style={{
-                borderRadius: 10,
-                paddingHorizontal: 10,
-                paddingVertical: 9,
+                borderRadius: s(10),
+                paddingHorizontal: s(10),
+                paddingVertical: s(9),
                 backgroundColor: colors.card
               }}
             >
-              <Trash2 size={13} color={colors.danger} />
+              <Trash2 size={s(13)} color={colors.danger} />
               <Text
                 style={{
-                  marginLeft: 6,
-                  fontSize: 12,
+                  marginLeft: s(6),
+                  fontSize: s(12),
                   fontWeight: '600',
                   color: colors.danger
                 }}
@@ -187,15 +190,15 @@ const InventoryItemBox: React.FC<{
       </View>
 
       {/* Name & Category */}
-      <View style={{ marginBottom: 8 }}>
+      <View style={{ marginBottom: s(8) }}>
         <Text
           numberOfLines={2}
           style={{
-            fontSize: 11,
+            fontSize: s(11),
             fontWeight: '700',
             color: colors.heading,
-            marginBottom: 2,
-            lineHeight: 14
+            marginBottom: s(2),
+            lineHeight: s(14)
           }}
         >
           {item.name}
@@ -204,7 +207,7 @@ const InventoryItemBox: React.FC<{
         <Text
           numberOfLines={1}
           style={{
-            fontSize: 8.5,
+            fontSize: s(8.5),
             color: colors.muted
           }}
         >
@@ -216,17 +219,17 @@ const InventoryItemBox: React.FC<{
       <View
         style={{
           backgroundColor: (isLowStock ? colors.danger : colors.teal) + '10',
-          borderRadius: 8,
-          padding: 6,
-          marginBottom: 6
+          borderRadius: s(8),
+          padding: s(6),
+          marginBottom: s(6)
         }}
       >
-        <Text style={{ fontSize: 8, color: colors.muted, marginBottom: 2 }}>
+        <Text style={{ fontSize: s(8), color: colors.muted, marginBottom: s(2) }}>
           Stock
         </Text>
         <Text
           style={{
-            fontSize: 12,
+            fontSize: s(12),
             fontWeight: '700',
             color: isLowStock ? colors.danger : colors.teal
           }}
@@ -236,25 +239,25 @@ const InventoryItemBox: React.FC<{
       </View>
 
       {/* Cost & Vendor */}
-      <View style={{ flexDirection: 'row', gap: 4 }}>
+      <View style={{ flexDirection: 'row', gap: s(4) }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 8, color: colors.muted, marginBottom: 1 }}>
+          <Text style={{ fontSize: s(8), color: colors.muted, marginBottom: s(1) }}>
             Cost
           </Text>
           <Text
-            style={{ fontSize: 10, fontWeight: '600', color: colors.label }}
+            style={{ fontSize: s(10), fontWeight: '600', color: colors.label }}
           >
             ${(item.cost ?? 0).toFixed(2)}
           </Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 8, color: colors.muted, marginBottom: 1 }}>
+          <Text style={{ fontSize: s(8), color: colors.muted, marginBottom: s(1) }}>
             Vendor
           </Text>
           <Text
             numberOfLines={1}
             style={{
-              fontSize: 9,
+              fontSize: s(9),
               fontWeight: '500',
               color: colors.label
             }}
@@ -279,6 +282,8 @@ const InventoryItemRow: React.FC<{
   const isLowStock = (item.stockQuantity ?? 0) <= (item.reorderThreshold ?? 0)
   const vendors = useInventoryStore(state => state.vendors)
   const vendor = vendors.find(v => v.id === item.vendorId)
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   return (
     <TouchableOpacity
@@ -288,44 +293,44 @@ const InventoryItemRow: React.FC<{
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: colors.panel,
-        marginHorizontal: 10,
-        marginBottom: 4,
-        borderRadius: 10,
+        marginHorizontal: s(10),
+        marginBottom: s(4),
+        borderRadius: s(10),
         borderWidth: 1,
         borderColor: colors.border,
         borderLeftWidth: 3,
         borderLeftColor: isLowStock ? colors.danger : colors.teal,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        gap: 8
+        paddingHorizontal: s(12),
+        paddingVertical: s(10),
+        gap: s(8)
       }}
     >
       {/* Icon */}
       <View
         style={{
-          width: 30,
-          height: 30,
-          borderRadius: 8,
+          width: s(30),
+          height: s(30),
+          borderRadius: s(8),
           backgroundColor: (isLowStock ? colors.danger : colors.teal) + '15',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0
         }}
       >
-        <Package size={13} color={isLowStock ? colors.danger : colors.teal} />
+        <Package size={s(13)} color={isLowStock ? colors.danger : colors.teal} />
       </View>
 
       {/* Name + Category */}
       <View style={{ flex: 3 }}>
         <Text
           numberOfLines={1}
-          style={{ fontSize: 12, fontWeight: '700', color: colors.heading }}
+          style={{ fontSize: s(12), fontWeight: '700', color: colors.heading }}
         >
           {item.name}
         </Text>
         <Text
           numberOfLines={1}
-          style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+          style={{ fontSize: s(10), color: colors.muted, marginTop: s(1) }}
         >
           {item.category || '—'}
         </Text>
@@ -333,54 +338,54 @@ const InventoryItemRow: React.FC<{
 
       {/* Stock */}
       <View style={{ flex: 2, alignItems: 'flex-start' }}>
-        <Text style={{ fontSize: 9, color: colors.muted, marginBottom: 1 }}>
+        <Text style={{ fontSize: s(9), color: colors.muted, marginBottom: s(1) }}>
           Stock
         </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s(4) }}>
           <Text
             style={{
-              fontSize: 12,
+              fontSize: s(12),
               fontWeight: '700',
               color: isLowStock ? colors.danger : colors.teal
             }}
           >
             {formatInventoryQuantity(item.stockQuantity)}
           </Text>
-          <Text style={{ fontSize: 9, color: colors.muted }}>
+          <Text style={{ fontSize: s(9), color: colors.muted }}>
             {formatInventoryUnit(item)}
           </Text>
-          {isLowStock && <AlertTriangle size={10} color={colors.danger} />}
+          {isLowStock && <AlertTriangle size={s(10)} color={colors.danger} />}
         </View>
       </View>
 
       {/* Reorder Threshold */}
       <View style={{ flex: 1.5, alignItems: 'flex-start' }}>
-        <Text style={{ fontSize: 9, color: colors.muted, marginBottom: 1 }}>
+        <Text style={{ fontSize: s(9), color: colors.muted, marginBottom: s(1) }}>
           Reorder
         </Text>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>
+        <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}>
           {formatInventoryQuantity(item.reorderThreshold)}
         </Text>
       </View>
 
       {/* Cost */}
       <View style={{ flex: 1.5, alignItems: 'flex-start' }}>
-        <Text style={{ fontSize: 9, color: colors.muted, marginBottom: 1 }}>
+        <Text style={{ fontSize: s(9), color: colors.muted, marginBottom: s(1) }}>
           Cost
         </Text>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>
+        <Text style={{ fontSize: s(12), fontWeight: '600', color: colors.label }}>
           ${(item.cost ?? 0).toFixed(2)}
         </Text>
       </View>
 
       {/* Vendor */}
       <View style={{ flex: 2, alignItems: 'flex-start' }}>
-        <Text style={{ fontSize: 9, color: colors.muted, marginBottom: 1 }}>
+        <Text style={{ fontSize: s(9), color: colors.muted, marginBottom: s(1) }}>
           Vendor
         </Text>
         <Text
           numberOfLines={1}
-          style={{ fontSize: 11, fontWeight: '500', color: colors.label }}
+          style={{ fontSize: s(11), fontWeight: '500', color: colors.label }}
         >
           {vendor?.name || '—'}
         </Text>
@@ -391,9 +396,9 @@ const InventoryItemRow: React.FC<{
         <DropdownMenuTrigger asChild>
           <TouchableOpacity
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 9,
+              width: s(28),
+              height: s(28),
+              borderRadius: s(9),
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: colors.card,
@@ -401,7 +406,7 @@ const InventoryItemRow: React.FC<{
               borderColor: colors.border
             }}
           >
-            <MoreHorizontal size={14} color={colors.muted} />
+            <MoreHorizontal size={s(14)} color={colors.muted} />
           </TouchableOpacity>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -410,8 +415,8 @@ const InventoryItemRow: React.FC<{
             backgroundColor: colors.card,
             borderColor: colors.border,
             borderWidth: 1,
-            borderRadius: 14,
-            padding: 6,
+            borderRadius: s(14),
+            padding: s(6),
             shadowColor: '#000',
             shadowOpacity: 0.18,
             shadowRadius: 18,
@@ -423,17 +428,17 @@ const InventoryItemRow: React.FC<{
             onPress={onEdit}
             className='active:bg-transparent web:hover:bg-transparent web:focus:bg-transparent'
             style={{
-              borderRadius: 10,
-              paddingHorizontal: 10,
-              paddingVertical: 9,
+              borderRadius: s(10),
+              paddingHorizontal: s(10),
+              paddingVertical: s(9),
               backgroundColor: colors.card
             }}
           >
-            <Edit size={13} color={colors.label} />
+            <Edit size={s(13)} color={colors.label} />
             <Text
               style={{
-                marginLeft: 6,
-                fontSize: 12,
+                marginLeft: s(6),
+                fontSize: s(12),
                 fontWeight: '600',
                 color: colors.heading
               }}
@@ -445,17 +450,17 @@ const InventoryItemRow: React.FC<{
             onPress={onDelete}
             className='active:bg-transparent web:hover:bg-transparent web:focus:bg-transparent'
             style={{
-              borderRadius: 10,
-              paddingHorizontal: 10,
-              paddingVertical: 9,
+              borderRadius: s(10),
+              paddingHorizontal: s(10),
+              paddingVertical: s(9),
               backgroundColor: colors.card
             }}
           >
-            <Trash2 size={13} color={colors.danger} />
+            <Trash2 size={s(13)} color={colors.danger} />
             <Text
               style={{
-                marginLeft: 6,
-                fontSize: 12,
+                marginLeft: s(6),
+                fontSize: s(12),
                 fontWeight: '600',
                 color: colors.danger
               }}
@@ -484,6 +489,8 @@ const InventoryScreen = () => {
   } = useInventoryStore()
 
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const uiScale = useUiScale()
+  const s = (n: number) => Math.round(n * uiScale)
 
   useEffect(() => {
     if (selectedStore?.id) {
@@ -532,26 +539,26 @@ const InventoryScreen = () => {
       {lowStockItems.length > 0 && (
         <View
           style={{
-            marginHorizontal: 10,
-            marginTop: 10,
-            marginBottom: 8,
-            borderRadius: 10,
+            marginHorizontal: s(10),
+            marginTop: s(10),
+            marginBottom: s(8),
+            borderRadius: s(10),
             backgroundColor: colors.danger + '12',
             borderWidth: 1,
             borderColor: colors.danger + '30',
-            padding: 10
+            padding: s(10)
           }}
         >
           <TouchableOpacity
             onPress={() => setAlertExpanded(v => !v)}
             style={{ flexDirection: 'row', alignItems: 'center' }}
           >
-            <AlertTriangle size={14} color={colors.danger} />
+            <AlertTriangle size={s(14)} color={colors.danger} />
             <Text
               style={{
-                marginLeft: 6,
+                marginLeft: s(6),
                 flex: 1,
-                fontSize: 12,
+                fontSize: s(12),
                 fontWeight: '700',
                 color: colors.danger
               }}
@@ -560,20 +567,20 @@ const InventoryScreen = () => {
             </Text>
 
             {alertExpanded ? (
-              <ChevronDown size={14} color={colors.danger} />
+              <ChevronDown size={s(14)} color={colors.danger} />
             ) : (
-              <ChevronRight size={14} color={colors.danger} />
+              <ChevronRight size={s(14)} color={colors.danger} />
             )}
           </TouchableOpacity>
 
           {alertExpanded && (
-            <View style={{ marginTop: 6 }}>
+            <View style={{ marginTop: s(6) }}>
               {lowStockItems.map(item => (
                 <Text
                   key={item.id}
                   style={{
-                    fontSize: 11,
-                    marginBottom: 2,
+                    fontSize: s(11),
+                    marginBottom: s(2),
                     color: colors.danger
                   }}
                 >
@@ -589,9 +596,9 @@ const InventoryScreen = () => {
       <View
         style={{
           flexDirection: 'row',
-          marginHorizontal: 10,
-          marginBottom: 8,
-          gap: 8
+          marginHorizontal: s(10),
+          marginBottom: s(8),
+          gap: s(8)
         }}
       >
         <View
@@ -601,23 +608,23 @@ const InventoryScreen = () => {
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: colors.panel,
-            borderRadius: 8,
-            paddingHorizontal: 10,
-            height: 40,
+            borderRadius: s(8),
+            paddingHorizontal: s(10),
+            height: s(40),
             borderWidth: 1,
             borderColor: colors.border
           }}
         >
-          <Search size={14} color={colors.muted} />
+          <Search size={s(14)} color={colors.muted} />
           <TextInput
             placeholder='Search...'
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholderTextColor={colors.muted}
             style={{
-              marginLeft: 6,
+              marginLeft: s(6),
               flex: 1,
-              fontSize: 13,
+              fontSize: s(13),
               textAlignVertical: 'center',
               color: colors.label
             }}
@@ -628,9 +635,9 @@ const InventoryScreen = () => {
         <TouchableOpacity
           onPress={() => setViewMode(m => (m === 'card' ? 'row' : 'card'))}
           style={{
-            height: 40,
-            width: 40,
-            borderRadius: 8,
+            height: s(40),
+            width: s(40),
+            borderRadius: s(8),
             backgroundColor: colors.panel,
             justifyContent: 'center',
             alignItems: 'center',
@@ -639,24 +646,24 @@ const InventoryScreen = () => {
           }}
         >
           {viewMode === 'card' ? (
-            <List size={16} color={colors.label} />
+            <List size={s(16)} color={colors.label} />
           ) : (
-            <LayoutGrid size={16} color={colors.label} />
+            <LayoutGrid size={s(16)} color={colors.label} />
           )}
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => addItemSheetRef.current?.expand()}
           style={{
-            height: 40,
-            width: 40,
-            borderRadius: 8,
+            height: s(40),
+            width: s(40),
+            borderRadius: s(8),
             backgroundColor: colors.teal + '20',
             justifyContent: 'center',
             alignItems: 'center'
           }}
         >
-          <Plus size={18} color={colors.teal} />
+          <Plus size={s(18)} color={colors.teal} />
         </TouchableOpacity>
       </View>
 
@@ -666,18 +673,18 @@ const InventoryScreen = () => {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            marginHorizontal: 10,
-            marginBottom: 4,
-            paddingHorizontal: 12,
-            paddingVertical: 6,
-            gap: 8
+            marginHorizontal: s(10),
+            marginBottom: s(4),
+            paddingHorizontal: s(12),
+            paddingVertical: s(6),
+            gap: s(8)
           }}
         >
-          <View style={{ width: 30, flexShrink: 0 }} />
+          <View style={{ width: s(30), flexShrink: 0 }} />
           <Text
             style={{
               flex: 3,
-              fontSize: 9,
+              fontSize: s(9),
               fontWeight: '700',
               color: colors.muted,
               textTransform: 'uppercase',
@@ -689,7 +696,7 @@ const InventoryScreen = () => {
           <Text
             style={{
               flex: 2,
-              fontSize: 9,
+              fontSize: s(9),
               fontWeight: '700',
               color: colors.muted,
               textTransform: 'uppercase',
@@ -701,7 +708,7 @@ const InventoryScreen = () => {
           <Text
             style={{
               flex: 1.5,
-              fontSize: 9,
+              fontSize: s(9),
               fontWeight: '700',
               color: colors.muted,
               textTransform: 'uppercase',
@@ -713,7 +720,7 @@ const InventoryScreen = () => {
           <Text
             style={{
               flex: 1.5,
-              fontSize: 9,
+              fontSize: s(9),
               fontWeight: '700',
               color: colors.muted,
               textTransform: 'uppercase',
@@ -725,7 +732,7 @@ const InventoryScreen = () => {
           <Text
             style={{
               flex: 2,
-              fontSize: 9,
+              fontSize: s(9),
               fontWeight: '700',
               color: colors.muted,
               textTransform: 'uppercase',
@@ -734,7 +741,7 @@ const InventoryScreen = () => {
           >
             Vendor
           </Text>
-          <View style={{ width: 26 }} />
+          <View style={{ width: s(26) }} />
         </View>
       )}
 
@@ -745,7 +752,7 @@ const InventoryScreen = () => {
         keyExtractor={item => item.id}
         numColumns={viewMode === 'card' ? 5 : 1}
         contentContainerStyle={{
-          paddingBottom: 20,
+          paddingBottom: s(20),
           paddingHorizontal: viewMode === 'card' ? 0 : 0
         }}
         renderItem={({ item }) =>

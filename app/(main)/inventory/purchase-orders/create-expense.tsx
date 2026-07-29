@@ -6,6 +6,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/contexts/ToastContext";
+import { useUiScale } from "@/lib/uiScale";
 import { bottomSheetTheme, colors } from "@/lib/theme";
 import { ExternalExpenseLineItem } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -15,7 +16,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
   BottomSheetTextInput,
-} from "@gorhom/bottom-sheet";
+} from "@/components/ui/bottomSheet";
 import { useRouter } from "expo-router";
 import { ArrowLeft, ChevronDown, Plus, Search, Trash2, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -30,29 +31,33 @@ import {
   View,
 } from "react-native";
 
-const fieldLabel = {
-  fontSize: 11,
+const getFieldLabel = (s: (n: number) => number) => ({
+  fontSize: s(11),
   fontWeight: "600" as const,
   color: colors.muted,
   textTransform: "uppercase" as const,
   letterSpacing: 0.5,
-  marginBottom: 5,
-};
+  marginBottom: s(5),
+});
 
-const inputStyle = {
+const getInputStyle = (s: (n: number) => number) => ({
   backgroundColor: colors.screen,
   borderWidth: 1,
   borderColor: colors.border,
-  borderRadius: 8,
+  borderRadius: s(8),
   color: colors.heading,
-  fontSize: 13,
-  height: 38,
-  paddingHorizontal: 12,
+  fontSize: s(13),
+  height: s(38),
+  paddingHorizontal: s(12),
   paddingVertical: 0,
-};
+});
 
 const CreateExternalExpenseScreen = () => {
   const router = useRouter();
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
+  const fieldLabel = useMemo(() => getFieldLabel(s), [uiScale]);
+  const inputStyle = useMemo(() => getInputStyle(s), [uiScale]);
   const { inventoryItems, addExternalExpense, purchaseOrders, addInventoryItem } = useInventoryStore();
   const { activeEmployeeId, employees } = useEmployeeStore();
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
@@ -185,60 +190,60 @@ const CreateExternalExpenseScreen = () => {
     <>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         {/* Header */}
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: s(14) }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: s(10) }}>
             <TouchableOpacity
               onPress={() => router.back()}
-              style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "30", borderRadius: 7 }}
+              style={{ flexDirection: "row", alignItems: "center", gap: s(5), paddingHorizontal: s(10), paddingVertical: s(6), backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "30", borderRadius: s(7) }}
             >
-              <ArrowLeft size={13} color={colors.teal} />
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Back</Text>
+              <ArrowLeft size={s(13)} color={colors.teal} />
+              <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}>Back</Text>
             </TouchableOpacity>
-            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Create External Expense</Text>
+            <Text style={{ fontSize: s(15), fontWeight: "700", color: colors.heading }}>Create External Expense</Text>
           </View>
           <TouchableOpacity
             onPress={handleCreateExpense}
-            style={{ paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8 }}
+            style={{ paddingHorizontal: s(12), paddingVertical: s(7), backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: s(8) }}
           >
-            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Create Expense</Text>
+            <Text style={{ fontSize: s(12), fontWeight: "600", color: colors.teal }}>Create Expense</Text>
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 12, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: s(12), paddingBottom: s(40) }} showsVerticalScrollIndicator={false}>
 
           {/* Employee + PO row */}
-          <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ flexDirection: "row", gap: s(12) }}>
             {/* Purchased By */}
-            <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14 }}>
+            <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: s(12), padding: s(14) }}>
               <Text style={fieldLabel}>Purchased By</Text>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <TouchableOpacity
-                    style={{ height: 38, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+                    style={{ height: s(38), borderWidth: 1, borderColor: colors.border, borderRadius: s(8), paddingHorizontal: s(12), flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
                   >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <User size={13} color={colors.muted} />
-                      <Text style={{ fontSize: 13, color: selectedEmployeeId ? colors.heading : colors.muted }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: s(6) }}>
+                      <User size={s(13)} color={colors.muted} />
+                      <Text style={{ fontSize: s(13), color: selectedEmployeeId ? colors.heading : colors.muted }}>
                         {selectedEmployee?.fullName || "Select employee..."}
                       </Text>
                     </View>
-                    <ChevronDown size={14} color={colors.muted} />
+                    <ChevronDown size={s(14)} color={colors.muted} />
                   </TouchableOpacity>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-64" style={{ backgroundColor: colors.panel, borderColor: colors.border }}>
                   {employees.map((emp) => (
                     <DropdownMenuItem key={emp.id} onPress={() => setSelectedEmployeeId(emp.id)}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
-                        <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "40", alignItems: "center", justifyContent: "center" }}>
-                          <Text style={{ fontSize: 10, fontWeight: "700", color: colors.teal }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: s(8), flex: 1 }}>
+                        <View style={{ width: s(26), height: s(26), borderRadius: s(13), backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "40", alignItems: "center", justifyContent: "center" }}>
+                          <Text style={{ fontSize: s(10), fontWeight: "700", color: colors.teal }}>
                             {emp.fullName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                           </Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 13, color: colors.heading }}>{emp.fullName}</Text>
-                          <Text style={{ fontSize: 11, color: colors.muted }}>{emp.shiftStatus === "clocked_in" ? "Clocked In" : "Clocked Out"}</Text>
+                          <Text style={{ fontSize: s(13), color: colors.heading }}>{emp.fullName}</Text>
+                          <Text style={{ fontSize: s(11), color: colors.muted }}>{emp.shiftStatus === "clocked_in" ? "Clocked In" : "Clocked Out"}</Text>
                         </View>
-                        {selectedEmployeeId === emp.id && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.teal }} />}
+                        {selectedEmployeeId === emp.id && <View style={{ width: s(6), height: s(6), borderRadius: s(3), backgroundColor: colors.teal }} />}
                       </View>
                     </DropdownMenuItem>
                   ))}
@@ -247,33 +252,33 @@ const CreateExternalExpenseScreen = () => {
             </View>
 
             {/* Related PO */}
-            <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14 }}>
+            <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: s(12), padding: s(14) }}>
               <Text style={fieldLabel}>Related PO (Optional)</Text>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <TouchableOpacity
-                    style={{ height: 38, borderWidth: 1, borderColor: colors.border, borderStyle: "dashed", borderRadius: 8, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+                    style={{ height: s(38), borderWidth: 1, borderColor: colors.border, borderStyle: "dashed", borderRadius: s(8), paddingHorizontal: s(12), flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
                   >
-                    <Text style={{ fontSize: 13, color: selectedPOId ? colors.heading : colors.muted }}>
+                    <Text style={{ fontSize: s(13), color: selectedPOId ? colors.heading : colors.muted }}>
                       {selectedPOId ? purchaseOrders.find((po) => po.id === selectedPOId)?.poNumber : "None"}
                     </Text>
-                    <ChevronDown size={14} color={colors.muted} />
+                    <ChevronDown size={s(14)} color={colors.muted} />
                   </TouchableOpacity>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-64" style={{ backgroundColor: colors.panel, borderColor: colors.border }}>
                   <DropdownMenuItem onPress={() => setSelectedPOId(null)}>
-                    <Text style={{ fontSize: 13, color: colors.label }}>None</Text>
-                    {!selectedPOId && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.teal, marginLeft: "auto" }} />}
+                    <Text style={{ fontSize: s(13), color: colors.label }}>None</Text>
+                    {!selectedPOId && <View style={{ width: s(6), height: s(6), borderRadius: s(3), backgroundColor: colors.teal, marginLeft: "auto" }} />}
                   </DropdownMenuItem>
                   {purchaseOrders.map((po) => (
                     <DropdownMenuItem key={po.id} onPress={() => setSelectedPOId(po.id)}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 13, color: colors.heading }}>{po.poNumber}</Text>
-                        <Text style={{ fontSize: 11, color: colors.muted }}>
-                          {po.status} · ${po.items.reduce((s, i) => s + i.cost * i.quantity, 0).toFixed(2)}
+                        <Text style={{ fontSize: s(13), color: colors.heading }}>{po.poNumber}</Text>
+                        <Text style={{ fontSize: s(11), color: colors.muted }}>
+                          {po.status} · ${po.items.reduce((sum, i) => sum + i.cost * i.quantity, 0).toFixed(2)}
                         </Text>
                       </View>
-                      {selectedPOId === po.id && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.teal }} />}
+                      {selectedPOId === po.id && <View style={{ width: s(6), height: s(6), borderRadius: s(3), backgroundColor: colors.teal }} />}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -282,9 +287,9 @@ const CreateExternalExpenseScreen = () => {
           </View>
 
           {/* Store info */}
-          <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14 }}>
-            <Text style={{ fontSize: 11, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>Store Info (Optional)</Text>
-            <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: s(12), padding: s(14) }}>
+            <Text style={{ fontSize: s(11), fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: s(10) }}>Store Info (Optional)</Text>
+            <View style={{ flexDirection: "row", gap: s(12) }}>
               <View style={{ flex: 1 }}>
                 <Text style={fieldLabel}>Store Name</Text>
                 <TextInput

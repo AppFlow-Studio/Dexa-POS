@@ -1,3 +1,5 @@
+import { getPosAccessFailure } from "@/lib/posAccessControl";
+
 export function getPinPromptLabel(pinLength: number): string {
   return `Enter your ${pinLength}-digit PIN`;
 }
@@ -31,6 +33,17 @@ export function getPinAuthFailure(input: {
   offline?: boolean;
 }): { title: string; message: string } {
   const message = String(input.error ?? "").trim();
+  const posAccessFailure = getPosAccessFailure({
+    error: message,
+    errorCode: input.errorCode,
+  });
+
+  if (posAccessFailure) {
+    return {
+      title: posAccessFailure.title,
+      message: posAccessFailure.message,
+    };
+  }
 
   if (isInactiveAccountError(input.errorCode, message)) {
     return {

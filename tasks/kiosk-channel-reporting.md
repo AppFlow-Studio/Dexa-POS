@@ -32,12 +32,16 @@ This POS repo branch does not contain a `create_kiosk_order` RPC. The implemente
 - Confirmed `create_kiosk_order` does not exist in this branch.
 - Added `20260722120000_kiosk_channel_reporting.sql`.
 - Added `normalize_order_source`, `order_source_label`, and `is_order_reportable` helpers.
-- Backfilled legacy `online` rows to `online_store`, set default `pos`, set NOT NULL, and added/validated `orders_order_source_canonical`.
+- Backfilled legacy `online` rows to `online_store`, set default `pos`, and enforced non-null canonical values through the nonblocking `orders_order_source_canonical` CHECK.
 - Added `orders_enforce_order_source_channel` trigger: self-service stations become `kiosk`; non-self-service writes cannot spoof `kiosk`.
 - Added `create_order_v2` / `create_order_v3` overloads accepting `p_order_source`; POS callers use these so current kiosk flow lands on the server-side contract.
 - Added report RPCs: `get_business_day_summary_v2`, `get_sales_by_item_report_v2`, `get_payment_summary_stats_v2`, `get_admin_transaction_summary_v2`.
 - `get_business_day_summary_v2.by_channel` uses the same `order_payments.captured_at` business-day basis as local `get_business_day_summary_v1` so channel gross/net can reconcile to the headline closing report.
-- Payment failure/admin transaction summaries keep failed/void rows in scope and only add channel segmentation; they do not apply the sales-only order predicate.
+- Re-audited after merging staging: staging did not add `create_kiosk_order`, and the current kiosk checkout still routes through `create_order_v2` / `create_order_v3`.
+- Removed the migration's duplicate, looser text overload of `is_order_reportable`; item sales now call the existing locked enum predicate directly.
+- Kept `get_sales_by_item_report_v2` response-compatible with the legacy report (`NULL` returns the same array shape and keys) while adding the optional source filter.
+- Added merchant/location authorization to item and business-day reports and HQ-only assignment scoping to the payment/admin report RPCs.
+- Payment failure/admin transaction summaries keep failed/void/refund rows in scope because those metrics intentionally report payment attempts and reversals. Recognized-order gating remains on order-derived sales figures; applying it to failure/void metrics would erase the rows those reports exist to measure.
 - Updated POS source helper and tests so kiosk is not classified as online.
 
 ## Acceptance Checklist
@@ -62,7 +66,12 @@ npx jest --runTestsByPath __tests__/kioskChannelReporting.test.ts __tests__/orde
 git diff --check
 ```
 
-Current local status: `git diff --check` passed, and the Node source-contract check passed. Jest is blocked by the repo's existing `jest-expo` / React Native preset dependency issue (`@react-native/jest-preset` missing); no package or lockfile changes were made per repo rules.
+Current local status:
+
+- Node source-contract check passed.
+- Resolved CFD web artifacts match byte-for-byte between `cfd-web-build` and Android assets.
+- Jest is blocked by the repo's existing `jest-expo` / React Native preset dependency issue (`@react-native/jest-preset` missing); no package or lockfile changes were made for this ticket.
+- Targeted Android Kotlin compilation was started with Android Studio's bundled Java 21, but Gradle stopped at provisioning the missing NDK `27.0.12077973` and did not reach source compilation within five minutes. The validation processes were stopped; Android Studio/tablet build remains required after SDK provisioning completes.
 
 Supabase/staging checks after running the migration:
 
@@ -91,6 +100,25 @@ SELECT * FROM public.get_admin_transaction_summary_v2(
   p_date_to := '<end>'::timestamptz
 );
 ```
+
+Compatibility check for item sales:
+
+```sql
+SELECT public.get_sales_by_item_report(
+  '<merchant_id>'::uuid,
+  '<location_id>'::uuid,
+  '<start>'::timestamptz,
+  '<end>'::timestamptz
+)::jsonb = public.get_sales_by_item_report_v2(
+  '<merchant_id>'::uuid,
+  '<location_id>'::uuid,
+  '<start>'::timestamptz,
+  '<end>'::timestamptz,
+  NULL
+);
+```
+
+Expected: `true`.
 
 Negative constraint check:
 
@@ -122,6 +150,7 @@ Expected: every created row has `order_source = 'kiosk'`.
 - Add/report HQ transaction channel dimension from `get_admin_transaction_summary_v2`.
 - Verify Online Ordering Revenue-by-Platform does not treat kiosk as a platform.
 - Confirm merchant-facing labels: `In-Store`, `Kiosk`, `Online`, `Delivery Apps`.
+- Coordinate migration ownership: the website repo currently contains a same-named copy of `20260722120000_kiosk_channel_reporting.sql`. It must either be removed in favor of this migration or updated byte-for-byte with the corrected recognized-order and authorization contract before either PR merges.
 
 ## Files
 - `supabase/migrations/20260722120000_kiosk_channel_reporting.sql`
@@ -138,5 +167,5 @@ Expected: every created row has `order_source = 'kiosk'`.
 - Run the migration on staging first.
 - Confirm mixed-day channel totals against independent SQL.
 - Verify current kiosk order placement on tablet writes `order_source = 'kiosk'`.
-- Review T4 `create_kiosk_order` live definition once it lands.
+- Review T4 `create_kiosk_order` live definition once it lands; it is still absent locally and in the current GitHub default branch.
 - Website repo still needs UI evidence and report screenshots.

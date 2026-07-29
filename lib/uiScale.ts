@@ -1,6 +1,22 @@
-import { useSettingsStore } from "@/stores/useSettingsStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { useWindowDimensions } from "react-native";
+import { vars } from "nativewind";
+import * as React from "react";
+import { Platform, useWindowDimensions, View } from "react-native";
+
+// `useSettingsStore` transitively imports `lib/storage.ts`, which creates an
+// MMKV instance with `encryptionKey` at module-eval time — unsupported by
+// react-native-mmkv's web shim and fatal inside the CFD WebView bundle
+// (web/cfd-entry.tsx). Lazily require it only on native so the web bundle
+// never evaluates that module. See contexts/CFDDisplayDataContext.base.ts
+// for the same split applied to the CFD display-data context.
+const useSettingsStore: typeof import("@/stores/useSettingsStore").useSettingsStore =
+  Platform.OS === "web"
+    ? (() => null) as any
+    : require("@/stores/useSettingsStore").useSettingsStore;
+
+const useStoreSettingsStore: typeof import("@/stores/useStoreSettingsStore").useStoreSettingsStore =
+  Platform.OS === "web"
+    ? (() => false) as any
+    : require("@/stores/useStoreSettingsStore").useStoreSettingsStore;
 
 /**
  * Automatic UI scaling so the app looks proportionally consistent across
@@ -116,7 +132,28 @@ export function useKioskUiScale(): number {
  * (self_service). Useful for conditional scaling logic.
  */
 export function useIsKiosk(): boolean {
-  return useStoreSettingsStore(
-    (s) => s.selectedStation?.station_type === "self_service",
+  return Boolean(
+    useStoreSettingsStore(
+      (s) => s.selectedStation?.station_type === "self_service",
+    ),
+  );
+}
+
+/**
+ * Injects the automatic UI scale as the `--ui-scale` CSS variable for
+ * everything below it, so scale-driven Tailwind utilities (spacing/font/
+ * radius, see tailwind.config.js) reflow with zero per-component changes.
+ *
+ * Shared between the main app root (app/_layout.tsx) and the CFD WebView
+ * bundle (web/cfd-entry.tsx) — the WebView has its own viewport dimensions
+ * (its own physical display), so it computes its own scale independently
+ * rather than inheriting the POS tablet's.
+ */
+export function UiScaleProvider({ children }: { children: React.ReactNode }) {
+  const scale = useUiScale();
+  return React.createElement(
+    View,
+    { style: [{ flex: 1 }, vars({ "--ui-scale": scale })] },
+    children,
   );
 }

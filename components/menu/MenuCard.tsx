@@ -1,5 +1,6 @@
 import { colors } from "@/lib/theme";
 import { Menu } from "@/lib/types";
+import { useUiScale } from "@/lib/uiScale";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { Eye, EyeOff, GripVertical, Pencil } from "lucide-react-native";
 import React from "react";
@@ -16,13 +17,15 @@ export const DraggableMenu: React.FC<DraggableMenuProps> = ({
   onToggleActive,
   onEdit,
 }) => {
-  const toggleMenuCategoryActive = useMenuStore((s) => s.toggleMenuCategoryActive);
+  const toggleMenuCategoryActive = useMenuStore((store) => store.toggleMenuCategoryActive);
+  const uiScale = useUiScale();
+  const s = (n: number) => Math.round(n * uiScale);
 
   return (
     <View className="bg-surface rounded-lg border border-gray-700 p-4 mb-3">
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
-          <GripVertical size={20} color={colors.label} />
+          <GripVertical size={s(20)} color={colors.label} />
           <Text className="text-xl font-semibold text-white">{menu.name}</Text>
           <View
             className={`px-2.5 py-1 rounded-full ${
@@ -53,9 +56,9 @@ export const DraggableMenu: React.FC<DraggableMenuProps> = ({
             className="p-2 bg-panel rounded border border-gray-600"
           >
             {menu.isActive ? (
-              <Eye size={20} color={colors.success} />
+              <Eye size={s(20)} color={colors.success} />
             ) : (
-              <EyeOff size={20} color={colors.danger} />
+              <EyeOff size={s(20)} color={colors.danger} />
             )}
           </TouchableOpacity>
 
@@ -63,7 +66,7 @@ export const DraggableMenu: React.FC<DraggableMenuProps> = ({
             onPress={onEdit}
             className="p-2 bg-panel rounded border border-gray-600"
           >
-            <Pencil size={16} color={colors.label} />
+            <Pencil size={s(16)} color={colors.label} />
           </TouchableOpacity>
         </View>
       </View>

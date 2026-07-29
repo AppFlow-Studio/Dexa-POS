@@ -38,26 +38,16 @@ AS $$
   END
 $$;
 
-CREATE OR REPLACE FUNCTION public.is_order_reportable(
-  p_order_status text,
-  p_payment_status text,
-  p_total_amount numeric DEFAULT NULL
-)
-RETURNS boolean
-LANGUAGE sql
-IMMUTABLE
-SET search_path TO 'public', 'pg_temp'
-AS $$
-  SELECT COALESCE(p_order_status, '') NOT IN ('draft', 'cancelled', 'void')
-    AND COALESCE(p_payment_status, '') IN (
-      'paid',
-      'captured',
-      'partial',
-      'partially_refunded',
-      'refunded'
-    )
-    AND COALESCE(p_total_amount, 0) >= 0
-$$;
+DO $block$
+BEGIN
+  IF to_regprocedure(
+    'public.is_order_reportable(public.order_status,public.payment_status)'
+  ) IS NULL THEN
+    RAISE EXCEPTION
+      'Missing prerequisite: public.is_order_reportable(order_status, payment_status)';
+  END IF;
+END;
+$block$;
 
 UPDATE public.orders
 SET order_source = 'online_store'
@@ -72,14 +62,14 @@ ALTER TABLE public.orders
   ALTER COLUMN order_source SET DEFAULT 'pos';
 
 ALTER TABLE public.orders
-  ALTER COLUMN order_source SET NOT NULL;
-
-ALTER TABLE public.orders
   DROP CONSTRAINT IF EXISTS orders_order_source_canonical;
 
 ALTER TABLE public.orders
   ADD CONSTRAINT orders_order_source_canonical
-  CHECK (order_source IN ('pos', 'kiosk', 'online_store', 'orderout'))
+  CHECK (
+    order_source IS NOT NULL
+    AND order_source IN ('pos', 'kiosk', 'online_store', 'orderout')
+  )
   NOT VALID;
 
 ALTER TABLE public.orders VALIDATE CONSTRAINT orders_order_source_canonical;
@@ -303,6 +293,11 @@ DECLARE
   v_base jsonb;
   v_by_channel jsonb;
 BEGIN
+  IF NOT public.is_dexapos_admin()
+     AND NOT COALESCE(p_location_id = ANY(public.user_location_ids()), false) THEN
+    RAISE EXCEPTION 'Access denied: location not in user scope';
+  END IF;
+
   SELECT b.start_ts::timestamptz, b.end_ts::timestamptz
     INTO v_start_ts, v_end_ts
     FROM public.get_business_day_bounds(p_location_id, p_business_date, p_business_date) b
@@ -419,66 +414,59 @@ DECLARE
     WHEN p_order_source IS NULL THEN NULL
     ELSE public.normalize_order_source(p_order_source)
   END;
-  v_items jsonb;
 BEGIN
-  WITH reportable_orders AS (
-    SELECT o.id, public.normalize_order_source(o.order_source) AS channel
-    FROM public.orders o
-    WHERE o.merchant_id = p_merchant_id
-      AND o.location_id = p_location_id
-      AND o.created_at >= p_start_date
-      AND o.created_at < p_end_date
-      AND public.is_order_reportable(o.status::text, o.payment_status::text, o.total_amount)
-      AND (v_filter_source IS NULL OR public.normalize_order_source(o.order_source) = v_filter_source)
-  ),
-  item_rows AS (
-    SELECT
-      COALESCE(oi.menu_item_id::text, oi.location_exclusive_item_id::text, 'open_item') AS item_key,
-      COALESCE(oi.open_item_name, oi.item_name) AS item_name,
-      oi.category_name,
-      ro.channel,
-      GREATEST(COALESCE(oi.quantity, 0) - COALESCE(oi.refunded_quantity, 0), 0)::numeric AS quantity_sold,
-      GREATEST(COALESCE(oi.subtotal, 0) - COALESCE(oi.refunded_amount, 0), 0)::numeric AS net_sales
-    FROM public.order_items oi
-    JOIN reportable_orders ro ON ro.id = oi.order_id
-    WHERE COALESCE(oi.is_voided, false) = false
-  ),
-  grouped AS (
-    SELECT
-      item_key,
-      item_name,
-      category_name,
-      ro.channel,
-      SUM(quantity_sold) AS quantity_sold,
-      ROUND(SUM(net_sales), 2) AS net_sales
-    FROM item_rows ro
-    GROUP BY item_key, item_name, category_name, ro.channel
-  )
-  SELECT COALESCE(
-    jsonb_agg(
-      jsonb_build_object(
-        'item_key', item_key,
-        'item_name', item_name,
-        'category_name', category_name,
-        'channel', channel,
-        'channel_label', public.order_source_label(channel),
-        'quantity_sold', quantity_sold,
-        'net_sales', net_sales
-      )
-      ORDER BY net_sales DESC, item_name ASC
-    ),
-    '[]'::jsonb
-  )
-  INTO v_items
-  FROM grouped;
+  IF v_filter_source IS NOT NULL
+     AND v_filter_source NOT IN ('pos', 'kiosk', 'online_store', 'orderout') THEN
+    RAISE EXCEPTION 'Invalid order_source filter: %', p_order_source
+      USING ERRCODE = '22023';
+  END IF;
 
-  RETURN jsonb_build_object(
-    'items', v_items,
-    'summary', jsonb_build_object(
-      'order_source', v_filter_source,
-      'total_quantity', COALESCE((SELECT SUM((item->>'quantity_sold')::numeric) FROM jsonb_array_elements(v_items) item), 0),
-      'total_net_sales', COALESCE((SELECT ROUND(SUM((item->>'net_sales')::numeric), 2) FROM jsonb_array_elements(v_items) item), 0)
+  IF NOT public.is_dexapos_admin() THEN
+    IF p_merchant_id IS DISTINCT FROM public.user_merchant_id() THEN
+      RAISE EXCEPTION 'Access denied: merchant not in user scope';
+    END IF;
+
+    IF p_location_id IS NOT NULL
+       AND NOT COALESCE(p_location_id = ANY(public.user_location_ids()), false) THEN
+      RAISE EXCEPTION 'Access denied: location not in user scope';
+    END IF;
+  END IF;
+
+  RETURN (
+    SELECT COALESCE(
+      jsonb_agg(
+        jsonb_build_object(
+          'item_name', item_name,
+          'category', category_name,
+          'quantity_sold', total_qty,
+          'gross_sales', gross_sales,
+          'net_sales', net_sales
+        )
+        ORDER BY gross_sales DESC
+      ),
+      '[]'::jsonb
     )
+    FROM (
+      SELECT
+        oi.item_name,
+        oi.category_name,
+        SUM(oi.quantity) AS total_qty,
+        SUM(COALESCE(oi.pre_discount_subtotal, oi.subtotal)) AS gross_sales,
+        SUM(oi.subtotal) AS net_sales
+      FROM public.order_items oi
+      JOIN public.orders o ON o.id = oi.order_id
+      WHERE o.merchant_id = p_merchant_id
+        AND (p_location_id IS NULL OR o.location_id = p_location_id)
+        AND public.is_order_reportable(o.status, o.payment_status)
+        AND COALESCE(oi.is_voided, false) = false
+        AND o.created_at >= p_start_date
+        AND o.created_at < p_end_date
+        AND (
+          v_filter_source IS NULL
+          OR public.normalize_order_source(o.order_source) = v_filter_source
+        )
+      GROUP BY oi.item_name, oi.category_name
+    ) stats
   );
 END;
 $function$;
@@ -506,6 +494,7 @@ AS $$
     JOIN public.orders o ON o.id = op.order_id
     WHERE op.initiated_at >= p_from
       AND op.initiated_at < p_to
+      AND public.is_dexapos_admin()
       AND (
         p_order_source IS NULL
         OR public.normalize_order_source(o.order_source) = public.normalize_order_source(p_order_source)
@@ -518,6 +507,7 @@ AS $$
     JOIN public.orders o ON o.id = op.order_id
     WHERE cb.received_at >= p_from
       AND cb.received_at < p_to
+      AND public.is_dexapos_admin()
       AND (
         p_order_source IS NULL
         OR public.normalize_order_source(o.order_source) = public.normalize_order_source(p_order_source)
@@ -587,13 +577,28 @@ SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
-  v_to timestamptz := COALESCE(p_date_to, now());
-  v_from timestamptz := COALESCE(p_date_from, COALESCE(p_date_to, now()) - interval '30 days');
+  v_to timestamptz;
+  v_from timestamptz;
   v_prev_to timestamptz;
   v_prev_from timestamptz;
+  v_window interval;
 BEGIN
+  v_from := COALESCE(p_date_from, date_trunc('day', now()) - interval '29 days');
+  v_to := COALESCE(p_date_to, now());
+
+  IF p_date_from IS NULL AND p_date_to IS NOT NULL THEN
+    v_from := p_date_to - interval '29 days';
+  END IF;
+
+  IF v_to <= v_from THEN
+    v_to := v_from + interval '1 second';
+  END IF;
+
+  v_window := v_to - v_from;
   v_prev_to := v_from;
-  v_prev_from := v_from - (v_to - v_from);
+  v_prev_from := v_from - v_window;
+
+  PERFORM p_sort_by, p_sort_dir;
 
   RETURN QUERY
   WITH channels(channel, label, ordinal) AS (
@@ -606,31 +611,60 @@ BEGIN
   scoped_payments AS (
     SELECT
       public.normalize_order_source(o.order_source) AS channel,
-      CASE WHEN op.initiated_at >= v_from AND op.initiated_at < v_to THEN 'current' ELSE 'previous' END AS period,
+      CASE
+        WHEN COALESCE(op.captured_at, op.initiated_at, o.created_at) >= v_from
+         AND COALESCE(op.captured_at, op.initiated_at, o.created_at) < v_to
+        THEN 'current'
+        ELSE 'previous'
+      END AS period,
       op.payment_method::text AS payment_method,
       op.status::text AS payment_status,
-      o.status::text AS order_status,
       COALESCE(op.total_amount, op.amount, 0)::numeric AS total_amount,
+      COALESCE(op.amount, 0)::numeric AS amount,
       COALESCE(op.tip_amount, 0)::numeric AS tip_amount,
-      COALESCE(op.refunded_amount, op.return_amount, 0)::numeric AS return_amount
+      COALESCE(op.return_amount, op.refunded_amount, 0)::numeric AS return_amount,
+      COALESCE(op.is_voided, false) AS is_voided,
+      COALESCE(op.is_returned, false) AS is_returned
     FROM public.order_payments op
     JOIN public.orders o ON o.id = op.order_id
-    WHERE op.initiated_at >= v_prev_from
-      AND op.initiated_at < v_to
+    WHERE COALESCE(op.captured_at, op.initiated_at, o.created_at) >= v_prev_from
+      AND COALESCE(op.captured_at, op.initiated_at, o.created_at) < v_to
+      AND public.is_dexapos_admin()
+      AND o.merchant_id IN (
+        SELECT allowed_merchant_id
+        FROM public.get_admin_merchant_ids() AS allowed_merchant_id
+      )
       AND (p_merchant_ids IS NULL OR o.merchant_id = ANY(p_merchant_ids))
       AND (p_location_ids IS NULL OR o.location_id = ANY(p_location_ids))
       AND (p_payment_method IS NULL OR op.payment_method::text = ANY(p_payment_method))
-      AND (p_payment_status IS NULL OR op.status::text = ANY(p_payment_status))
+      AND (
+        (p_payment_status IS NULL AND op.status::text <> ALL (ARRAY['pending', 'failed']))
+        OR (p_payment_status IS NOT NULL AND op.status::text = ANY(p_payment_status))
+      )
       AND (p_status IS NULL OR o.status::text = ANY(p_status))
-      AND (p_card_type IS NULL OR lower(COALESCE(op.card_type, '')) = lower(p_card_type))
+      AND (
+        NULLIF(trim(COALESCE(p_card_type, '')), '') IS NULL
+        OR EXISTS (
+          SELECT 1
+          FROM unnest(string_to_array(lower(p_card_type), ',')) AS card_token
+          WHERE lower(COALESCE(op.card_type, '')) LIKE '%' || trim(card_token) || '%'
+        )
+      )
       AND (p_min_amount IS NULL OR COALESCE(op.total_amount, op.amount, 0) >= p_min_amount)
       AND (p_max_amount IS NULL OR COALESCE(op.total_amount, op.amount, 0) <= p_max_amount)
-      AND (p_staff_id IS NULL OR op.processed_by_staff_id = p_staff_id)
+      AND (
+        p_staff_id IS NULL
+        OR op.processed_by_staff_id = p_staff_id
+        OR o.created_by_staff_id = p_staff_id
+      )
       AND (
         p_search IS NULL
         OR o.order_number ILIKE '%' || p_search || '%'
         OR o.display_number ILIKE '%' || p_search || '%'
         OR COALESCE(o.customer_name, '') ILIKE '%' || p_search || '%'
+        OR COALESCE(op.card_last_four, '') ILIKE '%' || p_search || '%'
+        OR COALESCE(op.authorization_code, '') ILIKE '%' || p_search || '%'
+        OR COALESCE(op.reference_number, '') ILIKE '%' || p_search || '%'
       )
   ),
   agg AS (
@@ -639,38 +673,108 @@ BEGIN
       c.label,
       c.ordinal,
       COUNT(sp.period) FILTER (WHERE sp.period = 'current')::bigint AS current_total_transactions,
-      ROUND(COALESCE(SUM(sp.total_amount) FILTER (WHERE sp.period = 'current'), 0), 2) AS current_total_revenue,
-      COUNT(sp.period) FILTER (WHERE sp.period = 'current' AND sp.payment_method = 'cash')::bigint AS current_cash_count,
-      ROUND(COALESCE(SUM(sp.total_amount) FILTER (WHERE sp.period = 'current' AND sp.payment_method = 'cash'), 0), 2) AS current_cash_revenue,
-      COUNT(sp.period) FILTER (WHERE sp.period = 'current' AND sp.payment_method <> 'cash')::bigint AS current_card_count,
-      ROUND(COALESCE(SUM(sp.total_amount) FILTER (WHERE sp.period = 'current' AND sp.payment_method <> 'cash'), 0), 2) AS current_card_revenue,
-      ROUND(COALESCE(AVG(sp.tip_amount) FILTER (WHERE sp.period = 'current'), 0), 2) AS current_avg_tip,
-      CASE
-        WHEN COALESCE(SUM(sp.total_amount) FILTER (WHERE sp.period = 'current'), 0) = 0 THEN 0
-        ELSE ROUND((COALESCE(SUM(sp.tip_amount) FILTER (WHERE sp.period = 'current'), 0) / SUM(sp.total_amount) FILTER (WHERE sp.period = 'current')) * 100, 2)
-      END AS current_avg_tip_pct,
-      COUNT(sp.period) FILTER (WHERE sp.period = 'current' AND (sp.order_status IN ('void', 'refunded') OR sp.return_amount > 0))::bigint AS current_void_return_count,
-      ROUND(COALESCE(SUM(sp.return_amount) FILTER (WHERE sp.period = 'current'), 0), 2) AS current_void_return_amount,
+      ROUND(COALESCE(SUM(sp.total_amount) FILTER (
+        WHERE sp.period = 'current'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method IN ('cash', 'card', 'card_spinapi', 'card_dvpaylite')
+      ), 0), 2) AS current_total_revenue,
+      COUNT(sp.period) FILTER (
+        WHERE sp.period = 'current'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method = 'cash'
+      )::bigint AS current_cash_count,
+      ROUND(COALESCE(SUM(sp.total_amount) FILTER (
+        WHERE sp.period = 'current'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method = 'cash'
+      ), 0), 2) AS current_cash_revenue,
+      COUNT(sp.period) FILTER (
+        WHERE sp.period = 'current'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method IN ('card', 'card_spinapi', 'card_dvpaylite')
+      )::bigint AS current_card_count,
+      ROUND(COALESCE(SUM(sp.total_amount) FILTER (
+        WHERE sp.period = 'current'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method IN ('card', 'card_spinapi', 'card_dvpaylite')
+      ), 0), 2) AS current_card_revenue,
+      ROUND(COALESCE(AVG(sp.tip_amount) FILTER (
+        WHERE sp.period = 'current'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method IN ('card', 'card_spinapi', 'card_dvpaylite')
+      ), 0), 2) AS current_avg_tip,
+      ROUND(COALESCE(AVG((sp.tip_amount / NULLIF(sp.amount, 0)) * 100) FILTER (
+        WHERE sp.period = 'current'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method IN ('card', 'card_spinapi', 'card_dvpaylite')
+      ), 0), 2) AS current_avg_tip_pct,
+      COUNT(sp.period) FILTER (
+        WHERE sp.period = 'current' AND (sp.is_voided OR sp.is_returned)
+      )::bigint AS current_void_return_count,
+      ROUND(COALESCE(SUM(
+        CASE
+          WHEN sp.is_returned THEN sp.return_amount
+          WHEN sp.is_voided THEN sp.total_amount
+          ELSE 0
+        END
+      ) FILTER (WHERE sp.period = 'current'), 0), 2) AS current_void_return_amount,
       CASE
         WHEN COUNT(sp.period) FILTER (WHERE sp.period = 'current') = 0 THEN 0
-        ELSE ROUND((COUNT(sp.period) FILTER (WHERE sp.period = 'current' AND (sp.order_status IN ('void', 'refunded') OR sp.return_amount > 0))::numeric / COUNT(sp.period) FILTER (WHERE sp.period = 'current')::numeric) * 100, 2)
+        ELSE ROUND((COUNT(sp.period) FILTER (
+          WHERE sp.period = 'current' AND (sp.is_voided OR sp.is_returned)
+        )::numeric / COUNT(sp.period) FILTER (WHERE sp.period = 'current')::numeric) * 100, 2)
       END AS current_void_rate_pct,
       COUNT(sp.period) FILTER (WHERE sp.period = 'previous')::bigint AS previous_total_transactions,
-      ROUND(COALESCE(SUM(sp.total_amount) FILTER (WHERE sp.period = 'previous'), 0), 2) AS previous_total_revenue,
-      COUNT(sp.period) FILTER (WHERE sp.period = 'previous' AND sp.payment_method = 'cash')::bigint AS previous_cash_count,
-      ROUND(COALESCE(SUM(sp.total_amount) FILTER (WHERE sp.period = 'previous' AND sp.payment_method = 'cash'), 0), 2) AS previous_cash_revenue,
-      COUNT(sp.period) FILTER (WHERE sp.period = 'previous' AND sp.payment_method <> 'cash')::bigint AS previous_card_count,
-      ROUND(COALESCE(SUM(sp.total_amount) FILTER (WHERE sp.period = 'previous' AND sp.payment_method <> 'cash'), 0), 2) AS previous_card_revenue,
-      ROUND(COALESCE(AVG(sp.tip_amount) FILTER (WHERE sp.period = 'previous'), 0), 2) AS previous_avg_tip,
-      CASE
-        WHEN COALESCE(SUM(sp.total_amount) FILTER (WHERE sp.period = 'previous'), 0) = 0 THEN 0
-        ELSE ROUND((COALESCE(SUM(sp.tip_amount) FILTER (WHERE sp.period = 'previous'), 0) / SUM(sp.total_amount) FILTER (WHERE sp.period = 'previous')) * 100, 2)
-      END AS previous_avg_tip_pct,
-      COUNT(sp.period) FILTER (WHERE sp.period = 'previous' AND (sp.order_status IN ('void', 'refunded') OR sp.return_amount > 0))::bigint AS previous_void_return_count,
-      ROUND(COALESCE(SUM(sp.return_amount) FILTER (WHERE sp.period = 'previous'), 0), 2) AS previous_void_return_amount,
+      ROUND(COALESCE(SUM(sp.total_amount) FILTER (
+        WHERE sp.period = 'previous'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method IN ('cash', 'card', 'card_spinapi', 'card_dvpaylite')
+      ), 0), 2) AS previous_total_revenue,
+      COUNT(sp.period) FILTER (
+        WHERE sp.period = 'previous'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method = 'cash'
+      )::bigint AS previous_cash_count,
+      ROUND(COALESCE(SUM(sp.total_amount) FILTER (
+        WHERE sp.period = 'previous'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method = 'cash'
+      ), 0), 2) AS previous_cash_revenue,
+      COUNT(sp.period) FILTER (
+        WHERE sp.period = 'previous'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method IN ('card', 'card_spinapi', 'card_dvpaylite')
+      )::bigint AS previous_card_count,
+      ROUND(COALESCE(SUM(sp.total_amount) FILTER (
+        WHERE sp.period = 'previous'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method IN ('card', 'card_spinapi', 'card_dvpaylite')
+      ), 0), 2) AS previous_card_revenue,
+      ROUND(COALESCE(AVG(sp.tip_amount) FILTER (
+        WHERE sp.period = 'previous'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method IN ('card', 'card_spinapi', 'card_dvpaylite')
+      ), 0), 2) AS previous_avg_tip,
+      ROUND(COALESCE(AVG((sp.tip_amount / NULLIF(sp.amount, 0)) * 100) FILTER (
+        WHERE sp.period = 'previous'
+          AND sp.payment_status = 'captured'
+          AND sp.payment_method IN ('card', 'card_spinapi', 'card_dvpaylite')
+      ), 0), 2) AS previous_avg_tip_pct,
+      COUNT(sp.period) FILTER (
+        WHERE sp.period = 'previous' AND (sp.is_voided OR sp.is_returned)
+      )::bigint AS previous_void_return_count,
+      ROUND(COALESCE(SUM(
+        CASE
+          WHEN sp.is_returned THEN sp.return_amount
+          WHEN sp.is_voided THEN sp.total_amount
+          ELSE 0
+        END
+      ) FILTER (WHERE sp.period = 'previous'), 0), 2) AS previous_void_return_amount,
       CASE
         WHEN COUNT(sp.period) FILTER (WHERE sp.period = 'previous') = 0 THEN 0
-        ELSE ROUND((COUNT(sp.period) FILTER (WHERE sp.period = 'previous' AND (sp.order_status IN ('void', 'refunded') OR sp.return_amount > 0))::numeric / COUNT(sp.period) FILTER (WHERE sp.period = 'previous')::numeric) * 100, 2)
+        ELSE ROUND((COUNT(sp.period) FILTER (
+          WHERE sp.period = 'previous' AND (sp.is_voided OR sp.is_returned)
+        )::numeric / COUNT(sp.period) FILTER (WHERE sp.period = 'previous')::numeric) * 100, 2)
       END AS previous_void_rate_pct
     FROM channels c
     LEFT JOIN scoped_payments sp ON sp.channel = c.channel
@@ -710,11 +814,17 @@ BEGIN
 END;
 $function$;
 
+REVOKE ALL ON FUNCTION public.resolve_create_order_source(uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.enforce_order_source_channel() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.create_order_v2(uuid, text, text, text, uuid, uuid, public.order_type, text, uuid, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.create_order_v3(uuid, text, text, text, uuid, uuid, uuid, public.order_type, text, uuid, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_business_day_summary_v2(uuid, date) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_sales_by_item_report_v2(uuid, uuid, timestamptz, timestamptz, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_payment_summary_stats_v2(timestamptz, timestamptz, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_admin_transaction_summary_v2(text, timestamptz, timestamptz, uuid[], numeric, uuid[], numeric, text[], text[], text, text, text, uuid, text[]) FROM PUBLIC;
+
 GRANT EXECUTE ON FUNCTION public.normalize_order_source(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.order_source_label(text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.is_order_reportable(text, text, numeric) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.resolve_create_order_source(uuid, text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.enforce_order_source_channel() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_order_v2(uuid, text, text, text, uuid, uuid, public.order_type, text, uuid, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_order_v3(uuid, text, text, text, uuid, uuid, uuid, public.order_type, text, uuid, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_business_day_summary_v2(uuid, date) TO authenticated;
