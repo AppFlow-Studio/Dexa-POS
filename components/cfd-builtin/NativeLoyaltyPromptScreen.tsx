@@ -302,7 +302,7 @@ export function NativeLoyaltyPromptScreen({ onPhoneSubmitted, onSkip }: Props) {
           height: buttonHeight,
         },
         submittingOverlay: {
-          ...StyleSheet.absoluteFillObject,
+          ...StyleSheet.absoluteFill,
           backgroundColor: "rgba(0,0,0,0.45)",
           alignItems: "center",
           justifyContent: "center",

@@ -791,7 +791,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
         onRequestClose={() => setPopupMenuName(null)}
       >
         <Pressable
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           onPress={() => setPopupMenuName(null)}
         >
           <Pressable

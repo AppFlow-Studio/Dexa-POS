@@ -100,6 +100,20 @@ type FloorPlanCacheEntry = {
   lastSyncAt: string | null;
 };
 
+/**
+ * Drop the ephemeral `session` from each table.
+ *
+ * Used on both sides of persistence: at write time (partialize) and at read
+ * time (onRehydrateStorage). Session state belongs to useTableSessionStore and
+ * is re-bridged by onFinishHydration, so it must never survive a round-trip
+ * through this store's storage — keeping the two sides on one helper is what
+ * guarantees the write side can't drift back into serializing it.
+ */
+const stripTableSessions = (
+  tables: FloorPlanObject[] | undefined,
+): FloorPlanObject[] =>
+  (tables ?? []).map((t) => (t.session ? { ...t, session: undefined } : t));
+
 const buildSectionsById = (
   sections: ServerSection[],
 ): Record<string, ServerSection> =>
@@ -2293,7 +2307,19 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         partialize: (state) => ({
           floorPlans: state.floorPlans,
           activeFloorPlanId: state.activeFloorPlanId,
-          tables: state.tables,
+          // Persist geometry WITHOUT the embedded session. onRehydrateStorage
+          // below strips `session` from every rehydrated table unconditionally,
+          // and onFinishHydration re-bridges live sessions from
+          // useTableSessionStore — so persisted session data was written on
+          // every convergence and never once read back.
+          //
+          // That was the bulk of this store's write amplification: the floor
+          // reloads while the realtime channel is down were each serializing a
+          // ~215KB blob (2.03MB over a 10-minute session on a Tab S6 Lite),
+          // most of it session state destined to be thrown away on the next
+          // boot. Stripping at write time is exactly what read time already
+          // does, so this cannot change behavior — it just stops paying for it.
+          tables: stripTableSessions(state.tables),
           sections: state.sections,
           sectionsById: state.sectionsById,
           locationId: state.locationId,
@@ -2303,11 +2329,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         // Strip ephemeral session data to prevent stale sessions (e.g. 61h-old)
         onRehydrateStorage: () => (state) => {
           if (!state) return;
-          const stripSessions = (tables: FloorPlanObject[]) =>
-            tables.map((t) => ({
-              ...t,
-              session: undefined,
-            }));
+          // Shared with partialize — see stripTableSessions. Kept as a local
+          // alias so the existing call sites below read unchanged.
+          const stripSessions = stripTableSessions;
 
           const sanitizedCache = Object.fromEntries(
             Object.entries(state.floorPlanCache ?? {}).map(

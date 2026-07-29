@@ -39,6 +39,12 @@ import {
     secureStorage,
 } from "@/lib/storage";
 import { initTelemetry } from "@/lib/telemetry/init";
+import {
+  registerResumeTask,
+  registerSuspendTask,
+  startAppLifecycleCoordinator,
+  stopAppLifecycleCoordinator,
+} from "@/lib/lifecycle/appLifecycleCoordinator";
 import { colors, setThemeMode, spinnerColor } from "@/lib/theme";
 import { UiScaleProvider } from "@/lib/uiScale";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -90,7 +96,6 @@ import * as WebBrowser from "expo-web-browser";
 import * as React from "react";
 import {
     ActivityIndicator,
-    AppState,
     InteractionManager,
     Platform,
     Pressable,
@@ -560,6 +565,11 @@ function RootErrorFallback() {
 }
 
 export default Sentry.wrap(function RootLayout() {
+  // NOTE: the screen wake lock is NOT here — it's a native window flag set in
+  // MainActivity.onCreate (android/.../MainActivity.kt). See the comment there
+  // for why the JS path was rejected. Adding a JS keep-awake hook back into
+  // this tree will fight the native flag on teardown.
+
   const hasMounted = React.useRef(false);
   const { colorScheme, isDarkColorScheme } = useColorScheme();
   const [isColorSchemeLoaded, setIsColorSchemeLoaded] = React.useState(false);
@@ -853,18 +863,25 @@ export default Sentry.wrap(function RootLayout() {
 
   // Flush pending MMKV writes when app goes to background to prevent data loss
   React.useEffect(() => {
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "background" || state === "inactive") {
-        flushAllPendingWrites();
-      }
+    return registerSuspendTask({
+      id: "storage.flush-pending-writes",
+      run: flushAllPendingWrites,
     });
-    return () => sub.remove();
   }, []);
 
   // Wave-0 perf telemetry (long-task watcher, persist/broadcast counters,
   // ring buffer). Owns its own AppState listener + 30s flush; idempotent.
   React.useEffect(() => {
     initTelemetry();
+  }, []);
+
+  // Single AppState owner for resume recovery. Subsystems register bucketed,
+  // idempotent tasks instead of each holding their own listener and firing on
+  // the same tick — see tasks/appstate-netinfo-listener-inventory.md.
+  // Network gating reads the app's existing single source of truth.
+  React.useEffect(() => {
+    startAppLifecycleCoordinator(getRawIsOnline);
+    return () => stopAppLifecycleCoordinator();
   }, []);
 
   // Cleanup intervals on unmount
@@ -877,25 +894,24 @@ export default Sentry.wrap(function RootLayout() {
     };
   }, [isKDS, isCFDMode]);
 
-  // Also stop draft cleanup when app goes to background (prevents background timer leaks)
+  // Pause/resume the background maintenance timers across the foreground
+  // boundary (prevents background timer leaks).
+  //
+  // The resume half sits in `interactions`, not on the resume edge: the old
+  // listener called startDraftCleanup() synchronously, and that runs
+  // cleanupAbandonedDrafts() + clearInactiveOrders() over the WHOLE order
+  // store before returning. On a station carrying a busy shift that was the
+  // only unbounded synchronous work on the first-tap path — it scaled with
+  // how many orders the shift had accumulated. Nothing about it is urgent;
+  // the timers it arms fire minutes later regardless.
   React.useEffect(() => {
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "background" || state === "inactive") {
-        if (!isKDS && !isCFDMode) {
-          useOrderStore.getState().stopDraftCleanup();
-          PrinterService.stopProcessing();
-          try {
-            const {
-              stopSessionPrune,
-            } = require("@/stores/useTableSessionStore");
-            stopSessionPrune();
-          } catch {
-            /* store may not be loaded */
-          }
-        }
-      } else if (state === "active") {
-        // Restart when app comes back to foreground
-        if (!isKDS && !isCFDMode) {
+    if (isKDS || isCFDMode) return;
+
+    const unregister = [
+      registerResumeTask({
+        id: "pos.maintenance-timers-resume",
+        bucket: "interactions",
+        run: () => {
           useOrderStore.getState().startDraftCleanup();
           PrinterService.startProcessing();
           try {
@@ -906,10 +922,26 @@ export default Sentry.wrap(function RootLayout() {
           } catch {
             /* store may not be loaded */
           }
-        }
-      }
-    });
-    return () => sub.remove();
+        },
+      }),
+      registerSuspendTask({
+        id: "pos.maintenance-timers-suspend",
+        run: () => {
+          useOrderStore.getState().stopDraftCleanup();
+          PrinterService.stopProcessing();
+          try {
+            const {
+              stopSessionPrune,
+            } = require("@/stores/useTableSessionStore");
+            stopSessionPrune();
+          } catch {
+            /* store may not be loaded */
+          }
+        },
+      }),
+    ];
+
+    return () => unregister.forEach((fn) => fn());
   }, [isKDS, isCFDMode]);
 
   if (!isColorSchemeLoaded) {
