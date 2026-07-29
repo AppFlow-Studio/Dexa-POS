@@ -4,10 +4,9 @@ import {
   useOrderTotals,
 } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetScrollView,
-} from "@/components/ui/bottomSheet";
+import PanelSheet, {
+  PanelSheetScrollView as BottomSheetScrollView,
+} from "@/components/ui/PanelSheet";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { ArrowRight, CreditCard, Banknote, X } from "lucide-react-native";
 import React, { forwardRef, useMemo } from "react";
@@ -124,7 +123,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
 ) {
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
-  const snapPoints = useMemo(() => ["48%"], []);
+  const snapPoints = useMemo(() => ["78%"], []);
 
   const activeOrder = useOrderStore((s) =>
     orderId
@@ -221,27 +220,15 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
       ? ` (${Number(liveServiceChargeRate).toFixed(0)}%)`
       : "");
 
-  const renderBackdrop = useMemo(
-    () => (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
-    [],
-  );
-
   return (
-    <BottomSheet
+    <PanelSheet
       ref={ref}
+      presentation="bill-column"
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}
       {...bottomSheetTheme}
-      backdropComponent={renderBackdrop}
     >
       <BottomSheetScrollView
         style={{ flex: 1, backgroundColor: colors.panel }}
@@ -518,7 +505,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
           </TouchableOpacity>
         </View>
       </BottomSheetScrollView>
-    </BottomSheet>
+    </PanelSheet>
   );
 };
 

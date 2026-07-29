@@ -14,11 +14,10 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetScrollView,
-  BottomSheetTextInput,
-} from "@/components/ui/bottomSheet";
+import PanelSheet, {
+  PanelSheetScrollView as BottomSheetScrollView,
+  PanelSheetTextInput as BottomSheetTextInput,
+} from "@/components/ui/PanelSheet";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import {
   CheckCircle2,
@@ -80,10 +79,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   },
   ref,
 ) {
-  const snapPoints = useMemo(
-    () => (isTableOrdering ? ["100%"] : ["90%"]),
-    [isTableOrdering],
-  );
+  // Full-column height so all options (incl. Danger Zone) are visible without
+  // scrolling — the in-panel sheet is capped to the bill column, not full screen.
+  const snapPoints = useMemo(() => ["100%"], []);
   const [orderNotes, setOrderNotes] = useState("");
   const [showManagerPin, setShowManagerPin] = useState(false);
   const [managerPin, setManagerPin] = useState("");
@@ -476,17 +474,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     }
   };
 
-  const renderBackdrop = useCallback(function MoreOptionsBackdrop(props: any) {
-    return (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    );
-  }, []);
-
   // FIX: Use optional chaining to prevent errors
   // Wave 2.2: gate void on cross-station ownership too — the server-side
   // guard for void is tracked in Wave 2.3.2; the UI gate makes the locked
@@ -507,8 +494,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 
   return (
     <>
-      <BottomSheet
+      <PanelSheet
         ref={ref}
+        presentation="bill-column"
         index={-1}
         snapPoints={snapPoints}
         topInset={0}
@@ -519,7 +507,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         onChange={handleSheetChange}
         {...bottomSheetTheme}
         style={{ zIndex: 10000, elevation: 10000 }}
-        backdropComponent={renderBackdrop}
       >
         <BottomSheetScrollView
           // Sticky header at index 0 so the "More Options" title + close
@@ -537,8 +524,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               alignItems: "center",
               justifyContent: "space-between",
               paddingHorizontal: 16,
-              paddingTop: 14,
-              paddingBottom: 12,
+              paddingTop: 8,
+              paddingBottom: 8,
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
               backgroundColor: colors.panel,
@@ -549,7 +536,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             >
               More Options
             </Text>
-            <View style={{ width: 28, height: 28 }} />
+            <View style={{ width: 20, height: 20 }} />
           </View>
 
           {/* ── Section label: Order ── */}
@@ -1321,7 +1308,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 
           <View style={{ height: isTableOrdering ? 144 : 24 }} />
         </BottomSheetScrollView>
-      </BottomSheet>
+      </PanelSheet>
 
       {/* Manager PIN dialog */}
       <Dialog

@@ -2,6 +2,7 @@ import { getCurrentBusinessDay } from '@/lib/businessDay'
 import { colors } from '@/lib/theme'
 import { useUiScale } from '@/lib/uiScale'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { sendBatchSummaryEmail } from '@/services/messaging/sendBatchSummaryEmail'
 import { PrinterService } from '@/services/printing/PrinterService'
 import type {
   BatchSummary,
@@ -343,6 +344,13 @@ export function BatchoutPanel ({ showBatchLog, onDone }: BatchoutPanelProps) {
       // order_payments.settlement_batch_id is backfilled at that step.
       if ((output.success || output.partialSuccess) && output.batchUuid) {
         printBatch(output.batchUuid).catch(() => {})
+        // Fire-and-forget, in parallel with the print: auto-email the batch-out
+        // summary to the location owner (DexaPOS-Website PR #246). Server-side
+        // opt-in toggle + idempotency gate it; failures never touch this flow.
+        sendBatchSummaryEmail({
+          client: supabase,
+          settlementBatchId: output.batchUuid
+        }).catch(() => {})
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

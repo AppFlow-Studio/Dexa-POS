@@ -8,11 +8,10 @@ import {
 import { getDailyUsageCounts } from '@/services/discountUsageTracker'
 import { useActiveOrder } from '@/stores/selectors/orderSelectors'
 import { useOrderStore } from '@/stores/useOrderStore'
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetScrollView,
-  BottomSheetTextInput
-} from '@/components/ui/bottomSheet'
+import PanelSheet, {
+  PanelSheetScrollView as BottomSheetScrollView,
+  PanelSheetTextInput as BottomSheetTextInput
+} from '@/components/ui/PanelSheet'
 import { BottomSheetMethods } from '@/components/ui/bottomSheet'
 import { Check, Tag, X } from 'lucide-react-native'
 import React, { forwardRef, useMemo, useState } from 'react'
@@ -238,20 +237,6 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
     }
   }
 
-  const renderBackdrop = useMemo(
-    () => (props: any) =>
-      (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.28}
-          pressBehavior='close'
-        />
-      ),
-    []
-  )
-
   const isCustomValid =
     !!customDiscountValue &&
     parseFloat(customDiscountValue) > 0 &&
@@ -264,12 +249,12 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
     })
 
   return (
-    <BottomSheet
+    <PanelSheet
       ref={ref}
+      presentation="bill-column"
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose
-      backdropComponent={renderBackdrop}
       onClose={onClose}
       {...bottomSheetTheme}
       style={{ zIndex: 10000, elevation: 10000 }}
@@ -862,7 +847,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
           )}
         </View>
       </BottomSheetScrollView>
-    </BottomSheet>
+    </PanelSheet>
   )
 }
 
