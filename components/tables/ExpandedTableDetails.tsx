@@ -5,6 +5,11 @@ import {
 } from "@/lib/orderAccessControl";
 import { iosOnly } from "@/lib/safeAnimations";
 import { colors } from "@/lib/theme";
+import { getIsOnline } from "@/services/offlineSyncService";
+import {
+  isSyncAndClearEnabled,
+  reconcileOrdersForClose,
+} from "@/services/tables/serverPaidCloseGate";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -13,7 +18,7 @@ import { usePendingTableOverlay } from "@/stores/usePendingTableOverlay";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject as TableType } from "@/types/db-floor-plan-types";
 import { CheckCircle, Clock } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useShallow } from "zustand/react/shallow";
@@ -218,6 +223,7 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
   const { show } = useToast();
   const [isCloseConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
 
   const groupedItems = useMemo(() => {
     const groups: Record<
@@ -244,6 +250,21 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
     () => tableData.orders.some((order) => order.items.length > 0),
     [tableData.orders],
   );
+  const orderIds = useMemo(
+    () => tableData.orders.map((order) => order.id),
+    [tableData.orders],
+  );
+  const orderIdsKey = orderIds.join(",");
+
+  // Wave A — passively reconcile a locally-unpaid table against server truth
+  // when its expanded details open, so a fully-captured, server-settled check
+  // self-heals to Paid (and offers Clear, not void/cash) before staff even tap.
+  useEffect(() => {
+    if (!groupHasAnyItems || allOrdersArePaid) return;
+    if (!isSyncAndClearEnabled() || !getIsOnline()) return;
+    void reconcileOrdersForClose(orderIds, { force: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderIdsKey, groupHasAnyItems, allOrdersArePaid]);
   const foreignOwnedOrder = useMemo(() => {
     const directMatch =
       tableData.orders.find((order) =>
@@ -308,7 +329,7 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
     };
   }, [allOrdersArePaid, tableData.displayName, tableData.orders.length]);
 
-  const handleCloseTablePress = () => {
+  const handleCloseTablePress = async () => {
     if (isForeignStationSession) {
       show({
         title: "Action Restricted",
@@ -318,7 +339,29 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
       return;
     }
 
-    if (!allOrdersArePaid && groupHasAnyItems) {
+    if (allOrdersArePaid) {
+      setCloseConfirmOpen(true);
+      return;
+    }
+
+    if (groupHasAnyItems) {
+      // Before trapping staff into VOID, reconcile against server truth. A
+      // fully-captured, server-settled check whose local state is stale should
+      // route to the calm paid-clear confirm — never void/cash as the only exit.
+      if (isSyncAndClearEnabled() && getIsOnline()) {
+        setIsReconciling(true);
+        try {
+          const result = await reconcileOrdersForClose(orderIds, {
+            force: true,
+          });
+          if (result.allProvenPaid) {
+            setCloseConfirmOpen(true);
+            return;
+          }
+        } finally {
+          setIsReconciling(false);
+        }
+      }
       setVoidConfirmOpen(true);
       return;
     }
@@ -463,10 +506,10 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
         />
         <QuickActionButton label="Print Bill" onPress={() => {}} />
         <QuickActionButton
-          label="Close Table"
+          label={isReconciling ? "Checking…" : "Close Table"}
           onPress={handleCloseTablePress}
           variant="destructive"
-          disabled={isForeignStationSession}
+          disabled={isForeignStationSession || isReconciling}
         />
       </View>
       <ConfirmationModal

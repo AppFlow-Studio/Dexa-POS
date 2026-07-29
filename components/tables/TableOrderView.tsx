@@ -41,6 +41,11 @@ import { useReservationStore } from "@/stores/useReservationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { getIsOnline } from "@/services/offlineSyncService";
+import {
+  isSyncAndClearEnabled,
+  reconcileOrdersForClose,
+} from "@/services/tables/serverPaidCloseGate";
 import { BottomSheetMethods } from "@/components/ui/bottomSheet";
 import { Image as ExpoImage } from "expo-image";
 import { useRouter } from "expo-router";
@@ -538,6 +543,19 @@ const TableOrderView = React.forwardRef<
     }
     return activeOrder?.paid_status === "Paid";
   }, [activeOrder?.paid_status, hasPayments, totals, displayBalanceDue]);
+
+  // Wave A — deterministically reconcile the active order against server truth
+  // when it looks unpaid locally but has items. A fully-captured, server-settled
+  // check self-heals to Paid, so the footer offers Close Table instead of "Pay"
+  // (the cash-tender trap) or leaving void as the only manager exit.
+  useEffect(() => {
+    if (isFullyPaid) return;
+    const oid = activeOrder?.id;
+    if (!oid || (activeOrder?.items?.length ?? 0) === 0) return;
+    if (!isSyncAndClearEnabled() || !getIsOnline()) return;
+    void reconcileOrdersForClose([oid], { force: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrder?.id, isFullyPaid]);
 
   // --- Action handlers ---
 
