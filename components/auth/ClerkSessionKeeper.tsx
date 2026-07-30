@@ -1,8 +1,9 @@
+import { registerResumeTask } from "@/lib/lifecycle/appLifecycleCoordinator";
 import { getRawIsOnline } from "@/services/offlineSyncService";
 import { isClerkRuntimeError, useAuth } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
 import { useCallback, useEffect, useRef } from "react";
-import { AppState, type AppStateStatus } from "react-native";
+import { AppState } from "react-native";
 
 /**
  * Keeps the Clerk session warm on always-on POS/KDS tablets.
@@ -59,12 +60,19 @@ export function ClerkSessionKeeper() {
 
   // Proactive refresh on foreground wake — runs before routing checks fire so
   // isSignedIn is back true before ClerkGate / index.tsx evaluate it.
+  //
+  // Registered in the coordinator's `immediate` bucket rather than holding its
+  // own AppState listener: auth validity gates every other network task on the
+  // resume path, so it must complete before the frame/interaction buckets run.
+  // The coordinator awaits this bucket, which is what turns the old
+  // fire-and-forget refresh into an actual ordering guarantee.
   useEffect(() => {
-    const onState = (state: AppStateStatus) => {
-      if (state === "active") void refresh("foreground");
-    };
-    const sub = AppState.addEventListener("change", onState);
-    return () => sub.remove();
+    return registerResumeTask({
+      id: "auth.clerk-token",
+      bucket: "immediate",
+      requiresNetwork: true,
+      run: () => refresh("foreground"),
+    });
   }, [refresh]);
 
   // Periodic warm-keep while signed in AND foregrounded.

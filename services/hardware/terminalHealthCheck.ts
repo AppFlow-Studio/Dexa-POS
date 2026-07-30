@@ -1,9 +1,15 @@
 // services/hardware/terminalHealthCheck.ts
 // Background terminal health monitoring service (singleton pattern)
 
-import { AppState, AppStateStatus } from "react-native";
-import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { SupabaseClient } from "@supabase/supabase-js";
+import {
+  registerResumeTask,
+  registerSuspendTask,
+} from "@/lib/lifecycle/appLifecycleCoordinator";
+import {
+  getRawIsOnline,
+  subscribeOnlineStatus,
+} from "@/services/offlineSyncService";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { probeCastlesTerminal, getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getSharedValorService } from "@/services/terminals/valor-service";
@@ -28,9 +34,8 @@ const DEFAULT_HEALTH_CHECK_INTERVAL_MS = 90 * 1000; // 90 seconds
 const FAILURE_TOAST_THRESHOLD = 3;
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
-let appStateSubscription: ReturnType<
-  typeof AppState.addEventListener
-> | null = null;
+/** Unregister fns for the lifecycle-coordinator tasks (was an AppState sub). */
+let lifecycleUnregister: (() => void)[] = [];
 let netInfoUnsubscribe: (() => void) | null = null;
 let wasConnected = true;
 let currentSupabase: SupabaseClient | null = null;
@@ -380,24 +385,30 @@ async function updateDatabaseHealth(
 // APP STATE HANDLING
 // ============================================================================
 
-function handleAppState(nextState: AppStateStatus): void {
-  if (nextState === "active") {
-    // Resume: send immediate check and restart interval
-    if (!intervalId && currentTerminalId) {
-      performHealthCheck();
-      const intervalMs =
-        (currentPaymentTerminal?.health_check_interval ?? 0) * 1000 ||
-        DEFAULT_HEALTH_CHECK_INTERVAL_MS;
-      intervalId = setInterval(performHealthCheck, intervalMs);
-      console.log("[TerminalHealthCheck] Resumed on app active");
-    }
-  } else {
-    // Background/inactive: pause interval to save battery
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-      console.log("[TerminalHealthCheck] Paused (app backgrounded)");
-    }
+/**
+ * Resume half, run from the coordinator's `interactions` bucket. A terminal
+ * probe is a network round-trip that the operator is not waiting on; letting
+ * it race auth/order recovery is exactly the resume storm this was moved out
+ * of. If a payment is actually mid-flight, its own recovery path owns that —
+ * not this poller.
+ */
+function handleResume(): void {
+  if (!intervalId && currentTerminalId) {
+    performHealthCheck();
+    const intervalMs =
+      (currentPaymentTerminal?.health_check_interval ?? 0) * 1000 ||
+      DEFAULT_HEALTH_CHECK_INTERVAL_MS;
+    intervalId = setInterval(performHealthCheck, intervalMs);
+    console.log("[TerminalHealthCheck] Resumed on app active");
+  }
+}
+
+function handleSuspend(): void {
+  // Background/inactive: pause interval to save battery
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+    console.log("[TerminalHealthCheck] Paused (app backgrounded)");
   }
 }
 
@@ -411,8 +422,8 @@ export function startTerminalHealthCheck(
   paymentTerminal: StationPaymentTerminal,
 ): void {
   // Avoid duplicate starts — also clean up orphaned listeners from backgrounding
-  // (backgrounding nulls intervalId but leaves appStateSubscription/netInfoUnsubscribe alive)
-  if (intervalId || appStateSubscription || netInfoUnsubscribe) {
+  // (backgrounding nulls intervalId but leaves the lifecycle/netinfo subs alive)
+  if (intervalId || lifecycleUnregister.length > 0 || netInfoUnsubscribe) {
     stopTerminalHealthCheck();
   }
 
@@ -433,15 +444,26 @@ export function startTerminalHealthCheck(
   // Start interval
   intervalId = setInterval(performHealthCheck, intervalMs);
 
-  // Listen for app state changes
-  appStateSubscription = AppState.addEventListener("change", handleAppState);
+  lifecycleUnregister = [
+    registerResumeTask({
+      id: "hardware.terminal-health-resume",
+      bucket: "interactions",
+      requiresNetwork: true,
+      run: handleResume,
+    }),
+    registerSuspendTask({
+      id: "hardware.terminal-health-suspend",
+      run: handleSuspend,
+    }),
+  ];
 
-  // Listen for network connectivity changes — trigger immediate health check
-  // when WiFi reconnects so terminals recover in seconds instead of waiting
-  // for the next interval.
-  wasConnected = true;
-  netInfoUnsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
-    const isNow = state.isConnected ?? false;
+  // Network recovery — trigger an immediate health check when connectivity
+  // returns so terminals recover in seconds instead of waiting for the next
+  // interval. Uses the app's single network source (offlineSyncService owns
+  // NetInfo.configure) rather than a second raw NetInfo subscription.
+  wasConnected = getRawIsOnline();
+  netInfoUnsubscribe = subscribeOnlineStatus(() => {
+    const isNow = getRawIsOnline();
     if (!wasConnected && isNow) {
       console.log("[TerminalHealthCheck] Network reconnected, immediate check");
       performHealthCheck();
@@ -460,10 +482,8 @@ export function stopTerminalHealthCheck(): void {
     intervalId = null;
   }
 
-  if (appStateSubscription) {
-    appStateSubscription.remove();
-    appStateSubscription = null;
-  }
+  lifecycleUnregister.forEach((fn) => fn());
+  lifecycleUnregister = [];
 
   if (netInfoUnsubscribe) {
     netInfoUnsubscribe();

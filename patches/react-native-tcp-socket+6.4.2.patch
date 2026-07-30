@@ -1,0 +1,74 @@
+diff --git a/node_modules/react-native-tcp-socket/android/src/main/java/com/asterinet/react/tcpsocket/TcpSocketModule.java b/node_modules/react-native-tcp-socket/android/src/main/java/com/asterinet/react/tcpsocket/TcpSocketModule.java
+index 121edb4..5885f68 100644
+--- a/node_modules/react-native-tcp-socket/android/src/main/java/com/asterinet/react/tcpsocket/TcpSocketModule.java
++++ b/node_modules/react-native-tcp-socket/android/src/main/java/com/asterinet/react/tcpsocket/TcpSocketModule.java
+@@ -128,9 +128,21 @@ public class TcpSocketModule extends ReactContextBaseJavaModule {
+     @SuppressWarnings("unused")
+     @ReactMethod
+     public void write(final int cId, @NonNull final String base64String, final int msgId) {
+-        TcpSocketClient socketClient = getTcpClient(cId);
+-        byte[] data = Base64.decode(base64String, Base64.NO_WRAP);
+-        socketClient.write(msgId, data);
++        try {
++            TcpSocketClient socketClient = getTcpClient(cId);
++            byte[] data = Base64.decode(base64String, Base64.NO_WRAP);
++            socketClient.write(msgId, data);
++        } catch (IllegalArgumentException iae) {
++            // Socket already gone — translate into a JS-side error instead of crashing.
++            Log.w(TAG, "write(" + cId + "): socket already gone — " + iae.getMessage());
++            try {
++                tcpEvtListener.onError(cId, new IOException("write after destroy: " + iae.getMessage()));
++            } catch (Throwable ignored) {}
++        } catch (RuntimeException re) {
++            // Defensive: forward-compat fallback for future library changes.
++            Log.e(TAG, "write(" + cId + "): unexpected runtime error", re);
++            try { tcpEvtListener.onError(cId, re); } catch (Throwable ignored) {}
++        }
+     }
+ 
+     @SuppressLint("StaticFieldLeak")
+@@ -140,8 +152,22 @@ public class TcpSocketModule extends ReactContextBaseJavaModule {
+         executorService.execute(new Runnable() {
+             @Override
+             public void run() {
+-                TcpSocketClient socketClient = getTcpClient(cId);
+-                socketClient.destroy();
++                try {
++                    TcpSocketClient socketClient = getTcpClient(cId);
++                    socketClient.destroy();
++                } catch (IllegalArgumentException iae) {
++                    // Socket already gone — this is the race we're patching.
++                    // The id was removed from socketMap (likely by a prior end/destroy
++                    // Runnable that already ran). Log it and return cleanly so the
++                    // executor thread stays alive.
++                    Log.w(TAG, "end(" + cId + "): socket already gone — " + iae.getMessage());
++                } catch (RuntimeException re) {
++                    // Defensive: future library upgrades may throw new RuntimeExceptions
++                    // (e.g. IllegalStateException). Report to JS via the error channel
++                    // instead of crashing.
++                    Log.e(TAG, "end(" + cId + "): unexpected runtime error", re);
++                    try { tcpEvtListener.onError(cId, re); } catch (Throwable ignored) {}
++                }
+             }
+         });
+     }
+@@ -158,9 +184,16 @@ public class TcpSocketModule extends ReactContextBaseJavaModule {
+         executorService.execute(new Runnable() {
+             @Override
+             public void run() {
+-                TcpSocketServer socketServer = getTcpServer(cId);
+-                socketServer.close();
+-                socketMap.remove(cId);
++                try {
++                    TcpSocketServer socketServer = getTcpServer(cId);
++                    socketServer.close();
++                    socketMap.remove(cId);
++                } catch (IllegalArgumentException iae) {
++                    Log.w(TAG, "close(" + cId + "): server already gone — " + iae.getMessage());
++                } catch (RuntimeException re) {
++                    Log.e(TAG, "close(" + cId + "): unexpected runtime error", re);
++                    try { tcpEvtListener.onError(cId, re); } catch (Throwable ignored) {}
++                }
+             }
+         });
+     }

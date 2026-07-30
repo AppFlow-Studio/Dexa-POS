@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenFragment.kt b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenFragment.kt
-index 65c6e30..71868bc 100644
+index 6fcabc3..428bdf8 100644
 --- a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenFragment.kt
 +++ b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenFragment.kt
 @@ -115,6 +115,23 @@ open class ScreenFragment :
@@ -26,7 +26,7 @@ index 65c6e30..71868bc 100644
      override fun onContainerUpdate() {
          updateWindowTraits()
      }
-@@ -315,6 +332,17 @@ open class ScreenFragment :
+@@ -317,6 +334,17 @@ open class ScreenFragment :
  
      override fun onDestroy() {
          super.onDestroy()

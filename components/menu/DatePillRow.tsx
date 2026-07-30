@@ -160,12 +160,28 @@ const POPOVER_ROOT_STYLE = {
   alignItems: "stretch" as const,
 };
 
+/**
+ * Row density. "sm" is the original compact strip; "md" matches the 44px
+ * control-bar controls (search / Status / Sort) on Previous Orders so the row
+ * lines up with its siblings instead of floating short.
+ */
+export type DatePillRowSize = "sm" | "md";
+
+const SIZE_METRICS: Record<
+  DatePillRowSize,
+  { height: number; font: number; icon: number; padding: number }
+> = {
+  sm: { height: 34, font: 12, icon: 10, padding: 12 },
+  md: { height: 44, font: 13, icon: 12, padding: 14 },
+};
+
 const CustomDatePillContent: React.FC<{
   isActive: boolean;
   currentStart: string | null;
   currentEnd: string | null;
+  size: DatePillRowSize;
   onSelect: (pill: DatePillDef) => void;
-}> = ({ isActive, currentStart, currentEnd, onSelect }) => {
+}> = ({ isActive, currentStart, currentEnd, size, onSelect }) => {
   const { colorScheme } = useColorScheme();
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
@@ -222,21 +238,23 @@ const CustomDatePillContent: React.FC<{
     [pickingFrom, pickingTo],
   );
 
+  const metrics = SIZE_METRICS[size];
   const triggerStyle = useMemo(
     () => [
       PILL_BASE_STYLE,
       isActive ? buildPillActiveStyle() : PILL_INACTIVE_STYLE,
-      { paddingHorizontal: s(12), borderRadius: s(6) },
+      { paddingHorizontal: s(metrics.padding), borderRadius: s(6) },
     ],
     // colorScheme included so the active-pill teal/border tint follows theme.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isActive, colorScheme, uiScale],
+    [isActive, colorScheme, uiScale, size],
   );
 
   const triggerIconColor = isActive ? colors.teal : colors.label;
   const triggerTextStyle = useMemo(
-    () => ({ color: triggerIconColor }),
-    [triggerIconColor],
+    () => ({ color: triggerIconColor, fontSize: s(metrics.font) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [triggerIconColor, uiScale, size],
   );
 
   const popoverStyle = useMemo(
@@ -257,8 +275,8 @@ const CustomDatePillContent: React.FC<{
         className="flex-row items-center rounded-md gap-x-1"
         style={triggerStyle}
       >
-        <CalendarIcon size={s(10)} color={triggerIconColor} />
-        <Text className="text-xs font-semibold" style={triggerTextStyle}>
+        <CalendarIcon size={s(metrics.icon)} color={triggerIconColor} />
+        <Text className="font-semibold" style={triggerTextStyle}>
           {labelText}
         </Text>
       </PopoverTrigger>
@@ -299,25 +317,31 @@ const CustomDatePill = React.memo(CustomDatePillContent);
 const PresetPill: React.FC<{
   pill: DatePillDef;
   isActive: boolean;
+  size: DatePillRowSize;
   onSelect: (pill: DatePillDef) => void;
-}> = React.memo(({ pill, isActive, onSelect }) => {
+}> = React.memo(({ pill, isActive, size, onSelect }) => {
   const { colorScheme } = useColorScheme();
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
+  const metrics = SIZE_METRICS[size];
   const handlePress = useCallback(() => onSelect(pill), [pill, onSelect]);
   const pillStyle = useMemo(
     () => [
       PILL_BASE_STYLE,
       isActive ? buildPillActiveStyle() : PILL_INACTIVE_STYLE,
-      { paddingHorizontal: s(12), borderRadius: s(6) },
+      { paddingHorizontal: s(metrics.padding), borderRadius: s(6) },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isActive, colorScheme, uiScale],
+    [isActive, colorScheme, uiScale, size],
   );
   const textStyle = useMemo(
-    () => ({ color: isActive ? colors.teal : colors.label, fontSize: s(12) }),
+    () => ({
+      color: isActive ? colors.teal : colors.label,
+      fontSize: s(metrics.font),
+      fontWeight: "600" as const,
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isActive, colorScheme, uiScale],
+    [isActive, colorScheme, uiScale, size],
   );
   return (
     <Pressable
@@ -326,7 +350,10 @@ const PresetPill: React.FC<{
       style={pillStyle}
     >
       {pill.windowLabel !== "today" && pill.windowLabel !== "yesterday" && (
-        <CalendarIcon size={s(10)} color={isActive ? colors.teal : colors.label} />
+        <CalendarIcon
+          size={s(metrics.icon)}
+          color={isActive ? colors.teal : colors.label}
+        />
       )}
       <Text style={textStyle}>
         {pill.label}
@@ -343,8 +370,9 @@ const selectCustomEnd = (s: { dateWindow?: { label: DateWindowLabel; endDate: st
 
 const DatePillRowContent: React.FC<{
   activeLabel: DateWindowLabel;
+  size?: DatePillRowSize;
   onSelect: (pill: DatePillDef) => void;
-}> = ({ activeLabel, onSelect }) => {
+}> = ({ activeLabel, size = "sm", onSelect }) => {
   const { colorScheme } = useColorScheme();
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
@@ -353,14 +381,14 @@ const DatePillRowContent: React.FC<{
 
   const rowStyle = useMemo(
     () => ({
-      height: s(34),
+      height: s(SIZE_METRICS[size].height),
       backgroundColor: colors.panel,
       borderWidth: 1,
       borderColor: colors.border,
       gap: s(2),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [colorScheme, uiScale],
+    [colorScheme, uiScale, size],
   );
 
   return (
@@ -370,6 +398,7 @@ const DatePillRowContent: React.FC<{
           key={pill.windowLabel}
           pill={pill}
           isActive={activeLabel === pill.windowLabel}
+          size={size}
           onSelect={onSelect}
         />
       ))}
@@ -377,6 +406,7 @@ const DatePillRowContent: React.FC<{
         isActive={activeLabel === "custom"}
         currentStart={customStart}
         currentEnd={customEnd}
+        size={size}
         onSelect={onSelect}
       />
     </View>

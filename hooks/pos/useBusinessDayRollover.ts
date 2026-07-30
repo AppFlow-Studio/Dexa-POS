@@ -4,8 +4,8 @@ import {
 } from "@/lib/businessDay";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { registerResumeTask } from "@/lib/lifecycle/appLifecycleCoordinator";
 import { useEffect, useRef } from "react";
-import { AppState, AppStateStatus } from "react-native";
 
 const ROLLOVER_POLL_INTERVAL_MS = 60_000;
 
@@ -67,14 +67,19 @@ export function useBusinessDayRollover(params: { enabled: boolean }) {
     // Seed on mount so the first interval tick has a baseline
     checkRollover();
 
-    const onAppStateChange = (state: AppStateStatus) => {
-      if (state === "active") checkRollover();
-    };
-    const sub = AppState.addEventListener("change", onAppStateChange);
+    // Resume trigger, `frame` bucket. checkRollover is a local date
+    // comparison — the network refetch only happens on an actual day
+    // boundary, which is precisely the overnight-resume case, and that IS
+    // first-tap-relevant (the "Today" pill would otherwise show yesterday).
+    const unregisterResume = registerResumeTask({
+      id: "orders.business-day-rollover",
+      bucket: "frame",
+      run: checkRollover,
+    });
     const interval = setInterval(checkRollover, ROLLOVER_POLL_INTERVAL_MS);
 
     return () => {
-      sub.remove();
+      unregisterResume();
       clearInterval(interval);
     };
   }, [enabled]);

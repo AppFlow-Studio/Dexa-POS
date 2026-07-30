@@ -26,6 +26,9 @@
  */
 jest.mock("react-native-mmkv", () => {
   const createInstance = () => ({
+    // Native `size` (allocated bytes) is read by the storage monitor; without
+    // it every comparison silently comes out `undefined > n === false`.
+    size: 0,
     getString: jest.fn(),
     getBoolean: jest.fn(),
     getNumber: jest.fn(),

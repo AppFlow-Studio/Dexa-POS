@@ -1,0 +1,82 @@
+diff --git a/node_modules/@expo/metro-config/build/binary-file-store.js b/node_modules/@expo/metro-config/build/binary-file-store.js
+index 30053bd..aaf4e12 100644
+--- a/node_modules/@expo/metro-config/build/binary-file-store.js
++++ b/node_modules/@expo/metro-config/build/binary-file-store.js
+@@ -11,12 +11,49 @@ const serializer_1 = require("./binary-file-store/serializer");
+ const file_store_1 = require("./file-store");
+ const { pid } = process;
+ const debug = require('debug')('expo:metro:cache');
++// --- patch-package: bounded fd concurrency (Windows EMFILE guard) ----------
++// Upstream calls node:fs promises directly here, unlike the rest of Metro,
++// which goes through graceful-fs. Metro fans the transform cache out over the
++// entire subgraph at once (Promise.all over 1000+ modules), so on Windows the
++// process runs out of file handles and the bundle dies with:
++//   EMFILE: too many open files, open '...\metro-cache\..\....mp'
++// HMR then retries forever and the dev app crawls. A simple semaphore around
++// every fs call in this file keeps handles bounded without changing behavior.
++// Tune with EXPO_METRO_FD_LIMIT if 64 is still too high on a given machine.
++const FD_LIMIT = Number(process.env.EXPO_METRO_FD_LIMIT) || 64;
++let fdActive = 0;
++const fdQueue = [];
++function fdAcquire() {
++    if (fdActive < FD_LIMIT) {
++        fdActive++;
++        return Promise.resolve();
++    }
++    return new Promise((resolve) => fdQueue.push(resolve));
++}
++function fdRelease() {
++    const next = fdQueue.shift();
++    // Hand the slot straight to the next waiter rather than decrementing and
++    // letting it re-acquire — keeps the count exact under heavy contention.
++    if (next)
++        next();
++    else
++        fdActive--;
++}
++async function withFd(fn) {
++    await fdAcquire();
++    try {
++        return await fn();
++    }
++    finally {
++        fdRelease();
++    }
++}
+ /** Pre-create shard directories all at once as a preflight task */
+ function ensureShardDirs(root) {
+     const tasks = [];
+     for (let i = 0; i < 256; i++) {
+         const shard = ('0' + i.toString(16)).slice(-2);
+-        tasks.push(node_fs_1.default.promises.mkdir(node_path_1.default.join(root, shard), { recursive: true }));
++        tasks.push(withFd(() => node_fs_1.default.promises.mkdir(node_path_1.default.join(root, shard), { recursive: true })));
+     }
+     return Promise.all(tasks).then(() => undefined);
+ }
+@@ -49,7 +86,7 @@ class BinaryFileStore extends FileStore_1.default {
+         const filePath = this.#getFileDir(key) + node_path_1.default.sep + this.#getFileName(key);
+         let data;
+         try {
+-            data = await node_fs_1.default.promises.readFile(filePath);
++            data = await withFd(() => node_fs_1.default.promises.readFile(filePath));
+         }
+         catch (err) {
+             if (err.code === 'ENOENT') {
+@@ -79,7 +116,7 @@ class BinaryFileStore extends FileStore_1.default {
+         const targetPath = fileDir + node_path_1.default.sep + fileName;
+         let renamed = false;
+         try {
+-            await node_fs_1.default.promises.writeFile(targetTemp, buffer);
++            await withFd(() => node_fs_1.default.promises.writeFile(targetTemp, buffer));
+             await renameWithRetry(targetTemp, targetPath);
+             renamed = true;
+         }
+@@ -89,7 +126,7 @@ class BinaryFileStore extends FileStore_1.default {
+                 throw err;
+             this.#prepare = undefined;
+             await this.prepare();
+-            await node_fs_1.default.promises.writeFile(targetTemp, buffer);
++            await withFd(() => node_fs_1.default.promises.writeFile(targetTemp, buffer));
+             await renameWithRetry(targetTemp, targetPath);
+             renamed = true;
+         }

@@ -3,6 +3,7 @@ import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -21,6 +22,22 @@ class MainActivity : ReactActivity() {
     SplashScreenManager.registerOnActivity(this)
     // @generated end expo-splashscreen
     super.onCreate(null)
+
+    // Hold the display on for the entire app lifetime.
+    //
+    // This is deliberately native rather than expo-keep-awake. The JS path
+    // (activateKeepAwakeAsync) fires an async call that rejects silently if the
+    // native module isn't in the installed binary, which is a live possibility
+    // on a station running an OTA JS update over an older native build — and a
+    // silently-dead wake lock is indistinguishable from never having added one.
+    // Setting the window flag here cannot fail, needs no module registry, and
+    // covers the splash/boot window before React ever mounts.
+    //
+    // NOTE: expo-keep-awake toggles this same flag and calls clearFlags() when
+    // its last tag is released, which would drop this lock too. That's why the
+    // JS-side hook was removed from the root layout — the CFD group's lock only
+    // ever activates and never releases, so it can't clear this.
+    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
   }
 
   /**
