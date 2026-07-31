@@ -62,6 +62,8 @@ const OrderDetailsBottomSheet = forwardRef<
     collapse: () => bottomSheetRef.current?.collapse(),
     close: () => bottomSheetRef.current?.close(),
     forceClose: () => bottomSheetRef.current?.forceClose(),
+    present: () => bottomSheetRef.current?.present(),
+    dismiss: () => bottomSheetRef.current?.dismiss(),
   }));
 
   const renderBackdrop = (props: any) => (

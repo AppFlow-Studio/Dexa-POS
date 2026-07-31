@@ -134,7 +134,7 @@ const menuSectionStyles = createMenuSectionStyles(1);
 const EMPTY_HIDDEN_MENU_IDS: string[] = [];
 
 const getBlockingOverlayStyle = (overlayColor: string): ViewStyle => ({
-  ...StyleSheet.absoluteFill,
+  ...StyleSheet.absoluteFillObject,
   backgroundColor: overlayColor,
   zIndex: 100,
 });
@@ -212,7 +212,7 @@ const SeatingBlockingOverlay = React.memo(
         />
         <View
           style={{
-            ...StyleSheet.absoluteFill,
+            ...StyleSheet.absoluteFillObject,
             backgroundColor: colors.background + "66",
           }}
         />
@@ -226,7 +226,7 @@ const SeatingBlockingOverlay = React.memo(
             depend on nothing. */}
         <View
           style={{
-            ...StyleSheet.absoluteFill,
+            ...StyleSheet.absoluteFillObject,
             alignItems: "center",
             justifyContent: "center",
             paddingHorizontal: s(24),
@@ -892,6 +892,10 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     [],
   );
 
+  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
+  // Row-height estimate. Image tiles are square at ~1/5 of the grid width;
+  // text-only tiles are a fixed 80 (+6 gridCell paddingBottom).
+  const estimatedItemSize = showMenuImages ? 240 : 86;
 
   const formatTime = (d?: Date | null) =>
     d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
@@ -1339,7 +1343,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                     data={dataWithSpacers}
                     keyExtractor={keyExtractor}
                     numColumns={numColumns}
+                    estimatedItemSize={estimatedItemSize}
                     getItemType={getItemType}
+                    disableAutoLayout
                     drawDistance={500}
                     contentContainerStyle={{
                       backgroundColor: colors.card,

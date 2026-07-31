@@ -79,16 +79,13 @@ import {
     TokenCache,
     useAuth,
 } from "@clerk/clerk-expo";
-import { BottomSheetModalProvider } from "@/components/ui/bottomSheet";
-// SDK 56+: expo-router ships a forked navigation and disallows importing
-// @react-navigation/* directly. These theme values/types are re-exported by
-// expo-router from its vendored copy.
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import {
     DarkTheme,
     DefaultTheme,
     Theme,
     ThemeProvider,
-} from "expo-router";
+} from "@react-navigation/native";
 import * as NavigationBar from "expo-navigation-bar";
 import { Stack, useNavigationContainerRef } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -134,8 +131,8 @@ Sentry.init({
   // Offline: cache up to 100 envelopes on disk (default 30)
   maxCacheItems: 100,
 
-  // 100% in dev for debugging, 30% in production to reduce overhead
-  tracesSampleRate: __DEV__ ? 1.0 : 0.3,
+  
+  tracesSampleRate: 0.1,
 
   // Native crash + hang capture. Android ANRs are captured by the native SDK by
   // default; we additionally enable iOS app-hang tracking and are explicit about
@@ -983,7 +980,7 @@ export default Sentry.wrap(function RootLayout() {
           >
             <TanstackProvider>
               <PosSyncProvider>
-                <GestureHandlerRootView style={{ flex: 1 }}>
+                <GestureHandlerRootView>
                   <UiScaleProvider>
                     <SafeAreaProvider>
                       <ThemeProvider

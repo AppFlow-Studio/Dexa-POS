@@ -9,7 +9,6 @@ import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
 import TableLayoutView from "@/components/tables/TableLayoutView";
 import TableOrderOverlay from "@/components/tables/TableOrderOverlay";
 import { useLoading } from "@/contexts/LoadingContext";
-import { useScreenRenderTelemetry } from "@/hooks/useScreenRenderTelemetry";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
@@ -83,9 +82,6 @@ const getSelectedTablesCapacity = (
 };
 
 const TablesScreen = () => {
-  // First hook in the body: the render-start timestamp must be taken before
-  // the floor-plan subscriptions below, or the mount span under-reports.
-  useScreenRenderTelemetry("tables");
   const uiScale = useUiScale();
   const s = (n: number) => Math.round(n * uiScale);
   const { colorScheme } = useColorScheme();

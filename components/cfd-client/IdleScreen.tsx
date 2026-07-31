@@ -189,14 +189,14 @@ const createStyles = (scale: number) => {
       alignItems: "center",
     },
     imageContainer: {
-      ...StyleSheet.absoluteFill,
+      ...StyleSheet.absoluteFillObject,
     },
     backgroundImage: {
       width: "100%",
       height: "100%",
     },
     overlay: {
-      ...StyleSheet.absoluteFill,
+      ...StyleSheet.absoluteFillObject,
       backgroundColor: "rgba(0,0,0,0.1)",
     },
     textContainer: {

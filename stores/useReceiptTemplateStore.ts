@@ -6,7 +6,7 @@ import {
     receiptTemplateConfigToRow,
     receiptTemplateRowToConfig,
 } from "@/types/receipt-template";
-import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 

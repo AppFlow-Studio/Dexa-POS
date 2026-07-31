@@ -323,7 +323,7 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
         fontWeight: '500'
       },
       confirmingOverlay: {
-        ...StyleSheet.absoluteFill,
+        ...StyleSheet.absoluteFillObject,
         backgroundColor: 'rgba(0,0,0,0.45)',
         alignItems: 'center',
         justifyContent: 'center',

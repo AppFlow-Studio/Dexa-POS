@@ -1,5 +1,5 @@
 import { Skia, PaintStyle } from "@shopify/react-native-skia";
-import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
 import { Asset } from "expo-asset";
 import { Mutex } from "async-mutex";
 import { startInteraction } from "@/lib/perf";

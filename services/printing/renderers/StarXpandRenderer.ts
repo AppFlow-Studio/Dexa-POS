@@ -1,5 +1,5 @@
 import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-document";
-import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
 import { TextBlock, renderTextBlocksToImage } from "./SkiaTicketRenderer";
 import { sanitizeForPrint } from "../utils/sanitizeText";
 import {

@@ -1,5 +1,4 @@
-// SDK 56+: import react-navigation APIs via expo-router (forked navigation).
-import { useTheme } from 'expo-router';
+import { useTheme } from '@react-navigation/native';
 import { cva, type VariantProps } from 'class-variance-authority';
 import type { LucideIcon } from 'lucide-react-native';
 import * as React from 'react';

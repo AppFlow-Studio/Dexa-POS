@@ -268,7 +268,7 @@ const createStyles = (scale: number) => {
     // Both rotating + loyalty-prompt layers absolutely fill the
     // screenContent. Toggling display swaps them without remounting.
     layer: {
-      ...StyleSheet.absoluteFill,
+      ...StyleSheet.absoluteFillObject,
     },
     layerHidden: {
       display: "none",

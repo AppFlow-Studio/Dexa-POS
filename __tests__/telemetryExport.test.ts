@@ -3,7 +3,7 @@
  * write + share-sheet flow (mocked expo modules), offline-safe behavior
  * (share unavailable still produces the file).
  */
-import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import {
   buildTelemetryDump,
@@ -21,7 +21,7 @@ import {
 } from "@/lib/telemetry/registry";
 
 // jest.mock calls are hoisted above the imports at runtime.
-jest.mock("expo-file-system/legacy", () => ({
+jest.mock("expo-file-system", () => ({
   cacheDirectory: "file:///cache/",
   writeAsStringAsync: jest.fn(() => Promise.resolve()),
 }));

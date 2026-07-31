@@ -1,4 +1,5 @@
 import type { ToastProps } from "@/stores/useToastStore";
+import { AnimatePresence } from "moti";
 import React from "react";
 import { View } from "react-native";
 import CustomToast from "./CustomToast";
@@ -19,9 +20,11 @@ const ToastContainer: React.FC<ToastContainerProps> = ({ toasts }) => {
       }}
       pointerEvents="box-none"
     >
-      {toasts.map((toast) => (
-        <CustomToast key={toast.id} {...toast} />
-      ))}
+      <AnimatePresence>
+        {toasts.map((toast) => (
+          <CustomToast key={toast.id} {...toast} />
+        ))}
+      </AnimatePresence>
     </View>
   );
 };

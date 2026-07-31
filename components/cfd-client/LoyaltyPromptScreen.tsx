@@ -160,7 +160,7 @@ const createStyles = (scale: number) => {
       color: colors.onSolid,
     },
     submittingOverlay: {
-      ...StyleSheet.absoluteFill,
+      ...StyleSheet.absoluteFillObject,
       backgroundColor: "rgba(0,0,0,0.45)",
       alignItems: "center",
       justifyContent: "center",

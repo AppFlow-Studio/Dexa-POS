@@ -50,7 +50,6 @@ import {
   unstable_batchedUpdates,
   View
 } from 'react-native'
-import { setCurrentRoutePath } from '@/lib/currentRoute'
 import { hintNativeGc } from '@/lib/nativeMemory'
 import {
   KEY_FANOUT_KDS_MS,
@@ -116,12 +115,8 @@ export default function MainLayout () {
   }, [pathname])
 
   // Wave-0 telemetry: tag long-task samples with the screen they blocked.
-  // Also publishes the path imperatively (lib/currentRoute) so persistently
-  // mounted overlays can read it from callbacks without taking their own
-  // `usePathname()` subscription — this layout is already the one subscriber.
   useEffect(() => {
     setCurrentRoute(pathname)
-    setCurrentRoutePath(pathname)
   }, [pathname])
 
   useEffect(() => {
@@ -302,7 +297,7 @@ export default function MainLayout () {
           edges={['top']}
           style={{ flex: 1, backgroundColor: colors.screen }}
         >
-          <StatusBar style='light' />
+          <StatusBar style='light' translucent />
           <Slot />
           {/* Online-orders edge tab + drawer on KDS too. kdsMode hides the
               POS-only navigation (board/detail routes have no header/back
@@ -353,7 +348,7 @@ export default function MainLayout () {
           className='flex-1'
           style={{ backgroundColor: colors.screen }}
         >
-          <StatusBar style={'light'} />
+          <StatusBar style={'light'} translucent />
 
           <View
             className='flex-1 flex-row'

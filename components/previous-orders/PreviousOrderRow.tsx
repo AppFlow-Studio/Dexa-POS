@@ -31,10 +31,18 @@ import {
     Platform,
     Text,
     TouchableOpacity,
+    UIManager,
     View,
 } from "react-native";
 import ExpandedOrderPanel from "./ExpandedOrderPanel";
 import ProviderGlyph from "./ProviderGlyph";
+
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Snappy expand/collapse — shorter than the 300ms easeInEaseOut preset so the
 // panel feels instant. Content fades in/out on create/delete.
@@ -50,30 +58,6 @@ const EXPAND_ANIM = {
     property: LayoutAnimation.Properties.opacity,
   },
 } as const;
-
-/**
- * Animate the expand/collapse — on iOS only.
- *
- * `LayoutAnimation` is the legacy Paper API. Under the New Architecture
- * (newArchEnabled=true since the SDK 53→57 migration) Android runs Fabric,
- * where:
- *   - `UIManager.setLayoutAnimationEnabledExperimental` is a Paper-only method
- *     that no longer exists, so the opt-in this file used to perform was
- *     already a silent no-op; and
- *   - `configureNext` still routes the *entire* next commit through Fabric's
- *     partial LayoutAnimations driver on the UI thread. With a FlashList of
- *     recycled rows that means the whole mounted cell window is re-laid-out and
- *     diffed to expand one row — the ~1s stall between tap and panel.
- *
- * Dropping it on Android makes expansion land in the same frame as the tap. The
- * same reasoning already removed `itemLayoutAnimation` from OrderLineSection
- * (Perf F4) and gates Reanimated layout animations behind `iosOnly()` in
- * lib/safeAnimations.ts — this file was the last legacy-LayoutAnimation holdout.
- */
-function configureExpandAnimation(): void {
-  if (Platform.OS !== "ios") return;
-  LayoutAnimation.configureNext(EXPAND_ANIM);
-}
 
 interface PreviousOrderRowProps {
   order: OrderProfile;
@@ -159,7 +143,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
     // still caught by the isDoubleTap check above; the brief expand is hidden
     // behind the payment sheet that slides over it.
     lastPressRef.current = now;
-    configureExpandAnimation();
+    LayoutAnimation.configureNext(EXPAND_ANIM);
     onPress(order);
   };
 

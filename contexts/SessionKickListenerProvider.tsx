@@ -1,5 +1,8 @@
 import { KickedOutModal } from "@/components/auth/KickedOutModal";
-import { useSessionKickListener } from "@/hooks/useSessionKickListener";
+import {
+  useSessionKickListener,
+  UseSessionKickListenerResult,
+} from "@/hooks/useSessionKickListener";
 import React, { createContext, useContext } from "react";
 
 // ============================================================================
@@ -45,8 +48,6 @@ export function SessionKickListenerProvider({
     isKicked,
     kickedBy,
     kickReason,
-    kickTitle,
-    kickMessage,
     countdown,
     acknowledgeKick,
     validateSession,
@@ -60,8 +61,6 @@ export function SessionKickListenerProvider({
         visible={isKicked}
         kickedBy={kickedBy}
         kickReason={kickReason}
-        title={kickTitle}
-        message={kickMessage}
         countdown={countdown}
         onAcknowledge={acknowledgeKick}
       />

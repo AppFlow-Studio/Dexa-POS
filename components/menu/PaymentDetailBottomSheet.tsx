@@ -56,6 +56,8 @@ const PaymentDetailBottomSheetController: React.ForwardRefRenderFunction<
         collapse: () => {},
         close: () => usePaymentDetailSheetStore.getState().close(),
         forceClose: () => usePaymentDetailSheetStore.getState().close(),
+        present: () => {},
+        dismiss: () => usePaymentDetailSheetStore.getState().close(),
       }) as BottomSheetMethods,
     [],
   );
