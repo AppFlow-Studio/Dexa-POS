@@ -295,6 +295,13 @@ const TableOrderView = React.forwardRef<
     (activeOrder?.reopen_count ?? 0) < 1;
   const isClosedCheckMenuDisabled =
     activeOrder?.check_status === "Closed" && !canReopenClosedCheck;
+  // Also disable the menu when the table's bill has no resolved order — the
+  // bill shows "No active order." in that state, and taps would otherwise add
+  // items to whatever the global activeOrderId happens to point at (e.g. a
+  // QSR draft from order-processing). Transitional gaps are already covered
+  // by the skeleton guards below, so this only fires on a genuinely orderless
+  // table view.
+  const isMenuPanelDisabled = isClosedCheckMenuDisabled || !activeOrder;
   // Only derive displayBalanceDue when totals are available; otherwise keep previous value
   // to prevent transient null → 0 from making the UI think the bill is $0 / fully paid.
   const displayBalanceDueRaw = hasPayments
@@ -1632,7 +1639,7 @@ const TableOrderView = React.forwardRef<
                 isCurrentCourseSent={isCurrentCourseSent}
                 onStartNewCourse={handleStartNewCourse}
                 onOrderClosedCheck={checkOrderClosedAndWarn}
-                isMenuDisabled={isClosedCheckMenuDisabled}
+                isMenuDisabled={isMenuPanelDisabled}
               />
             </View>
           </View>

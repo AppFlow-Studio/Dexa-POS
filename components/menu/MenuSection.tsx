@@ -195,10 +195,12 @@ const SeatingBlockingOverlay = React.memo(
     isVisible,
     title,
     message,
+    showSpinner = true,
   }: {
     isVisible: boolean;
     title: string;
     message: string;
+    showSpinner?: boolean;
   }) => {
     const uiScale = useUiScale();
     const s = (n: number) => Math.round(n * uiScale);
@@ -236,7 +238,9 @@ const SeatingBlockingOverlay = React.memo(
               backgroundColor: colors.panel + "E6",
             }}
           >
-            <ActivityIndicator size="small" color={colors.teal} />
+            {showSpinner && (
+              <ActivityIndicator size="small" color={colors.teal} />
+            )}
             <Text
               style={{
                 color: colors.heading,
@@ -362,15 +366,19 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // (mirrors the offline carve-out in addItemToActiveOrder). Only block while
   // ONLINE, otherwise the overlay would stick on "Creating order" forever offline.
   const { isOnline } = useNetworkStatus();
-  // Also guard against stale/orphaned activeOrderId: if the order object doesn't
-  // exist in ordersById, don't block — BillSection will show "No Active
-  // Order" and the user can start fresh. Checking currentOrderPaidStatus as a
-  // proxy; if it's null and activeOrderId is set, the order doesn't exist.
+  // Guard against stale/orphaned activeOrderId: if the order object doesn't
+  // exist in ordersById, it's not "creating" — it's the no-active-order state
+  // (blocked below with its own overlay message).
   const currentOrderExists = useOrderStore((s) =>
     s.activeOrderId ? !!s.ordersById[s.activeOrderId] : false,
   );
   const isCreatingOrder =
     isOnline && !!activeOrderId && !currentOrderDbId && currentOrderExists;
+  // No order to add to: activeOrderId unset (e.g. auto-create OFF before the
+  // operator starts a ticket) or set but pruned from ordersById. BillSection
+  // shows its "No Active Order" panel in this state — block the menu so item
+  // taps can't open the add flow with nowhere to land.
+  const hasNoActiveOrder = !activeOrderId || !currentOrderExists;
 
   // Timeout + retry for the "Creating order" gate. If the eager-create RPC
   // failed or was skipped, the order is permanently stuck with no db_order_id
@@ -442,19 +450,26 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     !currentOrderDbId &&
     currentOrderPaidStatus !== "Paid";
   const isMenuAddDisabled =
-    isTableSeating || effectiveCreatingOrder || isAwaitingOrderPin;
+    hasNoActiveOrder ||
+    isTableSeating ||
+    effectiveCreatingOrder ||
+    isAwaitingOrderPin;
   // Seating takes precedence over "creating" in the label (a dine-in order is
   // also db_order_id-less while seating, but "Seating in progress" is clearer).
-  const menuDisabledTitle = isTableSeating
-    ? "Seating in progress"
-    : isAwaitingOrderPin
-      ? "Enter PIN to start"
-      : "Creating order";
-  const menuDisabledMessage = isTableSeating
-    ? "Items can be added once the table is seated."
-    : isAwaitingOrderPin
-      ? "Enter your PIN to start this order."
-      : "Items can be added once the order is ready.";
+  const menuDisabledTitle = hasNoActiveOrder
+    ? "No Active Order"
+    : isTableSeating
+      ? "Seating in progress"
+      : isAwaitingOrderPin
+        ? "Enter PIN to start"
+        : "Creating order";
+  const menuDisabledMessage = hasNoActiveOrder
+    ? "Start an order to add items."
+    : isTableSeating
+      ? "Items can be added once the table is seated."
+      : isAwaitingOrderPin
+        ? "Enter your PIN to start this order."
+        : "Items can be added once the order is ready.";
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails,
   );
@@ -1385,6 +1400,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
           isVisible={isMenuAddDisabled}
           title={menuDisabledTitle}
           message={menuDisabledMessage}
+          showSpinner={!hasNoActiveOrder}
         />
         <MenuBlockingOverlay />
 
